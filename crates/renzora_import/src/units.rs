@@ -42,17 +42,27 @@ pub fn detect_unit_scale(path: &Path) -> Option<f32> {
 // USD
 // ---------------------------------------------------------------------------
 
+/// Reject a scale that would destroy the model.
+///
+/// A detected scale feeds straight into `ImportSettings::scale`, and zero (or a
+/// negative, or a NaN) multiplies every vertex into a single point — which
+/// presents as an import that "succeeded" and shows nothing. Better to fall
+/// back to the 1.0 default than to apply a value that cannot be right.
+fn sane_scale(v: f32) -> Option<f32> {
+    (v.is_finite() && v > 0.0).then_some(v)
+}
+
 fn detect_usd_units_file(path: &Path) -> Option<f32> {
     // Read file and try text probe first (fast), then binary
     let data = std::fs::read(path).ok()?;
 
     if data.starts_with(b"PXR-USDC") {
         let stage = crate::usd::crate_format::parse(&data).ok()?;
-        return Some(stage.meters_per_unit);
+        return sane_scale(stage.meters_per_unit);
     }
 
     if let Ok(text) = std::str::from_utf8(&data) {
-        return detect_usd_units_text(text);
+        return detect_usd_units_text(text).and_then(sane_scale);
     }
 
     None
@@ -61,7 +71,7 @@ fn detect_usd_units_file(path: &Path) -> Option<f32> {
 fn detect_usdz_units(path: &Path) -> Option<f32> {
     // Parse the full USDZ — renzora_usd handles zip extraction
     let stage = crate::usd::parse(path).ok()?;
-    Some(stage.meters_per_unit)
+    sane_scale(stage.meters_per_unit)
 }
 
 fn detect_usd_units_text(text: &str) -> Option<f32> {

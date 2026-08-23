@@ -6,7 +6,7 @@ use renzora_rmip::bake::TextureRole;
 
 use crate::convert::{
     ExtractedAlphaMode, ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult,
-    ProgressFn,
+    ProgressFn, TextureSource,
 };
 use crate::settings::ImportSettings;
 
@@ -83,6 +83,25 @@ fn scan_image_roles(root: &serde_json::Value) -> Vec<TextureRole> {
             texture_info_image(sg.and_then(|s| s.get("specularGlossinessTexture"))),
             TextureRole::LinearData,
         );
+
+        // The channels glTF has no slot for, which the converters park in a
+        // vendor extension. Every one of them is data rather than colour, so
+        // they must not be gamma-decoded — an opacity mask or a roughness map
+        // read as sRGB is wrong everywhere it's sampled.
+        let legacy = mat
+            .get("extensions")
+            .and_then(|e| e.get(crate::glb_build::RENZORA_LEGACY_EXT));
+        for key in [
+            "opacityTexture",
+            "specularTexture",
+            "roughnessTexture",
+            "metallicTexture",
+        ] {
+            mark(
+                texture_info_image(legacy.and_then(|l| l.get(key))),
+                TextureRole::LinearData,
+            );
+        }
     }
 
     roles
@@ -119,9 +138,13 @@ pub fn convert_glb(
         } else {
             Vec::new()
         };
+        let (glb_bytes, warning) = apply_structure(
+            crate::glb_compat::strip_unsupported_extensions(&bytes),
+            settings,
+        );
         return Ok(ImportResult {
-            glb_bytes: crate::glb_compat::strip_unsupported_extensions(&bytes),
-            warnings: Vec::new(),
+            glb_bytes,
+            warnings: warning.into_iter().collect(),
             extracted_textures: Vec::new(),
             extracted_materials,
         });
@@ -137,7 +160,7 @@ pub fn convert_glb(
         .map(|root| scan_image_roles(&root))
         .unwrap_or_default();
 
-    let (rewritten, extracted_textures, warnings) =
+    let (rewritten, extracted_textures, mut warnings) =
         extract_glb_textures(&bytes, &roles, settings, progress).unwrap_or_else(|e| {
             (
                 bytes.clone(),
@@ -152,12 +175,111 @@ pub fn convert_glb(
         Vec::new()
     };
 
+    let (glb_bytes, restructure_warning) = apply_structure(
+        crate::glb_compat::strip_unsupported_extensions(&rewritten),
+        settings,
+    );
+    warnings.extend(restructure_warning);
+
     Ok(ImportResult {
-        glb_bytes: crate::glb_compat::strip_unsupported_extensions(&rewritten),
+        glb_bytes,
         warnings,
         extracted_textures,
         extracted_materials,
     })
+}
+
+/// Run the shared texture + material pass over a GLB one of the format
+/// converters just built.
+///
+/// This is the whole point of the converters emitting a GLB rather than their
+/// own extraction results: role scanning, texture writing, the memory budget
+/// and material extraction all live in one place, so FBX, OBJ, USD and Collada
+/// get whatever the glTF importer gets, at the same time it gets it. They used
+/// to each carry a partial copy of this, which is how FBX ended up as the only
+/// format with no resolution clamp and no `.rmip` output.
+///
+/// A converter is responsible for exactly two things beyond geometry: writing
+/// complete glTF materials (see `glb_build::material_json`), and pointing each image
+/// at an **absolute path** on disk when the source referenced a file rather than
+/// embedding it. Locating that file is format-specific; everything after it
+/// isn't.
+pub(crate) fn finish_converted_glb(
+    glb_bytes: Vec<u8>,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+    mut warnings: Vec<String>,
+) -> ImportResult {
+    if !settings.extract_textures {
+        let extracted_materials = if settings.extract_materials {
+            extract_glb_materials(&glb_bytes)
+        } else {
+            Vec::new()
+        };
+        return ImportResult {
+            glb_bytes: crate::glb_compat::strip_unsupported_extensions(&glb_bytes),
+            warnings,
+            extracted_textures: Vec::new(),
+            extracted_materials,
+        };
+    }
+
+    let roles = gltf::Glb::from_slice(&glb_bytes)
+        .ok()
+        .and_then(|glb| serde_json::from_slice::<serde_json::Value>(&glb.json).ok())
+        .map(|root| scan_image_roles(&root))
+        .unwrap_or_default();
+
+    let (rewritten, extracted_textures, texture_warnings) =
+        match extract_glb_textures(&glb_bytes, &roles, settings, progress) {
+            Ok(v) => v,
+            Err(e) => {
+                warnings.push(format!("texture extraction: {}", e));
+                (glb_bytes, Vec::new(), Vec::new())
+            }
+        };
+    warnings.extend(texture_warnings);
+
+    let extracted_materials = if settings.extract_materials {
+        extract_glb_materials(&rewritten)
+    } else {
+        Vec::new()
+    };
+
+    let (glb_bytes, restructure_warning) = apply_structure(
+        crate::glb_compat::strip_unsupported_extensions(&rewritten),
+        settings,
+    );
+    warnings.extend(restructure_warning);
+
+    ImportResult {
+        glb_bytes,
+        warnings,
+        extracted_textures,
+        extracted_materials,
+    }
+}
+
+/// Reshape the scene graph per [`crate::settings::SceneStructure`].
+///
+/// Runs at the very end of the shared tail so every format gets the same
+/// treatment — the converters do not need to know the setting exists, and a
+/// merged FBX and a deeply-nested glTF both arrive here as a GLB.
+pub(crate) fn apply_structure(
+    glb_bytes: Vec<u8>,
+    settings: &ImportSettings,
+) -> (Vec<u8>, Option<String>) {
+    use crate::settings::SceneStructure;
+    match settings.structure {
+        // Combined is what the transcoders already produce, and un-merging a
+        // glTF would mean rewriting its buffers rather than its JSON — so this
+        // leaves the document alone either way.
+        SceneStructure::Preserve | SceneStructure::Combined => (glb_bytes, None),
+        SceneStructure::FlatPerMesh => match crate::restructure::flatten_per_mesh(&glb_bytes) {
+            Ok((out, warning)) => (out, warning),
+            Err(e) => (glb_bytes, Some(format!("hierarchy flatten: {e}"))),
+        },
+    }
 }
 
 /// Walk the GLB JSON's `materials` array and produce a flat
@@ -380,6 +502,10 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
                 .unwrap_or(default)
         };
 
+        let legacy_texture = |key: &str| -> Option<String> {
+            texture_info_uri(ext(crate::glb_build::RENZORA_LEGACY_EXT).and_then(|l| l.get(key)))
+        };
+
         let clearcoat_ext = ext("KHR_materials_clearcoat");
         let transmission_ext = ext("KHR_materials_transmission");
         let volume_ext = ext("KHR_materials_volume");
@@ -454,13 +580,18 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             base_color_texture,
             normal_texture,
             metallic_roughness_texture,
-            roughness_texture: None,
-            metallic_texture: None,
+            roughness_texture: legacy_texture("roughnessTexture"),
+            metallic_texture: legacy_texture("metallicTexture"),
             emissive_texture,
             occlusion_texture,
             specular_glossiness_texture,
-            opacity_texture: None,
-            specular_texture: None,
+            // glTF has no separate opacity, specular, roughness or metallic
+            // map — alpha lives in base colour, specular is a scalar, and
+            // roughness/metallic share one packed texture. The converters park
+            // the separate versions in a vendor extension so a material still
+            // survives the round trip through the intermediate GLB.
+            opacity_texture: legacy_texture("opacityTexture"),
+            specular_texture: legacy_texture("specularTexture"),
             advanced,
             alpha_mode,
             alpha_cutoff,
@@ -470,11 +601,18 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
     out
 }
 
-/// Parse a GLB, pull every `bufferView`-backed image out of the BIN chunk,
-/// and rewrite those image entries to reference external URIs instead.
-/// Returns the (possibly rewritten) GLB bytes, the extracted texture list,
-/// and any non-fatal warnings. On fatal parse failure returns an error and
-/// the caller falls back to passthrough.
+/// Parse a GLB, pull every image out of it, and rewrite the image entries to
+/// reference the files we write beside the model.
+///
+/// Images arrive two ways. A glTF/GLB source embeds them in the BIN chunk. A
+/// converter-produced GLB (FBX, OBJ, USD, Collada, …) instead points each image
+/// at the file it found on disk next to the source model, via an absolute
+/// `uri` — those converters have format-specific rules for locating a texture,
+/// so resolution stays with them and everything after it is shared.
+///
+/// Returns the rewritten GLB bytes, the extracted texture list, and any
+/// non-fatal warnings. On fatal parse failure returns an error and the caller
+/// falls back to passthrough.
 fn extract_glb_textures(
     glb_bytes: &[u8],
     roles: &[TextureRole],
@@ -497,16 +635,45 @@ fn extract_glb_textures(
     let mut extracted: Vec<ExtractedTexture> = Vec::new();
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // Decide one resolution cap for the whole model before writing anything.
+    // A per-texture cap is no protection against a scene that stays under it
+    // several hundred times over — see [`fit_texture_budget`].
+    let max_size = fit_texture_budget(&root.images, settings.texture_max_size, &mut warnings);
+
     // ── Phase 1 (serial): pull each embedded image out of the BIN chunk,
     // rewrite its URI, emit the original bytes, and queue a bake job. The
     // GLB-JSON mutation and name dedup must stay single-threaded; only the
     // expensive bake is parallelized below.
     let mut jobs: Vec<BakeJob> = Vec::new();
     for (i, image) in root.images.iter_mut().enumerate() {
-        // Skip images that already live as external files; nothing to do.
-        if image.uri.is_some() {
+        let role = roles.get(i).copied().unwrap_or(TextureRole::Color);
+
+        // An external reference: the converter already located the file, so
+        // the work here is naming it, deciding its output format, and pointing
+        // the GLB at where it will land.
+        if let Some(path) = image.uri.as_deref().map(std::path::PathBuf::from) {
+            if !path.is_absolute() {
+                // Already a model-relative URI — a previous pass wrote it, or
+                // the source authored it that way. Leave it alone.
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("texture");
+            let name = unique_name(&sanitize_texture_name(stem), &mut used_names);
+
+            match external_texture_outputs(&path, &name, role, max_size) {
+                Ok((uri, outputs)) => {
+                    image.uri = Some(uri);
+                    image.mime_type = None;
+                    extracted.extend(outputs);
+                }
+                Err(e) => warnings.push(format!("texture '{}': {}", path.display(), e)),
+            }
             continue;
         }
+
         let Some(buffer_view_idx) = image.buffer_view.take() else {
             continue;
         };
@@ -545,43 +712,19 @@ fn extract_glb_textures(
         }
         let raw = &bin[byte_offset..end];
 
-        // Detect the source image format. The GLB references the texture
-        // by URI under its original extension so Bevy's GLB loader can
-        // decode it via its own image loader (anything else trips a
-        // settings-type mismatch — Bevy hardcodes `ImageLoaderSettings`
-        // for embedded URIs). Materials separately reference a `.rmip`
-        // file under the same stem.
-        let extension = match image.mime_type.as_ref().map(|m| m.0.as_str()) {
-            Some("image/png") => "png",
-            Some("image/jpeg") => "jpg",
-            Some("image/webp") => "webp",
-            _ => sniff_image_extension(raw),
-        };
+        let name = unique_name(&format!("image_{}", i), &mut used_names);
 
-        let mut name = format!("image_{}", i);
-        let mut n = 1;
-        while used_names.contains(&name) {
-            n += 1;
-            name = format!("image_{}_{}", i, n);
-        }
-        used_names.insert(name.clone());
-
-        // GLB references the original-extension file. Bevy loads this
-        // through its own image loader and we discard the result later
-        // (the resolver swaps StandardMaterial for GraphMaterial), but
-        // the load has to *succeed* for Bevy not to flood the log with
-        // settings-mismatch errors.
-        image.uri = Some(format!("textures/{}.{}", name, extension));
+        // Point the GLB at the `.rmip` and write only that. This used to
+        // externalize the original PNG/JPEG as well, on the belief that a
+        // `.rmip` URI would trip a settings-type mismatch in Bevy's GLB
+        // loader. It does not: `RmipAssetLoader` declares
+        // `Settings = ImageLoaderSettings` precisely so the GLB loader can
+        // route a `.rmip` through it. Writing both meant every texture landed
+        // on disk twice and the heavy source image was decoded and uploaded at
+        // load only to be thrown away.
+        image.uri = Some(format!("textures/{name}.rmip"));
         image.mime_type = None;
 
-        // Original encoded bytes — what Bevy's GLB loader reads.
-        extracted.push(ExtractedTexture {
-            name: name.clone(),
-            extension: extension.to_string(),
-            data: raw.to_vec(),
-        });
-
-        let role = roles.get(i).copied().unwrap_or(TextureRole::Color);
         jobs.push(BakeJob {
             raw: raw.to_vec(),
             name,
@@ -603,6 +746,196 @@ fn extract_glb_textures(
         .map_err(|e| format!("re-serialize GLB JSON: {}", e))?;
     let new_glb = pack_glb(&new_json, bin_slice);
     Ok((new_glb, extracted, warnings))
+}
+
+/// Reserve `base`, suffixing it until it doesn't collide.
+fn unique_name(base: &str, used: &mut std::collections::HashSet<String>) -> String {
+    let mut name = base.to_string();
+    let mut n = 1;
+    while used.contains(&name) {
+        n += 1;
+        name = format!("{}_{}", base, n);
+    }
+    used.insert(name.clone());
+    name
+}
+
+/// How much GPU memory one model's textures may claim before the importer
+/// reduces their resolution.
+///
+/// `ImportSettings::texture_max_size` caps a *single* texture, which is no
+/// protection against a scene that stays under it several hundred times over: a
+/// street exterior with 337 separate 2048² maps sits at 970 MB with every one of
+/// them inside a 2048 cap. Nothing downstream saves it either — the distance
+/// tier swap in `renzora_engine::texture_stream` only runs while world
+/// streaming is active, which excludes the editor's edit mode, so in the editor
+/// the whole set is resident at once. The result is
+/// `Caught rendering error: Out of Memory`, followed by a cascade of invalid
+/// buffers as every later allocation fails too.
+///
+/// 512 MB leaves headroom on an 8 GB card for the mesh, shadow maps, GI and
+/// post-process targets, and is far above what an ordinary prop or character
+/// needs — this only engages for scene-sized imports.
+const TEXTURE_BUDGET_BYTES: usize = 512 * 1024 * 1024;
+
+/// Smallest cap the budget is allowed to impose. Below this, textures are mush
+/// and the import has bigger problems than memory.
+const MIN_TEXTURE_SIZE: u32 = 256;
+
+/// Pick the largest cap at or below `requested` whose total fits
+/// [`TEXTURE_BUDGET_BYTES`].
+///
+/// Only externally-referenced DDS is measured: its header states the exact
+/// on-GPU size at any cap, so this is arithmetic rather than a guess, and it's
+/// where the gigabytes actually come from — an embedded PNG set large enough to
+/// matter would have made the source file unopenable long before it got here.
+///
+/// Halving the cap quarters the data, so this converges in a step or two.
+/// Returns `requested` unchanged when the set already fits.
+fn fit_texture_budget(
+    images: &[gltf_json::Image],
+    requested: u32,
+    warnings: &mut Vec<String>,
+) -> u32 {
+    let described: Vec<renzora_rmip::dds::Description> = images
+        .iter()
+        .filter_map(|image| {
+            let path = std::path::PathBuf::from(image.uri.as_deref()?);
+            if !path.is_absolute() {
+                return None;
+            }
+            renzora_rmip::dds::probe(&read_file_header(&path)?, false).ok()
+        })
+        .collect();
+    let cap = choose_texture_cap(&described, requested);
+    if cap < requested {
+        warnings.push(format!(
+            "texture set is too large for the {} MB budget at {}px; imported at {}px instead",
+            TEXTURE_BUDGET_BYTES / (1024 * 1024),
+            requested,
+            cap,
+        ));
+    }
+    cap
+}
+
+/// The arithmetic half of [`fit_texture_budget`], split out so it can be tested
+/// without a directory full of textures.
+///
+/// Never goes below [`MIN_TEXTURE_SIZE`] — a set that can't fit even there is
+/// left oversized rather than ground down to nothing.
+fn choose_texture_cap(described: &[renzora_rmip::dds::Description], requested: u32) -> u32 {
+    if described.is_empty() {
+        return requested;
+    }
+    let total_at = |cap: u32| -> usize { described.iter().map(|d| d.size_at(cap)).sum() };
+
+    let mut cap = requested;
+    while cap > MIN_TEXTURE_SIZE && total_at(cap) > TEXTURE_BUDGET_BYTES {
+        cap = (cap / 2).max(MIN_TEXTURE_SIZE);
+    }
+    cap
+}
+
+/// Read the first 256 bytes of a file — enough for any image container header
+/// we classify on, without pulling a multi-megabyte texture into memory.
+fn read_file_header(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut header = vec![0u8; 256];
+    let mut filled = 0;
+    while filled < header.len() {
+        match file.read(&mut header[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(_) => return None,
+        }
+    }
+    header.truncate(filled);
+    Some(header)
+}
+
+/// The URI the GLB should reference, plus the files to write for it.
+type TextureOutputs = (String, Vec<ExtractedTexture>);
+
+/// Decide what an externally-referenced texture becomes on disk, and what URI
+/// the GLB should point at.
+///
+/// One file comes out: the `.rmip`, which the GLB itself points at.
+///
+/// This used to write a second copy in the source's own format, on the belief
+/// that the GLB's materials needed a format "Bevy's own image loader reads" to
+/// resolve. That is not true for `.rmip` — [`renzora_rmip::RmipAssetLoader`]
+/// declares `Settings = ImageLoaderSettings` precisely so Bevy's GLB loader can
+/// route a `.rmip` URI through it, which is what `bake_external_images` below
+/// has always relied on.
+///
+/// Keeping the companion was actively harmful. It doubled the texture footprint
+/// exactly (231 MB of pure duplication on a scene like Bistro), and it made the
+/// GLB resolve through Bevy's DDS loader — which has no mapping for `ATI2`, the
+/// FourCC every DCC tool writes tangent-space normals as. Those images failed to
+/// load and the model rendered untextured.
+///
+/// A block-compressed DDS takes a shortcut. `.rmip` stores exactly the same BC
+/// block formats, so it's repacked rather than baked — the blocks are copied
+/// across and clamping drops whole mip levels. Round-tripping through RGBA
+/// would re-quantize every block for a worse result, take minutes on a large
+/// set, and fail outright on `ATI2`, which is how DCC tools write tangent-space
+/// normals and which the `image` crate cannot decode at all.
+///
+/// Neither output is buffered: both carry the source path and do their work as
+/// they're written, one file at a time.
+fn external_texture_outputs(
+    path: &Path,
+    name: &str,
+    role: TextureRole,
+    max_size: u32,
+) -> Result<TextureOutputs, String> {
+    let header = read_file_header(path).ok_or_else(|| "unreadable".to_string())?;
+    let native = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_else(|| sniff_image_extension(&header).to_string());
+
+    if renzora_rmip::dds::probe(&header, matches!(role, TextureRole::Color)).is_ok() {
+        return Ok((
+            format!("textures/{}.rmip", name),
+            vec![ExtractedTexture {
+                name: name.to_string(),
+                extension: "rmip".into(),
+                source: TextureSource::DdsToRmip {
+                    path: path.to_path_buf(),
+                    srgb: matches!(role, TextureRole::Color),
+                    max_size,
+                },
+            }],
+        ));
+    }
+
+    // Anything else is decoded and baked. `native` is unused now that the GLB
+    // points at the `.rmip` rather than a copy of the source file.
+    let _ = &native;
+    let raw = std::fs::read(path).map_err(|e| e.to_string())?;
+    let baked = renzora_rmip::bake::bake_image(
+        &raw,
+        renzora_rmip::bake::BakeParams {
+            role,
+            compress: true,
+            high_quality: true,
+            max_size,
+        },
+    )
+    .map_err(|e| format!("bake .rmip failed: {e}"))?;
+
+    Ok((
+        format!("textures/{}.rmip", name),
+        vec![ExtractedTexture {
+            name: name.to_string(),
+            extension: "rmip".to_string(),
+            source: TextureSource::Embedded(baked),
+        }],
+    ))
 }
 
 /// Magic-byte sniff for embedded image bytes when the GLB doesn't carry a
@@ -884,7 +1217,7 @@ fn bake_jobs_parallel(
             Ok(data) => out.push(ExtractedTexture {
                 name,
                 extension: "rmip".to_string(),
-                data,
+                source: TextureSource::Embedded(data),
             }),
             Err(e) => warnings.push(format!("texture '{name}': bake .rmip failed: {e}")),
         }
@@ -1023,3 +1356,147 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     out
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_rmip::{dds::Description, mip_count, RmipFormat};
+
+    /// `n` BC1 textures of `size`² with a full mip chain.
+    fn texture_set(n: usize, size: u32) -> Vec<Description> {
+        (0..n)
+            .map(|_| Description {
+                format: RmipFormat::Bc1RgbaUnormSrgb,
+                width: size,
+                height: size,
+                mips: mip_count(size, size),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_modest_texture_set_keeps_the_requested_size() {
+        // Ten 2K maps is ~28 MB — nowhere near the budget, so nothing moves.
+        assert_eq!(choose_texture_cap(&texture_set(10, 2048), 2048), 2048);
+    }
+
+    #[test]
+    fn an_oversized_set_steps_down_until_it_fits() {
+        // 337 × 2048² BC1 with mips ≈ 950 MB, over the 512 MB budget; one
+        // halving quarters it to ~240 MB, which fits.
+        let set = texture_set(337, 2048);
+        let cap = choose_texture_cap(&set, 2048);
+        assert_eq!(cap, 1024);
+
+        let total: usize = set.iter().map(|d| d.size_at(cap)).sum();
+        assert!(
+            total <= TEXTURE_BUDGET_BYTES,
+            "still over budget: {total} bytes"
+        );
+    }
+
+    #[test]
+    fn the_budget_never_reduces_below_the_floor() {
+        // A set so large no sane cap fits it: stop at the floor rather than
+        // grinding every texture down to nothing.
+        assert_eq!(
+            choose_texture_cap(&texture_set(100_000, 2048), 2048),
+            MIN_TEXTURE_SIZE
+        );
+    }
+
+    #[test]
+    fn a_model_with_no_measurable_textures_is_left_alone() {
+        // Embedded PNGs and other non-DDS sources aren't measured, so they
+        // must not drag the cap down for everything else.
+        assert_eq!(choose_texture_cap(&[], 2048), 2048);
+    }
+
+    // ─── Material round trip ────────────────────────────────────────────
+
+    /// Materials survive the intermediate GLB only if the writer and this
+    /// reader agree key for key. These lock that agreement down for the
+    /// channels glTF has no standard home for, which are the ones that
+    /// silently vanished before the converters started going through here.
+    #[test]
+    fn legacy_and_extended_channels_survive_the_glb_round_trip() {
+        use crate::glb_build::{build_glb, MaterialBundle, PbrMaterialDef, TextureRef};
+
+        let texture = |uri: &str| TextureRef {
+            uri: uri.to_string(),
+            embedded: None,
+        };
+        let bundle = MaterialBundle {
+            textures: vec![
+                texture("/tmp/base.png"),
+                texture("/tmp/opacity.png"),
+                texture("/tmp/specular.png"),
+                texture("/tmp/rough.png"),
+                texture("/tmp/metal.png"),
+                texture("/tmp/coat.png"),
+            ],
+            materials: vec![PbrMaterialDef {
+                name: "Antenna_Plastic".into(),
+                base_color: [0.25, 0.5, 0.75, 1.0],
+                base_color_texture: Some(0),
+                normal_texture: None,
+                metallic: 0.25,
+                roughness: 0.6,
+                emissive: [1.0, 0.5, 0.0],
+                emissive_texture: None,
+                occlusion_texture: None,
+                opacity_texture: Some(1),
+                specular_texture: Some(2),
+                roughness_texture: Some(3),
+                metallic_texture: Some(4),
+                alpha: crate::glb_build::AlphaKind::Blend,
+                double_sided: false,
+                advanced: renzora::core::PbrAdvanced {
+                    clearcoat: 0.8,
+                    clearcoat_roughness: 0.15,
+                    clearcoat_texture: Some("/tmp/coat.png".into()),
+                    specular_transmission: 0.4,
+                    ior: 1.7,
+                    anisotropy_strength: 0.3,
+                    reflectance: 0.25,
+                    unlit: true,
+                    ..Default::default()
+                },
+            }],
+        };
+
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let normals = [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let texcoords = [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let glb = build_glb(&positions, &normals, &texcoords, &[0, 1, 2], &bundle).unwrap();
+
+        let out = extract_glb_materials(&glb);
+        assert_eq!(out.len(), 1);
+        let m = &out[0];
+
+        assert_eq!(m.name, "Antenna_Plastic");
+        assert_eq!(m.base_color, [0.25, 0.5, 0.75, 1.0]);
+        assert_eq!(m.metallic, 0.25);
+        assert_eq!(m.roughness, 0.6);
+        assert_eq!(m.emissive, [1.0, 0.5, 0.0]);
+        assert!(matches!(m.alpha_mode, ExtractedAlphaMode::Blend));
+
+        // The reader rewrites every texture reference to the `.rmip` beside
+        // it, so compare on the stem.
+        assert_eq!(m.base_color_texture.as_deref(), Some("/tmp/base.rmip"));
+        assert_eq!(m.opacity_texture.as_deref(), Some("/tmp/opacity.rmip"));
+        assert_eq!(m.specular_texture.as_deref(), Some("/tmp/specular.rmip"));
+        assert_eq!(m.roughness_texture.as_deref(), Some("/tmp/rough.rmip"));
+        assert_eq!(m.metallic_texture.as_deref(), Some("/tmp/metal.rmip"));
+
+        assert_eq!(m.advanced.clearcoat, 0.8);
+        assert_eq!(m.advanced.clearcoat_roughness, 0.15);
+        assert_eq!(m.advanced.clearcoat_texture.as_deref(), Some("/tmp/coat.rmip"));
+        assert_eq!(m.advanced.specular_transmission, 0.4);
+        assert_eq!(m.advanced.ior, 1.7);
+        assert_eq!(m.advanced.anisotropy_strength, 0.3);
+        // `specularFactor` is halved on the way in, doubled on the way out.
+        assert!((m.advanced.reflectance - 0.25).abs() < 1e-6);
+        assert!(m.advanced.unlit);
+    }
+}

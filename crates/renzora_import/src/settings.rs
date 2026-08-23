@@ -11,17 +11,55 @@ pub enum UpAxis {
     ZUp,
 }
 
+/// How the imported scene graph is shaped.
+///
+/// Importers disagree about what a "model" is: a DCC scene is a tree of named
+/// objects, a renderer wants as few draw calls as possible, and an editor wants
+/// things it can click. There is no answer that is right for all three, so it
+/// is a choice rather than a decision baked into the converters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SceneStructure {
+    /// Keep the hierarchy the converter produced.
+    ///
+    /// For glTF that is the source's own tree. For a transcoded format it is
+    /// currently a single merged node — see [`Self::Combined`], which is what
+    /// those converters do today regardless.
+    Preserve,
+    /// One node per mesh, all at the scene root, with group transforms folded
+    /// into each leaf. Every chunk becomes separately selectable and
+    /// independently culled, at the cost of the source's grouping.
+    FlatPerMesh,
+    /// Everything merged into a single mesh, one primitive per material.
+    /// Fewest draw calls; nothing can be picked or culled individually.
+    Combined,
+}
+
 /// Settings that control model import and GLB conversion.
-#[derive(Debug, Clone)]
+///
+/// `PartialEq` is load-bearing rather than incidental: the import window
+/// reconverts on its own when any of this changes, and it decides that by
+/// comparing the settings it last converted with against the ones now on screen.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportSettings {
     /// Uniform scale factor applied to all geometry.
     pub scale: f32,
     /// Up-axis convention.
     pub up_axis: UpAxis,
+    /// How the scene graph is shaped once conversion is done.
+    pub structure: SceneStructure,
     /// Flip the V texture coordinate (1.0 - v).
     pub flip_uvs: bool,
     /// Generate flat normals if the source has none.
     pub generate_normals: bool,
+    /// Which sibling texture set to bind to a geometry-only model, by
+    /// [`crate::sibling_textures::TextureSet::stem`]. `None` leaves the
+    /// placeholder material untextured.
+    ///
+    /// Only formats that carry no materials of their own consult this — a model
+    /// that names its own textures always wins over a folder full of guesses.
+    /// It is a name rather than an index because the choice survives a reimport,
+    /// and a folder gaining a file would otherwise shift every index under it.
+    pub texture_set: Option<String>,
     /// Optimize vertex cache locality (reorders triangles for GPU).
     pub optimize_vertex_cache: bool,
     /// Optimize for reduced overdraw.
@@ -61,7 +99,13 @@ impl Default for ImportSettings {
         Self {
             scale: 1.0,
             up_axis: UpAxis::Auto,
+            // Preserve is the honest default: it does not restructure anything
+            // the converter produced. A transcoded format still arrives merged,
+            // which is what the import window's "hierarchy flattened" finding
+            // reports — picking `FlatPerMesh` is the way to undo it.
+            structure: SceneStructure::Preserve,
             flip_uvs: false,
+            texture_set: None,
             generate_normals: true,
             optimize_vertex_cache: true,
             optimize_overdraw: true,

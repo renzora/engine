@@ -5,8 +5,8 @@ use std::path::Path;
 use ply_rs::parser::Parser;
 use ply_rs::ply::{Property, PropertyAccess};
 
-use crate::convert::{ImportError, ImportResult};
-use crate::obj::build_glb;
+use crate::convert::{ConvertedGlb, ImportError};
+use crate::glb_build::build_glb;
 use crate::settings::{ImportSettings, UpAxis};
 
 #[derive(Default)]
@@ -67,7 +67,7 @@ impl PropertyAccess for Face {
     }
 }
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     let file = std::fs::File::open(path)?;
     let mut reader = std::io::BufReader::new(file);
 
@@ -188,14 +188,12 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         &normals,
         &texcoords,
         &indices,
-        &crate::obj::MaterialBundle::default(),
+        &crate::glb_build::MaterialBundle::default(),
     )?;
 
-    Ok(ImportResult {
+    Ok(ConvertedGlb {
         glb_bytes,
         warnings,
-        extracted_textures: Vec::new(),
-        extracted_materials: Vec::new(),
     })
 }
 

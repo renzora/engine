@@ -122,11 +122,30 @@ pub fn read_field_sets(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<u32>
 // Value rep decoding
 // ---------------------------------------------------------------------------
 
+/// `ValueRep` bit layout, from Pixar's `crateFile.h`:
+///
+/// ```text
+/// bit  63     isArray
+/// bit  62     isInlined
+/// bit  61     isCompressed
+/// bits 48..55 type enum
+/// bits 0..47  payload
+/// ```
+///
+/// This previously read the type from the *low* byte and the payload from bit
+/// 10 upwards, so every field decoded as `Unknown` — including `typeName`,
+/// which is why a fully-parsed stage reported no meshes.
+const REP_IS_ARRAY: u64 = 1 << 63;
+const REP_IS_INLINED: u64 = 1 << 62;
+const REP_IS_COMPRESSED: u64 = 1 << 61;
+const REP_PAYLOAD_MASK: u64 = (1 << 48) - 1;
+
 fn decode_value_rep(rep: u64, file_data: &[u8], tokens: &[String]) -> Value {
-    let type_enum = (rep & 0xFF) as u32;
-    let is_inlined = (rep >> 8) & 1 != 0;
-    let is_array = (rep >> 9) & 1 != 0;
-    let payload = rep >> 10;
+    let type_enum = ((rep >> 48) & 0xFF) as u32;
+    let is_inlined = rep & REP_IS_INLINED != 0;
+    let is_array = rep & REP_IS_ARRAY != 0;
+    let is_compressed = rep & REP_IS_COMPRESSED != 0;
+    let payload = rep & REP_PAYLOAD_MASK;
 
     if is_inlined {
         return decode_inline_value(type_enum, is_array, payload, tokens);
@@ -134,7 +153,7 @@ fn decode_value_rep(rep: u64, file_data: &[u8], tokens: &[String]) -> Value {
 
     let offset = payload as usize;
     if is_array {
-        decode_out_of_line_array(type_enum, offset, file_data, tokens)
+        decode_out_of_line_array(type_enum, offset, file_data, tokens, is_compressed)
     } else {
         decode_out_of_line_scalar(type_enum, offset, file_data, tokens)
     }
@@ -164,8 +183,8 @@ fn decode_inline_value(type_enum: u32, is_array: bool, payload: u64, tokens: &[S
         type_id::ASSET_PATH => {
             Value::AssetPath(tokens.get(payload as usize).cloned().unwrap_or_default())
         }
-        type_id::PATH | type_id::PATH_LIST_OP => {
-            Value::Path(tokens.get(payload as usize).cloned().unwrap_or_default())
+        type_id::PATH_VECTOR | type_id::PATH_LIST_OP => {
+            Value::PathIndices(vec![payload as u32])
         }
         type_id::TOKEN_LIST_OP => Value::TokenArray(vec![tokens
             .get(payload as usize)
@@ -212,12 +231,84 @@ fn decode_out_of_line_scalar(
         type_id::MATRIX4D => rmat(data, offset)
             .map(Value::Matrix4d)
             .unwrap_or(Value::Unknown(type_enum)),
-        type_id::PATH | type_id::PATH_LIST_OP => rv::<u32>(data, offset)
-            .map(|i| Value::Path(tokens.get(i as usize).cloned().unwrap_or_default()))
-            .unwrap_or(Value::Unknown(type_enum)),
-        type_id::TOKEN_LIST_OP => decode_out_of_line_array(type_id::TOKEN, offset, data, tokens),
+        // A plain vector of paths: `[u64 count][count x u32]`.
+        type_id::PATH_VECTOR => {
+            let Some(count) = rv::<u64>(data, offset) else {
+                return Value::Unknown(type_enum);
+            };
+            Value::PathIndices(ra::<u32>(data, offset + 8, count as usize))
+        }
+        // A list-op, which is a different shape entirely — see below.
+        type_id::PATH_LIST_OP => decode_path_list_op(data, offset, type_enum),
+        type_id::TOKEN_LIST_OP => {
+            decode_out_of_line_array(type_id::TOKEN, offset, data, tokens, false)
+        }
         _ => Value::Unknown(type_enum),
     }
+}
+
+/// Decode an `SdfPathListOp` — how USD stores a relationship's targets, and so
+/// how `material:binding` names the material a mesh uses.
+///
+/// It is **not** a bare path index. Pixar writes a one-byte header of "which
+/// sub-lists are present", then each present sub-list as `[u64 count][count x
+/// u32 pathIndex]`, in the order explicit, added, prepended, appended, deleted,
+/// ordered.
+///
+/// Reading the first four bytes as a `u32` — which is what used to happen —
+/// picks up the header plus three bytes of the count. For the ordinary case of
+/// one explicit target that is `03 01 00 00` = 259, a plausible-looking index
+/// that resolves to an unrelated prim. And it is the *same* 259 for every mesh
+/// in the file, which is exactly how this presented: 138 meshes all bound to
+/// one arbitrary path, so none of them found a material and the model rendered
+/// white while the material sphere — which reads the extracted material data
+/// rather than the GLB — looked perfectly fine.
+fn decode_path_list_op(data: &[u8], offset: usize, type_enum: u32) -> Value {
+    const IS_EXPLICIT: u8 = 1 << 0;
+    const HAS_EXPLICIT: u8 = 1 << 1;
+    const HAS_ADDED: u8 = 1 << 2;
+    const HAS_DELETED: u8 = 1 << 3;
+    const HAS_ORDERED: u8 = 1 << 4;
+    const HAS_PREPENDED: u8 = 1 << 5;
+    const HAS_APPENDED: u8 = 1 << 6;
+
+    let Some(&bits) = data.get(offset) else {
+        return Value::Unknown(type_enum);
+    };
+    let _ = IS_EXPLICIT;
+    let mut pos = offset + 1;
+
+    // Sub-lists appear in write order, and every present one has to be walked
+    // even if it is not the one we want, because they are laid out back to back.
+    let mut targets: Vec<u32> = Vec::new();
+    for (flag, is_target) in [
+        (HAS_EXPLICIT, true),
+        (HAS_ADDED, true),
+        (HAS_PREPENDED, true),
+        (HAS_APPENDED, true),
+        (HAS_DELETED, false),
+        (HAS_ORDERED, false),
+    ] {
+        if bits & flag == 0 {
+            continue;
+        }
+        let Some(count) = rv::<u64>(data, pos) else {
+            break;
+        };
+        pos += 8;
+        let count = count as usize;
+        if count > 10_000_000 || pos + count * 4 > data.len() {
+            break;
+        }
+        let items = ra::<u32>(data, pos, count);
+        pos += count * 4;
+        // Deleted and ordered say what a target is *not*, or what order they go
+        // in — neither adds a binding.
+        if is_target && targets.is_empty() {
+            targets = items;
+        }
+    }
+    Value::PathIndices(targets)
 }
 
 fn decode_out_of_line_array(
@@ -225,6 +316,7 @@ fn decode_out_of_line_array(
     offset: usize,
     data: &[u8],
     tokens: &[String],
+    is_compressed: bool,
 ) -> Value {
     if offset + 8 > data.len() {
         return Value::Unknown(type_enum);
@@ -233,6 +325,42 @@ fn decode_out_of_line_array(
     let s = offset + 8;
     if count > 100_000_000 {
         return Value::Unknown(type_enum);
+    }
+
+    // USD integer-compresses int arrays above a size threshold (delta transform,
+    // 2-bit classification, then LZ4). Reading one of those as raw `i32` yields
+    // the *encoded* buffer: `faceVertexIndices` came back full of negatives,
+    // which read as enormous `u32` values and made every face fail its bounds
+    // check. Only small arrays escaped, which is why a car imported as four
+    // two-triangle scraps.
+    if is_compressed {
+        let mut pos = s;
+        return match type_enum {
+            type_id::INT | type_id::UINT => {
+                match compression::read_compressed_ints_with_count(data, &mut pos, count) {
+                    Ok(v) => Value::IntArray(v.into_iter().map(|i| i as i32).collect()),
+                    Err(e) => {
+                        log::debug!("USDC: compressed int array failed: {e:?}");
+                        Value::Unknown(type_enum)
+                    }
+                }
+            }
+            // 64-bit arrays land in `IntArray` too: nothing downstream reads a
+            // 64-bit index or count, and USD writes these as 32-bit deltas
+            // regardless.
+            type_id::INT64 | type_id::UINT64 => {
+                match compression::read_compressed_ints_with_count(data, &mut pos, count) {
+                    Ok(v) => Value::IntArray(v.into_iter().map(|i| i as i32).collect()),
+                    Err(e) => {
+                        log::debug!("USDC: compressed int64 array failed: {e:?}");
+                        Value::Unknown(type_enum)
+                    }
+                }
+            }
+            // Only integer arrays are compressed; anything else reaching here
+            // is a format the writer version handles differently.
+            _ => Value::Unknown(type_enum),
+        };
     }
 
     match type_enum {
@@ -304,13 +432,8 @@ fn decode_out_of_line_array(
                     .collect(),
             )
         }
-        type_id::PATH | type_id::PATH_LIST_OP => {
-            let idx = ra::<u32>(data, s, count);
-            Value::PathArray(
-                idx.iter()
-                    .map(|&i| tokens.get(i as usize).cloned().unwrap_or_default())
-                    .collect(),
-            )
+        type_id::PATH_VECTOR | type_id::PATH_LIST_OP => {
+            Value::PathIndices(ra::<u32>(data, s, count))
         }
         type_id::HALF => {
             let h = ra::<u16>(data, s, count);
@@ -369,5 +492,6 @@ impl_le!(u16, 2);
 impl_le!(u32, 4);
 impl_le!(i32, 4);
 impl_le!(i64, 8);
+impl_le!(u64, 8);
 impl_le!(f32, 4);
 impl_le!(f64, 8);

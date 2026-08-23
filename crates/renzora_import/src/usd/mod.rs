@@ -31,7 +31,7 @@ use std::path::Path;
 pub use scene::*;
 
 use crate::anim_extract::AnimExtractResult;
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ConvertedGlb, ImportError};
 use crate::settings::ImportSettings;
 
 /// Errors that can occur during USD parsing.
@@ -87,16 +87,18 @@ pub fn parse(path: &Path) -> UsdResult<UsdStage> {
     }
 }
 
-/// Convert a parsed USD stage to GLB bytes.
-pub fn stage_to_glb(stage: &UsdStage) -> UsdResult<Vec<u8>> {
-    glb::convert(stage)
+/// Convert a parsed USD stage to GLB bytes. `source_dir` is where the USD file
+/// was read from, used to resolve the relative texture paths a plain `.usd`
+/// references.
+pub fn stage_to_glb(stage: &UsdStage, source_dir: &Path) -> UsdResult<Vec<u8>> {
+    glb::convert(stage, source_dir)
 }
 
 // ---------------------------------------------------------------------------
 // Import bridge functions (used by renzora_import's convert pipeline)
 // ---------------------------------------------------------------------------
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub(crate) fn convert(path: &Path, _settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     let stage = parse(path).map_err(|e| match e {
         UsdError::Io(io) => ImportError::Io(io),
         UsdError::Parse(msg) => ImportError::ParseError(msg),
@@ -104,239 +106,19 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         UsdError::InvalidData(msg) => ImportError::ParseError(msg),
     })?;
 
-    let mut warnings = stage.warnings.clone();
+    let warnings = stage.warnings.clone();
+    let source_dir = path.parent().unwrap_or(Path::new("."));
 
-    let glb_bytes = stage_to_glb(&stage).map_err(|e| {
+    let glb_bytes = stage_to_glb(&stage, source_dir).map_err(|e| {
         ImportError::ConversionError(format!("USD to GLB conversion failed: {}", e))
     })?;
 
-    let (extracted_textures, extracted_materials) =
-        collect_usd_textures_and_materials(&stage, path, settings, &mut warnings);
-
-    Ok(ImportResult {
+    Ok(ConvertedGlb {
         glb_bytes,
         warnings,
-        extracted_textures,
-        extracted_materials,
     })
 }
 
-/// Funnel parsed USD materials and embedded textures into the shared
-/// [`ImportResult`] fields. USDZ archives embed textures inline; plain
-/// USD/USDA/USDC reference external files, which we read from disk.
-fn collect_usd_textures_and_materials(
-    stage: &scene::UsdStage,
-    usd_path: &Path,
-    settings: &ImportSettings,
-    warnings: &mut Vec<String>,
-) -> (
-    Vec<crate::convert::ExtractedTexture>,
-    Vec<crate::convert::ExtractedPbrMaterial>,
-) {
-    use crate::convert::{ExtractedPbrMaterial, ExtractedTexture};
-    use scene::{TextureRef as UsdTextureRef, TextureSource};
-
-    if !settings.extract_textures && !settings.extract_materials {
-        return (Vec::new(), Vec::new());
-    }
-
-    let mut extracted_textures: Vec<ExtractedTexture> = Vec::new();
-    let mut extracted_materials: Vec<ExtractedPbrMaterial> = Vec::new();
-    // Map a resolved source key (embedded idx or file path) → URI.
-    let mut source_uri: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let usd_dir = usd_path.parent().unwrap_or(Path::new("."));
-
-    let mut resolve_texture = |tex_ref: &UsdTextureRef,
-                               extracted_textures: &mut Vec<ExtractedTexture>,
-                               source_uri: &mut std::collections::HashMap<String, String>,
-                               used_names: &mut std::collections::HashSet<String>,
-                               warnings: &mut Vec<String>|
-     -> Option<String> {
-        if !settings.extract_textures {
-            return None;
-        }
-        let (key, data, hint_ext, stem): (String, Vec<u8>, Option<String>, String) =
-            match &tex_ref.source {
-                TextureSource::Embedded(idx) => {
-                    let Some(tex) = stage.textures.get(*idx) else {
-                        warnings.push(format!("USD texture index {} out of range", idx));
-                        return None;
-                    };
-                    let hint = match tex.mime_type.as_str() {
-                        "image/png" => Some("png".to_string()),
-                        "image/jpeg" | "image/jpg" => Some("jpg".to_string()),
-                        "image/webp" => Some("webp".to_string()),
-                        _ => None,
-                    };
-                    let stem = std::path::Path::new(&tex.name)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("texture")
-                        .to_string();
-                    (format!("embedded:{}", idx), tex.data.clone(), hint, stem)
-                }
-                TextureSource::File(rel) => {
-                    let abs = usd_dir.join(rel);
-                    let data = match std::fs::read(&abs) {
-                        Ok(d) => d,
-                        Err(e) => {
-                            warnings.push(format!("texture '{}': {}", rel, e));
-                            return None;
-                        }
-                    };
-                    let hint = std::path::Path::new(rel)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .map(|s| s.to_lowercase());
-                    let stem = std::path::Path::new(rel)
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("texture")
-                        .to_string();
-                    (format!("file:{}", rel), data, hint, stem)
-                }
-            };
-
-        if let Some(uri) = source_uri.get(&key) {
-            return Some(uri.clone());
-        }
-
-        let extension = hint_ext.unwrap_or_else(|| sniff_image_ext(&data).to_string());
-        let base = sanitize_name(&stem);
-        let mut name = base.clone();
-        let mut n = 1;
-        while used_names.contains(&name) {
-            n += 1;
-            name = format!("{}_{}", base, n);
-        }
-        used_names.insert(name.clone());
-
-        let uri = format!("textures/{}.{}", name, extension);
-        source_uri.insert(key, uri.clone());
-        extracted_textures.push(ExtractedTexture {
-            name,
-            extension,
-            data,
-        });
-        Some(uri)
-    };
-
-    for mat in &stage.materials {
-        let base_color_uri = mat.diffuse_texture.as_ref().and_then(|t| {
-            resolve_texture(
-                t,
-                &mut extracted_textures,
-                &mut source_uri,
-                &mut used_names,
-                warnings,
-            )
-        });
-        let normal_uri = mat.normal_texture.as_ref().and_then(|t| {
-            resolve_texture(
-                t,
-                &mut extracted_textures,
-                &mut source_uri,
-                &mut used_names,
-                warnings,
-            )
-        });
-        // Resolve the remaining UsdPreviewSurface texture inputs the importer
-        // previously dropped on the floor: emissive, separate metallic /
-        // roughness maps, opacity and occlusion. Each mirrors the base/normal
-        // resolution above.
-        let emissive_uri = mat.emissive_texture.as_ref().and_then(|t| {
-            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
-        });
-        let metallic_uri = mat.metallic_texture.as_ref().and_then(|t| {
-            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
-        });
-        let roughness_uri = mat.roughness_texture.as_ref().and_then(|t| {
-            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
-        });
-        let opacity_uri = mat.opacity_texture.as_ref().and_then(|t| {
-            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
-        });
-        let occlusion_uri = mat.occlusion_texture.as_ref().and_then(|t| {
-            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
-        });
-
-        if settings.extract_materials {
-            extracted_materials.push(ExtractedPbrMaterial {
-                name: mat.name.clone(),
-                base_color: [
-                    mat.diffuse_color[0],
-                    mat.diffuse_color[1],
-                    mat.diffuse_color[2],
-                    mat.opacity,
-                ],
-                metallic: mat.metallic,
-                roughness: mat.roughness,
-                emissive: mat.emissive_color,
-                base_color_texture: base_color_uri,
-                normal_texture: normal_uri,
-                metallic_roughness_texture: None,
-                roughness_texture: roughness_uri,
-                metallic_texture: metallic_uri,
-                emissive_texture: emissive_uri,
-                occlusion_texture: occlusion_uri,
-                specular_glossiness_texture: None,
-                opacity_texture: opacity_uri.clone(),
-                specular_texture: None,
-                advanced: renzora::core::PbrAdvanced {
-                    ior: mat.ior,
-                    ..Default::default()
-                },
-                // Blend when opacity is authored below 1 or driven by a map,
-                // matching the UsdPreviewSurface opacity semantics.
-                alpha_mode: if mat.opacity < 1.0 || opacity_uri.is_some() {
-                    crate::convert::ExtractedAlphaMode::Blend
-                } else {
-                    crate::convert::ExtractedAlphaMode::Opaque
-                },
-                alpha_cutoff: 0.5,
-                double_sided: false,
-            });
-        }
-    }
-
-    (extracted_textures, extracted_materials)
-}
-
-fn sanitize_name(input: &str) -> String {
-    if input.is_empty() {
-        return "texture".into();
-    }
-    input
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-fn sniff_image_ext(data: &[u8]) -> &'static str {
-    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-        "png"
-    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        "jpg"
-    } else if data.starts_with(b"DDS ") {
-        "dds"
-    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
-        "gif"
-    } else if data.starts_with(b"BM") {
-        "bmp"
-    } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
-        "webp"
-    } else {
-        "bin"
-    }
-}
 
 /// Extract animations directly from a USD file (for animation-only files
 /// that have no geometry and would fail GLB conversion).

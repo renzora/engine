@@ -51,12 +51,44 @@ pub enum Value {
 
     // Path / relationship target
     Path(String),
+    /// Indices into the crate's **path** table, as a relationship's targets are
+    /// stored. Kept unresolved because the value decoder has the token table but
+    /// not the path table — resolving them against `tokens` (which is what used
+    /// to happen) yields an unrelated prim name, so `material:binding` pointed
+    /// at nothing and every mesh rendered untextured.
+    PathIndices(Vec<u32>),
 
     // Fallback
     Unknown(u32),
 }
 
 impl Value {
+    /// Like [`Self::kind_name`] but naming the raw type enum for `Unknown`,
+    /// which is what you need to map a file's numbering onto the constants.
+    pub fn debug_kind(&self) -> String {
+        match self {
+            Value::Unknown(t) => format!("Unknown({t})"),
+            other => other.kind_name().to_string(),
+        }
+    }
+
+    /// Variant name, for diagnostics — enough to tell "the field is there but
+    /// decoded as the wrong type" from "the field is missing".
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Value::Bool(_) => "Bool",
+            Value::Int(_) => "Int",
+            Value::Int64(_) => "Int64",
+            Value::Float(_) => "Float",
+            Value::Double(_) => "Double",
+            Value::Half(_) => "Half",
+            Value::String(_) => "String",
+            Value::Token(_) => "Token",
+            Value::AssetPath(_) => "AssetPath",
+            _ => "Other",
+        }
+    }
+
     // Accessor helpers for common conversions
 
     pub fn as_token(&self) -> Option<&str> {
@@ -191,30 +223,80 @@ impl Value {
 
 /// Known USDC value type IDs.
 pub mod type_id {
+    //! `TypeEnum` from Pixar's `crateDataTypes.h`.
+    //!
+    //! These are the values USD actually writes, confirmed against a real file:
+    //! a prim's `typeName` and `kind` fields both report 11, which is `Token`.
+    //! The previous table was offset from about `String` onwards (it had
+    //! `Token = 14`), so every token-valued field decoded as `Unknown` — and a
+    //! stage whose structure had parsed perfectly reported no meshes, because
+    //! nothing could be identified as one.
+    //!
+    //! Array-ness is *not* encoded here: it is a separate bit in the
+    //! `ValueRep`, so an array of `Vec3f` is still type 24.
+    pub const INVALID: u32 = 0;
     pub const BOOL: u32 = 1;
+    pub const UCHAR: u32 = 2;
     pub const INT: u32 = 3;
+    pub const UINT: u32 = 4;
     pub const INT64: u32 = 5;
+    pub const UINT64: u32 = 6;
     pub const HALF: u32 = 7;
     pub const FLOAT: u32 = 8;
     pub const DOUBLE: u32 = 9;
-    pub const STRING: u32 = 13;
-    pub const TOKEN: u32 = 14;
-    pub const ASSET_PATH: u32 = 15;
-    pub const MATRIX4D: u32 = 20;
-    pub const QUATF: u32 = 21;
-    pub const QUATD: u32 = 22;
-    pub const VEC2F: u32 = 25;
-    pub const VEC2D: u32 = 26;
-    pub const VEC3F: u32 = 28;
-    pub const VEC3D: u32 = 29;
-    pub const VEC4F: u32 = 31;
-    pub const VEC4D: u32 = 32;
-    pub const PATH: u32 = 39;
-    pub const PATH_LIST_OP: u32 = 40;
-    pub const SPECIFIER: u32 = 36;
-    pub const TOKEN_LIST_OP: u32 = 42;
+    pub const STRING: u32 = 10;
+    pub const TOKEN: u32 = 11;
+    pub const ASSET_PATH: u32 = 12;
+    pub const MATRIX2D: u32 = 13;
+    pub const MATRIX3D: u32 = 14;
+    pub const MATRIX4D: u32 = 15;
+    pub const QUATD: u32 = 16;
+    pub const QUATF: u32 = 17;
+    pub const QUATH: u32 = 18;
+    pub const VEC2D: u32 = 19;
+    pub const VEC2F: u32 = 20;
+    pub const VEC2H: u32 = 21;
+    pub const VEC2I: u32 = 22;
+    pub const VEC3D: u32 = 23;
+    pub const VEC3F: u32 = 24;
+    pub const VEC3H: u32 = 25;
+    pub const VEC3I: u32 = 26;
+    pub const VEC4D: u32 = 27;
+    pub const VEC4F: u32 = 28;
+    pub const VEC4H: u32 = 29;
+    pub const VEC4I: u32 = 30;
+    pub const DICTIONARY: u32 = 31;
+    pub const TOKEN_LIST_OP: u32 = 32;
+    pub const STRING_LIST_OP: u32 = 33;
+    pub const PATH_LIST_OP: u32 = 34;
+    pub const REFERENCE_LIST_OP: u32 = 35;
+    pub const INT_LIST_OP: u32 = 36;
+    pub const INT64_LIST_OP: u32 = 37;
+    pub const UINT_LIST_OP: u32 = 38;
+    pub const UINT64_LIST_OP: u32 = 39;
+    pub const PAYLOAD_LIST_OP: u32 = 40;
+    // Observed directly in a real file: `primChildren` and `properties` are
+    // both `TfTokenVector` and report 41; `specifier` reports 42. The ordering
+    // below follows from those two anchors.
+    pub const TOKEN_VECTOR: u32 = 41;
+    pub const SPECIFIER: u32 = 42;
+    pub const PERMISSION: u32 = 43;
+    pub const VARIABILITY: u32 = 44;
+    pub const VARIANT_SELECTION_MAP: u32 = 45;
+    pub const TIME_SAMPLES: u32 = 46;
+    pub const PAYLOAD: u32 = 47;
+    pub const DOUBLE_VECTOR: u32 = 48;
+    pub const LAYER_OFFSET_VECTOR: u32 = 49;
+    pub const STRING_VECTOR: u32 = 50;
+    pub const VALUE_BLOCK: u32 = 51;
+    pub const VALUE: u32 = 52;
+    pub const UNREGISTERED_VALUE: u32 = 53;
+    pub const UNREGISTERED_VALUE_LIST_OP: u32 = 54;
+    pub const PATH_VECTOR: u32 = 55;
+    pub const TIME_CODE: u32 = 56;
 
-    // Array flag -- OR'd with the base type
+    /// Kept for callers that still pass a combined id; array-ness now travels
+    /// in the `ValueRep` bit instead.
     pub const ARRAY_BIT: u32 = 1 << 31;
 
     pub fn is_array(type_id: u32) -> bool {

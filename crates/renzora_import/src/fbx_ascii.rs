@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use crate::convert::{ImportError, ImportResult};
-use crate::obj::build_glb;
+use crate::glb_build::build_glb;
 use crate::settings::{ImportSettings, UpAxis};
 
 // ─── Node tree ──────────────────────────────────────────────────────────────
@@ -564,7 +564,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         &all_normals,
         &all_texcoords,
         &all_indices,
-        &crate::obj::MaterialBundle::default(),
+        &crate::glb_build::MaterialBundle::default(),
     )?;
 
     log::info!(

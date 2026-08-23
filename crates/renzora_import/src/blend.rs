@@ -11,10 +11,14 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ImportError, ImportResult, ProgressFn};
 use crate::settings::{ImportSettings, UpAxis};
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert(
+    path: &Path,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+) -> Result<ImportResult, ImportError> {
     let blender = find_blender()?;
 
     let tmp_glb = std::env::temp_dir().join(format!(
@@ -103,7 +107,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     // Apply scale post-export (Blender's glTF exporter doesn't have a
     // reliable global scale parameter across all versions)
-    let result = crate::gltf_pass::convert_glb(&tmp_glb, settings, &|_, _, _| {});
+    let result = crate::gltf_pass::convert_glb(&tmp_glb, settings, progress);
     let _ = std::fs::remove_file(&tmp_glb);
     result
 }

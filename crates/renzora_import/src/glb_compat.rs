@@ -58,7 +58,7 @@ fn strip_unsupported_required(root: &mut Value) -> bool {
     changed
 }
 
-fn split_glb(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), ()> {
+pub(crate) fn split_glb(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), ()> {
     if bytes.len() < 12 {
         return Err(());
     }
@@ -105,7 +105,7 @@ fn split_glb(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), ()> {
     Ok((&bytes[json_start..json_end], bin))
 }
 
-fn repack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
+pub(crate) fn repack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     let json_pad = (4 - (json.len() % 4)) % 4;
     let json_chunk_len = json.len() + json_pad;
     let bin_chunk_len = bin

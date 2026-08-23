@@ -12,9 +12,22 @@ use super::super::UsdResult;
 use super::compression;
 use super::sections::{TableOfContents, SECTION_SPECS};
 
-pub const SPEC_TYPE_PRIM: u32 = 1;
-pub const SPEC_TYPE_ATTRIBUTE: u32 = 2;
-pub const SPEC_TYPE_RELATIONSHIP: u32 = 4;
+// `SdfSpecType`, in the order USD declares it — these are ordinals, not flags,
+// which is what the previous values (1/2/4) assumed. With prims mis-numbered as
+// 1 the walker classified every prim as something else and reported "no meshes"
+// on a file whose 2008 specs had all decoded correctly.
+pub const SPEC_TYPE_UNKNOWN: u32 = 0;
+pub const SPEC_TYPE_ATTRIBUTE: u32 = 1;
+pub const SPEC_TYPE_CONNECTION: u32 = 2;
+pub const SPEC_TYPE_EXPRESSION: u32 = 3;
+pub const SPEC_TYPE_MAPPER: u32 = 4;
+pub const SPEC_TYPE_MAPPER_ARG: u32 = 5;
+pub const SPEC_TYPE_PRIM: u32 = 6;
+pub const SPEC_TYPE_PSEUDO_ROOT: u32 = 7;
+pub const SPEC_TYPE_RELATIONSHIP: u32 = 8;
+pub const SPEC_TYPE_RELATIONSHIP_TARGET: u32 = 9;
+pub const SPEC_TYPE_VARIANT: u32 = 10;
+pub const SPEC_TYPE_VARIANT_SET: u32 = 11;
 
 #[derive(Debug, Clone)]
 pub struct Spec {

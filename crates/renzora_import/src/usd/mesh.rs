@@ -4,9 +4,16 @@ use super::scene::UsdMesh;
 
 /// Triangulate a mesh's polygon faces into triangle indices.
 /// Returns a flat list of triangle vertex indices.
+///
+/// Every emitted index is checked against the mesh's own vertex count. That is
+/// not defensiveness for its own sake: `meshoptimizer` is C++ and asserts on an
+/// out-of-range index, which **aborts the process** — a single malformed face in
+/// an imported file would take the editor down with it, with no error a user
+/// could act on. Dropping the offending face loses one polygon instead.
 pub fn triangulate(mesh: &UsdMesh) -> Vec<u32> {
     let mut result = Vec::new();
     let mut idx_offset = 0usize;
+    let vert_count = mesh.positions.len() as u32;
 
     for &count in &mesh.face_vertex_counts {
         let n = count as usize;
@@ -15,18 +22,66 @@ pub fn triangulate(mesh: &UsdMesh) -> Vec<u32> {
             continue;
         }
 
-        // Fan triangulation from first vertex of each face
-        let v0 = mesh.face_vertex_indices[idx_offset];
+        let face = &mesh.face_vertex_indices[idx_offset..idx_offset + n];
+        // Skip the whole face if any corner is out of range — a fan built from
+        // a partly-valid polygon is worse than no polygon.
+        if face.iter().any(|&v| v >= vert_count) {
+            idx_offset += n;
+            continue;
+        }
+
+        // Fan triangulation from the first vertex of each face.
+        let v0 = face[0];
         for i in 1..n - 1 {
             result.push(v0);
-            result.push(mesh.face_vertex_indices[idx_offset + i]);
-            result.push(mesh.face_vertex_indices[idx_offset + i + 1]);
+            result.push(face[i]);
+            result.push(face[i + 1]);
         }
 
         idx_offset += n;
     }
 
     result
+}
+
+#[cfg(test)]
+mod triangulate_tests {
+    use super::*;
+
+    fn mesh(positions: usize, counts: &[u32], indices: &[u32]) -> UsdMesh {
+        UsdMesh {
+            positions: vec![[0.0; 3]; positions],
+            face_vertex_counts: counts.to_vec(),
+            face_vertex_indices: indices.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn fans_a_quad_into_two_triangles() {
+        let m = mesh(4, &[4], &[0, 1, 2, 3]);
+        assert_eq!(triangulate(&m), vec![0, 1, 2, 0, 2, 3]);
+    }
+
+    #[test]
+    fn drops_a_face_that_indexes_past_the_vertices() {
+        // The second triangle references vertex 9 of a 3-vertex mesh. Passing
+        // that to meshoptimizer aborts the process.
+        let m = mesh(3, &[3, 3], &[0, 1, 2, 0, 1, 9]);
+        assert_eq!(triangulate(&m), vec![0, 1, 2], "only the valid face survives");
+    }
+
+    #[test]
+    fn skips_degenerate_and_truncated_faces() {
+        let m = mesh(4, &[2, 4], &[0, 1]);
+        assert!(triangulate(&m).is_empty());
+    }
+
+    #[test]
+    fn a_mesh_with_no_vertices_yields_nothing() {
+        let m = mesh(0, &[3], &[0, 1, 2]);
+        assert!(triangulate(&m).is_empty());
+    }
 }
 
 /// Generate smooth vertex normals from positions and triangle indices.

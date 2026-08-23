@@ -9,7 +9,13 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod kinds;
 #[cfg(not(target_arch = "wasm32"))]
-mod native;
+pub mod native;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod matpreview;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod preview3d;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod staged;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod overlay;
 
@@ -28,6 +34,8 @@ impl Plugin for ImportPlugin {
                 .init_resource::<renzora::core::FileDragHovering>()
                 .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain());
             native::register(_app);
+            preview3d::register(_app);
+            matpreview::register(_app);
             // A left-side status-bar item showing live import progress. Its
             // `render` runs each frame, so the `[done/total]` + phase updates as
             // the worker advances; it draws nothing while idle.
@@ -177,6 +185,18 @@ fn import_orchestrate_system(world: &mut World) {
             .is_empty();
         if picked || has_pending {
             world.resource_mut::<overlay::ImportOverlayState>().visible = true;
+            // Start converting straight away. Every model stages to the project
+            // cache and blocks for a verdict, so the work is already done by the
+            // time the user has finished looking at it and accepting is a
+            // same-volume rename. Making them click Import first would only add
+            // a wait between choosing a file and seeing it.
+            let idle = world
+                .resource::<overlay::ImportOverlayState>()
+                .active_task
+                .is_none();
+            if idle && has_pending_model(world) {
+                overlay::run_import(world);
+            }
         }
     }
 
@@ -196,6 +216,12 @@ fn import_orchestrate_system(world: &mut World) {
             !state.pending_files.is_empty() && state.active_task.is_none()
         };
         if should_start {
+            // A dropped *model* opens the inspector like any other import;
+            // loose files (textures, audio, scripts) are copied with no
+            // conversion, so they stay on the silent path.
+            if has_pending_model(world) {
+                world.resource_mut::<overlay::ImportOverlayState>().visible = true;
+            }
             overlay::run_import(world);
         }
 
@@ -211,6 +237,17 @@ fn import_orchestrate_system(world: &mut World) {
             state.log_entries.clear();
         }
     }
+}
+
+/// True when the queue holds at least one model — only those are converted and
+/// staged, so a queue of loose textures should not spin up a worker.
+#[cfg(not(target_arch = "wasm32"))]
+fn has_pending_model(world: &World) -> bool {
+    world
+        .resource::<overlay::ImportOverlayState>()
+        .pending_files
+        .iter()
+        .any(|q| renzora_import::formats::detect_format(&q.path).is_some())
 }
 
 /// Status-bar segments for the left side: a spinner-style icon + `[done/total]`

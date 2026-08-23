@@ -9,6 +9,8 @@ use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::ImportSettings;
 
+use crate::staged::{PreviewDecision, StagedImport};
+
 /// How imported files are laid out on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportLayout {
@@ -52,17 +54,9 @@ enum ImportMsg {
         label: String,
     },
     Log(ImportLogEntry),
-    /// Marshal a material-extraction event across the thread boundary; the
-    /// UI-side poller triggers it on `&mut World` so observers in other
-    /// crates can write the `.material` file without us depending on them.
-    // Boxed: PbrMaterialExtracted is much larger than the other variants.
-    MaterialExtracted(Box<renzora::core::PbrMaterialExtracted>),
-    /// Absolute path of a `.glb` that was just successfully written into
-    /// the project. The poller forwards these to
-    /// [`ModelThumbnailRegistry::request`] so the offscreen capture
-    /// kicks off immediately — by the time the user closes the overlay
-    /// and opens the asset browser, the PNG is already on disk.
-    Imported(std::path::PathBuf),
+    /// A file has been converted and staged, and the worker is now blocked
+    /// waiting for the user's verdict. Nothing has touched the project yet.
+    PreviewReady(Box<StagedImport>),
     Done(String),
     Error(String),
 }
@@ -94,6 +88,38 @@ pub struct ImportOverlayState {
     /// Wall-clock time (`Time::elapsed_secs_f64`) at which a finished toast
     /// should auto-dismiss. Set when the import reaches a terminal state.
     pub(crate) toast_dismiss_at: Option<f64>,
+    /// Every converted file waiting on a verdict, in queue order. The worker
+    /// stages them all and exits — it does not wait — so by the time you have
+    /// finished looking at the first one the rest are usually ready too.
+    pub staged: Vec<StagedImport>,
+    /// Which staged file the window is showing.
+    pub active: usize,
+    /// Every file this window has converted, across all of the batches added to
+    /// it. Kept so a settings change can reconvert the whole staged set rather
+    /// than just whichever batch happened to arrive last.
+    pub(crate) last_files: Vec<QueuedAsset>,
+    /// Set when the settings change under a staged import. Acted on once the
+    /// running worker has finished, since two workers must never stage into the
+    /// same directories at once.
+    pub(crate) reimport_requested: bool,
+    /// The settings the staged set was converted with, so a change to the ones
+    /// on screen can be spotted and reconverted. `None` until the first
+    /// conversion starts.
+    pub(crate) converted_with: Option<ConvertedWith>,
+    /// Next free staging slot. Batches added while an earlier one is still
+    /// staged must not reuse a directory number — the worker clears the
+    /// directory it is about to write, which would delete a model the user is
+    /// still looking at.
+    pub(crate) staging_seq: usize,
+    /// Whether the user has typed a scale themselves, which stops `enqueue`
+    /// re-detecting one over the top of their choice.
+    ///
+    /// This used to be inferred from `scale == 1.0`, which quietly conflated
+    /// "untouched" with "happens to be 1.0" — and, worse, made any *detected*
+    /// scale permanent. Importing a centimetre USD left the scale at `0.01`,
+    /// and every later import in the session was silently shrunk a
+    /// hundredfold, including formats that carry no units at all.
+    pub scale_is_user_set: bool,
 }
 
 impl Default for ImportOverlayState {
@@ -109,11 +135,50 @@ impl Default for ImportOverlayState {
             active_task: None,
             toast_active: false,
             toast_dismiss_at: None,
+            staged: Vec::new(),
+            active: 0,
+            last_files: Vec::new(),
+            reimport_requested: false,
+            converted_with: None,
+            staging_seq: 0,
+            scale_is_user_set: false,
         }
     }
 }
 
+/// Everything about a conversion that a change to should produce a different
+/// result on disk.
+///
+/// The destination is in here alongside the import settings because the worker
+/// bakes the final paths into each staged import (and into the `.material`
+/// events it holds back) at conversion time — so pointing the window at another
+/// folder after the fact silently did nothing until it reconverted.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConvertedWith {
+    pub settings: ImportSettings,
+    pub target_directory: String,
+    pub layout: ImportLayout,
+}
+
 impl ImportOverlayState {
+    /// The staged file currently being inspected, if any.
+    pub fn current(&self) -> Option<&StagedImport> {
+        self.staged.get(self.active)
+    }
+
+    /// Drop the staged entry at `index` from the list, keeping `active` inside
+    /// the list and pointing at the next entry rather than jumping to the end.
+    pub(crate) fn remove_staged(&mut self, index: usize) -> Option<StagedImport> {
+        if index >= self.staged.len() {
+            return None;
+        }
+        let removed = self.staged.remove(index);
+        if self.active >= self.staged.len() {
+            self.active = self.staged.len().saturating_sub(1);
+        }
+        Some(removed)
+    }
+
     /// Append `assets` to the queue, skipping any whose source path is already
     /// queued, and auto-detect the unit scale when the queue starts empty.
     /// Returns whether anything new was added.
@@ -146,13 +211,16 @@ impl ImportOverlayState {
         // Scanning for one matters for folder imports: the queue is sorted by
         // path, so entry zero is usually a texture, and `detect_unit_scale`
         // returns None for every non-model.
-        if was_empty && self.settings.scale == 1.0 {
-            if let Some(scale) = added
+        //
+        // A fresh queue re-detects from scratch unless the user set the scale
+        // themselves. Carrying the previous queue's detected value forward is
+        // never right: it belonged to a different file, and formats that store
+        // no units (STL, OBJ, PLY) would inherit it silently.
+        if was_empty && !self.scale_is_user_set {
+            self.settings.scale = added
                 .iter()
                 .find_map(|q| renzora_import::units::detect_unit_scale(&q.path))
-            {
-                self.settings.scale = scale;
-            }
+                .unwrap_or(1.0);
         }
         // Clear a stale "No importable files in …" once the queue actually has
         // something, so the message line doesn't contradict the list under it.
@@ -204,12 +272,9 @@ pub(crate) fn poll_import_task(world: &mut World) {
         }
     }
 
-    // Apply messages. Material-extraction events need to fire on `&mut World`
-    // (observers can't be triggered while an exclusive resource borrow is
-    // held), so we split them out and deliver after releasing the state
-    // borrow.
-    let mut material_events: Vec<renzora::core::PbrMaterialExtracted> = Vec::new();
-    let mut imported_models: Vec<std::path::PathBuf> = Vec::new();
+    // Apply messages. Nothing here needs `&mut World` any more — material
+    // writes and thumbnail requests moved to `apply_decision`, which runs when
+    // the user accepts a staged import rather than when the worker finishes.
     {
         let mut state = world.resource_mut::<ImportOverlayState>();
         for msg in progress_updates {
@@ -228,11 +293,8 @@ pub(crate) fn poll_import_task(world: &mut World) {
                 ImportMsg::Log(entry) => {
                     state.log_entries.push(entry);
                 }
-                ImportMsg::MaterialExtracted(ev) => {
-                    material_events.push(*ev);
-                }
-                ImportMsg::Imported(path) => {
-                    imported_models.push(path);
+                ImportMsg::PreviewReady(staged) => {
+                    state.staged.push(*staged);
                 }
                 ImportMsg::Done(msg) => {
                     state.progress = ImportProgress::Done(msg);
@@ -248,28 +310,17 @@ pub(crate) fn poll_import_task(world: &mut World) {
             state.active_task = None;
         }
     }
-
-    for ev in material_events {
-        world.trigger(ev);
-    }
-
-    // Hand each freshly-imported `.glb` to the model thumbnail registry
-    // so its offscreen capture pipeline starts immediately. By the time
-    // the user closes the import overlay and opens the asset browser,
-    // the cached PNG is already on disk.
-    if !imported_models.is_empty() {
-        if let Some(mut registry) =
-            world.get_resource_mut::<renzora_editor_framework::ModelThumbnailRegistry>()
-        {
-            for path in imported_models {
-                registry.request(path);
-            }
-        }
-    }
 }
 
 pub(crate) fn close_overlay(world: &mut World) {
     let mut state = world.resource_mut::<ImportOverlayState>();
+    // Anything still staged was never accepted, so it goes — otherwise the
+    // trees sit in the project cache consuming disk with nothing referencing
+    // them.
+    for st in state.staged.drain(..) {
+        crate::staged::discard(&st);
+    }
+    state.active = 0;
     state.visible = false;
     state.pending_files.clear();
     state.progress = ImportProgress::Idle;
@@ -277,8 +328,20 @@ pub(crate) fn close_overlay(world: &mut World) {
     state.active_task = None;
     state.toast_active = false;
     state.toast_dismiss_at = None;
+    // The next window starts from nothing: leaving these set would have it
+    // reconvert files from a session that is over, on the first settings change.
+    state.last_files.clear();
+    state.converted_with = None;
+    state.reimport_requested = false;
+    state.staging_seq = 0;
 }
 
+/// Start converting everything in the queue.
+///
+/// Adds to the staged set rather than replacing it: files dropped onto an open
+/// window join the ones already converted instead of throwing them away, which
+/// is the whole point of the window staging every file and waiting. A caller
+/// that means to start over (a reconvert) clears `staged` itself first.
 pub(crate) fn run_import(world: &mut World) {
     let project = world.resource::<CurrentProject>().clone();
     let state = world.resource::<ImportOverlayState>();
@@ -286,7 +349,12 @@ pub(crate) fn run_import(world: &mut World) {
     let settings = state.settings.clone();
     let target_dir = state.target_directory.clone();
     let layout = state.layout;
+    // Staging directories are numbered, and the worker wipes the one it is
+    // about to write. Handing each run its own block of numbers is what keeps a
+    // second batch from deleting the first batch's staged trees.
+    let staging_base = state.staging_seq;
 
+    let files_for_retry = files.clone();
     let total = files.len();
     info!(
         "[import] Starting import of {} file(s) to assets/{}",
@@ -299,18 +367,169 @@ pub(crate) fn run_import(world: &mut World) {
     {
         let mut state = world.resource_mut::<ImportOverlayState>();
         state.log_entries.clear();
+        state.staging_seq += total;
         state.progress = ImportProgress::Working {
             current: 0,
             total,
             label: "Starting...".into(),
         };
         state.active_task = Some(ImportTask { rx: Mutex::new(rx) });
-    }
+        // Remember every file the staged set came from, so a settings change
+        // reconverts all of it and not just this batch.
+        for f in files_for_retry {
+            if !state.last_files.iter().any(|q| q.path == f.path) {
+                state.last_files.push(f);
+            }
+        }
+        state.converted_with = Some(ConvertedWith {
+            settings: state.settings.clone(),
+            target_directory: state.target_directory.clone(),
+            layout: state.layout,
+        });
+    };
 
     // Spawn background thread
     std::thread::spawn(move || {
-        import_worker(tx, project, files, settings, target_dir, layout);
+        import_worker(
+            tx,
+            ImportJob {
+                project,
+                files,
+                settings,
+                target_dir,
+                layout,
+                staging_base,
+            },
+        );
     });
+}
+
+/// Queue a fresh run of every file this window has converted, with the settings
+/// as they now stand.
+///
+/// Deferred rather than immediate because a worker may still be running —
+/// starting a second one now would have two threads staging at once.
+///
+/// The user never asks for this: it is what a settings change means once files
+/// are already converted, and `settings_watch` in the UI is the only caller.
+pub(crate) fn request_reimport(world: &mut World) {
+    let mut state = world.resource_mut::<ImportOverlayState>();
+    if state.last_files.is_empty() {
+        return;
+    }
+    state.reimport_requested = true;
+    for st in state.staged.drain(..) {
+        crate::staged::discard(&st);
+    }
+    state.active = 0;
+}
+
+/// Start the deferred reimport once the previous worker has actually stopped.
+pub(crate) fn drive_reimport(world: &mut World) {
+    let ready = {
+        let s = world.resource::<ImportOverlayState>();
+        s.reimport_requested && s.active_task.is_none()
+    };
+    if !ready {
+        return;
+    }
+    let files = {
+        let mut s = world.resource_mut::<ImportOverlayState>();
+        s.reimport_requested = false;
+        s.progress = ImportProgress::Idle;
+        s.log_entries.clear();
+        // Everything converted so far, plus anything queued that never got its
+        // turn — a batch added while the last one was still running would
+        // otherwise be dropped on the floor by the reconvert.
+        let mut files = s.last_files.clone();
+        for q in s.pending_files.drain(..).collect::<Vec<_>>() {
+            if !files.iter().any(|f| f.path == q.path) {
+                files.push(q);
+            }
+        }
+        files
+    };
+    if files.is_empty() {
+        return;
+    }
+    world.resource_mut::<ImportOverlayState>().pending_files = files;
+    run_import(world);
+}
+
+/// Act on the active staged import.
+///
+/// The worker is long gone by the time any of this runs — it staged every file
+/// and exited — so accepting is this function moving a directory, and
+/// discarding is it deleting one.
+pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
+    let (active, current) = {
+        let s = world.resource::<ImportOverlayState>();
+        (s.active, s.current().cloned())
+    };
+    match decision {
+        PreviewDecision::CancelAll => {
+            let all: Vec<_> = world
+                .resource_mut::<ImportOverlayState>()
+                .staged
+                .drain(..)
+                .collect();
+            for st in &all {
+                crate::staged::discard(st);
+            }
+            world.resource_mut::<ImportOverlayState>().active = 0;
+            return;
+        }
+        PreviewDecision::Skip => {
+            if let Some(st) = &current {
+                crate::staged::discard(st);
+            }
+            world.resource_mut::<ImportOverlayState>().remove_staged(active);
+            return;
+        }
+        PreviewDecision::Commit => {}
+    }
+
+    let Some(st) = current else { return };
+    // Honour the scene tree's checkboxes first: the tree is edited in the
+    // staging directory, so what moves into the project is already the model
+    // the user asked for.
+    let dropped_materials = crate::staged::apply_exclusions(&st);
+    match crate::staged::commit(&st) {
+        Ok(glb) => {
+            // The `.material` writes were held back until the tree was in
+            // place; fire them now so the observer writes them where they
+            // finally live — minus any material whose last user was unchecked.
+            for ev in st
+                .material_events
+                .iter()
+                .filter(|ev| !dropped_materials.contains(&ev.name))
+                .cloned()
+            {
+                world.trigger(ev);
+            }
+            if let Some(mut registry) =
+                world.get_resource_mut::<renzora_editor_framework::ModelThumbnailRegistry>()
+            {
+                registry.request(glb);
+            }
+            let mut state = world.resource_mut::<ImportOverlayState>();
+            state.log_entries.push(ImportLogEntry {
+                file_name: st.file_name.clone(),
+                success: true,
+                message: "added to project".into(),
+            });
+        }
+        Err(e) => {
+            warn!("[import] commit failed for {}: {}", st.file_name, e);
+            let mut state = world.resource_mut::<ImportOverlayState>();
+            state.log_entries.push(ImportLogEntry {
+                file_name: st.file_name.clone(),
+                success: false,
+                message: format!("commit failed: {e}"),
+            });
+        }
+    }
+    world.resource_mut::<ImportOverlayState>().remove_staged(active);
 }
 
 /// Join `dest` with a forward-slashed relative directory from a folder import.
@@ -383,14 +602,29 @@ fn unique_model_dir(dest: &std::path::Path, base: &str) -> (String, PathBuf) {
 }
 
 /// Background import worker — runs on a separate thread.
-fn import_worker(
-    tx: mpsc::Sender<ImportMsg>,
+/// Everything one background import run needs. Bundled rather than passed as
+/// eight positional arguments, which is both easier to read at the call site
+/// and what clippy asks for past seven.
+struct ImportJob {
     project: CurrentProject,
     files: Vec<QueuedAsset>,
     settings: ImportSettings,
     target_dir: String,
     layout: ImportLayout,
-) {
+    /// First staging slot this run may use. Runs are handed disjoint blocks so
+    /// a batch added while an earlier one is still staged cannot overwrite it.
+    staging_base: usize,
+}
+
+fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
+    let ImportJob {
+        project,
+        files,
+        settings,
+        target_dir,
+        layout,
+        staging_base,
+    } = job;
     let total = files.len();
     let dest = project.path.join(&target_dir);
 
@@ -405,6 +639,9 @@ fn import_worker(
     let mut imported = 0usize;
     let mut errors = Vec::new();
     let mut all_warnings = Vec::new();
+    // Models staged for inspection. Counted separately from `imported`, which
+    // is files copied straight in (textures, audio, scripts).
+    let mut staged_count = 0usize;
 
     for (i, item) in files.iter().enumerate() {
         let source_path = &item.path;
@@ -532,7 +769,16 @@ fn import_worker(
                     ImportLayout::Combined => (base_stem.to_string(), file_dest.clone()),
                 };
                 let stem: &str = &stem_owned;
-                if let Err(e) = std::fs::create_dir_all(&model_dir) {
+                // Every model is written to a staging tree under the project
+                // cache rather than straight to its destination, so the user
+                // sees a complete, loadable model (GLB *and* its textures side
+                // by side, which the relative URIs need) before anything lands
+                // in the project. Committing moves the tree — a same-volume
+                // rename, so accepting is near-instant however large the model
+                // is; discarding deletes it. See `crate::staged`.
+                let write_dir = crate::staged::staging_dir(&project.path, staging_base + i);
+                let _ = std::fs::remove_dir_all(&write_dir);
+                if let Err(e) = std::fs::create_dir_all(&write_dir) {
                     let msg = format!("failed to create model folder: {}", e);
                     errors.push(format!("{}: {}", file_name, msg));
                     let _ = tx.send(ImportMsg::Log(ImportLogEntry {
@@ -542,7 +788,15 @@ fn import_worker(
                     }));
                     continue;
                 }
-                let output_path = model_dir.join(format!("{}.glb", stem));
+                let output_path = write_dir.join(format!("{}.glb", stem));
+                // Material events must name where the `.material` files will
+                // finally live, not where the tree is staged — the observer
+                // that writes them runs after the commit has moved everything.
+                let final_mat_dir = model_dir.join("materials");
+                let mut staged_material_events: Vec<renzora::core::PbrMaterialExtracted> =
+                    Vec::new();
+                let mut staged_textures: Vec<crate::staged::TextureRow> = Vec::new();
+                let mut staged_animations: Vec<String> = Vec::new();
 
                 let warn_count = result.warnings.len();
 
@@ -551,7 +805,7 @@ fn import_worker(
                 // `.material` file; this overlay stays oblivious to the
                 // material graph format.
                 if settings.extract_materials && !result.extracted_materials.is_empty() {
-                    let mat_dir = model_dir.join("materials");
+                    let mat_dir = final_mat_dir.clone();
                     let rewrite_uri = |uri: &Option<String>| -> Option<String> {
                         // Textures live under the model folder. Prefix the
                         // relative URI with that folder's path from the project
@@ -574,7 +828,7 @@ fn import_worker(
                         })
                     };
                     for mat in &result.extracted_materials {
-                        let _ = tx.send(ImportMsg::MaterialExtracted(Box::new(
+                        let event =
                             renzora::core::PbrMaterialExtracted {
                                 name: mat.name.clone(),
                                 output_dir: mat_dir.clone(),
@@ -611,8 +865,11 @@ fn import_worker(
                                 },
                                 alpha_cutoff: mat.alpha_cutoff,
                                 double_sided: mat.double_sided,
-                            },
-                        )));
+                            };
+                        // Hold the event back: the observer writes a file the
+                        // moment it fires, and nothing may touch the project
+                        // until the user commits.
+                        staged_material_events.push(event);
                     }
                 }
 
@@ -620,14 +877,22 @@ fn import_worker(
                 // source (e.g. textures bundled inside an FBX). Failures here
                 // surface as warnings rather than aborting the import.
                 if settings.extract_textures && !result.extracted_textures.is_empty() {
-                    let tex_dir = model_dir.join("textures");
+                    let tex_dir = write_dir.join("textures");
                     if let Err(e) = std::fs::create_dir_all(&tex_dir) {
                         all_warnings.push(format!("textures dir: {}", e));
                     } else {
                         for tex in &result.extracted_textures {
                             let tex_path = tex_dir.join(format!("{}.{}", tex.name, tex.extension));
-                            if let Err(e) = std::fs::write(&tex_path, &tex.data) {
-                                all_warnings.push(format!("texture '{}': {}", tex.name, e));
+                            match tex.write_to(&tex_path) {
+                                Ok(()) => {
+                                    let bytes = std::fs::metadata(&tex_path)
+                                        .map(|m| m.len())
+                                        .unwrap_or(0);
+                                    staged_textures.push(crate::staged::texture_row(tex, bytes));
+                                }
+                                Err(e) => {
+                                    all_warnings.push(format!("texture '{}': {}", tex.name, e))
+                                }
                             }
                         }
                     }
@@ -646,7 +911,7 @@ fn import_worker(
                         total,
                         label: format!("Extracting animations from {}", file_name),
                     });
-                    let anim_dir = model_dir.join("animations");
+                    let anim_dir = write_dir.join("animations");
                     // Where the keyframes live depends on the source format:
                     // glTF/GLB conversion is passthrough, so its animations are
                     // still embedded in the GLB we just built — but the FBX/USD
@@ -672,12 +937,14 @@ fn import_worker(
                     match anim_result {
                         Ok(anim_result) => {
                             for anim_path in &anim_result.written_files {
+                                let clip = std::path::Path::new(anim_path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("animation")
+                                    .to_string();
+                                staged_animations.push(clip.clone());
                                 let _ = tx.send(ImportMsg::Log(ImportLogEntry {
-                                    file_name: std::path::Path::new(anim_path)
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("animation")
-                                        .to_string(),
+                                    file_name: clip,
                                     success: true,
                                     message: "animation extracted".to_string(),
                                 }));
@@ -710,22 +977,71 @@ fn import_worker(
 
                 match std::fs::write(&output_path, &glb_bytes) {
                     Ok(()) => {
-                        imported += 1;
                         let msg = if warn_count > 0 {
                             format!("{:.1} KB ({} warnings)", size_kb, warn_count)
                         } else {
                             format!("{:.1} KB", size_kb)
                         };
-                        let _ = tx.send(ImportMsg::Log(ImportLogEntry {
-                            file_name: file_name.clone(),
-                            success: true,
-                            message: msg,
-                        }));
-                        // Kick off the thumbnail capture as soon as the
-                        // GLB is on disk. The model isn't yet in the
-                        // asset browser — the registry will load + spawn
-                        // it offscreen, capture, and write the PNG cache.
-                        let _ = tx.send(ImportMsg::Imported(output_path.clone()));
+
+                        // ── Inspection gate ──────────────────────────────
+                        // Everything for this file now sits in the staging
+                        // tree. Describe it, hand it to the UI, and wait —
+                        // this thread exists to do exactly this one file, so
+                        // blocking here is the behaviour we want rather than
+                        // something to design around.
+                        {
+                            let staged = crate::staged::StagedImport {
+                                file_name: file_name.clone(),
+                                source: source_path.clone(),
+                                staging_dir: write_dir.clone(),
+                                final_dir: model_dir.clone(),
+                                glb_path: output_path.clone(),
+                                stem: stem_owned.clone(),
+                                stats: renzora_import::inspect_glb(&glb_bytes),
+                                materials: result
+                                    .extracted_materials
+                                    .iter()
+                                    .map(crate::staged::material_row)
+                                    .collect(),
+                                textures: staged_textures.clone(),
+                                animations: staged_animations.clone(),
+                                warnings: result.warnings.clone(),
+                                glb_bytes: glb_bytes.len(),
+                                texture_bytes: crate::staged::dir_size(
+                                    &write_dir.join("textures"),
+                                ),
+                                flags: Vec::new(),
+                                index: i,
+                                total,
+                                material_events: std::mem::take(&mut staged_material_events),
+                                // Everything is included until the user says
+                                // otherwise in the window's scene tree.
+                                excluded: Default::default(),
+                            };
+                            let staged = crate::staged::StagedImport {
+                                flags: crate::staged::collect_flags(
+                                    staged.stats.as_ref(),
+                                    &staged.materials,
+                                    &staged.textures,
+                                    &staged.animations,
+                                    &staged.warnings,
+                                    source_path,
+                                ),
+                                ..staged
+                            };
+                            let _ = tx.send(ImportMsg::PreviewReady(Box::new(staged)));
+                            // No waiting here. Every queued file is staged
+                            // back to back so the whole set is ready to look
+                            // at, and accepting one later is a rename of a
+                            // tree that already exists. The verdict is the
+                            // UI's to act on — see `crate::staged::commit`.
+                            staged_count += 1;
+                            let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                                file_name: file_name.clone(),
+                                success: true,
+                                message: format!("{msg} — ready to inspect"),
+                            }));
+                        }
                     }
                     Err(e) => {
                         let msg = format!("write failed: {}", e);
@@ -846,6 +1162,15 @@ fn import_worker(
         } else {
             format!(" ({} warnings)", all_warnings.len())
         };
+        if staged_count > 0 {
+            let _ = tx.send(ImportMsg::Done(format!(
+                "{} model{} ready to inspect{}",
+                staged_count,
+                if staged_count == 1 { "" } else { "s" },
+                warn_suffix,
+            )));
+            return;
+        }
         let _ = tx.send(ImportMsg::Done(format!(
             "Imported {} file{} to assets/{}{}",
             imported,

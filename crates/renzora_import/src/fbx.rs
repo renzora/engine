@@ -7,9 +7,9 @@
 
 use std::path::Path;
 
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ConvertedGlb, ImportError};
 use crate::settings::ImportSettings;
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     crate::fbx_ufbx::convert(path, settings)
 }

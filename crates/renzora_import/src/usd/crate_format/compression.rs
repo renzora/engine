@@ -17,20 +17,71 @@
 
 use super::super::{UsdError, UsdResult};
 
-/// LZ4 decompress (TfFastCompression format: 8-byte uncompressed size header + raw LZ4 block).
-pub fn decompress_lz4(compressed: &[u8], max_output: usize) -> UsdResult<Vec<u8>> {
-    if compressed.len() < 8 {
-        return Err(UsdError::Parse("LZ4: data too small for header".into()));
+/// Largest block Pixar hands to LZ4 in one go, and therefore the size every
+/// chunk but the last decompresses to. Mirrors `LZ4_MAX_INPUT_SIZE`.
+const LZ4_MAX_INPUT_SIZE: usize = 0x7E00_0000;
+
+/// Decompress a `TfFastCompression` buffer.
+///
+/// The layout is **not** a bare LZ4 block. Pixar prefixes a `u8` chunk count:
+///
+/// ```text
+/// [u8 nChunks == 0]  [ LZ4 block ]                       // the common case
+/// [u8 nChunks == N]  N x ( [i32 chunkSize] [LZ4 block] )  // > 2 GiB inputs
+/// ```
+///
+/// This used to skip eight bytes here, reading them as an uncompressed-size
+/// header — a header `TfFastCompression` does not write. That discarded the
+/// chunk byte plus seven bytes of real payload, and LZ4 then failed with
+/// "the offset to copy is not contained in the decompressed buffer" on every
+/// USDC file whose sections are compressed. The sizes the callers need are
+/// already in the section headers, which is why none is stored here.
+///
+/// `uncompressed_size` is an upper bound used to size the output; the result is
+/// truncated to whatever actually decoded.
+pub fn decompress_lz4(compressed: &[u8], uncompressed_size: usize) -> UsdResult<Vec<u8>> {
+    let Some((&n_chunks, rest)) = compressed.split_first() else {
+        return Err(UsdError::Parse("LZ4: empty compressed buffer".into()));
+    };
+
+    if n_chunks == 0 {
+        return lz4_flex::decompress(rest, uncompressed_size)
+            .map_err(|e| UsdError::Parse(format!("LZ4 decompression failed: {}", e)));
     }
 
-    // TfFastCompression prepends i64 uncompressed size
-    let uncompressed_size = i64::from_le_bytes(compressed[0..8].try_into().unwrap()) as usize;
-    let lz4_data = &compressed[8..];
-
-    let output_size = uncompressed_size.min(max_output);
-
-    lz4_flex::decompress(lz4_data, output_size)
-        .map_err(|e| UsdError::Parse(format!("LZ4 decompression failed: {}", e)))
+    let mut out = Vec::with_capacity(uncompressed_size);
+    let mut pos = 0usize;
+    for chunk in 0..n_chunks as usize {
+        if pos + 4 > rest.len() {
+            return Err(UsdError::Parse(format!(
+                "LZ4: truncated chunk header {} of {}",
+                chunk + 1,
+                n_chunks
+            )));
+        }
+        let size = i32::from_le_bytes(rest[pos..pos + 4].try_into().unwrap());
+        pos += 4;
+        let size = usize::try_from(size)
+            .map_err(|_| UsdError::Parse("LZ4: negative chunk size".into()))?;
+        if pos + size > rest.len() {
+            return Err(UsdError::Parse(format!(
+                "LZ4: chunk {} claims {} bytes, {} remain",
+                chunk + 1,
+                size,
+                rest.len() - pos
+            )));
+        }
+        // Every chunk but the last fills a full block; the last takes whatever
+        // of the total is left.
+        let want = uncompressed_size
+            .saturating_sub(out.len())
+            .min(LZ4_MAX_INPUT_SIZE);
+        let piece = lz4_flex::decompress(&rest[pos..pos + size], want)
+            .map_err(|e| UsdError::Parse(format!("LZ4 chunk {}: {}", chunk + 1, e)))?;
+        out.extend_from_slice(&piece);
+        pos += size;
+    }
+    Ok(out)
 }
 
 /// Decompression working space size for N 32-bit integers.
@@ -194,4 +245,64 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
 /// Decompress raw LZ4 data with TfFastCompression header (used for value reps).
 pub fn decompress_lz4_raw(compressed: &[u8], max_output: usize) -> UsdResult<Vec<u8>> {
     decompress_lz4(compressed, max_output)
+}
+
+#[cfg(test)]
+mod lz4_tests {
+    use super::*;
+
+    /// Wrap a payload the way `TfFastCompression` writes a single chunk.
+    fn single_chunk(data: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8];
+        out.extend_from_slice(&lz4_flex::compress(data));
+        out
+    }
+
+    #[test]
+    fn round_trips_a_single_chunk() {
+        let payload: Vec<u8> = (0..4000u32).map(|i| (i % 251) as u8).collect();
+        let packed = single_chunk(&payload);
+        let out = decompress_lz4(&packed, payload.len()).expect("decompresses");
+        assert_eq!(out, payload);
+    }
+
+    #[test]
+    fn does_not_skip_a_size_header_that_is_not_there() {
+        // The regression: eight bytes used to be discarded up front, which ate
+        // the chunk byte and seven bytes of the LZ4 block.
+        let payload = b"usd tokens: a short but real payload".to_vec();
+        let packed = single_chunk(&payload);
+        assert_eq!(packed[0], 0, "leading byte is the chunk count");
+        let out = decompress_lz4(&packed, payload.len()).unwrap();
+        assert_eq!(out, payload);
+    }
+
+    #[test]
+    fn reads_a_multi_chunk_buffer() {
+        let a: Vec<u8> = (0..1000u32).map(|i| (i % 97) as u8).collect();
+        let b: Vec<u8> = (0..1000u32).map(|i| (i % 89) as u8).collect();
+        let mut packed = vec![2u8];
+        for part in [&a, &b] {
+            let c = lz4_flex::compress(part);
+            packed.extend_from_slice(&(c.len() as i32).to_le_bytes());
+            packed.extend_from_slice(&c);
+        }
+        let out = decompress_lz4(&packed, a.len() + b.len()).expect("decompresses");
+        assert_eq!(out.len(), a.len() + b.len());
+        assert_eq!(&out[..a.len()], &a[..]);
+        assert_eq!(&out[a.len()..], &b[..]);
+    }
+
+    #[test]
+    fn an_empty_buffer_is_an_error_not_a_panic() {
+        assert!(decompress_lz4(&[], 16).is_err());
+    }
+
+    #[test]
+    fn a_truncated_chunk_header_is_reported() {
+        // Claims two chunks, provides half a header.
+        let packed = vec![2u8, 0x10, 0x00];
+        let err = decompress_lz4(&packed, 64).unwrap_err();
+        assert!(format!("{err:?}").contains("truncated"), "{err:?}");
+    }
 }

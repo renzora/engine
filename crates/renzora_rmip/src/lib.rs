@@ -37,6 +37,7 @@
 //! - `RmipAssetLoader` — Bevy `AssetLoader` for runtime/editor.
 //! - `bake::*` (feature `bake`) — encoder used by the import pipeline.
 
+pub mod dds;
 mod loader;
 pub use loader::{RmipAssetLoader, RmipLoadError};
 
@@ -73,6 +74,24 @@ pub enum RmipFormat {
 }
 
 impl RmipFormat {
+    /// Whether this format carries a usable per-pixel alpha channel.
+    ///
+    /// BC1 is excluded deliberately: it has at most one bit of alpha, which
+    /// DCC tools use for "fully opaque" rather than for a cutout, so treating
+    /// it as alpha-capable would mark most opaque surfaces as alpha-tested.
+    /// BC4/BC5 are one- and two-channel data formats with no alpha at all.
+    pub fn has_alpha(self) -> bool {
+        matches!(
+            self,
+            Self::Rgba8UnormSrgb
+                | Self::Rgba8Unorm
+                | Self::Bc7RgbaUnormSrgb
+                | Self::Bc7RgbaUnorm
+                | Self::Bc3RgbaUnormSrgb
+                | Self::Bc3RgbaUnorm
+        )
+    }
+
     /// Decode the header's format code. Returns `None` for unknown codes.
     pub fn from_code(code: u32) -> Option<Self> {
         Some(match code {

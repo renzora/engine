@@ -62,7 +62,7 @@ impl TableOfContents {
             let sec_offset = u64::from_le_bytes(data[pos + 16..pos + 24].try_into().unwrap());
             let sec_size = u64::from_le_bytes(data[pos + 24..pos + 32].try_into().unwrap());
 
-            log::warn!(
+            log::debug!(
                 "Section '{}': offset={}, size={}",
                 name,
                 sec_offset,

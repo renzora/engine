@@ -31,19 +31,19 @@ pub fn parse(data: &[u8]) -> UsdResult<UsdStage> {
     let toc = sections::TableOfContents::read(data, &header)?;
 
     let tokens = tokens::read_tokens(data, &toc)?;
-    log::warn!("USDC: read {} tokens", tokens.len());
+    log::debug!("USDC: read {} tokens", tokens.len());
     let strings = sections::read_string_indices(data, &toc)?;
-    log::warn!("USDC: read {} strings", strings.len());
+    log::debug!("USDC: read {} strings", strings.len());
     let fields = fields::read_fields(data, &toc, &tokens)?;
-    log::warn!("USDC: read {} fields", fields.len());
+    log::debug!("USDC: read {} fields", fields.len());
     let field_sets = fields::read_field_sets(data, &toc)?;
-    log::warn!("USDC: read {} fieldset entries", field_sets.len());
+    log::debug!("USDC: read {} fieldset entries", field_sets.len());
     let paths = paths::read_paths(data, &toc, &tokens)?;
-    log::warn!("USDC: read {} paths", paths.len());
+    log::debug!("USDC: read {} paths", paths.len());
     let specs = specs::read_specs(data, &toc)?;
-    log::warn!("USDC: read {} specs", specs.len());
+    log::debug!("USDC: read {} specs", specs.len());
 
-    log::warn!(
+    log::debug!(
         "USDC: {} tokens, {} fields, {} fieldset entries, {} paths, {} specs",
         tokens.len(),
         fields.len(),
@@ -99,7 +99,7 @@ impl<'a> Resolver<'a> {
             } else {
                 "??"
             };
-            log::warn!(
+            log::debug!(
                 "  raw spec[{}]: path_idx={} name='{}' fieldset_idx={} spec_type={}",
                 i,
                 spec.path_index,
@@ -135,12 +135,17 @@ impl<'a> Resolver<'a> {
                 .and_then(|(_, v)| v.as_token())
                 .unwrap_or("");
 
-            log::warn!(
-                "USDC prim: '{}' type='{}' fields={} fieldset_idx={}",
+            log::debug!(
+                "USDC prim: '{}' type='{}' fields={} fieldset_idx={} keys=[{}]",
                 full_path,
                 type_name,
                 field_values.len(),
-                spec.fieldset_index
+                spec.fieldset_index,
+                field_values
+                    .iter()
+                    .map(|(k, v)| format!("{k}={}", v.debug_kind()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
 
             match type_name {
@@ -196,7 +201,7 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        log::warn!(
+        log::debug!(
             "USDC summary: {} prims, {} attributes, {} meshes found",
             prim_count,
             attr_count,
@@ -383,21 +388,69 @@ impl<'a> Resolver<'a> {
         // Extract skinning data
         self.extract_skin_binding(path, &mut mesh);
 
+        log::debug!(
+            "USDC mesh '{}': {} points, {} faceCounts, {} faceIndices, uvSets [{}]",
+            mesh.name,
+            mesh.positions.len(),
+            mesh.face_vertex_counts.len(),
+            mesh.face_vertex_indices.len(),
+            mesh.uv_sets
+                .iter()
+                .map(|(k, v)| format!("{k}:{}", v.len()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
         Ok(mesh)
     }
 
+    /// Pull a mesh's geometry and primvars out of its **attribute specs**.
+    ///
+    /// A `Mesh` prim itself carries only `specifier`, `typeName`, `properties`
+    /// and `apiSchemas` — `points`, `faceVertexIndices` and the rest are
+    /// separate attribute specs beneath it. Looking for geometry among the
+    /// prim's own fields (as `extract_mesh` used to) finds nothing, which is
+    /// how a stage with 93 correctly-identified meshes reported no geometry.
     fn extract_mesh_primvars(&self, mesh_path: &str, mesh: &mut UsdMesh) {
         for spec in self.specs {
             if spec.spec_type != specs::SPEC_TYPE_ATTRIBUTE {
                 continue;
             }
             let prop_path = self.resolve_path(spec.path_index);
-            if !prop_path.starts_with(mesh_path) || prop_path == mesh_path {
+            if !is_property_of(&prop_path, mesh_path) {
                 continue;
             }
 
-            let prop_name = prop_path.rsplit('/').next().unwrap_or("");
+            let prop_name = prop_path.rsplit(['/', '.']).next().unwrap_or("");
             let fields = self.get_field_set(spec.fieldset_index);
+
+            // The attribute's value lives under `default` (authored) or
+            // `timeSamples` (animated); both spellings appear in the wild.
+            let value_of = |want: &str| -> Option<Value> {
+                if prop_name != want {
+                    return None;
+                }
+                fields
+                    .iter()
+                    .find(|(k, _)| k == "default" || k == "timeSamples")
+                    .map(|(_, v)| v.clone())
+            };
+
+            if let Some(v) = value_of("points") {
+                if let Some(pts) = v.as_vec3f_array() {
+                    mesh.positions = pts;
+                }
+            }
+            if let Some(v) = value_of("faceVertexCounts") {
+                if let Some(c) = v.as_int_array() {
+                    mesh.face_vertex_counts = c.iter().map(|&i| i as u32).collect();
+                }
+            }
+            if let Some(v) = value_of("faceVertexIndices") {
+                if let Some(c) = v.as_int_array() {
+                    mesh.face_vertex_indices = c.iter().map(|&i| i as u32).collect();
+                }
+            }
 
             // UV sets
             if prop_name.starts_with("primvars:st") || prop_name.contains("texCoord") {
@@ -453,7 +506,14 @@ impl<'a> Resolver<'a> {
                 let fields = self.get_field_set(spec.fieldset_index);
                 for (key, value) in &fields {
                     if key == "targetPaths" || key == "default" {
-                        if let Some(path_str) = value.as_path_or_token() {
+                        // Relationship targets are *path* indices, so they have
+                        // to be resolved against the path table here rather than
+                        // in the value decoder, which only has the tokens.
+                        if let Value::PathIndices(idx) = value {
+                            if let Some(&first) = idx.first() {
+                                mesh.material_binding = Some(self.resolve_path(first));
+                            }
+                        } else if let Some(path_str) = value.as_path_or_token() {
                             mesh.material_binding = Some(path_str);
                         }
                     }
@@ -515,7 +575,11 @@ impl<'a> Resolver<'a> {
                     let sub_fields = self.get_field_set(sub_spec.fieldset_index);
                     for (key, value) in &sub_fields {
                         if key == "targetPaths" || key == "default" {
-                            if let Some(path_str) = value.as_path_or_token() {
+                            if let Value::PathIndices(idx) = value {
+                                if let Some(&first) = idx.first() {
+                                    subset.material_binding = Some(self.resolve_path(first));
+                                }
+                            } else if let Some(path_str) = value.as_path_or_token() {
                                 subset.material_binding = Some(path_str);
                             }
                         }
@@ -624,6 +688,62 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    /// Read one attribute of a prim by name.
+    ///
+    /// USD keeps a prim's *fields* (`specifier`, `typeName`, `properties`) and
+    /// its *attributes* (`info:id`, `points`, `inputs:file`) in different
+    /// places: fields live on the prim spec, attributes are separate specs
+    /// beneath it. Reaching for an attribute among the fields silently finds
+    /// nothing, which is how both the geometry and the shader graph came back
+    /// empty from a file that had parsed perfectly.
+    fn attribute_value(&self, prim_path: &str, attr: &str) -> Option<Value> {
+        for spec in self.specs {
+            if spec.spec_type != specs::SPEC_TYPE_ATTRIBUTE {
+                continue;
+            }
+            let prop_path = self.resolve_path(spec.path_index);
+            if !is_property_of(&prop_path, prim_path) {
+                continue;
+            }
+            if prop_path.rsplit(['/', '.']).next() != Some(attr) {
+                continue;
+            }
+            return self
+                .get_field_set(spec.fieldset_index)
+                .into_iter()
+                .find(|(k, _)| k == "default" || k == "timeSamples")
+                .map(|(_, v)| v);
+        }
+        None
+    }
+
+    /// Direct child prims of `prim_path`, as `(path, typeName)`.
+    fn child_prims(&self, prim_path: &str) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for spec in self.specs {
+            if spec.spec_type != specs::SPEC_TYPE_PRIM {
+                continue;
+            }
+            let child = self.resolve_path(spec.path_index);
+            if !is_property_of(&child, prim_path) {
+                continue;
+            }
+            // Direct children only — a shader's own children are not the
+            // material's shaders.
+            if child[prim_path.len() + 1..].contains('/') {
+                continue;
+            }
+            let type_name = self
+                .get_field_set(spec.fieldset_index)
+                .iter()
+                .find(|(k, _)| k == "typeName")
+                .and_then(|(_, v)| v.as_token().map(str::to_string))
+                .unwrap_or_default();
+            out.push((child, type_name));
+        }
+        out
+    }
+
     fn extract_material(&self, path: &str, _fields: &[(String, Value)]) -> UsdResult<UsdMaterial> {
         let name = path.rsplit('/').next().unwrap_or("Material").to_string();
         let mut mat = UsdMaterial {
@@ -632,30 +752,94 @@ impl<'a> Resolver<'a> {
             ..Default::default()
         };
 
-        // Find child UsdPreviewSurface shader
-        for spec in self.specs {
-            if spec.spec_type != specs::SPEC_TYPE_PRIM {
+        // A material's shader graph is a flat set of child `Shader` prims: one
+        // `UsdPreviewSurface` plus a `UsdUVTexture` per map. Which is which is
+        // in each shader's `info:id` *attribute*.
+        let mut textures: Vec<(String, String)> = Vec::new();
+        for (child_path, type_name) in self.child_prims(path) {
+            if type_name != "Shader" {
                 continue;
             }
-            let child_path = self.resolve_path(spec.path_index);
-            if !child_path.starts_with(path) || child_path == path {
-                continue;
-            }
+            let info_id = self
+                .attribute_value(&child_path, "info:id")
+                .and_then(|v| v.as_token().map(str::to_string))
+                .unwrap_or_default();
 
-            let child_fields = self.get_field_set(spec.fieldset_index);
-            let info_id = child_fields
-                .iter()
-                .find(|(k, _)| k == "info:id")
-                .and_then(|(_, v)| v.as_token())
-                .unwrap_or("");
-
-            if info_id == "UsdPreviewSurface" {
-                // Extract surface shader properties
-                self.extract_preview_surface(&child_path, &mut mat);
+            match info_id.as_str() {
+                "UsdPreviewSurface" => self.extract_preview_surface(&child_path, &mut mat),
+                "UsdUVTexture" => {
+                    if let Some(file) = self
+                        .attribute_value(&child_path, "inputs:file")
+                        .and_then(|v| v.as_path_or_token())
+                    {
+                        textures.push((child_path, file));
+                    }
+                }
+                _ => {}
             }
         }
 
+        self.bind_textures(&mut mat, &textures);
         Ok(mat)
+    }
+
+    /// Attach each `UsdUVTexture` to the surface slot it feeds.
+    ///
+    /// The rigorous route is to follow `inputs:diffuseColor.connect` back to the
+    /// texture that drives it. Exporters write those connections inconsistently
+    /// (and USDC stores them as a list-op this reader does not decode yet), so
+    /// this matches on the shader's own name instead — `tex_base`,
+    /// `..._normal`, `..._metallicRoughness` and friends, which is what every
+    /// glTF-derived USDZ emits. A single unnamed texture is taken as base
+    /// colour, that being the only slot a lone map is ever meant for.
+    fn bind_textures(&self, mat: &mut UsdMaterial, textures: &[(String, String)]) {
+        let slot_of = |name: &str| -> &'static str {
+            let n = name.to_lowercase();
+            if n.contains("normal") {
+                "normal"
+            } else if n.contains("emissive") || n.contains("emission") {
+                "emissive"
+            } else if n.contains("metallicroughness") || n.contains("orm") {
+                "metallic_roughness"
+            } else if n.contains("metal") {
+                "metallic"
+            } else if n.contains("rough") {
+                "roughness"
+            } else if n.contains("occlusion") || n.contains("_ao") {
+                "occlusion"
+            } else {
+                "base"
+            }
+        };
+
+        for (shader_path, file) in textures {
+            let shader_name = shader_path.rsplit('/').next().unwrap_or("");
+            // Prefer the file name: `Carbon2_normal.jpg` is a stronger signal
+            // than a shader called `tex_1`.
+            let slot = {
+                let by_file = slot_of(file);
+                if by_file == "base" {
+                    slot_of(shader_name)
+                } else {
+                    by_file
+                }
+            };
+            // USDZ asset paths arrive wrapped in `@…@` and are relative to the
+            // archive root (`0/Carbon2_normal.jpg`); the texture writer resolves
+            // them against the extracted USDZ.
+            let cleaned = file.trim_matches('@').to_string();
+            let tex = TextureRef {
+                source: TextureSource::File(cleaned),
+                ..Default::default()
+            };
+            match slot {
+                "normal" => mat.normal_texture.get_or_insert(tex),
+                "emissive" => mat.emissive_texture.get_or_insert(tex),
+                "metallic_roughness" | "metallic" => mat.metallic_texture.get_or_insert(tex),
+                "roughness" => mat.roughness_texture.get_or_insert(tex),
+                _ => mat.diffuse_texture.get_or_insert(tex),
+            };
+        }
     }
 
     fn extract_preview_surface(&self, shader_path: &str, mat: &mut UsdMaterial) {
@@ -668,7 +852,7 @@ impl<'a> Resolver<'a> {
                 continue;
             }
 
-            let prop_name = prop_path.rsplit('/').next().unwrap_or("");
+            let prop_name = prop_path.rsplit(['/', '.']).next().unwrap_or("");
             let fields = self.get_field_set(spec.fieldset_index);
 
             let get_float = |fs: &[(String, Value)]| -> Option<f32> {
@@ -984,13 +1168,23 @@ impl<'a> Resolver<'a> {
                         }
                     }
                     "metersPerUnit" => {
+                        // USD stores this as a double, and a value that fails to
+                        // decode reads back as 0. Accepting it would multiply
+                        // every vertex by zero and collapse the model to a
+                        // point, so the authored default is kept instead.
                         if let Some(v) = value.as_float() {
-                            stage.meters_per_unit = v;
+                            if v.is_finite() && v > 0.0 {
+                                stage.meters_per_unit = v;
+                            } else {
+                                log::debug!("USDC: ignoring metersPerUnit = {v}");
+                            }
                         }
                     }
                     "timeCodesPerSecond" => {
                         if let Some(v) = value.as_float() {
-                            stage.time_codes_per_second = v;
+                            if v.is_finite() && v > 0.0 {
+                                stage.time_codes_per_second = v;
+                            }
                         }
                     }
                     _ => {}
@@ -1000,9 +1194,20 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_material_bindings(&self, stage: &mut UsdStage) {
+        let (mut bound, mut resolved) = (0usize, 0usize);
         for mesh in &mut stage.meshes {
             if let Some(ref binding) = mesh.material_binding {
+                bound += 1;
                 mesh.material_index = stage.materials.iter().position(|m| m.path == *binding);
+                if mesh.material_index.is_some() {
+                    resolved += 1;
+                } else {
+                    log::debug!(
+                        "USDC: mesh '{}' binds '{}' — no material with that path",
+                        mesh.name,
+                        binding
+                    );
+                }
             }
             for subset in &mut mesh.subsets {
                 if let Some(ref binding) = subset.material_binding {
@@ -1010,7 +1215,27 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
+        log::debug!(
+            "USDC: {} of {} meshes carry a material:binding, {} resolved against {} materials",
+            bound,
+            stage.meshes.len(),
+            resolved,
+            stage.materials.len()
+        );
     }
+}
+
+/// Is `prop_path` an attribute belonging to the prim at `prim_path`?
+///
+/// A plain `starts_with` is not enough: `/root/Object_1` is a prefix of
+/// `/root/Object_10`, so every attribute of `Object_10` would also be collected
+/// into `Object_1` — and with 93 sequentially-named meshes that is most of
+/// them. The separator has to be there too.
+fn is_property_of(prop_path: &str, prim_path: &str) -> bool {
+    let Some(rest) = prop_path.strip_prefix(prim_path) else {
+        return false;
+    };
+    matches!(rest.as_bytes().first(), Some(b'/') | Some(b'.'))
 }
 
 fn identity_matrix() -> [f32; 16] {

@@ -10,10 +10,10 @@ use std::path::Path;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ConvertedGlb, ImportError};
 use crate::settings::{ImportSettings, UpAxis};
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     let xml = std::fs::read_to_string(path)
         .map_err(|e| ImportError::ParseError(format!("Failed to read DAE: {}", e)))?;
 
@@ -120,19 +120,17 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_normals = generate_flat_normals(&all_positions, &all_indices, vertex_count);
     }
 
-    let glb_bytes = crate::obj::build_glb(
+    let glb_bytes = crate::glb_build::build_glb(
         &all_positions,
         &all_normals,
         &all_texcoords,
         &all_indices,
-        &crate::obj::MaterialBundle::default(),
+        &crate::glb_build::MaterialBundle::default(),
     )?;
 
-    Ok(ImportResult {
+    Ok(ConvertedGlb {
         glb_bytes,
         warnings,
-        extracted_textures: Vec::new(),
-        extracted_materials: Vec::new(),
     })
 }
 

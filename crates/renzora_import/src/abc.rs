@@ -10,13 +10,13 @@
 
 use std::path::Path;
 
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ConvertedGlb, ImportError};
 use crate::settings::{ImportSettings, UpAxis};
 
 /// Ogawa file magic: [0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00]
 const OGAWA_MAGIC: [u8; 8] = [0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00];
 
-pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     let data = std::fs::read(path)?;
 
     if data.len() < 8 {
@@ -69,19 +69,17 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_texcoords = vec![0.0; vertex_count * 2];
     }
 
-    let glb_bytes = crate::obj::build_glb(
+    let glb_bytes = crate::glb_build::build_glb(
         &all_positions,
         &all_normals,
         &all_texcoords,
         &all_indices,
-        &crate::obj::MaterialBundle::default(),
+        &crate::glb_build::MaterialBundle::default(),
     )?;
 
-    Ok(ImportResult {
+    Ok(ConvertedGlb {
         glb_bytes,
         warnings,
-        extracted_textures: Vec::new(),
-        extracted_materials: Vec::new(),
     })
 }
 

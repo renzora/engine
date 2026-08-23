@@ -9,7 +9,12 @@ use super::{UsdError, UsdResult};
 use gltf_json::Index;
 
 /// Convert a UsdStage to GLB bytes.
-pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
+///
+/// `source_dir` is the directory the USD file was read from, used to turn the
+/// relative texture paths a plain `.usd` references into the absolute paths the
+/// shared import pass resolves. USDZ archives embed their textures instead, and
+/// those go straight into the binary chunk.
+pub fn convert(stage: &UsdStage, source_dir: &std::path::Path) -> UsdResult<Vec<u8>> {
     if stage.meshes.is_empty() {
         return Err(UsdError::Parse("No meshes in USD stage".into()));
     }
@@ -70,6 +75,56 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
         });
     }
 
+    // Externally-referenced textures (a plain `.usd` beside its image files)
+    // become images with an absolute-path URI. They used to be resolved in a
+    // second, USD-specific pass that ran alongside this one — which meant they
+    // never reached the GLB, and so never reached anything downstream that
+    // reads it. `file_texture_index` maps each relative path to the texture
+    // entry created for it, so materials can point at it below.
+    let mut file_texture_index: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for material in &stage.materials {
+        for tex_ref in [
+            &material.diffuse_texture,
+            &material.normal_texture,
+            &material.emissive_texture,
+            &material.metallic_texture,
+            &material.roughness_texture,
+            &material.occlusion_texture,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let TextureSource::File(rel) = &tex_ref.source else {
+                continue;
+            };
+            if file_texture_index.contains_key(rel) {
+                continue;
+            }
+            let abs = source_dir.join(rel.replace('\\', "/"));
+            if !abs.is_file() {
+                continue;
+            }
+            let image_idx = gltf_images.len();
+            gltf_images.push(gltf_json::Image {
+                buffer_view: None,
+                mime_type: None,
+                name: Some(rel.clone()),
+                uri: Some(abs.to_string_lossy().into_owned()),
+                extensions: None,
+                extras: Default::default(),
+            });
+            file_texture_index.insert(rel.clone(), gltf_textures.len());
+            gltf_textures.push(gltf_json::Texture {
+                name: Some(rel.clone()),
+                sampler: None,
+                source: Index::new(image_idx as u32),
+                extensions: None,
+                extras: Default::default(),
+            });
+        }
+    }
+
     // --- Materials ---
     for mat in &stage.materials {
         let pbr = gltf_json::material::PbrMetallicRoughness {
@@ -79,12 +134,13 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
                 mat.diffuse_color[2],
                 mat.opacity,
             ]),
-            base_color_texture: resolve_gltf_texture(&mat.diffuse_texture, &stage.textures),
+            base_color_texture: resolve_gltf_texture(&mat.diffuse_texture, &stage.textures, &file_texture_index),
             metallic_factor: gltf_json::material::StrengthFactor(mat.metallic),
             roughness_factor: gltf_json::material::StrengthFactor(mat.roughness),
             metallic_roughness_texture: resolve_gltf_texture(
                 &mat.metallic_texture,
                 &stage.textures,
+                &file_texture_index,
             ),
             extensions: None,
             extras: Default::default(),
@@ -103,12 +159,14 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
                 &mat.normal_texture,
                 mat.normal_scale,
                 &stage.textures,
+                &file_texture_index,
             ),
             emissive_factor: gltf_json::material::EmissiveFactor(mat.emissive_color),
-            emissive_texture: resolve_gltf_texture(&mat.emissive_texture, &stage.textures),
+            emissive_texture: resolve_gltf_texture(&mat.emissive_texture, &stage.textures, &file_texture_index),
             occlusion_texture: resolve_gltf_occlusion_texture(
                 &mat.occlusion_texture,
                 &stage.textures,
+                &file_texture_index,
             ),
             alpha_mode,
             alpha_cutoff: None,
@@ -227,8 +285,31 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
             extras: Default::default(),
         });
 
-        // UVs
-        let uvs = usd_mesh.uv_sets.get("st").cloned().unwrap_or_default();
+        // UVs.
+        //
+        // `st` is the USD convention but far from universal — exporters emit
+        // `st0`, `st_0`, `UVMap`, `map1` and worse. Demanding an exact `st`
+        // silently wrote a zero UV for every vertex, so each textured surface
+        // sampled a single texel: the model came out in flat blocks of colour
+        // with no detail at all, which reads as "textures aren't working" rather
+        // than as a naming mismatch. Prefer the conventional names, then take
+        // whatever single set the file does have.
+        let uvs = usd_mesh
+            .uv_sets
+            .get("st")
+            .or_else(|| usd_mesh.uv_sets.get("st0"))
+            .or_else(|| usd_mesh.uv_sets.get("st_0"))
+            .or_else(|| {
+                // Deterministic: a mesh can carry several sets and iteration
+                // order over a map is not stable, so pick by name.
+                usd_mesh
+                    .uv_sets
+                    .iter()
+                    .min_by(|a, b| a.0.cmp(b.0))
+                    .map(|(_, v)| v)
+            })
+            .cloned()
+            .unwrap_or_default();
         let tc_bv = buffer_views.len() as u32;
         let tc_acc = accessors.len() as u32;
         let tc_offset = bin_data.len();
@@ -447,14 +528,17 @@ fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
 fn resolve_gltf_texture(
     tex_ref: &Option<TextureRef>,
     textures: &[UsdTexture],
+    file_texture_index: &std::collections::HashMap<String, usize>,
 ) -> Option<gltf_json::texture::Info> {
     let tr = tex_ref.as_ref()?;
     let idx = match &tr.source {
         TextureSource::Embedded(i) => *i,
-        TextureSource::File(_) => return None,
+        // Externally-referenced: the loop above already made a texture entry
+        // for the file, keyed by its relative path.
+        TextureSource::File(rel) => *file_texture_index.get(rel)?,
     };
 
-    if idx >= textures.len() {
+    if matches!(tr.source, TextureSource::Embedded(_)) && idx >= textures.len() {
         return None;
     }
 
@@ -470,14 +554,15 @@ fn resolve_gltf_normal_texture(
     tex_ref: &Option<TextureRef>,
     scale: f32,
     textures: &[UsdTexture],
+    file_texture_index: &std::collections::HashMap<String, usize>,
 ) -> Option<gltf_json::material::NormalTexture> {
     let tr = tex_ref.as_ref()?;
     let idx = match &tr.source {
         TextureSource::Embedded(i) => *i,
-        TextureSource::File(_) => return None,
+        TextureSource::File(rel) => *file_texture_index.get(rel)?,
     };
 
-    if idx >= textures.len() {
+    if matches!(tr.source, TextureSource::Embedded(_)) && idx >= textures.len() {
         return None;
     }
 
@@ -493,14 +578,15 @@ fn resolve_gltf_normal_texture(
 fn resolve_gltf_occlusion_texture(
     tex_ref: &Option<TextureRef>,
     textures: &[UsdTexture],
+    file_texture_index: &std::collections::HashMap<String, usize>,
 ) -> Option<gltf_json::material::OcclusionTexture> {
     let tr = tex_ref.as_ref()?;
     let idx = match &tr.source {
         TextureSource::Embedded(i) => *i,
-        TextureSource::File(_) => return None,
+        TextureSource::File(rel) => *file_texture_index.get(rel)?,
     };
 
-    if idx >= textures.len() {
+    if matches!(tr.source, TextureSource::Embedded(_)) && idx >= textures.len() {
         return None;
     }
 
