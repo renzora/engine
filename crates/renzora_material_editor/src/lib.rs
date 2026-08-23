@@ -124,30 +124,54 @@ pub fn apply_material(world: &mut World) {
         }
     };
 
+    let mut graph = world.resource::<MaterialEditorState>().graph.clone();
+    if !save_material_graph(world, &path, &mut graph) {
+        return;
+    }
+    // Mirror the freshly-saved graph back into editor state so UI sees the
+    // updated wgsl_path link (and a future diff doesn't think it's dirty).
+    let mut state = world.resource_mut::<MaterialEditorState>();
+    state.graph = graph;
+    state.is_dirty = false;
+}
+
+/// Compile `graph`, write it (plus its `.wgsl` + `.wgsl.meta`) to the
+/// project-relative `path`, and invalidate every cache that holds the old
+/// version — resolver, thumbnails, and the `MaterialResolved` marker on each
+/// entity using the material.
+///
+/// Split out of [`apply_material`] so callers that edit a material *without* it
+/// being the one open in the graph editor — the component inspector's texture
+/// slots — go through exactly the same save, rather than a second
+/// implementation that would drift on the next change to the compile pipeline.
+///
+/// Returns `false` (having written nothing) when there is no project open or
+/// the write failed. `graph` is left carrying the `wgsl_path` link that
+/// compilation produced, so the caller can keep the saved copy.
+pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGraph) -> bool {
     let project_root = match world.get_resource::<CurrentProject>() {
         Some(p) => p.path.clone(),
         None => {
             warn!("[material_editor] No project open; cannot save material");
-            return;
+            return false;
         }
     };
-    let fs_path = project_root.join(&path);
+    let fs_path = project_root.join(path);
 
     if let Some(parent) = fs_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
 
-    let mut graph = world.resource::<MaterialEditorState>().graph.clone();
     let (graph_json, errors) =
         match renzora_shader::material::precompiled::save_compiled_and_serialize(
-            &mut graph,
+            graph,
             &project_root,
             &fs_path,
         ) {
             Ok(out) => out,
             Err(e) => {
                 warn!("[material_editor] Save compile failed: {}", e);
-                return;
+                return false;
             }
         };
     for err in &errors {
@@ -156,15 +180,12 @@ pub fn apply_material(world: &mut World) {
 
     if let Err(e) = std::fs::write(&fs_path, &graph_json) {
         warn!("[material_editor] Save failed: {}", e);
-        return;
+        return false;
     }
-    // Mirror the freshly-saved graph back into editor state so UI sees the
-    // updated wgsl_path link (and a future diff doesn't think it's dirty).
-    world.resource_mut::<MaterialEditorState>().graph = graph;
     info!("[material_editor] Saved {}", path);
 
     // Invalidate resolver cache so the mesh picks up the new material
-    world.resource_mut::<MaterialCache>().invalidate(&path);
+    world.resource_mut::<MaterialCache>().invalidate(path);
 
     // Invalidate the cached PNG thumbnail + registry entry so the asset
     // browser re-captures next time this material is visible.
@@ -187,8 +208,63 @@ pub fn apply_material(world: &mut World) {
     for entity in entities {
         world.entity_mut(entity).remove::<MaterialResolved>();
     }
+    true
+}
 
-    world.resource_mut::<MaterialEditorState>().is_dirty = false;
+/// Load the graph at `path`, hand it to `edit`, and save it if `edit` changed
+/// anything. The entry point for editing a material that isn't necessarily the
+/// one open in the graph editor.
+///
+/// When the graph panel *does* have this material open its in-memory copy is
+/// the source — it may hold unsaved node edits — and the result is written back
+/// into it. Reading from disk in that case would silently discard the user's
+/// unapplied work; writing to disk without syncing would leave the panel's copy
+/// stale, ready to clobber the edit on its next Apply.
+pub fn edit_material_graph(
+    world: &mut World,
+    path: &str,
+    edit: impl FnOnce(&mut MaterialGraph) -> bool,
+) -> bool {
+    let open_here = matches!(
+        &world.resource::<MaterialEditorState>().edit_mode,
+        MaterialEditMode::Existing { path: p, .. } | MaterialEditMode::EditingFile { path: p }
+            if p == path
+    );
+
+    let mut graph = if open_here {
+        world.resource::<MaterialEditorState>().graph.clone()
+    } else {
+        let fs_path = match world.get_resource::<CurrentProject>() {
+            Some(p) => p.resolve_path(path),
+            None => return false,
+        };
+        match std::fs::read_to_string(&fs_path)
+            .ok()
+            .and_then(|j| serde_json::from_str::<MaterialGraph>(&j).ok())
+        {
+            Some(g) => g,
+            None => {
+                warn!("[material_editor] '{}' isn't a material graph; not editing", path);
+                return false;
+            }
+        }
+    };
+
+    if !edit(&mut graph) {
+        return false;
+    }
+    if !save_material_graph(world, path, &mut graph) {
+        return false;
+    }
+    if open_here {
+        let result = renzora_shader::material::codegen::compile(&graph);
+        let mut state = world.resource_mut::<MaterialEditorState>();
+        state.compiled_wgsl = Some(result.fragment_shader);
+        state.compile_errors = result.errors;
+        state.graph = graph;
+        state.is_dirty = false;
+    }
+    true
 }
 
 renzora::add!(MaterialEditorPlugin, Editor);

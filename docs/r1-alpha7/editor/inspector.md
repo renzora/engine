@@ -74,6 +74,17 @@ Different settings get different controls, picked automatically to match the val
 - **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead.
 - **Turn off** — flip the header toggle to disable a component without removing it.
 
+## Material
+
+The **Material** section is the fastest way to dress a mesh. Its top row is the
+material reference — thumbnail, name picker, and buttons to browse, open the
+Material Editor, or clear it. Below that is one drop slot per PBR channel (Base
+Color, Normal, Roughness, Metallic, Ambient Occlusion, Emissive): drag an image
+onto a slot and it's wired into the material graph and applied straight away.
+Drag a whole texture set onto the material row and each file is routed to the
+channel its name suggests. Full details in
+[Materials](/docs/r1-alpha7/editor/materials#putting-a-material-on-an-object).
+
 ## Text & fonts
 
 Any entity with text exposes two text sections:

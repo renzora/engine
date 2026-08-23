@@ -72,7 +72,57 @@ Two more switches live on the material itself, not on a node:
 
 ## Putting a material on an object
 
-Select the object, open the **Inspector**, and use the **Material** card to point it at a `.material` file. To swap an object to a different material later, just change that reference — there's no runtime "swap material" command in scripts.
+Select the object and open the **Inspector**. The **Material** card is the quick
+way in — most of the time you never need the node graph at all.
+
+### The material slot
+
+The top row shows which `.material` the object uses: a preview thumbnail, the
+material's name, and three buttons — **browse** the project's materials,
+**open** this one in the Material Editor, and **remove** it. Click the name to
+pick from a searchable list of every material in the project, or drag a
+`.material` file from the **Assets** browser onto the row.
+
+### Texture slots
+
+Below that is one row per PBR channel — **Base Color**, **Normal**,
+**Roughness**, **Metallic**, **Ambient Occlusion** and **Emissive**.
+
+**Drag an image onto a row** (or click the row to browse for one) and it is
+wired into the material graph for you: the sampler node is created, connected to
+the matching pin on the Surface Output node, and the material is recompiled and
+saved. The mesh updates immediately. The **✕** on a filled row unwires that
+channel again and tidies away the node it was using.
+
+If the object has no material yet, the first drop creates one for you — a new
+`.material` named after the object, in the project's `materials/` folder.
+
+**Dropping a whole texture set:** drag several images at once onto the *material
+slot* at the top and each one is routed by its filename — `rock_normal.png` goes
+to Normal, `rock_rough.png` to Roughness, `rock_basecolor.png` to Base Color, and
+so on. Packed maps are understood too: an `ORM`/`ARM` file fills occlusion,
+roughness *and* metallic from a single sampler (which is also the fastest way for
+the engine to render it), and a `metallicRoughness` file fills those two. A
+single image whose name says nothing in particular is treated as base color; in a
+multi-file drop, files that don't name a channel are skipped, so drop those onto
+the row you want by hand.
+
+Base color also carries opacity: its alpha channel is wired to the material's
+Alpha pin automatically, so a cut-out texture works with **Alpha mode: Mask**
+without a trip to the graph.
+
+These rows are a *view* of the graph, not a separate list. A texture you wire by
+hand in the Material Editor shows up here, and a channel driven by something more
+involved than a plain sampler — noise, math, a blend — shows as empty here and is
+left alone. Nothing you do in the graph can be silently overwritten from the
+inspector.
+
+To swap an object to a different material later, just change the reference at the
+top — there's no runtime "swap material" command in scripts.
+
+> A **material instance** shows its master's **Overrides** instead of texture
+> slots. The graph belongs to the master, so editing it from one instance would
+> change every other instance too; open the master to change its textures.
 
 ## Reusing one look in many flavors (instances)
 

@@ -10,6 +10,7 @@ pub mod resolver;
 pub mod runtime;
 pub mod standard_build;
 pub mod surface_ext;
+pub mod texture_slots;
 
 // Re-export the public asset type at module root so downstream code can write
 // `material::GraphMaterial` the same way it did before this rewrite.
