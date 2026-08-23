@@ -47,7 +47,26 @@ pub struct PendingLoad {
 #[derive(Component)]
 pub struct NeedsGroundAlignment {
     pub target_y: f32,
+    /// Frames spent waiting for every mesh in the model to report bounds.
+    /// Bounded so a mesh that can never produce an `Aabb` (no position
+    /// attribute) doesn't leave the model unaligned forever.
+    pub frames_waited: u32,
 }
+
+impl NeedsGroundAlignment {
+    pub fn new(target_y: f32) -> Self {
+        Self {
+            target_y,
+            frames_waited: 0,
+        }
+    }
+}
+
+/// Frames [`align_models_to_ground`] will wait for a model's meshes to finish
+/// loading before aligning on whatever bounds have arrived. Two seconds at
+/// 60 Hz — long enough for a large GLB to stream in, short enough that a model
+/// which will never report full bounds still ends up on the ground.
+const GROUND_ALIGNMENT_MAX_WAIT_FRAMES: u32 = 120;
 
 /// State for the live preview shown while a model is being dragged over the
 /// viewport. Cleared when the drag ends (drop or cancel).
@@ -67,6 +86,12 @@ pub struct ModelDragPreviewState {
     pub ground_position: Vec3,
     /// True when the cursor is currently over the viewport rect.
     pub cursor_in_viewport: bool,
+    /// Signed distance from the preview root's origin down to the lowest point
+    /// of its geometry, once every mesh has loaded. Adding it to the ground
+    /// position is what puts the model's *bottom* under the cursor instead of
+    /// its origin, so the drag preview stands on the ground and the drop
+    /// doesn't pop the model into a new position.
+    pub bottom_offset: Option<f32>,
 }
 
 impl ModelDragPreviewState {
@@ -78,6 +103,7 @@ impl ModelDragPreviewState {
         self.ghost_root = None;
         self.ground_position = Vec3::ZERO;
         self.cursor_in_viewport = false;
+        self.bottom_offset = None;
     }
 }
 
@@ -170,9 +196,7 @@ pub(crate) fn commit_model_drop(
                 },
                 ImportedRoot,
                 PendingMaterialBinding { gltf_handle },
-                NeedsGroundAlignment {
-                    target_y: ground_pos.y,
-                },
+                NeedsGroundAlignment::new(ground_pos.y),
             ));
         }
         // Add `PendingFlatten` to the entity's SceneRoot child so
@@ -277,9 +301,7 @@ pub fn native_model_drop(
         },
         ImportedRoot,
         PendingMaterialBinding { gltf_handle },
-        NeedsGroundAlignment {
-            target_y: ground_pos.y,
-        },
+        NeedsGroundAlignment::new(ground_pos.y),
     ));
 
     // Tag the SceneRoot child so the flatten pass collapses gltf wrappers once
@@ -389,7 +411,7 @@ fn run_import_pipeline(
         } else {
             for tex in &result.extracted_textures {
                 let tex_path = tex_dir.join(format!("{}.{}", tex.name, tex.extension));
-                if let Err(e) = std::fs::write(&tex_path, &tex.data) {
+                if let Err(e) = tex.write_to(&tex_path) {
                     warn!("[model_drop] write texture '{}': {}", tex.name, e);
                 }
             }
@@ -572,9 +594,9 @@ pub fn spawn_loaded_gltfs(
         ));
 
         // Attach ground alignment marker
-        commands.entity(parent).insert(NeedsGroundAlignment {
-            target_y: load.spawn_position.y,
-        });
+        commands
+            .entity(parent)
+            .insert(NeedsGroundAlignment::new(load.spawn_position.y));
 
         // Auto-select the new entity
         selection.set(Some(parent));
@@ -598,50 +620,104 @@ fn discover_animation_clips(
     renzora_animation::discover_animation_clips(asset_path, &project?.path)
 }
 
-/// System: once child meshes have AABBs, offset the parent so its bottom sits on the ground.
-pub fn align_models_to_ground(
-    mut commands: Commands,
-    query: Query<(Entity, &NeedsGroundAlignment, &Children)>,
-    children_query: Query<&Children>,
-    aabb_query: Query<(&Aabb, &GlobalTransform)>,
-    mut transform_query: Query<&mut Transform>,
-) {
-    for (entity, alignment, children) in query.iter() {
-        let mut lowest_y: Option<f32> = None;
+/// Lowest world-space Y across the mesh AABBs under `root`, plus whether every
+/// mesh in the subtree has reported bounds yet.
+///
+/// The readiness flag matters because Bevy only computes an `Aabb` once the
+/// mesh asset itself has loaded, and a GLB's meshes arrive over several frames.
+/// Reading the bounds of whatever subset exists right now describes a fraction
+/// of the model — which is what left large imports floating or half-buried: the
+/// first mesh to load decided the height, and the pieces that actually reached
+/// lowest arrived afterwards with nothing left to correct them.
+fn scan_mesh_bounds(
+    root: Entity,
+    children_query: &Query<&Children>,
+    aabb_query: &Query<(&Aabb, &GlobalTransform)>,
+    mesh_query: &Query<(), With<Mesh3d>>,
+) -> (Option<f32>, bool) {
+    let mut lowest: Option<f32> = None;
+    let mut all_ready = true;
+    let mut stack: Vec<Entity> = children_query
+        .get(root)
+        .map(|kids| kids.iter().collect())
+        .unwrap_or_default();
 
-        // Walk all descendants looking for AABBs
-        let mut stack: Vec<Entity> = children.iter().collect();
-        while let Some(child) = stack.pop() {
-            if let Ok((aabb, global_transform)) = aabb_query.get(child) {
-                let center = Vec3::from(aabb.center);
-                let half = Vec3::from(aabb.half_extents);
+    while let Some(entity) = stack.pop() {
+        if let Ok((aabb, global_transform)) = aabb_query.get(entity) {
+            let center = Vec3::from(aabb.center);
+            let half = Vec3::from(aabb.half_extents);
 
-                // Check all 8 AABB corners in world space
-                for sx in [-1.0f32, 1.0] {
-                    for sy in [-1.0f32, 1.0] {
-                        for sz in [-1.0f32, 1.0] {
-                            let corner: Vec3 = center + half * Vec3::new(sx, sy, sz);
-                            let world_pos: Vec3 = global_transform.transform_point(corner);
-                            lowest_y = Some(
-                                lowest_y.map_or(world_pos.y, |prev: f32| prev.min(world_pos.y)),
-                            );
-                        }
+            // All 8 corners in world space — the node may be rotated, so the
+            // lowest corner is not necessarily the one with the lowest local Y.
+            for sx in [-1.0f32, 1.0] {
+                for sy in [-1.0f32, 1.0] {
+                    for sz in [-1.0f32, 1.0] {
+                        let corner: Vec3 = center + half * Vec3::new(sx, sy, sz);
+                        let world_pos: Vec3 = global_transform.transform_point(corner);
+                        lowest =
+                            Some(lowest.map_or(world_pos.y, |prev: f32| prev.min(world_pos.y)));
                     }
                 }
             }
-
-            if let Ok(grandchildren) = children_query.get(child) {
-                stack.extend(grandchildren.iter());
-            }
+        } else if mesh_query.get(entity).is_ok() {
+            all_ready = false;
         }
 
-        if let Some(lowest_world_y) = lowest_y {
-            let offset = alignment.target_y - lowest_world_y;
-            if let Ok(mut transform) = transform_query.get_mut(entity) {
-                transform.translation.y += offset;
-            }
-            commands.entity(entity).remove::<NeedsGroundAlignment>();
+        if let Ok(grandchildren) = children_query.get(entity) {
+            stack.extend(grandchildren.iter());
         }
+    }
+
+    (lowest, all_ready)
+}
+
+/// [`scan_mesh_bounds`] restricted to fully-loaded models — `None` until every
+/// mesh in the subtree has bounds.
+fn lowest_mesh_y(
+    root: Entity,
+    children_query: &Query<&Children>,
+    aabb_query: &Query<(&Aabb, &GlobalTransform)>,
+    mesh_query: &Query<(), With<Mesh3d>>,
+) -> Option<f32> {
+    match scan_mesh_bounds(root, children_query, aabb_query, mesh_query) {
+        (lowest, true) => lowest,
+        _ => None,
+    }
+}
+
+/// System: once every child mesh has an AABB, offset the parent so the model's
+/// bottom sits on the ground plane it was dropped onto.
+pub fn align_models_to_ground(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut NeedsGroundAlignment), With<Children>>,
+    children_query: Query<&Children>,
+    aabb_query: Query<(&Aabb, &GlobalTransform)>,
+    mesh_query: Query<(), With<Mesh3d>>,
+    mut transform_query: Query<&mut Transform>,
+) {
+    for (entity, mut alignment) in query.iter_mut() {
+        let (lowest, all_ready) =
+            scan_mesh_bounds(entity, &children_query, &aabb_query, &mesh_query);
+        // Once out of patience, settle for the bounds we do have rather than
+        // leaving the model hanging where the cursor happened to be — a mesh
+        // with no position attribute never gets an `Aabb` at all.
+        if !all_ready && alignment.frames_waited < GROUND_ALIGNMENT_MAX_WAIT_FRAMES {
+            alignment.frames_waited += 1;
+            continue;
+        }
+        let Some(lowest_world_y) = lowest else {
+            alignment.frames_waited += 1;
+            continue;
+        };
+
+        // `lowest_world_y` comes from last frame's propagated transforms, so
+        // the correction is a delta on the current local Y rather than an
+        // absolute placement.
+        let offset = alignment.target_y - lowest_world_y;
+        if let Ok(mut transform) = transform_query.get_mut(entity) {
+            transform.translation.y += offset;
+        }
+        commands.entity(entity).remove::<NeedsGroundAlignment>();
     }
 }
 
@@ -817,17 +893,37 @@ pub fn track_model_drag_preview(
 /// scene entity. No "ghost", no despawn-and-respawn — Bevy's SceneSpawner
 /// only instantiates the GLB once, and that single instance becomes the
 /// real scene model.
+#[allow(clippy::too_many_arguments)]
 pub fn update_model_drag_ghost(
     mut commands: Commands,
     mut state: ResMut<ModelDragPreviewState>,
     gltf_assets: Res<Assets<Gltf>>,
     mut transform_query: Query<&mut Transform>,
     mut visibility_query: Query<&mut Visibility>,
+    children_query: Query<&Children>,
+    aabb_query: Query<(&Aabb, &GlobalTransform)>,
+    mesh_query: Query<(), With<Mesh3d>>,
+    global_query: Query<&GlobalTransform>,
 ) {
     // Already spawned → just sync transform + visibility.
     if let Some(root) = state.ghost_root {
+        // Measure how far the geometry hangs below the root origin, once — a
+        // GLB is free to put its origin anywhere, and models whose origin sits
+        // at the centre (or at the top of a hanging prop) would otherwise be
+        // dragged half-buried and then jump on drop when the ground alignment
+        // finally ran. Both values come from the same propagation, so the
+        // one-frame staleness cancels out.
+        if state.bottom_offset.is_none() {
+            if let (Some(lowest_y), Ok(root_global)) = (
+                lowest_mesh_y(root, &children_query, &aabb_query, &mesh_query),
+                global_query.get(root),
+            ) {
+                state.bottom_offset = Some(root_global.translation().y - lowest_y);
+            }
+        }
+        let lift = state.bottom_offset.unwrap_or(0.0);
         if let Ok(mut tf) = transform_query.get_mut(root) {
-            tf.translation = state.ground_position;
+            tf.translation = state.ground_position + Vec3::Y * lift;
         }
         if let Ok(mut vis) = visibility_query.get_mut(root) {
             *vis = if state.cursor_in_viewport {

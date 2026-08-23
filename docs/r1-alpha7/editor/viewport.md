@@ -38,7 +38,7 @@ There's also a small button cluster on the right edge of each viewport for **Pan
 
 While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Grid and Scene Icons circles that used to sit under them are gone: both already have switches in the toolbar's Display and Gizmos dropdowns, and in *Settings → Viewport*.)
 
-Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain modes **Sculpt / Paint Layers / Paint Foliage**, mesh **Edit Mode** and **X Symmetry**, and any modes plugins add), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. It hides during play mode, all except Play, which becomes Stop and stays where it is.
+Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain modes **Sculpt / Paint Layers / Paint Foliage** — plus **Make Terrain** whenever the selection is a flat mesh, which [turns that plane into a terrain](terrain.md#making-a-terrain-out-of-a-plane) — mesh **Edit Mode** and **X Symmetry**, and any modes plugins add), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. It hides during play mode, all except Play, which becomes Stop and stays where it is.
 
 The toolbar holds the buttons that say *what the viewport is set to do*. What each of those opens — the brushes, the select modes, the ops — is on the tool shelf down the left edge, described below. There's no Sculpt Mode button: the **Mode** dropdown beside the 3D/2D/UI selector already lists Scene / Edit / Sculpt, and one control for it is enough.
 
@@ -108,6 +108,25 @@ While the 2D view is active the editor parks the 3D render pipeline (its fullscr
 The toolbar above the viewport carries a **shapes** dropdown (the multi-square icon, at its left end). Click it for a categorized list of every built-in primitive — **Basic** (cube, sphere, cylinder, plane, cone, capsule…), **Curved**, **Level** building blocks, and **Advanced**. Picking one drops it into your scene at the origin, ready to move with the gizmo. The menu stays open so you can add several in a row, and every add is a single undo step.
 
 It's the same shape list as the shape-library panel and the hierarchy's **Add Entity** menu, so whatever you register shows up in all three.
+
+## Dropping models in
+
+Drag a `.glb`/`.gltf` from the asset browser over the viewport and the real
+model — full materials, not a grey placeholder — appears under your cursor and
+follows it until you let go. What you're placing is already the final entity;
+releasing over the viewport commits it in place rather than despawning the
+preview and spawning something new.
+
+Models **stand on the ground**: the drop point is the ground plane under the
+cursor, and the model is lifted so its lowest point rests there, not its origin.
+That matters because a GLB's origin is wherever the exporter left it — often the
+centre of the model, sometimes above it — so aligning on the origin buries or
+floats half of what you import. The lift is measured from the model's *complete*
+bounds, which means the editor waits for every mesh in the file to finish
+loading before it settles; on a large model you may see it hold at the cursor for
+a moment first. If some mesh can never report bounds, it gives up after about two
+seconds and places the model from whatever it has, rather than leaving it
+hanging.
 
 ## Display toggles
 
