@@ -22,6 +22,7 @@ use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::stacking::ZTier;
 use crate::theme::*;
 
 const NODE_W: f32 = 150.0;
@@ -176,6 +177,7 @@ pub(crate) fn grid_node(commands: &mut Commands, canvas: Entity) -> Entity {
                 ..default()
             },
             GraphGrid { canvas },
+            ZTier(0),
             GlobalZIndex(0),
             bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
@@ -378,6 +380,7 @@ fn graph_node(
             NgPart::Node,
             Interaction::default(),
             GraphNode { canvas },
+            ZTier(5),
             GlobalZIndex(5),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("graph-node"),
@@ -503,6 +506,7 @@ fn make_wire(commands: &mut Commands, viewport: Entity, from: Entity, to: Entity
             GraphWire { from, to, viewport },
             bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
+            ZTier(1),
             GlobalZIndex(1),
             Name::new("cable"),
         ))
@@ -602,17 +606,17 @@ pub(crate) fn graph_pan(
 /// Cursor-anchored zoom: scaling the canvas around its centre, then adjusting the
 /// pan so the canvas point under the cursor stays put. `q` is the cursor offset
 /// from the viewport centre (logical px); `pan' = pan*r + q*(1-r)` keeps it fixed.
+/// The viewport's `cursor_over` is the whole gate. It used to also bail on
+/// `PointerOverOverlay` so an open add-node menu got the wheel instead of the
+/// graph — but `correct_pointer_state` already clears `cursor_over` under the
+/// topmost overlay, so that check was redundant *and* wrong for a graph docked
+/// into the global bottom panel: the panel is an overlay surface itself, so the
+/// resource read true for the graph's own container and it could never zoom.
 pub(crate) fn graph_zoom(
     mut wheel: MessageReader<MouseWheel>,
     mut canvases: Query<(&mut GraphView, &mut UiTransform, &ChildOf), With<GraphPan>>,
     viewports: Query<(&RelativeCursorPosition, &ComputedNode)>,
-    over_overlay: Option<Res<crate::widgets::popup::PointerOverOverlay>>,
 ) {
-    // Don't zoom while an overlay (e.g. the add-node menu) is under the cursor —
-    // that wheel scrolls the overlay, not the graph.
-    if over_overlay.is_some_and(|o| o.0) {
-        return;
-    }
     let mut dy = 0.0;
     for ev in wheel.read() {
         dy += ev.y;

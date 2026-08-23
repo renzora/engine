@@ -21,6 +21,7 @@ use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
 use super::{grid_node, CableMaterial, GraphPan, GraphView};
+use crate::stacking::{ZTier, ZTierSet};
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::*;
 use crate::widgets::text_input::{text_input, EmberTextInput};
@@ -44,6 +45,9 @@ impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops, ngv_highlight_slots, ngv_context, ngv_open_key));
         app.add_systems(Update, (ngv_comment_drag, ngv_comment_resize, ngv_comment_title, ngv_comment_delete, ngv_comment_key));
+        // `ngv_apply_selection` bumps a selected node's tier, so it has to land
+        // before the rebase turns tiers into the depths the renderer sees.
+        app.configure_sets(Update, ZTierSet.after(ngv_apply_selection));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -243,6 +247,7 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
             NgvPreview { viewport },
             bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
+            ZTier(2),
             GlobalZIndex(2),
             Name::new("ngv-preview"),
         ))
@@ -302,6 +307,7 @@ pub fn graph_node_view(
             NgvNode { id: node_id, canvas, viewport },
             Interaction::default(),
             RelativeCursorPosition::default(),
+            ZTier(NODE_Z),
             GlobalZIndex(NODE_Z),
             // Drag-to-move node → the 4-arrow Move cursor.
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
@@ -339,7 +345,9 @@ pub fn graph_node_view(
     for (idx, (pin, label, pin_color)) in inputs.iter().enumerate() {
         let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color);
         commands.entity(node).add_child(r);
-        // Inline value editor for an unconnected input, on its own row.
+        // Inline value editor for an unconnected input, on its own row. Left-aligned
+        // to sit under the pin it belongs to — input pins hug the left edge, so a
+        // right-aligned editor would read as belonging to the outputs opposite it.
         if let Some(editor) = input_editors.get(idx).copied().flatten() {
             let erow = commands
                 .spawn((
@@ -348,7 +356,7 @@ pub fn graph_node_view(
                         padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(0.0), Val::Px(3.0)),
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
-                        justify_content: JustifyContent::FlexEnd,
+                        justify_content: JustifyContent::FlexStart,
                         ..default()
                     },
                     // Capture the pointer (don't Pass) + mark so node-drag/box-select
@@ -362,9 +370,27 @@ pub fn graph_node_view(
             commands.entity(node).add_child(erow);
         }
     }
+    // Output rows go in their own column when there's a preview to place, so the
+    // preview can anchor to the *top of the outputs* rather than to a row count
+    // measured from the node's top. Inline input editors are content-sized (a
+    // scrub field, a colour swatch, a text box), so their height isn't knowable
+    // here — a computed offset would slide under them the moment a node grows one.
+    let out_col = if thumbnail.is_some() {
+        let col = commands
+            .spawn((
+                Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("ngv-node-outputs"),
+            ))
+            .id();
+        commands.entity(node).add_child(col);
+        col
+    } else {
+        node
+    };
     for (pin, label, pin_color) in outputs {
         let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color);
-        commands.entity(node).add_child(r);
+        commands.entity(out_col).add_child(r);
     }
     // Optional preview thumbnail (e.g. texture nodes). Output pins hug the right
     // edge, so the left of the node below the inputs is dead space — drop the
@@ -373,25 +399,24 @@ pub fn graph_node_view(
     // edge (a taller box letterboxes the image, leaving top/bottom gaps). Width
     // is held clear of the right-aligned output labels.
     if let Some(img) = thumbnail {
-        let body_top = HEAD_H + inputs.len() as f32 * ROW_H + 2.0;
         let size = NODE_W - 70.0;
         // The preview is absolute (out of flow), so a node with few output rows
         // wouldn't grow to contain it and the image would spill past the bottom.
         // Reserve the shortfall with an in-flow spacer — zero for tall nodes whose
         // pins already exceed the preview (e.g. the 6-output texture node).
-        let reserve = (body_top + size + 8.0 - (HEAD_H + (inputs.len() + outputs.len()) as f32 * ROW_H)).max(0.0);
+        let reserve = (size + 10.0 - outputs.len() as f32 * ROW_H).max(0.0);
         if reserve > 0.0 {
             let spacer = commands
                 .spawn(Node { width: Val::Percent(100.0), height: Val::Px(reserve), ..default() })
                 .id();
-            commands.entity(node).add_child(spacer);
+            commands.entity(out_col).add_child(spacer);
         }
         let thumb = commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
                     left: Val::Px(8.0),
-                    top: Val::Px(body_top),
+                    top: Val::Px(2.0),
                     width: Val::Px(size),
                     height: Val::Px(size),
                     border: UiRect::all(Val::Px(1.0)),
@@ -404,7 +429,7 @@ pub fn graph_node_view(
                 Name::new("ngv-node-thumb"),
             ))
             .id();
-        commands.entity(node).add_child(thumb);
+        commands.entity(out_col).add_child(thumb);
     }
     node
 }
@@ -507,6 +532,7 @@ pub fn graph_wire_view(commands: &mut Commands, viewport: Entity, from_node: u64
             NgvWire { from_node, from_pin: from_pin.to_string(), to_node, to_pin: to_pin.to_string(), viewport },
             bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
+            ZTier(1),
             GlobalZIndex(1),
             Name::new("ngv-cable"),
         ))
@@ -545,7 +571,8 @@ pub fn graph_comment_view(
             },
             BackgroundColor(tint),
             BorderColor::all(rgb(color)),
-            // Behind nodes (z 5) but above the grid (z 0).
+            // Behind nodes (tier 5) but above the grid (tier 0).
+            ZTier(1),
             GlobalZIndex(1),
             NgvComment { id, canvas, viewport },
             Interaction::default(),
@@ -821,19 +848,22 @@ fn ngv_drag(
 /// in place — so selecting a node never rebuilds it (which would kill an
 /// in-progress drag). Only writes when the selection state actually flips.
 ///
-/// Also raises a selected node's `GlobalZIndex` above its peers so it draws (and
+/// Also raises a selected node's stacking tier above its peers so it draws (and
 /// picks) on top — without this, clicking where two nodes overlap can land on the
-/// one behind. Base nodes sit at `NODE_Z`; the selected one at `NODE_Z + 1`.
-fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Outline, &mut GlobalZIndex)>) {
-    for (n, mut outline, mut z) in &mut nodes {
+/// one behind. Base nodes sit at `NODE_Z`; the selected one at `NODE_Z + 1`. The
+/// tier is what's written, not the `GlobalZIndex`: [`z_tier_rebase`] runs after
+/// this and turns it into a depth that's correct for wherever the graph is
+/// docked (it would otherwise undo the bump on the next frame).
+fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Outline, &mut ZTier)>) {
+    for (n, mut outline, mut tier) in &mut nodes {
         let sel = views.get(n.viewport).map(|v| v.selected.contains(&n.id)).unwrap_or(false);
         let want = if sel { rgb(accent()) } else { Color::NONE };
         if outline.color != want {
             outline.color = want;
         }
-        let want_z = if sel { NODE_Z + 1 } else { NODE_Z };
-        if z.0 != want_z {
-            z.0 = want_z;
+        let want_tier = if sel { NODE_Z + 1 } else { NODE_Z };
+        if tier.0 != want_tier {
+            tier.0 = want_tier;
         }
     }
 }
@@ -1112,6 +1142,7 @@ fn ngv_box(
                 Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
                 BackgroundColor(a.with_alpha(0.12)),
                 BorderColor::all(a),
+                ZTier(10),
                 GlobalZIndex(10),
                 bevy::ui::FocusPolicy::Pass,
                 Pickable::IGNORE,

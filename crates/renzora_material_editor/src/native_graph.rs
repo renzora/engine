@@ -24,7 +24,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_shader::material::codegen;
-use renzora_shader::material::graph::{MaterialGraph, PinDir, PinType, PinValue};
+use renzora_shader::material::graph::{MaterialGraph, PinDir, PinTemplate, PinType, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
@@ -213,8 +213,18 @@ enum ViewOp {
     ZoomIn,
     ZoomOut,
 }
+/// A pan/zoom toolbar button, bound to **its own** graph viewport.
+///
+/// The panel can be open more than once — one copy in the Materials workspace,
+/// another in the global bottom panel — and the two are separate views of the
+/// same material. Fit / Center / zoom are view state, not document state, so a
+/// button has to name the view it belongs to; without `view` this queried every
+/// `MatGraph` at once and one toolbar re-framed both graphs.
 #[derive(Component)]
-struct ViewOpBtn(ViewOp);
+struct ViewOpBtn {
+    op: ViewOp,
+    view: Entity,
+}
 /// Container for the material picker dropdown; `sig` is the last-built tab-set
 /// hash so the dropdown is only rebuilt when the material list changes.
 #[derive(Component)]
@@ -226,7 +236,7 @@ struct MaterialTabsRoot {
 /// the material graph is the active panel. Its buttons are wired by the same
 /// marker-component systems (`apply_click`/`add_node_open`/`view_op_click`),
 /// which query by marker regardless of where the button lives.
-fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> Entity {
     // Content-sized row — the strip host supplies the background and centering.
     let bar = commands
         .spawn((
@@ -243,13 +253,13 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(apply).insert(ApplyBtn);
     let sep = toolbar_divider(commands);
     let fit = icon_label_button(commands, fonts, "arrows-in", "Fit");
-    commands.entity(fit).insert(ViewOpBtn(ViewOp::Fit));
+    commands.entity(fit).insert(ViewOpBtn { op: ViewOp::Fit, view });
     let center = icon_label_button(commands, fonts, "crosshair-simple", "Center");
-    commands.entity(center).insert(ViewOpBtn(ViewOp::Center));
+    commands.entity(center).insert(ViewOpBtn { op: ViewOp::Center, view });
     let zin = icon_button(commands, fonts, "magnifying-glass-plus");
-    commands.entity(zin).insert(ViewOpBtn(ViewOp::ZoomIn));
+    commands.entity(zin).insert(ViewOpBtn { op: ViewOp::ZoomIn, view });
     let zout = icon_button(commands, fonts, "magnifying-glass-minus");
-    commands.entity(zout).insert(ViewOpBtn(ViewOp::ZoomOut));
+    commands.entity(zout).insert(ViewOpBtn { op: ViewOp::ZoomOut, view });
 
     // Material picker — a dropdown of every material in the selected entity's
     // subtree (a model can have many, so a dropdown beats a tab row; it scrolls
@@ -282,15 +292,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
+    let handle = node_graph_view(commands, fonts);
+    commands.entity(handle.viewport).insert(MatGraph { canvas: handle.canvas });
+    let (canvas, viewport) = (handle.canvas, handle.viewport);
+
     // This panel's own toolbar, above the canvas. It used to live in a shared
     // strip below the top bar, which meant a row of controls for *this* graph
     // rendered the same distance from it as from every other panel, and had to
     // keep answering "am I the visible tab?" to know whether to show at all.
-    let toolbar = build_toolbar(commands, fonts);
-
-    let handle = node_graph_view(commands, fonts);
-    commands.entity(handle.viewport).insert(MatGraph { canvas: handle.canvas });
-    let (canvas, viewport) = (handle.canvas, handle.viewport);
+    // Built after the graph so its view ops can name the viewport they drive.
+    let toolbar = build_toolbar(commands, fonts, viewport);
 
     // Comment / group boxes mount behind the nodes (their own canvas layer).
     let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
@@ -352,6 +363,37 @@ struct NodeSnap {
     /// `Some(index)` when this is a switchable texture-sample node — drives the
     /// in-header type-switcher dropdown (index into [`SAMPLE_VARIANTS`]).
     sample_idx: Option<usize>,
+    /// One entry per input pin, index-aligned with `inputs`: the pin template and
+    /// whether it should carry an inline value editor. See [`wants_editor`].
+    in_specs: Vec<(PinTemplate, bool)>,
+}
+
+/// Should this input pin show an inline value editor on the node?
+///
+/// A pin fed by a wire never does — the wire supplies the value, and an editor
+/// there would look editable while doing nothing.
+///
+/// The **output node** is the exception among unconnected pins. It's the sink,
+/// with fifteen-odd pins, and giving every one of them a field buries the wires
+/// in a wall of numbers. Its unset pins deliberately fall through to
+/// `StandardMaterial`'s own defaults (see the node's own description), so an
+/// editor on one would be inventing a value the material never had. It gets an
+/// editor only where an override already exists — typed here earlier, or written
+/// by the model importer, which stores base-colour / metallic / roughness factors
+/// as exactly this kind of override. Those stay visible and adjustable; the rest
+/// stay out of the way. To drive a bare output pin, wire a Constant or Parameter
+/// node into it.
+fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::MaterialNode, pin: &PinTemplate) -> bool {
+    if graph.connections.iter().any(|c| c.to_node == node.id && c.to_pin == pin.name) {
+        return false;
+    }
+    if !crate::pin_editors::has_pin_editor(pin.pin_type) {
+        return false;
+    }
+    if node.node_type.starts_with("output/") {
+        return node.input_values.contains_key(&pin.name);
+    }
+    true
 }
 
 fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
@@ -375,7 +417,12 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             });
             let thumb = tex_path.as_ref().and_then(|p| assets.map(|a| a.load::<Image>(p)));
             let sample_idx = sample_variant_index(&n.node_type);
-            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx }
+            let in_specs: Vec<(PinTemplate, bool)> = pins
+                .iter()
+                .filter(|p| p.direction == PinDir::Input)
+                .map(|p| ((*p).clone(), wants_editor(&s.graph, n, p)))
+                .collect();
+            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs }
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
@@ -384,11 +431,15 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             let mut k = hasher();
             n.id.hash(&mut k);
             let mut h = hasher();
-            // Structure only (NOT position OR selection) so neither dragging nor
-            // selecting rebuilds a node — selection is applied in place by the view.
-            // `sample_idx` is included so switching a sample node's type rebuilds it
-            // (new pins + the dropdown's new selection).
-            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx).hash(&mut h);
+            // Structure only (NOT position, selection, OR pin values) so neither
+            // dragging, selecting, nor scrubbing an inline editor rebuilds a node —
+            // selection is applied in place by the view and the editors are bound
+            // two-way. `sample_idx` is included so switching a sample node's type
+            // rebuilds it (new pins + the dropdown's new selection), and the
+            // per-input editor flags so wiring a pin makes its inline editor
+            // disappear (and unwiring brings it back).
+            let editors: Vec<bool> = n.in_specs.iter().map(|(_, e)| *e).collect();
+            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -397,7 +448,14 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
         build: Box::new(move |c, f, i| {
             let n = &nodes[i];
             let header = n.sample_idx.map(|_| sample_switch_button(c, f, n.id));
-            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &[], header)
+            // Values are edited on the node itself — this is the only place they
+            // live now, so `wants_editor` above decides which pins get one.
+            let editors: Vec<Option<Entity>> = n
+                .in_specs
+                .iter()
+                .map(|(pin, wanted)| wanted.then(|| crate::pin_editors::pin_editor(c, f, n.id, pin)))
+                .collect();
+            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &editors, header)
         }),
     }
 }
@@ -819,19 +877,20 @@ fn pending_first_save(world: &mut World, entity: Entity) {
     world.resource_mut::<MaterialEditorState>().edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
 }
 
-/// Toolbar view ops just set request flags on the shared widget, which acts on them.
+/// Toolbar view ops just set request flags on the widget, which acts on them.
+/// Only on the button's **own** view — with the panel open twice, framing one
+/// graph must leave the other where the user put it.
 fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
-    for (i, op) in &q {
+    for (i, btn) in &q {
         if *i != Interaction::Pressed {
             continue;
         }
-        for mut v in &mut views {
-            match op.0 {
-                ViewOp::Fit => v.fit_request = true,
-                ViewOp::Center => v.center_request = true,
-                ViewOp::ZoomIn => v.zoom_request = Some(1.25),
-                ViewOp::ZoomOut => v.zoom_request = Some(0.8),
-            }
+        let Ok(mut v) = views.get_mut(btn.view) else { continue };
+        match btn.op {
+            ViewOp::Fit => v.fit_request = true,
+            ViewOp::Center => v.center_request = true,
+            ViewOp::ZoomIn => v.zoom_request = Some(1.25),
+            ViewOp::ZoomOut => v.zoom_request = Some(0.8),
         }
     }
 }
@@ -1006,6 +1065,9 @@ fn mat_graph_image_drop(
     // The graph viewport under the cursor + its canvas pan/zoom (mirrored onto the
     // canvas `UiTransform`); map the cursor to a canvas point the same way the
     // widget does for right-click placement.
+    // With the panel open twice the two viewports can overlap (the bottom panel
+    // floats over the dock area); `cursor_over` is corrected for occlusion, so
+    // only the one actually on top claims the drop.
     let Some((rcp, vcn, mg)) = graphs.iter().find(|(rcp, _, _)| rcp.cursor_over) else { return };
     let (pan, zoom) = canvases
         .get(mg.canvas)

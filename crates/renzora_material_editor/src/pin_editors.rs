@@ -1,60 +1,44 @@
-//! Bevy-native (ember) port of the egui `MaterialInspectorPanel`: a Material
-//! section (name + domain) and, for the selected graph node, its editable input
-//! pin values — float/vector scrub fields, colour swatch, checkbox, and text
-//! fields for texture paths / string params. Connected pins show "(connected)".
+//! The editable controls for a material node's input pins — float/vector scrub
+//! fields, colour swatch, checkbox, and text fields for texture paths / string
+//! params — built as standalone entities so the graph can mount them **on the
+//! node itself**, directly under the pin they belong to.
+//!
+//! These used to be laid out as rows in a side panel ("Material"), which showed
+//! them for one selected node at a time. The graph now renders them inline on
+//! every node, so the panel was retired and only this builder survives it; the
+//! rows-and-labels chrome went with it.
 //!
 //! Edits write straight back into `MaterialEditorState.graph` (marking it dirty),
 //! reusing ember's `drag_value`/`bind_2way`, `color_field`, `checkbox` and
 //! `text_input`/`bind_text_input` editing primitives.
 
-use std::hash::{Hash, Hasher};
-
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::SplashState;
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
-use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_with, keyed_list};
+use renzora_ember::reactive::tracked::{bind_2way, bind_with};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
 use renzora_editor_framework::AssetDragPayload;
-use renzora_shader::material::graph::{PinDir, PinTemplate, PinType, PinValue};
-use renzora_shader::material::nodes::node_def;
+use renzora_shader::material::graph::{PinTemplate, PinType, PinValue};
 
 use crate::MaterialEditorState;
 
-/// Phosphor icon name for a material node category (for native ember headers).
-fn category_icon(category: &str) -> &'static str {
-    match category {
-        "Input" => "sign-in",
-        "Parameter" => "sliders-horizontal",
-        "Texture" => "image",
-        "Math" => "calculator",
-        "Vector" => "arrows-out-cardinal",
-        "Color" => "palette",
-        "Procedural" => "waves",
-        "Animation" => "timer",
-        "Utility" => "wrench",
-        "Output" => "sign-out",
-        _ => "circle",
-    }
-}
-
-const LABEL_W: f32 = 88.0;
 const AXES: [(&str, (u8, u8, u8)); 4] =
     [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230)), ("W", (200, 200, 90))];
 const IMG_EXTS: [&str; 10] = ["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
 
-pub struct NativeMaterialInspector;
+/// Carries the systems the texture pin editor needs (asset drop, clear, browse).
+/// The editors themselves are built on demand by the graph, so there's no panel
+/// here to register — just the handlers those fields talk to.
+pub struct MaterialPinEditors;
 
-impl Plugin for NativeMaterialInspector {
+impl Plugin for MaterialPinEditors {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("material_inspector", true, build)
-            .systems(
+        app.add_systems(
             Update,
             (tex_drop, tex_clear, tex_browse, tex_drop_highlight).run_if(in_state(SplashState::Editor)),
         );
@@ -64,162 +48,24 @@ impl Plugin for NativeMaterialInspector {
 fn state<'w>(w: &Rx<'w>) -> Option<&'w MaterialEditorState> {
     w.get_resource::<MaterialEditorState>()
 }
-fn has_selection(w: &Rx) -> bool {
-    state(w).is_some_and(|s| s.selected_node.is_some_and(|id| s.graph.get_node(id).is_some()))
+
+/// Whether [`pin_editor`] produces anything for this pin type. `Sampler` has no
+/// editor (it's a plumbing pin), so callers that place editors on their own —
+/// the on-node inline editors in `native_graph` — can skip it rather than mount
+/// an empty container that still takes a row of node height.
+pub(crate) fn has_pin_editor(pin_type: PinType) -> bool {
+    !matches!(pin_type, PinType::Sampler)
 }
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let root = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
-            Name::new("native-material-inspector"),
-        ))
+/// Build the value editor(s) for an unconnected input pin, bound 2-way to the
+/// pin's stored value (via [`pin_value`]/[`set_pin`], keyed by `node_id`) so
+/// edits write straight into the graph and the field updates in place. Returns a
+/// container entity, sized to its content so the node it mounts on can grow to
+/// fit it.
+pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &PinTemplate) -> Entity {
+    let cell = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), ..default() })
         .id();
-
-    // ── Material section ──
-    let mat_header = section_header(commands, fonts, "Material", "cube");
-    let name_row = prop_row(commands, 0);
-    let name_lbl = prop_label(commands, fonts, "Name");
-    let name_cell = editor_cell(commands);
-    let ti = text_input(commands, &fonts.ui, "Material name", "");
-    bind_text_input(
-        commands,
-        ti,
-        |w| state(w).map(|s| s.graph.name.clone()).unwrap_or_default(),
-        |w, v| {
-            if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {
-                s.graph.name = v;
-                s.is_dirty = true;
-            }
-        },
-    );
-    commands.entity(name_cell).add_child(ti);
-    commands.entity(name_row).add_children(&[name_lbl, name_cell]);
-
-    let domain_row = prop_row(commands, 1);
-    let domain_lbl = prop_label(commands, fonts, "Domain");
-    let domain_cell = editor_cell(commands);
-    let domain_v = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
-    bind_text(commands, domain_v, |w| state(w).map(|s| s.graph.domain.display_name().to_string()).unwrap_or_default());
-    commands.entity(domain_cell).add_child(domain_v);
-    commands.entity(domain_row).add_children(&[domain_lbl, domain_cell]);
-
-    // ── Selected-node section ──
-    let note = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(18.0)), ..default() })
-        .id();
-    let n1 = commands.spawn((Text::new("No node selected"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
-    let n2 = commands.spawn((Text::new("Select a node to edit its properties"), ui_font(&fonts.ui, 10.0), TextColor(rgb(placeholder())))).id();
-    commands.entity(note).add_children(&[n1, n2]);
-    bind_display(commands, note, |w| !has_selection(w));
-
-    let node_list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
-    keyed_list(commands, node_list, node_snapshot);
-
-    commands.entity(root).add_children(&[mat_header, name_row, domain_row, note, node_list]);
-    root
-}
-
-// ── Node section snapshot ───────────────────────────────────────────────────────
-
-#[derive(Clone)]
-enum Item {
-    Header { icon: &'static str, name: String, desc: String },
-    NoProps,
-    Pin { node_id: u64, pin: PinTemplate, connected: bool },
-}
-
-fn node_snapshot(world: &Rx) -> KeyedSnapshot {
-    let Some(s) = state(world) else { return empty() };
-    let Some(sel) = s.selected_node else { return empty() };
-    let Some(node) = s.graph.get_node(sel) else { return empty() };
-
-    let def = node_def(&node.node_type);
-    let name = def.map(|d| d.display_name).unwrap_or("Unknown").to_string();
-    let category = def.map(|d| d.category).unwrap_or("Utility");
-    let desc = def.map(|d| d.description).unwrap_or("").to_string();
-    let icon = category_icon(category);
-    let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-    let input_pins: Vec<PinTemplate> = pins.into_iter().filter(|p| p.direction == PinDir::Input).collect();
-    let connected: Vec<String> =
-        s.graph.connections.iter().filter(|c| c.to_node == sel).map(|c| c.to_pin.clone()).collect();
-
-    let mut data: Vec<Item> = vec![Item::Header { icon, name, desc }];
-    if input_pins.is_empty() {
-        data.push(Item::NoProps);
-    }
-    for p in input_pins {
-        let connected = connected.contains(&p.name);
-        data.push(Item::Pin { node_id: sel, pin: p, connected });
-    }
-
-    let items: Vec<(u64, u64)> = data
-        .iter()
-        .enumerate()
-        .map(|(i, it)| {
-            let mut k = hasher();
-            i.hash(&mut k);
-            let mut h = hasher();
-            match it {
-                Item::Header { name, desc, .. } => (0u8, name, desc).hash(&mut h),
-                Item::NoProps => 1u8.hash(&mut h),
-                // Structure only (NOT the value) so live edits don't rebuild the row.
-                Item::Pin { node_id, pin, connected } => {
-                    (2u8, node_id, &pin.name, pin_disc(&pin.pin_type), connected).hash(&mut h)
-                }
-            }
-            (k.finish(), h.finish())
-        })
-        .collect();
-
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| match &data[i] {
-            Item::Header { icon, name, desc } => node_header(c, f, icon, name, desc),
-            Item::NoProps => {
-                let row = prop_row(c, 0);
-                let lbl = c.spawn((Text::new("No editable properties"), ui_font(&f.ui, 11.0), TextColor(rgb(text_muted())))).id();
-                c.entity(row).add_child(lbl);
-                row
-            }
-            Item::Pin { node_id, pin, connected } => pin_row(c, f, i, *node_id, pin, *connected),
-        }),
-    }
-}
-
-fn node_header(commands: &mut Commands, fonts: &EmberFonts, icon: &str, name: &str, desc: &str) -> Entity {
-    let col = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), ..default() },
-            BackgroundColor(rgb(section_bg())),
-        ))
-        .id();
-    let title = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() })
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, accent(), 12.0);
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())))).id();
-    commands.entity(title).add_children(&[ic, lbl]);
-    commands.entity(col).add_child(title);
-    if !desc.is_empty() {
-        let d = commands.spawn((Text::new(desc.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
-        commands.entity(col).add_child(d);
-    }
-    col
-}
-
-fn pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_id: u64, pin: &PinTemplate, connected: bool) -> Entity {
-    let row = prop_row(commands, idx);
-    let label = prop_label(commands, fonts, &pin.label);
-    let cell = editor_cell(commands);
-
-    if connected {
-        let lbl = commands.spawn((Text::new("(connected)"), ui_font(&fonts.ui, 10.0), TextColor(rgb((100, 150, 255))))).id();
-        commands.entity(cell).add_child(lbl);
-        commands.entity(row).add_children(&[label, cell]);
-        return row;
-    }
-
     let name = pin.name.clone();
     let default = pin.default_value.clone();
 
@@ -316,50 +162,7 @@ fn pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_id: u64
         }
     }
 
-    commands.entity(row).add_children(&[label, cell]);
-    row
-}
-
-// ── Small layout helpers ────────────────────────────────────────────────────────
-
-fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str, icon: &str) -> Entity {
-    let row = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(22.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(6.0)), ..default() },
-            BackgroundColor(rgb(section_bg())),
-        ))
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 11.0);
-    let lbl = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
-    commands.entity(row).add_children(&[ic, lbl]);
-    row
-}
-
-fn prop_row(commands: &mut Commands, idx: usize) -> Entity {
-    commands
-        .spawn((
-            Node { width: Val::Percent(100.0), min_height: Val::Px(24.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() },
-            BackgroundColor(renzora_ember::inspector::inspector_stripe(idx)),
-        ))
-        .id()
-}
-
-fn prop_label(commands: &mut Commands, fonts: &EmberFonts, name: &str) -> Entity {
-    commands
-        .spawn((
-            Text::new(name.to_string()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::no_wrap(),
-            Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
-        ))
-        .id()
-}
-
-fn editor_cell(commands: &mut Commands) -> Entity {
-    commands
-        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(3.0), ..default() })
-        .id()
+    cell
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -555,23 +358,3 @@ fn vec_value(ptype: PinType, a: [f32; 4]) -> PinValue {
     }
 }
 
-fn pin_disc(t: &PinType) -> u8 {
-    match t {
-        PinType::Float => 0,
-        PinType::Vec2 => 1,
-        PinType::Vec3 => 2,
-        PinType::Vec4 => 3,
-        PinType::Color => 4,
-        PinType::Bool => 5,
-        PinType::Texture2D => 6,
-        PinType::Sampler => 7,
-        PinType::String => 8,
-    }
-}
-
-fn empty() -> KeyedSnapshot {
-    KeyedSnapshot { items: Vec::new(), build: Box::new(|c, _, _| c.spawn(Node::default()).id()) }
-}
-fn hasher() -> std::collections::hash_map::DefaultHasher {
-    std::collections::hash_map::DefaultHasher::new()
-}
