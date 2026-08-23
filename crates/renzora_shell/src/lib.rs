@@ -43,27 +43,40 @@ impl Plugin for ShellPlugin {
         // older saved set. (A workspace the user deliberately removed reappearing
         // is the accepted trade-off; the alternative hides new defaults.)
         let defaults = dock::workspace_layouts();
-        let (mut layouts, active, floating, closed_bottoms, saved_bottom) =
-            match dock::load_dock_layouts() {
-                Some((mut saved, active, floating, closed, bottom)) => {
-                    for (name, tree) in defaults {
-                        if !saved.iter().any(|(n, _)| n == &name) {
-                            saved.push((name, tree));
-                        }
+        let restored = dock::load_dock_layouts();
+        // Whether there was a layout file at all. It is the difference between
+        // the two reasons the bottom panel can arrive empty below — nothing
+        // saved yet, versus something saved by a build that kept the panel
+        // inside the workspace trees.
+        let fresh = restored.is_none();
+        let (mut layouts, active, floating, closed_bottoms, saved_bottom) = match restored {
+            Some((mut saved, active, floating, closed, bottom)) => {
+                for (name, tree) in defaults {
+                    if !saved.iter().any(|(n, _)| n == &name) {
+                        saved.push((name, tree));
                     }
-                    let active = active.min(saved.len().saturating_sub(1));
-                    (saved, active, floating, closed, bottom)
                 }
-                None => (defaults, 0, Vec::new(), Default::default(), None),
-            };
-        // The bottom panel is global now: one tree, shared by every workspace,
+                let active = active.min(saved.len().saturating_sub(1));
+                (saved, active, floating, closed, bottom)
+            }
+            None => (defaults, 0, Vec::new(), Default::default(), None),
+        };
+        // The bottom panel is global: one tree, shared by every workspace,
         // living beside the workspace layouts rather than inside one of them.
-        // A layout file that predates it carries a bottom strip in each
-        // workspace tree (and possibly a closed stash per workspace), so fold
-        // them all together once — see `migrate_bottom_dock` for why that fold
-        // deduplicates and why it cannot be skipped without losing panels.
+        // No shipped default puts it in a workspace tree, so there are three
+        // cases and they must not be confused for one another:
+        //
+        // - a layout file that already has one — use it;
+        // - no layout file at all — the shipped default (`default_bottom_dock`);
+        // - a layout file *without* one — written by a build that kept a bottom
+        //   strip in each workspace tree (and possibly a closed stash per
+        //   workspace), so fold them all together once. See `migrate_bottom_dock`
+        //   for why that fold deduplicates and why skipping it loses panels.
+        //   Substituting the default here instead would silently discard the
+        //   panels that user had arranged.
         let bottom_dock = match saved_bottom {
             Some(b) => b,
+            None if fresh => dock::default_bottom_dock(),
             None => dock::migrate_bottom_dock(&mut layouts, &closed_bottoms),
         };
         // The panel's named tab-sets. A layout file that predates them (or one
@@ -1240,11 +1253,11 @@ struct BottomPanelSets {
 /// The name a bottom panel gets when it has never had a second set — the case
 /// for every layout written before sets existed.
 fn default_panel_set_name() -> String {
-    renzora::lang::t_or("shell.bottom_dock.set_default", "Panels")
+    renzora::lang::t_or("shell.bottom_dock.set_default", "Default")
 }
 
-/// `Panels 2`, `Panels 3`, … — the first numbered name the panel isn't already
-/// using, so removing set 2 and adding another gives back `Panels 2` rather
+/// `Default 2`, `Default 3`, … — the first numbered name the panel isn't already
+/// using, so removing set 2 and adding another gives back `Default 2` rather
 /// than climbing forever.
 fn next_panel_set_name(taken: &[(String, DockTree)]) -> String {
     let base = default_panel_set_name();
@@ -1993,10 +2006,17 @@ fn bottom_set_rename_commit(
 /// nothing moves. The three helpers that did the round-trip
 /// (`close_bottom_panel`, `reopen_bottom_panel`, `bottom_snap_collapse`) are
 /// gone with it.
+///
+/// Opening always goes to [`quarter_height`] rather than to the height the panel
+/// last had, for the same reason clicking a collapsed tab does: the remembered
+/// height can be anything, including the near-minimum a drag-to-close leaves
+/// behind, and a shortcut that opens the panel to a sliver reads as broken. The
+/// chevron is the control that reopens at the remembered height.
 fn toggle_bottom_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Option<Res<KeyBindings>>,
     input_focus: Option<Res<renzora::core::InputFocusState>>,
+    wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
 ) {
     let Some(kb) = keybindings else { return };
@@ -2007,6 +2027,23 @@ fn toggle_bottom_panel(
         return;
     }
     bottom.open = !bottom.open;
+    if bottom.open {
+        if let Some(h) = quarter_height(&wraps) {
+            bottom.height = h;
+        }
+    }
+}
+
+/// A quarter of the dock region's height, in logical px, floored at the panel's
+/// minimum — the height the bottom panel opens to when something asks for it to
+/// be *shown* rather than restored.
+///
+/// `None` before the wrapper node has been laid out, which the callers read as
+/// "leave the height alone" rather than falling back to a guess.
+fn quarter_height(wraps: &Query<&ComputedNode, With<DockAreaWrap>>) -> Option<f32> {
+    let wrap = wraps.iter().next()?;
+    let avail = wrap.size().y * wrap.inverse_scale_factor();
+    Some((avail * 0.25).max(dock::BOTTOM_DOCK_MIN_HEIGHT))
 }
 
 /// A live drag of the bottom panel's top edge: `(cursor y at press, panel
@@ -2390,16 +2427,27 @@ struct CollapsedBottomOpenBtn;
 /// was detached — so the strip lists the panel's real contents in every
 /// workspace, and a panel added to the bottom dock while it happens to be
 /// closed shows up here immediately.
+///
+/// **An empty panel still gets a strip**, showing the active set's name in
+/// place of the tabs it has none of. Hiding it was the tidier choice — no bare
+/// bar under a panel with nothing in it — but it made the panel destroy itself:
+/// close the last tab, then collapse, and the strip went with the panel's own
+/// corner controls, leaving nothing on screen to click. Ctrl+Space still
+/// reopened it, but only for someone who knew the binding; everyone else had to
+/// reset the layout to get the panel back. The strip is the one thing that must
+/// survive the panel being empty, because reopening is what makes ember's "Add
+/// Panel" button reachable again.
 #[allow(clippy::too_many_arguments)]
 fn sync_collapsed_bottom_bar(
     bottom: Res<BottomDock>,
     fixed: Res<renzora_ember::dock::FixedDock>,
+    sets: Res<BottomPanelSets>,
     fonts: Option<Res<EmberFonts>>,
     registry: Option<Res<renzora::core::ShellPanelRegistry>>,
     bars: Query<Entity, With<CollapsedBottomBar>>,
     mut nodes: Query<&mut Node>,
     mut commands: Commands,
-    mut built: Local<Option<(Entity, Vec<String>)>>,
+    mut built: Local<Option<(Entity, Vec<String>, String)>>,
 ) {
     let (Some(fonts), Ok(bar)) = (fonts, bars.single()) else {
         return;
@@ -2409,9 +2457,8 @@ fn sync_collapsed_bottom_bar(
     };
     let mut ids = Vec::new();
     fixed.tree.collect_panels(&mut ids);
-    // Nothing to collapse *to* when the panel is open or empty. An empty tree
-    // hides the strip rather than showing a bare chevron over nothing.
-    if bottom.open || ids.is_empty() {
+    // Nothing to collapse *to* only when the panel is already open.
+    if bottom.open {
         if node.display != Display::None {
             node.display = Display::None;
         }
@@ -2420,14 +2467,44 @@ fn sync_collapsed_bottom_bar(
     if node.display != Display::Flex {
         node.display = Display::Flex;
     }
+    // What an empty panel labels itself with, and "" when it has tabs to show
+    // instead. Part of the rebuild key so a rename of the empty set repaints,
+    // without a rename repainting a strip that isn't showing the name.
+    let empty_label = if ids.is_empty() {
+        sets.sets
+            .get(sets.active)
+            .map(|(name, _)| name.clone())
+            .unwrap_or_else(default_panel_set_name)
+    } else {
+        String::new()
+    };
     // Keyed on the bar entity too: a theme/language chrome respawn creates a
     // fresh (childless) bar, which must rebuild even for the same tab set.
-    if built.as_ref() == Some(&(bar, ids.clone())) {
+    if built.as_ref() == Some(&(bar, ids.clone(), empty_label.clone())) {
         return;
     }
-    *built = Some((bar, ids.clone()));
+    *built = Some((bar, ids.clone(), empty_label.clone()));
 
     commands.entity(bar).despawn_related::<Children>();
+    if !empty_label.is_empty() {
+        // Italic would be the usual "nothing here" cue, but the UI font has no
+        // italic face — the muted colour and the em dash carry it instead.
+        let empty = renzora::lang::t_or("shell.bottom_dock.empty_hint", "empty");
+        let hint = commands
+            .spawn((
+                Text::new(format!("{empty_label} — {empty}")),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(placeholder())),
+                bevy::text::TextLayout::no_wrap(),
+                Node {
+                    margin: UiRect::horizontal(Val::Px(9.0)),
+                    ..default()
+                },
+                Name::new("closed-bottom-empty"),
+            ))
+            .id();
+        commands.entity(bar).add_child(hint);
+    }
     for id in ids {
         let (title, icon) = registry
             .as_ref()
@@ -2543,9 +2620,8 @@ fn collapsed_bottom_tab_click(
         // remembered height could be anything — including the near-minimum a
         // drag-to-close leaves behind, which would reopen to a sliver of the
         // panel the click was asking to see.
-        if let Some(wrap) = wraps.iter().next() {
-            let avail = wrap.size().y * wrap.inverse_scale_factor();
-            bottom.height = (avail * 0.25).max(dock::BOTTOM_DOCK_MIN_HEIGHT);
+        if let Some(h) = quarter_height(&wraps) {
+            bottom.height = h;
         }
         fixed.tree.set_active_tab(&tab.0);
         fixed.dirty = true;
@@ -7338,6 +7414,7 @@ fn build_menu_items(
             menu_sep(commands),
             menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), reset_layout_action),
             menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), reset_workspace_action),
+            menu_item(commands, fonts, "rows", &renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks"), reset_global_docks_action),
         ],
         TopMenuKind::Help => vec![
             menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| {
@@ -7385,6 +7462,11 @@ fn build_menu_items(
 /// we pull the pristine tree from [`dock::workspace_layouts`] instead, matched
 /// by the active workspace's name, and overwrite both the live dock and the
 /// stored layout so the reset sticks (and gets persisted).
+///
+/// Deliberately leaves the global bottom panel alone. It is not part of any
+/// workspace ([`dock::scene_layout`]), so resetting a workspace has nothing to
+/// say about it — see [`reset_global_docks_action`], which is the only thing
+/// that does.
 fn reset_layout_action(w: &mut World) {
     let active_name = w
         .get_resource::<ShellLayouts>()
@@ -7392,25 +7474,13 @@ fn reset_layout_action(w: &mut World) {
     let Some(active_name) = active_name else {
         return;
     };
-    let Some(mut default_tree) = dock::workspace_layouts()
+    let Some(default_tree) = dock::workspace_layouts()
         .into_iter()
         .find(|(name, _)| *name == active_name)
         .map(|(_, t)| t)
     else {
         return;
     };
-    // The pristine default still describes the workspace with its bottom strip
-    // in-tree; lift it back out into the global panel rather than restoring a
-    // second copy of console/assets into the workspace.
-    if let Some(mut fixed) = w.get_resource_mut::<renzora_ember::dock::FixedDock>() {
-        let mut bottom_tree = std::mem::replace(
-            &mut fixed.tree,
-            renzora_ember::dock::DockTree::Empty,
-        );
-        dock::absorb_bottom_strip(&mut default_tree, &mut bottom_tree);
-        fixed.tree = bottom_tree;
-        fixed.dirty = true;
-    }
     if let Some(mut layouts) = w.get_resource_mut::<ShellLayouts>() {
         let active = layouts.active;
         if let Some(slot) = layouts.layouts.get_mut(active) {
@@ -7430,22 +7500,14 @@ fn reset_layout_action(w: &mut World) {
 /// default workspace's pristine dock tree. Where [`reset_layout_action`] resets
 /// only the active workspace's layout, this rebuilds the whole set (active back
 /// to the first default), then flags a rebuild so the change persists.
+///
+/// The global bottom panel survives untouched, tab sets and all. It belongs to
+/// the editor, not to a workspace, so someone restoring the shipped Scene /
+/// Scripting / Debug arrangement has not asked to lose the panel set they built
+/// alongside it. [`reset_global_docks_action`] is the separate, explicit way to
+/// reset that.
 fn reset_workspace_action(w: &mut World) {
-    let mut defaults = dock::workspace_layouts();
-    // Same lift-the-strip-out pass as `reset_layout_action`, across every
-    // default tree: the defaults describe workspaces with their bottom strip
-    // in-tree, and the bottom panel is global now.
-    if let Some(mut fixed) = w.get_resource_mut::<renzora_ember::dock::FixedDock>() {
-        let mut bottom_tree = std::mem::replace(
-            &mut fixed.tree,
-            renzora_ember::dock::DockTree::Empty,
-        );
-        for (_, tree) in defaults.iter_mut() {
-            dock::absorb_bottom_strip(tree, &mut bottom_tree);
-        }
-        fixed.tree = bottom_tree;
-        fixed.dirty = true;
-    }
+    let defaults = dock::workspace_layouts();
     let Some(active_tree) = defaults.first().map(|(_, t)| t.clone()) else {
         return;
     };
@@ -7458,6 +7520,38 @@ fn reset_workspace_action(w: &mut World) {
     }
     if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
         d.0 = true;
+    }
+}
+
+/// Reset the global bottom panel: one set, named the default, holding
+/// [`dock::DEFAULT_BOTTOM_TABS`], at the default height, opened.
+///
+/// This is the counterpart to the two workspace resets above — the panel is
+/// global, so neither of them touches it and it needs a way back of its own.
+/// It is also the escape hatch when the panel has been emptied *and* collapsed:
+/// the collapsed strip stands in that state now (see
+/// [`sync_collapsed_bottom_bar`]), but a user who has already lost it on an
+/// older build needs one menu item that puts everything back.
+///
+/// Every set goes, not just the live one. "Reset" that left three
+/// user-made sets in place would be a partial reset in the one direction that
+/// matters: the panels the user is complaining about not seeing may be in any
+/// of them. It opens the panel too, so the reset is visible rather than
+/// something that has happened behind a closed strip.
+fn reset_global_docks_action(w: &mut World) {
+    let tree = dock::default_bottom_tree();
+    if let Some(mut fixed) = w.get_resource_mut::<renzora_ember::dock::FixedDock>() {
+        fixed.tree = tree.clone();
+        fixed.dirty = true;
+    }
+    if let Some(mut sets) = w.get_resource_mut::<BottomPanelSets>() {
+        sets.sets = vec![(default_panel_set_name(), tree)];
+        sets.active = 0;
+    }
+    if let Some(mut bottom) = w.get_resource_mut::<BottomDock>() {
+        bottom.height = dock::BOTTOM_DOCK_HEIGHT;
+        bottom.mode = dock::BottomDockMode::default();
+        bottom.open = true;
     }
 }
 

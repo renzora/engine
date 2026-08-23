@@ -38,20 +38,22 @@ Panel toolbars stay on one row as you drag a panel narrower. Buttons never squas
 
 ## The bottom panel
 
-The full-width strip along the bottom of the editor — Console, Assets, Timeline, Mixer, Shape Library — is the **bottom panel**. It is **global**: one panel shared by every workspace, not a region inside any one of them. Switch from Scene to Blueprints to Animation and it stays exactly as you left it.
+The full-width strip along the bottom of the editor is the **bottom panel**. It ships holding **Assets, Timeline, Console, Mixer and Shape Library**, and it is **global**: one panel shared by every workspace, not a region inside any one of them. Switch from Scene to Blueprints to Animation and it stays exactly as you left it.
 
-That is what makes it the place for panels you want everywhere. Dock the Asset browser here once and it is in every workspace, instead of adding a copy to each.
+That is what makes it the place for panels you want everywhere. The Asset browser is docked here once rather than copied into each workspace — which is also why you won't find it in the Scene or Scripting layouts any more. Two copies of a panel are two independent panels, each with its own state, and a global one you can reach from anywhere is worth more than a per-workspace one you have to keep in sync.
+
+Because it belongs to the editor and not to a workspace, **Reset Layout** and **Reset Workspace** leave it alone entirely. **View → Reset Global Docks** is the one action that restores it: a single set named **Default** holding the five tabs above, opened at its default height. It also discards any extra [panel sets](#panel-sets), so it is a full reset of the panel rather than of the set you happen to be on.
 
 - **It is pinned.** You can't move the panel itself — it has no drag handle, and it always spans the bottom of the window above the status bar. Individual **tabs** still drag in and out freely, so you decide what lives in it.
 - **Resize** by dragging its **top edge**, or the **empty space in its header** to the right of the tabs. Both show a ↕ cursor.
-- **`Ctrl+Space`** toggles it open and closed.
+- **`Ctrl+Space`** toggles it open and closed. Opening this way always gives it **a quarter of the editor's height**, not whatever height it had when you last closed it — so the shortcut is a reliable "show me the panel" rather than something that occasionally reopens a sliver. Use the chevron when you want the height you left it at.
 - **Closed doesn't mean gone**: it collapses to its **header strip**, a tab-bar-height row just above the status bar showing its tabs muted. **Click any tab** to reopen with that tab active, at a quarter of the editor's height.
 - **Chevron toggle** at the right end of the header in both states — **∨** collapses the open panel, **∧** reopens the collapsed strip.
 - **Drag it open**: grab the collapsed strip's background and pull upward — it opens and keeps sizing under your cursor in one gesture. **Drag it closed** the same way: pull the top edge down past its minimum and it snaps shut.
 
 ### Panel sets
 
-The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Panels** to start with — and opens onto all of them:
+The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Default** to start with — and opens onto all of them:
 
 - **Pick a set** to switch to it. The one you're leaving keeps its tabs, its active tab and its splits, so switching back and forth costs nothing.
 - **Reorder** them by dragging a row up or down the list. An accent bar shows where it will land, and the move is applied when you let go — the menu stays open, so putting three sets in the order you want is one trip rather than three. A plain click still picks the set; the drag only starts once you've moved a little, so the two never collide.
@@ -61,7 +63,7 @@ The **dropdown left of the Overlay/Layout button** names the set of tabs the pan
 
 One set per *job* is the point: a debugging set with Console and the profiler, an authoring set with Assets and the Mixer, and one click between them rather than rebuilding the panel tab by tab. Sets belong to the panel, not to a workspace — like the panel itself, they're the same in every workspace — and they persist in `~/.renzora/layout.json`.
 
-**An empty panel stays put.** Close its last tab and the bar remains, with the set dropdown, the mode button and the **Add Panel** button still there. (It used to vanish, taking its own controls with it, and `Ctrl+Space` couldn't bring it back.)
+**An empty panel stays put — open or closed.** Close its last tab and the bar remains, with the set dropdown, the mode button and the **Add Panel** button still there. Collapse it from there and the header strip remains too, showing the set's name and an **empty** marker beside its **∧** chevron, so you can always open it again and add a panel back. (Both used to vanish, taking their own controls with them; `Ctrl+Space` still worked, but nothing on screen said so.)
 
 ### Overlay or Layout
 
@@ -76,7 +78,7 @@ Both modes put the panel in the same place at the same height, and both are resi
 
 Its sets, height, open/closed state and mode persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
 
-> **Upgrading from an earlier version?** Layouts written before the bottom panel became global are migrated the first time you launch: every workspace's bottom strip, and anything left in a closed one, is folded into the single shared panel and de-duplicated. Nothing is lost, but your workspaces will no longer each carry their own copy of the Console.
+> **Upgrading from an earlier version?** Layouts written before the bottom panel became global are migrated the first time you launch: every workspace's bottom strip, and anything left in a closed one, is folded into the single shared panel and de-duplicated. Nothing is lost, but your workspaces will no longer each carry their own copy of the Console. The default tab set above applies to a **fresh** install only — an existing layout is migrated, never replaced, so a panel you had arranged is not swapped out for the shipped one. **Reset Global Docks** is how you ask for that deliberately.
 
 ## Floating windows
 

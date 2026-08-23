@@ -14,10 +14,9 @@ From the screenshot above:
 
 - **Top bar** — on the left, the **menu button** (☰) and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not in the top bar itself — they're the strip directly under it, spanning the window (or, if you'd rather keep that row, a dropdown beside Play — see [Document tabs](/docs/r1-alpha7/editor/scenes#working-with-document-tabs)).
 - **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. Other panels keep their tools the same way, in their own header; the strip under the top bar is your open document tabs.
-- **Left** — your **Scene** tree (everything in the current level), with the **Assets** browser — a file explorer for your project — below it.
-- **Center** — the **3D viewport** where you see and move your world.
-- **Right** — the **Inspector**, which shows the settings of whatever you click.
-- **Bottom** — a collapsible strip under the viewport with the Console, Timeline, Mixer, and Shape Library (`Ctrl+Space` toggles it).
+- **Left** — the **3D viewport** where you see and move your world, taking most of the window.
+- **Right** — one column, the **Scene** tree (everything in the current level) stacked over the **Inspector** (the settings of whatever you click). They're paired because that's the loop: pick an entity above, edit it below.
+- **Bottom** — the [global bottom panel](/docs/r1-alpha7/editor/panels-windows#the-bottom-panel): a collapsible strip with the **Assets** browser, Timeline, Console, Mixer, and Shape Library. `Ctrl+Space` toggles it, opening it to a quarter of the editor's height. It's shared by every workspace rather than belonging to this one.
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 
@@ -42,7 +41,13 @@ The tabs in the center of the top bar are **workspaces**. Each one is a ready-ma
 
 Click a tab to switch — and if you have more workspaces than the ribbon's width allows, the last ones fold into the caret menu at its end. You can drag tabs to reorder them — a blue insertion line shows where the tab will land as you drag — right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
 
-Two reset actions live under the **View** menu: **Reset Layout** restores the *active* workspace's panel arrangement to its built-in default, and **Reset Workspace** rebuilds the *entire* ribbon — discarding any workspaces you added, removed, renamed, or reordered and restoring every default workspace's layout.
+Three reset actions live under the **View** menu:
+
+- **Reset Layout** restores the *active* workspace's panel arrangement to its built-in default.
+- **Reset Workspace** rebuilds the *entire* ribbon — discarding any workspaces you added, removed, renamed, or reordered and restoring every default workspace's layout.
+- **Reset Global Docks** restores the [global bottom panel](/docs/r1-alpha7/editor/panels-windows#the-bottom-panel): one set named **Default**, holding Assets, Timeline, Console, Mixer and Shape Library, opened at its default height.
+
+The first two never touch the bottom panel, and Reset Global Docks never touches a workspace. The bottom panel is global — it belongs to the editor rather than to any workspace — so restoring the shipped Scene arrangement doesn't cost you the panel set you built alongside it, and vice versa.
 
 ## Panels can go anywhere
 

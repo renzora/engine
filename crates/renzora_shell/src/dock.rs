@@ -32,7 +32,8 @@ pub struct ClosedBottom {
 }
 
 /// Fallback reopen ratio when a stash has no recorded one (legacy strips that
-/// never lived below a vertical divider). Matches the default scene layout.
+/// never lived below a vertical divider). The value the default scene layout
+/// used back when it still carried a strip of its own.
 pub const BOTTOM_PANEL_RATIO: f32 = 0.72;
 
 /// Opening height of the global bottom panel, logical px. Roughly the old
@@ -43,25 +44,44 @@ pub const BOTTOM_DOCK_HEIGHT: f32 = 280.0;
 /// tab strip with no room for content. Below this the drag snaps it closed.
 pub const BOTTOM_DOCK_MIN_HEIGHT: f32 = 80.0;
 
-/// Pull `tree`'s bottom strip out and fold its panels into `bottom`, adopting
-/// only ids the bottom panel doesn't already hold.
+/// The tabs the one global bottom panel ships with, in tab order.
 ///
-/// For restoring a pristine default tree: [`workspace_layouts`] still describes
-/// each workspace with its bottom strip in-tree (that is what
-/// [`migrate_bottom_dock`] reads on a first run), so a reset that used those
-/// trees verbatim would put `console`/`assets` in the workspace *and* leave
-/// them in the global bottom panel. Duplicate panels are allowed when a user
-/// makes them deliberately; a reset producing them by itself is just a bug.
-pub fn absorb_bottom_strip(tree: &mut DockTree, bottom: &mut DockTree) {
-    let Some(stash) = take_bottom_strip(tree) else {
-        return;
-    };
-    let mut ids = Vec::new();
-    stash.tree.collect_panels(&mut ids);
-    for id in ids {
-        if !bottom.contains_panel(&id) {
-            bottom.adopt_panel(&id);
-        }
+/// These are the panels that are useful in *every* workspace rather than in one
+/// of them — a browser for the project's files, the animation timeline, the log,
+/// the audio mixer and the shape library. None of them appear in a workspace
+/// tree any more (see [`scene_layout`]): the panel is global, so a second copy
+/// docked inside a workspace would be an independent instance of the same panel
+/// sitting a few pixels above the real one.
+pub const DEFAULT_BOTTOM_TABS: [&str; 5] =
+    ["assets", "timeline", "console", "mixer", "shape_library"];
+
+/// The default global bottom panel: one leaf tabbing [`DEFAULT_BOTTOM_TABS`].
+pub fn default_bottom_tree() -> DockTree {
+    DockTree::tabs(&DEFAULT_BOTTOM_TABS)
+}
+
+/// The global bottom panel a fresh install starts with — the state
+/// "Reset Global Docks" restores, and what is used when there is no
+/// `layout.json` at all.
+///
+/// Distinct from [`migrate_bottom_dock`], which is for the other empty case: a
+/// layout file written *before* the panel was global, whose contents have to be
+/// recovered out of the workspace trees rather than replaced by a default.
+///
+/// `sets` is left empty on purpose, matching the migration: the shell wraps a
+/// set-less layout in its one default set on load, and naming the set here as
+/// well would mean two spellings of the default name.
+pub fn default_bottom_dock() -> BottomDockLayout {
+    BottomDockLayout {
+        tree: default_bottom_tree(),
+        height: BOTTOM_DOCK_HEIGHT,
+        // Closed at first launch, as every previous version was: the panel
+        // covers a quarter of the viewport, and the collapsed strip below the
+        // dock area advertises what is in it.
+        open: false,
+        mode: BottomDockMode::Overlay,
+        sets: Vec::new(),
+        active: 0,
     }
 }
 
@@ -170,11 +190,14 @@ const RETIRED_PANELS: &[&str] = &[
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
 /// recognized by console being tabbed together with another strip panel —
-/// mixer/timeline/shape_library in the shipped default, or
-/// assets/hub_store in layouts saved before those moved out of the strip.
-/// Requiring a companion keeps this from matching a standalone console leaf
-/// (Blueprints) or the console+problems pair (Scripting) — those stay open at
-/// launch, as before.
+/// mixer/timeline/shape_library, or assets/hub_store in layouts saved before
+/// those moved out of the strip. Requiring a companion keeps this from matching
+/// a standalone console leaf (Blueprints) or the console+problems pair
+/// (Scripting) — those stay open at launch, as before.
+///
+/// Only saved layouts reach this now. No shipped default carries a strip any
+/// more (the panel is global), so this is purely about reading files written by
+/// builds that predate that.
 fn is_strip_leaf(tree: &mut DockTree) -> bool {
     const COMPANIONS: [&str; 6] = [
         "mixer",
@@ -488,53 +511,59 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
+/// Blueprints: NodeProperties | BlueprintGraph over Console.
+///
+/// Neither the hierarchy nor the inspector is here. Both are about the *scene* —
+/// which entity is selected and what components it carries — and this workspace
+/// is about a graph, whose selection is a node and whose editor is the Node
+/// Properties panel beside it. They cost the graph two columns to show what
+/// Scene already shows better.
+///
+/// `console` stays, docked under the graph rather than left to the global bottom
+/// panel: a blueprint is debugged by its print output, and watching that scroll
+/// beneath the nodes that produce it is the whole loop. It is a second, separate
+/// console instance — deliberately, so collapsing the global one doesn't take
+/// this one with it.
 fn layout_blueprints() -> DockTree {
     DockTree::horizontal(
+        DockTree::leaf("blueprint_properties"),
         DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("blueprint_properties"),
-            0.5,
-        ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("blueprint_graph"),
-                DockTree::leaf("console"),
-                0.75,
-            ),
-            DockTree::leaf("inspector"),
-            0.78,
+            DockTree::leaf("blueprint_graph"),
+            DockTree::leaf("console"),
+            0.75,
         ),
         0.18,
     )
 }
 
-/// Scripting: Hierarchy/Assets | CodeEditor + Console/Problems | Viewport
+/// Scripting: Hierarchy over Problems | CodeEditor.
 ///
-/// The Scripts, Outline and Variables panels are gone, so the right-hand column
-/// is the viewport alone and the code editor gets the width they were using. The
-/// editor carries its own tab strip for open files and its own toolbar, which is
-/// what those panels were mostly duplicating.
+/// The code editor gets the whole width beside one narrow column. It carries
+/// its own tab strip for open files and its own toolbar, so the Scripts, Outline
+/// and Variables panels were mostly duplicating it and are gone.
+///
+/// No viewport: this workspace is for reading and writing code, and a viewport
+/// sharing the row with the editor left neither one wide enough to be worth
+/// having. Scene is a ribbon click away when you want to see what the script
+/// does, and it already renders the same live scene.
+///
+/// Problems sits under the hierarchy rather than under the editor — the diagnostics
+/// list is short and narrow, so a side column costs the editor nothing, where a
+/// row beneath it cost the editor the height it most needs.
+///
+/// Neither `console` nor `assets` is here: both are [`DEFAULT_BOTTOM_TABS`],
+/// present in every workspace via the global bottom panel. A copy in the
+/// workspace would be a second, independent instance of the same panel sitting
+/// right above it.
 fn layout_scripting() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("assets"),
-            0.4,
+            DockTree::leaf("problems"),
+            0.6,
         ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("code_editor"),
-                // No `console` here: it lives in the global bottom panel, which
-                // is present in every workspace. A copy in the workspace would
-                // be a second, independent instance sitting right above it.
-                DockTree::leaf("problems"),
-                0.72,
-            ),
-            DockTree::leaf("viewport"),
-            0.68,
-        ),
-        0.16,
+        DockTree::leaf("code_editor"),
+        0.18,
     )
 }
 
@@ -628,33 +657,38 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Scene workspace: a full-height left column (hierarchy/scenes over the
-/// asset browser, split 50/50) | a viewport column (viewport over the console
-/// strip) | a full-height right column (inspector/gamepad/history). The strip
-/// sits **under the viewport, not full-width at the root** — both side
-/// columns keep their full height. It is still the collapsible bottom panel:
-/// startup stashes it closed ([`take_bottom_strip`]), Ctrl+Space toggles it,
-/// and its tab bar keeps the collapse chevron wherever the strip is docked,
-/// because the shell registers `console` as a `BottomStripMarkers` panel (see
-/// the shell's `toggle_bottom_panel`).
+/// Scene workspace: the viewport | one right column, hierarchy/scenes stacked
+/// over inspector/gamepad/history.
+///
+/// **One side column, not two.** The hierarchy used to have a full-height
+/// column of its own on the left. Pairing it with the inspector instead follows
+/// how the two are actually used — pick an entity in the tree, edit it in the
+/// panel right below — and hands the width the left column was using to the
+/// viewport, which is the panel that can always spend it. The column is
+/// narrower than the old inspector column for the same reason: neither a name
+/// list nor a stack of labelled fields needs the width, and every pixel it
+/// gives up goes to the viewport.
+///
+/// **No bottom strip, and no `assets`.** Both used to live here: assets as the
+/// lower half of the left column, and console/timeline/mixer/shape_library as a
+/// strip under the viewport. All five are [`DEFAULT_BOTTOM_TABS`] now — the one
+/// global bottom panel, shared by every workspace and owned by none of them.
+/// Leaving a copy in this tree would mean a fresh install opened two `assets`
+/// panels, each with its own independent state, one directly above the other;
+/// and it would put the global panel's contents inside a workspace, where
+/// "Reset Workspace" would be entitled to overwrite them.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        // Left column: hierarchy/scenes tabs over the asset browser.
+        DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
+        // Slightly less than half to the tree: the inspector's content grows
+        // with the selection (a physics body plus a script fills it), while the
+        // hierarchy scrolls at any height.
         DockTree::vertical(
             DockTree::tabs(&["hierarchy", "scenes"]),
-            DockTree::leaf("assets"),
-            0.5,
-        ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
-                DockTree::tabs(&["console", "timeline", "mixer", "shape_library"]),
-                BOTTOM_PANEL_RATIO,
-            ),
             DockTree::tabs(&["inspector", "gamepad", "history"]),
-            0.78,
+            0.45,
         ),
-        0.16,
+        0.84,
     )
 }
 
@@ -774,24 +808,38 @@ mod tests {
         assert!(bottom.tree.is_empty());
     }
 
-    /// Restoring a pristine default must lift its in-tree strip back out rather
-    /// than restoring a second copy beside the global panel's.
+    /// The default global panel is what a fresh install gets and what
+    /// "Reset Global Docks" restores, so its tab set is worth pinning.
     #[test]
-    fn absorb_moves_a_default_strip_into_the_existing_bottom_panel() {
-        let mut tree = DockTree::vertical(
-            DockTree::leaf("viewport"),
-            DockTree::tabs(&["console", "assets"]),
-            0.7,
-        );
-        let mut bottom = DockTree::leaf("console");
-
-        absorb_bottom_strip(&mut tree, &mut bottom);
+    fn the_default_bottom_dock_holds_every_default_tab() {
+        let bottom = default_bottom_dock();
 
         let mut ids = Vec::new();
-        bottom.collect_panels(&mut ids);
-        assert_eq!(ids.iter().filter(|i| *i == "console").count(), 1);
-        assert!(ids.contains(&"assets".to_string()));
-        assert!(!tree.contains_panel("console"));
+        bottom.tree.collect_panels(&mut ids);
+        let want: Vec<String> = DEFAULT_BOTTOM_TABS.iter().map(|t| t.to_string()).collect();
+        assert_eq!(ids, want);
+        // Left for the shell to wrap in its one default set — see
+        // `default_bottom_dock` for why the name isn't spelled twice.
+        assert!(bottom.sets.is_empty());
+    }
+
+    /// No default workspace may carry a panel the global bottom dock owns: a
+    /// fresh install would open two of it, and "Reset Workspace" would then be
+    /// resetting global state. `console` is the one exception — Blueprints docks
+    /// it beside its graph deliberately.
+    #[test]
+    fn no_default_workspace_duplicates_a_global_bottom_tab() {
+        for (name, tree) in workspace_layouts() {
+            for tab in DEFAULT_BOTTOM_TABS {
+                if tab == "console" {
+                    continue;
+                }
+                assert!(
+                    !tree.contains_panel(tab),
+                    "workspace {name} docks {tab}, which lives in the global bottom panel"
+                );
+            }
+        }
     }
 
     /// A layout file written before panel sets existed has no `sets` key at

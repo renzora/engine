@@ -26,7 +26,7 @@ Blueprints and text scripts ([Lua](/docs/r1-alpha7/scripting/lua)) are **separat
 
 Blueprints are edited in the **Blueprints** workspace (one of the editor's ribbon workspaces) using the **Blueprint Editor** panel. It works in two modes:
 
-- **Scene mode** (default) — the editor edits the `BlueprintGraph` **component on the currently selected entity**. The graph follows your selection and is saved as part of the scene.
+- **Scene mode** (default) — the editor edits the `BlueprintGraph` **component on the currently selected entity**. The graph follows your selection and is saved as part of the scene. The Blueprints workspace has no Hierarchy or viewport of its own — it's a graph editor, and those two are what the Scene workspace is for — so pick the entity in **Scene** and then switch to Blueprints. Your selection carries across the ribbon, so the graph is already showing when you arrive.
 - **Asset mode** — a standalone `.blueprint` file is open in a document tab; edits are written back to that file. Open one by double-clicking a `.blueprint` in the Assets browser.
 
 To create a new blueprint, use the Assets browser's **New → Blueprint** entry (it creates `NewBlueprint.blueprint`), or right-click an object in the Hierarchy and choose **Attach ▸ Blueprint** (which also lets you name it, pick its folder, and attach it to that object in one step — see [Scenes & Hierarchy](/docs/r1-alpha7/editor/scenes)). Then either open it in Asset mode or add a `BlueprintGraph` to an entity and author it in Scene mode.
