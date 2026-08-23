@@ -244,7 +244,9 @@ virtual_scroll_versioned(
 
 Scroll position and viewport size are folded into the version automatically, so the window still rebuilds while scrolling and resizing — you only have to account for **data** changes.
 
-Pick the version so it changes when the *rendered row content* changes, and no more often. The material picker hashes `(absolute path, is_current)` per row and deliberately **not** the thumbnail handle: thumbnails stream in asynchronously, so including them would invalidate the list on almost every frame during a load and give back nothing. Converting that one picker from a full rebuild to `virtual_scroll_versioned` took `text_system`'s worst frame from 14.54 ms to 2.58 ms and removed every frame over 25 ms.
+Pick the version so it changes when the *rendered row content* changes, and no more often. The material picker hashes `(absolute path, is_current)` per row and deliberately **not** the thumbnail handle: thumbnails stream in asynchronously, so including them would invalidate the list on almost every frame during a load and give back nothing. Converting that picker from a full rebuild to a versioned snapshot took `text_system`'s worst frame from 14.54 ms to 2.58 ms and removed every frame over 25 ms.
+
+> The material picker itself has since dropped `virtual_scroll` for a plain `keyed_list_tokened` — it caps at twelve tiles and has no scroll area of its own, so there is no window to compute. The versioned token is the part that mattered; virtualization only pays once a list is longer than the screen.
 
 ### Keeping a hidden panel cheap — `PanelScope`
 
@@ -280,10 +282,12 @@ The editor renders three kinds of dock area, all driven by the same [`DockTree`]
 | Area | Tree | Notes |
 |---|---|---|
 | Primary | `Dock::tree` | The active workspace's layout. Swapped wholesale on a workspace switch. |
-| Global bottom panel | `FixedDock::tree` | One tree shared by every workspace, held outside the workspace layouts so a switch can't disturb it. Overlaid on the primary area rather than splitting it. |
+| Global bottom panel | `FixedDock::tree` | One tree shared by every workspace, held outside the workspace layouts so a switch can't disturb it. Occupies the bottom of the dock region either overlaid on the primary area (default) or in-flow beneath it — the user's choice, see below. |
 | Floating window | `DockWindowState::tree` | One per torn-off OS window. |
 
 An area can be declared **non-movable**, which the bottom panel is. That drops the whole-leaf drag grip from its tab bars — the leaf is pinned, though individual tabs still drag in and out — and marks the tab bar's filler [`FixedAreaHeader`], which the consumer can use as a drag surface of its own (the shell resizes the bottom panel from it).
+
+The bottom panel's **Overlay / Layout** mode (`BottomDockMode`, persisted in `layout.json`) is a property of the shell's chrome, not of the dock model: both modes keep the panel occupying the bottom `height` px of the dock wrapper, and only the panel node changes — `PositionType::Absolute` pinned to the wrapper's bottom edge, or `Relative` as an in-flow row of the wrapper's column, where the dock area's `flex_grow` hands it the remainder. That is why the absolutely-placed resize band and corner buttons need no mode-specific arithmetic, and why nothing about the tree, the reconciler or `panel_active` cares which mode is on.
 
 > A dock area overlaid on another needs a `GlobalZIndex` tier, not merely a later sibling. `GlobalZIndex` lifts a node into the **root** stacking order, and the node-graph widget puts its canvas and nodes on one — so a graph panel will paint straight over an untiered overlay regardless of sibling order. The bottom panel sits at 100: above panel content, below the dock's drop overlay (200), modals and dropdowns (500), menus (700) and drag ghosts (1000).
 

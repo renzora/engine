@@ -332,6 +332,20 @@ pub struct MaterialGraph {
     /// loadable.
     #[serde(default)]
     pub comments: Vec<renzora::GraphComment>,
+    /// Texture slots that are wired up but **not applied** — the material
+    /// component's per-channel mute, keyed by `TextureSlot::key` and holding the
+    /// sampler node the mute took off the pin.
+    ///
+    /// Muting *disconnects* rather than setting a flag codegen has to read: an
+    /// output pin with nothing wired into it already compiles to that channel's
+    /// default, so the shader side needs to know nothing about any of this. The
+    /// map exists purely so the editor can still show the texture on a muted row
+    /// and put the wire back where it found it.
+    ///
+    /// `#[serde(default)]` for the usual reason — older `.material` files omit
+    /// the field.
+    #[serde(default)]
+    pub muted_slots: HashMap<String, NodeId>,
 }
 
 impl Default for MaterialGraph {
@@ -352,6 +366,7 @@ impl MaterialGraph {
             double_sided: false,
             wgsl_path: None,
             comments: Vec::new(),
+            muted_slots: HashMap::new(),
         };
         // Always start with the output node
         graph.add_output_node(domain);

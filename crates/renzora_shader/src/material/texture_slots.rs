@@ -120,6 +120,11 @@ fn slot_index(slot: &TextureSlot) -> usize {
 /// or a subgraph is a graph the slots can't represent, and reporting the texture
 /// found further upstream would invite a drop that silently rewires it.
 pub fn slot_texture(graph: &MaterialGraph, slot: &TextureSlot) -> Option<String> {
+    // A muted slot still *has* a texture — it's parked, not gone — so the row
+    // keeps its name and thumbnail and the mute reads as reversible.
+    if let Some(node) = muted_sampler(graph, slot) {
+        return node_texture(node);
+    }
     let output_id = graph.output_node()?.id;
     let conn = graph.connection_to(output_id, slot.pin)?;
     let node = graph.get_node(conn.from_node)?;
@@ -129,6 +134,62 @@ pub fn slot_texture(graph: &MaterialGraph, slot: &TextureSlot) -> Option<String>
     node_texture(node)
 }
 
+/// Is `slot` muted — wired to a texture, but not applied to the mesh?
+pub fn slot_muted(graph: &MaterialGraph, slot: &TextureSlot) -> bool {
+    muted_sampler(graph, slot).is_some()
+}
+
+/// Apply or un-apply `slot` without touching its texture. Returns `false` when
+/// there was nothing to do — an empty slot, or one already in the asked-for
+/// state.
+///
+/// This is the non-destructive counterpart to [`clear_slot`]: it takes the wire
+/// down (so the channel falls back to its default and the mesh renders without
+/// it) while keeping the sampler node, its texture and its position, so turning
+/// the channel back on is exactly the wire going back.
+pub fn set_slot_muted(graph: &mut MaterialGraph, slot: &TextureSlot, muted: bool) -> bool {
+    let Some(output_id) = graph.output_node().map(|n| n.id) else {
+        return false;
+    };
+    if muted {
+        if graph.muted_slots.contains_key(slot.key) {
+            return false;
+        }
+        let Some(source) = graph.connection_to(output_id, slot.pin).map(|c| c.from_node) else {
+            return false;
+        };
+        disconnect_input(graph, output_id, slot.pin);
+        // The alpha wire is base color's passenger (see `set_slot_texture`), so
+        // it mutes with it — otherwise muting base color would leave a cutout
+        // texture still punching holes in a mesh that no longer shows it.
+        if slot.key == "base_color"
+            && graph
+                .connection_to(output_id, "alpha")
+                .is_some_and(|c| c.from_node == source)
+        {
+            disconnect_input(graph, output_id, "alpha");
+        }
+        // Deliberately no `prune_orphan_sampler`: the node driving nothing is
+        // the whole point, and it's what un-muting reconnects.
+        graph.muted_slots.insert(slot.key.to_string(), source);
+        true
+    } else {
+        let Some(source) = graph.muted_slots.remove(slot.key) else {
+            return false;
+        };
+        // The node can be gone if the graph was edited by hand in the meantime;
+        // dropping the mute entry is then the whole of the un-mute.
+        if graph.get_node(source).is_none() {
+            return true;
+        }
+        graph.connect(source, slot.channel, output_id, slot.pin);
+        if slot.key == "base_color" && graph.connection_to(output_id, "alpha").is_none() {
+            graph.connect(source, "a", output_id, "alpha");
+        }
+        true
+    }
+}
+
 /// Point `slot` at `texture` (an asset-relative path), creating or reusing the
 /// sampler node as needed. Returns `false` only when the graph has no output
 /// node to wire into.
@@ -136,7 +197,14 @@ pub fn set_slot_texture(graph: &mut MaterialGraph, slot: &TextureSlot, texture: 
     let Some(output_id) = graph.output_node().map(|n| n.id) else {
         return false;
     };
-    let previous = graph.connection_to(output_id, slot.pin).map(|c| c.from_node);
+    // Dropping a texture on a muted slot un-mutes it. Watching the mesh not
+    // change after a drop is the kind of thing people file bugs about, and a
+    // deliberate drop is a clearer statement of intent than a mute set earlier.
+    let was_muted = graph.muted_slots.remove(slot.key);
+    let previous = graph
+        .connection_to(output_id, slot.pin)
+        .map(|c| c.from_node)
+        .or(was_muted);
     // Does the pin's current source also drive base color's alpha? Answered
     // before any rewiring, because the answer decides whether alpha follows the
     // new texture or belongs to a separate opacity map that must be left alone.
@@ -182,6 +250,12 @@ pub fn clear_slot(graph: &mut MaterialGraph, slot: &TextureSlot) -> bool {
     let Some(output_id) = graph.output_node().map(|n| n.id) else {
         return false;
     };
+    // A muted slot has no wire to cut — its sampler is parked in `muted_slots`,
+    // and clearing means letting go of that too.
+    if let Some(parked) = graph.muted_slots.remove(slot.key) {
+        prune_orphan_sampler(graph, parked);
+        return true;
+    }
     let Some(previous) = graph.connection_to(output_id, slot.pin).map(|c| c.from_node) else {
         return false;
     };
@@ -292,6 +366,12 @@ fn tokenize(stem: &str) -> Vec<String> {
 
 // ── Internals ───────────────────────────────────────────────────────────────
 
+/// The sampler a muted slot is parked on, if the mute is live and the node is
+/// still in the graph.
+fn muted_sampler<'g>(graph: &'g MaterialGraph, slot: &TextureSlot) -> Option<&'g MaterialNode> {
+    graph.get_node(*graph.muted_slots.get(slot.key)?)
+}
+
 /// The texture path set on a sampler node, if any.
 fn node_texture(node: &MaterialNode) -> Option<String> {
     match node.input_values.get("texture")? {
@@ -375,6 +455,12 @@ fn prune_orphan_sampler(graph: &mut MaterialGraph, node_id: NodeId) {
     if graph.connections.iter().any(|c| c.from_node == node_id) {
         return;
     }
+    // A muted slot's sampler drives nothing *by design*. Without this, clearing
+    // one channel of a packed ORM map would delete the node the other two are
+    // muted onto, and un-muting them would come back empty.
+    if graph.muted_slots.values().any(|n| *n == node_id) {
+        return;
+    }
     graph.remove_node(node_id);
 }
 
@@ -400,6 +486,100 @@ mod tests {
         assert_eq!(
             g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
             1
+        );
+    }
+
+    #[test]
+    fn muting_unwires_the_pin_but_keeps_the_texture() {
+        let mut g = graph();
+        let normal = slot("normal").unwrap();
+        set_slot_texture(&mut g, normal, "tex/rock_n.png");
+        let out = g.output_node().unwrap().id;
+
+        assert!(set_slot_muted(&mut g, normal, true));
+        // The mesh side: nothing drives the pin, so codegen falls back to the
+        // channel's default without knowing the mute exists.
+        assert!(g.connection_to(out, "normal").is_none());
+        // The editor side: the row still shows the texture, and the sampler that
+        // carries it is still there to be reconnected.
+        assert!(slot_muted(&g, normal));
+        assert_eq!(slot_texture(&g, normal).as_deref(), Some("tex/rock_n.png"));
+        assert_eq!(
+            g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
+            1
+        );
+
+        assert!(set_slot_muted(&mut g, normal, false));
+        assert!(!slot_muted(&g, normal));
+        assert!(g.connection_to(out, "normal").is_some());
+        assert_eq!(slot_texture(&g, normal).as_deref(), Some("tex/rock_n.png"));
+    }
+
+    #[test]
+    fn muting_base_color_takes_its_alpha_wire_with_it() {
+        let mut g = graph();
+        let bc = slot("base_color").unwrap();
+        set_slot_texture(&mut g, bc, "tex/leaf.png");
+        let out = g.output_node().unwrap().id;
+        assert!(g.connection_to(out, "alpha").is_some());
+
+        set_slot_muted(&mut g, bc, true);
+        // Or a cutout texture would keep punching holes in a mesh that no longer
+        // shows the texture doing it.
+        assert!(g.connection_to(out, "alpha").is_none());
+        set_slot_muted(&mut g, bc, false);
+        assert!(g.connection_to(out, "alpha").is_some());
+    }
+
+    #[test]
+    fn a_muted_sampler_survives_a_sibling_slot_being_cleared() {
+        // One packed ORM map drives three slots. Mute two, clear the third: the
+        // node must not be pruned out from under the mutes.
+        let mut g = graph();
+        let (ao, rough, metal) = (
+            slot("ao").unwrap(),
+            slot("roughness").unwrap(),
+            slot("metallic").unwrap(),
+        );
+        for s in [ao, rough, metal] {
+            set_slot_texture(&mut g, s, "tex/rock_orm.png");
+        }
+        set_slot_muted(&mut g, rough, true);
+        set_slot_muted(&mut g, metal, true);
+        assert!(clear_slot(&mut g, ao));
+
+        assert_eq!(slot_texture(&g, rough).as_deref(), Some("tex/rock_orm.png"));
+        set_slot_muted(&mut g, rough, false);
+        assert_eq!(slot_texture(&g, rough).as_deref(), Some("tex/rock_orm.png"));
+    }
+
+    #[test]
+    fn dropping_a_texture_on_a_muted_slot_un_mutes_it() {
+        let mut g = graph();
+        let normal = slot("normal").unwrap();
+        set_slot_texture(&mut g, normal, "tex/rock_n.png");
+        set_slot_muted(&mut g, normal, true);
+
+        set_slot_texture(&mut g, normal, "tex/brick_n.png");
+        let out = g.output_node().unwrap().id;
+        assert!(!slot_muted(&g, normal));
+        assert!(g.connection_to(out, "normal").is_some());
+        assert_eq!(slot_texture(&g, normal).as_deref(), Some("tex/brick_n.png"));
+    }
+
+    #[test]
+    fn clearing_a_muted_slot_drops_the_texture_for_good() {
+        let mut g = graph();
+        let normal = slot("normal").unwrap();
+        set_slot_texture(&mut g, normal, "tex/rock_n.png");
+        set_slot_muted(&mut g, normal, true);
+
+        assert!(clear_slot(&mut g, normal));
+        assert!(!slot_muted(&g, normal));
+        assert_eq!(slot_texture(&g, normal), None);
+        assert_eq!(
+            g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
+            0
         );
     }
 

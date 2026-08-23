@@ -2,9 +2,12 @@
 //!
 //! Three stacked pieces, in the order an artist reaches for them:
 //!
-//! 1. **The material slot** — which `.material` the entity uses: thumbnail,
-//!    name picker, new / browse / open-in-editor / clear, and a whole-row drop
-//!    target.
+//! 1. **The material slot** — which `.material` the entity uses: a card holding
+//!    a preview square, a two-line picker field (name over folder) that opens a
+//!    grid of material previews, an action row, and a whole-card drop target.
+//!    The field *is* the picker, which is why there's no separate "browse"
+//!    button any more; and the picker shows pictures rather than a text list,
+//!    because a material is a thing you recognise by looking at it.
 //! 2. **Texture slots** — one row per PBR channel (base color, normal,
 //!    roughness, metallic, AO, emissive). Dropping an image on a row wires it
 //!    into the material graph: the sampler node is created, connected to the
@@ -26,13 +29,13 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, IoTaskPool, Task};
 use bevy::ui::widget::ImageNode;
-use bevy::ui::RelativeCursorPosition;
+use bevy::ui::{FlexWrap, RelativeCursorPosition};
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{
@@ -40,16 +43,16 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_row, inspector_stripe};
-use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_2way, bind_with};
-use renzora_ember::virtual_scroll::{virtual_scroll_versioned, VirtualMetrics};
+use renzora_ember::reactive::tracked::{bind_2way, bind_with, keyed_list_tokened};
 use renzora_ember::theme::{
-    accent, border, card_bg, faint_bg, hover_bg, placeholder, popup_bg, rgb, text_muted,
+    accent, border, faint_bg, hover_bg, placeholder, popup_bg, rgb, section_bg, text_muted,
     text_primary,
 };
 use renzora_ember::widgets::{
-    checkbox, drag_value, scroll_area, text_input, HoverTint, HoverTooltip, Popup,
+    button, checkbox, drag_value, folder_picker, overlay_sized, text_input, EmberForm,
+    EmberTextInput, FolderPick, HoverTint, HoverTooltip,
 };
 
 use renzora_shader::material::codegen::{MaterialParam, ParamKind};
@@ -84,12 +87,16 @@ impl Plugin for NativeMaterialRef {
                 mat_slot_drop_highlight,
                 mat_edit_click,
                 mat_create_click,
+                mat_create_focus,
+                mat_create_overlay_buttons,
                 mat_clear_click,
+                mat_picker_toggle,
                 mat_picker_select,
                 mat_revert_click,
                 tex_slot_drop,
                 tex_slot_highlight,
                 tex_slot_browse,
+                tex_slot_mute,
                 tex_slot_clear,
             )
                 .run_if(in_state(SplashState::Editor)),
@@ -234,12 +241,27 @@ struct MatCreateBtn {
 struct MatClearBtn {
     entity: Entity,
 }
-/// Marks a picker popup panel. Purely a marker now — the rows are a keyed list
-/// that captures its inspected entity directly, so nothing needs to look it up
-/// off the panel. Kept because `refresh_material_index` gates on its presence
-/// (no popup built → never walk the project).
+/// Marks a picker tray. Purely a marker — the tiles are a keyed list that
+/// captures its inspected entity directly, so nothing needs to look it up off
+/// the tray. Kept because `refresh_material_index` gates on its presence (no
+/// tray built → never walk the project) and [`close_pickers`] finds trays by it.
 #[derive(Component)]
 struct MatPickerPanel;
+
+/// The field that slides its picker tray open, and the two things it drives.
+///
+/// Deliberately not ember's [`Popup`](renzora_ember::widgets::Popup): that's for
+/// panels that *float*, and its positioning system pins one with `top: 100%`,
+/// which on an in-flow node offsets it by its own height rather than anchoring
+/// it under the trigger.
+#[derive(Component)]
+struct MatPickerToggle {
+    /// The inspected entity, so opening the tray can hide *its* texture rows and
+    /// not another drawer's.
+    entity: Entity,
+    panel: Entity,
+    caret: Entity,
+}
 #[derive(Component)]
 struct MatPickerItem {
     entity: Entity,
@@ -387,6 +409,9 @@ struct SlotState {
     slot: &'static TextureSlot,
     /// Asset-relative texture path currently wired into the slot.
     texture: Option<String>,
+    /// Wired, but not applied to the mesh — see
+    /// [`renzora_shader::material::texture_slots::set_slot_muted`].
+    muted: bool,
     /// Preview handle for `texture`. Held by the row's `ImageNode`, so the image
     /// stays loaded for as long as the row is on screen.
     thumb: Option<Handle<Image>>,
@@ -394,13 +419,16 @@ struct SlotState {
 
 /// Read every slot's current texture off the cached master graph.
 ///
-/// Returns the full set of (possibly empty) slots for a mesh with no material
-/// at all — those empty rows are the affordance, and dropping on one creates
-/// the material. Returns nothing only for a derived instance, whose graph
-/// belongs to the master and must not be edited from here.
+/// Returns nothing in two cases. A mesh with **no material at all**: six empty
+/// channel rows are six things you can't meaningfully do yet, and they buried
+/// the one thing you can — the picker and the New-material button at the top.
+/// (Dropping images still works: the material *slot* routes a whole texture set
+/// by filename and mints a material to hold it, so the affordance those rows
+/// used to be is still there, one target up.) And a **derived instance**, whose
+/// graph belongs to the master and must not be edited from here.
 fn slot_states(world: &World) -> Vec<SlotState> {
     let Some(cache) = world.get_resource::<MatCache>() else { return Vec::new() };
-    if cache.instance.is_some() {
+    if cache.instance.is_some() || cache.path.is_empty() {
         return Vec::new();
     }
     let graph = cache.graph.as_ref();
@@ -409,10 +437,11 @@ fn slot_states(world: &World) -> Vec<SlotState> {
         .iter()
         .map(|slot| {
             let texture = graph.and_then(|g| texture_slots::slot_texture(g, slot));
+            let muted = graph.is_some_and(|g| texture_slots::slot_muted(g, slot));
             let thumb = texture
                 .as_ref()
                 .and_then(|p| assets.map(|a| a.load::<Image>(p.clone())));
-            SlotState { slot, texture, thumb }
+            SlotState { slot, texture, muted, thumb }
         })
         .collect()
 }
@@ -432,11 +461,19 @@ fn build_body(
     children.push(build_slot(commands, fonts, entity, path));
 
     // ── Texture slots ──
-    if !slots.is_empty() {
-        children.push(section_header(commands, fonts, "Textures", "Drop images here — they're wired into the material graph"));
-        for state in slots {
-            children.push(texture_slot_row(commands, fonts, entity, state));
+    //
+    // No section header: each row already names its channel, so a heading plus a
+    // sentence of instructions above six self-explanatory rows was two lines of
+    // chrome saying what the rows say themselves.
+    for (i, state) in slots.iter().enumerate() {
+        let row = texture_slot_row(commands, fonts, entity, state);
+        if i == 0 {
+            // The only spacing the block needs, now that nothing announces it.
+            commands.entity(row).entry::<Node>().and_modify(|mut n| {
+                n.margin.top = Val::Px(8.0);
+            });
         }
+        children.push(row);
     }
 
     // ── Overrides ──
@@ -480,26 +517,127 @@ fn section_header(commands: &mut Commands, fonts: &EmberFonts, title: &str, hint
     wrap
 }
 
-// ── Slot row ─────────────────────────────────────────────────────────────────
+// ── Material slot ────────────────────────────────────────────────────────────
+
+/// Side of the slot's preview square. The field is given the same height, so the
+/// two line up as one band with the action row tucked underneath.
+const SLOT_PREVIEW: f32 = 40.0;
+
+/// A material preview square: the rendered thumbnail when one exists, a muted
+/// sphere glyph when it doesn't. Returns `(square, fallback_glyph)`; feed both
+/// to [`bind_preview`].
+///
+/// The fallback earns its keep. A `.material` thumbnail is a separate one-shot
+/// render that may not have landed yet — and never lands for a material that
+/// fails to compile — and an `ImageNode` holding a default handle draws
+/// *nothing*, so the old slot was a flat dark hole for most of the time it was
+/// on screen. A framed square with a glyph in it reads as "preview pending"
+/// rather than "broken", which matters far more now that the picker is a grid
+/// of these.
+fn preview_square(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    size: f32,
+    radius: f32,
+    glyph_size: f32,
+) -> (Entity, Entity) {
+    let square = commands
+        .spawn((
+            Node {
+                width: Val::Px(size),
+                height: Val::Px(size),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(radius)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(faint_bg())),
+            BorderColor::all(rgb(border()).with_alpha(0.55)),
+            ImageNode::new(Handle::default()),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("material-preview"),
+        ))
+        .id();
+    let glyph = icon_text(commands, &fonts.phosphor, "sphere", placeholder(), glyph_size);
+    commands.entity(glyph).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(square).add_child(glyph);
+    (square, glyph)
+}
+
+/// Point a [`preview_square`] at whatever thumbnail `thumb` resolves to, hiding
+/// the fallback glyph exactly while an image is bound (otherwise the glyph would
+/// keep drawing on top of the render once it arrives).
+fn bind_preview<F>(commands: &mut Commands, square: Entity, glyph: Entity, thumb: F)
+where
+    F: for<'w> Fn(&Rx<'w>) -> Option<Handle<Image>> + Send + Sync + 'static,
+{
+    bind_with(commands, square, thumb, move |w, e, h: &Option<Handle<Image>>| {
+        if let Some(mut img) = w.get_mut::<ImageNode>(e) {
+            img.image = h.clone().unwrap_or_default();
+        }
+        if let Some(mut n) = w.get_mut::<Node>(glyph) {
+            let want = if h.is_some() { Display::None } else { Display::Flex };
+            if n.display != want {
+                n.display = want;
+            }
+        }
+    });
+}
 
 fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, path: &str) -> Entity {
     let has_mat = !path.is_empty();
-    let label = if has_mat {
+    let name = if has_mat {
         std::path::Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or(path).to_string()
     } else {
         "No material".to_string()
     };
-    let folder = std::path::Path::new(path)
-        .parent()
-        .and_then(|p| p.to_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    // Second line of the field. For a bound material it's where the file lives;
+    // for an empty slot it's the instruction, because telling you what to do
+    // with it is the only job an empty slot has.
+    let sub = if has_mat {
+        std::path::Path::new(path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "project root".to_string())
+    } else {
+        "Click to pick, or drop a .material".to_string()
+    };
 
-    // Whole-row drop zone (material + image extensions).
+    // The slot is a column: the header (preview + field + actions) with the
+    // picker tray under it. The tray is **in flow**, so opening it pushes the
+    // texture slots down rather than floating over them — the drawer stays one
+    // readable column instead of growing a second layer.
+    let slot = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .id();
+
+    // The header, and the drop zone (material + image extensions). No card fill
+    // behind it: the field and the action chips carry their own surfaces, and a
+    // filled box around them was a third nested rectangle saying nothing. The
+    // transparent border stays because `mat_slot_drop_highlight` accents it
+    // while a compatible file is dragged over.
     let row = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(8.0), align_items: AlignItems::Center, padding: UiRect::all(Val::Px(6.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
-            BackgroundColor(rgb(card_bg())),
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(8.0),
+                align_items: AlignItems::FlexStart,
+                padding: UiRect::all(Val::Px(2.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
             RelativeCursorPosition::default(),
             MatDropZone { entity },
@@ -507,172 +645,185 @@ fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, path:
         ))
         .id();
 
-    // Thumbnail (ImageNode bound to the registry handle).
-    let thumb = commands
-        .spawn((
-            Node { width: Val::Px(46.0), height: Val::Px(46.0), flex_shrink: 0.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-            BackgroundColor(rgb(faint_bg())),
-            ImageNode::new(Handle::default()),
-            Name::new("material-thumb"),
-        ))
-        .id();
-    bind_with(
-        commands,
-        thumb,
-        move |w| {
-            let path = material_path(&Rx::new(w.untracked()), entity);
-            material_abs(&Rx::new(w.untracked()), &path).and_then(|abs| w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs)))
-        },
-        |w, e, h: &Option<Handle<Image>>| {
-            if let Some(mut img) = w.get_mut::<ImageNode>(e) {
-                img.image = h.clone().unwrap_or_default();
-            }
-        },
-    );
+    let (thumb, thumb_glyph) = preview_square(commands, fonts, SLOT_PREVIEW, 5.0, 17.0);
+    bind_preview(commands, thumb, thumb_glyph, move |w| {
+        let path = material_path(&Rx::new(w.untracked()), entity);
+        material_abs(&Rx::new(w.untracked()), &path)
+            .and_then(|abs| w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs)))
+    });
 
-    // Right column: name picker (Popup trigger) + action icons.
+    // Right column: the picker field over the action row.
     let col = commands
-        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() })
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), ..default() })
         .id();
 
-    // Picker popup panel (filled by rebuild_picker), anchored under the name row.
-    let panel = commands
+    let panel = build_picker_panel(commands, fonts, entity);
+
+    // The field: name over folder, caret on the right, and the whole thing is
+    // the picker trigger. It replaces a one-line button, a loose folder caption
+    // and a "browse" icon that opened this same list — three pieces of chrome
+    // all answering "which material is this".
+    let field = commands
         .spawn((
             Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                width: Val::Px(260.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(4.0)),
-                row_gap: Val::Px(3.0),
+                width: Val::Percent(100.0),
+                height: Val::Px(SLOT_PREVIEW),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
-            BackgroundColor(rgb((24, 24, 30))),
-            BorderColor::all(rgb((70, 70, 82))),
-            GlobalZIndex(1000),
-            MatPickerPanel,
-            Name::new("material-picker-popup"),
-        ))
-        .id();
-
-    // Popup shell, built ONCE here rather than refilled per keystroke. The rows
-    // are registered on the inner `list` node, so the search box below is never
-    // despawned and keeps focus + in-progress text across every filter change.
-    let search = text_input(commands, &fonts.ui, "Search materials…", "");
-    bind_search(commands, search);
-    let list = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            ..default()
-        })
-        .id();
-    register_picker_rows(commands, list, entity);
-    let scroll = scroll_area(commands, list, PICKER_VIEWPORT_H);
-    commands.entity(panel).add_children(&[search, scroll]);
-
-    // Name button = popup trigger. The caret is its own icon rather than a
-    // glyph appended to the label, so a long material name truncates against
-    // the button edge instead of pushing the affordance out of view.
-    let name_btn = commands
-        .spawn((
-            // No `overflow: clip` here: the picker popup is a child of this
-            // button (it anchors to it), and clipping the button would clip the
-            // popup away entirely. The label clips inside its own wrapper.
-            Node { position_type: PositionType::Relative, width: Val::Percent(100.0), height: Val::Px(24.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(7.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             HoverTint::solid(rgb(popup_bg()), rgb(hover_bg()), rgb(hover_bg())),
             Interaction::default(),
-            Popup::new(panel),
-            HoverTooltip::new("Pick a material"),
+            bevy::ui::FocusPolicy::Block,
+            // No tooltip: a field with a caret on it already reads as a picker,
+            // and this one is big enough to hover by accident on the way to the
+            // action chips under it.
             Name::new("material-name"),
+        ))
+        .id();
+    // A clip wrapper, because `Overflow::clip` clips a node's *children*: on the
+    // text nodes themselves a long material name would spill over the caret.
+    let text_col = commands
+        .spawn((
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: Val::Px(1.0), overflow: Overflow::clip(), ..default() },
+            bevy::ui::FocusPolicy::Pass,
         ))
         .id();
     let name_text = commands
         .spawn((
-            Text::new(label),
-            ui_font(&fonts.ui, 11.0),
+            Text::new(name),
+            ui_font(&fonts.ui, 12.0),
             TextColor(rgb(if has_mat { text_primary() } else { placeholder() })),
             bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    // A clip wrapper, because `Overflow::clip` clips a node's *children*: on the
-    // text node itself a long material name would spill over the caret.
-    let name_clip = commands
+    let sub_text = commands
         .spawn((
-            Node { flex_grow: 1.0, min_width: Val::Px(0.0), align_items: AlignItems::Center, overflow: Overflow::clip(), ..default() },
+            Text::new(sub),
+            ui_font(&fonts.ui, 9.0),
+            TextColor(rgb(placeholder())),
+            bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    commands.entity(name_clip).add_child(name_text);
+    commands.entity(text_col).add_children(&[name_text, sub_text]);
+    // The caret is repointed (not respawned) by `mat_picker_toggle`, so it also
+    // reports the tray's state instead of permanently promising "down".
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 10.0);
     commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
-    commands.entity(name_btn).add_children(&[name_clip, caret, panel]);
+    commands.entity(field).insert(MatPickerToggle { entity, panel, caret });
 
-    // Folder line + action row: browse / open / clear.
-    let actions = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(4.0), align_items: AlignItems::Center, ..default() })
-        .id();
-    if let Some(folder) = folder {
-        let path_text = commands
-            .spawn((
-                Text::new(folder),
-                ui_font(&fonts.ui, 9.0),
-                TextColor(rgb(placeholder())),
-                bevy::text::TextLayout::no_wrap(),
-            ))
-            .id();
-        let path_clip = commands
-            .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), align_items: AlignItems::Center, overflow: Overflow::clip(), ..default() })
-            .id();
-        commands.entity(path_clip).add_child(path_text);
-        commands.entity(actions).add_child(path_clip);
-    } else {
-        let spacer = commands.spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }).id();
-        commands.entity(actions).add_child(spacer);
+    // Edit and remove live *inside* the field, just left of the caret, rather
+    // than on a row of their own underneath it. They act on the material the
+    // field names, so that's where they belong — and the row they used to sit on
+    // was a second line of chrome for two glyphs.
+    //
+    // Nesting them in the picker's own trigger is safe because `chip_btn` blocks
+    // focus: a press on a chip doesn't fall through to the field behind it, so
+    // clicking ✕ doesn't also slide the tray open. Same mechanism the
+    // texture-slot clear already relies on inside its row.
+    let mut field_kids = vec![text_col];
+    if has_mat {
+        let edit = icon_btn(commands, fonts, "pencil-simple", "Open in the material editor");
+        commands.entity(edit).insert(MatEditBtn { entity });
+        let clear = icon_btn(commands, fonts, "x", "Remove this material");
+        commands.entity(clear).insert(MatClearBtn { entity });
+        field_kids.extend_from_slice(&[edit, clear]);
     }
-    // Create sits first because it is the answer to "No material" — the state
-    // this row is in the moment a fresh mesh is selected. The other three all
-    // assume a material already exists.
-    let create = icon_btn(commands, fonts, "plus", "Create a new material for this mesh");
-    commands.entity(create).insert(MatCreateBtn { entity });
-    let browse = icon_btn(commands, fonts, "folder-open", "Browse project materials");
-    commands.entity(browse).insert(Popup::new(panel));
-    let edit = icon_btn(commands, fonts, "pencil-simple", "Open in the material editor");
-    commands.entity(edit).insert(MatEditBtn { entity });
-    let clear = icon_btn(commands, fonts, "x", "Remove this material");
-    commands.entity(clear).insert(MatClearBtn { entity });
-    commands.entity(actions).add_children(&[create, browse, edit, clear]);
+    field_kids.push(caret);
+    commands.entity(field).add_children(&field_kids);
 
-    commands.entity(col).add_children(&[name_btn, actions]);
+    let mut col_kids = vec![field];
+    if !has_mat {
+        // An empty slot has exactly one sensible move, so it gets exactly one
+        // button — and this one keeps its label, because there's no material to
+        // reason from and a lone "+" would be a guess.
+        let actions = commands
+            .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, align_items: AlignItems::Center, ..default() })
+            .id();
+        let create = chip_btn(commands, fonts, "plus", Some("New material"), None, rgb(section_bg()), text_primary());
+        commands.entity(create).insert(MatCreateBtn { entity });
+        commands.entity(actions).add_child(create);
+        col_kids.push(actions);
+    }
+
+    commands.entity(col).add_children(&col_kids);
     commands.entity(row).add_children(&[thumb, col]);
-    row
+    commands.entity(slot).add_children(&[row, panel]);
+    slot
 }
 
+/// A bare glyph button — the field's edit/remove, the texture-slot clear and the
+/// override revert. Each sits *inside* something that already has a surface, so
+/// it stays transparent until hovered.
 fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, tooltip: &str) -> Entity {
+    chip_btn(commands, fonts, icon, None, Some(tooltip), Color::NONE, text_muted())
+}
+
+/// A small button: a glyph, optionally a label, optionally a tooltip.
+///
+/// `tooltip` is optional because a *labelled* button doesn't want one — the
+/// label already says it, and a bubble repeating the word under the cursor is
+/// noise.
+fn chip_btn(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: Option<&str>,
+    tooltip: Option<&str>,
+    base: Color,
+    fg: (u8, u8, u8),
+) -> Entity {
     let btn = commands
         .spawn((
-            Node { width: Val::Px(22.0), height: Val::Px(20.0), flex_shrink: 0.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-            BackgroundColor(Color::NONE),
-            HoverTint::solid(Color::NONE, rgb(hover_bg()), rgb(accent()).with_alpha(0.35)),
+            Node {
+                height: Val::Px(22.0),
+                min_width: Val::Px(24.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::horizontal(Val::Px(if label.is_some() { 8.0 } else { 0.0 })),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(base),
+            HoverTint::solid(base, rgb(hover_bg()), rgb(accent()).with_alpha(0.35)),
             Interaction::default(),
             // Block, or the press also lands on whatever sits under the button —
             // for the per-slot clear that is the slot row itself, which would
-            // open a file dialog on the same click that emptied the slot.
+            // open a file dialog on the same click that emptied the slot, and
+            // for the field's edit/remove it is the picker trigger.
             bevy::ui::FocusPolicy::Block,
-            HoverTooltip::new(tooltip),
             Name::new("material-icon-btn"),
         ))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
+    if let Some(tooltip) = tooltip {
+        commands.entity(btn).insert(HoverTooltip::new(tooltip));
+    }
+    let ic = icon_text(commands, &fonts.phosphor, icon, fg, 12.0);
     commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
     commands.entity(btn).add_child(ic);
+    if let Some(label) = label {
+        let text = commands
+            .spawn((
+                Text::new(label),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(fg)),
+                bevy::text::TextLayout::no_wrap(),
+                bevy::ui::FocusPolicy::Pass,
+            ))
+            .id();
+        commands.entity(btn).add_child(text);
+    }
     btn
 }
 
@@ -689,6 +840,17 @@ struct TexSlotZone {
 struct TexSlotClearBtn {
     entity: Entity,
     slot: &'static TextureSlot,
+}
+
+/// The eye on a filled texture row: applies or un-applies that channel without
+/// touching the texture. Carries the state it was built in, so the click knows
+/// which way to flip — the row is rebuilt from the graph afterwards, so it can't
+/// drift.
+#[derive(Component)]
+struct TexSlotMuteBtn {
+    entity: Entity,
+    slot: &'static TextureSlot,
+    muted: bool,
 }
 
 /// One channel row: preview · label · texture name · clear.
@@ -742,7 +904,14 @@ fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity,
         ))
         .id();
     if let Some(thumb) = &state.thumb {
-        commands.entity(preview).insert(ImageNode::new(thumb.clone()));
+        let mut image = ImageNode::new(thumb.clone());
+        if state.muted {
+            // Faded rather than hidden: the texture is still *assigned*, and a
+            // row that emptied itself would be indistinguishable from one you'd
+            // actually cleared.
+            image.color = Color::WHITE.with_alpha(0.25);
+        }
+        commands.entity(preview).insert(image);
     } else {
         let ic = icon_text(commands, &fonts.phosphor, state.slot.icon, placeholder(), 14.0);
         commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
@@ -759,7 +928,7 @@ fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity,
         .spawn((
             Text::new(state.slot.label),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
+            TextColor(rgb(if state.muted { placeholder() } else { text_primary() })),
             bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
@@ -768,7 +937,7 @@ fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity,
         .spawn((
             Text::new(name),
             ui_font(&fonts.ui, 9.0),
-            TextColor(rgb(if filled { text_muted() } else { placeholder() })),
+            TextColor(rgb(if filled && !state.muted { text_muted() } else { placeholder() })),
             bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
@@ -777,41 +946,152 @@ fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity,
     commands.entity(row).add_children(&[preview, text_col]);
 
     if filled {
+        // The eye turns the channel off *on the mesh* without giving the texture
+        // up; the ✕ beside it is the one that actually unwires it. Two very
+        // different answers to "I don't want to see this right now", and only
+        // one of them is reversible.
+        let mute = icon_btn(
+            commands,
+            fonts,
+            if state.muted { "eye-slash" } else { "eye" },
+            if state.muted { "Apply this texture again" } else { "Turn this texture off on the mesh" },
+        );
+        commands.entity(mute).insert(TexSlotMuteBtn {
+            entity,
+            slot: state.slot,
+            muted: state.muted,
+        });
         let clear = icon_btn(commands, fonts, "x", "Clear this texture");
         commands.entity(clear).insert(TexSlotClearBtn { entity, slot: state.slot });
-        commands.entity(row).add_child(clear);
+        commands.entity(row).add_children(&[mute, clear]);
     }
     row
 }
 
-// ── Picker popup rows (a windowed keyed list, registered once) ───────────────
+// ── Picker tray (a keyed grid, registered once) ──────────────────────────────
 
-/// Popup viewport height, and the row stride `picker_item` produces (26 px tall +
-/// 1 px `row_gap`). Used to seed [`VirtualMetrics`] so the list is windowed from
-/// the very first frame instead of building every row until a real measurement
-/// lands — that first-frame burst is the thing this whole change removes.
-const PICKER_VIEWPORT_H: f32 = 280.0;
-const PICKER_ROW_H: f32 = 27.0;
-
-/// Most rows the picker will ever offer. The search box is the way to reach the
-/// rest; building thousands would defeat the windowing on first open.
-const PICKER_MAX_ROWS: usize = 200;
-
-/// Register the result rows as a windowed keyed list.
+/// Tile metrics. A `.material` is a *picture*, so the picker shows pictures: a
+/// wrapping grid of preview tiles instead of the old text rows, which packed an
+/// 11px name and a 9px folder into a 26px row and collided.
 ///
-/// Called **once**, when the popup shell is built — never per frame and never per
-/// keystroke. Registered on the inner `list` node rather than the panel, so
-/// reconciling rows can never touch the search box: `run_keyed_lists` calls
+/// The tile is a fixed width and the grid wraps, so the layout re-flows with the
+/// inspector — a wide dock simply fits more per row.
+const TILE_W: f32 = 78.0;
+const TILE_GAP: f32 = 6.0;
+/// 3px padding + 72px preview + 3px gap + 13px label + 3px padding.
+const TILE_H: f32 = 94.0;
+
+/// Most tiles the tray will ever show.
+///
+/// This is a *hard* cap, not a window: the tray has no scroll area of its own,
+/// so what it builds is what it is tall enough for. That is the point — the tray
+/// lives inside the inspector, which already scrolls, and nesting a second
+/// scrollbar a few pixels from the panel's own read as a mistake before it read
+/// as a control. Twelve is four rows at the usual three columns: enough to
+/// recognise a material by sight, small enough that the drawer below stays
+/// reachable. Anything past it is reached by typing, and
+/// [`picker_note`] says so rather than letting the rest vanish silently.
+const PICKER_MAX_ROWS: usize = 12;
+
+/// Build the picker tray: a search box over a grid of previews.
+///
+/// It's an ordinary in-flow node that starts hidden, **not** a `Popup` — an
+/// overlay would have to float above the drawer, and ember's `popup_position`
+/// pins a panel with `top: 100%`, which on a node that isn't absolutely
+/// positioned offsets it by its own height instead of anchoring it. Opening the
+/// tray simply makes the drawer taller and slides the texture slots down.
+///
+/// It carries no surface of its own either. A filled, bordered tray inside the
+/// inspector's own filled, bordered panel was a box in a box; the search field
+/// is the only thing here that needs an edge, so it's the only thing that has
+/// one, and the tiles sit directly on the drawer.
+///
+/// Built **once**, with the slot — never refilled per keystroke. The tiles are
+/// registered on the inner `grid` node rather than on the tray, so reconciling
+/// them can never touch the search box: `run_keyed_lists` calls
 /// `replace_children` on its container, which would otherwise blow the input away
-/// (and with it the user's focus and half-typed query) on every keystroke.
+/// (and with it the focus and the half-typed query) on every keystroke.
+fn build_picker_panel(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
+    let panel = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                margin: UiRect::top(Val::Px(6.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(6.0),
+                display: Display::None,
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Block,
+            MatPickerPanel,
+            Name::new("material-picker-tray"),
+        ))
+        .id();
+
+    // The search row *is* the search box: the glyph sits inside the same
+    // bordered surface as the text, so there's one edge here rather than an
+    // input box nested in a header strip drawing a second one beside it.
+    let header = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(26.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            Name::new("material-picker-search"),
+        ))
+        .id();
+    let glass = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 12.0);
+    commands.entity(glass).insert(bevy::ui::FocusPolicy::Pass);
+    let search = text_input(commands, &fonts.ui, "Search materials…", "");
+    commands
+        .entity(search)
+        .insert((BackgroundColor(Color::NONE), BorderColor::all(Color::NONE)))
+        .entry::<Node>()
+        .and_modify(|mut n| {
+            n.flex_grow = 1.0;
+            n.min_width = Val::Px(0.0);
+        });
+    bind_search(commands, search);
+    commands.entity(header).add_children(&[glass, search]);
+
+    // Wrapping grid, sitting straight on the drawer. The vertical gap is the
+    // tile's own bottom margin rather than the container's `row_gap` so the last
+    // row doesn't leave a hanging gap above the note under it.
+    let grid = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            align_content: AlignContent::FlexStart,
+            column_gap: Val::Px(TILE_GAP),
+            ..default()
+        })
+        .id();
+    register_picker_rows(commands, grid, entity);
+    commands.entity(panel).add_children(&[header, grid]);
+    panel
+}
+
+/// Register the tiles as a keyed list.
+///
+/// Plain rather than virtualized: [`PICKER_MAX_ROWS`] is the whole list now, and
+/// windowing twelve tiles would be bookkeeping in exchange for nothing.
 fn register_picker_rows(commands: &mut Commands, list: Entity, entity: Entity) {
-    virtual_scroll_versioned(
+    keyed_list_tokened(
         commands,
         list,
-        4,
         // Dirty token: re-snapshot only when the query text, the cached index, or
-        // this entity's assigned material actually changes. `virtual_scroll_versioned`
-        // folds the scroll window in on top of this, so scrolling still re-windows.
+        // this entity's assigned material actually changes.
         move |w: &Rx| {
             let mut h = DefaultHasher::new();
             w.get_resource::<MatPickerFilter>()
@@ -824,13 +1104,6 @@ fn register_picker_rows(commands: &mut Commands, list: Entity, entity: Entity) {
         },
         move |w: &Rx| picker_snapshot(&Rx::new(w.untracked()), entity),
     );
-    commands.entity(list).insert(VirtualMetrics {
-        offset: 0.0,
-        viewport_h: PICKER_VIEWPORT_H,
-        row_h: PICKER_ROW_H,
-        columns: 1,
-        measured: true,
-    });
 }
 
 /// This frame's filtered row set. Cheap: an `Arc` clone plus a substring test per
@@ -843,11 +1116,16 @@ fn picker_snapshot(w: &Rx, entity: Entity) -> KeyedSnapshot {
         .map(|i| i.materials.clone())
         .unwrap_or_default();
     let lower = query.trim().to_ascii_lowercase();
-    // Filter by reference and clone only the survivors — the cached index can be
-    // far larger than the rows the popup shows.
-    let rows: Vec<(String, String, bool)> = materials
+    // Count every match, then keep only the first [`PICKER_MAX_ROWS`]: the total
+    // is what the truncation note reports, and without it a cap of twelve would
+    // quietly claim the project has twelve materials.
+    let matched: Vec<&(String, String)> = materials
         .iter()
         .filter(|(rel, _)| lower.is_empty() || rel.to_ascii_lowercase().contains(&lower))
+        .collect();
+    let total = matched.len();
+    let rows: Vec<(String, String, bool)> = matched
+        .into_iter()
         .take(PICKER_MAX_ROWS)
         .map(|(rel, abs)| {
             let is_current = rel.as_str() == current_path.as_str();
@@ -856,20 +1134,12 @@ fn picker_snapshot(w: &Rx, entity: Entity) -> KeyedSnapshot {
         .collect();
 
     if rows.is_empty() {
-        // NB: deliberately not `u64::MAX` / `u64::MAX - 1` — `virtual_scroll`
-        // reserves those as its spacer keys, and colliding would make the empty
-        // row and a spacer alias each other.
         let mut k = DefaultHasher::new();
         "\u{0}<no-matches>".hash(&mut k);
         return KeyedSnapshot {
             items: vec![(k.finish(), 0)],
             build: Box::new(|c: &mut Commands, f: &EmberFonts, _| {
-                c.spawn((
-                    Text::new("No matches"),
-                    ui_font(&f.ui, 11.0),
-                    TextColor(rgb(text_muted())),
-                ))
-                .id()
+                picker_note(c, f, "No materials match".to_string(), 48.0)
             }),
         };
     }
@@ -880,7 +1150,7 @@ fn picker_snapshot(w: &Rx, entity: Entity) -> KeyedSnapshot {
     // `Handle<Image>` is deliberately excluded — it arrives via the row's own
     // `bind_with`, and hashing it would make every thumbnail that resolves
     // despawn and rebuild its row.
-    let items: Vec<(u64, u64)> = rows
+    let mut items: Vec<(u64, u64)> = rows
         .iter()
         .map(|(rel, abs, is_current)| {
             let mut k = DefaultHasher::new();
@@ -892,64 +1162,146 @@ fn picker_snapshot(w: &Rx, entity: Entity) -> KeyedSnapshot {
         })
         .collect();
 
+    // One more "row" when the cap bit, hashed on the count so it re-renders as
+    // typing narrows the field.
+    let shown = rows.len();
+    let truncated = total > shown;
+    if truncated {
+        let mut k = DefaultHasher::new();
+        "\u{0}<truncated>".hash(&mut k);
+        let mut h = DefaultHasher::new();
+        total.hash(&mut h);
+        items.push((k.finish(), h.finish()));
+    }
+
     KeyedSnapshot {
         items,
         build: Box::new(move |c: &mut Commands, f: &EmberFonts, i: usize| {
-            let (rel, abs, is_current) = &rows[i];
-            picker_item(c, f, entity, rel, abs, *is_current)
+            match rows.get(i) {
+                Some((rel, abs, is_current)) => picker_tile(c, f, entity, rel, abs, *is_current),
+                None => picker_note(
+                    c,
+                    f,
+                    format!("Showing {shown} of {total} — type to narrow"),
+                    22.0,
+                ),
+            }
         }),
     }
 }
 
-fn picker_item(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, rel: &str, abs: &str, is_current: bool) -> Entity {
-    let path = std::path::Path::new(rel);
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(rel).to_string();
-    let parent = path.parent().and_then(|p| p.to_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
-
-    let item = commands
+/// A full-width line in the grid — the empty state and the truncation note.
+///
+/// Full width so it takes a row of its own and centres, rather than landing in
+/// the first tile's column.
+fn picker_note(commands: &mut Commands, fonts: &EmberFonts, message: String, height: f32) -> Entity {
+    let wrap = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(height),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .id();
+    let text = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(26.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
-            BackgroundColor(if is_current { rgb(accent()).with_alpha(0.18) } else { Color::NONE }),
-            Interaction::default(),
-            MatPickerItem { entity, rel: rel.to_string() },
-            Name::new("material-picker-item"),
+            Text::new(message),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
         ))
         .id();
-    let thumb = commands
+    commands.entity(wrap).add_child(text);
+    wrap
+}
+
+/// One grid tile: a preview square over a clipped name.
+///
+/// The folder lives in the tooltip rather than on a second line — it only
+/// matters when two materials share a name, and paying every tile a line of 9px
+/// grey for that case is what made the old rows unreadable.
+fn picker_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, rel: &str, abs: &str, is_current: bool) -> Entity {
+    let path = std::path::Path::new(rel);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(rel).to_string();
+    let parent = path
+        .parent()
+        .and_then(|p| p.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("project root");
+
+    // The current material is marked three ways — tinted tile, accented preview
+    // border, accented name — because at 78px one of them alone reads as noise.
+    let base = if is_current { rgb(accent()).with_alpha(0.20) } else { Color::NONE };
+    let tile = commands
         .spawn((
-            Node { width: Val::Px(18.0), height: Val::Px(18.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() },
-            BackgroundColor(rgb((14, 14, 18))),
-            ImageNode::new(Handle::default()),
+            Node {
+                width: Val::Px(TILE_W),
+                height: Val::Px(TILE_H),
+                margin: UiRect::bottom(Val::Px(TILE_GAP)),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(base),
+            HoverTint::solid(base, rgb(hover_bg()), rgb(accent()).with_alpha(0.32)),
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
+            HoverTooltip::new(format!("{stem}  ·  {parent}")),
+            MatPickerItem { entity, rel: rel.to_string() },
+            Name::new("material-picker-tile"),
+        ))
+        .id();
+
+    let (preview, glyph) = preview_square(commands, fonts, TILE_W - 6.0, 4.0, 22.0);
+    if is_current {
+        commands.entity(preview).insert(BorderColor::all(rgb(accent())));
+    }
+    let abs_pb = PathBuf::from(abs);
+    // Ask for the thumbnail from the tile's own build. A tile is only built when
+    // it scrolls into the window, so opening the picker on a project with
+    // hundreds of materials queues renders for the dozen actually on screen
+    // rather than for all of them; `request` is a no-op once a path is cached or
+    // in flight, so scrolling back over one costs nothing.
+    let wanted = abs_pb.clone();
+    commands.queue(move |w: &mut World| {
+        if let Some(mut reg) = w.get_resource_mut::<MaterialThumbnailRegistry>() {
+            reg.request(wanted);
+        }
+    });
+    bind_preview(commands, preview, glyph, move |w| {
+        w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs_pb))
+    });
+
+    let name = commands
+        .spawn((
+            Text::new(stem),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(if is_current { accent() } else { text_primary() })),
+            bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    let abs_pb = PathBuf::from(abs);
-    bind_with(
-        commands,
-        thumb,
-        move |w| w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs_pb)),
-        |w, e, h: &Option<Handle<Image>>| {
-            if let Some(mut img) = w.get_mut::<ImageNode>(e) {
-                img.image = h.clone().unwrap_or_default();
-            }
-        },
-    );
-    let name_color = if is_current { accent() } else { text_primary() };
-    let text_col = commands
-        .spawn(Node { flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, ..default() })
+    // Clip wrapper again: `Overflow::clip` clips a node's *children*, so a long
+    // name has to sit inside something rather than carry the clip itself.
+    let name_clip = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(13.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+        ))
         .id();
-    let name = commands
-        .spawn((Text::new(stem), ui_font(&fonts.ui, 11.0), TextColor(rgb(name_color)), bevy::ui::FocusPolicy::Pass))
-        .id();
-    commands.entity(text_col).add_child(name);
-    if let Some(parent) = parent {
-        let p = commands
-            .spawn((Text::new(parent), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted())), bevy::ui::FocusPolicy::Pass))
-            .id();
-        commands.entity(text_col).add_child(p);
-    }
-    commands.entity(item).add_children(&[thumb, text_col]);
-    item
+    commands.entity(name_clip).add_child(name);
+    commands.entity(tile).add_children(&[preview, name_clip]);
+    tile
 }
 
 fn bind_search(commands: &mut Commands, input: Entity) {
@@ -1245,31 +1597,46 @@ fn ensure_material(world: &mut World, entity: Entity) -> Option<String> {
 /// had rather than losing it to a file that isn't there.
 fn create_material(world: &mut World, entity: Entity) -> Option<String> {
     let project_root = world.get_resource::<CurrentProject>().map(|p| p.path.clone())?;
+    let stem = default_material_stem(world, entity);
+    create_material_at(world, entity, &project_root.join(MATERIALS_DIR), &stem)
+}
 
-    // Name it after the mesh so the file is findable later; fall back to a
-    // generic name for an unnamed entity.
+/// Name a new material after the mesh so the file is findable later; a generic
+/// name for an unnamed entity. Sanitised, because this becomes a filename.
+fn default_material_stem(world: &World, entity: Entity) -> String {
     let base = world
         .get::<Name>(entity)
         .map(|n| n.as_str().to_string())
         .unwrap_or_else(|| "Material".to_string());
-    let safe: String = base
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect();
+    sanitize_stem(&base)
+}
 
-    let dir = project_root.join("materials");
-    let _ = std::fs::create_dir_all(&dir);
+fn sanitize_stem(base: &str) -> String {
+    base.chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect()
+}
+
+/// Write `<dir>/<stem>.material` (uniquified) and bind it to `entity`.
+///
+/// Returns `None` when there's no project to write into, or the save failed —
+/// in which case nothing is bound, so the mesh keeps whatever it had rather than
+/// losing it to a file that isn't there.
+fn create_material_at(world: &mut World, entity: Entity, dir: &Path, stem: &str) -> Option<String> {
+    let project_root = world.get_resource::<CurrentProject>().map(|p| p.path.clone())?;
+    let stem = if stem.trim().is_empty() { "Material" } else { stem };
+    let _ = std::fs::create_dir_all(dir);
     // Never write over a material that already exists — two meshes called
     // "Cube" must not end up silently sharing (and overwriting) one file.
-    let mut fs_path = dir.join(format!("{safe}.material"));
+    let mut fs_path = dir.join(format!("{stem}.material"));
     let mut n = 1;
     while fs_path.exists() {
-        fs_path = dir.join(format!("{safe}_{n}.material"));
+        fs_path = dir.join(format!("{stem}_{n}.material"));
         n += 1;
     }
 
     let asset_path = renzora_shader::material::precompiled::project_relative(&project_root, &fs_path);
-    let mut graph = MaterialGraph::new(&safe, MaterialDomain::Surface);
+    let mut graph = MaterialGraph::new(stem, MaterialDomain::Surface);
     if !crate::save_material_graph(world, &asset_path, &mut graph) {
         return None;
     }
@@ -1352,6 +1719,23 @@ fn tex_slot_browse(
     }
 }
 
+/// The eye on a texture row → apply or un-apply that channel on the mesh.
+///
+/// Routed through `slot_edit` like every other slot change, so the graph is
+/// re-saved, recompiled and re-read: the mesh updates immediately and the row
+/// rebuilds with the icon the graph now justifies.
+fn tex_slot_mute(q: Query<(&Interaction, &TexSlotMuteBtn), Changed<Interaction>>, mut commands: Commands) {
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (entity, slot, muted) = (btn.entity, btn.slot, btn.muted);
+        commands.queue(move |w: &mut World| {
+            slot_edit(w, entity, move |graph| texture_slots::set_slot_muted(graph, slot, !muted));
+        });
+    }
+}
+
 fn tex_slot_clear(q: Query<(&Interaction, &TexSlotClearBtn), Changed<Interaction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
         if *interaction != Interaction::Pressed {
@@ -1396,29 +1780,223 @@ fn mat_edit_click(q: Query<(&Interaction, &MatEditBtn), Changed<Interaction>>, m
     }
 }
 
-/// "+" → mint a new material, bind it, and open it in the material editor.
+// ── New-material overlay ─────────────────────────────────────────────────────
+
+/// Conventional home for materials the editor creates, and the seeded
+/// destination in the overlay's tree.
+const MATERIALS_DIR: &str = "materials";
+
+/// How far below the project root the destination tree walks. Two levels is
+/// enough for `materials/` and a category under it without turning the overlay
+/// into a file manager.
+const MAT_PICKER_DEPTH: usize = 2;
+
+/// The open "New material" overlay.
+#[derive(Resource)]
+struct PendingMatCreate {
+    entity: Entity,
+    overlay: Entity,
+    name_input: Entity,
+    ticks: u8,
+}
+
+#[derive(Component)]
+struct MatCreateConfirmBtn;
+#[derive(Component)]
+struct MatCreateCancelBtn;
+
+/// "New material" → ask where it should go.
 ///
-/// The tab open is the point: a brand-new material is an empty surface, and the
-/// two ways to fill it are dropping images on the texture slots below or wiring
-/// nodes. Landing in the editor makes the second one visible; the slots are
-/// already on screen either way.
+/// It used to write straight into `<project>/materials/` and jump to the
+/// Material Editor. Both were assumptions: a project that files materials by
+/// area now has to move the file afterwards, and being thrown into a node graph
+/// is the wrong answer when what you wanted was a material on this mesh — the
+/// texture slots in the drawer are where a new material actually gets filled in.
 fn mat_create_click(q: Query<(&Interaction, &MatCreateBtn), Changed<Interaction>>, mut commands: Commands) {
     for (interaction, b) in &q {
         if *interaction != Interaction::Pressed {
             continue;
         }
         let e = b.entity;
-        commands.queue(move |w: &mut World| {
-            let Some(path) = create_material(w, e) else { return };
-            // The drawer keys off (entity, path, rev); the path changed, so the
-            // rebuild picks the new file up on its own.
-            let abs = w
-                .get_resource::<CurrentProject>()
-                .map(|p| p.resolve_path(&path))
-                .unwrap_or_else(|| PathBuf::from(&path));
-            open_asset_tab(w, &abs, DocTabKind::Material);
-        });
+        commands.queue(move |w: &mut World| open_create_overlay(w, e));
     }
+}
+
+/// Build the name + destination overlay. Exclusive-world so it can read the
+/// project, pre-create the conventional folder and walk the tree in one shot.
+fn open_create_overlay(world: &mut World, entity: Entity) {
+    if world.contains_resource::<PendingMatCreate>() {
+        return;
+    }
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
+    let Some(root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone()) else {
+        return;
+    };
+    // Pre-create the conventional folder so the default destination is a real
+    // row in the tree even on a project that has never had one.
+    let default_dest = root.join(MATERIALS_DIR);
+    let _ = std::fs::create_dir_all(&default_dest);
+    let stem = default_material_stem(world, entity);
+
+    let mut queue = bevy::ecs::world::CommandQueue::default();
+    {
+        let mut commands = Commands::new(&mut queue, world);
+        let (overlay, content) = overlay_sized(&mut commands, &fonts, "New material", 480.0, 440.0, true);
+
+        let name_input = text_input(&mut commands, &fonts.ui, &stem, &stem);
+        let name_row = overlay_field(&mut commands, &fonts, "Name", name_input);
+        let dest_label = overlay_label(&mut commands, &fonts, "Destination");
+        let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, MAT_PICKER_DEPTH);
+
+        let buttons = commands
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::FlexEnd,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::top(Val::Px(8.0)),
+                ..default()
+            })
+            .id();
+        let cancel = button(&mut commands, &fonts.ui, "Cancel");
+        commands.entity(cancel).insert(MatCreateCancelBtn);
+        let confirm = button(&mut commands, &fonts.ui, "Create");
+        commands.entity(confirm).insert(MatCreateConfirmBtn);
+        commands.entity(buttons).add_children(&[cancel, confirm]);
+
+        let body = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    flex_grow: 1.0,
+                    min_height: Val::Px(0.0),
+                    row_gap: Val::Px(6.0),
+                    padding: UiRect::all(Val::Px(14.0)),
+                    ..default()
+                },
+                // Enter in the name field = Create. Typing a name and then
+                // reaching for the mouse is the one interaction this overlay
+                // would otherwise force on every single use.
+                EmberForm { submit: confirm },
+            ))
+            .id();
+        commands.entity(body).add_children(&[name_row, dest_label, picker, buttons]);
+        commands.entity(content).add_child(body);
+
+        commands.insert_resource(PendingMatCreate { entity, overlay, name_input, ticks: 0 });
+    }
+    queue.apply(world);
+}
+
+/// A labelled row in the overlay: fixed-width caption, control filling the rest.
+fn overlay_field(commands: &mut Commands, fonts: &EmberFonts, label: &str, control: Entity) -> Entity {
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+    let caption = commands
+        .spawn((
+            Node { width: Val::Px(72.0), flex_shrink: 0.0, ..default() },
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    commands.entity(control).entry::<Node>().and_modify(|mut n| {
+        n.flex_grow = 1.0;
+        n.min_width = Val::Px(0.0);
+    });
+    commands.entity(row).add_children(&[caption, control]);
+    row
+}
+
+fn overlay_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    commands
+        .spawn((
+            Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id()
+}
+
+/// Focus the name field with its default selected, so the overlay is "type the
+/// name, press Enter" with no click first.
+///
+/// Deliberately a tick late. The overlay is spawned from a button press, and
+/// ember's `text_input_focus` blurs every input on any left press that didn't
+/// land *on* an input — this field doesn't exist yet when that press is read, so
+/// focusing on the opening frame would be undone by whichever order the two
+/// systems happen to run in. The next tick has no press to blur against.
+fn mat_create_focus(pending: Option<ResMut<PendingMatCreate>>, mut inputs: Query<&mut EmberTextInput>) {
+    let Some(mut pending) = pending else { return };
+    if pending.ticks > 1 {
+        return;
+    }
+    pending.ticks += 1;
+    if pending.ticks != 2 {
+        return;
+    }
+    if let Ok(mut input) = inputs.get_mut(pending.name_input) {
+        input.focused = true;
+        // Select-all, so the first keystroke replaces the default name rather
+        // than prepending to it.
+        input.select_all = true;
+        input.caret_index = input.value.chars().count();
+    }
+}
+
+/// Create → write the material into the picked folder and bind it; cancel (or a
+/// backdrop/Escape dismiss, which despawns the overlay out from under us) → drop
+/// the pending state and leave the mesh alone.
+fn mat_create_overlay_buttons(
+    confirm: Query<&Interaction, (With<MatCreateConfirmBtn>, Changed<Interaction>)>,
+    cancel: Query<&Interaction, (With<MatCreateCancelBtn>, Changed<Interaction>)>,
+    pending: Option<Res<PendingMatCreate>>,
+    inputs: Query<&EmberTextInput>,
+    pick: Res<FolderPick>,
+    project: Option<Res<CurrentProject>>,
+    nodes: Query<(), With<Node>>,
+    mut commands: Commands,
+) {
+    let Some(pending) = pending else { return };
+
+    // Escape and backdrop clicks are ember's, and they despawn the root without
+    // telling us — so a vanished overlay is a cancel.
+    if nodes.get(pending.overlay).is_err() {
+        commands.remove_resource::<PendingMatCreate>();
+        return;
+    }
+    if cancel.iter().any(|i| *i == Interaction::Pressed) {
+        commands.entity(pending.overlay).despawn();
+        commands.remove_resource::<PendingMatCreate>();
+        return;
+    }
+    if !confirm.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+
+    let typed = inputs.get(pending.name_input).map(|i| i.value.trim().to_string()).unwrap_or_default();
+    let stem = sanitize_stem(&typed);
+    let Some(root) = project.as_ref().map(|p| p.path.clone()) else { return };
+    let dir = pick.path().map(Path::to_path_buf).unwrap_or_else(|| root.join(MATERIALS_DIR));
+    let entity = pending.entity;
+
+    commands.entity(pending.overlay).despawn();
+    commands.remove_resource::<PendingMatCreate>();
+    commands.queue(move |w: &mut World| {
+        // The drawer keys off (entity, path, rev); the path changed, so the
+        // rebuild picks the new file up — and its texture slots appear — without
+        // anything here poking it. No editor tab: filling the material in is
+        // what those slots are for.
+        create_material_at(w, entity, &dir, &stem);
+    });
 }
 
 fn mat_clear_click(q: Query<(&Interaction, &MatClearBtn), Changed<Interaction>>, mut commands: Commands) {
@@ -1443,7 +2021,158 @@ fn mat_picker_select(q: Query<(&Interaction, &MatPickerItem), Changed<Interactio
             continue;
         }
         let (e, rel) = (item.entity, item.rel.clone());
-        commands.queue(move |w: &mut World| bind_material(w, e, rel));
+        commands.queue(move |w: &mut World| {
+            bind_material(w, e, rel);
+            close_pickers(w);
+        });
+    }
+}
+
+/// The picker field's surface and border for the two tray states.
+///
+/// Accent-tinted while open, so the field reads as the thing the grid below
+/// belongs to rather than as an unrelated control that happens to sit above it.
+fn field_colors(open: bool) -> (Color, Color) {
+    if open {
+        (rgb(accent()).with_alpha(0.22), rgb(accent()))
+    } else {
+        (rgb(popup_bg()), rgb(border()))
+    }
+}
+
+/// Click the field → slide its picker tray open or shut.
+///
+/// Opening it also folds the texture-slot rows away. They're the tallest thing
+/// in the drawer and they're about the material you're in the middle of
+/// *replacing*, so leaving them there pushed the grid off the bottom of the
+/// panel and asked you to scroll past six rows that were on their way out.
+fn mat_picker_toggle(
+    mut q: Query<
+        (&Interaction, &MatPickerToggle, &mut HoverTint, &mut BackgroundColor, &mut BorderColor),
+        Changed<Interaction>,
+    >,
+    tex_rows: Query<(Entity, &TexSlotZone)>,
+    mut nodes: Query<&mut Node>,
+    mut texts: Query<&mut Text>,
+) {
+    for (interaction, toggle, mut tint, mut bg, mut bc) in &mut q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let open = nodes.get(toggle.panel).is_ok_and(|n| n.display == Display::None);
+        if let Ok(mut node) = nodes.get_mut(toggle.panel) {
+            node.display = if open { Display::Flex } else { Display::None };
+        }
+        set_caret(&mut texts, toggle.caret, open);
+        set_texture_rows(&mut nodes, &tex_rows, Some(toggle.entity), !open);
+
+        // `HoverTint.base` too, not just the background: ember's `hover_tint`
+        // writes `base` back the moment the pointer leaves, so painting only the
+        // background would hold the active colour exactly until you moved the
+        // mouse off the field.
+        let (fill, edge) = field_colors(open);
+        tint.base = fill;
+        bg.0 = fill;
+        *bc = BorderColor::all(edge);
+    }
+}
+
+/// Show or hide texture-slot rows — every one when `entity` is `None`, otherwise
+/// only the rows belonging to that inspected entity.
+fn set_texture_rows(
+    nodes: &mut Query<&mut Node>,
+    tex_rows: &Query<(Entity, &TexSlotZone)>,
+    entity: Option<Entity>,
+    visible: bool,
+) {
+    let want = if visible { Display::Flex } else { Display::None };
+    for (row, zone) in tex_rows {
+        if entity.is_some_and(|e| e != zone.entity) {
+            continue;
+        }
+        if let Ok(mut node) = nodes.get_mut(row) {
+            if node.display != want {
+                node.display = want;
+            }
+        }
+    }
+}
+
+/// Point a field's caret at the tray's state.
+fn set_caret(texts: &mut Query<&mut Text>, caret: Entity, open: bool) {
+    set_glyph(texts, caret, if open { "caret-up" } else { "caret-down" });
+}
+
+/// Repoint an existing icon entity at another phosphor glyph, by name.
+fn set_glyph(texts: &mut Query<&mut Text>, icon: Entity, name: &str) {
+    let Some(glyph) = renzora_ember::phosphor_map::icon_glyph(name) else { return };
+    if let Ok(mut text) = texts.get_mut(icon) {
+        let want = glyph.to_string();
+        if text.0 != want {
+            *text = Text::new(want);
+        }
+    }
+}
+
+
+/// Shut every open picker tray and reset its search.
+///
+/// Picking used to leave the list sitting there — it only closed on an outside
+/// click, so choosing a material took two clicks: one to choose, one to get the
+/// grid off the drawer. Now that the tray is in flow that second click also cost
+/// the texture slots their position on screen, which makes closing it on select
+/// non-negotiable rather than merely tidy.
+fn close_pickers(world: &mut World) {
+    let toggles: Vec<(Entity, Entity, Entity)> = world
+        .query::<(Entity, &MatPickerToggle)>()
+        .iter(world)
+        .map(|(field, t)| (field, t.panel, t.caret))
+        .collect();
+    let (fill, edge) = field_colors(false);
+    for (field, panel, caret) in toggles {
+        if let Some(mut node) = world.get_mut::<Node>(panel) {
+            if node.display == Display::None {
+                continue;
+            }
+            node.display = Display::None;
+        }
+        if let Some(glyph) = renzora_ember::phosphor_map::icon_glyph("caret-down") {
+            if let Some(mut text) = world.get_mut::<Text>(caret) {
+                *text = Text::new(glyph.to_string());
+            }
+        }
+        if let Some(mut tint) = world.get_mut::<HoverTint>(field) {
+            tint.base = fill;
+        }
+        if let Some(mut bg) = world.get_mut::<BackgroundColor>(field) {
+            bg.0 = fill;
+        }
+        if let Some(mut bc) = world.get_mut::<BorderColor>(field) {
+            *bc = BorderColor::all(edge);
+        }
+    }
+    // Every tray is shut now, so every texture row is due back — no need to
+    // match them up per entity. The rebuild that follows a *changed* material
+    // respawns them visible anyway; this covers the case where the pick landed
+    // on the material already bound, which changes the drawer's signature not at
+    // all and so rebuilds nothing.
+    let rows: Vec<Entity> = world
+        .query_filtered::<Entity, With<TexSlotZone>>()
+        .iter(world)
+        .collect();
+    for row in rows {
+        if let Some(mut node) = world.get_mut::<Node>(row) {
+            if node.display != Display::Flex {
+                node.display = Display::Flex;
+            }
+        }
+    }
+    // Reopening pre-filtered by a query you typed a minute ago reads as "there
+    // are only two materials in this project".
+    if let Some(mut filter) = world.get_resource_mut::<MatPickerFilter>() {
+        if !filter.text.is_empty() {
+            filter.text.clear();
+        }
     }
 }
 

@@ -81,31 +81,72 @@ way in — most of the time you never need the node graph at all.
 
 ### The material slot
 
-The top row shows which `.material` the object uses: a preview thumbnail, the
-material's name, and four buttons — **+** to create a new material, **browse**
-the project's materials, **open** this one in the Material Editor, and
-**remove** it. Click the name to pick from a searchable list of every material
-in the project, or drag a `.material` file from the **Assets** browser onto the
-row.
+The top of the drawer shows which `.material` the object uses: a preview square,
+and next to it a field naming the material with its folder underneath.
 
-**+** writes a fresh empty `.material` named after the object into the project's
-`materials/` folder, binds it to the object, and opens it in the Material
-Editor. It always makes a *new* file, so it's also how you give one object its
-own material when it currently shares one with others.
+**Click the field** to slide the picker open — a searchable grid of the
+project's materials, each shown as a preview tile with its name under it. It
+opens *in place* rather than covering the drawer; the field takes on an accent
+tint and the caret flips while it's showing. The texture slots fold away while
+it's open — they describe the material you're in the middle of replacing — and
+come back when you choose or close. Hover a tile to see which folder it's in;
+click one to bind that
+material and slide the picker shut again. Click the field a second time to close
+it without choosing. The grid re-flows with the width of the Inspector, so a
+wider dock shows more per row.
+
+The picker shows **at most twelve** materials at a time and doesn't scroll — the
+Inspector already does, and a second scrollbar inside the first was more
+confusing than useful. Type in the search box to narrow the list; when there are
+more matches than fit, a line under the grid tells you how many.
+
+You can also **drag a `.material` file from the Assets browser onto the slot**,
+which does the same thing.
+
+Inside the field, left of the caret, are two buttons: the **pencil** opens this
+material in the Material Editor, and **×** removes it from the object.
+
+An object with no material yet shows a **New material** button under the field
+instead. It asks where the file should go — type a name and pick a destination
+folder from the project tree — then writes the `.material` there and binds it.
+It does *not* jump you to the Material Editor: the texture slots that appear
+underneath are where a new material usually gets filled in, and the pencil is
+there when you do want the node graph.
+
+> A preview that shows a plain sphere glyph rather than a rendered ball just
+> means the thumbnail hasn't been rendered yet — they're captured in the
+> background the first time a material comes into view and cached in the project
+> from then on.
 
 ### Texture slots
 
-Below that is one row per PBR channel — **Base Color**, **Normal**,
-**Roughness**, **Metallic**, **Ambient Occlusion** and **Emissive**.
+Once the object has a material, one row per PBR channel appears below the
+field — **Base Color**, **Normal**, **Roughness**, **Metallic**, **Ambient
+Occlusion** and **Emissive**. There's no heading over them; each row names its
+own channel.
 
 **Drag an image onto a row** (or click the row to browse for one) and it is
 wired into the material graph for you: the sampler node is created, connected to
 the matching pin on the Surface Output node, and the material is recompiled and
-saved. The mesh updates immediately. The **✕** on a filled row unwires that
-channel again and tidies away the node it was using.
+saved. The mesh updates immediately.
 
-If the object has no material yet, the first drop creates one for you — a new
-`.material` named after the object, in the project's `materials/` folder.
+A filled row carries two buttons, and the difference between them matters:
+
+- The **eye** turns that channel off *on the mesh* without giving the texture
+  up. The row stays filled — dimmed, with the thumbnail faded — and clicking the
+  eye again puts the texture straight back. Use it to see the mesh without its
+  normal map, or to check what a roughness map is actually contributing.
+- The **✕** unwires the channel for real and tidies away the node it was using.
+  There's nothing to click to get it back.
+
+Muting is stored in the `.material`, so it survives saving and reloading and
+applies anywhere that material is used — it's a property of the material, not a
+per-object view setting.
+
+If the object has no material yet there are no channel rows to aim at, but you
+don't need them: drop the image on the **material slot** at the top and one is
+created for you — a new `.material` named after the object, in the project's
+`materials/` folder — with the image already wired in.
 
 **Dropping a whole texture set:** drag several images at once onto the *material
 slot* at the top and each one is routed by its filename — `rock_normal.png` goes
