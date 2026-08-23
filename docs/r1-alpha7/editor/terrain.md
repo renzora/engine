@@ -15,11 +15,27 @@ A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`Terr
 
 ## Creating terrain
 
-Add a terrain from the editor's **Add** menu (it's registered as the `terrain` entity preset, icon "mountains", category "general"), or click any terrain toolbar button while no terrain exists.
+Add a terrain from the editor's **Add** menu (it's registered as the `terrain` entity preset, icon "mountains", category "general"), or click any terrain toolbar button while no terrain exists. You can also [turn a plane you have already placed into one](#making-a-terrain-out-of-a-plane).
 
 A fresh terrain is a **single 64 m × 64 m tile** at `chunk_resolution = 129` (129 × 129 vertices), with a checkerboard placeholder material and a flat surface sitting just above the editor grid plane. The default height range is `-10 m` to `40 m`.
 
 The parent entity spawns at `y = 0.05` rather than `y = 0`. A new terrain's flat surface would otherwise be exactly coplanar with the grid, and the grid — which draws in the transparent pass without writing depth — breaks up into shimmering patches against a surface at its own depth. The 5 cm lift puts the terrain strictly in front, so it occludes the grid cleanly. It's an ordinary Transform, saved with the scene: move the terrain to `y = 0` yourself if you want it exactly on the plane.
+
+### Making a terrain out of a plane
+
+You do not have to decide up front. Select **any flat mesh** — a Plane primitive, a subdivided grid, an imported ground plane — and a **Make Terrain** button (icon: shovel) appears in the terrain row of the viewport's top strip. Click it and that entity becomes a terrain in place, then drops straight into the Sculpt brush so you can start shaping it.
+
+It stays the *same entity*: same name, same place in the hierarchy, same scripts and components, same spot in the scene. What changes is its geometry — the single flat mesh is replaced by the chunk grid the brushes work on.
+
+- **"Flat" is about shape, not origin.** A mesh qualifies when its bounds are thin in Y next to their X/Z footprint (within 2%), so it doesn't matter whether it was spawned from the Plane shape or imported. A cube, a wall or a hillside won't offer the button.
+- **The terrain starts flat.** The heightmap is a fresh one at the plane's level — any millimetre-scale relief already in the mesh is not sampled into it. Convert first, then shape with the brushes or [Generate](#generating-a-landscape).
+- **The grid matches the ground the plane covered.** The chunk size is taken from the plane's *shorter* side (aiming for the usual 64 m, but never larger than the plane), and the longer side is tiled with however many of those chunks it takes — so a 100 × 20 plane becomes a 5 × 1 terrain of 20 m chunks, not a 100 × 50 one. Resolution follows the chunk size, aiming for roughly half-metre vertex spacing, so a small plane doesn't get centimetre triangles. A plane scaled out to kilometres is capped at 64 chunks, with the chunk size growing to cover it.
+- **Scale and rotation are baked in.** The terrain keeps the plane's position, but its own transform comes back to identity rotation and scale 1 (including any inherited from a parent), with the size folded into the chunk size instead. The brushes map a cursor hit into heightmap coordinates through the terrain root's *position* alone, so a rotated or scaled terrain root would land every stroke somewhere other than under the pointer.
+- **Height range and surface.** The new terrain gets the standard `-10 m` to `40 m` range, whose flat level sits at local `y = 0` — exactly where the plane's surface was. Unlike a terrain added from the **Add** menu it is *not* nudged up by 5 cm to clear the editor grid: it is replacing a mesh you already placed, so it stays where you put it.
+- **Materials.** A `.material` assigned to the plane carries over to every chunk. A plane wearing only a plain colour gets the terrain checkerboard, the same as a fresh terrain.
+- **Undoable.** Ctrl+Z puts the plane's mesh and transform back and clears the chunks away. (Sculpting done after the conversion lives on those chunks, so undoing the conversion itself discards it.)
+
+Flat meshes that are *part of an imported model* don't offer the button — the model respawns its own children from the source file, so the plane would come straight back next to the new terrain.
 
 > Chunks each get a **trimesh collider** (`renzora_physics`'s `CollisionShapeData::mesh()`). Rebuilding a full-chunk trimesh is expensive, so the collider is **debounced**: it rebuilds ~0.25 s after the last mesh change and never mid-stroke — sculpting stays responsive, and the collider catches up on release. It is a triangle mesh, *not* a heightfield collider.
 

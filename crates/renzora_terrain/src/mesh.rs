@@ -299,26 +299,6 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
         ..TerrainData::default()
     };
 
-    let material = {
-        let mut mats = world.resource_mut::<Assets<TerrainCheckerboardMaterial>>();
-        mats.add(TerrainCheckerboardMaterial::default())
-    };
-
-    // Build chunk data + meshes
-    let mut chunks: Vec<(TerrainChunkData, Handle<Mesh>, Vec3)> = Vec::new();
-    {
-        let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        for cz in 0..terrain_data.chunks_z {
-            for cx in 0..terrain_data.chunks_x {
-                let chunk = TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
-                let mesh = generate_chunk_mesh(&terrain_data, &chunk);
-                let mesh_handle = meshes.add(mesh);
-                let origin = terrain_data.chunk_world_origin(cx, cz);
-                chunks.push((chunk, mesh_handle, origin));
-            }
-        }
-    }
-
     // Parent at origin, plus `TERRAIN_GRID_CLEARANCE` — defaults are tuned so
     // the initial flat heightmap (20% × range-50 + min=-10 = 0) lands on the
     // editor grid plane, and exactly coplanar is the one place the grid glitches.
@@ -327,7 +307,7 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             Name::new("Terrain"),
             Transform::from_xyz(0.0, TERRAIN_GRID_CLEARANCE, 0.0),
             Visibility::default(),
-            terrain_data,
+            terrain_data.clone(),
             // Paintable from frame one (`ensure_painter_system` covers
             // scene-loaded terrains, but only on the next Update).
             crate::painter::Painter::default(),
@@ -335,11 +315,58 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
         ))
         .id();
 
+    let chunks = spawn_terrain_chunks(world, terrain_entity, &terrain_data, None);
     console_info(
         "Terrain",
         format!("Spawning terrain with {} chunks", chunks.len()),
     );
 
+    terrain_entity
+}
+
+/// Spawn the flat chunk grid `terrain_data` describes as children of
+/// `terrain_entity`, and return the chunk entities.
+///
+/// Split out of [`spawn_terrain`] because a terrain is not always born from the
+/// Add menu: the editor also *converts* an existing flat mesh into one (see
+/// `renzora_terrain_editor`'s plane→terrain conversion). Both routes have to lay
+/// chunks out identically — same local origins, same collider, same
+/// `TerrainChunkOf` wiring — or a converted terrain sculpts subtly differently
+/// from a spawned one.
+///
+/// `material` is the project material each chunk should wear. `None` gives them
+/// the terrain checkerboard, which is what a fresh terrain looks like; passing
+/// one carries a converted mesh's assigned material across, and mirrors what
+/// [`rehydrate_terrain_chunks`] does on scene load — a chunk with a `MaterialRef`
+/// is left for the material resolver rather than having the checkerboard
+/// stamped on top of it.
+pub fn spawn_terrain_chunks(
+    world: &mut World,
+    terrain_entity: Entity,
+    terrain_data: &TerrainData,
+    material: Option<MaterialRef>,
+) -> Vec<Entity> {
+    let checker = material.is_none().then(|| {
+        let mut mats = world.resource_mut::<Assets<TerrainCheckerboardMaterial>>();
+        mats.add(TerrainCheckerboardMaterial::default())
+    });
+
+    // Build chunk data + meshes
+    let mut chunks: Vec<(TerrainChunkData, Handle<Mesh>, Vec3)> = Vec::new();
+    {
+        let mut meshes = world.resource_mut::<Assets<Mesh>>();
+        for cz in 0..terrain_data.chunks_z {
+            for cx in 0..terrain_data.chunks_x {
+                let chunk = TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
+                let mesh = generate_chunk_mesh(terrain_data, &chunk);
+                let mesh_handle = meshes.add(mesh);
+                let origin = terrain_data.chunk_world_origin(cx, cz);
+                chunks.push((chunk, mesh_handle, origin));
+            }
+        }
+    }
+
+    let mut spawned = Vec::with_capacity(chunks.len());
     for (mut chunk_data, mesh_handle, origin) in chunks {
         chunk_data.dirty = false;
         let cx = chunk_data.chunk_x;
@@ -348,7 +375,6 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             .spawn((
                 Name::new(format!("Chunk ({},{})", cx, cz)),
                 Mesh3d(mesh_handle),
-                MeshMaterial3d(material.clone()),
                 Transform::from_translation(origin),
                 PhysicsBodyData::static_body(),
                 CollisionShapeData::mesh(),
@@ -356,14 +382,26 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
                 TerrainChunkOf(terrain_entity),
             ))
             .id();
+        match (&checker, &material) {
+            (Some(checker), _) => {
+                world
+                    .entity_mut(chunk_entity)
+                    .insert(MeshMaterial3d(checker.clone()));
+            }
+            (None, Some(mat)) => {
+                world.entity_mut(chunk_entity).insert(mat.clone());
+            }
+            (None, None) => {}
+        }
         // Insert ChildOf separately to trigger Bevy's hierarchy hooks
         // (on_insert hooks don't fire when ChildOf is part of a spawn bundle)
         world
             .entity_mut(chunk_entity)
             .insert(ChildOf(terrain_entity));
+        spawned.push(chunk_entity);
     }
 
-    terrain_entity
+    spawned
 }
 
 /// Rehydrate terrain chunks after scene load — spawns mesh, material, collider,

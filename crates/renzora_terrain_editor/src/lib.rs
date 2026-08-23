@@ -6,6 +6,7 @@ mod brush_layer_paint;
 mod generate_bar;
 mod generate_tool;
 mod native;
+mod plane_terrain;
 mod region_tool;
 mod settings_overlay;
 mod shelf;
@@ -51,6 +52,22 @@ impl Plugin for TerrainEditorPlugin {
         // the shelf instead — neither opens a palette of its own, and there
         // they sit together as the operations that act on the terrain as a
         // whole. See [`shelf::register`].
+        // Make Terrain — the same row's entry point from the other direction:
+        // it shows when the selection is a flat mesh rather than a terrain, and
+        // turns that mesh into one in place. Ordered before Sculpt so it reads
+        // as the step that comes first; the two are never visible together for
+        // the same entity, since converting is what makes the rest appear.
+        app.register_tool(
+            ToolEntry::new(
+                "builtin.terrain_from_plane",
+                plane_terrain::TOOL_ICON,
+                "Make Terrain — sculpt this plane as terrain",
+                ToolSection::Terrain,
+            )
+            .order(-1)
+            .visible_if(plane_terrain::plane_selected)
+            .on_activate(plane_terrain::convert_selected),
+        );
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_sculpt",
@@ -288,11 +305,18 @@ fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: Acti
         return;
     }
 
-    if let Some(entity) = first_terrain_entity(world) {
-        let already_selected = world
-            .get_resource::<EditorSelection>()
-            .and_then(|s| s.get()) == Some(entity);
-        if !already_selected {
+    // Act on the selected terrain when there is one, and only fall back to
+    // "whichever terrain the archetypes list first" when there isn't. Scenes
+    // used to hold a single terrain, so the fallback was the whole story; now
+    // that any plane can be converted into one (see [`plane_terrain`]), taking
+    // it unconditionally would drag the selection off the terrain you just
+    // clicked and onto an unrelated one.
+    let terrain_selected = world
+        .get_resource::<EditorSelection>()
+        .and_then(|s| s.get())
+        .is_some_and(|e| world.get::<TerrainData>(e).is_some());
+    if !terrain_selected {
+        if let Some(entity) = first_terrain_entity(world) {
             if let Some(sel) = world.get_resource::<EditorSelection>() {
                 sel.set(Some(entity));
             }
