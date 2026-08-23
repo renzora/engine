@@ -223,10 +223,10 @@ pub(crate) fn header_groups(
 
 /// The Maximize toggle for one viewport slot.
 ///
-/// Tagged with its slot so the click maximizes *that* viewport. Public because
-/// the editor shell mounts the primary one at the end of the document-tab bar —
-/// the driver systems in [`register`] find it by component, so where it's
-/// parented has never mattered to whether it works.
+/// Tagged with its slot so the click maximizes *that* viewport. Still public
+/// from the spell when the editor shell mounted the primary one at the end of
+/// the document-tab bar; the driver systems in [`register`] find it by
+/// component, so where it's parented has never mattered to whether it works.
 pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
     let btn = action_btn(
         commands,
@@ -336,12 +336,6 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     let space_btn = space_toggle(commands, fonts, slot);
     commands.entity(space_btn).insert(ThreeDOnly);
 
-    // No Maximize here on the primary viewport: it sits at the right-hand end of
-    // the document-tab bar instead (see [`build_maximize`]), which is the one row
-    // of chrome that runs the full width of the window. The secondary slots have
-    // no such row, so they keep theirs in this group.
-    let maximize = (slot != 0).then(|| build_maximize(commands, fonts, slot));
-
     let view_group = commands
         .spawn((
             Node {
@@ -354,9 +348,9 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
             Name::new("vp-view-controls"),
         ))
         .id();
-    let mut view_kids = vec![view_angle, space_btn];
-    view_kids.extend(maximize);
-    commands.entity(view_group).add_children(&view_kids);
+    commands
+        .entity(view_group)
+        .add_children(&[view_angle, space_btn]);
 
     // The shell's Play control. Primary viewport only, so a 4-way split doesn't
     // sprout four Play buttons.
@@ -400,6 +394,33 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     });
     groups.push((view_group, "viewport"));
     let holders = renzora_ember::widgets::arrange_row_items(commands, fonts, bar, &groups);
+
+    // Maximize floats to the right edge, outside the arrangement.
+    //
+    // `margin-left: auto` eats the free space on its line, so it sits hard
+    // against the right of the bar however many groups are to its left — and on
+    // the right of the last line when the bar wraps. It deliberately isn't one
+    // of the arrangeable groups: those are ordered by the user and remembered,
+    // and this one has a *position* as part of what it is. Being unkeyed is also
+    // what keeps it there — `arrange_restore` rewrites the row's children with
+    // the keyed holders in saved order and everything else appended after them.
+    let maximize = build_maximize(commands, fonts, slot);
+    // Patched onto the button's own `Node` rather than inserted as a new one:
+    // `action_btn` sized and rounded it, and a fresh `Node` would drop all of it.
+    commands.queue(move |world: &mut World| {
+        if let Some(mut node) = world.get_mut::<Node>(maximize) {
+            node.margin.left = Val::Auto;
+            node.flex_shrink = 0.0;
+        }
+    });
+    commands.entity(bar).add_children(&[maximize]);
+    // Hidden with the rest of the toolbar while the game runs. It's a child of
+    // the bar rather than of a holder, so the loop below doesn't cover it.
+    renzora_ember::reactive::tracked::bind_display(commands, maximize, |w| {
+        !w.get_resource::<renzora::core::PlayModeState>()
+            .map(|p| p.is_in_play_mode())
+            .unwrap_or(false)
+    });
     // Only the primary bar's arrangement is saved: the secondary slots carry a
     // subset of the same groups, and letting each write the shared order would
     // have them overwrite each other with partial lists.
