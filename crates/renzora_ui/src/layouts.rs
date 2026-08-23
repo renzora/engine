@@ -458,17 +458,17 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Materials: Preview+Material | MaterialGraph. Pin values are also editable
-/// inline on the nodes; the Material panel is the labelled view of the selected
-/// node's pins, and where the graph's name and domain live. It tabs with the
-/// preview rather than splitting it — the graph is what needs the room, and
-/// both of these are read-and-tweak side views of the same material.
+/// Materials: Preview over Material | MaterialGraph. Pin values are also
+/// editable inline on the nodes; the Material panel is the labelled view of the
+/// selected node's pins, and where the graph's name and domain live. It sits
+/// under the preview so both are on screen at once.
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        DockTree::Leaf {
-            tabs: vec!["material_preview".into(), "material_inspector".into()],
-            active_tab: 0,
-        },
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("material_inspector"),
+            0.5,
+        ),
         DockTree::leaf("material_graph"),
         0.25,
     )
@@ -503,15 +503,16 @@ pub fn layout_particles_advanced() -> DockTree {
 // hierarchy/outline panels because there's no entity context — the panels in
 // these layouts read the file path from `EditorContext` directly.
 
-/// Materials (asset mode): Preview+Material | MaterialGraph
+/// Materials (asset mode): Preview over Material | MaterialGraph
 /// Same shape as the scene-mode layout but explicitly without hierarchy —
 /// makes it obvious the user is editing a file, not an entity's material.
 fn layout_materials_asset() -> DockTree {
     DockTree::horizontal(
-        DockTree::Leaf {
-            tabs: vec!["material_preview".into(), "material_inspector".into()],
-            active_tab: 0,
-        },
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("material_inspector"),
+            0.5,
+        ),
         DockTree::leaf("material_graph"),
         0.25,
     )

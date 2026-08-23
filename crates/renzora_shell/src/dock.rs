@@ -587,16 +587,18 @@ fn layout_animation() -> DockTree {
     )
 }
 
-/// Materials: Preview+Material | MaterialGraph.
+/// Materials: Preview over Material | MaterialGraph.
 ///
-/// The Material panel tabs with the preview rather than splitting the column.
-/// Pin values are editable inline on the nodes, so the panel is the labelled
-/// view of the selected node's pins (and where the graph's name and domain
-/// live) — a thing you look at when you need it, not one that should cost the
-/// preview half its height permanently.
+/// The Material panel sits under the preview rather than tabbing with it, so
+/// the node you clicked and the sphere it shades are both on screen at once —
+/// tabbed, reading a pin meant hiding the thing the pin changes.
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        DockTree::tabs(&["material_preview", "material_inspector"]),
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("material_inspector"),
+            0.5,
+        ),
         DockTree::leaf("material_graph"),
         0.25,
     )
