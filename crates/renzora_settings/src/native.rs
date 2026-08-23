@@ -1960,6 +1960,28 @@ fn tab_interface(
         |w, &v| w.resource_mut::<EditorSettings>().ui_preview_by_default = v,
     );
     settings_row(commands, fonts, body, 0, &tr("common.preview"), t);
+    // Where the open documents are listed: the full-width strip under the top
+    // bar, or a dropdown in the top bar beside Play that gives that row back to
+    // the dock. Persisted per-user, so the shell builds the right chrome on the
+    // first frame of the next session.
+    let doc_tab_opts = [
+        tr("settings.opt.doc_tabs_strip"),
+        tr("settings.opt.doc_tabs_dropdown"),
+    ];
+    let doc_tab_refs: Vec<&str> = doc_tab_opts.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &doc_tab_refs,
+        usize::from(settings.doc_tabs_dropdown),
+        |w| usize::from(w.resource::<EditorSettings>().doc_tabs_dropdown),
+        |w, &i| {
+            let dropdown = i == 1;
+            w.resource_mut::<EditorSettings>().doc_tabs_dropdown = dropdown;
+            let _ = renzora::save_doc_tabs_dropdown(dropdown);
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.doc_tabs"), dd);
 }
 
 fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {

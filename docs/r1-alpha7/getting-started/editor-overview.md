@@ -12,8 +12,8 @@ When you open a project, the editor fills the window with a few main areas.
 
 From the screenshot above:
 
-- **Top bar** — on the left, the **menu button** (☰) and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not here either — they sit at the top of the viewport, above its toolbar.
-- **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. The strip under the top bar is for other panels' tools, and hides when there are none.
+- **Top bar** — on the left, the **menu button** (☰) and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not in the top bar itself — they're the strip directly under it, spanning the window (or, if you'd rather keep that row, a dropdown beside Play — see [Document tabs](/docs/r1-alpha7/editor/scenes#working-with-document-tabs)).
+- **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. Other panels keep their tools the same way, in their own header; the strip under the top bar is your open document tabs.
 - **Left** — your **Scene** tree (everything in the current level), with the **Assets** browser — a file explorer for your project — below it.
 - **Center** — the **3D viewport** where you see and move your world.
 - **Right** — the **Inspector**, which shows the settings of whatever you click.
@@ -23,7 +23,7 @@ The window is borderless: drag the top bar to move it (double-click to maximize)
 
 Click the **☰ menu button** to open the main menu. Your account is the first row — your username when you're signed in (hover it for **My Library** and **Sign Out**), or **Sign In** when you're not — followed by `File`, `Edit`, `View`, and `Help`. Hover one of those and its items slide out beside it, so everything that used to sit across the top bar is now one click away in a single dropdown. **Settings** is the last row — top-level, not buried in `File`; the gear button beside the hamburger opens the same panel in one click. **Notifications** moved in here too, under your username, now that the top bar has no bell.
 
-The workspace ribbon has a **fixed width** so it can't be pushed around: add a tenth workspace and the ribbon stays exactly where it was. The document tabs in the viewport get its full width instead. Either way, whatever no longer fits folds into a **caret button** (`⌄`) at the end of the strip, which opens a menu of the hidden tabs — click one to jump straight to it. The tab you're currently on never folds.
+The workspace ribbon has a **fixed width** so it can't be pushed around: add a tenth workspace and the ribbon stays exactly where it was. The document tabs on the row below get the window's full width instead. Either way, whatever no longer fits folds into a **caret button** (`⌄`) at the end of the strip, which opens a menu of the hidden tabs — click one to jump straight to it. The tab you're currently on never folds.
 
 The **Help** submenu holds links to the documentation, YouTube, Discord, and the GitHub repo, plus **About Renzora Engine** — an overlay that shows the current version, a short description of the engine, and credits for the open-source community crates Renzora is built on. Each credit row links out to that project's repository; click anywhere outside the card (or press `Esc`) to close it.
 
@@ -126,7 +126,7 @@ What you can do here:
 | **Project** | Project | Project, Global Scenes |
 | | Window | Window, Render Resolution |
 | | Rendering | 3D Rendering, 2D Rendering |
-| **Appearance** | Interface | Fonts, Language, Display, Hierarchy, Inspector, UI Workspace |
+| **Appearance** | Interface | Fonts, Language, Display, Hierarchy, Inspector, UI Workspace (incl. Document Tabs) |
 | | Theme | Active Theme, Semantic Colors, Surfaces, Text, Widgets, Panels, Syntax Tokens, Editor Chrome, Widget Styles |
 | **Editor** | General | Developer, Renderer, Import |
 | | Auto-Save | Auto-Save |

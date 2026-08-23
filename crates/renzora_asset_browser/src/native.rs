@@ -4305,36 +4305,40 @@ fn open_from_menu(world: &mut World, path: &Path) {
     }
 }
 
-/// Open a script/shader/template/text file in the code editor. Always loads it
-/// into `CodeEditorState` (no blank-prone document-tab layout switch); then makes
-/// the editor visible per the `code_open_switch_layout` setting — either adding a
-/// Code Editor panel to the current dock layout (default) or switching to the
-/// dedicated "Scripting" layout.
+/// Open a script/shader/template/text file in the code editor — as a **document
+/// tab**, like every other kind the browser opens.
+///
+/// It used to insert `OpenCodeEditorFile` and stop there, which is why a
+/// double-clicked script was the one asset that opened without appearing in the
+/// tab strip: nothing had told `DocumentTabState` about it. `open_asset_tab`
+/// does that, focuses an already-open tab instead of opening a second one, and
+/// inserts the `OpenCodeEditorFile` request itself for script/shader kinds — so
+/// the file still lands in `CodeEditorState` exactly as before.
+///
+/// Text formats the kind table doesn't know (`.rs`, `.toml`, `.md`, `.css`) open
+/// as `Script` tabs: the code editor is what holds them, and `Script` is the kind
+/// that routes there.
 fn open_in_code_editor(world: &mut World, path: PathBuf) {
-    world.insert_resource(renzora::core::OpenCodeEditorFile { path });
+    use renzora_editor_framework::DocTabKind;
+    let kind = renzora_editor_framework::doc_kind_for_path(&path).unwrap_or(DocTabKind::Script);
+    renzora_editor_framework::open_asset_tab(world, &path, kind);
+
+    // egui dock model (legacy backend): focus/add the panel, or switch layout,
+    // per the `code_open_switch_layout` setting.
     let switch = world
         .get_resource::<renzora_editor_framework::EditorSettings>()
         .map(|s| s.code_open_switch_layout)
         .unwrap_or(false);
-
-    // egui dock model (legacy backend): focus/add the panel, or switch layout.
     if switch {
         renzora_editor_framework::switch_layout_by_name(world, "Scripting");
     } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor_framework::DockingState>() {
         docking.tree.focus_or_add_panel("code_editor");
     }
 
-    // bevy_ui shell dock model: add/focus the code-editor panel in the live dock
-    // and flag a rebuild. The shell renders from its own `renzora_ember::dock`
-    // model, not `DockingState`, so this is what makes the panel appear there.
-    // (Switching the ember workspace needs the shell's `ShellLayouts`, which
-    // isn't reachable here, so on the bevy_ui backend both modes reveal in place.)
-    if let Some(mut dock) = world.get_resource_mut::<renzora_ember::dock::Dock>() {
-        dock.tree.focus_or_add_panel("code_editor");
-    }
-    if let Some(mut dirty) = world.get_resource_mut::<renzora_ember::dock::DockDirty>() {
-        dirty.0 = true;
-    }
+    // Nothing here for the bevy_ui shell's dock: revealing the code-editor panel
+    // there is `sync_workspace_to_active_doc`'s job now, because it runs *after*
+    // the workspace switch the new tab triggers. Adding the panel from here put
+    // it into the layout we were about to leave.
 }
 
 /// Open a file with its OS default application.

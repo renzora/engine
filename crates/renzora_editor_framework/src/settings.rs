@@ -295,6 +295,13 @@ pub struct EditorSettings {
     /// current dock layout; `true` switches to the dedicated "Scripting" layout.
     pub code_open_switch_layout: bool,
 
+    /// Where the open-document tabs live: `false` (default) is the strip under
+    /// the top bar, `true` folds them into a dropdown in the top bar beside
+    /// Play, giving the row back to the dock. Persisted per-user in
+    /// `~/.renzora/editor.toml` — how much vertical room the tabs are worth is
+    /// a property of the screen you're on, not of the project.
+    pub doc_tabs_dropdown: bool,
+
     /// Max entries the editor console retains before dropping the oldest. Small
     /// by default (100) because the console panel spawns a UI row per entry, so
     /// a long backlog costs frames. Persisted per-user in `~/.renzora/editor.toml`
@@ -341,6 +348,9 @@ impl Default for EditorSettings {
             code_show_whitespace: false,
             code_word_wrap: false,
             code_open_switch_layout: false,
+            // Seeded from the per-user pref so the shell builds the chrome the
+            // way the last session left it, on the first frame.
+            doc_tabs_dropdown: renzora::load_doc_tabs_dropdown(),
             // Seed from the persisted per-user pref so the console cap the buffer
             // enforces matches what the settings panel shows.
             console_log_limit: renzora::load_console_log_limit(),

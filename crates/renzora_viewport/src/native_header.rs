@@ -224,7 +224,7 @@ pub(crate) fn header_groups(
 /// The Maximize toggle for one viewport slot.
 ///
 /// Tagged with its slot so the click maximizes *that* viewport. Public because
-/// the editor shell mounts the primary one at the end of the scene-tab strip —
+/// the editor shell mounts the primary one at the end of the document-tab bar —
 /// the driver systems in [`register`] find it by component, so where it's
 /// parented has never mattered to whether it works.
 pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
@@ -336,10 +336,10 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     let space_btn = space_toggle(commands, fonts, slot);
     commands.entity(space_btn).insert(ThreeDOnly);
 
-    // No Maximize here: on the primary viewport it sits at the right-hand end
-    // of the scene-tab strip instead (see [`build_maximize`]), which is the one
-    // bar in the panel that runs its full width. The secondary slots have no tab
-    // strip, so they keep theirs in this group.
+    // No Maximize here on the primary viewport: it sits at the right-hand end of
+    // the document-tab bar instead (see [`build_maximize`]), which is the one row
+    // of chrome that runs the full width of the window. The secondary slots have
+    // no such row, so they keep theirs in this group.
     let maximize = (slot != 0).then(|| build_maximize(commands, fonts, slot));
 
     let view_group = commands

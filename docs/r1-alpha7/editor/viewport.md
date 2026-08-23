@@ -42,7 +42,7 @@ Along the **top edge of the viewport** runs its toolbar: the session actions —
 
 The toolbar holds the buttons that say *what the viewport is set to do*. What each of those opens — the brushes, the select modes, the ops — is on the tool shelf down the left edge, described below. There's no Sculpt Mode button: the **Mode** dropdown beside the 3D/2D/UI selector already lists Scene / Edit / Sculpt, and one control for it is enough.
 
-Below the scene tabs, hard against the top of the scene, sits the **brush settings bar**: the active terrain brush's size, strength and falloff, its shape and falloff-curve toggles, and whatever that particular brush adds (Flatten's target height, Noise's octaves, Stamp's rotation). It appears only while a terrain brush is in hand, and it sits directly above the shelf's first button, so the brush you picked and the settings for it are next to each other.
+Below the toolbar, hard against the top of the scene, sits the **brush settings bar**: the active terrain brush's size, strength and falloff, its shape and falloff-curve toggles, and whatever that particular brush adds (Flatten's target height, Noise's octaves, Stamp's rotation). It appears only while a terrain brush is in hand, and it sits directly above the shelf's first button, so the brush you picked and the settings for it are next to each other.
 
 ## The tool shelf
 
@@ -252,9 +252,9 @@ The **active** viewport is whichever one your cursor is over, so camera controls
 
 - a **view-angle dropdown** — pick Perspective, Front, Back, Left, Right, Top, or Bottom for *that* viewport, so you can lay out the classic perspective / front / top / side quad and change any one without touching the others;
 - a **World / Local** toggle that sets the transform gizmo's axes for that viewport independently;
-- a **maximize** button that expands *that* viewport to fill the editor (click it again, or the maximize button on the now-full viewport, to restore your layout).
+- a **maximize** button that expands *that* viewport to fill the editor (click it again, or the maximize button on the now-full viewport, to restore your layout). The **primary** viewport's maximize isn't in its toolbar — it's at the right-hand end of the [document-tab bar](scenes.md#working-with-document-tabs), the one row of chrome that runs the window's full width.
 
-The viewport's **own tool strip**, flush along its top edge, now holds all of it: Select / Move / Rotate / Scale, undo / redo / save, the shape menu, the move / rotate / scale snap steps, the display / gizmos / snap / camera menus, **Play**, and this viewport's view-angle, World/Local and maximize controls. (There is no longer a shared toolbar strip under the top bar: every panel that had tools there — the code editor, the material graph, the blueprint graph — now carries them inside itself.)
+The viewport's **own tool strip**, flush along its top edge, now holds all of it: Select / Move / Rotate / Scale, undo / redo / save, the shape menu, the move / rotate / scale snap steps, the display / gizmos / snap / camera menus, **Play**, and this viewport's view-angle and World/Local controls. (There is no longer a shared *toolbar* strip under the top bar: every panel that had tools there — the code editor, the material graph, the blueprint graph — now carries them inside itself. The strip under the top bar is your open document tabs.)
 
 It fills the bar from the left, and sits **above** the rendered scene rather than floating over it — so the scene starts below the bar and the axis gizmo, nav buttons and 2D rulers move down with it.
 
@@ -290,6 +290,8 @@ The small **caret next to the Play button** opens the play-target menu:
 
 - **Play in Viewport** (the default) — the in-editor experience described above: the game runs inside the viewport panel with the rest of the editor around it.
 - **Play in Runtime Window** — Play launches the game as its **own process in its own OS window**, exactly like an exported build: the window uses your project's **Window settings** (Settings → Project → Window — title from the project name, resolution, windowed / fullscreen / borderless mode, resizable) and your window icon. The editor pauses behind a dark overlay while the game owns the screen, and wakes back up the moment you close the game window (or press **Stop**, which closes it for you).
+
+**The button says where it will run.** Its label follows the selected target, so you can see the choice without opening the menu: **Play Viewport**, **Play VR**, **Simulate**, and plain **Play** for the runtime window (launching the game in its own window is what a play button ordinarily means). While the game is running it reads **Stop** as usual.
 
 The choice is remembered across sessions (per-user, in `~/.renzora/editor.toml`) and every following Play uses it. The same switch also lives in **Settings → Scripting → External Window**.
 

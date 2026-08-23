@@ -226,6 +226,9 @@ mod wasm_prefs {
     pub fn save_play_runtime_window(_runtime_window: bool) -> std::io::Result<()> {
         Ok(())
     }
+    pub fn save_doc_tabs_dropdown(_dropdown: bool) -> std::io::Result<()> {
+        Ok(())
+    }
     pub fn save_autosave(_settings: &AutoSaveSettings) -> std::io::Result<()> {
         Ok(())
     }
@@ -332,6 +335,12 @@ struct EditorPrefFile {
     /// project property.
     #[serde(default)]
     play_runtime_window: bool,
+    /// Where the open-document tabs are shown: `false` (default) is the strip
+    /// under the top bar, `true` folds them into a dropdown in the top bar
+    /// beside Play. Per-user because it's a matter of how much vertical room
+    /// you're willing to spend on them, not a project property.
+    #[serde(default)]
+    doc_tabs_dropdown: bool,
     /// Play launches the scene into a VR headset (external runtime process
     /// with `--vr`). Layered above `play_runtime_window`: when set, the Play
     /// button's target is "VR Headset" regardless of the window preference.
@@ -425,6 +434,7 @@ impl Default for EditorPrefFile {
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
             play_runtime_window: false,
+            doc_tabs_dropdown: false,
             play_vr: false,
             scroll_speed: default_scroll_speed(),
             console_log_limit: default_console_log_limit(),
@@ -894,6 +904,46 @@ pub fn load_play_runtime_window() -> bool {
             .map(|f| f.play_runtime_window)
             .unwrap_or(false)
     }
+}
+
+/// Load where the document tabs are shown (default `false` = the strip under
+/// the top bar; `true` = a dropdown in the top bar beside Play). The shell seeds
+/// `EditorSettings.doc_tabs_dropdown` from this at startup.
+pub fn load_doc_tabs_dropdown() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.doc_tabs_dropdown)
+            .unwrap_or(false)
+    }
+}
+
+/// Persist where the document tabs are shown (read-modify-write, so other
+/// fields survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_doc_tabs_dropdown(dropdown: bool) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.doc_tabs_dropdown = dropdown;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
 }
 
 /// Load the persisted VR play target (default `false`).

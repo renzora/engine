@@ -128,7 +128,7 @@ pub fn palette() -> Palette {
 /// result is always between two surfaces the theme author chose, so it can't
 /// invert the way "lighten by 10%" does when the palette flips. Used for the
 /// bands of chrome that need to read as their own surface without leaving the
-/// palette — the viewport's scene-tab strip and its brush bar.
+/// palette — the shell's document-tab bar and the viewport's brush bar.
 pub fn mix(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> Color {
     let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t) / 255.0;
     Color::srgb(c(a.0, b.0), c(a.1, b.1), c(a.2, b.2))

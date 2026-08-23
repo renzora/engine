@@ -120,14 +120,12 @@ impl Plugin for ShellPlugin {
         app.init_resource::<RibbonRename>();
         app.init_resource::<DocTabDrag>();
         app.init_resource::<DocTabRename>();
+        app.init_resource::<DocTabMru>();
         app.init_resource::<GlobalSceneHasCamera>();
         app.add_systems(Update, track_global_scene_cameras);
         app.add_observer(doc_tabs_follow_asset_path);
         app.init_resource::<OpenTopMenu>();
         app.init_resource::<ThemeMenuOpen>();
-        // The document tabs render inside the primary viewport panel (see
-        // [`build_doc_tabs`]); registering here is what puts them there.
-        renzora_ember::toolbar::register_viewport_top_strip(0, build_doc_tabs);
         app.add_systems(
             Update,
             (
@@ -145,7 +143,7 @@ impl Plugin for ShellPlugin {
                 (theme_bridge, sync_theme_menu_open),
                 apply_chrome_style,
                 doc_add_click,
-                doc_tab_click,
+                (doc_tab_click, doc_tab_menu_row_click),
                 (
                     doc_tab_drag,
                     doc_focus_rename,
@@ -155,7 +153,11 @@ impl Plugin for ShellPlugin {
                     close_tab_prompt_buttons,
                     pending_close_after_save,
                 ),
-                (sync_workspace_to_active_doc, persist_dock_layout),
+                (
+                    sync_workspace_to_active_doc,
+                    sync_active_doc_to_workspace,
+                    persist_dock_layout,
+                ),
                 (workspace_add_click, workspace_drop_to_new),
                 (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
                 (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
@@ -786,7 +788,10 @@ fn vr_active_overlay(
 /// Drive the Play button's glyph + label + color from play state and the
 /// selected launch mode: green "Play" (or blue flask "Simulate" when that mode
 /// is picked) when editing — muted if there's no scene camera — and red "Stop"
-/// while playing, simulating, or an external runtime is alive.
+/// while playing, simulating, or an external runtime is alive. The idle label
+/// also names the play target ("Play Viewport", "Play VR"; see
+/// [`PlayLaunchChoice::play_label`]), so the caret menu's selection is visible
+/// on the button itself.
 fn update_play_button(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
@@ -815,7 +820,11 @@ fn update_play_button(
     // Matches `play_btn_click`: a global scene's camera counts, so the button
     // doesn't read as disabled while the click handler would accept it.
     let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
-    let simulate = settings.is_some_and(|s| s.play_launch_simulate);
+    let choice = settings
+        .as_deref()
+        .map(PlayLaunchChoice::current)
+        .unwrap_or(PlayLaunchChoice::Viewport);
+    let simulate = choice == PlayLaunchChoice::Simulate;
 
     // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
     let (icon_name, color, playing) = if active {
@@ -830,10 +839,8 @@ fn update_play_button(
     };
     let label_text = if playing {
         renzora::lang::t("common.stop")
-    } else if simulate {
-        renzora::lang::t("common.simulate")
     } else {
-        renzora::lang::t("common.play")
+        choice.play_label()
     };
 
     for mut icon in &mut icons {
@@ -909,6 +916,20 @@ impl PlayLaunchChoice {
             Self::Window => "app-window",
             Self::Vr => "virtual-reality",
             Self::Simulate => "flask",
+        }
+    }
+
+    /// What the Play button reads while idle. Window stays the plain "Play" —
+    /// launching the game in its own window is what a play button ordinarily
+    /// means — while the targets that put the game somewhere else name
+    /// themselves, so the button says where the next Play will run without
+    /// having to open the caret menu to check.
+    fn play_label(self) -> String {
+        match self {
+            Self::Viewport => renzora::lang::t_or("shell.play_button.viewport", "Play Viewport"),
+            Self::Window => renzora::lang::t("common.play"),
+            Self::Vr => renzora::lang::t_or("shell.play_button.vr", "Play VR"),
+            Self::Simulate => renzora::lang::t("common.simulate"),
         }
     }
 }
@@ -3209,10 +3230,12 @@ fn spawn_shell(
         ))
         .id();
 
-    // No document-tab bar in this column: the tabs render inside the viewport
-    // panel now (see [`build_doc_tabs`]), so the shell chrome is top bar,
-    // toolbar strip, dock, status bar and nothing else.
+    // Top bar, then the document tabs, then the dock. The tabs are back in this
+    // column after a spell inside the viewport panel (see [`build_doc_tabs`]):
+    // as shell chrome they are on screen in every workspace, including the
+    // viewport-less asset layouts an open material routes the editor into.
     let top_bar = build_top_bar(commands, font, fonts);
+    let doc_tabs = build_doc_tabs(commands, fonts);
 
     // Wrapper holding the workspace dock and the global bottom panel overlaid
     // on it. The bottom panel CANNOT be a child of the `DockArea`: ember's
@@ -3472,7 +3495,7 @@ fn spawn_shell(
 
     commands
         .entity(root)
-        .add_children(&[top_bar, dock_wrap, collapsed_bottom, statusbar]);
+        .add_children(&[top_bar, doc_tabs, dock_wrap, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     let grips = build_resize_zones(commands);
@@ -3482,10 +3505,11 @@ fn spawn_shell(
 /// Which chrome bar an entity is, so [`apply_chrome_style`] can repaint each from
 /// `Theme.chrome` (fill / height / separator edge / rounding / padding).
 ///
-/// There's no `DocTabs` variant: the document tabs stopped being a bar of their
-/// own when they moved into the top bar, so they take the top bar's chrome.
-/// `Theme.chrome.doc_tabs` still exists (themes on disk set it, and the dock's
-/// own tab strips read it) — it just no longer paints a shell bar.
+/// There's no `DocTabs` variant, even though the document tabs are a shell bar
+/// again: [`build_doc_tabs`] paints its own band from the palette (a `mix` of
+/// `panel` toward `header`) rather than from `Theme.chrome`, so there is nothing
+/// here to repaint. `Theme.chrome.doc_tabs` still exists — themes on disk set
+/// it, and the dock's own tab strips read it.
 #[derive(Component, Clone, Copy)]
 enum ChromeBar {
     Top,
@@ -3965,9 +3989,13 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
     let play = build_play_group(commands, font);
+    // The document tabs, for anyone who'd rather not spend a row of the window
+    // on them — hidden unless Settings has them set to Dropdown, in which case
+    // the strip under this bar is the one that's hidden instead.
+    let docs = build_doc_tab_menu_group(commands, fonts, font);
     commands
         .entity(left)
-        .add_children(&[hamburger, session, settings, play]);
+        .add_children(&[hamburger, session, settings, play, docs]);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
@@ -4359,26 +4387,32 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSou
     input
 }
 
-/// The document tab strip: the open documents (`DocumentTabState`, shared with
+/// The document tab bar: every open document (`DocumentTabState`, shared with
 /// the egui editor) rendered reactively, plus an add-document button.
 ///
-/// **Where it lives.** Inside the primary viewport panel, under that panel's
-/// tool strip and directly above the rendered scene — mounted through
-/// [`renzora_ember::toolbar::register_viewport_top_strip`] rather than built
-/// here, because `renzora_shell` depends on `renzora_viewport` and not the other
-/// way round. It has been the editor's own full-width chrome bar and, before
-/// this, the left half of the top bar; the tabs now sit with the thing they
-/// switch between rather than at the far end of the window from it.
+/// **Where it lives.** A row of the shell's own column, directly under the top
+/// bar and above the dock — so it is on screen in every workspace. It spent a
+/// while inside the primary viewport panel, mounted through
+/// [`renzora_ember::toolbar::register_viewport_top_strip`], on the argument that
+/// tabs belong with the thing they switch between. What that actually bought
+/// was a tab bar that existed only where a `viewport` panel did: five of the
+/// nine default workspaces (Blueprints, Materials, Particles, Animation, Hub)
+/// have none, and an open material routes the editor *to* one of those — so the
+/// bar holding that material's tab vanished the moment you clicked it, leaving
+/// the document unreachable and uncloseable from its own editor.
 ///
-/// The consequence to know about: this bar exists only where a `viewport` panel
-/// does. Five of the nine default workspaces (Blueprints, Materials, Particles,
-/// Animation, Hub) have none, so there is no tab strip in them — switch
-/// documents from a workspace that has a viewport, or add one to the layout.
+/// Scenes and assets share the one bar. They are one list in the model, they
+/// are one Ctrl+Tab's worth of "things I have open" to the user, and splitting
+/// them into two bars only asks which half a given file is in.
 ///
-/// The bar spans the viewport's full width, so nothing folds until the tabs
-/// genuinely fill it. Inside it the tab list hugs its content, so the `+` button
-/// sits directly after the last tab and travels right as tabs are added; once
-/// they fill the bar the surplus folds into the caret menu and `+` stops moving.
+/// The primary viewport's Maximize button still rides along at the right-hand
+/// end, as it did when this bar lived in the panel: it was the full-width row
+/// there and it is the full-width row here.
+///
+/// The bar spans the window, so nothing folds until the tabs genuinely fill it.
+/// Inside it the tab list hugs its content, so the `+` button sits directly
+/// after the last tab and travels right as tabs are added; once they fill the
+/// bar the surplus folds into the caret menu and `+` stops moving.
 fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
@@ -4389,11 +4423,12 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 align_items: AlignItems::Center,
                 flex_shrink: 0.0,
                 min_width: Val::Px(0.0),
+                padding: UiRect::horizontal(Val::Px(6.0)),
                 overflow: Overflow::clip(),
-                // Closed off underneath, against the scene. Dark rather than the
-                // toolbar's own separator colour: this edge is where the chrome
-                // stops and the render begins, which is a harder boundary than
-                // the ones *inside* the chrome.
+                // Closed off underneath, against the dock. Dark rather than the
+                // toolbar's own separator colour: this edge is where the window
+                // chrome stops and the workspace begins, which is a harder
+                // boundary than the ones *inside* the chrome.
                 border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
@@ -4404,8 +4439,8 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // walk it into the background instead of away from it.
             //
             // Graded rather than flat, and the direction matters: lit at the top
-            // where it meets the toolbar, settling back toward `panel` at the
-            // bottom where the dark rule closes it off against the scene. The
+            // where it meets the top bar, settling back toward `panel` at the
+            // bottom where the dark rule closes it off against the dock. The
             // band therefore reads as catching light from above rather than as a
             // slab someone dropped between two darker things.
             BackgroundColor(mix(panel_bg(), header_bg(), 0.55)),
@@ -4414,11 +4449,10 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ColorStop::auto(mix(panel_bg(), header_bg(), 0.20)),
             ])),
             BorderColor::all(rgb(divider())),
-            // The bar sits over the viewport's picking area, so it has to swallow
-            // pointer events like the tool strip does — otherwise a click between
-            // two tabs falls through and deselects whatever is in the scene.
-            bevy::ui::RelativeCursorPosition::default(),
-            renzora_ember::widgets::OverlaySurface,
+            // No `OverlaySurface` here any more: it needed one while it sat over
+            // the viewport's picking area, where a click landing between two tabs
+            // would otherwise fall through and deselect whatever was in the
+            // scene. As a row of the shell's column it has nothing behind it.
             Name::new("doc-tabs"),
         ))
         .id();
@@ -4456,11 +4490,13 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
     commands.entity(plus).add_child(plus_icon);
 
-    // Maximize, pushed to the far end. It acts on the whole viewport rather than
-    // on anything in the tool strip it used to sit in, and this is the one bar
-    // in the panel that runs its full width — so the right edge of it is where a
-    // "make this panel bigger" control belongs. Built by `renzora_viewport`, not
-    // here: its driver systems find it by component.
+    // Maximize for the primary viewport, pushed to the far end. It acts on that
+    // whole panel rather than on anything inside its tool strip, and this bar is
+    // the one row of chrome that runs the window's full width — so its right edge
+    // is where a "make the viewport bigger" control belongs. Built by
+    // `renzora_viewport`, not here: its driver systems find it by component, so
+    // it works from anywhere in the tree. The secondary viewport slots keep
+    // theirs in their own header.
     let spacer = commands
         .spawn((
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
@@ -4472,7 +4508,293 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(bar)
         .add_children(&[strip, plus, spacer, maximize]);
+    // Hidden — and costing no height, since it's a row of the shell's column —
+    // while Settings has the tabs set to Dropdown.
+    renzora_ember::reactive::tracked::bind_display(commands, bar, |w: &Rx| !doc_tabs_dropdown(w));
     bar
+}
+
+/// Whether the document tabs are set to the top-bar dropdown rather than the
+/// strip. Read through the `Rx` so both presentations' `bind_display`s react to
+/// the setting changing; false (the strip) when there's no `EditorSettings` yet.
+fn doc_tabs_dropdown(w: &Rx) -> bool {
+    w.get_resource::<renzora_editor_framework::EditorSettings>()
+        .is_some_and(|s| s.doc_tabs_dropdown)
+}
+
+/// The trigger button of the document-tab dropdown, so its popup can be closed
+/// from a row inside it.
+#[derive(Component)]
+struct DocTabMenuTrigger;
+
+/// A row in that dropdown. The row also carries [`DocTabClick`] (or
+/// [`DocAddBtn`]), which the strip's own systems handle — this marker exists
+/// only to close the menu behind the click.
+#[derive(Component)]
+struct DocTabMenuRow;
+
+/// The document tabs as a dropdown in the top bar, beside Play, plus the
+/// primary viewport's Maximize — the other presentation of [`build_doc_tabs`],
+/// chosen in Settings → Interface → Document tabs.
+///
+/// The trade it offers is a row of the window: the strip is easier to move
+/// between (every document is one click, and you can see what's open without
+/// asking), and this is smaller. It shows the active document — icon, name, and
+/// the `*` when it has unsaved edits — and opens onto all of them.
+///
+/// Maximize comes along because it lives at the end of the strip, and the strip
+/// is what's hidden. Both presentations build their own, tagged
+/// `MaximizeSlot(0)`; the driver systems find them by component and only one is
+/// ever on screen, so a hidden duplicate costs nothing.
+fn build_doc_tab_menu_group(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    font: &bevy::text::FontSource,
+) -> Entity {
+    // One row per open document, reactive off the same state the strip renders.
+    let list = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    renzora_ember::reactive::tracked::keyed_list(commands, list, doc_tab_menu_snapshot);
+
+    let sep = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(divider())),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+
+    // The strip's `+`, as a row — otherwise "new scene" would be unreachable in
+    // this mode. `DocAddBtn` is what `doc_add_click` handles, wherever it sits.
+    let add = doc_tab_menu_row_node(commands, "doc-tab-menu-add");
+    commands.entity(add).insert(DocAddBtn);
+    let add_icon = icon_text(commands, &fonts.phosphor, "plus", text_muted(), 12.0);
+    let add_label = commands
+        .spawn((
+            Text::new(renzora::lang::t("menu.file.new_scene")),
+            ui_font(font, 12.0),
+            TextColor(rgb(text_primary())),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(add).add_children(&[add_icon, add_label]);
+    // Ember's own popup surface rather than a hand-rolled node: only this one is
+    // known to `correct_pointer_state`, and without that a click on a row lands
+    // in the viewport behind the menu as well as on the row — the menu hangs
+    // over the scene, so that would select whatever was under it.
+    let panel = renzora_ember::widgets::popup_panel_aligned(
+        commands,
+        &[list, sep, add],
+        renzora_ember::widgets::PopupAlign::Left,
+    );
+    commands.entity(panel).insert(Name::new("doc-tab-menu"));
+
+    let trigger = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                position_type: PositionType::Relative,
+                max_width: Val::Px(190.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            Popup { panel, open: false },
+            DocTabMenuTrigger,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("doc-tab-menu-trigger"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
+        match w.get::<Interaction>(trigger) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(1.0, 1.0, 1.0, 0.09)
+            }
+            _ => Color::NONE,
+        }
+    });
+    // Kind glyph + name of the active document, both following it.
+    let icon = icon_text(commands, &fonts.phosphor, "film-slate", accent(), 12.0);
+    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    renzora_ember::reactive::tracked::bind_text(commands, icon, |w: &Rx| {
+        let name = active_doc(w).map(|t| t.kind.icon()).unwrap_or("film-slate");
+        renzora_ember::phosphor_map::icon_glyph(name)
+            .unwrap_or('\u{E4C6}')
+            .to_string()
+    });
+    let label = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(font, 11.0),
+            TextColor(rgb(text_primary())),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_text(commands, label, |w: &Rx| {
+        active_doc(w)
+            .map(|t| {
+                let shown = elide(&t.name, DOC_TAB_CHARS);
+                if t.is_modified {
+                    format!("{shown}*")
+                } else {
+                    shown
+                }
+            })
+            .unwrap_or_default()
+    });
+    let caret = glyph(commands, "caret-down", text_muted(), 10.0);
+    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands
+        .entity(trigger)
+        .add_children(&[icon, label, caret, panel]);
+
+    let maximize = renzora_viewport::native_header::build_maximize(commands, fonts, 0);
+    let group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                margin: UiRect::left(Val::Px(8.0)),
+                display: Display::None,
+                ..default()
+            },
+            Name::new("doc-tab-menu-group"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_display(commands, group, doc_tabs_dropdown);
+    commands.entity(group).add_children(&[trigger, maximize]);
+    group
+}
+
+/// The active document tab, read through the `Rx` so a binding on it reacts.
+fn active_doc<'w>(w: &Rx<'w>) -> Option<&'w renzora_ui::DocumentTab> {
+    w.get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|s| s.tabs.get(s.active_tab))
+}
+
+/// A hoverable row of the document-tab dropdown, without its contents.
+fn doc_tab_menu_row_node(commands: &mut Commands, name: &'static str) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            DocTabMenuRow,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new(name),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
+        match w.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::hover_bg())
+            }
+            _ => Color::NONE,
+        }
+    });
+    row
+}
+
+/// The dropdown's rows: every open document, active one accented. Keyed by id
+/// like the strip's, so a row repaints only when its own content changes.
+fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
+    use std::hash::{Hash, Hasher};
+    let empty = || renzora_ember::reactive::KeyedSnapshot {
+        items: Vec::new(),
+        build: Box::new(|c, _, _| c.spawn(Node::default()).id()),
+    };
+    let Some(state) = world.get_resource::<renzora_ui::DocumentTabState>() else {
+        return empty();
+    };
+    let rows: Vec<(u64, String, &'static str, bool, bool)> = state
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            (
+                t.id,
+                t.name.clone(),
+                t.kind.icon(),
+                i == state.active_tab,
+                t.is_modified,
+            )
+        })
+        .collect();
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .map(|(id, name, icon, active, modified)| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            id.hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (name, icon, active, modified).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    renzora_ember::reactive::KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, name, icon, active, modified) = &rows[i];
+            let row = doc_tab_menu_row_node(c, "doc-tab-menu-row");
+            c.entity(row).insert(DocTabClick(*id));
+            let fg = if *active { accent() } else { text_muted() };
+            let ic = icon_text(c, &f.phosphor, icon, fg, 12.0);
+            let label = c
+                .spawn((
+                    Text::new(if *modified {
+                        format!("{name}*")
+                    } else {
+                        name.clone()
+                    }),
+                    ui_font(&f.ui, 12.0),
+                    TextColor(rgb(if *active { text_primary() } else { text_muted() })),
+                    bevy::ui::FocusPolicy::Pass,
+                ))
+                .id();
+            c.entity(row).add_children(&[ic, label]);
+            row
+        }),
+    }
+}
+
+/// Close the document dropdown behind a click on any of its rows. The row's own
+/// job — activating that tab, or adding a scene — is done by the systems that
+/// own [`DocTabClick`] / [`DocAddBtn`], which don't know or care that they were
+/// pressed inside a menu.
+fn doc_tab_menu_row_click(
+    rows: Query<(&Interaction, &DocTabMenuRow), Changed<Interaction>>,
+    triggers: Query<Entity, (With<DocTabMenuTrigger>, With<Popup>)>,
+    mut commands: Commands,
+) {
+    if !rows.iter().any(|(i, _)| *i == Interaction::Pressed) {
+        return;
+    }
+    for trigger in &triggers {
+        renzora_ember::widgets::close_popup(&mut commands, trigger);
+    }
 }
 
 /// Width budget for the workspace ribbon before workspaces start folding. Unlike
@@ -4508,16 +4830,21 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let Some(state) = world.get_resource::<renzora_ui::DocumentTabState>() else {
         return empty();
     };
-    let can_close = state.tabs.len() > 1;
+    // Closable is per-tab, because the model's two refusals aren't the same
+    // rule: `close_tab` declines the last tab overall *and* the last scene tab,
+    // the latter so Asset mode always has a scene to return to. Counting tabs
+    // rather than scenes put a ✕ on the last scene as soon as a material was
+    // open beside it — one that `close_tab` then quietly declined.
+    let scenes = state.tabs.iter().filter(|t| !t.kind.is_asset()).count();
     let renaming = world.get_resource::<DocTabRename>().and_then(|r| r.0);
     let last = state.tabs.len().saturating_sub(1);
-    // (id, name, icon glyph, active, modified, renaming, trailing seam)
+    // (id, name, icon glyph, active, modified, renaming, trailing seam, closable)
     //
     // The seam belongs to the *boundary*, not to either tab, so exactly one of
     // the pair draws it: the left one. Every tab but the last, including either
     // side of the active one — with no fill on any tab there is nothing else
     // marking where one ends and the next begins.
-    let tabs: Vec<(u64, String, &'static str, bool, bool, bool, bool)> = state
+    let tabs: Vec<(u64, String, &'static str, bool, bool, bool, bool, bool)> = state
         .tabs
         .iter()
         .enumerate()
@@ -4530,12 +4857,13 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                 t.is_modified,
                 renaming == Some(t.id),
                 i != last,
+                state.tabs.len() > 1 && (t.kind.is_asset() || scenes > 1),
             )
         })
         .collect();
     let items: Vec<(u64, u64)> = tabs
         .iter()
-        .map(|(id, name, icon, active, modified, editing, seam)| {
+        .map(|(id, name, icon, active, modified, editing, seam, can_close)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             id.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -4546,11 +4874,11 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, name, icon, active, modified, editing, seam) = &tabs[i];
+            let (id, name, icon, active, modified, editing, seam, can_close) = &tabs[i];
             if *editing {
                 build_doc_rename_field(c, &f.ui, *id, name)
             } else {
-                doc_tab_row(c, f, *id, name, icon, *active, *modified, can_close, *seam)
+                doc_tab_row(c, f, *id, name, icon, *active, *modified, *can_close, *seam)
             }
         }),
     }
@@ -4905,20 +5233,59 @@ fn doc_add_click(
     }
 }
 
-/// Click a document tab → activate it + switch to the workspace its kind maps to.
-/// Switch the bevy_ui workspace to match the active document tab whenever it
-/// changes — including programmatic opens (double-clicking an asset, the
-/// inspector's "edit" button), not just manual tab clicks. So opening a
-/// `.material` / `.particle` / script switches to its editor workspace instead
-/// of silently leaving the dock on the scene layout. The `Local` change-guard
-/// means it only fires on a real active-tab change, so ribbon navigation while a
-/// doc tab is open isn't fought (the scene entities are never touched — this is
-/// purely a layout switch). Mirrors the egui editor's context-driven layout.
+/// Most-recently-active document tab ids, oldest first, so a workspace switch
+/// can return to the document you were last in *there* — see
+/// [`sync_active_doc_to_workspace`].
+///
+/// Kept here rather than in [`renzora_ui::DocumentTabState`] because it's a
+/// property of this session's navigation, not of the document set: nothing
+/// persists it, and every activation route (a tab click, an asset browser
+/// double-click, the inspector's edit button) is observed the same way — by
+/// [`sync_workspace_to_active_doc`] noticing the active tab changed.
+#[derive(Resource, Default)]
+struct DocTabMru(Vec<u64>);
+
+/// Whether a tab of `kind` belongs to the workspace called `workspace`.
+///
+/// Both layout tables count. `layout_name` is the direct answer for most kinds,
+/// but shaders name a `Shaders` workspace that doesn't exist — the layout that
+/// actually opens a `.wgsl` is the code editor's, which its *asset* layout
+/// (`Scripting-Asset`) names. Stripping the `-Asset` suffix reads that mapping
+/// off the data instead of hard-coding the exception, and it keeps the
+/// `scene_layout_names_are_unique` invariant those tables are tested against.
+fn kind_in_workspace(kind: renzora_ui::DocTabKind, workspace: &str) -> bool {
+    kind.layout_name() == Some(workspace)
+        || kind
+            .asset_layout_name()
+            .and_then(|l| l.strip_suffix("-Asset"))
+            == Some(workspace)
+}
+
+/// Follow the active document tab: point [`renzora_ui::EditorContext`] at it and
+/// switch the workspace its kind maps to.
+///
+/// This runs for *every* activation — a tab click, a programmatic open
+/// (double-clicking an asset, the inspector's "edit" button), a close that
+/// promotes its neighbour — because it watches the active id rather than any one
+/// route. The `EditorContext` half is what makes clicking a second material tab
+/// swap the graph: every asset panel loads from the context's path, so without
+/// it the dock switched to the Materials workspace and left the *previous*
+/// material in it. `open_asset_tab` sets the context when it opens a document;
+/// nothing else did when you moved between two already-open ones.
+///
+/// The `Local` change-guard means it only fires on a real active-tab change, so
+/// ribbon navigation while a doc tab is open isn't fought (the scene entities
+/// are never touched — this is purely a layout switch).
+#[allow(clippy::too_many_arguments)]
 fn sync_workspace_to_active_doc(
     state: Option<Res<renzora_ui::DocumentTabState>>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
+    context: Option<ResMut<renzora_ui::EditorContext>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    mut mru: ResMut<DocTabMru>,
+    mut commands: Commands,
     mut last: Local<Option<u64>>,
 ) {
     let Some(state) = state else { return };
@@ -4927,22 +5294,140 @@ fn sync_workspace_to_active_doc(
         return;
     }
     *last = active_id;
-    let Some(name) = state.active_tab().and_then(|t| t.kind.layout_name()) else {
-        return;
-    };
-    if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
+    let Some(tab) = state.active_tab() else { return };
+
+    // Newest last. Dropping ids of closed tabs here keeps the stack from growing
+    // for a session's worth of opens and closes.
+    mru.0.retain(|id| *id != tab.id && state.tabs.iter().any(|t| t.id == *id));
+    mru.0.push(tab.id);
+
+    // Asset panels read their file straight off this, so it has to move with the
+    // tab. Written only when it actually differs: it's a change-detected
+    // resource, and several panels reload on any change to it.
+    if let Some(mut context) = context {
+        let next = renzora_ui::EditorContext::from_tab(tab);
+        if *context != next {
+            *context = next;
+        }
+    }
+
+    // The kind's own workspace, or — for a kind naming one that doesn't exist —
+    // the workspace its asset layout is derived from, which is the same fallback
+    // [`kind_in_workspace`] accepts. Shaders are the case: `Shaders` is not a
+    // workspace, but `Scripting-Asset` says the code editor's is where a `.wgsl`
+    // belongs.
+    let wi = [
+        tab.kind.layout_name(),
+        tab.kind
+            .asset_layout_name()
+            .and_then(|l| l.strip_suffix("-Asset")),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|name| layouts.layouts.iter().position(|(n, _)| n == name));
+    if let Some(wi) = wi {
         apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);
+    }
+
+    // A script or shader has no panel that reads `EditorContext` — the code
+    // editor keeps its own list of open files and only ever hears about one
+    // through `OpenCodeEditorFile`. Asking again for a file it already holds
+    // just focuses that tab, so this is the same move `open_asset_tab` makes,
+    // on the route it doesn't cover: moving between two documents already open.
+    //
+    // Revealing the panel belongs here rather than at the asset browser's
+    // double-click, because it has to happen *after* the workspace switch
+    // above — done there, the code editor was added to the layout we were on
+    // the way out of.
+    if matches!(
+        tab.kind,
+        renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader
+    ) {
+        if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
+            commands.insert_resource(renzora::core::OpenCodeEditorFile {
+                path: project.resolve_path(rel),
+            });
+        }
+        // Dirty either way: `focus_or_add_panel` returns false when the panel
+        // was already there, but it still moved that leaf's active tab, and the
+        // dock only repaints when flagged.
+        dock.tree.focus_or_add_panel("code_editor");
+        dirty.0 = true;
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The other direction: switching workspace brings that workspace's document
+/// forward. Pick the Materials workspace off the ribbon and the material you
+/// were last editing is the active tab again, with its graph loaded — rather
+/// than the Materials layout sitting there showing whatever the scene tab you
+/// were on happens to select.
+///
+/// Nothing happens when the active tab already belongs to the workspace being
+/// switched to, which is what keeps this from fighting
+/// [`sync_workspace_to_active_doc`]: a tab click switches the workspace, this
+/// system sees that change, finds the tab that caused it already in place, and
+/// stops. That check is on the *active tab* rather than on the MRU stack
+/// deliberately — it holds whichever of the two systems runs first in a frame,
+/// where "is the MRU top fresh yet" would not.
+///
+/// A workspace no open document maps to (Debug, Hub, Animation) leaves the
+/// active tab alone: there is nothing there to bring forward, and stealing the
+/// tab strip's selection to show something unrelated would be worse than
+/// leaving it.
+fn sync_active_doc_to_workspace(
+    layouts: Res<ShellLayouts>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+    mru: Res<DocTabMru>,
+    mut last: Local<Option<usize>>,
+    mut commands: Commands,
+) {
+    let Some(mut state) = state else { return };
+    if *last == Some(layouts.active) {
+        return;
+    }
+    *last = Some(layouts.active);
+    let Some((name, _)) = layouts.layouts.get(layouts.active) else {
+        return;
+    };
+    if state
+        .active_tab()
+        .is_some_and(|t| kind_in_workspace(t.kind, name))
+    {
+        return;
+    }
+    // Most recent first; falling back to display order for a workspace you have
+    // documents in but have never been to this session (restored tabs, say).
+    let idx = mru
+        .0
+        .iter()
+        .rev()
+        .find_map(|id| {
+            state
+                .tabs
+                .iter()
+                .position(|t| t.id == *id && kind_in_workspace(t.kind, name))
+        })
+        .or_else(|| {
+            state
+                .tabs
+                .iter()
+                .position(|t| kind_in_workspace(t.kind, name))
+        });
+    let Some(idx) = idx else { return };
+    // Through `activate_tab` + `TabSwitchRequest` like every other switch, so a
+    // scene→scene move still swaps the live scene for the incoming tab's buffer.
+    if let Some((old_id, new_id)) = state.activate_tab(idx) {
+        commands.insert_resource(renzora::TabSwitchRequest {
+            old_tab_id: old_id,
+            new_tab_id: new_id,
+        });
+    }
+}
+
 fn doc_tab_click(
     mut commands: Commands,
     q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
-    mut layouts: ResMut<ShellLayouts>,
-    mut dock: ResMut<Dock>,
-    mut dirty: ResMut<DockDirty>,
     rename: Res<DocTabRename>,
 ) {
     let Some(mut state) = state else { return };
@@ -4969,11 +5454,13 @@ fn doc_tab_click(
                 new_tab_id: new_id,
             });
         }
-        if let Some(name) = state.tabs[idx].kind.layout_name() {
-            if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
-                apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);
-            }
-        }
+        // The workspace, the editor context and the code editor's focus all
+        // follow from the active tab having changed, and
+        // [`sync_workspace_to_active_doc`] does that for every route into a
+        // document — this one, an asset-browser double-click, a close promoting
+        // its neighbour. A copy of the layout switch lived here too and had
+        // already drifted: it knew only `layout_name`, so a shader tab clicked
+        // here went looking for a `Shaders` workspace that doesn't exist.
     }
 }
 

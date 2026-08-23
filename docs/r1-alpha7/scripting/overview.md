@@ -31,7 +31,10 @@ Renzora has a built-in code editor, so you never have to leave the engine to wri
 ![The built-in Code editor showing a Lua car-physics script, with tabs for several open .lua files and the file path along the bottom.](/assets/previews/code_editor.png)
 
 You can open scripts a few ways: double-click a `.lua` file in the asset
-browser, drop one onto the editor, or **select an entity** — the code editor
+browser — which opens it as a [document tab](/docs/r1-alpha7/editor/scenes#working-with-document-tabs)
+and takes you to the Scripting workspace, exactly as double-clicking a material
+opens one and takes you to Materials — drop one onto the editor, or **select an
+entity** — the code editor
 follows your selection and shows that entity's editable sources: every script
 attached to it, one tab per script, with the first focused. UI works the same
 way — select a template and its `.html` opens; select a **UI Canvas** and every
