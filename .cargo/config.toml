@@ -158,10 +158,16 @@ rustflags = [
 
 # Linux: mold linker + $ORIGIN rpath so the binary finds bevy_dylib,
 # renzora.so, and any dlopen'd distribution plugin next to itself.
+#
+# `-fuse-ld=mold`, never the absolute `/usr/bin/mold`: clang has rejected a path
+# in -fuse-ld since 12 ("invalid linker name in argument"), and on a NixOS host
+# there is no /usr/bin/mold to name anyway. The name resolves through PATH in
+# the container and on the host alike. docker/linux/Dockerfile's cross wrapper
+# strips this exact string.
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = [
-    "-C", "link-arg=-fuse-ld=/usr/bin/mold",
+    "-C", "link-arg=-fuse-ld=mold",
     "-C", "link-arg=-Wl,-rpath,$ORIGIN",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
