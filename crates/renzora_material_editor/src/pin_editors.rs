@@ -3,10 +3,11 @@
 //! params — built as standalone entities so the graph can mount them **on the
 //! node itself**, directly under the pin they belong to.
 //!
-//! These used to be laid out as rows in a side panel ("Material"), which showed
-//! them for one selected node at a time. The graph now renders them inline on
-//! every node, so the panel was retired and only this builder survives it; the
-//! rows-and-labels chrome went with it.
+//! The same builder also fills the labelled rows of the "Material" panel
+//! ([`crate::native_inspector`]), which lists the selected node's pins with
+//! their names and the node's description. Both views bind to the same pin
+//! value, so an edit in one shows up in the other; keeping one builder is what
+//! stops them drifting apart.
 //!
 //! Edits write straight back into `MaterialEditorState.graph` (marking it dirty),
 //! reusing ember's `drag_value`/`bind_2way`, `color_field`, `checkbox` and

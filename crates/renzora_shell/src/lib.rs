@@ -2902,6 +2902,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("animator_params", "Parameters", "sliders-horizontal", "Animation"),
     // Material
     ("material_preview", "Material Preview", "sphere", "Material"),
+    ("material_inspector", "Material", "palette", "Material"),
     ("material_graph", "Material Graph", "graph", "Material"),
     // Particle
     ("particle_preview", "Particle Preview", "sparkle", "Particle"),

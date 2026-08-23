@@ -181,11 +181,6 @@ const RETIRED_PANELS: &[&str] = &[
     // other entities against one playhead, with markers — is what the animation
     // Timeline already does, against clips that do save.
     "sequencer",
-    // The Material panel: name/domain plus the selected node's pin values. The
-    // graph now draws those editors on the nodes themselves, under the pin they
-    // belong to, for every node at once — so the panel was a second copy of the
-    // same controls, one node at a time, a screen away from the node.
-    "material_inspector",
 ];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
@@ -592,11 +587,16 @@ fn layout_animation() -> DockTree {
     )
 }
 
-/// Materials: Preview | MaterialGraph. Pin values are edited on the nodes, so
-/// the graph gets the whole width beside the preview.
+/// Materials: Preview+Material | MaterialGraph.
+///
+/// The Material panel tabs with the preview rather than splitting the column.
+/// Pin values are editable inline on the nodes, so the panel is the labelled
+/// view of the selected node's pins (and where the graph's name and domain
+/// live) — a thing you look at when you need it, not one that should cost the
+/// preview half its height permanently.
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("material_preview"),
+        DockTree::tabs(&["material_preview", "material_inspector"]),
         DockTree::leaf("material_graph"),
         0.25,
     )
