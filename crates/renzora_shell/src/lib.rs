@@ -76,6 +76,7 @@ impl Plugin for ShellPlugin {
         app.insert_resource(BottomDock {
             height: bottom_dock.height,
             open: bottom_dock.open,
+            mode: bottom_dock.mode,
         });
         // Empty on purpose. These marked which panels identified a collapsible
         // bottom strip *inside* a workspace tree, so ember could give that leaf
@@ -183,13 +184,15 @@ impl Plugin for ShellPlugin {
                     collapsed_bottom_bar_drag,
                     collapsed_bottom_tab_hover,
                     bottom_dock_close_click,
+                    bottom_dock_mode_click,
                     // Press before drag, so a grip press and the first motion
                     // of the same gesture can't be processed out of order.
                     bottom_dock_grip_press,
                     bottom_dock_resize_drag,
-                    // Last: applies whatever the above decided this frame, so
-                    // the overlay never renders a frame at a stale height.
+                    // Last: apply whatever the above decided this frame, so the
+                    // panel never renders a frame at a stale height or mode.
                     sync_bottom_dock_node,
+                    sync_bottom_dock_mode_btn,
                 )
                     .chain(),
             ),
@@ -1160,9 +1163,11 @@ struct ShellLayouts {
 /// restore it.
 #[derive(Resource)]
 struct BottomDock {
-    /// Logical px, applied to the overlay node when open.
+    /// Logical px, applied to the area node when open.
     height: f32,
     open: bool,
+    /// Whether the panel floats over the workspace or takes height from it.
+    mode: dock::BottomDockMode,
 }
 
 /// Ctrl+Space ([`EditorAction::ToggleBottomPanel`]): show or hide the global
@@ -1217,6 +1222,13 @@ struct BottomDockGrip;
 #[derive(Component)]
 struct BottomDockCloseBtn;
 
+/// Shared marker for the open panel's corner buttons (mode, then collapse).
+/// They sit in one row and share a placement and visibility rule, so
+/// [`sync_bottom_dock_node`] drives them through a single query — which also
+/// keeps its `&mut Node` queries disjoint without a third `Without` filter.
+#[derive(Component)]
+struct BottomDockBtn;
+
 /// Click the open panel's collapse button → close it.
 fn bottom_dock_close_click(
     btns: Query<&Interaction, (With<BottomDockCloseBtn>, Changed<Interaction>)>,
@@ -1224,6 +1236,72 @@ fn bottom_dock_close_click(
 ) {
     if btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
         bottom.open = false;
+    }
+}
+
+/// The open panel's mode button, immediately left of the collapse button:
+/// switch between overlaying the workspace and docking into it.
+#[derive(Component)]
+struct BottomDockModeBtn;
+
+/// Click the mode button → flip [`BottomDock::mode`].
+fn bottom_dock_mode_click(
+    btns: Query<&Interaction, (With<BottomDockModeBtn>, Changed<Interaction>)>,
+    mut bottom: ResMut<BottomDock>,
+) {
+    if btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
+        bottom.mode = match bottom.mode {
+            dock::BottomDockMode::Overlay => dock::BottomDockMode::Layout,
+            dock::BottomDockMode::Layout => dock::BottomDockMode::Overlay,
+        };
+    }
+}
+
+/// Keep the mode button's glyph and tooltip on the *current* mode — the icon
+/// reports what the panel is doing now, not what clicking would do, matching
+/// every other stateful toggle in the chrome.
+fn sync_bottom_dock_mode_btn(
+    bottom: Res<BottomDock>,
+    mut btns: Query<(&Children, &mut renzora_ember::widgets::HoverTooltip), With<BottomDockModeBtn>>,
+    // The button is respawned whenever the chrome is (theme or language
+    // switch), always carrying the `Overlay` glyph it was authored with — so a
+    // fresh button has to be re-synced even though the mode itself never moved.
+    spawned: Query<(), Added<BottomDockModeBtn>>,
+    mut text: Query<&mut Text>,
+) {
+    if !bottom.is_changed() && spawned.is_empty() {
+        return;
+    }
+    let (icon, tip) = match bottom.mode {
+        dock::BottomDockMode::Overlay => (
+            "stack",
+            renzora::lang::t_or(
+                "shell.bottom_dock.mode_overlay",
+                "Overlay — floats over the workspace",
+            ),
+        ),
+        dock::BottomDockMode::Layout => (
+            "rows",
+            renzora::lang::t_or(
+                "shell.bottom_dock.mode_layout",
+                "Layout — docked below the workspace",
+            ),
+        ),
+    };
+    let Some(glyph) = renzora_ember::phosphor_map::icon_glyph(icon).map(|c| c.to_string()) else {
+        return;
+    };
+    for (children, mut tooltip) in &mut btns {
+        if tooltip.0 != tip {
+            tooltip.0 = tip.clone();
+        }
+        for child in children.iter() {
+            if let Ok(mut t) = text.get_mut(child) {
+                if t.0 != glyph {
+                    t.0 = glyph.clone();
+                }
+            }
+        }
     }
 }
 
@@ -1252,15 +1330,28 @@ const BOTTOM_DOCK_GRIP_H: f32 = 10.0;
 /// surface, which must still open over it: the dock's root drop overlay (200),
 /// modals and dropdowns (500), menus (700), the tab-drag ghost (1000) and
 /// asset-slot drags (2000).
+///
+/// Winning that way cut the other way once a graph panel was docked *into* this
+/// one: its parts, still at 0–10, went under this background and the canvas came
+/// up blank. The graph's depths are now relative tiers rebased against whatever
+/// it's mounted in (`NgTier` / `ng_rebase_z` in ember), so a graph inside this
+/// panel lands at 100–110 and one outside it stays at 0–10. This tier is still
+/// what keeps the outside case from painting over us.
 const BOTTOM_DOCK_Z: i32 = 100;
 
-/// Push [`BottomDock`] onto the overlay node, its resize band and its collapse
-/// button: height, vertical placement, and whether each is displayed.
+/// Push [`BottomDock`] onto the panel node, its resize band and its corner
+/// buttons: height, vertical placement, and whether each is displayed.
 ///
-/// Height is clamped to leave the dock area a usable strip — dragging the panel
-/// to the top of the window would otherwise hide the workspace entirely with no
-/// visible way back, since the panel covers the very panels you would click to
-/// recover.
+/// Also applies the mode. Both modes leave the panel occupying the bottom
+/// `height` px of [`DockAreaWrap`], which is why the absolutely-placed grip and
+/// buttons need no mode-specific arithmetic — only the panel node itself
+/// changes, between an absolute overlay and an in-flow row of the dock column.
+///
+/// Height is clamped to leave the dock area a usable strip — in overlay mode
+/// dragging the panel to the top of the window would otherwise hide the
+/// workspace entirely with no visible way back, since the panel covers the very
+/// panels you would click to recover; in layout mode the same drag would
+/// squeeze every panel above it to nothing.
 // The `Without` filters that keep the three `&mut Node` queries disjoint, and
 // the `Or` that gathers every hideable interactive node, are both unavoidably
 // wordy — a system's parameters are not an argument list a caller threads.
@@ -1274,11 +1365,11 @@ fn sync_bottom_dock_node(
         (
             With<renzora_ember::dock::FixedDockArea>,
             Without<BottomDockGrip>,
-            Without<BottomDockCloseBtn>,
+            Without<BottomDockBtn>,
         ),
     >,
-    mut grips: Query<&mut Node, (With<BottomDockGrip>, Without<BottomDockCloseBtn>)>,
-    mut closes: Query<&mut Node, With<BottomDockCloseBtn>>,
+    mut grips: Query<&mut Node, (With<BottomDockGrip>, Without<BottomDockBtn>)>,
+    mut btns: Query<&mut Node, With<BottomDockBtn>>,
     // Every interactive node that this system can hide. Hiding one while the
     // cursor is on it strands its `Interaction` at `Hovered`, because Bevy's
     // focus pass skips hidden entities and never writes the reset — and
@@ -1294,7 +1385,7 @@ fn sync_bottom_dock_node(
         &mut Interaction,
         Or<(
             With<BottomDockGrip>,
-            With<BottomDockCloseBtn>,
+            With<BottomDockBtn>,
             With<renzora_ember::dock::FixedAreaHeader>,
         )>,
     >,
@@ -1313,6 +1404,17 @@ fn sync_bottom_dock_node(
     );
     let want = if show { Display::Flex } else { Display::None };
 
+    // Overlay: absolute, pinned to the wrapper's bottom edge, painted over the
+    // dock area. Layout: an in-flow row of the dock column, so the dock area's
+    // `flex_grow` hands it the remaining height and every panel above reflows.
+    // The insets are cleared in layout mode because a relatively-positioned
+    // node treats them as an offset rather than an anchor.
+    let layout_mode = bottom.mode == dock::BottomDockMode::Layout;
+    let (position_type, inset) = if layout_mode {
+        (PositionType::Relative, Val::Auto)
+    } else {
+        (PositionType::Absolute, Val::Px(0.0))
+    };
     if let Ok(mut node) = areas.single_mut() {
         // Reads go through `Deref` (no change flag); only assign on a real
         // change, since any `Node` write triggers a relayout.
@@ -1321,6 +1423,15 @@ fn sync_bottom_dock_node(
         }
         if node.height != Val::Px(height) {
             node.height = Val::Px(height);
+        }
+        if node.position_type != position_type {
+            node.position_type = position_type;
+        }
+        if node.left != inset {
+            node.left = inset;
+        }
+        if node.bottom != inset {
+            node.bottom = inset;
         }
     }
     if let Ok(mut node) = grips.single_mut() {
@@ -1334,10 +1445,10 @@ fn sync_bottom_dock_node(
             node.bottom = offset;
         }
     }
-    // The collapse button is only shown while the panel is open — the collapsed
+    // The corner buttons are only shown while the panel is open — the collapsed
     // strip carries its own chevron for the closed state, in the same corner, so
     // the toggle appears continuous as the panel opens and closes.
-    if let Ok(mut node) = closes.single_mut() {
+    for mut node in &mut btns {
         if node.display != want {
             node.display = want;
         }
@@ -1903,7 +2014,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("animator_params", "Parameters", "sliders-horizontal", "Animation"),
     // Material
     ("material_preview", "Material Preview", "sphere", "Material"),
-    ("material_inspector", "Material", "palette", "Material"),
     ("material_graph", "Material Graph", "graph", "Material"),
     // Particle
     ("particle_preview", "Particle Preview", "sparkle", "Particle"),
@@ -3120,6 +3230,11 @@ fn spawn_shell(
                 min_height: Val::Px(0.0),
                 flex_basis: Val::Px(0.0),
                 position_type: PositionType::Relative,
+                // A column so the bottom panel can join the flow in Layout
+                // mode and take height off the dock area above it. In Overlay
+                // mode the panel is absolute and the dock area is the only
+                // in-flow child, so the direction makes no difference there.
+                flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
                 ..default()
             },
@@ -3170,6 +3285,10 @@ fn spawn_shell(
                 height: Val::Px(dock::BOTTOM_DOCK_HEIGHT),
                 min_width: Val::Px(0.0),
                 min_height: Val::Px(0.0),
+                // Only bites in Layout mode, where the panel is an in-flow row:
+                // without it flexbox would shrink the panel instead of the dock
+                // area above, and the height we just set would be a suggestion.
+                flex_shrink: 0.0,
                 border: UiRect::top(Val::Px(1.0)),
                 overflow: Overflow::clip(),
                 display: Display::None,
@@ -3253,6 +3372,7 @@ fn spawn_shell(
             Interaction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             BottomDockCloseBtn,
+            BottomDockBtn,
             Name::new("bottom-dock-close"),
         ))
         .id();
@@ -3265,10 +3385,44 @@ fn spawn_shell(
     );
     commands.entity(bottom_dock_close).add_child(close_icon);
 
+    // Overlay/Layout mode button, immediately left of the collapse button.
+    // Spawned with the `Overlay` glyph and tooltip; `sync_bottom_dock_mode_btn`
+    // swaps both whenever the mode changes (including the first frame after a
+    // saved `Layout` is restored, since the resource reads as changed then).
+    let bottom_dock_mode = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(30.0),
+                bottom: Val::Px(dock::BOTTOM_DOCK_HEIGHT - 26.0),
+                width: Val::Px(22.0),
+                height: Val::Px(22.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            GlobalZIndex(BOTTOM_DOCK_Z + 2),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+                "shell.bottom_dock.mode_overlay",
+                "Overlay — floats over the workspace",
+            )),
+            BottomDockModeBtn,
+            BottomDockBtn,
+            Name::new("bottom-dock-mode"),
+        ))
+        .id();
+    let mode_icon = icon_text(commands, &fonts.phosphor, "stack", text_muted(), 14.0);
+    commands.entity(bottom_dock_mode).add_child(mode_icon);
+
     commands.entity(dock_wrap).add_children(&[
         dock_area,
         bottom_dock_area,
         bottom_dock_grip,
+        bottom_dock_mode,
         bottom_dock_close,
     ]);
 
@@ -4716,6 +4870,7 @@ fn persist_dock_layout(
         tree: fixed.tree.clone(),
         height: bottom.height,
         open: bottom.open,
+        mode: bottom.mode,
     };
     let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating, &bottom_dock) else {
         return;

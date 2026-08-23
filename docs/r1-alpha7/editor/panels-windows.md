@@ -43,14 +43,24 @@ The full-width strip along the bottom of the editor — Console, Assets, Timelin
 That is what makes it the place for panels you want everywhere. Dock the Asset browser here once and it is in every workspace, instead of adding a copy to each.
 
 - **It is pinned.** You can't move the panel itself — it has no drag handle, and it always spans the bottom of the window above the status bar. Individual **tabs** still drag in and out freely, so you decide what lives in it.
-- **It overlays, it doesn't squeeze.** Making it taller covers the panels above rather than compressing them, so your workspace's proportions are never disturbed by resizing it. Drag it back down and everything above is exactly where you left it.
 - **Resize** by dragging its **top edge**, or the **empty space in its header** to the right of the tabs. Both show a ↕ cursor.
 - **`Ctrl+Space`** toggles it open and closed.
 - **Closed doesn't mean gone**: it collapses to its **header strip**, a tab-bar-height row just above the status bar showing its tabs muted. **Click any tab** to reopen with that tab active, at a quarter of the editor's height.
 - **Chevron toggle** at the right end of the header in both states — **∨** collapses the open panel, **∧** reopens the collapsed strip.
 - **Drag it open**: grab the collapsed strip's background and pull upward — it opens and keeps sizing under your cursor in one gesture. **Drag it closed** the same way: pull the top edge down past its minimum and it snaps shut.
 
-Its contents, height and open/closed state persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
+### Overlay or Layout
+
+The button immediately **left of the chevron** switches how the panel takes up its space. The icon shows the mode it is in now; click it to swap.
+
+- **Overlay** (**▤ stack**, the default) — the panel floats over the dock. Making it taller covers the panels above rather than compressing them, so your workspace's proportions are never disturbed by resizing it. Drag it back down and everything above is exactly where you left it.
+- **Layout** (**▤ rows**) — the panel snaps into the bottom of the workspace and the panels above are given the height that's left. Resizing it now reflows everything above, the way a normal dock split does, so nothing is ever hidden underneath it.
+
+Pick Overlay when you want a Console you can pull up over your work and dismiss; pick Layout when the panel is part of how you work and you want the viewport to actually shrink to make room for it.
+
+Both modes put the panel in the same place at the same height, and both are resized and toggled identically — only what happens to the workspace above differs. Switching is non-destructive: the panel's tabs, height and open state are untouched.
+
+Its contents, height, open/closed state and mode persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
 
 > **Upgrading from an earlier version?** Layouts written before the bottom panel became global are migrated the first time you launch: every workspace's bottom strip, and anything left in a closed one, is folded into the single shared panel and de-duplicated. Nothing is lost, but your workspaces will no longer each carry their own copy of the Console.
 

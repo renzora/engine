@@ -458,14 +458,11 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Materials: Preview + Properties | MaterialGraph
+/// Materials: Preview | MaterialGraph. Pin values are edited on the nodes, so
+/// the graph gets the whole width beside the preview.
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("material_preview"),
-            DockTree::leaf("material_inspector"),
-            0.5,
-        ),
+        DockTree::leaf("material_preview"),
         DockTree::leaf("material_graph"),
         0.25,
     )
@@ -500,16 +497,12 @@ pub fn layout_particles_advanced() -> DockTree {
 // hierarchy/outline panels because there's no entity context — the panels in
 // these layouts read the file path from `EditorContext` directly.
 
-/// Materials (asset mode): Preview + Properties | MaterialGraph
+/// Materials (asset mode): Preview | MaterialGraph
 /// Same shape as the scene-mode layout but explicitly without hierarchy —
 /// makes it obvious the user is editing a file, not an entity's material.
 fn layout_materials_asset() -> DockTree {
     DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("material_preview"),
-            DockTree::leaf("material_inspector"),
-            0.5,
-        ),
+        DockTree::leaf("material_preview"),
         DockTree::leaf("material_graph"),
         0.25,
     )

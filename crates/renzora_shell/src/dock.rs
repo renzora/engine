@@ -120,6 +120,7 @@ pub fn migrate_bottom_dock(
         // Matches the old startup behaviour: every launch began with the
         // bottom strip stashed, and Ctrl+Space brought it back.
         open: false,
+        mode: BottomDockMode::Overlay,
     }
 }
 
@@ -155,6 +156,11 @@ const RETIRED_PANELS: &[&str] = &[
     // other entities against one playhead, with markers — is what the animation
     // Timeline already does, against clips that do save.
     "sequencer",
+    // The Material panel: name/domain plus the selected node's pin values. The
+    // graph now draws those editors on the nodes themselves, under the pin they
+    // belong to, for every node at once — so the panel was a second copy of the
+    // same controls, one node at a time, a screen away from the node.
+    "material_inspector",
 ];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
@@ -257,17 +263,40 @@ pub struct FloatingLayout {
     pub size: (u32, u32),
 }
 
+/// How the global bottom panel occupies the bottom of the dock region.
+///
+/// Both modes put the panel in the same place and give it the same height —
+/// the difference is only whether the workspace above knows it is there.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BottomDockMode {
+    /// Absolutely positioned over the dock area, covering whatever panels sit
+    /// beneath it. Growing the panel never touches the workspace's own split
+    /// ratios — the property that made the bottom panel global in the first
+    /// place, so it stays the default.
+    #[default]
+    Overlay,
+    /// In-flow at the bottom of the dock column, so the workspace above is
+    /// given the remaining height. Resizing the panel therefore reflows every
+    /// panel above it instead of hiding their lower edge.
+    Layout,
+}
+
 /// The global bottom panel's persisted state — one per editor, not one per
 /// workspace, which is the whole point of it (see [`renzora_ember::dock::FixedDock`]).
 ///
-/// `height` is logical px, not a ratio: the panel is overlaid on the dock area
-/// rather than splitting it, so there is no sibling to be a fraction of, and a
-/// ratio would silently rescale the panel when the window resizes.
+/// `height` is logical px, not a ratio: the panel is sized in absolute terms in
+/// both modes, so there is no sibling to be a fraction of, and a ratio would
+/// silently rescale the panel when the window resizes.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BottomDockLayout {
     pub tree: DockTree,
     pub height: f32,
     pub open: bool,
+    /// `#[serde(default)]` so a layout file written before the mode toggle
+    /// existed loads as `Overlay` — the behaviour it was saved with.
+    #[serde(default)]
+    pub mode: BottomDockMode,
 }
 
 /// The on-disk dock layout file: every workspace plus the active index, plus
@@ -495,14 +524,11 @@ fn layout_animation() -> DockTree {
     )
 }
 
-/// Materials: Preview + Properties | MaterialGraph
+/// Materials: Preview | MaterialGraph. Pin values are edited on the nodes, so
+/// the graph gets the whole width beside the preview.
 fn layout_materials() -> DockTree {
     DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("material_preview"),
-            DockTree::leaf("material_inspector"),
-            0.5,
-        ),
+        DockTree::leaf("material_preview"),
         DockTree::leaf("material_graph"),
         0.25,
     )
