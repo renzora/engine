@@ -1284,7 +1284,12 @@ fn strip_header(
                 display: Display::None,
                 ..default()
             },
-            // Above the neighbouring strips it overhangs.
+            // Above the neighbouring strips it overhangs. Tiered rather than
+            // absolute: the Mixer is a default resident of the global bottom
+            // panel (`GlobalZIndex(100)`), and a bare 60 would put the rename
+            // field under that panel's own background — you'd double-click a
+            // channel name and get nothing. See `renzora_ember::stacking`.
+            renzora_ember::stacking::ZTier(60),
             GlobalZIndex(60),
         ));
         bind_display(commands, input, move |rx| renaming(rx, index));

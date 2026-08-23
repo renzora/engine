@@ -48,6 +48,7 @@ pub mod phosphor_map;
 pub mod reactive;
 pub mod resize;
 pub mod settings_sections;
+pub mod stacking;
 pub mod style;
 pub mod theme;
 pub mod toolbar;
@@ -63,6 +64,7 @@ impl Plugin for EmberPlugin {
         app.add_plugins((
             style::ThemePlugin,
             dock::DockPlugin,
+            stacking::StackingPlugin,
             widgets::WidgetsPlugin,
             reactive::ReactivePlugin,
             virtual_scroll::VirtualScrollPlugin,

@@ -144,6 +144,31 @@ let m = vu_meter_bound_horizontal(commands, move |rx| level(rx));
 
 They are one control mirrored, not two widgets: orientation is a field on the widget's component, and every dimension, the drag axis and the fill's anchor edge are picked from it. Both ship at 120px along the travel axis and 24px (fader) / 14px (meter) across it; stretch the travel axis by overriding `Node` (`flex_grow` plus `width: Auto` / `height: Auto`) — the fills and hit-testing are percentage-based, so any length works.
 
+### Depth inside panel content: use `ZTier`, not a bare `GlobalZIndex`
+
+Sometimes a widget genuinely needs `GlobalZIndex` — to layer a part against a sibling *subtree's* children, or to escape a clipping parent. `node_graph_view` does: cables live in viewport space while comments and nodes live in the pan/zoom canvas, so a cable must slot *between* two children of a sibling subtree, which local `ZIndex` can't express.
+
+The catch is that `GlobalZIndex` is global — it pulls a node out of every ancestor's stacking context into the root order — so the depth you pick is only right while nothing above you claims a higher one. The editor has a container that does: the **global bottom panel sits at `GlobalZIndex(100)`**, so graph panels docked in the main area can't paint over it. Any panel content using a depth below 100 vanishes the moment the user docks *it* into the bottom panel — its parts render under that panel's own background.
+
+`renzora_ember::stacking::ZTier` fixes the class instead of each case. Give the part a depth relative to your own widget and `z_tier_rebase` resolves it against whatever context the widget ends up in:
+
+```rust
+// Was: GlobalZIndex(10) — invisible inside the bottom panel.
+commands.spawn((Node { .. }, ZTier(10), GlobalZIndex(10)));
+```
+
+Spawn both — the `GlobalZIndex` is the value used until the first rebase and the component the rebase writes into. If something changes a part's depth at runtime, write the `ZTier` and order it `.before(ZTierSet)`; writing `GlobalZIndex` directly gets overwritten next frame.
+
+This is for depth *within* panel content. A genuinely floating surface — menu, dropdown, modal, drag ghost — wants to be above everything including the bottom panel, so it keeps its absolute band (500 / 700 / 1000 / …); `dropdown`'s `floating_z` does the same ancestor walk for those, upward.
+
+### Two copies of one panel are two independent views
+
+The `+` picker doesn't filter out panels that are already open, so **any** panel can be mounted twice — in its workspace *and* in the global bottom panel, or twice in one dock. Anything a panel builds therefore has to be per-instance, not per-panel-id.
+
+**Toolbar buttons must name what they drive.** A bare marker component (`struct FitBtn;`) makes a system that queries by marker act on every instance at once — one toolbar's Fit re-framed both graphs. Store the target entity on the marker (`ViewOpBtn { op, view }`) and build the toolbar *after* the thing it controls, so you have its entity. Split the state deliberately: view state (pan, zoom, framing, per-view selection) is per instance; document state (the graph itself, Apply, adding a node) is shared, so both copies show the same edit.
+
+**Gating on `RelativeCursorPosition::cursor_over` is fine and is the right default** — `correct_pointer_state` (in `renzora_ember`'s lib root) clears it on anything the topmost overlay or modal covers, so only the copy actually on top responds. **Do not** additionally check the `PointerOverOverlay` resource in a handler that already has a node to ask: the bottom panel is itself an overlay surface, so that resource reads true for a widget's own container and the widget goes dead for as long as it's docked there. That resource is for handlers with no UI rect of their own to test — a viewport raycast, a world-space drag.
+
 ### Tooltips (`HoverTooltip`)
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.

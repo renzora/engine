@@ -406,6 +406,11 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 ..default()
             },
             BackgroundColor(rgb(accent())),
+            // Tiered, not absolute: the Timeline is a default resident of the
+            // global bottom panel (`GlobalZIndex(100)`), and a bare 10 puts the
+            // playhead under that panel's own background — invisible exactly
+            // where the panel usually lives. See `crate::stacking`.
+            crate::stacking::ZTier(10),
             GlobalZIndex(10),
             bevy::ui::FocusPolicy::Pass,
             TlPlayhead { root },

@@ -126,11 +126,17 @@ pub struct OverlaySurface;
 /// / menu / popup), OR a [`ModalSurface`](super::overlay::ModalSurface) is open
 /// (modals block everything behind them regardless of cursor position).
 ///
-/// Any panel-level wheel / drag / scrub handler (timeline zoom, code-editor
-/// scroll, graph zoom, …) should bail when this is set, so an open overlay or
-/// modal can't have its wheel *also* drive the panel sitting behind it. Bevy
-/// broadcasts `MouseWheel` to every reader, so each such handler must opt out
-/// itself — this resource is the shared signal they check.
+/// For a handler that keys off a **node's** `cursor_over`, this is the wrong
+/// question and you don't need it: `correct_pointer_state` already clears
+/// `cursor_over` on anything the topmost overlay covers, so the handler stands
+/// down on its own — and, crucially, a widget *inside* an overlay surface keeps
+/// its pointer state. Checking this resource instead breaks that case: the global
+/// bottom panel is itself an overlay surface, so a node graph docked into it saw
+/// "the cursor is over an overlay" for its own container and refused to zoom.
+///
+/// What's left for this resource is the handler with no node to ask — a viewport
+/// raycast, a world-space drag — which has to know an overlay owns the pointer
+/// without having a UI rect of its own to test.
 #[derive(Resource, Default)]
 pub struct PointerOverOverlay(pub bool);
 

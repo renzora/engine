@@ -10,6 +10,11 @@ use crate::theme::*;
 /// Max height of an open dropdown list before it scrolls (≈ 8 rows).
 const DROPDOWN_MAX_HEIGHT: f32 = 220.0;
 
+/// Where an open menu sits in the global stacking order when nothing around it
+/// has claimed a depth of its own — above ordinary panel content, below the
+/// popover / menu / modal bands.
+const DROPDOWN_Z: i32 = 500;
+
 /// Control height of a [`dropdown_compact`] — matches the 22px button height
 /// the editor's toolbar strips use, so a combobox lines up with the icon
 /// buttons and snap pills beside it.
@@ -187,7 +192,9 @@ fn build_dropdown(
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
-            GlobalZIndex(500),
+            // Replaced on open by `dropdown_toggle` with a depth relative to
+            // this menu's own ancestors — see `floating_z`.
+            GlobalZIndex(DROPDOWN_Z),
             super::popup::OverlaySurface,
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("dropdown-menu"),
@@ -265,9 +272,45 @@ fn build_dropdown(
     box_e
 }
 
+/// The depth a floating child of `anchor` needs in order to sit above its own
+/// container, never below `base`.
+///
+/// `GlobalZIndex` is *global*: it pulls a node out of its parent's stacking
+/// context entirely, so a fixed depth is only safe while no ancestor claims a
+/// higher one. The import window is a full-screen surface at 900 with an opaque
+/// background, which put every dropdown inside it at 500 — behind that
+/// background. The menu opened, drew under the window, and took no clicks,
+/// because Bevy's picking gave the pointer to the background stacked above it.
+/// It read as a dropdown that simply refused to open.
+///
+/// Walking the ancestors keeps the menu one step above whatever context it
+/// happens to be in, at any nesting depth, without every container having to
+/// know the widget's band.
+fn floating_z(
+    anchor: Entity,
+    base: i32,
+    zs: &Query<&GlobalZIndex>,
+    parents: &Query<&ChildOf>,
+) -> i32 {
+    let mut z = base;
+    let mut e = anchor;
+    loop {
+        if let Ok(gz) = zs.get(e) {
+            z = z.max(gz.0.saturating_add(1));
+        }
+        match parents.get(e) {
+            Ok(c) => e = c.parent(),
+            Err(_) => break,
+        }
+    }
+    z
+}
+
 pub(crate) fn dropdown_toggle(
+    mut commands: Commands,
     mut dropdowns: Query<
         (
+            Entity,
             &Interaction,
             &mut EmberDropdown,
             &bevy::ui::ComputedNode,
@@ -277,8 +320,10 @@ pub(crate) fn dropdown_toggle(
     >,
     mut nodes: Query<&mut Node>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    zs: Query<&GlobalZIndex>,
+    parents: Query<&ChildOf>,
 ) {
-    for (interaction, mut dd, cn, xf) in &mut dropdowns {
+    for (box_e, interaction, mut dd, cn, xf) in &mut dropdowns {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -290,6 +335,11 @@ pub(crate) fn dropdown_toggle(
             }
             continue;
         }
+        // Resolved on open rather than at spawn: the widget is usually built
+        // before it is parented, so the ancestors don't exist yet.
+        commands
+            .entity(menu)
+            .insert(GlobalZIndex(floating_z(box_e, DROPDOWN_Z, &zs, &parents)));
         // Position-aware open: if the estimated menu height doesn't fit below the
         // box (e.g. the dropdown is near the bottom of a scroll) and there's more
         // room above, flip it to open upward instead of running off-screen. All
@@ -502,6 +552,64 @@ mod tests {
         assert_eq!(world.get::<Node>(menu).unwrap().display, Display::None);
         assert_eq!(world.get::<Bound<usize>>(box_e).unwrap().0, 2);
         assert!(!world.get::<EmberDropdown>(box_e).unwrap().open);
+    }
+
+    /// An open menu must stack above any container that claimed a global depth
+    /// of its own.
+    ///
+    /// Regression guard: the full-screen import window sits at 900 with an
+    /// opaque background, and a menu pinned to a fixed 500 opened *behind* it —
+    /// invisible, and unclickable because picking gave the pointer to the
+    /// background stacked above. It read as a dropdown that refused to open.
+    #[test]
+    fn a_menu_stacks_above_its_own_container() {
+        let mut world = World::new();
+        let f = fonts();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let box_e = {
+            let mut commands = Commands::new(&mut queue, &world);
+            dropdown(&mut commands, &f, &["A", "B"], 0)
+        };
+        queue.apply(&mut world);
+
+        // A container that lifts itself into the global stacking context, the
+        // way the import window does.
+        let window = world.spawn((Node::default(), GlobalZIndex(900))).id();
+        let mid = world.spawn(Node::default()).id();
+        world.entity_mut(mid).insert(ChildOf(window));
+        world.entity_mut(box_e).insert(ChildOf(mid));
+
+        let mut sys = bevy::ecs::system::IntoSystem::into_system(
+            move |zs: Query<&GlobalZIndex>, parents: Query<&ChildOf>| {
+                floating_z(box_e, DROPDOWN_Z, &zs, &parents)
+            },
+        );
+        sys.initialize(&mut world);
+        let z = sys.run((), &mut world).expect("depth");
+
+        assert_eq!(z, 901, "must clear the container it lives inside");
+    }
+
+    #[test]
+    fn an_unnested_menu_keeps_the_default_depth() {
+        let mut world = World::new();
+        let f = fonts();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let box_e = {
+            let mut commands = Commands::new(&mut queue, &world);
+            dropdown(&mut commands, &f, &["A"], 0)
+        };
+        queue.apply(&mut world);
+
+        let mut sys = bevy::ecs::system::IntoSystem::into_system(
+            move |zs: Query<&GlobalZIndex>, parents: Query<&ChildOf>| {
+                floating_z(box_e, DROPDOWN_Z, &zs, &parents)
+            },
+        );
+        sys.initialize(&mut world);
+        // The box itself carries no depth, so nothing lifts it past the band's
+        // floor — every existing dropdown keeps behaving exactly as before.
+        assert_eq!(sys.run((), &mut world).expect("depth"), DROPDOWN_Z);
     }
 
     /// Opening one dropdown must close any other that's already open. The
