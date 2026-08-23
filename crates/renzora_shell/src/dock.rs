@@ -121,6 +121,11 @@ pub fn migrate_bottom_dock(
         // bottom strip stashed, and Ctrl+Space brought it back.
         open: false,
         mode: BottomDockMode::Overlay,
+        // Left empty rather than synthesized here: the shell wraps a set-less
+        // layout in its one default set on load, and doing it in both places
+        // would mean two spellings of the default name.
+        sets: Vec::new(),
+        active: 0,
     }
 }
 
@@ -290,6 +295,11 @@ pub enum BottomDockMode {
 /// silently rescale the panel when the window resizes.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BottomDockLayout {
+    /// The *active* set's tree, duplicated out of [`Self::sets`].
+    ///
+    /// Written even though `sets` already holds it, because it is the only
+    /// field a build that predates panel sets knows how to read: downgrading
+    /// then finds its bottom panel as the user left it instead of an empty one.
     pub tree: DockTree,
     pub height: f32,
     pub open: bool,
@@ -297,6 +307,28 @@ pub struct BottomDockLayout {
     /// existed loads as `Overlay` — the behaviour it was saved with.
     #[serde(default)]
     pub mode: BottomDockMode,
+    /// The panel's named tab-sets, active one included. Empty in a layout file
+    /// written before they existed, which the shell reads as "one set holding
+    /// `tree`" — so there is exactly one place a set can come from and no way
+    /// for the two fields to disagree about the live one.
+    #[serde(default)]
+    pub sets: Vec<BottomPanelSet>,
+    /// Index into [`Self::sets`]. Clamped on load, so a hand-edited or
+    /// truncated file can't point past the end.
+    #[serde(default)]
+    pub active: usize,
+}
+
+/// One named tab-set of the global bottom panel — a "panel workspace".
+///
+/// The panel is global (one per editor, shared by every dock workspace), so
+/// keeping several sets is how a project ends up with, say, a debugging set
+/// (console + profiler) and an authoring one (assets + mixer) without either
+/// having to be rebuilt tab by tab.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct BottomPanelSet {
+    pub name: String,
+    pub tree: DockTree,
 }
 
 /// The on-disk dock layout file: every workspace plus the active index, plus
@@ -369,6 +401,13 @@ pub fn load_dock_layouts() -> Option<(
         let mut bottom_dock = data.bottom_dock;
         if let Some(b) = bottom_dock.as_mut() {
             b.tree.retire_panels(RETIRED_PANELS);
+            // Every set, not just the live one: a retired panel sitting in a
+            // set the user hasn't switched to yet would come back the moment
+            // they did.
+            for set in &mut b.sets {
+                set.tree.retire_panels(RETIRED_PANELS);
+            }
+            b.active = b.active.min(b.sets.len().saturating_sub(1));
         }
         Some((
             workspaces,
@@ -721,8 +760,8 @@ mod tests {
     }
 
     /// A layout with nothing to fold must not leave the bottom panel holding an
-    /// empty leaf — `sync_bottom_dock_node` keys "is there anything to show" off
-    /// `is_empty`, and an empty leaf would render a bare bordered slab.
+    /// empty *leaf*: ember renders an empty tree as its "Add Panel" button, but
+    /// an empty leaf as a tab bar with no tabs in it.
     #[test]
     fn migrate_with_no_strips_yields_an_empty_tree() {
         let mut workspaces = vec![(
@@ -753,5 +792,56 @@ mod tests {
         assert_eq!(ids.iter().filter(|i| *i == "console").count(), 1);
         assert!(ids.contains(&"assets".to_string()));
         assert!(!tree.contains_panel("console"));
+    }
+
+    /// A layout file written before panel sets existed has no `sets` key at
+    /// all. It must still load — as a panel with no sets, which the shell reads
+    /// as "one set, holding `tree`". Losing this default would greet every
+    /// existing user with an empty bottom panel.
+    #[test]
+    fn a_layout_without_panel_sets_still_loads() {
+        let json = r#"{
+            "tree": {"Leaf": {"tabs": ["console", "assets"], "active_tab": 0}},
+            "height": 220.0,
+            "open": true
+        }"#;
+        let bottom: BottomDockLayout = serde_json::from_str(json).expect("pre-sets layout");
+        assert!(bottom.sets.is_empty());
+        assert_eq!(bottom.active, 0);
+        assert!(bottom.tree.contains_panel("console"));
+        assert!(bottom.mode == BottomDockMode::Overlay);
+    }
+
+    /// And a file that *does* carry sets round-trips them, active index
+    /// included — the panel's whole point is that the set you left it on is the
+    /// set you come back to.
+    #[test]
+    fn panel_sets_round_trip_through_the_layout_file() {
+        let bottom = BottomDockLayout {
+            tree: DockTree::leaf("mixer"),
+            height: 240.0,
+            open: true,
+            mode: BottomDockMode::Layout,
+            sets: vec![
+                BottomPanelSet {
+                    name: "Panels".to_string(),
+                    tree: DockTree::tabs(&["console", "assets"]),
+                },
+                BottomPanelSet {
+                    name: "Panels 2".to_string(),
+                    tree: DockTree::leaf("mixer"),
+                },
+            ],
+            active: 1,
+        };
+
+        let text = serde_json::to_string(&bottom).expect("serialize");
+        let back: BottomDockLayout = serde_json::from_str(&text).expect("deserialize");
+
+        assert_eq!(back.active, 1);
+        assert_eq!(back.sets.len(), 2);
+        assert_eq!(back.sets[1].name, "Panels 2");
+        assert!(back.sets[0].tree.contains_panel("console"));
+        assert!(back.sets[1].tree.contains_panel("mixer"));
     }
 }

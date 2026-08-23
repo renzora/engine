@@ -66,12 +66,31 @@ impl Plugin for ShellPlugin {
             Some(b) => b,
             None => dock::migrate_bottom_dock(&mut layouts, &closed_bottoms),
         };
+        // The panel's named tab-sets. A layout file that predates them (or one
+        // just synthesized by the migration above) has none, which means the
+        // single set it does have is whatever `tree` holds.
+        let mut sets: Vec<(String, DockTree)> = bottom_dock
+            .sets
+            .iter()
+            .map(|s| (s.name.clone(), s.tree.clone()))
+            .collect();
+        if sets.is_empty() {
+            sets.push((default_panel_set_name(), bottom_dock.tree.clone()));
+        }
+        let bottom_active = bottom_dock.active.min(sets.len() - 1);
         app.insert_resource(renzora_ember::dock::FixedDock {
-            tree: bottom_dock.tree.clone(),
+            // The active set's tree, not `bottom_dock.tree` — they agree in
+            // every file this build writes, but a file whose `tree` was left
+            // behind by an older build must not win over the sets.
+            tree: sets[bottom_active].1.clone(),
             area: None,
             // Nothing to build until the shell chrome spawns the area node;
             // `track_fixed_dock_area` arms this when it does.
             dirty: false,
+        });
+        app.insert_resource(BottomPanelSets {
+            sets,
+            active: bottom_active,
         });
         app.insert_resource(BottomDock {
             height: bottom_dock.height,
@@ -118,6 +137,7 @@ impl Plugin for ShellPlugin {
         app.init_resource::<BottomDockResize>();
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
+        app.init_resource::<BottomSetRename>();
         app.init_resource::<DocTabDrag>();
         app.init_resource::<DocTabRename>();
         app.init_resource::<DocTabMru>();
@@ -187,6 +207,14 @@ impl Plugin for ShellPlugin {
                     collapsed_bottom_tab_hover,
                     bottom_dock_close_click,
                     bottom_dock_mode_click,
+                    // Act, then rebuild the menu, so a switch or a new set is
+                    // reflected in the same frame it was asked for. The rename
+                    // commit runs first for the same reason: its result is one
+                    // of the things the rebuild has to pick up.
+                    bottom_set_rename_commit,
+                    bottom_set_menu_click,
+                    sync_bottom_set_menu,
+                    bottom_set_focus_rename,
                     // Press before drag, so a grip press and the first motion
                     // of the same gesture can't be processed out of order.
                     bottom_dock_grip_press,
@@ -1191,6 +1219,566 @@ struct BottomDock {
     mode: dock::BottomDockMode,
 }
 
+/// The bottom panel's named tab-sets, and which one is live.
+///
+/// Mirrors how [`ShellLayouts`] relates to [`Dock`]: the *live* tree is the one
+/// in [`renzora_ember::dock::FixedDock`], and `sets[active].1` is only refreshed
+/// when the user switches away from it (or when the layout is saved). Reading
+/// the active slot's tree straight out of here therefore gives you the panel as
+/// it was when it last went out of view, not as it is now.
+#[derive(Resource)]
+struct BottomPanelSets {
+    sets: Vec<(String, DockTree)>,
+    active: usize,
+}
+
+/// The name a bottom panel gets when it has never had a second set — the case
+/// for every layout written before sets existed.
+fn default_panel_set_name() -> String {
+    renzora::lang::t_or("shell.bottom_dock.set_default", "Panels")
+}
+
+/// `Panels 2`, `Panels 3`, … — the first numbered name the panel isn't already
+/// using, so removing set 2 and adding another gives back `Panels 2` rather
+/// than climbing forever.
+fn next_panel_set_name(taken: &[(String, DockTree)]) -> String {
+    let base = default_panel_set_name();
+    (2..)
+        .map(|n| format!("{base} {n}"))
+        .find(|name| !taken.iter().any(|(n, _)| n == name))
+        .unwrap_or(base)
+}
+
+/// Make `index` the live set: park the tree the panel is showing back in the
+/// slot it came from, then hand ember the new one.
+///
+/// The park is what makes switching lossless — the live tree has been edited in
+/// `FixedDock` (tabs dragged, panels closed) and the copy in `sets` is stale by
+/// exactly those edits.
+fn activate_panel_set(
+    sets: &mut BottomPanelSets,
+    fixed: &mut renzora_ember::dock::FixedDock,
+    index: usize,
+) {
+    if index >= sets.sets.len() {
+        return;
+    }
+    let live = fixed.tree.clone();
+    if let Some(slot) = sets.sets.get_mut(sets.active) {
+        slot.1 = live;
+    }
+    sets.active = index;
+    fixed.tree = sets.sets[index].1.clone();
+    // The area node exists by the time any of this is reachable (the menu that
+    // calls it lives in the same chrome), so a rebuild is always wanted.
+    fixed.dirty = true;
+}
+
+/// The panel-set dropdown's trigger — a name + caret in the panel's top-right
+/// corner, left of the Overlay/Layout button.
+#[derive(Component)]
+struct BottomSetTrigger;
+/// The trigger's label, kept on the active set's name.
+#[derive(Component)]
+struct BottomSetLabel;
+/// The dropdown's panel. Its rows are rebuilt from [`BottomPanelSets`] rather
+/// than spawned once, because the set list changes while the chrome stands.
+#[derive(Component)]
+struct BottomSetMenu;
+/// A row that switches to set `0`.
+#[derive(Component)]
+struct BottomSetOption(usize);
+/// The "New Panel Set" row.
+#[derive(Component)]
+struct BottomSetNew;
+/// The "Remove This Set" row. Present only while more than one set exists —
+/// removing the last one would leave the panel with nowhere to put a tab.
+#[derive(Component)]
+struct BottomSetRemove;
+/// The pencil at a set row's right edge, carrying the set it renames.
+#[derive(Component)]
+struct BottomSetRenameBtn(usize);
+/// The set currently being inline-renamed (`None` = none), read by
+/// [`sync_bottom_set_menu`] so that row renders a text field in place of its
+/// name. Mirrors [`RibbonRename`], which does the same for workspaces.
+#[derive(Resource, Default)]
+struct BottomSetRename(Option<usize>);
+/// Marks the inline rename field, carrying the set index it renames.
+#[derive(Component)]
+struct BottomSetRenameInput(usize);
+
+/// Build the panel-set dropdown: trigger + (empty) menu panel.
+///
+/// The menu is a child of the trigger so it anchors to it, and it opens
+/// *upward* — the trigger sits at the top edge of a panel pinned to the bottom
+/// of the window, so downward is the direction with no room.
+fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Percent(100.0),
+                right: Val::Px(0.0),
+                margin: UiRect::bottom(Val::Px(4.0)),
+                min_width: Val::Px(180.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
+            BorderColor::all(rgb(divider())),
+            GlobalZIndex(BOTTOM_DOCK_Z + 3),
+            // Not decoration: without both of these the menu is invisible to
+            // `correct_pointer_state`, so a click on one of its rows *also*
+            // lands in whatever panel is behind it.
+            renzora_ember::widgets::OverlaySurface,
+            RelativeCursorPosition::default(),
+            // Same reason as the trigger: the panel's own background hangs over
+            // the dock header's resize filler.
+            bevy::ui::FocusPolicy::Block,
+            BottomSetMenu,
+            Name::new("bottom-set-menu"),
+        ))
+        .id();
+
+    let label = commands
+        .spawn((
+            Text::new(default_panel_set_name()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            Node {
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+            BottomSetLabel,
+        ))
+        .id();
+    let caret = glyph(commands, "caret-down", text_muted(), 10.0);
+    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+
+    let trigger = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                // Clear of the mode button at 30 and the collapse button at 6.
+                right: Val::Px(54.0),
+                bottom: Val::Px(dock::BOTTOM_DOCK_HEIGHT - 26.0),
+                height: Val::Px(22.0),
+                max_width: Val::Px(160.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::horizontal(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                // No `Overflow::clip()` here — the menu is a child of this node,
+                // and a clipping parent clips absolutely-positioned descendants
+                // too. The label below carries the clip instead.
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            GlobalZIndex(BOTTOM_DOCK_Z + 2),
+            Interaction::default(),
+            // Not optional. `Node`'s required `FocusPolicy` is `Pass` in Bevy
+            // 0.19, so hover falls *through* this button to the dock header's
+            // filler underneath — which is the panel's resize surface and
+            // carries an ns-resize `HoverCursor`. `apply_cursor_icon` takes the
+            // first hovered entity with a cursor and does no topmost
+            // resolution, so the filler won and the dropdown showed a resize
+            // cursor. Blocking keeps the hover here, where it belongs.
+            bevy::ui::FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::Popup::new(panel),
+            // No tooltip: the control already reads as what it is (a named set
+            // plus a caret), and a bubble over the panel's own top edge covers
+            // the tabs it's about to switch.
+            BottomSetTrigger,
+            // Shown/hidden and vertically placed with the panel's other corner
+            // controls by `sync_bottom_dock_node`.
+            BottomDockBtn,
+            Name::new("bottom-set-trigger"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
+        match w.get::<Interaction>(trigger) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(1.0, 1.0, 1.0, 0.09)
+            }
+            _ => Color::NONE,
+        }
+    });
+    commands
+        .entity(trigger)
+        .add_children(&[label, caret, panel]);
+    trigger
+}
+
+/// One row of the panel-set menu: a leading glyph and a label.
+fn bottom_set_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    icon_color: (u8, u8, u8),
+    label: String,
+) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            // Block, like the trigger: a row sits over the panel's header
+            // filler, which is a resize surface (see the trigger's comment).
+            bevy::ui::FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("bottom-set-row"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
+        match w.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::hover_bg())
+            }
+            _ => Color::NONE,
+        }
+    });
+    let ic = glyph(commands, icon, icon_color, 12.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let text = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+            // Takes the slack, so a trailing button (the rename pencil) sits at
+            // the row's right edge rather than against the name.
+            Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(row).add_children(&[ic, text]);
+    row
+}
+
+/// The inline rename field for panel set `index`, styled like the ribbon's.
+fn build_bottom_set_rename_field(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    index: usize,
+    name: &str,
+) -> Entity {
+    let input = renzora_ember::widgets::text_input(commands, font, "Name", name);
+    commands.entity(input).insert((
+        BottomSetRenameInput(index),
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(22.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(4.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            ..default()
+        },
+    ));
+    input
+}
+
+/// What [`sync_bottom_set_menu`] compares against to decide the menu it built
+/// is still the right one: menu entity, the set names, the live set, and the
+/// set being renamed.
+type BottomSetMenuKey = (Entity, Vec<String>, usize, Option<usize>);
+
+/// Fill the panel-set menu from [`BottomPanelSets`], and keep the trigger's
+/// label on the active set's name.
+///
+/// Rebuilt on change rather than reconciled: the list is a handful of rows and
+/// only moves when the user opens the menu and acts on it, so the churn the
+/// reactive lists were built to avoid doesn't arise. Keyed on the menu entity
+/// as well as the contents, because a theme or language change respawns the
+/// chrome and hands us a fresh, childless panel.
+#[allow(clippy::too_many_arguments)]
+fn sync_bottom_set_menu(
+    sets: Res<BottomPanelSets>,
+    rename: Res<BottomSetRename>,
+    fonts: Option<Res<EmberFonts>>,
+    theme: Option<Res<renzora_theme::ThemeManager>>,
+    menus: Query<Entity, With<BottomSetMenu>>,
+    mut labels: Query<&mut Text, With<BottomSetLabel>>,
+    mut commands: Commands,
+    mut built: Local<Option<BottomSetMenuKey>>,
+) {
+    let (Some(fonts), Ok(menu)) = (fonts, menus.single()) else {
+        return;
+    };
+    let names: Vec<String> = sets.sets.iter().map(|(n, _)| n.clone()).collect();
+    // `rename.0` is part of the key: entering and leaving rename mode swaps one
+    // row between a label and a text field, and nothing else about the set list
+    // changes when it does.
+    if built.as_ref() == Some(&(menu, names.clone(), sets.active, rename.0)) {
+        return;
+    }
+    *built = Some((menu, names.clone(), sets.active, rename.0));
+
+    for mut text in &mut labels {
+        let want = names.get(sets.active).cloned().unwrap_or_default();
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
+
+    let green = theme
+        .map(|t| {
+            let [r, g, b, _] = t.active_theme.semantic.success.to_array();
+            (r, g, b)
+        })
+        .unwrap_or_else(play_green);
+
+    commands.entity(menu).despawn_related::<Children>();
+    let mut rows = Vec::new();
+    for (i, name) in names.iter().enumerate() {
+        // The row being renamed is the field, not a label — it can't also be a
+        // click target, or typing in it would keep re-activating the set.
+        if rename.0 == Some(i) {
+            let holder = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                        ..default()
+                    },
+                    Name::new("bottom-set-rename-row"),
+                ))
+                .id();
+            let field = build_bottom_set_rename_field(&mut commands, &fonts.ui, i, name);
+            commands.entity(holder).add_child(field);
+            rows.push(holder);
+            continue;
+        }
+        // Check on the live set, the set's own glyph on the others — the same
+        // check-or-icon slot the theme and play-target menus use.
+        let (icon, color) = if i == sets.active {
+            ("check", green)
+        } else {
+            ("squares-four", text_muted())
+        };
+        let row = bottom_set_row(&mut commands, &fonts, icon, color, name.clone());
+        commands.entity(row).insert(BottomSetOption(i));
+        // Rename pencil at the row's right edge. `Block`, or the press also
+        // reaches the row and switches to that set on the way into the field —
+        // `Node`'s required `FocusPolicy` is `Pass` in Bevy 0.19.
+        let pencil = commands
+            .spawn((
+                Node {
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    width: Val::Px(16.0),
+                    height: Val::Px(16.0),
+                    flex_shrink: 0.0,
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Block,
+                BottomSetRenameBtn(i),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                Name::new("bottom-set-rename"),
+            ))
+            .id();
+        let pencil_icon = glyph(&mut commands, "pencil-simple", text_muted(), 11.0);
+        commands.entity(pencil_icon).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(pencil).add_child(pencil_icon);
+        commands.entity(row).add_child(pencil);
+        rows.push(row);
+    }
+    let sep = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(divider())),
+        ))
+        .id();
+    rows.push(sep);
+    let new_row = bottom_set_row(
+        &mut commands,
+        &fonts,
+        "plus",
+        text_muted(),
+        renzora::lang::t_or("shell.bottom_dock.set_new", "New Panel Set"),
+    );
+    commands.entity(new_row).insert(BottomSetNew);
+    rows.push(new_row);
+    if names.len() > 1 {
+        let remove_row = bottom_set_row(
+            &mut commands,
+            &fonts,
+            "trash",
+            text_muted(),
+            renzora::lang::t_or("shell.bottom_dock.set_remove", "Remove This Set"),
+        );
+        commands.entity(remove_row).insert(BottomSetRemove);
+        rows.push(remove_row);
+    }
+    commands.entity(menu).add_children(&rows);
+}
+
+/// Drive the panel-set menu: pick a set, add one, drop the live one, or start
+/// renaming one.
+///
+/// Every branch but the rename closes the menu, so the result is visible
+/// immediately rather than behind a popup the user still has to dismiss —
+/// rename is the exception because the field it opens *is* in the menu.
+#[allow(clippy::too_many_arguments)]
+fn bottom_set_menu_click(
+    options: Query<(&Interaction, &BottomSetOption), Changed<Interaction>>,
+    new_rows: Query<&Interaction, (With<BottomSetNew>, Changed<Interaction>)>,
+    remove_rows: Query<&Interaction, (With<BottomSetRemove>, Changed<Interaction>)>,
+    pencils: Query<(&Interaction, &BottomSetRenameBtn), Changed<Interaction>>,
+    mut sets: ResMut<BottomPanelSets>,
+    mut rename: ResMut<BottomSetRename>,
+    mut fixed: ResMut<renzora_ember::dock::FixedDock>,
+    mut bottom: ResMut<BottomDock>,
+    triggers: Query<Entity, With<BottomSetTrigger>>,
+    mut commands: Commands,
+) {
+    for (interaction, pencil) in &pencils {
+        if *interaction == Interaction::Pressed {
+            rename.0 = Some(pencil.0);
+        }
+    }
+    let mut acted = false;
+    for (interaction, opt) in &options {
+        if *interaction == Interaction::Pressed && opt.0 != sets.active {
+            activate_panel_set(&mut sets, &mut fixed, opt.0);
+            acted = true;
+        } else if *interaction == Interaction::Pressed {
+            acted = true; // picking the live set is just a dismiss
+        }
+    }
+    for interaction in &new_rows {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let name = next_panel_set_name(&sets.sets);
+        // Empty on purpose: ember renders an "Add Panel" button for an empty
+        // tree, which is exactly the right first step in a brand new set.
+        sets.sets.push((name, DockTree::Empty));
+        let last = sets.sets.len() - 1;
+        activate_panel_set(&mut sets, &mut fixed, last);
+        // A new set is a request to work in the panel, so make sure it's up.
+        bottom.open = true;
+        acted = true;
+    }
+    for interaction in &remove_rows {
+        // Guarded here as well as in the builder: the row is only spawned while
+        // there's more than one set, but the menu it lives in can outlive that
+        // by a frame.
+        if *interaction != Interaction::Pressed || sets.sets.len() < 2 {
+            continue;
+        }
+        let gone = sets.active;
+        sets.sets.remove(gone);
+        // Land on the neighbour that kept its position, so removing the last
+        // set doesn't jump to the front.
+        let next = gone.min(sets.sets.len() - 1);
+        // Not `activate_panel_set`: parking the live tree would write it into
+        // whichever set slid into this index.
+        sets.active = next;
+        fixed.tree = sets.sets[next].1.clone();
+        fixed.dirty = true;
+        acted = true;
+    }
+    if acted {
+        // Whatever the menu was in the middle of no longer refers to the set
+        // list it was opened against.
+        rename.0 = None;
+        for trigger in &triggers {
+            renzora_ember::widgets::close_popup(&mut commands, trigger);
+        }
+    }
+}
+
+/// Focus the panel-set rename field the frame it spawns, so the pencil puts the
+/// caret in the name rather than only drawing a box.
+fn bottom_set_focus_rename(
+    mut fields: Query<&mut renzora_ember::widgets::EmberTextInput, Added<BottomSetRenameInput>>,
+) {
+    for mut input in &mut fields {
+        input.focused = true;
+    }
+}
+
+/// Commit (Enter / blur) or cancel (Escape) a panel-set rename. The twin of
+/// [`ribbon_rename_commit`], which does this for workspaces.
+fn bottom_set_rename_commit(
+    mut rename: ResMut<BottomSetRename>,
+    keys: Res<ButtonInput<KeyCode>>,
+    fields: Query<(
+        &renzora_ember::widgets::EmberTextInput,
+        &BottomSetRenameInput,
+    )>,
+    mut sets: ResMut<BottomPanelSets>,
+    mut had_focus: Local<bool>,
+) {
+    let Some(index) = rename.0 else {
+        *had_focus = false;
+        return;
+    };
+    if keys.just_pressed(KeyCode::Escape) {
+        rename.0 = None;
+        *had_focus = false;
+        return;
+    }
+    let Some((input, _)) = fields.iter().find(|(_, r)| r.0 == index) else {
+        return;
+    };
+    // The blur test needs a frame where the field *was* focused: it spawns
+    // unfocused and is focused by `bottom_set_focus_rename`, so without this a
+    // rename would commit-and-close on its very first frame.
+    if input.focused {
+        *had_focus = true;
+    }
+    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let blurred = *had_focus && !input.focused;
+    if !enter && !blurred {
+        return;
+    }
+    let new: String = input.value.replace('\n', "").trim().to_string();
+    rename.0 = None;
+    *had_focus = false;
+    // An empty name would leave a row you can't read or aim at, so a cleared
+    // field cancels instead.
+    if new.is_empty() {
+        return;
+    }
+    if let Some(slot) = sets.sets.get_mut(index) {
+        slot.0 = new;
+    }
+}
+
 /// Ctrl+Space ([`EditorAction::ToggleBottomPanel`]): show or hide the global
 /// bottom panel.
 ///
@@ -1379,7 +1967,6 @@ const BOTTOM_DOCK_Z: i32 = 100;
 #[allow(clippy::type_complexity)]
 fn sync_bottom_dock_node(
     bottom: Res<BottomDock>,
-    fixed: Res<renzora_ember::dock::FixedDock>,
     wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut areas: Query<
         &mut Node,
@@ -1411,9 +1998,14 @@ fn sync_bottom_dock_node(
         )>,
     >,
 ) {
-    // An empty bottom dock has nothing to show even when "open" — treat it as
-    // closed rather than rendering an empty bordered slab.
-    let show = bottom.open && !fixed.tree.is_empty();
+    // Shown whenever it's open, empty or not. Hiding an empty one used to be
+    // the tidier choice — no bare bordered slab — but closing the panel's last
+    // tab then took the whole panel away *with its corner controls*, and
+    // Ctrl+Space couldn't bring it back: the toggle set `open`, this line
+    // immediately re-hid it, and there was no way left to add a panel. An empty
+    // one is not blank anyway; ember renders its "Add Panel" button, and the
+    // panel-set dropdown sits in the corner beside it.
+    let show = bottom.open;
     let avail = wraps
         .iter()
         .next()
@@ -3235,7 +3827,7 @@ fn spawn_shell(
     // as shell chrome they are on screen in every workspace, including the
     // viewport-less asset layouts an open material routes the editor into.
     let top_bar = build_top_bar(commands, font, fonts);
-    let doc_tabs = build_doc_tabs(commands, fonts);
+    let doc_tabs = build_doc_tabs(commands);
 
     // Wrapper holding the workspace dock and the global bottom panel overlaid
     // on it. The bottom panel CANNOT be a child of the `DockArea`: ember's
@@ -3393,6 +3985,10 @@ fn spawn_shell(
             // stacking context one tier below.
             GlobalZIndex(BOTTOM_DOCK_Z + 2),
             Interaction::default(),
+            // Blocks for the same reason as the set dropdown beside it: the
+            // header filler underneath is a resize surface, and hover leaking
+            // to it puts an ns-resize cursor on this button.
+            bevy::ui::FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             BottomDockCloseBtn,
             BottomDockBtn,
@@ -3428,6 +4024,9 @@ fn spawn_shell(
             BackgroundColor(Color::NONE),
             GlobalZIndex(BOTTOM_DOCK_Z + 2),
             Interaction::default(),
+            // See the collapse button: without this the resize filler under the
+            // corner controls takes the hover, and the cursor.
+            bevy::ui::FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
                 "shell.bottom_dock.mode_overlay",
@@ -3441,10 +4040,13 @@ fn spawn_shell(
     let mode_icon = icon_text(commands, &fonts.phosphor, "stack", text_muted(), 14.0);
     commands.entity(bottom_dock_mode).add_child(mode_icon);
 
+    let bottom_dock_sets = build_bottom_set_menu(commands, fonts);
+
     commands.entity(dock_wrap).add_children(&[
         dock_area,
         bottom_dock_area,
         bottom_dock_grip,
+        bottom_dock_sets,
         bottom_dock_mode,
         bottom_dock_close,
     ]);
@@ -4413,7 +5015,7 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSou
 /// Inside it the tab list hugs its content, so the `+` button sits directly
 /// after the last tab and travels right as tabs are added; once they fill the
 /// bar the surplus folds into the caret menu and `+` stops moving.
-fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_doc_tabs(commands: &mut Commands) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -4490,24 +5092,10 @@ fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
     commands.entity(plus).add_child(plus_icon);
 
-    // Maximize for the primary viewport, pushed to the far end. It acts on that
-    // whole panel rather than on anything inside its tool strip, and this bar is
-    // the one row of chrome that runs the window's full width — so its right edge
-    // is where a "make the viewport bigger" control belongs. Built by
-    // `renzora_viewport`, not here: its driver systems find it by component, so
-    // it works from anywhere in the tree. The secondary viewport slots keep
-    // theirs in their own header.
-    let spacer = commands
-        .spawn((
-            Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
-            bevy::ui::FocusPolicy::Pass,
-            Name::new("doc-tabs-spacer"),
-        ))
-        .id();
-    let maximize = renzora_viewport::native_header::build_maximize(commands, fonts, 0);
-    commands
-        .entity(bar)
-        .add_children(&[strip, plus, spacer, maximize]);
+    // Nothing after the `+`: the viewport's Maximize used to be parked at the far
+    // end of this bar, and went back to the viewport's own toolbar when the bar
+    // stopped being part of that panel.
+    commands.entity(bar).add_children(&[strip, plus]);
     // Hidden — and costing no height, since it's a row of the shell's column —
     // while Settings has the tabs set to Dropdown.
     renzora_ember::reactive::tracked::bind_display(commands, bar, |w: &Rx| !doc_tabs_dropdown(w));
@@ -4561,55 +5149,49 @@ fn build_doc_tab_menu_group(
         .id();
     renzora_ember::reactive::tracked::keyed_list(commands, list, doc_tab_menu_snapshot);
 
-    let sep = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(divider())),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-
-    // The strip's `+`, as a row — otherwise "new scene" would be unreachable in
-    // this mode. `DocAddBtn` is what `doc_add_click` handles, wherever it sits.
-    let add = doc_tab_menu_row_node(commands, "doc-tab-menu-add");
-    commands.entity(add).insert(DocAddBtn);
-    let add_icon = icon_text(commands, &fonts.phosphor, "plus", text_muted(), 12.0);
-    let add_label = commands
-        .spawn((
-            Text::new(renzora::lang::t("menu.file.new_scene")),
-            ui_font(font, 12.0),
-            TextColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    commands.entity(add).add_children(&[add_icon, add_label]);
     // Ember's own popup surface rather than a hand-rolled node: only this one is
     // known to `correct_pointer_state`, and without that a click on a row lands
     // in the viewport behind the menu as well as on the row — the menu hangs
     // over the scene, so that would select whatever was under it.
     let panel = renzora_ember::widgets::popup_panel_aligned(
         commands,
-        &[list, sep, add],
+        &[list],
         renzora_ember::widgets::PopupAlign::Left,
     );
     commands.entity(panel).insert(Name::new("doc-tab-menu"));
+    // Tightened rather than rebuilt: the surface's own layout (absolute, edge
+    // alignment, the `OverlaySurface` that makes clicks stop here) stays
+    // ember's, and only the metrics change. A toolbar-sized control shouldn't
+    // open a panel with the padding of a settings popover.
+    commands
+        .entity(panel)
+        .entry::<Node>()
+        .and_modify(|mut n| {
+            n.min_width = Val::Px(170.0);
+            n.padding = UiRect::all(Val::Px(4.0));
+            n.row_gap = Val::Px(1.0);
+        });
 
     let trigger = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                column_gap: Val::Px(4.0),
+                // 22px and tight, like the toolbar's compact dropdowns — this
+                // sits between the Play pill and the ribbon, where a control
+                // that names a document can eat the bar if it's let to.
+                height: Val::Px(22.0),
+                padding: UiRect::horizontal(Val::Px(6.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 position_type: PositionType::Relative,
-                max_width: Val::Px(190.0),
-                overflow: Overflow::clip(),
+                max_width: Val::Px(150.0),
+                // NOT `Overflow::clip()`, however much a too-long name wants it:
+                // the menu is a *child* of this node, and a clipping parent
+                // clips absolutely-positioned descendants too — so the panel
+                // opened, correctly, inside a 190×20 box and was never seen.
+                // The clip belongs on the label, which is the thing that can
+                // overflow.
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -4642,6 +5224,14 @@ fn build_doc_tab_menu_group(
             Text::new(String::new()),
             ui_font(font, 11.0),
             TextColor(rgb(text_primary())),
+            // The trigger's width cap is enforced here rather than on the
+            // trigger, which has the menu among its children (see above).
+            bevy::text::TextLayout::no_wrap(),
+            Node {
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
@@ -4663,7 +5253,39 @@ fn build_doc_tab_menu_group(
         .entity(trigger)
         .add_children(&[icon, label, caret, panel]);
 
-    let maximize = renzora_viewport::native_header::build_maximize(commands, fonts, 0);
+    // The strip's `+`, in the same place relative to the documents: immediately
+    // to their right. `DocAddBtn` is what `doc_add_click` handles, wherever it
+    // sits, so this is the strip's button in a second spot rather than a second
+    // implementation of it.
+    let plus = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            DocAddBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("menu.file.new_scene")),
+            Name::new("doc-tab-menu-add"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, plus, move |w| {
+        match w.get::<Interaction>(plus) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(1.0, 1.0, 1.0, 0.09)
+            }
+            _ => Color::NONE,
+        }
+    });
+    let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
+    commands.entity(plus).add_child(plus_icon);
+
     let group = commands
         .spawn((
             Node {
@@ -4678,7 +5300,7 @@ fn build_doc_tab_menu_group(
         ))
         .id();
     renzora_ember::reactive::tracked::bind_display(commands, group, doc_tabs_dropdown);
-    commands.entity(group).add_children(&[trigger, maximize]);
+    commands.entity(group).add_children(&[trigger, plus]);
     group
 }
 
@@ -4695,9 +5317,9 @@ fn doc_tab_menu_row_node(commands: &mut Commands, name: &'static str) -> Entity 
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
+                column_gap: Val::Px(6.0),
                 width: Val::Percent(100.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
@@ -4730,7 +5352,11 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let Some(state) = world.get_resource::<renzora_ui::DocumentTabState>() else {
         return empty();
     };
-    let rows: Vec<(u64, String, &'static str, bool, bool)> = state
+    // Closable follows the strip's rule exactly (see `doc_tab_snapshot`): the
+    // model refuses the last tab and the last *scene*, so a ✕ that only some of
+    // these rows can honour would be worse than none.
+    let scenes = state.tabs.iter().filter(|t| !t.kind.is_asset()).count();
+    let rows: Vec<(u64, String, &'static str, bool, bool, bool)> = state
         .tabs
         .iter()
         .enumerate()
@@ -4741,27 +5367,28 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                 t.kind.icon(),
                 i == state.active_tab,
                 t.is_modified,
+                state.tabs.len() > 1 && (t.kind.is_asset() || scenes > 1),
             )
         })
         .collect();
     let items: Vec<(u64, u64)> = rows
         .iter()
-        .map(|(id, name, icon, active, modified)| {
+        .map(|(id, name, icon, active, modified, can_close)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             id.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (name, icon, active, modified).hash(&mut h);
+            (name, icon, active, modified, can_close).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, name, icon, active, modified) = &rows[i];
+            let (id, name, icon, active, modified, can_close) = &rows[i];
             let row = doc_tab_menu_row_node(c, "doc-tab-menu-row");
             c.entity(row).insert(DocTabClick(*id));
             let fg = if *active { accent() } else { text_muted() };
-            let ic = icon_text(c, &f.phosphor, icon, fg, 12.0);
+            let ic = icon_text(c, &f.phosphor, icon, fg, 11.0);
             let label = c
                 .spawn((
                     Text::new(if *modified {
@@ -4769,12 +5396,57 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                     } else {
                         name.clone()
                     }),
-                    ui_font(&f.ui, 12.0),
+                    ui_font(&f.ui, 11.0),
                     TextColor(rgb(if *active { text_primary() } else { text_muted() })),
+                    bevy::text::TextLayout::no_wrap(),
+                    // Takes the slack so the ✕ sits at the row's right edge
+                    // rather than trailing the name.
+                    Node {
+                        flex_grow: 1.0,
+                        min_width: Val::Px(0.0),
+                        overflow: Overflow::clip(),
+                        ..default()
+                    },
                     bevy::ui::FocusPolicy::Pass,
                 ))
                 .id();
-            c.entity(row).add_children(&[ic, label]);
+            let mut kids = vec![ic, label];
+            // Every closable row carries one, not just the active row: in the
+            // strip you can click the tab you want to close first, but here the
+            // menu is the only way at a document that isn't the current one, so
+            // a click-then-✕ would mean switching to a document just to shut it.
+            if *can_close {
+                let close = c
+                    .spawn((
+                        Node {
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            width: Val::Px(14.0),
+                            height: Val::Px(14.0),
+                            flex_shrink: 0.0,
+                            border_radius: BorderRadius::all(Val::Px(3.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::NONE),
+                        Interaction::default(),
+                        DocTabClose(*id),
+                        // Block, or the press also reaches the row's
+                        // `DocTabClick` — closing a document by way of first
+                        // switching the editor to it. `Node`'s required
+                        // `FocusPolicy` is `Pass` in Bevy 0.19, so this is not
+                        // the default.
+                        bevy::ui::FocusPolicy::Block,
+                        renzora_ember::cursor_icon::HoverCursor(
+                            bevy::window::SystemCursorIcon::Pointer,
+                        ),
+                        Name::new("doc-tab-menu-close"),
+                    ))
+                    .id();
+                let x = icon_text(c, &f.phosphor, "x", text_muted(), 10.0);
+                c.entity(close).add_child(x);
+                kids.push(close);
+            }
+            c.entity(row).add_children(&kids);
             row
         }),
     }
@@ -5137,6 +5809,7 @@ fn persist_dock_layout(
     dock: Res<Dock>,
     layouts: Res<ShellLayouts>,
     bottom: Res<BottomDock>,
+    bottom_sets: Res<BottomPanelSets>,
     fixed: Res<renzora_ember::dock::FixedDock>,
     floats: Res<renzora_ember::dock::DockWindows>,
     windows: Query<&Window>,
@@ -5157,6 +5830,7 @@ fn persist_dock_layout(
     if dock.is_changed()
         || layouts.is_changed()
         || bottom.is_changed()
+        || bottom_sets.is_changed()
         || fixed.is_changed()
         || floats.is_changed()
         || float_geo_changed
@@ -5194,11 +5868,28 @@ fn persist_dock_layout(
             })
         })
         .collect();
+    // Same trick as the workspace snapshot above: the live set's copy in the
+    // resource is stale between switches, so take that one from `FixedDock`.
+    let sets: Vec<dock::BottomPanelSet> = bottom_sets
+        .sets
+        .iter()
+        .enumerate()
+        .map(|(i, (name, tree))| dock::BottomPanelSet {
+            name: name.clone(),
+            tree: if i == bottom_sets.active {
+                fixed.tree.clone()
+            } else {
+                tree.clone()
+            },
+        })
+        .collect();
     let bottom_dock = dock::BottomDockLayout {
         tree: fixed.tree.clone(),
         height: bottom.height,
         open: bottom.open,
         mode: bottom.mode,
+        sets,
+        active: bottom_sets.active,
     };
     let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating, &bottom_dock) else {
         return;

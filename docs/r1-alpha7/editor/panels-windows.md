@@ -49,6 +49,19 @@ That is what makes it the place for panels you want everywhere. Dock the Asset b
 - **Chevron toggle** at the right end of the header in both states — **∨** collapses the open panel, **∧** reopens the collapsed strip.
 - **Drag it open**: grab the collapsed strip's background and pull upward — it opens and keeps sizing under your cursor in one gesture. **Drag it closed** the same way: pull the top edge down past its minimum and it snaps shut.
 
+### Panel sets
+
+The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Panels** to start with — and opens onto all of them:
+
+- **Pick a set** to switch to it. The one you're leaving keeps its tabs, its active tab and its splits, so switching back and forth costs nothing.
+- **Rename** one with the **pencil** at its right-hand end — the row turns into a text field with the caret already in it. `Enter` (or clicking away) commits, `Escape` cancels, and an empty name cancels rather than leaving a row you can't read. You can rename any set from here, not just the one you're on.
+- **New Panel Set** starts an empty one and opens the panel on it. Empty means the panel shows its **Add Panel** button — pick what goes in from there, or drag tabs in as usual.
+- **Remove This Set** drops the set you're on and lands you on its neighbour. It only appears while you have more than one; the panel always keeps at least one set to put tabs in.
+
+One set per *job* is the point: a debugging set with Console and the profiler, an authoring set with Assets and the Mixer, and one click between them rather than rebuilding the panel tab by tab. Sets belong to the panel, not to a workspace — like the panel itself, they're the same in every workspace — and they persist in `~/.renzora/layout.json`.
+
+**An empty panel stays put.** Close its last tab and the bar remains, with the set dropdown, the mode button and the **Add Panel** button still there. (It used to vanish, taking its own controls with it, and `Ctrl+Space` couldn't bring it back.)
+
 ### Overlay or Layout
 
 The button immediately **left of the chevron** switches how the panel takes up its space. The icon shows the mode it is in now; click it to swap.
@@ -60,7 +73,7 @@ Pick Overlay when you want a Console you can pull up over your work and dismiss;
 
 Both modes put the panel in the same place at the same height, and both are resized and toggled identically — only what happens to the workspace above differs. Switching is non-destructive: the panel's tabs, height and open state are untouched.
 
-Its contents, height, open/closed state and mode persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
+Its sets, height, open/closed state and mode persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
 
 > **Upgrading from an earlier version?** Layouts written before the bottom panel became global are migrated the first time you launch: every workspace's bottom strip, and anything left in a closed one, is folded into the single shared panel and de-duplicated. Nothing is lost, but your workspaces will no longer each carry their own copy of the Console.
 
