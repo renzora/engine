@@ -60,7 +60,7 @@ unzip linux-x64.zip
 
 The editor updates itself. **Help ▸ Check for Updates** downloads the new version and installs it in place; when a background check at startup has already found one, that menu item reads **Update to `r1-alpha8`** instead, so you don't have to go looking.
 
-The dialog shows what you're running, what's available, and the release notes, and gives you one button that walks through Download → Install & Restart. The download is checksummed, and if anything goes wrong while the files are being replaced your existing install is put back — the worst case is that the update didn't happen.
+The dialog shows what you're running and what's available, and gives you one button that walks through Download → Install & Restart. **Release notes** opens the full notes for the selected version in your browser. The download is checksummed, and if anything goes wrong while the files are being replaced your existing install is put back — the worst case is that the update didn't happen.
 
 **Channel** picks what you get offered:
 

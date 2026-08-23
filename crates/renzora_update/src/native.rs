@@ -1,8 +1,8 @@
 //! The Software Update dialog (ember / bevy_ui).
 //!
-//! A single centered modal: what you're running, what's available, the release
-//! notes, and one action button whose meaning moves through the update — Check →
-//! Download → Install & Restart. The previous updater's dialog was egui and did
+//! A single centered modal: what you're running, what's available, and one
+//! action button whose meaning moves through the update — Check → Download →
+//! Install & Restart. The previous updater's dialog was egui and did
 //! not survive the move to bevy_ui; this is a fresh one built on the same
 //! `overlay_sized` card the About modal uses.
 
@@ -234,7 +234,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         fonts,
         &renzora::lang::t("update.title"),
         560.0,
-        620.0,
+        480.0,
         true,
     );
     commands.entity(root).insert(UpdateRoot);
@@ -404,7 +404,6 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         ))
         .id();
 
-    // ── Release notes ────────────────────────────────────────────────────────
     // ── Version list ─────────────────────────────────────────────────────────
     // Every version the channel offers, newest first, with the running one
     // marked. Picking an older one is allowed on purpose: rolling back is a
@@ -429,39 +428,9 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         .id();
     let list_scroll = scroll_area(commands, list_col, 130.0);
 
-    let notes_col = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            ..default()
-        })
-        .id();
-    let notes = commands
-        .spawn((
-            Text::new(String::new()),
-            ui_font(&fonts.ui, 11.5),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    bind_text(commands, notes, |w| {
-        w.get_resource::<UpdateState>()
-            .and_then(|s| s.target().and_then(|e| e.notes.clone()))
-            .map(|n| {
-                // Plain text in a plain label: the notes are markdown and this
-                // is not a markdown renderer. Trimming the length keeps one
-                // verbose release from pushing the buttons off the card.
-                let n = n.replace("\r\n", "\n");
-                if n.chars().count() > 1200 {
-                    let cut: String = n.chars().take(1200).collect();
-                    format!("{cut}…")
-                } else {
-                    n
-                }
-            })
-            .unwrap_or_default()
-    });
-    commands.entity(notes_col).add_child(notes);
-    let notes_scroll = scroll_area(commands, notes_col, 130.0);
+    // The release notes are markdown and this card has no markdown renderer, so
+    // the truncated plain-text dump that used to sit here is gone: the "Release
+    // notes" button opens the real thing in a browser instead.
 
     // ── Progress + error ─────────────────────────────────────────────────────
     let progress = commands
@@ -575,7 +544,6 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         rule,
         list_label,
         list_scroll,
-        notes_scroll,
         progress,
         error,
         warning,
