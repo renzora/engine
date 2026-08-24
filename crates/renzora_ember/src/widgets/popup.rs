@@ -9,7 +9,7 @@
 //! over it.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition};
+use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition, UiGlobalTransform};
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
@@ -672,19 +672,35 @@ pub(crate) fn popup_toggle(
     }
 }
 
-/// Flip an open popup above its trigger when opening below would overflow the
-/// bottom of the window (and there's room above) — so popups near the bottom of
-/// a scroll area aren't cut off.
+/// Open a popup below its trigger, and flip it above when below is where the
+/// room isn't — so popups near the bottom of a window, or of a clipped scroll
+/// area, aren't cut off.
+///
+/// **This queried `GlobalTransform` and therefore did nothing at all.** Bevy
+/// 0.19's `Node` requires `UiTransform`/[`UiGlobalTransform`], not the 3D
+/// transform pair, so the trigger query matched no entity and every popup kept
+/// whichever inset it happened to be authored with — a menu written to open
+/// upward opened upward with the whole window free below it, and one written to
+/// open downward ran off the bottom edge. The failure was silent because a
+/// system that matches nothing is indistinguishable from one with nothing to
+/// do.
+///
+/// Bounds come from the trigger's [`CalculatedClip`] when it has one, not from
+/// the window: `GlobalZIndex` fixes paint order, not clipping, so a popup inside
+/// a clipping ancestor is cut at *that* rect however much window is left below
+/// it. The bottom panel's set menu is the case in point — it lives inside the
+/// dock wrapper, which clips at the status bar.
 pub(crate) fn popup_position(
-    triggers: Query<(&Popup, &ComputedNode, &GlobalTransform)>,
+    triggers: Query<(Entity, &Popup, &ComputedNode, &UiGlobalTransform)>,
     panels: Query<&ComputedNode>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    clips: Query<&bevy::ui::CalculatedClip>,
     mut nodes: Query<&mut Node>,
 ) {
     let Some(win_h) = windows.iter().next().map(|w| w.physical_height() as f32) else {
         return;
     };
-    for (p, trigger_cn, gt) in &triggers {
+    for (trigger, p, trigger_cn, xf) in &triggers {
         if !p.open {
             continue;
         }
@@ -692,10 +708,23 @@ pub(crate) fn popup_position(
             continue;
         };
         let panel_h = panel_cn.size().y;
+        // A panel that has never been laid out (or was laid out while hidden,
+        // which zeroes it) measures 0, and 0 always "fits" below. Leave the
+        // authored placement alone for that one frame rather than snapping the
+        // menu down and then back up as the real size arrives.
+        if panel_h <= 0.0 {
+            continue;
+        }
         let half = trigger_cn.size().y * 0.5;
-        let center = gt.translation().y;
-        // Flip up only when opening below overflows AND there's room above.
-        let flip = (center + half) + panel_h > win_h && (center - half) - panel_h > 0.0;
+        let center = xf.translation.y;
+        let (top_edge, bottom_edge) = clips.get(trigger).map_or((0.0, win_h), |c| {
+            (c.clip.min.y.max(0.0), c.clip.max.y.min(win_h))
+        });
+        // Flip up only when opening below overflows AND there's more room above
+        // — cramped both ways, it stays down rather than flipping into *less*
+        // space.
+        let flip =
+            super::dropdown::flips_up(center - half, center + half, panel_h, top_edge, bottom_edge);
         if let Ok(mut n) = nodes.get_mut(p.panel) {
             let (top, bottom) = if flip {
                 (Val::Auto, Val::Percent(100.0))

@@ -312,7 +312,13 @@ fn floating_z(
 /// `top_edge` / `bottom_edge` bound the region the menu can actually be seen in
 /// — the box's clip rect, or the window when nothing clips it. Everything is in
 /// the same physical-px space.
-fn flips_up(box_top: f32, box_bottom: f32, est: f32, top_edge: f32, bottom_edge: f32) -> bool {
+pub(crate) fn flips_up(
+    box_top: f32,
+    box_bottom: f32,
+    est: f32,
+    top_edge: f32,
+    bottom_edge: f32,
+) -> bool {
     let room_below = bottom_edge - box_bottom;
     let room_above = box_top - top_edge;
     room_below < est && room_above > room_below

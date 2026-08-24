@@ -44,6 +44,29 @@ pub const BOTTOM_DOCK_HEIGHT: f32 = 280.0;
 /// tab strip with no room for content. Below this the drag snaps it closed.
 pub const BOTTOM_DOCK_MIN_HEIGHT: f32 = 80.0;
 
+/// How much of the dock region [`BottomDockMode::Layout`] has to leave for the
+/// workspace above it. In layout mode the panel takes its height *off* the
+/// workspace, so a panel taller than this would squeeze every panel above it
+/// into a row of tab bars — which is why growing past it hands the panel to
+/// [`BottomDockMode::Overlay`] instead of clamping the drag (see
+/// [`BottomDockMode::effective`]).
+pub const BOTTOM_DOCK_MIN_WORKSPACE: f32 = 120.0;
+
+/// The tallest the panel can be while still docking into the workspace, given
+/// `avail` logical px of dock region. Floored at the panel's own minimum so a
+/// window too short for both never inverts the range.
+pub fn max_layout_height(avail: f32) -> f32 {
+    (avail - BOTTOM_DOCK_MIN_WORKSPACE).max(BOTTOM_DOCK_MIN_HEIGHT)
+}
+
+/// Fit a bottom-panel height into `avail` logical px of dock region: no shorter
+/// than [`BOTTOM_DOCK_MIN_HEIGHT`], no taller than the region itself. Shared by
+/// the live drag and the node sync so the height that is persisted and the
+/// height that is drawn can't disagree.
+pub fn clamp_height(height: f32, avail: f32) -> f32 {
+    height.clamp(BOTTOM_DOCK_MIN_HEIGHT, avail.max(BOTTOM_DOCK_MIN_HEIGHT))
+}
+
 /// The tabs the one global bottom panel ships with, in tab order.
 ///
 /// These are the panels that are useful in *every* workspace rather than in one
@@ -290,7 +313,7 @@ pub struct FloatingLayout {
 ///
 /// Both modes put the panel in the same place and give it the same height —
 /// the difference is only whether the workspace above knows it is there.
-#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BottomDockMode {
     /// Absolutely positioned over the dock area, covering whatever panels sit
@@ -303,6 +326,26 @@ pub enum BottomDockMode {
     /// given the remaining height. Resizing the panel therefore reflows every
     /// panel above it instead of hiding their lower edge.
     Layout,
+}
+
+impl BottomDockMode {
+    /// The mode the panel *renders* in at `height`, given `avail` logical px of
+    /// dock region.
+    ///
+    /// The panel can be dragged the whole way up to the top bar, and past
+    /// [`max_layout_height`] there is no longer a workspace for `Layout` to
+    /// reflow into. Rather than stopping the drag short, the panel takes over
+    /// as an overlay — which is the only reading of "the panel is nearly the
+    /// whole window" that leaves the panels above intact instead of crushed to
+    /// their tab bars. Drag back down and `Layout` resumes, because this is a
+    /// function of the height rather than a mode change that was written down.
+    pub fn effective(self, height: f32, avail: f32) -> Self {
+        if self == Self::Layout && height > max_layout_height(avail) {
+            Self::Overlay
+        } else {
+            self
+        }
+    }
 }
 
 /// The global bottom panel's persisted state — one per editor, not one per
@@ -830,6 +873,46 @@ mod tests {
         // Left for the shell to wrap in its one default set — see
         // `default_bottom_dock` for why the name isn't spelled twice.
         assert!(bottom.sets.is_empty());
+    }
+
+    /// The panel resizes the whole way up, and layout mode hands over rather
+    /// than crushing the workspace into a stack of tab bars.
+    #[test]
+    fn layout_mode_gives_way_to_overlay_near_the_top() {
+        let avail = 800.0;
+        // Room for a workspace above: layout mode is honoured.
+        assert_eq!(
+            BottomDockMode::Layout.effective(400.0, avail),
+            BottomDockMode::Layout
+        );
+        // Dragged to the top bar: nothing left to reflow, so it overlays.
+        assert_eq!(
+            BottomDockMode::Layout.effective(avail, avail),
+            BottomDockMode::Overlay
+        );
+        // Overlay never becomes layout by being short — the switch is one-way.
+        assert_eq!(
+            BottomDockMode::Overlay.effective(100.0, avail),
+            BottomDockMode::Overlay
+        );
+        // And it is a function of the height, not a latch: coming back down
+        // restores layout mode with nothing to reset.
+        assert_eq!(
+            BottomDockMode::Layout.effective(max_layout_height(avail), avail),
+            BottomDockMode::Layout
+        );
+    }
+
+    /// A window too short for the panel *and* its minimum workspace must not
+    /// invert the range and clamp every height to zero.
+    #[test]
+    fn a_short_window_still_leaves_a_usable_range() {
+        let avail = 100.0;
+        assert_eq!(max_layout_height(avail), BOTTOM_DOCK_MIN_HEIGHT);
+        assert_eq!(clamp_height(10.0, avail), BOTTOM_DOCK_MIN_HEIGHT);
+        assert_eq!(clamp_height(500.0, avail), avail);
+        // Before the dock region has been laid out there is no ceiling yet.
+        assert_eq!(clamp_height(500.0, f32::INFINITY), 500.0);
     }
 
     /// No default workspace may carry a panel the global bottom dock owns: a

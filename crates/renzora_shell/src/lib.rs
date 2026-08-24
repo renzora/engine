@@ -214,6 +214,9 @@ impl Plugin for ShellPlugin {
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
+                    // First: the one-shot load cap settles the restored height
+                    // before anything else this frame reads or writes it.
+                    clamp_bottom_dock_on_load,
                     sync_collapsed_bottom_bar,
                     collapsed_bottom_tab_click,
                     collapsed_bottom_open_click,
@@ -1377,17 +1380,24 @@ fn reorder_panel_sets(sets: &mut BottomPanelSets, from: usize, to: usize) {
 
 /// Build the panel-set dropdown: trigger + (empty) menu panel.
 ///
-/// The menu is a child of the trigger so it anchors to it, and it opens
-/// *upward* — the trigger sits at the top edge of a panel pinned to the bottom
-/// of the window, so downward is the direction with no room.
+/// The menu is a child of the trigger so it anchors to it, and which way it
+/// opens is decided per-open by ember's `popup_position`: **down into the panel
+/// when the panel is tall enough to hold it, up over the workspace when it
+/// isn't.** The trigger rides the top edge of a panel whose height is the
+/// user's to choose, so neither direction is the safe one to hard-code — a
+/// short panel has no room below (the dock wrapper clips at the status bar),
+/// and a panel dragged up to the top bar has none above.
+///
+/// Authored downward, which is what it gets on the first frame of an open,
+/// before the menu has a measured height to flip on.
 fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let panel = commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                bottom: Val::Percent(100.0),
+                top: Val::Percent(100.0),
                 right: Val::Px(0.0),
-                margin: UiRect::bottom(Val::Px(4.0)),
+                margin: UiRect::top(Val::Px(4.0)),
                 min_width: Val::Px(180.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
@@ -2047,9 +2057,52 @@ const BOTTOM_DOCK_OPEN_FRACTION: f32 = 0.40;
 /// `None` before the wrapper node has been laid out, which the callers read as
 /// "leave the height alone" rather than falling back to a guess.
 fn default_open_height(wraps: &Query<&ComputedNode, With<DockAreaWrap>>) -> Option<f32> {
-    let wrap = wraps.iter().next()?;
-    let avail = wrap.size().y * wrap.inverse_scale_factor();
+    let avail = dock_region_height(wraps)?;
     Some((avail * BOTTOM_DOCK_OPEN_FRACTION).max(dock::BOTTOM_DOCK_MIN_HEIGHT))
+}
+
+/// The dock region's height in logical px — the full span from the top bar down
+/// to the status bar, and so the tallest the bottom panel may be dragged.
+///
+/// `None` before the wrapper node has been laid out — the node exists for a few
+/// frames at zero height, which is not a measurement, so a zero reads as "not
+/// yet" rather than as a dock region with no room in it. Callers that only need
+/// a clamp read that as "no limit yet" (`f32::INFINITY`); callers that would
+/// have to *guess* a height read it as "leave it alone".
+fn dock_region_height(wraps: &Query<&ComputedNode, With<DockAreaWrap>>) -> Option<f32> {
+    let wrap = wraps.iter().next()?;
+    let height = wrap.size().y * wrap.inverse_scale_factor();
+    (height > 0.0).then_some(height)
+}
+
+/// Cap the restored bottom-panel height at [`BOTTOM_DOCK_OPEN_FRACTION`] of the
+/// dock region, once, on the first frame the region has a size.
+///
+/// The panel can be dragged up to the top bar and that height is remembered, so
+/// without this an editor that was closed with the panel pulled right up starts
+/// the next session with its workspace hidden behind a full-height Assets
+/// browser — the state is recoverable, but it is a poor thing to open onto, and
+/// it is not what the person who dragged it there was choosing. Capping only at
+/// load keeps the drag itself unrestricted: 40% is where a session *starts*, not
+/// a ceiling on where it can go.
+///
+/// A shorter remembered height is left exactly as it was — this is a cap, not a
+/// reset.
+fn clamp_bottom_dock_on_load(
+    wraps: Query<&ComputedNode, With<DockAreaWrap>>,
+    mut bottom: ResMut<BottomDock>,
+    mut done: Local<bool>,
+) {
+    if *done {
+        return;
+    }
+    let Some(cap) = default_open_height(&wraps) else {
+        return;
+    };
+    *done = true;
+    if bottom.height > cap {
+        bottom.height = cap;
+    }
 }
 
 /// A live drag of the bottom panel's top edge: `(cursor y at press, panel
@@ -2095,43 +2148,82 @@ fn bottom_dock_close_click(
 #[derive(Component)]
 struct BottomDockModeBtn;
 
-/// Click the mode button → flip [`BottomDock::mode`].
+/// Click the mode button → flip [`BottomDock::mode`], shrinking the panel if
+/// that is what it takes for the flip to be visible.
+///
+/// The button reports the *effective* mode, so at a height only an overlay can
+/// have it reads `Overlay` even when `mode` already says `Layout`. Flipping the
+/// stored value there would leave the panel looking identical and the button
+/// still saying `Overlay` — the control would read as dead. Both branches
+/// therefore pull the height down to what layout mode can hold, which is the
+/// part of "dock into the workspace" the user is actually asking for.
 fn bottom_dock_mode_click(
     btns: Query<&Interaction, (With<BottomDockModeBtn>, Changed<Interaction>)>,
+    wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
 ) {
-    if btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
-        bottom.mode = match bottom.mode {
-            dock::BottomDockMode::Overlay => dock::BottomDockMode::Layout,
-            dock::BottomDockMode::Layout => dock::BottomDockMode::Overlay,
-        };
+    if !btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
+        return;
+    }
+    let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
+    let max_docked = dock::max_layout_height(avail);
+    match bottom.mode.effective(bottom.height, avail) {
+        dock::BottomDockMode::Overlay => {
+            bottom.mode = dock::BottomDockMode::Layout;
+            if bottom.height > max_docked {
+                bottom.height = max_docked;
+            }
+        }
+        dock::BottomDockMode::Layout => bottom.mode = dock::BottomDockMode::Overlay,
     }
 }
 
 /// Keep the mode button's glyph and tooltip on the *current* mode — the icon
 /// reports what the panel is doing now, not what clicking would do, matching
 /// every other stateful toggle in the chrome.
+///
+/// "Now" means the effective mode: a layout-mode panel dragged too tall to dock
+/// is overlaying the workspace, and the button has to say so or the panel's
+/// behaviour and its own label disagree. That case gets its own tooltip,
+/// because "you are in Overlay" is not the useful thing to say to someone who
+/// chose Layout — "drag me back down" is.
 fn sync_bottom_dock_mode_btn(
     bottom: Res<BottomDock>,
+    wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut btns: Query<(&Children, &mut renzora_ember::widgets::HoverTooltip), With<BottomDockModeBtn>>,
     // The button is respawned whenever the chrome is (theme or language
     // switch), always carrying the `Overlay` glyph it was authored with — so a
     // fresh button has to be re-synced even though the mode itself never moved.
     spawned: Query<(), Added<BottomDockModeBtn>>,
     mut text: Query<&mut Text>,
+    // Resizing the *window* can flip the effective mode without `BottomDock`
+    // moving at all — the panel stands still while the room for a workspace
+    // above it runs out. Cheap to measure, so it joins the early-out rather
+    // than defeating it.
+    mut last_avail: Local<f32>,
 ) {
-    if !bottom.is_changed() && spawned.is_empty() {
+    let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
+    if !bottom.is_changed() && spawned.is_empty() && *last_avail == avail {
         return;
     }
-    let (icon, tip) = match bottom.mode {
-        dock::BottomDockMode::Overlay => (
+    *last_avail = avail;
+    let effective = bottom.mode.effective(bottom.height, avail);
+    let (icon, tip) = match (effective, bottom.mode) {
+        (dock::BottomDockMode::Overlay, dock::BottomDockMode::Layout) => (
+            "stack",
+            renzora::lang::t_or(
+                "shell.bottom_dock.mode_forced_overlay",
+                "Overlay — too tall to dock; drag it down to return to Layout",
+            ),
+        ),
+        (dock::BottomDockMode::Overlay, _) => (
             "stack",
             renzora::lang::t_or(
                 "shell.bottom_dock.mode_overlay",
                 "Overlay — floats over the workspace",
             ),
         ),
-        dock::BottomDockMode::Layout => (
+        (dock::BottomDockMode::Layout, _) => (
             "rows",
             renzora::lang::t_or(
                 "shell.bottom_dock.mode_layout",
@@ -2198,11 +2290,15 @@ const BOTTOM_DOCK_Z: i32 = 100;
 /// buttons need no mode-specific arithmetic — only the panel node itself
 /// changes, between an absolute overlay and an in-flow row of the dock column.
 ///
-/// Height is clamped to leave the dock area a usable strip — in overlay mode
-/// dragging the panel to the top of the window would otherwise hide the
-/// workspace entirely with no visible way back, since the panel covers the very
-/// panels you would click to recover; in layout mode the same drag would
-/// squeeze every panel above it to nothing.
+/// Height is clamped only to the dock region itself: the panel can be dragged
+/// the whole way up to the top bar. It used to stop a fixed strip short of it,
+/// on the grounds that a full-height overlay hides the very panels you would
+/// click to recover — but the panel's own mode and collapse buttons ride at its
+/// top edge, so they stay on screen at any height (and `Ctrl+Space` closes it
+/// from anywhere). What the old clamp really protected was *layout* mode, where
+/// the same drag squeezes every panel above to nothing; that case is now
+/// handled by [`dock::BottomDockMode::effective`] switching the panel to an
+/// overlay instead of by refusing the drag.
 // The `Without` filters that keep the three `&mut Node` queries disjoint, and
 // the `Or` that gathers every hideable interactive node, are both unavoidably
 // wordy — a system's parameters are not an argument list a caller threads.
@@ -2248,15 +2344,8 @@ fn sync_bottom_dock_node(
     // one is not blank anyway; ember renders its "Add Panel" button, and the
     // panel-set dropdown sits in the corner beside it.
     let show = bottom.open;
-    let avail = wraps
-        .iter()
-        .next()
-        .map(|cn| cn.size().y * cn.inverse_scale_factor())
-        .unwrap_or(f32::INFINITY);
-    let height = bottom.height.clamp(
-        dock::BOTTOM_DOCK_MIN_HEIGHT,
-        (avail - 120.0).max(dock::BOTTOM_DOCK_MIN_HEIGHT),
-    );
+    let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
+    let height = dock::clamp_height(bottom.height, avail);
     let want = if show { Display::Flex } else { Display::None };
 
     // Overlay: absolute, pinned to the wrapper's bottom edge, painted over the
@@ -2264,7 +2353,10 @@ fn sync_bottom_dock_node(
     // `flex_grow` hands it the remaining height and every panel above reflows.
     // The insets are cleared in layout mode because a relatively-positioned
     // node treats them as an offset rather than an anchor.
-    let layout_mode = bottom.mode == dock::BottomDockMode::Layout;
+    // The *effective* mode, not the stored one: a layout-mode panel dragged
+    // past what the workspace can give up renders as an overlay for as long as
+    // it stays that tall.
+    let layout_mode = bottom.mode.effective(height, avail) == dock::BottomDockMode::Layout;
     let (position_type, inset) = if layout_mode {
         (PositionType::Relative, Val::Auto)
     } else {
@@ -2378,6 +2470,7 @@ fn bottom_dock_grip_press(
 fn bottom_dock_resize_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
     mut resize: ResMut<BottomDockResize>,
 ) {
@@ -2403,7 +2496,12 @@ fn bottom_dock_resize_drag(
         resize.active = None;
         return;
     }
-    bottom.height = height.max(dock::BOTTOM_DOCK_MIN_HEIGHT);
+    // Clamped to the dock region here as well as in `sync_bottom_dock_node`, so
+    // the height that gets *persisted* is one the panel can actually have —
+    // otherwise dragging past the top bar banks metres of overshoot that the
+    // next drag downward has to unwind before the panel so much as moves.
+    let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
+    bottom.height = dock::clamp_height(height, avail);
 }
 
 /// The collapsed bottom-panel strip: a tab-bar-height row between the dock

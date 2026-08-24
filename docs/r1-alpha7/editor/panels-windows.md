@@ -45,7 +45,8 @@ That is what makes it the place for panels you want everywhere. The Asset browse
 Because it belongs to the editor and not to a workspace, **Reset Layout** and **Reset Workspace** leave it alone entirely. **View → Reset Global Docks** is the one action that restores it: a single set named **Default** holding the five tabs above, opened at its default height. It also discards any extra [panel sets](#panel-sets), so it is a full reset of the panel rather than of the set you happen to be on.
 
 - **It is pinned.** You can't move the panel itself — it has no drag handle, and it always spans the bottom of the window above the status bar. Individual **tabs** still drag in and out freely, so you decide what lives in it.
-- **Resize** by dragging its **top edge**, or the **empty space in its header** to the right of the tabs. Both show a ↕ cursor.
+- **Resize** by dragging its **top edge**, or the **empty space in its header** to the right of the tabs. Both show a ↕ cursor. It goes **all the way up to the top bar** — a full-height Assets browser or Console is one drag away, and the mode and chevron buttons ride along at the panel's top edge, so you can always put it back (`Ctrl+Space` closes it from anywhere too). In **Layout** mode the panel [hands itself over to Overlay](#overlay-or-layout) once it gets that tall.
+- **It opens at 40% at most.** However tall you left it, the editor starts the next session with the panel capped at **40% of the dock region** — so a full-height Assets browser you pulled up yesterday isn't what you open onto today. A shorter height is restored exactly as you left it, and the cap applies only at load: drag it straight back up to the top bar if that's where you want it.
 - **`Ctrl+Space`** toggles it open and closed. Opening this way always gives it **40% of the editor's height**, not whatever height it had when you last closed it — so the shortcut is a reliable "show me the panel" rather than something that occasionally reopens a sliver. Use the chevron when you want the height you left it at.
 - **Closed doesn't mean gone**: it collapses to its **header strip**, a tab-bar-height row just above the status bar showing its tabs muted. **Click any tab** to reopen with that tab active, at the same 40%.
 - **Chevron toggle** at the right end of the header in both states — **∨** collapses the open panel, **∧** reopens the collapsed strip.
@@ -53,7 +54,7 @@ Because it belongs to the editor and not to a workspace, **Reset Layout** and **
 
 ### Panel sets
 
-The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Default** to start with — and opens onto all of them:
+The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Default** to start with — and opens onto all of them. It opens **downward into the panel** when the panel is tall enough to show the whole list, and **upward over the workspace** when it isn't, so the list is never sliced off at the status bar or at the top bar:
 
 - **Pick a set** to switch to it. The one you're leaving keeps its tabs, its active tab and its splits, so switching back and forth costs nothing.
 - **Reorder** them by dragging a row up or down the list. An accent bar shows where it will land, and the move is applied when you let go — the menu stays open, so putting three sets in the order you want is one trip rather than three. A plain click still picks the set; the drag only starts once you've moved a little, so the two never collide.
@@ -75,6 +76,8 @@ The button immediately **left of the chevron** switches how the panel takes up i
 Pick Overlay when you want a Console you can pull up over your work and dismiss; pick Layout when the panel is part of how you work and you want the viewport to actually shrink to make room for it.
 
 Both modes put the panel in the same place at the same height, and both are resized and toggled identically — only what happens to the workspace above differs. Switching is non-destructive: the panel's tabs, height and open state are untouched.
+
+**Layout mode gives way near the top.** The panel resizes up to the top bar in either mode, but there is a point past which "the panels above are given the height that's left" stops meaning anything — there is no height left. Once a Layout panel is tall enough that less than ~120px of workspace would remain, it **switches to Overlay** for as long as it stays that tall, so the panels above keep their real size under it instead of being crushed into a stack of tab bars. The mode button follows: it shows **▤ stack** with a tooltip saying the panel is too tall to dock. Drag back down and Layout resumes on its own — nothing was saved, so your choice of mode survives the trip. Clicking the button while it's up there is read as "dock it properly": the panel drops to the tallest height Layout can actually hold.
 
 Its sets, height, open/closed state and mode persist in `~/.renzora/layout.json`, alongside — not inside — the workspace layouts.
 
