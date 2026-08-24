@@ -272,12 +272,15 @@ pub fn update_vertex_dots(
             continue;
         };
 
-        let half = px_size;
+        let half = px_size * 0.5;
         if let Ok((_, mut node, mut bg, mut vis)) = dot_q.get_mut(dot_entity) {
             node.left = Val::Px(screen_px.x - half);
             node.top = Val::Px(screen_px.y - half);
-            node.width = Val::Px(px_size * 2.0);
-            node.height = Val::Px(px_size * 2.0);
+            // `mesh_edit_vert_size` is the full pixel side length of the
+            // dot — an N-value setting produces an N×N square, matching
+            // the user's request and Blender's `vertex_size` slider.
+            node.width = Val::Px(px_size);
+            node.height = Val::Px(px_size);
             let color = if selected {
                 Color::srgb(1.0, 0.55, 0.1)
             } else {

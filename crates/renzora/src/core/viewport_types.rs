@@ -919,16 +919,22 @@ pub struct ViewportSettings {
     /// scaled or turned object stays standing on the surface instead of
     /// sinking into it. Settings → Viewport.
     pub gizmo_pivot_bottom: bool,
-    /// Pixel size of vertex dots in Edit mode. Blender-equivalent of
-    /// `bTheme::space_view3d.vertex_size` (which is `unsigned char` pixels).
-    /// The dot is drawn as a screen-space square — see `mesh_edit`'s
-    /// `draw_overlay` — so this number is in panel pixels regardless of
-    /// camera zoom or distance. Settings → Viewport → Mesh Edit.
+    /// Pixel size of vertex dots in Edit mode. The dot is drawn as an
+    /// N×N pixel square — see `renzora_mesh_edit::overlay_ui` — so this
+    /// number is the on-screen size in panel pixels regardless of camera
+    /// zoom or distance. Settings → Viewport → Mesh Edit.
     pub mesh_edit_vert_size: u8,
     /// Pixel size of vertex dots for the currently-selected verts. Like
     /// Blender, selected dots are drawn larger than unselected so the
     /// selection state reads at a glance. Settings → Viewport → Mesh Edit.
     pub mesh_edit_vert_size_selected: u8,
+    /// When `false` (default), Edit-mode vertex picking uses a depth test:
+    /// only the vertex closest to the camera is selectable, so a click on a
+    /// sphere's near-side vertex never accidentally selects the back-side
+    /// vertex that happens to project onto the same screen point. Set to
+    /// `true` to allow through-selection (current Blender "X-Ray" toggle).
+    /// Settings → Viewport → Mesh Edit.
+    pub mesh_edit_xray_select: bool,
 }
 
 impl Default for ViewportSettings {
@@ -974,6 +980,12 @@ impl Default for ViewportSettings {
             gizmo_pivot_bottom: true,
             mesh_edit_vert_size: default_vert_size(),
             mesh_edit_vert_size_selected: default_vert_size_selected(),
+            // Default to depth-tested picking so a click on a sphere's
+            // near-side vertex doesn't accidentally select the back-side
+            // vertex that projects to the same screen point. Users who
+            // want through-selection can flip the toggle in
+            // Settings → Viewport → Mesh Edit.
+            mesh_edit_xray_select: false,
         }
     }
 }
@@ -1124,6 +1136,11 @@ pub struct PersistedViewportSettings {
     /// the selection state is visible).
     #[serde(default = "default_vert_size_selected")]
     pub mesh_edit_vert_size_selected: u8,
+    /// When `false` (default), Edit-mode vertex picking depth-tests so the
+    /// camera-nearest vertex wins. Missing in configs from before this
+    /// field existed → `false` (depth-tested, the safer behaviour).
+    #[serde(default)]
+    pub mesh_edit_xray_select: bool,
 }
 
 impl PersistedViewportSettings {
@@ -1194,6 +1211,7 @@ impl PersistedViewportSettings {
             gizmos_all_viewports: s.gizmos_all_viewports,
             mesh_edit_vert_size: s.mesh_edit_vert_size,
             mesh_edit_vert_size_selected: s.mesh_edit_vert_size_selected,
+            mesh_edit_xray_select: s.mesh_edit_xray_select,
         }
     }
 
@@ -1277,6 +1295,7 @@ impl PersistedViewportSettings {
         s.gizmos_all_viewports = self.gizmos_all_viewports;
         s.mesh_edit_vert_size = self.mesh_edit_vert_size;
         s.mesh_edit_vert_size_selected = self.mesh_edit_vert_size_selected;
+        s.mesh_edit_xray_select = self.mesh_edit_xray_select;
     }
 }
 
@@ -1435,6 +1454,8 @@ mod tests {
             // Non-default (defaults are 3 / 5) so the round-trip exercises them.
             mesh_edit_vert_size: 7,
             mesh_edit_vert_size_selected: 9,
+            // Non-default (default is false) so the round-trip exercises it.
+            mesh_edit_xray_select: true,
         }
     }
 
@@ -1492,6 +1513,10 @@ mod tests {
         assert_eq!(
             original.mesh_edit_vert_size_selected,
             restored.mesh_edit_vert_size_selected
+        );
+        assert_eq!(
+            original.mesh_edit_xray_select,
+            restored.mesh_edit_xray_select
         );
     }
 

@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::core::viewport_types::ViewportState;
+use renzora::core::viewport_types::{ViewportSettings, ViewportState};
 use renzora::core::EditorCamera;
 use renzora::core::InputFocusState;
 use renzora_editor_framework::{ActiveTool, EditorSelection};
@@ -306,6 +306,7 @@ pub fn pick_element(
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     edit_q: Query<(&EditMesh, &GlobalTransform)>,
     editor_selection: Res<EditorSelection>,
+    viewport_settings: Res<ViewportSettings>,
     mut sel: ResMut<MeshSelection>,
     mut active_tool: ResMut<ActiveTool>,
     mut commands: Commands,
@@ -425,22 +426,77 @@ pub fn pick_element(
                 // Defer-from-press: run the hit-test now, against the press
                 // anchor so a tiny release-time wiggle doesn't miss the
                 // element the user was targeting.
-                let hit_any = match mode {
+let hit_any = match mode {
                     SelectMode::Vertex => {
-                        let mut best: Option<(f32, VertexId)> = None;
-                        for (i, v) in edit.vertices.iter().enumerate() {
-                            if let Some(sp) = project(v.position) {
-                                let d = (sp - anchor_vp).length();
-                                if d <= PICK_RADIUS_PX_VERTEX
-                                    && best.is_none_or(|(bd, _)| d < bd)
-                                {
-                                    best = Some((d, VertexId(i as u32)));
+                        if viewport_settings.mesh_edit_xray_select {
+                            // X-ray: closest vertex in *screen space* within
+                            // the pick radius — back-side vertices can be
+                            // selected when their projected position is
+                            // closer to the cursor than the near-side ones.
+                            let mut best: Option<(f32, VertexId)> = None;
+                            for (i, v) in edit.vertices.iter().enumerate() {
+                                if let Some(sp) = project(v.position) {
+                                    let d = (sp - anchor_vp).length();
+                                    if d <= PICK_RADIUS_PX_VERTEX
+                                        && best.is_none_or(|(bd, _)| d < bd)
+                                    {
+                                        best = Some((d, VertexId(i as u32)));
+                                    }
                                 }
                             }
+                            let hit = best.is_some();
+                            apply_pick(
+                                &mut sel.verts,
+                                best.map(|(_, id)| id),
+                                additive,
+                            );
+                            hit
+                        } else {
+                            // Depth-tested (default): find the vertex
+                            // closest to the camera, then check it's within
+                            // the pick radius. Stops clicks on a sphere's
+                            // silhouette from accidentally selecting the
+                            // back-side vertex that happens to project
+                            // onto the same screen point.
+                            //
+                            // Camera view-space depth = `-view_pos.z`
+                            // (camera looks down -Z; larger Z = further
+                            // back).
+                            let mut best: Option<(f32, f32, VertexId)> = None;
+                            for (i, v) in edit.vertices.iter().enumerate() {
+                                let Some(sp) = project(v.position) else {
+                                    continue;
+                                };
+                                let world_pos = gt.transform_point(v.position);
+                                let view_pos = cam_gt
+                                    .affine()
+                                    .inverse()
+                                    .transform_point3(world_pos);
+                                let depth = -view_pos.z;
+                                let d_screen = (sp - anchor_vp).length();
+                                if best.is_none_or(|(_, bd, _)| depth < bd) {
+                                    best = Some((
+                                        d_screen,
+                                        depth,
+                                        VertexId(i as u32),
+                                    ));
+                                }
+                            }
+                            let picked = best.and_then(
+                                |(d_screen, depth, id)| {
+                                    if d_screen <= PICK_RADIUS_PX_VERTEX
+                                        && depth > 0.0
+                                    {
+                                        Some(id)
+                                    } else {
+                                        None
+                                    }
+                                },
+                            );
+                            let hit = picked.is_some();
+                            apply_pick(&mut sel.verts, picked, additive);
+                            hit
                         }
-                        let hit = best.is_some();
-                        apply_pick(&mut sel.verts, best.map(|(_, id)| id), additive);
-                        hit
                     }
                     SelectMode::Edge => {
                         let mut best: Option<(f32, crate::edit_mesh::EdgeId)> = None;

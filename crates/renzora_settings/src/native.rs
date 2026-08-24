@@ -2518,6 +2518,12 @@ fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.vert_size_selected"), dv);
+    let t = ctl_toggle(
+        commands, false,
+        |w| w.resource::<ViewportSettings>().mesh_edit_xray_select,
+        |w, &v| w.resource_mut::<ViewportSettings>().mesh_edit_xray_select = v,
+    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.xray_select"), t);
     note_row(commands, fonts, body, &tr("settings.hint.mesh_edit"));
 }
 
