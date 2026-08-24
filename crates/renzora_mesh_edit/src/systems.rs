@@ -378,7 +378,11 @@ pub fn pick_element(
                 target,
             };
         }
-        return;
+        // Fall through. The release handler below still needs to run when
+        // state is `Pressing`: a quick click (no drag) is supposed to
+        // commit the single-pick at the press anchor. An unconditional
+        // `return` here (as in the previous build) made the picker
+        // silently lose every no-drag click.
     }
 
     // ── WHILE DRAGGING: refresh rect and draw the rubber-band ──────────────
@@ -1146,11 +1150,19 @@ pub fn draw_overlay(
     }
 
     // Vertex dots (only drawn in vertex mode to reduce clutter). Each dot is
-    // a screen-space filled square (`gizmos.rect_2d`) — matching Blender's
-    // `gl_PointSize` point-sprite rendering. Size is measured in panel
-    // pixels and reads the same regardless of camera zoom or distance.
+    // a screen-space filled square that matches Blender's `gl_PointSize`
+    // point-sprite rendering. Size is in panel pixels and reads the same
+    // regardless of camera zoom or distance.
+    //
+    // We draw BOTH a filled 2-D rect (`rect_2d`) AND a 4-corner outline
+    // (`line_2d`). The 2-D rect is the
+    // "right" rendering — it gives the solid square look at any color and
+    // any rotation. We keep the 4-corner outline as a safety net so that
+    // if a custom render configuration somewhere disables `GizmoRender2d`,
+    // the verts still show up as a small hollow square rather than
+    // silently disappearing, which is the failure mode that broke the
+    // previous build on a fresh project.
     if mesh_selection.mode == SelectMode::Vertex {
-        let cam_pos = cam_gt.translation();
         let px_unselected = f32::from(viewport_settings.mesh_edit_vert_size);
         let px_selected = f32::from(viewport_settings.mesh_edit_vert_size_selected);
         for (i, v) in edit.vertices.iter().enumerate() {
@@ -1163,22 +1175,27 @@ pub fn draw_overlay(
             if px_half_extent <= 0.0 {
                 continue;
             }
-// Project the vertex's world position to viewport pixels, then
-            // draw a 2-D filled rect of the requested size centred there.
-            // `rect_2d` is depth-tested against the 2D layer, so these
-            // squares read on top of the mesh without z-fighting — same
-            // behaviour as Blender's `gl_PointSize` overlay.
             let center_world = to_world(v.position);
             let Some(center_screen) = _camera.world_to_viewport(cam_gt, center_world).ok()
             else {
                 continue;
             };
-            let size = Vec2::splat(px_half_extent * 2.0);
+            // Filled square, drawn first so the outline draws on top of it.
             gizmos.rect_2d(
                 Isometry2d::new(center_screen, Rot2::IDENTITY),
-                size,
+                Vec2::splat(px_half_extent * 2.0),
                 color,
             );
+            // Safety-net outline so the dot is never fully invisible.
+            let half = px_half_extent;
+            let tl = center_screen + Vec2::new(-half, -half);
+            let tr = center_screen + Vec2::new(half, -half);
+            let bl = center_screen + Vec2::new(-half, half);
+            let br = center_screen + Vec2::new(half, half);
+            gizmos.line_2d(tl, tr, color);
+            gizmos.line_2d(tr, br, color);
+            gizmos.line_2d(br, bl, color);
+            gizmos.line_2d(bl, tl, color);
         }
     }
 
