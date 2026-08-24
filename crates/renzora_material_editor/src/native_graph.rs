@@ -82,7 +82,7 @@ impl Plugin for NativeMaterialGraph {
         // material graph is the active panel), not inside the panel itself.
         app.add_systems(
             Update,
-            (apply_click, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
+            (apply_click, save_shortcut, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("material_graph")),
         );
@@ -1007,6 +1007,18 @@ fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(crate::apply_material);
+    }
+}
+
+/// Ctrl+S saves the graph — the same path the Apply button takes, because
+/// reaching for a toolbar button every time is impractical. Chord-sharing
+/// with the built-in scene save is deliberate: one keystroke saves
+/// everything. Gated on the graph being the active panel like the other
+/// toolbar systems, so it never fires while the user works elsewhere.
+fn save_shortcut(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands) {
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    if ctrl && keys.just_pressed(KeyCode::KeyS) {
         commands.queue(crate::apply_material);
     }
 }

@@ -9,7 +9,7 @@ Switch to the **Materials** workspace in the editor, then pick what you want to 
 - **Click a mesh in the viewport.** Its material loads straight into the graph, ready to tweak.
 - **Or double-click a `.material` file** in the asset browser to open it on its own tab.
 
-Your changes save automatically as you work, and the mesh updates live so you can see the result right away. There's also an **Apply** button in the panel toolbar if you want to force a save.
+Your changes save automatically as you work, and the mesh updates live so you can see the result right away. Press **Ctrl+S** (or the **Apply** button in the panel toolbar) to force a save.
 
 > Materials are saved as `.material` files (plain JSON). When you import a 3D model, every material on it is written out as a `.material` next to the model automatically — so you can open and edit any imported look as a node graph.
 
