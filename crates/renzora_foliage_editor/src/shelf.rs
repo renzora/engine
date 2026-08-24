@@ -167,8 +167,8 @@ fn sync_type_tooltips(
             .get(index)
             .map(|t| format!("{}. {}", index + 1, t.name))
             .unwrap_or_else(|| (*fallback).to_string());
-        if tooltip.0 != want {
-            tooltip.0 = want;
+        if tooltip.short != want {
+            tooltip.short = want;
         }
     }
 }

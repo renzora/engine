@@ -768,7 +768,7 @@ fn orientation_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 "Vertical channels — click for horizontal"
             };
             if let Some(mut t) = world.get_mut::<HoverTooltip>(e) {
-                t.0 = tip.to_string();
+                t.short = tip.to_string();
             }
         },
     );

@@ -1,5 +1,10 @@
 //! Tooltips — one global, cursor-following bubble driven by [`HoverTooltip`].
 //!
+//! Each [`HoverTooltip`] carries a `short` label that shows on plain hover and
+//! an optional `extended` description that takes over when the user holds
+//! **Shift** while hovering. The bubble is the same single root node either way
+//! (just different text) so the layer model below doesn't change.
+//!
 //! WHY a global layer instead of per-widget bubble children: bevy_ui clips
 //! absolutely-positioned children by every scrolling/clipping ancestor, so a
 //! bubble spawned inside a panel silently vanishes the moment it pokes past
@@ -13,14 +18,33 @@ use bevy::prelude::*;
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
 
-/// Attach to any entity that has `Interaction`: hovering it shows `0` in the
-/// shared tooltip bubble after a short delay.
+/// Attach to any entity that has `Interaction`: hovering it shows `short` in
+/// the shared tooltip bubble after a short delay. If `extended` is set, holding
+/// **Shift** while hovering swaps the bubble to that string — used for the
+/// verbose description of a control that the bare label can't carry (what a
+/// dropdown opens, what a mode pill actually snaps, etc.).
+///
+/// Both halves stay `String` (not `Cow`) because the most common writer is a
+/// system that rebuilds the component every time the resource it tracks
+/// changes; an allocation per rewrite is the trivial cost vs. borrowing pain.
 #[derive(Component, Clone)]
-pub struct HoverTooltip(pub String);
+pub struct HoverTooltip {
+    pub short: String,
+    pub extended: Option<String>,
+}
 
 impl HoverTooltip {
     pub fn new(label: impl Into<String>) -> Self {
-        Self(label.into())
+        Self { short: label.into(), extended: None }
+    }
+
+    /// Set both halves up front: `short` is the hover label, `extended` is the
+    /// Shift+hover detail. Use when neither half ever changes after construction.
+    pub fn with_extended(
+        short: impl Into<String>,
+        extended: impl Into<String>,
+    ) -> Self {
+        Self { short: short.into(), extended: Some(extended.into()) }
     }
 }
 
@@ -59,17 +83,32 @@ const SHOW_DELAY: f32 = 0.35;
 /// Cursor → bubble offset (logical px).
 const OFFSET: Vec2 = Vec2::new(14.0, 20.0);
 
+/// Pick which half of the [`HoverTooltip`] to render. `shift` true means the
+/// user is holding Shift; with no `extended` set, the short label is used
+/// regardless so holding Shift on a widget without an extended description
+/// doesn't visibly flicker.
+fn pick_text(tip: &HoverTooltip, shift: bool) -> &str {
+    if shift {
+        tip.extended.as_deref().unwrap_or(&tip.short)
+    } else {
+        &tip.short
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn hover_tooltip_system(
     mut commands: Commands,
     time: Res<Time>,
     windows: Query<(Entity, &Window)>,
     dock_windows: Option<Res<crate::dock::DockWindows>>,
     fonts: Option<Res<EmberFonts>>,
+    keys: Res<ButtonInput<KeyCode>>,
     tips: Query<(Entity, &Interaction, &HoverTooltip)>,
     mut root_q: Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>,
     mut text_q: Query<&mut Text, With<HoverTipText>>,
     mut state: Local<Option<(Entity, f32)>>,
     mut last_cam: Local<Option<Option<Entity>>>,
+    mut last_text: Local<String>,
 ) {
     let hide = |root_q: &mut Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>| {
         if let Ok((_, mut node, _)) = root_q.single_mut() {
@@ -78,6 +117,11 @@ pub(crate) fn hover_tooltip_system(
             }
         }
     };
+
+    // Shift+hover swaps the bubble to the tool's extended description when one
+    // was set; without `extended`, holding Shift does nothing (the short label
+    // is what the user gets).
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
 
     let hovered = tips
         .iter()
@@ -90,6 +134,7 @@ pub(crate) fn hover_tooltip_system(
         .find_map(|(e, w)| w.cursor_position().map(|c| (e, w, c)));
     let (Some((widget, _, tip)), Some((win_entity, win, cursor))) = (hovered, cursor_win) else {
         *state = None;
+        *last_text = String::new();
         hide(&mut root_q);
         return;
     };
@@ -112,6 +157,8 @@ pub(crate) fn hover_tooltip_system(
     // can clip it away).
     let Ok((root_entity, mut node, cn)) = root_q.single_mut() else {
         let Some(fonts) = fonts else { return };
+        let initial = pick_text(tip, shift).to_string();
+        *last_text = initial.clone();
         let root = commands
             .spawn((
                 Node {
@@ -136,7 +183,7 @@ pub(crate) fn hover_tooltip_system(
             .id();
         let txt = commands
             .spawn((
-                Text::new(tip.0.clone()),
+                Text::new(initial),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
@@ -149,8 +196,13 @@ pub(crate) fn hover_tooltip_system(
     };
 
     if let Ok(mut text) = text_q.single_mut() {
-        if text.0 != tip.0 {
-            text.0.clone_from(&tip.0);
+        // Only rewrite when the chosen variant actually changed — without this
+        // the text would be re-cleared every frame even when the user holds
+        // Shift on a widget that has no extended description.
+        let want = pick_text(tip, shift);
+        if text.0 != want {
+            text.0 = want.to_string();
+            *last_text = want.to_string();
         }
     }
 
@@ -187,5 +239,48 @@ pub(crate) fn hover_tooltip_system(
     node.top = Val::Px(pos.y);
     if node.display != Display::Flex {
         node.display = Display::Flex;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pick_text_returns_short_without_shift() {
+        let tip = HoverTooltip::with_extended("Display", "Visualization modes, render flags, …");
+        assert_eq!(pick_text(&tip, false), "Display");
+    }
+
+    #[test]
+    fn pick_text_returns_extended_with_shift() {
+        let tip = HoverTooltip::with_extended("Display", "Visualization modes, render flags, …");
+        assert_eq!(
+            pick_text(&tip, true),
+            "Visualization modes, render flags, …"
+        );
+    }
+
+    #[test]
+    fn pick_text_falls_back_to_short_when_extended_missing() {
+        let tip = HoverTooltip::new("Undo");
+        // Shift held on a widget without an extended description shouldn't
+        // visibly flicker or empty the bubble — we just keep showing the
+        // short label.
+        assert_eq!(pick_text(&tip, true), "Undo");
+    }
+
+    #[test]
+    fn hovertooltip_new_has_no_extended() {
+        let tip = HoverTooltip::new("Save");
+        assert_eq!(tip.short, "Save");
+        assert!(tip.extended.is_none());
+    }
+
+    #[test]
+    fn hovertooltip_with_extended_sets_both() {
+        let tip = HoverTooltip::with_extended("Camera", "Projection and view angles");
+        assert_eq!(tip.short, "Camera");
+        assert_eq!(tip.extended.as_deref(), Some("Projection and view angles"));
     }
 }
