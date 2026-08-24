@@ -12,8 +12,6 @@
 //! a mismatch between the WGSL's bindings and the Rust pipeline's bind group
 //! layout, since only the driver sees both.
 
-use naga::valid::{Capabilities, ValidationFlags, Validator};
-
 /// Bevy's `bevy_render::view::View`, cut down to the fields `grass.wgsl` uses.
 ///
 /// The shader's `#import` is Bevy preprocessor syntax that naga doesn't speak,
@@ -41,17 +39,7 @@ fn preprocessed_grass_shader() -> String {
 #[test]
 fn grass_shader_parses_and_validates() {
     let source = preprocessed_grass_shader();
-    let module = match naga::front::wgsl::parse_str(&source) {
-        Ok(module) => module,
-        Err(err) => panic!(
-            "grass.wgsl failed to parse:\n{}",
-            err.emit_to_string(&source)
-        ),
-    };
-    let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-    if let Err(err) = validator.validate(&module) {
-        panic!("grass.wgsl failed validation:\n{err:?}");
-    }
+    renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("grass.wgsl: {err}"));
 }
 
 /// The pipeline names these entry points explicitly, so a rename in either place
@@ -59,7 +47,7 @@ fn grass_shader_parses_and_validates() {
 #[test]
 fn grass_shader_has_the_entry_points_the_pipeline_asks_for() {
     let source = preprocessed_grass_shader();
-    let module = naga::front::wgsl::parse_str(&source).expect("grass.wgsl should parse");
+    let module = renzora::wgsl::parse(&source).expect("grass.wgsl should parse");
     let names: Vec<&str> = module
         .entry_points
         .iter()

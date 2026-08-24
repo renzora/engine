@@ -604,15 +604,7 @@ mod tests {
     /// shows up only as a pipeline that never becomes ready — the ocean simply
     /// stays flat, with the reason buried in the log.
     fn validate(name: &str, source: &str) {
-        let module = naga::front::wgsl::parse_str(source)
-            .unwrap_or_else(|err| panic!("{name}: {}", err.emit_to_string(source)));
-        let mut validator = naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        );
-        if let Err(err) = validator.validate(&module) {
-            panic!("{name}: {}", err.emit_to_string(source));
-        }
+        renzora::wgsl::check(source).unwrap_or_else(|err| panic!("{name}: {err}"));
     }
 
     #[test]

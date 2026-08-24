@@ -201,15 +201,7 @@ fn stub_apply_pbr_lighting(input: PbrInput) -> vec4<f32> { return input.material
             .replace("pbr_input_new", "stub_pbr_input_new");
         let combined = format!("{STUBS}\n{body}");
 
-        let module = naga::front::wgsl::parse_str(&combined)
-            .unwrap_or_else(|err| panic!("water.wgsl: {}", err.emit_to_string(&combined)));
-        let mut validator = naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        );
-        if let Err(err) = validator.validate(&module) {
-            panic!("water.wgsl: {}", err.emit_to_string(&combined));
-        }
+        renzora::wgsl::check(&combined).unwrap_or_else(|err| panic!("water.wgsl: {err}"));
     }
 
     #[test]

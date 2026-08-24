@@ -104,6 +104,9 @@ pub mod runtime_warnings;
 // resolver) and the reader (the code editor) must agree on one definition.
 pub mod content_problems;
 
+// The one WGSL↔naga seam (parse/validate) for self-contained shaders.
+pub mod wgsl;
+
 // ── Editor contract (Operation Merge fold) ───────────────────────────────
 // The thin editor types shared across the binary↔bundle boundary live here in
 // the one shared `renzora` dylib (so `EditorSelection` et al. unify to one

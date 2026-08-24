@@ -687,7 +687,7 @@ fn build_effect(
 ///
 /// Returns `Err` with a message meant for the plugin author, not for us.
 fn validate_effect_shader(wgsl: &str, expected: u64) -> Result<(), String> {
-    let module = naga::front::wgsl::parse_str(wgsl)
+    let module = renzora::wgsl::parse(wgsl)
         .map_err(|e| format!("shader does not parse: {}", e.message()))?;
     let mut layouter = naga::proc::Layouter::default();
     layouter

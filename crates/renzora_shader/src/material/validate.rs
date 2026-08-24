@@ -3,7 +3,6 @@
 
 use bevy::prelude::*;
 use bevy::shader::{Shader, ShaderImport};
-use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga_oil::compose::{Composer, NagaModuleDescriptor, ShaderDefValue, ShaderType};
 use renzora::content_problems::{ContentProblem, ProblemSeverity};
 use std::collections::HashMap;
@@ -150,8 +149,7 @@ impl ShaderValidator {
         let label = || defines.join(",");
         match module {
             Ok(module) => {
-                let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-                if let Err(err) = validator.validate(&module) {
+                if let Err(err) = renzora::wgsl::validate(&module) {
                     errors.push(ValidationError {
                         defines: label(),
                         // Debug dump — validation errors have no `emit_to_string`.
