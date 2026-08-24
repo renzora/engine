@@ -54,6 +54,7 @@ impl Plugin for MeshEditPlugin {
         app.init_resource::<MeshSelection>()
             .init_resource::<systems::GrabState>()
             .init_resource::<systems::EditModeActive>()
+            .init_resource::<systems::MeshEditBoxSelect>()
             .init_resource::<tools::ModelingSettings>()
             .init_resource::<tools::PendingOps>()
             .init_resource::<tools::LoopCutState>()

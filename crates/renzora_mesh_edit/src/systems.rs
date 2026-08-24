@@ -17,6 +17,54 @@ use crate::undo::{EditMeshSnapshotCmd, SelectionSnapshot};
 /// Pixels from the cursor at which a vertex or edge is considered picked.
 const PICK_RADIUS_PX: f32 = 8.0;
 
+/// Distance the cursor must travel from the LMB-down point before a press
+/// "becomes" a marquee drag instead of a single click. Below this, the
+/// release commits a single-element pick (or releases the edit target on
+/// empty space, preserving the historical click-to-de-select behaviour);
+/// above this, the release commits a marquee hit-test.
+const DRAG_THRESHOLD_PX: f32 = 4.0;
+
+/// Drag-vs-click state for the mesh-edit picker. A press on empty space is
+/// either a single click (released before [`DRAG_THRESHOLD_PX`]) or a marquee
+/// drag (released after). Replaces the implicit "every LMB-down on empty
+/// space deselects the target immediately" behaviour, which used to fight
+/// the user's attempt to drag a box around multiple vertices.
+#[derive(Resource, Default)]
+pub struct MeshEditBoxSelect {
+    pub state: MeshEditBoxSelectState,
+}
+
+/// Mode of the marquee drag. `Pressing` is the warmup before the cursor
+/// has crossed the threshold; `Marqueeing` is the active rubber-band state
+/// that draws the rectangle and commits on release.
+#[derive(Default, Clone, Copy)]
+pub enum MeshEditBoxSelectState {
+    #[default]
+    Idle,
+    /// LMB is down on empty space but the cursor hasn't travelled past
+    /// `DRAG_THRESHOLD_PX`. Promotes to `Marqueeing` on drag, or releases
+    /// the edit target on LMB-up if the user just clicks.
+    Pressing {
+        anchor_vp: Vec2,
+        mode: SelectMode,
+        /// Was Shift held when the press started? Shift-promoted releases
+        /// toggle individual elements instead of replacing the selection.
+        additive: bool,
+        target: Entity,
+    },
+    /// LMB-down + cursor past the drag threshold. The rubber-band runs
+    /// from `anchor_vp` to `current_vp`; on LMB-up every
+    /// vertex/edge/face-marker inside the rect is added to (Shift) or
+    /// replaces the selection.
+    Marqueeing {
+        anchor_vp: Vec2,
+        current_vp: Vec2,
+        mode: SelectMode,
+        additive: bool,
+        target: Entity,
+    },
+}
+
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
 /// On entering Edit mode, promote the selected entity's Mesh into an
@@ -159,12 +207,7 @@ pub fn set_select_mode(world: &mut World, new_mode: SelectMode) {
 
 /// Blender's up/down selection flush: down (verts of edges/faces) is a
 /// straight expansion; up (edges/faces from verts) requires full coverage.
-fn convert_selection(
-    edit: &EditMesh,
-    sel: &mut MeshSelection,
-    from: SelectMode,
-    to: SelectMode,
-) {
+fn convert_selection(edit: &EditMesh, sel: &mut MeshSelection, from: SelectMode, to: SelectMode) {
     use crate::edit_mesh::{EdgeId, FaceId};
     // Derive the vert set from whatever the old mode had selected.
     let verts: std::collections::HashSet<u32> = match from {
@@ -260,6 +303,8 @@ pub fn pick_element(
     mut sel: ResMut<MeshSelection>,
     mut active_tool: ResMut<ActiveTool>,
     mut commands: Commands,
+    mut box_select: ResMut<MeshEditBoxSelect>,
+    mut gizmos: Gizmos,
 ) {
     // Busy or just-finished grabs / loop cuts own the mouse — a commit click
     // must not double as a pick.
@@ -269,107 +314,304 @@ pub fn pick_element(
     if !matches!(*loop_cut, crate::tools::LoopCutState::Idle) {
         return;
     }
-    if !mouse.just_pressed(MouseButton::Left) {
+    let Some(target) = sel.target else {
+        // No edit target → drop any stale marquee state and bail so the
+        // Scene-mode picker can take over.
+        box_select.state = MeshEditBoxSelectState::Idle;
         return;
-    }
+    };
+    let Ok((edit, gt)) = edit_q.get(target) else {
+        return;
+    };
     let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else {
         return;
     };
     let Ok((camera, cam_gt)) = camera_q.single() else {
         return;
     };
-    let Some(target) = sel.target else { return };
-    let Ok((edit, gt)) = edit_q.get(target) else {
-        return;
-    };
 
     let project =
         |p: Vec3| -> Option<Vec2> { camera.world_to_viewport(cam_gt, gt.transform_point(p)).ok() };
-
     let additive = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    let mut hit_any = false;
 
-    match sel.mode {
-        SelectMode::Vertex => {
-            let mut best: Option<(f32, VertexId)> = None;
-            for (i, v) in edit.vertices.iter().enumerate() {
-                if let Some(sp) = project(v.position) {
-                    let d = (sp - cursor_vp).length();
-                    if d <= PICK_RADIUS_PX && best.is_none_or(|(bd, _)| d < bd) {
-                        best = Some((d, VertexId(i as u32)));
+    // ── LMB JUST PRESSED ────────────────────────────────────────────────────
+    //
+    // Defer the commit to release. Any LMB-down arms the marquee state
+    // machine with the press point as the anchor — clicking on a vertex
+    // and dragging works just the same as clicking in empty space and
+    // dragging (Blender's marquee-from-anywhere UX). On release:
+    //   - cursor moved past `DRAG_THRESHOLD_PX` → commit the rectangle,
+    //   - cursor stayed put → single-pick at the press anchor.
+    // Running the hit-test on press (the old behaviour) broke the latter
+    // case: a single click followed by even a 2-pixel jitter hit-stale'd
+    // the marquee state and lost the underlying selection.
+    if mouse.just_pressed(MouseButton::Left) {
+        box_select.state = MeshEditBoxSelectState::Pressing {
+            anchor_vp: cursor_vp,
+            mode: sel.mode,
+            additive,
+            target,
+        };
+        return;
+    }
+
+    // ── WHILE PRESS HELD: promote Pressing → Marqueeing when dragging ─────
+    if let MeshEditBoxSelectState::Pressing {
+        anchor_vp,
+        mode,
+        additive,
+        target,
+    } = box_select.state
+    {
+        if (cursor_vp - anchor_vp).length() > DRAG_THRESHOLD_PX {
+            box_select.state = MeshEditBoxSelectState::Marqueeing {
+                anchor_vp,
+                current_vp: cursor_vp,
+                mode,
+                additive,
+                target,
+            };
+        }
+        return;
+    }
+
+    // ── WHILE DRAGGING: refresh rect and draw the rubber-band ──────────────
+    if let MeshEditBoxSelectState::Marqueeing {
+        anchor_vp,
+        current_vp,
+        mode,
+        additive,
+        target,
+    } = box_select.state
+    {
+        // Refresh the current corner every frame so the rubber-band tracks
+        // the cursor smoothly. Drop the existing value via replace.
+        box_select.state = MeshEditBoxSelectState::Marqueeing {
+            anchor_vp,
+            current_vp: cursor_vp,
+            mode,
+            additive,
+            target,
+        };
+        let color = Color::srgba(1.0, 1.0, 1.0, 0.7);
+        let min = Vec2::new(anchor_vp.x.min(cursor_vp.x), anchor_vp.y.min(cursor_vp.y));
+        let max = Vec2::new(anchor_vp.x.max(cursor_vp.x), anchor_vp.y.max(cursor_vp.y));
+        gizmos.line_2d(Vec2::new(min.x, min.y), Vec2::new(max.x, min.y), color);
+        gizmos.line_2d(Vec2::new(max.x, min.y), Vec2::new(max.x, max.y), color);
+        gizmos.line_2d(Vec2::new(max.x, max.y), Vec2::new(min.x, max.y), color);
+        gizmos.line_2d(Vec2::new(min.x, max.y), Vec2::new(min.x, min.y), color);
+    }
+
+    // ── LMB JUST RELEASED ───────────────────────────────────────────────────
+    //
+    // Releases the marquee commit (if the press became a drag), or the
+    // historical "click outside the mesh releases the edit target" path
+    // (if the press stayed a click).
+    if mouse.just_released(MouseButton::Left) {
+        match box_select.state {
+            MeshEditBoxSelectState::Idle => {}
+            MeshEditBoxSelectState::Pressing {
+                mode,
+                additive,
+                anchor_vp,
+                target: tgt,
+            } => {
+                // Cursor stayed inside `DRAG_THRESHOLD_PX` of the press.
+                // Defer-from-press: run the hit-test now, against the press
+                // anchor so a tiny release-time wiggle doesn't miss the
+                // element the user was targeting.
+                let hit_any = match mode {
+                    SelectMode::Vertex => {
+                        let mut best: Option<(f32, VertexId)> = None;
+                        for (i, v) in edit.vertices.iter().enumerate() {
+                            if let Some(sp) = project(v.position) {
+                                let d = (sp - anchor_vp).length();
+                                if d <= PICK_RADIUS_PX
+                                    && best.is_none_or(|(bd, _)| d < bd)
+                                {
+                                    best = Some((d, VertexId(i as u32)));
+                                }
+                            }
+                        }
+                        let hit = best.is_some();
+                        apply_pick(&mut sel.verts, best.map(|(_, id)| id), additive);
+                        hit
+                    }
+                    SelectMode::Edge => {
+                        let mut best: Option<(f32, crate::edit_mesh::EdgeId)> = None;
+                        for (i, e) in edit.edges.iter().enumerate() {
+                            let Some(a) = edit
+                                .vertices
+                                .get(e.verts[0].0 as usize)
+                                .and_then(|v| project(v.position))
+                            else {
+                                continue;
+                            };
+                            let Some(b) = edit
+                                .vertices
+                                .get(e.verts[1].0 as usize)
+                                .and_then(|v| project(v.position))
+                            else {
+                                continue;
+                            };
+                            let d = point_to_segment(anchor_vp, a, b);
+                            if d <= PICK_RADIUS_PX
+                                && best.is_none_or(|(bd, _)| d < bd)
+                            {
+                                best = Some((d, crate::edit_mesh::EdgeId(i as u32)));
+                            }
+                        }
+                        let hit = best.is_some();
+                        apply_pick(&mut sel.edges, best.map(|(_, id)| id), additive);
+                        hit
+                    }
+                    SelectMode::Face => {
+                        let Some((ray_origin, ray_dir)) =
+                            build_world_ray(camera, cam_gt, anchor_vp, &viewport)
+                        else {
+                            // Without a ray we can't do a face hit-test at
+                            // all; drop out without committing anything.
+                            box_select.state = MeshEditBoxSelectState::Idle;
+                            return;
+                        };
+                        let inv = gt.to_matrix().inverse();
+                        let local_origin = inv.transform_point3(ray_origin);
+                        let local_dir = inv.transform_vector3(ray_dir).normalize_or_zero();
+                        let mut best: Option<(f32, crate::edit_mesh::FaceId)> = None;
+                        for (i, f) in edit.faces.iter().enumerate() {
+                            if f.verts.len() < 3 {
+                                continue;
+                            }
+                            let p0 = edit.vertices[f.verts[0].0 as usize].position;
+                            for w in f.verts.windows(2).skip(1) {
+                                let p1 = edit.vertices[w[0].0 as usize].position;
+                                let p2 = edit.vertices[w[1].0 as usize].position;
+                                if let Some(t) =
+                                    ray_triangle(local_origin, local_dir, p0, p1, p2)
+                                {
+                                    if best.is_none_or(|(bt, _)| t < bt) {
+                                        best =
+                                            Some((t, crate::edit_mesh::FaceId(i as u32)));
+                                    }
+                                }
+                            }
+                        }
+                        let hit = best.is_some();
+                        apply_pick(&mut sel.faces, best.map(|(_, id)| id), additive);
+                        hit
+                    }
+                };
+
+                if !hit_any && !additive {
+                    // Click landed outside any element and the user wasn't
+                    // holding Shift → release the edit target so they can
+                    // pick a different mesh to edit. Entity picking takes
+                    // over next frame once enter_edit_mode sees no
+                    // selection. Shift-click in empty space keeps the
+                    // current target (additive is for additive selection
+                    // mod, not for 'release mesh' mod).
+                    sel.target = None;
+                    sel.clear();
+                    commands.entity(tgt).remove::<EditMesh>();
+                    editor_selection.set(None);
+                    if *active_tool == ActiveTool::None {
+                        *active_tool = ActiveTool::Select;
                     }
                 }
+                box_select.state = MeshEditBoxSelectState::Idle;
             }
-            hit_any = best.is_some();
-            apply_pick(&mut sel.verts, best.map(|(_, id)| id), additive);
-        }
-        SelectMode::Edge => {
-            let mut best: Option<(f32, crate::edit_mesh::EdgeId)> = None;
-            for (i, e) in edit.edges.iter().enumerate() {
-                let Some(a) = edit
-                    .vertices
-                    .get(e.verts[0].0 as usize)
-                    .and_then(|v| project(v.position))
-                else {
-                    continue;
-                };
-                let Some(b) = edit
-                    .vertices
-                    .get(e.verts[1].0 as usize)
-                    .and_then(|v| project(v.position))
-                else {
-                    continue;
-                };
-                let d = point_to_segment(cursor_vp, a, b);
-                if d <= PICK_RADIUS_PX && best.is_none_or(|(bd, _)| d < bd) {
-                    best = Some((d, crate::edit_mesh::EdgeId(i as u32)));
-                }
-            }
-            hit_any = best.is_some();
-            apply_pick(&mut sel.edges, best.map(|(_, id)| id), additive);
-        }
-        SelectMode::Face => {
-            // World-space ray vs triangle. Closest hit wins.
-            let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport)
-            else {
-                return;
-            };
-            let inv = gt.to_matrix().inverse();
-            let local_origin = inv.transform_point3(ray_origin);
-            let local_dir = inv.transform_vector3(ray_dir).normalize_or_zero();
-            let mut best: Option<(f32, crate::edit_mesh::FaceId)> = None;
-            for (i, f) in edit.faces.iter().enumerate() {
-                if f.verts.len() < 3 {
-                    continue;
-                }
-                let p0 = edit.vertices[f.verts[0].0 as usize].position;
-                for w in f.verts.windows(2).skip(1) {
-                    let p1 = edit.vertices[w[0].0 as usize].position;
-                    let p2 = edit.vertices[w[1].0 as usize].position;
-                    if let Some(t) = ray_triangle(local_origin, local_dir, p0, p1, p2) {
-                        if best.is_none_or(|(bt, _)| t < bt) {
-                            best = Some((t, crate::edit_mesh::FaceId(i as u32)));
+            MeshEditBoxSelectState::Marqueeing {
+                anchor_vp,
+                current_vp,
+                mode,
+                additive,
+                target: _,
+            } => {
+                let min = Vec2::new(anchor_vp.x.min(current_vp.x), anchor_vp.y.min(current_vp.y));
+                let max = Vec2::new(anchor_vp.x.max(current_vp.x), anchor_vp.y.max(current_vp.y));
+                let inside = |p: Vec2| p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y;
+
+                match mode {
+                    SelectMode::Vertex => {
+                        if !additive {
+                            sel.verts.clear();
+                        }
+                        for (i, v) in edit.vertices.iter().enumerate() {
+                            if let Some(sp) = project(v.position) {
+                                if inside(sp) {
+                                    let id = VertexId(i as u32);
+                                    if !sel.verts.insert(id) && additive {
+                                        sel.verts.remove(&id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    SelectMode::Edge => {
+                        if !additive {
+                            sel.edges.clear();
+                        }
+                        // Edge inside the rect when its midpoint is inside
+                        // (Blender's "fully enclosed" rule). This avoids
+                        // surface-area arguments for short edges and gives
+                        // the same visual result users expect from a 3D
+                        // viewport marquee.
+                        for (i, e) in edit.edges.iter().enumerate() {
+                            let Some(a) = edit
+                                .vertices
+                                .get(e.verts[0].0 as usize)
+                                .and_then(|v| project(v.position))
+                            else {
+                                continue;
+                            };
+                            let Some(b) = edit
+                                .vertices
+                                .get(e.verts[1].0 as usize)
+                                .and_then(|v| project(v.position))
+                            else {
+                                continue;
+                            };
+                            let mid = (a + b) * 0.5;
+                            if inside(mid) {
+                                let id = crate::edit_mesh::EdgeId(i as u32);
+                                if !sel.edges.insert(id) && additive {
+                                    sel.edges.remove(&id);
+                                }
+                            }
+                        }
+                    }
+                    SelectMode::Face => {
+                        if !additive {
+                            sel.faces.clear();
+                        }
+                        // Face inside when its centroid (vertex average) is
+                        // inside the rect. Cheap and stable for convex
+                        // faces; long thin faces occasionally slip through,
+                        // matching Blender's behaviour closely enough.
+                        for (i, f) in edit.faces.iter().enumerate() {
+                            if f.verts.len() < 3 {
+                                continue;
+                            }
+                            let mut centroid_local = Vec3::ZERO;
+                            for vid in &f.verts {
+                                if let Some(v) = edit.vertices.get(vid.0 as usize) {
+                                    centroid_local += v.position;
+                                }
+                            }
+                            centroid_local /= f.verts.len() as f32;
+                            if let Some(sp) = project(centroid_local) {
+                                if inside(sp) {
+                                    let id = crate::edit_mesh::FaceId(i as u32);
+                                    if !sel.faces.insert(id) && additive {
+                                        sel.faces.remove(&id);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                box_select.state = MeshEditBoxSelectState::Idle;
             }
-            hit_any = best.is_some();
-            apply_pick(&mut sel.faces, best.map(|(_, id)| id), additive);
-        }
-    }
-
-    // Click on empty space (non-additive, no element hit) — release the edit
-    // target so the user can click a different mesh to edit. Entity picking
-    // takes over next frame once enter_edit_mode sees no selection.
-    if !hit_any && !additive {
-        sel.target = None;
-        sel.clear();
-        commands.entity(target).remove::<EditMesh>();
-        // Clear the editor-wide selection too so enter_edit_mode doesn't
-        // immediately re-promote the same entity next frame.
-        editor_selection.set(None);
-        if *active_tool == ActiveTool::None {
-            *active_tool = ActiveTool::Select;
         }
     }
 }
@@ -651,27 +893,34 @@ pub fn grab_update(
         *grab = GrabState::Idle;
         return;
     }
-    let (mut anchor_world, plane_normal, plane_point, mut axis, starts, mirror_starts, seeded_by_op) =
-        match &*grab {
-            GrabState::Active {
-                anchor_world,
-                plane_normal,
-                plane_point,
-                axis,
-                starts,
-                mirror_starts,
-                seeded_by_op,
-            } => (
-                *anchor_world,
-                *plane_normal,
-                *plane_point,
-                *axis,
-                starts.clone(),
-                mirror_starts.clone(),
-                *seeded_by_op,
-            ),
-            _ => return,
-        };
+    let (
+        mut anchor_world,
+        plane_normal,
+        plane_point,
+        mut axis,
+        starts,
+        mirror_starts,
+        seeded_by_op,
+    ) = match &*grab {
+        GrabState::Active {
+            anchor_world,
+            plane_normal,
+            plane_point,
+            axis,
+            starts,
+            mirror_starts,
+            seeded_by_op,
+        } => (
+            *anchor_world,
+            *plane_normal,
+            *plane_point,
+            *axis,
+            starts.clone(),
+            mirror_starts.clone(),
+            *seeded_by_op,
+        ),
+        _ => return,
+    };
     let Some(target) = sel.target else {
         *grab = GrabState::Idle;
         return;
@@ -908,7 +1157,7 @@ pub fn draw_overlay(
             if px_half_extent <= 0.0 {
                 continue;
             }
-            // Project the vertex's world position to viewport pixels, then
+// Project the vertex's world position to viewport pixels, then
             // draw a 2-D filled rect of the requested size centred there.
             // `rect_2d` is depth-tested against the 2D layer, so these
             // squares read on top of the mesh without z-fighting — same
@@ -958,11 +1207,7 @@ pub fn draw_overlay(
 /// `ortho.scale`. We only need this for vertex dots (small markers) so a
 /// flat Euclidean distance is good enough — for a strictly on-axis vertex it
 /// matches the camera-plane depth exactly.
-fn world_per_pixel(
-    dist_to_camera: f32,
-    projection: &Projection,
-    vp_px_height: f32,
-) -> f32 {
+fn world_per_pixel(dist_to_camera: f32, projection: &Projection, vp_px_height: f32) -> f32 {
     let h = vp_px_height.max(1.0);
     match projection {
         Projection::Perspective(p) => {
