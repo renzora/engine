@@ -1,6 +1,7 @@
 pub mod console_log;
 pub mod keybindings;
 pub mod reflection;
+pub mod resize;
 pub mod viewport_types;
 
 // Sub-areas split out of this file to keep it manageable. Each is re-exported
@@ -376,6 +377,17 @@ impl ActionState {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MaterialRef(pub String);
 
+/// Marker added by the material resolver once a [`MaterialRef`] has been loaded,
+/// compiled and attached. Removing it is how *any* crate says "this entity's
+/// material changed, resolve it again" — which is why the marker lives here and
+/// not in `renzora_shader`: the editor panels that rebind a material (the
+/// hierarchy's drag-to-attach, the material inspector, the viewport drop) would
+/// otherwise each have to link the whole shader crate for one component.
+#[derive(bevy::prelude::Component)]
+pub struct MaterialResolved {
+    /// The `MaterialRef` path this entity was resolved from.
+    pub source_path: String,
+}
 
 /// Generic script action event. Scripts call `action("name", { args })` and
 /// domain crates observe this event to handle actions they recognize.

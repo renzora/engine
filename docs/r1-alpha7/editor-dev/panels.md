@@ -313,9 +313,9 @@ A panel that acts on a press in its *empty* space — clear the selection, start
 | Resource | Set while | Import |
 |---|---|---|
 | `ScrollbarBusy` | pressing a visible scroll track, or mid-thumb-drag | `renzora_ember::widgets::ScrollbarBusy` |
-| `ResizeBusy` | the button is held after a press on any `ResizeHandle` — a dock divider, a floating dock window's edge zone, the shell window's edge grips | `renzora_ember::resize::ResizeBusy` |
+| `ResizeBusy` | the button is held after a press on any `ResizeHandle` — a dock divider, the global bottom panel's grip band, a floating dock window's edge zone, the shell window's edge grips | `renzora_ember::resize::ResizeBusy` |
 
-The divider is the surprising one. Its visible line is 1px but its grab strip is 11px, so the handle deliberately **overhangs about 5px into the panes on either side** — which is inside your content rect. Take both flags and bail on a press when either is set:
+The divider is the surprising one. Its visible line is 1px but its grab strip is 11px, so the handle deliberately **overhangs about 5px into the panes on either side** — which is inside your content rect. The bottom panel's grip is the same shape one tier up: it straddles the panel's own top edge, so it hangs over the workspace above — which is how dragging the panel upward used to arm the 3D viewport's selection box. Take both flags and bail on a press when either is set:
 
 ```rust
 fn my_empty_press(
@@ -332,6 +332,16 @@ fn my_empty_press(
 ```
 
 Both are refreshed in `PreUpdate` after the pointer state settles, so they're already correct when your `Update` system reads them, whatever the system order. `ResizeBusy` stays set for the whole gesture, not just the press frame — a resize drag continues after the cursor has left the handle, and an OS window resize takes the pointer away entirely.
+
+Read `ResizeBusy` itself, not a downstream mirror of it. The viewport's "is the pointer over me" flag, for instance, is recomputed in `Update` and can be a frame behind — and the frame it is behind for is the press frame, the only one that matters.
+
+The flag is defined in the contract crate, so crates outside the UI stack can obey it without linking `renzora_ember` — `renzora_gizmo`'s scene picking is one, which is why dragging a dock seam no longer starts a selection box or grabs a transform handle. Import it from `renzora::core::resize` there, and take it as `Option<Res<ResizeBusy>>`: it only exists once ember's plugin has registered it, so a runtime without the editor UI must still run. Two helpers make that shape readable — `resize_in_flight(&resizing)` for a mid-system guard, and the `not_resizing` run condition for a system that does nothing but act on a press (or one already sitting on Bevy's 16-parameter ceiling, where one more `Res` would stop it being a system at all):
+
+```rust
+use renzora::core::resize::not_resizing;
+
+app.add_systems(Update, my_press_system.run_if(not_resizing));
+```
 
 A panel that hit-tests with `Interaction` is safe from resize handles specifically, because `ResizeHandle` also forces `FocusPolicy::Block` onto the node it marks, so the press stops there. Don't assume that's the default: in Bevy 0.19 `FocusPolicy` defaults to `Pass`, and an unblocked node marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks carry no `Interaction` at all and so block nothing — `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `FocusPolicy::Block` (and `ResizeHandle`, if it resizes something).
 

@@ -13,7 +13,9 @@
 //!   as landing in their own empty space, because that test is pure geometry and
 //!   knows nothing about what's drawn on top. This is what made dragging the
 //!   hierarchy panel's edge divider also sweep-select the rows the drag passed
-//!   (GH #81).
+//!   (GH #81), and what made dragging the global bottom panel upward arm the
+//!   3D viewport's selection box — its grip straddles the panel's own top edge,
+//!   so it hangs over the scene.
 //! - Panels that hit-test with `Interaction` see it too, because Bevy 0.19's
 //!   `FocusPolicy` defaults to `Pass`: the focus walk marks *every* node under
 //!   the cursor `Pressed`, not just the front one, until something blocks.
@@ -26,15 +28,24 @@
 //! [`ResizeBusy`] is the sibling of
 //! [`ScrollbarBusy`](crate::widgets::ScrollbarBusy), which covers the other
 //! widget drawn over every panel's content: the scrollbar inside it.
+//!
+//! The flag itself is defined in the contract crate
+//! ([`renzora::core::resize`]) and re-exported here, because consumers of it
+//! reach past the UI crates entirely — the viewport's picking lives in
+//! `renzora_gizmo`, which links no UI crate. This module keeps what only makes
+//! sense next to bevy_ui: the handle marker and the refresh.
 
 use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, UiSystems};
 
+pub use renzora::core::resize::ResizeBusy;
+
 /// Marks a node whose press starts a resize gesture — a dock split's divider
-/// handle, a leaf's tab-bar filler (which doubles as one), a floating dock
-/// window's edge/corner zone, the shell window's own edge grips.
+/// handle, a leaf's tab-bar filler (which doubles as one), the global bottom
+/// panel's grip band, a floating dock window's edge/corner zone, the shell
+/// window's own edge grips.
 ///
 /// Marking a node is the whole job: it forces `FocusPolicy::Block` so the press
 /// stops here instead of also firing on the content the handle overhangs, and it
@@ -53,26 +64,6 @@ pub struct ResizeHandle;
 /// Force `FocusPolicy::Block` onto a node the moment it becomes a handle.
 fn block_focus(mut world: DeferredWorld, ctx: HookContext) {
     world.commands().entity(ctx.entity).insert(FocusPolicy::Block);
-}
-
-/// True from the moment the left button goes down on a [`ResizeHandle`] until it
-/// is released — the whole gesture, not just the press frame.
-///
-/// Panels that act on a press in their empty content (clear the selection, start
-/// a rubber-band sweep, begin a drag) and resolve that press geometrically must
-/// skip it while this is set; see the module docs for why `cursor_over` can't
-/// tell a handle press apart from a press on their own content.
-///
-/// Refreshed in `PreUpdate` after the pointer state settles, so it is already
-/// correct whatever order the `Update` systems reading it run in.
-#[derive(Resource, Default)]
-pub struct ResizeBusy(pub bool);
-
-impl ResizeBusy {
-    /// Whether a resize gesture is currently in flight.
-    pub fn active(&self) -> bool {
-        self.0
-    }
 }
 
 /// Refresh [`ResizeBusy`].

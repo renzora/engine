@@ -33,6 +33,7 @@ use bevy::shader::ShaderRef;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::resize::{resize_in_flight, ResizeBusy};
 use renzora::core::viewport_types::{
     NavOverlayState, SnapSettings, ViewportSettings, ViewportState,
 };
@@ -550,7 +551,15 @@ impl Plugin for GizmoPlugin {
                     selection_visuals::update_selection_gizmo_depth,
                     camera_gizmo::draw_camera_gizmo,
                     skeleton_gizmo::draw_skeleton_gizmo,
-                    entity_pick_system,
+                    // A resize handle overhangs the content it sizes, and the
+                    // viewport decides a press is its own purely geometrically
+                    // (`RelativeCursorPosition`) — so the global bottom panel's
+                    // grip band, which straddles its own top edge, reads as a
+                    // press in the scene and armed a selection box that then
+                    // stretched across the viewport for the whole drag. A run
+                    // condition rather than a `Res` parameter: this system is
+                    // already at Bevy's 16-parameter ceiling.
+                    entity_pick_system.run_if(renzora::core::resize::not_resizing),
                     box_selection_system,
                 )
                     .chain()
@@ -2472,6 +2481,7 @@ fn gizmo_drag(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut commands: Commands,
+    resizing: Option<Res<ResizeBusy>>,
 ) {
     let pivot_bottom = viewport_settings
         .as_ref()
@@ -2511,8 +2521,15 @@ fn gizmo_drag(
         return;
     }
 
-    // Start drag
-    if mouse_button.just_pressed(MouseButton::Left) && gizmo_state.active_axis.is_none() {
+    // Start drag. Never off the press that started a resize: the handle
+    // overhangs the viewport, so a divider or the bottom panel's grip can sit
+    // over a gizmo axis and the press would move the selection instead of the
+    // seam (the same overhang that armed the selection box in
+    // `entity_pick_system`).
+    if mouse_button.just_pressed(MouseButton::Left)
+        && gizmo_state.active_axis.is_none()
+        && !resize_in_flight(&resizing)
+    {
         if let Some(axis) = gizmo_state.hovered_axis {
             let mut starts = Vec::new();
             let mut parents = Vec::new();

@@ -4430,6 +4430,13 @@ fn populate_leaf(
             commands.entity(filler).insert((
                 Interaction::default(),
                 FixedAreaHeader,
+                // It resizes the area, so it is a handle like any other: it
+                // owns its press (nothing behind it may also see it), and it
+                // raises `ResizeBusy` for the consumers that resolve a press
+                // geometrically — the viewport among them, which would
+                // otherwise read a drag from the header as a click in the
+                // scene.
+                crate::resize::ResizeHandle,
                 crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
             ));
         }

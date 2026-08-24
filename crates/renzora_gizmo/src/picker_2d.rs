@@ -33,6 +33,7 @@
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
+use renzora::core::resize::{resize_in_flight, ResizeBusy};
 use renzora::core::viewport_types::{
     ViewportBoxSelect2d, ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
@@ -617,8 +618,15 @@ pub fn pick_2d_system(
     nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
+    resizing: Option<Res<ResizeBusy>>,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
+    // The press that grabs a dock divider or the bottom panel's grip lands
+    // inside the viewport geometrically — the handle overhangs it — so without
+    // this it arms the rubber band and the band follows the resize drag.
+    if resize_in_flight(&resizing) {
         return;
     }
     // Collider edit mode owns the left button: clicks move/resize the selected
