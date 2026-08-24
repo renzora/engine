@@ -5,7 +5,9 @@
 
 use std::marker::PhantomData;
 
+use bevy::anti_alias::smaa::{Smaa, SmaaPreset};
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::primitives::MeshAabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
@@ -21,13 +23,29 @@ use bevy::render::render_resource::{
 use uuid::Uuid;
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_editor_framework::EditorSelection;
+use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::runtime::{
     new_graph_material, FallbackTexture, GraphMaterial, GraphMaterialShaderState,
 };
 
-use crate::MaterialEditorState;
+use crate::{MaterialEditMode, MaterialEditorState};
 
 pub const MATERIAL_PREVIEW_LAYER: usize = 8;
+
+/// Side length of the preview's render target, in pixels.
+///
+/// Comfortably above the size the panel displays it at, which makes the
+/// `ImageNode`'s downscale a cheap supersample on top of the camera's SMAA pass.
+/// That second helping matters here: SMAA only smooths edges it can find in the
+/// final image, and the aliasing that makes a material look wrong is usually
+/// specular sparkle off a normal map, which supersampling is the only cure for.
+const PREVIEW_RESOLUTION: u32 = 1024;
+
+/// SMAA quality for the preview. `Ultra` is the top preset and this is one small
+/// off-screen view rendered only while the panel is open, so there's no reason
+/// to economize.
+const PREVIEW_SMAA_PRESET: SmaaPreset = SmaaPreset::Ultra;
 
 /// Equirectangular HDRI used as the preview backdrop + image-based lighting.
 /// Embedded in the binary so the preview's environment is always available —
@@ -85,7 +103,7 @@ impl Default for MaterialPreviewImage {
     fn default() -> Self {
         Self {
             handle: Handle::default(),
-            size: (512, 512),
+            size: (PREVIEW_RESOLUTION, PREVIEW_RESOLUTION),
         }
     }
 }
@@ -97,9 +115,17 @@ pub enum PreviewShape {
     Cylinder,
     Torus,
     Plane,
+    /// The mesh of the entity whose material is being edited, normalized to the
+    /// primitives' size. Only selectable while that entity exists and has a
+    /// `Mesh3d` — a material authored for a specific model reads very
+    /// differently on a sphere than on the geometry it actually ships on.
+    Selected,
 }
 
 impl PreviewShape {
+    /// The built-in primitives, always available. [`PreviewShape::Selected`] is
+    /// deliberately absent: the picker appends it only when there's a mesh to
+    /// show, so a stale entry can never be chosen.
     pub const ALL: &[PreviewShape] = &[
         PreviewShape::Sphere,
         PreviewShape::Cube,
@@ -115,6 +141,7 @@ impl PreviewShape {
             Self::Cylinder => "Cylinder",
             Self::Torus => "Torus",
             Self::Plane => "Plane",
+            Self::Selected => "Selected Mesh",
         }
     }
 
@@ -126,6 +153,7 @@ impl PreviewShape {
             Self::Cylinder => "cylinder",
             Self::Torus => "circle-dashed",
             Self::Plane => "square",
+            Self::Selected => "polygon",
         }
     }
 }
@@ -189,8 +217,8 @@ fn setup_material_preview(
     orbit: Res<MaterialPreviewOrbit>,
 ) {
     let size = Extent3d {
-        width: 512,
-        height: 512,
+        width: PREVIEW_RESOLUTION,
+        height: PREVIEW_RESOLUTION,
         depth_or_array_layers: 1,
     };
 
@@ -207,7 +235,7 @@ fn setup_material_preview(
 
     commands.insert_resource(MaterialPreviewImage {
         handle: image_handle.clone(),
-        size: (512, 512),
+        size: (PREVIEW_RESOLUTION, PREVIEW_RESOLUTION),
     });
 
     // Decode the embedded HDRI and reproject it into two power-of-two cubes once,
@@ -224,10 +252,22 @@ fn setup_material_preview(
         .spawn((
             Camera3d::default(),
             Hdr,
-            NormalPrepass,
-            DepthPrepass,
-            MotionVectorPrepass,
-            Msaa::Off,
+            (NormalPrepass, DepthPrepass, MotionVectorPrepass),
+            // SMAA rather than MSAA: MSAA only covers geometry edges and would
+            // have to multisample the three prepass targets as well, while SMAA
+            // is a single post pass that also catches the shading and alpha-mask
+            // edges a material preview is full of. It requires MSAA to be off,
+            // which this camera already wanted.
+            //
+            // Grouped into nested tuples (here and for the prepasses above)
+            // because a spawn bundle tops out at 16 elements and this camera was
+            // already sitting on the ceiling.
+            (
+                Msaa::Off,
+                Smaa {
+                    preset: PREVIEW_SMAA_PRESET,
+                },
+            ),
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),
                 order: -5,
@@ -589,23 +629,186 @@ fn update_preview_camera_orbit(
     }
 }
 
-fn swap_preview_shape(
-    orbit: Res<MaterialPreviewOrbit>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut preview_mesh: Query<&mut Mesh3d, With<MaterialPreviewMesh>>,
+/// Half-size the [`PreviewShape::Selected`] mesh is scaled to fit inside, in
+/// world units. Picked to sit between the cube (0.75) and the sphere (1.0) so
+/// switching between a primitive and the real mesh doesn't jump the framing.
+const SELECTED_FIT_RADIUS: f32 = 0.9;
+
+/// What [`swap_preview_shape`] last put on the preview entity, so it only
+/// rebuilds when something actually changed. A plain `orbit.is_changed()` gate
+/// isn't enough any more: with `Selected`, the mesh can change without the
+/// resource being touched (the user picks a different entity in the hierarchy),
+/// and the *fit* can't be computed until the mesh asset finishes loading.
+#[derive(PartialEq)]
+enum AppliedShape {
+    Primitive(PreviewShape),
+    /// `fitted` is false while the asset is still loading — its AABB isn't
+    /// readable yet, so the transform is left at identity and retried.
+    Selected { id: AssetId<Mesh>, fitted: bool },
+}
+
+/// The scene mesh [`PreviewShape::Selected`] draws, tracked once per change so
+/// both the swap system and the shape picker agree on whether there is one.
+///
+/// It can't just read `MaterialEditorState::editing_entity`: opening a material
+/// for editing puts it in a **document tab**, which is asset mode — the graph is
+/// loaded from the `.material` path and `editing_entity` is deliberately cleared.
+/// The hierarchy selection is what survives that, so the search starts there.
+#[derive(Resource, Default)]
+pub struct MaterialPreviewSource {
+    /// The mesh entity the handle came from. Kept so the search re-runs when
+    /// that entity is despawned without the selection itself changing.
+    pub entity: Option<Entity>,
+    pub mesh: Option<Handle<Mesh>>,
+}
+
+/// Find the scene mesh that best represents the material being edited: the
+/// editor's own `editing_entity` when there is one (scene mode picks the exact
+/// mesh for the active tab), otherwise a mesh in the selected entity's subtree —
+/// preferring one that actually uses the material being edited, since a model
+/// root's subtree usually holds several.
+fn find_source_mesh(
+    editor: &MaterialEditorState,
+    selection: Option<&EditorSelection>,
+    meshes: &Query<(&Mesh3d, Option<&MaterialRef>), Without<MaterialPreviewMesh>>,
+    children: &Query<&Children>,
+) -> Option<(Entity, Handle<Mesh>)> {
+    let want = match &editor.edit_mode {
+        MaterialEditMode::Existing { path, .. } | MaterialEditMode::EditingFile { path } => {
+            Some(path.as_str())
+        }
+        _ => None,
+    };
+
+    let mut queue: std::collections::VecDeque<Entity> = editor.editing_entity.into_iter().collect();
+    queue.extend(selection.map(|s| s.get_all()).unwrap_or_default());
+
+    let mut fallback = None;
+    let mut visited = std::collections::HashSet::new();
+    while let Some(e) = queue.pop_front() {
+        if !visited.insert(e) {
+            continue;
+        }
+        if let Ok((mesh, mat)) = meshes.get(e) {
+            let matches = want.is_some_and(|w| mat.is_some_and(|m| m.0 == w));
+            if matches {
+                return Some((e, mesh.0.clone()));
+            }
+            fallback.get_or_insert((e, mesh.0.clone()));
+        }
+        if let Ok(kids) = children.get(e) {
+            queue.extend(kids.iter());
+        }
+    }
+    fallback
+}
+
+fn track_preview_source(
+    editor: Res<MaterialEditorState>,
+    selection: Option<Res<EditorSelection>>,
+    meshes: Query<(&Mesh3d, Option<&MaterialRef>), Without<MaterialPreviewMesh>>,
+    children: Query<&Children>,
+    mut source: ResMut<MaterialPreviewSource>,
+    mut orbit: ResMut<MaterialPreviewOrbit>,
 ) {
-    if !orbit.is_changed() {
+    // The subtree walk is cheap but not free, so only redo it when something it
+    // depends on moved — or when the mesh we settled on has gone away.
+    let stale = source.entity.is_some_and(|e| meshes.get(e).is_err());
+    let changed = editor.is_changed() || selection.as_ref().is_some_and(|s| s.is_changed());
+    if !changed && !stale {
         return;
     }
-    for mut mesh3d in preview_mesh.iter_mut() {
-        let new_mesh = match orbit.shape {
-            PreviewShape::Sphere => Sphere::new(1.0).mesh().ico(5).unwrap(),
-            PreviewShape::Cube => Cuboid::new(1.5, 1.5, 1.5).into(),
-            PreviewShape::Cylinder => Cylinder::new(0.8, 2.0).into(),
-            PreviewShape::Torus => Torus::new(0.5, 1.0).into(),
-            PreviewShape::Plane => Plane3d::new(Vec3::Y, Vec2::splat(1.5)).into(),
-        };
-        mesh3d.0 = meshes.add(new_mesh);
+
+    let found = find_source_mesh(&editor, selection.as_deref(), &meshes, &children);
+    let (entity, mesh) = match found {
+        Some((e, m)) => (Some(e), Some(m)),
+        None => (None, None),
+    };
+    if source.entity == entity && source.mesh.as_ref().map(|m| m.id()) == mesh.as_ref().map(|m| m.id())
+    {
+        return;
+    }
+    let arrived = mesh.is_some();
+    source.entity = entity;
+    source.mesh = mesh;
+
+    // A new mesh under the editor re-arms the default: the material's real
+    // geometry is what you want to judge it on, so every fresh selection starts
+    // there. Picking a primitive still sticks for as long as that mesh is the
+    // one being edited — it's only a *different* mesh arriving that resets it.
+    if arrived {
+        orbit.shape = PreviewShape::Selected;
+    }
+}
+
+fn swap_preview_shape(
+    mut orbit: ResMut<MaterialPreviewOrbit>,
+    source: Res<MaterialPreviewSource>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut preview_mesh: Query<(&mut Mesh3d, &mut Transform), With<MaterialPreviewMesh>>,
+    mut applied: Local<Option<AppliedShape>>,
+) {
+    // The selected mesh can disappear under us (deselect, despawn, or opening a
+    // standalone `.material` with nothing selected). Fall back to the sphere
+    // rather than freezing on the last mesh we happened to see.
+    let selected = (orbit.shape == PreviewShape::Selected)
+        .then(|| source.mesh.clone())
+        .flatten();
+    if orbit.shape == PreviewShape::Selected && selected.is_none() {
+        orbit.shape = PreviewShape::Sphere;
+    }
+
+    for (mut mesh3d, mut transform) in preview_mesh.iter_mut() {
+        match &selected {
+            Some(handle) => {
+                let id = handle.id();
+                // Re-run while `fitted` is false: the AABB only becomes readable
+                // once the asset has loaded.
+                if *applied == (Some(AppliedShape::Selected { id, fitted: true })) {
+                    continue;
+                }
+                if mesh3d.0.id() != id {
+                    mesh3d.0 = handle.clone();
+                }
+                // Normalize into the primitives' size band and recentre on the
+                // mesh's own centroid — an imported mesh can be authored at any
+                // scale and pivoted anywhere, and the orbit camera's distance
+                // range (1.5–10) assumes a ~1-unit subject.
+                let fitted = match meshes.get(handle).and_then(|m| m.compute_aabb()) {
+                    Some(aabb) => {
+                        let extent = Vec3::from(aabb.half_extents).max_element().max(1e-6);
+                        let scale = SELECTED_FIT_RADIUS / extent;
+                        *transform = Transform::from_scale(Vec3::splat(scale))
+                            .with_translation(-Vec3::from(aabb.center) * scale);
+                        true
+                    }
+                    None => {
+                        *transform = Transform::default();
+                        false
+                    }
+                };
+                *applied = Some(AppliedShape::Selected { id, fitted });
+            }
+            None => {
+                if *applied == Some(AppliedShape::Primitive(orbit.shape)) {
+                    continue;
+                }
+                let new_mesh = match orbit.shape {
+                    PreviewShape::Cube => Cuboid::new(1.5, 1.5, 1.5).into(),
+                    PreviewShape::Cylinder => Cylinder::new(0.8, 2.0).into(),
+                    PreviewShape::Torus => Torus::new(0.5, 1.0).into(),
+                    PreviewShape::Plane => Plane3d::new(Vec3::Y, Vec2::splat(1.5)).into(),
+                    // `Selected` can't reach here (it fell back above), so the
+                    // sphere doubles as its guard.
+                    PreviewShape::Sphere | PreviewShape::Selected => {
+                        Sphere::new(1.0).mesh().ico(5).unwrap()
+                    }
+                };
+                mesh3d.0 = meshes.add(new_mesh);
+                *transform = Transform::default();
+                *applied = Some(AppliedShape::Primitive(orbit.shape));
+            }
+        }
     }
 }
 
@@ -846,13 +1049,16 @@ impl Plugin for MaterialPreviewPlugin {
             .init_resource::<MaterialPreviewImage>()
             .init_resource::<MaterialPreviewTracker>()
             .init_resource::<MaterialPreviewEnv>()
+            .init_resource::<MaterialPreviewSource>()
             .add_systems(PostStartup, setup_material_preview)
             .add_systems(
                 Update,
                 (
                     sync_preview_camera_active,
                     update_preview_camera_orbit,
-                    swap_preview_shape,
+                    // Ordered: the swap reads the source the tracker just wrote,
+                    // so a fresh selection shows up this frame instead of next.
+                    (track_preview_source, swap_preview_shape).chain(),
                     sync_preview_backdrop,
                     update_preview_material,
                 ),

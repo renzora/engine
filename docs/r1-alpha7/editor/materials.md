@@ -219,12 +219,14 @@ end
 
 The **Preview** panel renders your material on a test shape with an orbit camera — **drag** to rotate, **right-drag** to pan, **scroll** to zoom. Its toolbar gives you:
 
-- **Shape selector** — swap between sphere, cube, cylinder, torus, and plane.
+- **Shape selector** — swap between sphere, cube, cylinder, torus, and plane. When you reached the editor by selecting a mesh (in the hierarchy or the viewport), the list gains a **Selected Mesh** entry at the top that previews the material on that object's own geometry instead of a primitive — the honest test for anything authored around a specific model's UVs, so it's what the preview picks by default. The mesh is scaled and recentred to fit the same framing as the primitives, so switching between them doesn't move the camera. Choosing a primitive sticks while you keep editing that object; selecting a different one starts you back on its own mesh. The entry disappears entirely when there's no mesh behind the material — a `.material` opened from the asset browser with nothing selected in the scene — and the preview falls back to the sphere.
 - **Auto-rotate** — spin the shape slowly so you can judge it from every angle.
 - **Background** — flip the flat backdrop between dark and light.
 - **Backdrop** — a switch that turns on a built-in **HDRI environment**. With it on, the preview shows a real outdoor sky behind the shape and lights the material with image-based reflections — the quickest way to see how metal, glass, or glossy surfaces actually catch the light. Turn it off to fall back to the plain dark/light background.
 
 > The HDRI is built into the editor, so the backdrop works in any project with nothing to set up.
+
+The preview renders anti-aliased, with SMAA on top of a render target larger than the panel displays — so silhouettes stay clean and a normal map's specular doesn't sparkle at you while you're trying to judge it. There's nothing to switch on; it's how the panel always draws.
 
 ## Editing the compiled shader by hand
 

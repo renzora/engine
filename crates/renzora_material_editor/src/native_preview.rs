@@ -15,7 +15,7 @@ use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu, toggle_switch};
 
-use crate::preview::{MaterialPreviewImage, MaterialPreviewOrbit, PreviewShape};
+use crate::preview::{MaterialPreviewImage, MaterialPreviewOrbit, MaterialPreviewSource, PreviewShape};
 use crate::MaterialEditorState;
 
 pub struct NativeMaterialPreview;
@@ -208,6 +208,7 @@ fn shape_combo_open(
     q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<ShapeCombo>, Changed<Interaction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
+    source: Option<Res<MaterialPreviewSource>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
@@ -216,10 +217,21 @@ fn shape_combo_open(
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
     let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let kids: Vec<Entity> = PreviewShape::ALL
-        .iter()
-        .map(|&shape| {
-            menu_item(&mut commands, &fonts, "cube", shape.label(), move |w| {
+
+    // The selected object's own geometry leads the list when there is one — it's
+    // also what the preview defaults to, so the menu's order matches the
+    // preview's own preference rather than burying it under the primitives.
+    let has_selected_mesh = source.is_some_and(|s| s.mesh.is_some());
+    let shapes: Vec<PreviewShape> = has_selected_mesh
+        .then_some(PreviewShape::Selected)
+        .into_iter()
+        .chain(PreviewShape::ALL.iter().copied())
+        .collect();
+
+    let kids: Vec<Entity> = shapes
+        .into_iter()
+        .map(|shape| {
+            menu_item(&mut commands, &fonts, shape.icon(), shape.label(), move |w| {
                 if let Some(mut o) = w.get_resource_mut::<MaterialPreviewOrbit>() {
                     o.shape = shape;
                 }
