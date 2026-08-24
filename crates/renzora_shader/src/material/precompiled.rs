@@ -54,6 +54,11 @@ pub struct CompiledMaterialMeta {
     pub requires_transmission: bool,
     pub texture_bindings: Vec<TextureBinding>,
     pub parameters: Vec<MaterialParam>,
+    /// `(node id, first line, last line)` — which graph node authored which
+    /// lines of the shader, so a compile error can point at a node. Empty
+    /// for artifacts written before this field existed.
+    #[serde(default)]
+    pub node_line_map: Vec<(u64, u32, u32)>,
 }
 
 /// Filesystem path of the legacy `.wgsl` for a `.material` at
@@ -130,6 +135,7 @@ pub fn save_compiled(
             requires_transmission: result.requires_transmission,
             texture_bindings: result.texture_bindings,
             parameters: result.parameters,
+            node_line_map: result.node_lines,
         },
     });
     graph.wgsl_path = None;

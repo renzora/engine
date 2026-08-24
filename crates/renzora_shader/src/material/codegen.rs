@@ -64,6 +64,12 @@ pub struct CompileResult {
     /// is the master's authored default value; material instances supply
     /// per-instance overrides keyed by name.
     pub parameters: Vec<MaterialParam>,
+    /// Which node authored which lines of `fragment_shader`:
+    /// `(node id, first line, last line)`, 1-based, sorted by node id.
+    /// Header and helper lines appear in no range — an error there is an
+    /// engine bug, not a user bug. This is what lets compile errors point
+    /// at a node instead of a line nobody can see.
+    pub node_lines: Vec<(u64, u32, u32)>,
 }
 
 /// One named graph-boundary parameter discovered by the compiler.
@@ -174,6 +180,15 @@ struct Ctx<'a> {
     /// name appears on multiple nodes.
     parameter_slots: HashMap<String, usize>,
     warnings: Vec<String>,
+    /// Node whose lines are currently being emitted. Save/restored around
+    /// `gen_node` — `input()` recurses upstream and would otherwise leave a
+    /// node's own lines attributed to whatever it last pulled from.
+    current_node: NodeId,
+    /// `(node, 0-based index into `lines`)` for every emitted body line.
+    body_spans: Vec<(NodeId, u32)>,
+    /// `(node, 0-based start line in the concatenated prelude, line count)`.
+    prelude_spans: Vec<(NodeId, u32, u32)>,
+    prelude_line_count: u32,
 }
 
 impl<'a> Ctx<'a> {
@@ -225,6 +240,10 @@ impl<'a> Ctx<'a> {
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
             warnings: Vec::new(),
+            current_node: 0,
+            body_spans: Vec::new(),
+            prelude_spans: Vec::new(),
+            prelude_line_count: 0,
         }
     }
 
@@ -353,7 +372,20 @@ impl<'a> Ctx<'a> {
     }
 
     fn emit(&mut self, line: String) {
+        self.body_spans.push((self.current_node, self.lines.len() as u32));
         self.lines.push(line);
+    }
+
+    /// Push a module-scope chunk, recording which node authored it and how
+    /// many lines it adds. `module_prelude` bypasses `emit`, and it is where
+    /// `custom/code` snippets live — the lines users most often break.
+    fn emit_prelude(&mut self, chunk: String) {
+        let lines =
+            chunk.matches('\n').count() as u32 + u32::from(!chunk.ends_with('\n'));
+        self.prelude_spans
+            .push((self.current_node, self.prelude_line_count, lines));
+        self.prelude_line_count += lines;
+        self.module_prelude.push(chunk);
     }
 
     /// Emit a triplanar-sampled FBM-family noise. The shared shape:
@@ -527,6 +559,12 @@ impl<'a> Ctx<'a> {
             return;
         }
         self.processed.insert(node.id);
+        let prev_node = std::mem::replace(&mut self.current_node, node.id);
+        self.gen_node_body(node);
+        self.current_node = prev_node;
+    }
+
+    fn gen_node_body(&mut self, node: &MaterialNode) {
         let id = node.id;
 
         match node.node_type.as_str() {
@@ -2085,7 +2123,7 @@ impl<'a> Ctx<'a> {
                 // generated helper. Each node id is unique and generated once,
                 // so the helper is emitted exactly once with no dedup needed.
                 let fn_name = format!("mat_custom_{id}");
-                self.module_prelude.push(format!(
+                self.emit_prelude(format!(
                     "fn {fn_name}(a: vec4<f32>, b: vec4<f32>, c: vec4<f32>, d: vec4<f32>) -> vec4<f32> {{\n    var result: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 1.0);\n    {code}\n    return result;\n}}"
                 ));
                 let res = self.next_var("custom");
@@ -2442,7 +2480,7 @@ impl<'a> Ctx<'a> {
                                 self.compiling_functions.insert(fn_name.clone());
                                 let fn_wgsl = self.compile_function_body(mat_fn);
                                 self.compiling_functions.remove(&fn_name);
-                                self.module_prelude.push(fn_wgsl);
+                                self.emit_prelude(fn_wgsl);
                                 self.emitted_functions.insert(fn_name.clone());
                             }
                             None => {
@@ -2507,6 +2545,7 @@ pub fn compile_with_functions(
                 warnings: Vec::new(),
                 requires_transmission: false,
                 parameters: Vec::new(),
+                node_lines: Vec::new(),
             };
         }
     };
@@ -2587,7 +2626,7 @@ pub fn compile_with_functions(
     }
 
     // Build the full shader
-    let fragment_shader = match graph.domain {
+    let (fragment_shader, node_lines) = match graph.domain {
         MaterialDomain::Surface | MaterialDomain::Vegetation => {
             build_pbr_shader(&ctx, &resolved, graph.domain)
         }
@@ -2614,6 +2653,7 @@ pub fn compile_with_functions(
         warnings: ctx.warnings,
         requires_transmission,
         parameters: ctx.parameters,
+        node_lines,
     }
 }
 
@@ -2993,7 +3033,58 @@ fn mat_blend(base: vec4<f32>, blnd: vec4<f32>, opacity: f32, mode: i32) -> vec4<
 fn emit_module_prelude(ctx: &Ctx, s: &mut String) {
     for chunk in &ctx.module_prelude {
         s.push_str(chunk);
+        // Chunks carry no trailing newline of their own; without one the
+        // next chunk's `fn` glues onto this chunk's closing brace.
+        if !chunk.ends_with('\n') {
+            s.push('\n');
+        }
     }
+}
+
+/// Merge the per-line spans recorded during emission into per-node absolute
+/// ranges. `prelude_base` / `body_base` are the 1-based absolute lines the
+/// first prelude / body line lands on in the assembled shader; `extra`
+/// covers builder-tail lines (the PbrInput mutation block) whose absolute
+/// positions only the builder knows.
+fn node_line_ranges(
+    ctx: &Ctx,
+    prelude_base: u32,
+    body_base: u32,
+    extra: &[(NodeId, u32, u32)],
+) -> Vec<(u64, u32, u32)> {
+    let mut ranges: HashMap<NodeId, (u32, u32)> = HashMap::new();
+    let mut extend = |node: NodeId, start: u32, end: u32| {
+        let r = ranges.entry(node).or_insert((start, end));
+        r.0 = r.0.min(start);
+        r.1 = r.1.max(end);
+    };
+    for &(node, idx) in &ctx.body_spans {
+        extend(node, body_base + idx, body_base + idx);
+    }
+    for &(node, start, count) in &ctx.prelude_spans {
+        extend(node, prelude_base + start, prelude_base + start + count - 1);
+    }
+    for &(node, start, end) in extra {
+        extend(node, start, end);
+    }
+    let mut ranges: Vec<(u64, u32, u32)> = ranges
+        .into_iter()
+        .map(|(node, (start, end))| (node, start, end))
+        .collect();
+    ranges.sort_unstable();
+    ranges
+}
+
+/// Which node authored `line` (1-based) of the generated shader — the
+/// innermost range containing it, since a node nested inside another's
+/// lines is the more specific answer. `None` for header/helper lines, which
+/// no node authored; an error there is an engine bug, not a user bug.
+pub fn node_for_line(node_lines: &[(u64, u32, u32)], line: u32) -> Option<u64> {
+    node_lines
+        .iter()
+        .filter(|(_, start, end)| *start <= line && line <= *end)
+        .max_by_key(|(_, start, _)| *start)
+        .map(|(node, _, _)| *node)
 }
 
 /// WGSL snippet that aliases mesh-conditional VertexOutput fields. Generated
@@ -3177,7 +3268,7 @@ fn build_pbr_shader(
     ctx: &Ctx,
     resolved: &HashMap<String, String>,
     _domain: MaterialDomain,
-) -> String {
+) -> (String, Vec<(u64, u32, u32)>) {
     let output_node = ctx.graph.output_node().unwrap();
     let output_id = output_node.id;
     // A pin is considered "set" when the user either connected a graph to it
@@ -3235,6 +3326,7 @@ fn build_pbr_shader(
     emit_ext_shader_header(ctx, &mut shader);
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
+    let prelude_base = shader.matches('\n').count() as u32 + 1;
     emit_module_prelude(ctx, &mut shader);
 
     shader.push_str("\n@fragment\n");
@@ -3254,6 +3346,7 @@ fn build_pbr_shader(
     }
 
     // Graph body — runs between the StandardMaterial init and the mutations.
+    let body_base = shader.matches('\n').count() as u32 + 1;
     for line in &ctx.lines {
         shader.push_str(line);
         shader.push('\n');
@@ -3262,42 +3355,43 @@ fn build_pbr_shader(
     // Override pbr_input fields for each pin the user wired up. Disconnected
     // pins leave StandardMaterial's defaults in place, so authors can partially
     // override (e.g. only procedural roughness, keeping base_color from the
-    // StandardMaterial's texture).
+    // StandardMaterial's texture). Each mutation line attributes to the node
+    // feeding the pin — a bad expression fails *here*, not where it was built.
     shader.push_str("\n    // Graph → PbrInput mutations\n");
+    let feeder = |pin: &str| {
+        ctx.graph
+            .connection_to(output_id, pin)
+            .map(|c| c.from_node)
+            .unwrap_or(output_id)
+    };
+    let mut mutations: Vec<(NodeId, String)> = Vec::new();
     if is_connected("base_color") {
         let e = resolved.get("base_color").unwrap();
         let e = scaled("base_color", e, 4);
-        shader.push_str(&format!("    pbr_input.material.base_color = {e};\n"));
+        mutations.push((feeder("base_color"), format!("    pbr_input.material.base_color = {e};")));
     }
     if is_connected("metallic") {
         let e = resolved.get("metallic").unwrap();
         let e = scaled("metallic", e, 1);
-        shader.push_str(&format!("    pbr_input.material.metallic = {e};\n"));
+        mutations.push((feeder("metallic"), format!("    pbr_input.material.metallic = {e};")));
     }
     if is_connected("roughness") {
         let e = resolved.get("roughness").unwrap();
         let e = scaled("roughness", e, 1);
-        shader.push_str(&format!(
-            "    pbr_input.material.perceptual_roughness = {e};\n"
-        ));
+        mutations.push((feeder("roughness"), format!("    pbr_input.material.perceptual_roughness = {e};")));
     }
     if is_connected("emissive") {
         let e = resolved.get("emissive").unwrap();
         let e = scaled("emissive", e, 3);
-        shader.push_str(&format!(
-            "    pbr_input.material.emissive = vec4<f32>({e}, 1.0);\n"
-        ));
+        mutations.push((feeder("emissive"), format!("    pbr_input.material.emissive = vec4<f32>({e}, 1.0);")));
     }
     if is_connected("ao") {
         let e = resolved.get("ao").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.diffuse_occlusion = vec3<f32>({e});\n"
-        ));
+        mutations.push((feeder("ao"), format!("    pbr_input.diffuse_occlusion = vec3<f32>({e});")));
     }
     if is_connected("normal") {
         let e = resolved.get("normal").unwrap();
-        shader.push_str(&format!("    pbr_input.N = normalize({e});\n"));
-        shader.push_str("    pbr_input.world_normal = pbr_input.N;\n");
+        mutations.push((feeder("normal"), format!("    pbr_input.N = normalize({e});\n    pbr_input.world_normal = pbr_input.N;")));
     }
     if is_connected("alpha") {
         let e = resolved.get("alpha").unwrap();
@@ -3305,42 +3399,35 @@ fn build_pbr_shader(
         // on this pin. A clear-coat authored at 0.243 that ignores its factor
         // renders solid and hides whatever it was meant to sit over.
         let e = scaled("alpha", e, 1);
-        shader.push_str(&format!("    pbr_input.material.base_color.a = {e};\n"));
+        mutations.push((feeder("alpha"), format!("    pbr_input.material.base_color.a = {e};")));
     }
     if is_connected("reflectance") {
         let e = resolved.get("reflectance").unwrap();
-        shader.push_str(&format!("    pbr_input.material.reflectance = {e};\n"));
+        mutations.push((feeder("reflectance"), format!("    pbr_input.material.reflectance = {e};")));
     }
-
     // ── Transmission (water, glass, ice) ──────────────────────────────
     // `specular_transmission > 0` on the CPU-side StandardMaterial is what
     // triggers Bevy to schedule its transmissive pass. The resolver takes
     // care of setting the CPU-side flag (see `requires_transmission`).
     if is_connected("specular_transmission") {
         let e = resolved.get("specular_transmission").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.specular_transmission = {e};\n"
-        ));
+        mutations.push((feeder("specular_transmission"), format!("    pbr_input.material.specular_transmission = {e};")));
     }
     if is_connected("diffuse_transmission") {
         let e = resolved.get("diffuse_transmission").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.diffuse_transmission = {e};\n"
-        ));
+        mutations.push((feeder("diffuse_transmission"), format!("    pbr_input.material.diffuse_transmission = {e};")));
     }
     if is_connected("thickness") {
         let e = resolved.get("thickness").unwrap();
-        shader.push_str(&format!("    pbr_input.material.thickness = {e};\n"));
+        mutations.push((feeder("thickness"), format!("    pbr_input.material.thickness = {e};")));
     }
     if is_connected("ior") {
         let e = resolved.get("ior").unwrap();
-        shader.push_str(&format!("    pbr_input.material.ior = {e};\n"));
+        mutations.push((feeder("ior"), format!("    pbr_input.material.ior = {e};")));
     }
     if is_connected("attenuation_distance") {
         let e = resolved.get("attenuation_distance").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.attenuation_distance = {e};\n"
-        ));
+        mutations.push((feeder("attenuation_distance"), format!("    pbr_input.material.attenuation_distance = {e};")));
     }
     // The colour light attenuates *toward* over that distance. Without it the
     // distance pin was half a control: thick glass got darker but never took
@@ -3355,13 +3442,11 @@ fn build_pbr_shader(
     // ── Clearcoat (car paint, lacquer) ────────────────────────────────
     if is_connected("clearcoat") {
         let e = resolved.get("clearcoat").unwrap();
-        shader.push_str(&format!("    pbr_input.material.clearcoat = {e};\n"));
+        mutations.push((feeder("clearcoat"), format!("    pbr_input.material.clearcoat = {e};")));
     }
     if is_connected("clearcoat_roughness") {
         let e = resolved.get("clearcoat_roughness").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.clearcoat_perceptual_roughness = {e};\n"
-        ));
+        mutations.push((feeder("clearcoat_roughness"), format!("    pbr_input.material.clearcoat_perceptual_roughness = {e};")));
     }
 
     // ── Anisotropy (brushed metal, hair) ──────────────────────────────
@@ -3369,15 +3454,19 @@ fn build_pbr_shader(
     // takes the rotation angle as a scalar (radians), so we build the vec2.
     if is_connected("anisotropy_strength") {
         let e = resolved.get("anisotropy_strength").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.anisotropy_strength = {e};\n"
-        ));
+        mutations.push((feeder("anisotropy_strength"), format!("    pbr_input.material.anisotropy_strength = {e};")));
     }
     if is_connected("anisotropy_rotation") {
         let e = resolved.get("anisotropy_rotation").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.anisotropy_rotation = vec2<f32>(cos({e}), sin({e}));\n"
-        ));
+        mutations.push((feeder("anisotropy_rotation"), format!("    pbr_input.material.anisotropy_rotation = vec2<f32>(cos({e}), sin({e}));")));
+    }
+
+    let mut extra: Vec<(NodeId, u32, u32)> = Vec::new();
+    for (node, text) in &mutations {
+        let start = shader.matches('\n').count() as u32 + 1;
+        shader.push_str(text);
+        shader.push('\n');
+        extra.push((*node, start, start + text.matches('\n').count() as u32));
     }
 
     // Run alpha_discard before lighting — this is what bevy_pbr::pbr.wgsl
@@ -3395,10 +3484,13 @@ fn build_pbr_shader(
     shader.push_str("    return out;\n");
     shader.push_str("}\n");
 
-    shader
+    (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
 }
 
-fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
+fn build_terrain_layer_shader(
+    ctx: &Ctx,
+    resolved: &HashMap<String, String>,
+) -> (String, Vec<(u64, u32, u32)>) {
     let base_color = resolved
         .get("base_color")
         .cloned()
@@ -3412,6 +3504,7 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
     shader.push_str("#import bevy_pbr::mesh_view_bindings::globals\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
+    let prelude_base = shader.matches('\n').count() as u32 + 1;
     emit_module_prelude(ctx, &mut shader);
 
     // layer_main: returns base color
@@ -3422,19 +3515,32 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
     // Terrain has explicit UV; vertex_color isn't meaningful here so use white.
     shader.push_str("    let mat_uv = uv;\n");
     shader.push_str("    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n");
+    let body_base = shader.matches('\n').count() as u32 + 1;
     for line in &ctx.lines {
         shader.push_str(line);
         shader.push('\n');
     }
+    let output_id = ctx.graph.output_node().unwrap().id;
+    let feeder = |pin: &str| {
+        ctx.graph
+            .connection_to(output_id, pin)
+            .map(|c| c.from_node)
+            .unwrap_or(output_id)
+    };
+    let mut extra: Vec<(NodeId, u32, u32)> = Vec::new();
+    let start = shader.matches('\n').count() as u32 + 1;
     shader.push_str(&format!("    return {base_color};\n"));
+    extra.push((feeder("base_color"), start, start));
     shader.push_str("}\n\n");
 
     // layer_pbr: returns (metallic, roughness)
     shader.push_str("fn layer_pbr(uv: vec2<f32>, world_pos: vec3<f32>) -> vec2<f32> {\n");
+    let start = shader.matches('\n').count() as u32 + 1;
     shader.push_str(&format!("    return vec2<f32>({metallic}, {roughness});\n"));
+    extra.push((feeder("metallic"), start, start));
     shader.push_str("}\n");
 
-    shader
+    (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
 }
 
 /// Unlit domain uses the same extension-hook skeleton as Surface. The key
@@ -3442,7 +3548,10 @@ fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> 
 /// base — that makes `apply_pbr_lighting` return `base_color` unchanged,
 /// skipping diffuse / specular / IBL. The graph's "color" pin becomes the
 /// material's base_color; "alpha" drives alpha.
-fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
+fn build_unlit_shader(
+    ctx: &Ctx,
+    resolved: &HashMap<String, String>,
+) -> (String, Vec<(u64, u32, u32)>) {
     let output_node = ctx.graph.output_node().unwrap();
     let output_id = output_node.id;
     let pin_set = |pin: &str| {
@@ -3456,6 +3565,7 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     emit_ext_shader_header(ctx, &mut shader);
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
+    let prelude_base = shader.matches('\n').count() as u32 + 1;
     emit_module_prelude(ctx, &mut shader);
 
     shader.push_str("\n@fragment\n");
@@ -3463,6 +3573,7 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     shader.push_str("    var pbr_input = pbr_input_from_standard_material(in, is_front);\n");
     shader.push_str(&fragment_input_aliases());
 
+    let body_base = shader.matches('\n').count() as u32 + 1;
     for line in &ctx.lines {
         shader.push_str(line);
         shader.push('\n');
@@ -3472,13 +3583,24 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     // base has `unlit = true`, `apply_pbr_lighting` returns this value
     // unmodified (no lighting math applied) — the fastest path for HUD /
     // debug viz / stylised materials.
+    let feeder = |pin: &str| {
+        ctx.graph
+            .connection_to(output_id, pin)
+            .map(|c| c.from_node)
+            .unwrap_or(output_id)
+    };
+    let mut extra: Vec<(NodeId, u32, u32)> = Vec::new();
     if color_connected {
         let e = resolved.get("color").unwrap();
+        let start = shader.matches('\n').count() as u32 + 1;
         shader.push_str(&format!("    pbr_input.material.base_color = {e};\n"));
+        extra.push((feeder("color"), start, start));
     }
     if alpha_connected {
         let e = resolved.get("alpha").unwrap();
+        let start = shader.matches('\n').count() as u32 + 1;
         shader.push_str(&format!("    pbr_input.material.base_color.a = {e};\n"));
+        extra.push((feeder("alpha"), start, start));
     }
 
     // Match bevy_pbr::pbr.wgsl — alpha_discard handles OPAQUE/MASK before lighting.
@@ -3490,7 +3612,7 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
     shader.push_str("    return out;\n");
     shader.push_str("}\n");
 
-    shader
+    (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
 }
 
 fn build_vegetation_vertex_shader(_ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
@@ -3786,5 +3908,54 @@ mod tests {
         let shader = compile(&graph).fragment_shader;
         assert!(!shader.contains("calculate_tbn_mikktspace"));
         assert!(!shader.contains("in.world_tangent"));
+    }
+
+    /// 1-based line of the first line containing `needle`.
+    fn line_of(source: &str, needle: &str) -> u32 {
+        source
+            .lines()
+            .position(|l| l.contains(needle))
+            .map(|i| i as u32 + 1)
+            .unwrap_or_else(|| panic!("'{needle}' not in shader:\n{source}"))
+    }
+
+    #[test]
+    fn custom_code_nodes_map_their_lines_back() {
+        let mut graph = MaterialGraph::new("Map", MaterialDomain::Surface);
+        let first = graph.add_node("custom/code", [0.0, 0.0]);
+        graph
+            .get_node_mut(first)
+            .unwrap()
+            .input_values
+            .insert(
+                "code".to_string(),
+                PinValue::String("result = vec4<f32>(1.0, 0.0, 0.0, 1.0);".to_string()),
+            );
+        let second = graph.add_node("custom/code", [100.0, 0.0]);
+        graph
+            .get_node_mut(second)
+            .unwrap()
+            .input_values
+            .insert("code".to_string(), PinValue::String("result = a;".to_string()));
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(first, "result", second, "a");
+        graph.connect(second, "result", output_id, "base_color");
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+
+        // Two helpers, each starting on its own line — a missing separator
+        // would glue the second `fn` onto the first's closing brace.
+        assert!(result.fragment_shader.contains(&format!("fn mat_custom_{first}(")));
+        assert!(result.fragment_shader.contains(&format!("\nfn mat_custom_{second}(")));
+
+        let first_line = line_of(&result.fragment_shader, "result = vec4<f32>(1.0, 0.0, 0.0, 1.0);");
+        let second_line = line_of(&result.fragment_shader, "result = a;");
+        assert_eq!(node_for_line(&result.node_lines, first_line), Some(first));
+        assert_eq!(node_for_line(&result.node_lines, second_line), Some(second));
+
+        // The PbrInput mutation attributes to the node wired into the pin.
+        let mutation_line = line_of(&result.fragment_shader, "pbr_input.material.base_color = ");
+        assert_eq!(node_for_line(&result.node_lines, mutation_line), Some(second));
     }
 }

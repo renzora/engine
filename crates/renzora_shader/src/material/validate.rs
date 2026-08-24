@@ -3,11 +3,20 @@
 
 use bevy::prelude::*;
 use bevy::shader::{Shader, ShaderImport};
-use naga_oil::compose::{Composer, NagaModuleDescriptor, ShaderDefValue, ShaderType};
+use naga_oil::compose::{
+    Composer, ComposerError, ComposerErrorInner, ErrSource, NagaModuleDescriptor,
+    ShaderDefValue, ShaderType,
+};
 use renzora::content_problems::{ContentProblem, ProblemSeverity};
 use std::collections::HashMap;
 
 use super::codegen::CompileResult;
+
+/// naga_oil tags composed-module spans with the source-module index in the
+/// high bits (`compose/mod.rs` — private there, so mirrored here). Index 0 is
+/// the top-level generated source; anything else is a bevy_pbr library,
+/// whose errors are engine bugs, not user bugs.
+const SPAN_SHIFT: usize = 21;
 
 #[derive(Debug, Clone)]
 pub struct ValidationError {
@@ -16,6 +25,10 @@ pub struct ValidationError {
     pub defines: String,
     /// codespan-rendered diagnostic against the composed shader source.
     pub message: String,
+    /// 1-based line in the *generated* fragment shader, when the span points
+    /// at it. `None` for errors inside bevy_pbr's libraries or in
+    /// preprocessor directives — those are engine bugs, not user bugs.
+    pub line: Option<u32>,
 }
 
 impl std::fmt::Display for ValidationError {
@@ -71,6 +84,7 @@ impl ShaderValidator {
             return Err(vec![ValidationError {
                 defines: String::new(),
                 message: format!("codegen errors: {}", result.errors.join("; ")),
+                line: None,
             }]);
         }
 
@@ -98,26 +112,35 @@ impl ShaderValidator {
     /// reads as three faults. A message only some configurations produce keeps
     /// its `[defines: …]` prefix, because there the configuration *is* the
     /// finding.
-    pub fn problems_for_source(&mut self, source: &str) -> Vec<ContentProblem> {
+    ///
+    /// `node_lines` is the source map `CompileResult::node_lines` produced
+    /// (and the embedded artifact's meta persisted) at codegen time; it is what
+    /// puts an error on a node. Pass `&[]` when the source came from
+    /// somewhere with no map — the problem then carries no line or node.
+    pub fn problems_for_source(
+        &mut self,
+        source: &str,
+        node_lines: &[(u64, u32, u32)],
+    ) -> Vec<ContentProblem> {
         let mut errors = Vec::new();
         for defines in FRAGMENT_CONFIGS {
             self.compile_one(source, defines, &mut errors);
         }
 
         let mut order: Vec<String> = Vec::new();
-        let mut configs: HashMap<String, Vec<String>> = HashMap::new();
+        let mut configs: HashMap<String, (Vec<String>, Option<u32>)> = HashMap::new();
         for error in errors {
             let seen = configs.entry(error.message.clone()).or_insert_with(|| {
                 order.push(error.message.clone());
-                Vec::new()
+                (Vec::new(), error.line)
             });
-            seen.push(error.defines);
+            seen.0.push(error.defines);
         }
 
         order
             .into_iter()
             .map(|message| {
-                let seen = &configs[&message];
+                let (seen, line) = &configs[&message];
                 let message = if seen.len() == FRAGMENT_CONFIGS.len() {
                     message
                 } else {
@@ -126,7 +149,8 @@ impl ShaderValidator {
                 ContentProblem {
                     severity: ProblemSeverity::Error,
                     message,
-                    line: None,
+                    line: line.map(|l| l as usize),
+                    node_id: line.and_then(|l| super::codegen::node_for_line(node_lines, l)),
                 }
             })
             .collect()
@@ -153,16 +177,55 @@ impl ShaderValidator {
                     errors.push(ValidationError {
                         defines: label(),
                         // Debug dump — validation errors have no `emit_to_string`.
+                        // Unreachable in practice: `make_naga_module` already
+                        // validated the composed module, so its own error
+                        // (with a decodable span) fires first. No line here.
                         message: format!("{err:?}"),
+                        line: None,
                     });
                 }
             }
             Err(err) => errors.push(ValidationError {
                 defines: label(),
+                line: error_line(&err, &self.composer),
                 message: err.emit_to_string(&self.composer),
             }),
         }
     }
+}
+
+/// The 1-based line a `ComposerError` points at in the *generated* source —
+/// decodable because naga_oil's preprocessor is line-preserving, so a line in
+/// the preprocessed text is the same line in what codegen emitted.
+///
+/// Only `ErrSource::Constructing` (the top-level generated shader) is
+/// decodable. Errors inside imported bevy_pbr modules, and preprocessor
+/// errors on directive lines, return `None`: they are engine bugs, and a
+/// node attribution would send the user hunting in the wrong place.
+fn error_line(err: &ComposerError, composer: &Composer) -> Option<u32> {
+    let ErrSource::Constructing { .. } = err.source else {
+        return None;
+    };
+    let source = err.source.source(composer);
+    let range = match &err.inner {
+        ComposerErrorInner::WgslParseError(parse) => {
+            parse.labels().next().and_then(|(span, _)| span.to_range())
+        }
+        ComposerErrorInner::ShaderValidationError(with_span) => {
+            with_span.spans().last().and_then(|(span, _)| span.to_range())
+        }
+        _ => None,
+    }?;
+    if range.start >> SPAN_SHIFT != 0 {
+        return None;
+    }
+    let byte = (range.start & ((1 << SPAN_SHIFT) - 1)).saturating_sub(err.source.offset());
+    Some(line_of_byte(&source, byte))
+}
+
+/// 1-based line number of byte offset `byte` in `source`.
+fn line_of_byte(source: &str, byte: usize) -> u32 {
+    source[..byte.min(source.len())].matches('\n').count() as u32 + 1
 }
 
 /// What `PipelineCache` and `MeshPipeline` put in front of every material
@@ -441,5 +504,47 @@ mod tests {
                     .join("\n")
             )
         });
+    }
+
+    /// A broken `custom/code` snippet must point at its own line — and,
+    /// through the source map, at its own node.
+    #[test]
+    fn a_broken_snippet_attributes_line_and_node() {
+        use crate::material::graph::PinValue;
+
+        let mut graph = MaterialGraph::new("attr", crate::material::graph::MaterialDomain::Surface);
+        let node = graph.add_node("custom/code", [0.0, 0.0]);
+        graph
+            .get_node_mut(node)
+            .unwrap()
+            .input_values
+            .insert(
+                "code".to_string(),
+                PinValue::String("result = vec4<f32>(no_such_symbol, 0.0, 0.0, 1.0);".to_string()),
+            );
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(node, "result", output_id, "base_color");
+
+        let result = codegen::compile(&graph);
+        let snippet_line = result
+            .fragment_shader
+            .lines()
+            .position(|l| l.contains("no_such_symbol"))
+            .map(|i| i as u32 + 1)
+            .unwrap();
+
+        let mut validator = validator();
+        let errors = validator
+            .validate(&result)
+            .expect_err("the snippet must fail to compile");
+        assert!(
+            errors.iter().any(|e| e.line == Some(snippet_line)),
+            "no error on the snippet's line {snippet_line}: {errors:?}"
+        );
+
+        let problems = validator.problems_for_source(&result.fragment_shader, &result.node_lines);
+        assert_eq!(problems.len(), 1, "one fault, one row: {problems:?}");
+        assert_eq!(problems[0].line, Some(snippet_line as usize));
+        assert_eq!(problems[0].node_id, Some(node));
     }
 }

@@ -75,6 +75,12 @@ pub struct MaterialCache {
     /// override map and to copy the master's authored defaults into the
     /// instance's parameter buffer. Keyed by master `.material` path.
     master_meta: HashMap<String, MasterMeta>,
+    /// `(node, first line, last line)` source maps from codegen, keyed by
+    /// `.material` path. What lets `report_material_problems` put a compile
+    /// error on a graph node. Sits here rather than in `MasterMeta` because
+    /// the precompiled path reads it from the saved `.material`, not from
+    /// a compile.
+    node_line_maps: HashMap<String, Vec<(u64, u32, u32)>>,
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
@@ -96,6 +102,7 @@ impl MaterialCache {
         self.graph_materials.remove(path);
         self.code_materials.remove(path);
         self.master_meta.remove(path);
+        self.node_line_maps.remove(path);
         self.loaded_paths.remove(path);
     }
 
@@ -145,6 +152,11 @@ enum CompiledMaterial {
         /// itself — the precompiled path compiles at save time, where the
         /// save site owns the warning, so `None` means "not ours to report".
         warnings: Option<Vec<String>>,
+        /// `(node, first line, last line)` — the source map compile errors
+        /// are attributed through. From codegen on the live path, from the
+        /// embedded artifact's meta (or the legacy `.wgsl.meta` sidecar) on
+        /// the precompiled one.
+        node_lines: Vec<(u64, u32, u32)>,
     },
 }
 
@@ -212,7 +224,8 @@ fn report_material_problems(
         else {
             continue;
         };
-        let found = validator.problems_for_source(&source);
+        let node_lines = cache.node_line_maps.get(path).map(Vec::as_slice).unwrap_or(&[]);
+        let found = validator.problems_for_source(&source, node_lines);
         // Logged as well as recorded: the uuid key means this runs once per
         // compile, so the console gets the errors without repeating them every
         // frame, and `runtime_warnings` picks them up for Scene Diagnostics.
@@ -414,7 +427,7 @@ fn resolve_material_refs(
                     ));
                     perf.record_compile_success(path, MaterialKind::Standard, compile_dur);
                 }
-                Some(CompiledMaterial::Graph { handle, parameters, warnings }) => {
+                Some(CompiledMaterial::Graph { handle, parameters, warnings, node_lines }) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
                     // This resolve ran the codegen, so it owns the path's
                     // Warning rows. `None` (precompiled, instance) leaves
@@ -429,6 +442,7 @@ fn resolve_material_refs(
                                     severity: renzora::content_problems::ProblemSeverity::Warning,
                                     message: w.clone(),
                                     line: None,
+                                    node_id: None,
                                 })
                                 .collect(),
                         );
@@ -440,6 +454,7 @@ fn resolve_material_refs(
                         cache
                             .master_meta
                             .insert(path.clone(), MasterMeta { parameters });
+                        cache.node_line_maps.insert(path.clone(), node_lines);
                     }
                     commands
                         .entity(entity)
@@ -464,6 +479,7 @@ fn resolve_material_refs(
                             severity: renzora::content_problems::ProblemSeverity::Error,
                             message: err.clone(),
                             line: None,
+                            node_id: None,
                         }],
                     );
                     commands.entity(entity).try_insert(MaterialResolved {
@@ -750,6 +766,7 @@ fn resolve_material_file(
     // Everything the renderer needs is right here, so codegen never runs.
     if let Some(compiled) = graph.compiled.as_ref() {
         let meta = &compiled.meta;
+        let node_lines = meta.node_line_map.clone();
         let (handle, parameters) = assemble_graph_material(
             path,
             compiled.wgsl.clone(),
@@ -765,7 +782,7 @@ fn resolve_material_file(
             fallback_texture,
             asset_server,
         );
-        return Some(CompiledMaterial::Graph { handle, parameters, warnings: None });
+        return Some(CompiledMaterial::Graph { handle, parameters, warnings: None, node_lines });
     }
 
     // Legacy three-file layout: the shader lives in a `.wgsl` beside this
@@ -773,6 +790,7 @@ fn resolve_material_file(
     // artifact was embedded land here until their next save.
     if let Some(wgsl_path) = graph.wgsl_path.as_deref() {
         if let Some((wgsl, meta)) = load_compiled_from_vfs(wgsl_path, project, reader) {
+            let node_lines = meta.node_line_map.clone();
             let (handle, parameters) = assemble_graph_material(
                 wgsl_path,
                 wgsl,
@@ -790,7 +808,7 @@ fn resolve_material_file(
                 fallback_texture,
                 asset_server,
             );
-            return Some(CompiledMaterial::Graph { handle, parameters, warnings: None });
+            return Some(CompiledMaterial::Graph { handle, parameters, warnings: None, node_lines });
         }
         warn!(
             "Material '{}' references missing or unreadable wgsl '{}'; falling back to live codegen",
@@ -801,7 +819,7 @@ fn resolve_material_file(
     // Nothing compiled to load — a graph that has never been saved, or one
     // whose last compile failed. Run the full graph→WGSL codegen now so it
     // still renders while the user is working on it.
-    let (handle, parameters, warnings) = resolve_graph_material_from_graph(
+    let (handle, parameters, warnings, node_lines) = resolve_graph_material_from_graph(
         path,
         &graph,
         graph_materials,
@@ -810,7 +828,7 @@ fn resolve_material_file(
         fallback_texture,
         asset_server,
     )?;
-    Some(CompiledMaterial::Graph { handle, parameters, warnings: Some(warnings) })
+    Some(CompiledMaterial::Graph { handle, parameters, warnings: Some(warnings), node_lines })
 }
 
 /// Read a `.wgsl` plus its `.wgsl.meta` sidecar via the project VFS. Both
@@ -978,8 +996,9 @@ fn resolve_material_instance_file(
                 load_compiled_from_vfs(wp, project, reader).map(|loaded| (wp.to_string(), loaded))
             }),
         };
-        let (handle, parameters) = if let Some((wgsl_key, (wgsl, meta))) = from_precompiled {
-            assemble_graph_material(
+        let (handle, parameters, node_lines) = if let Some((wgsl_key, (wgsl, meta))) = from_precompiled {
+            let node_lines = meta.node_line_map.clone();
+            let (handle, parameters) = assemble_graph_material(
                 &wgsl_key,
                 wgsl,
                 meta.domain,
@@ -993,11 +1012,12 @@ fn resolve_material_instance_file(
                 shaders,
                 fallback_texture,
                 asset_server,
-            )
+            );
+            (handle, parameters, node_lines)
         } else {
             // Warnings drop here: the console already has them, and the panel
             // hears them under the master's own path when it resolves.
-            let (handle, parameters, _) = resolve_graph_material_from_graph(
+            let (handle, parameters, _, node_lines) = resolve_graph_material_from_graph(
                 &master_fs_path,
                 &master_graph,
                 graph_materials,
@@ -1006,12 +1026,13 @@ fn resolve_material_instance_file(
                 fallback_texture,
                 asset_server,
             )?;
-            (handle, parameters)
+            (handle, parameters, node_lines)
         };
         cache.graph_materials.insert(master_key.clone(), handle);
         cache
             .master_meta
             .insert(master_key.clone(), MasterMeta { parameters });
+        cache.node_line_maps.insert(master_key.clone(), node_lines);
     }
 
     // 2. Pull the master GraphMaterial out of the asset store. We can't
@@ -1039,6 +1060,7 @@ fn resolve_material_instance_file(
         // doesn't accidentally insert a stale entry under the instance path.
         parameters: Vec::new(),
         warnings: None,
+        node_lines: Vec::new(),
     })
 }
 
@@ -1061,7 +1083,7 @@ fn resolve_graph_material_from_graph(
     _shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
-) -> Option<(Handle<GraphMaterial>, Vec<MaterialParam>, Vec<String>)> {
+) -> Option<(Handle<GraphMaterial>, Vec<MaterialParam>, Vec<String>, Vec<(u64, u32, u32)>)> {
     // Load any sibling `.material_function` files in the same directory so the
     // graph can reference them via function/call nodes.
     let functions = load_sibling_functions(path);
@@ -1098,7 +1120,7 @@ fn resolve_graph_material_from_graph(
         fallback_texture,
         asset_server,
     );
-    Some((handle, parameters, result.warnings))
+    Some((handle, parameters, result.warnings, result.node_lines))
 }
 
 /// Build the `GraphMaterial` asset from already-compiled WGSL plus the

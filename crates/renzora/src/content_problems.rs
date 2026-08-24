@@ -19,6 +19,9 @@ pub struct ContentProblem {
     /// Line in the *generated* shader, where the producer can place one. A
     /// graph has no lines of its own, so this is usually `None`.
     pub line: Option<usize>,
+    /// Node in the material graph the error belongs to, where the producer
+    /// can attribute one. The graph editor marks these nodes.
+    pub node_id: Option<u64>,
 }
 
 /// Problems by source path, project-relative.
@@ -102,6 +105,7 @@ mod tests {
             severity: ProblemSeverity::Error,
             message: message.to_string(),
             line: None,
+            node_id: None,
         }
     }
 
@@ -141,6 +145,7 @@ mod tests {
                     severity: ProblemSeverity::Warning,
                     message: "risky".to_string(),
                     line: None,
+                    node_id: None,
                 },
             ],
         );

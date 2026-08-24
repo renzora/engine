@@ -232,6 +232,7 @@ pub(crate) fn note_save_warnings(world: &mut World, path: &str, warnings: &[Stri
                 severity: ProblemSeverity::Warning,
                 message: w.clone(),
                 line: None,
+                node_id: None,
             })
             .collect(),
     );

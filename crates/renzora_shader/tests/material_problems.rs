@@ -12,8 +12,9 @@ use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 ///
 /// `custom/code` is the one node that still lets a user write arbitrary WGSL,
 /// which makes it the only way to author a graph that codegen accepts and the
-/// shader compiler rejects — exactly the case the panel exists for.
-fn graph_with_snippet(name: &str, code: &str) -> MaterialGraph {
+/// shader compiler rejects — exactly the case the panel exists for. Returns
+/// the snippet node's id so a test can assert errors land on it.
+fn graph_with_snippet(name: &str, code: &str) -> (MaterialGraph, u64) {
     let mut graph = MaterialGraph::new(name, MaterialDomain::Surface);
     let node = graph.add_node("custom/code", [0.0, 0.0]);
     graph
@@ -23,7 +24,7 @@ fn graph_with_snippet(name: &str, code: &str) -> MaterialGraph {
         .insert("code".to_string(), PinValue::String(code.to_string()));
     let output = graph.output_node().unwrap().id;
     graph.connect(node, "result", output, "base_color");
-    graph
+    (graph, node)
 }
 
 struct Fixture {
@@ -65,15 +66,16 @@ impl Fixture {
     }
 
     /// Write the graph, embedding the compiled artifact the way an editor
-    /// save does.
-    fn write(&mut self, code: &str) {
+    /// save does. Returns the snippet node's id.
+    fn write(&mut self, code: &str) -> u64 {
         let fs_path = self.dir.join(&self.rel);
-        let mut graph = graph_with_snippet("t", code);
+        let (mut graph, node) = graph_with_snippet("t", code);
         let (json, _) = renzora_shader::material::precompiled::save_compiled_and_serialize(
             &mut graph, &fs_path,
         )
         .unwrap();
         std::fs::write(&fs_path, json).unwrap();
+        node
     }
 
     /// Write the graph JSON with no embedded artifact, so the resolver runs
@@ -131,14 +133,12 @@ impl Fixture {
             .unwrap_or(0)
     }
 
-    fn problems(&self) -> Vec<(ProblemSeverity, String)> {
+    fn problems(&self) -> Vec<renzora::content_problems::ContentProblem> {
         self.app
             .world()
             .resource::<ContentProblems>()
             .get(&self.rel)
-            .iter()
-            .map(|p| (p.severity, p.message.clone()))
-            .collect()
+            .to_vec()
     }
 }
 
@@ -200,7 +200,7 @@ fn a_healthy_material_reports_nothing() {
 #[test]
 fn a_broken_material_is_reported_against_its_own_path() {
     let mut f = Fixture::new("broken");
-    f.write(BROKEN);
+    let node = f.write(BROKEN);
     f.spawn_user();
     f.pump();
 
@@ -210,11 +210,19 @@ fn a_broken_material_is_reported_against_its_own_path() {
         1,
         "expected exactly one report, got {problems:?}"
     );
-    assert_eq!(problems[0].0, ProblemSeverity::Error);
+    assert_eq!(problems[0].severity, ProblemSeverity::Error);
     assert!(
-        problems[0].1.contains("no_such_symbol"),
+        problems[0].message.contains("no_such_symbol"),
         "the report must name what is actually wrong, got {:?}",
-        problems[0].1
+        problems[0].message
+    );
+    // Attribution: the error belongs to the snippet's line and its node —
+    // what the graph editor marks.
+    assert!(problems[0].line.is_some(), "the report must carry a line");
+    assert_eq!(
+        problems[0].node_id,
+        Some(node),
+        "the report must land on the custom/code node"
     );
 }
 
@@ -271,7 +279,7 @@ fn one_broken_material_does_not_hide_a_healthy_one() {
 
     let other = "materials/other.material".to_string();
     let other_fs = f.dir.join(&other);
-    let mut graph = graph_with_snippet("other", GOOD);
+    let (mut graph, _) = graph_with_snippet("other", GOOD);
     let (json, _) = renzora_shader::material::precompiled::save_compiled_and_serialize(
         &mut graph, &other_fs,
     )
@@ -302,11 +310,11 @@ fn a_parameter_overflow_warns_and_a_repair_clears_it() {
         1,
         "one overflow, one row — got {problems:?}"
     );
-    assert_eq!(problems[0].0, ProblemSeverity::Warning);
+    assert_eq!(problems[0].severity, ProblemSeverity::Warning);
     assert!(
-        problems[0].1.contains("exceeds"),
+        problems[0].message.contains("exceeds"),
         "the row must say what overflowed, got {:?}",
-        problems[0].1
+        problems[0].message
     );
 
     f.write_raw(&graph_with_many_params("t", 2));
