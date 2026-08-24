@@ -5,8 +5,8 @@
 //! keyboard shortcuts and the Modeling panel buttons share the exact same
 //! snapshot/undo/selection bookkeeping in [`apply_pending_ops`].
 
-use bevy::prelude::*;
 use bevy::input::mouse::MouseWheel;
+use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportState, ViewportView};
 use renzora::core::InputFocusState;
@@ -216,8 +216,7 @@ pub fn apply_pending_ops(
                 SelectMode::Face => (false, "Dissolve"),
             },
             ModelingOp::MergeAtCenter => {
-                let verts: std::collections::HashSet<VertexId> =
-                    selected_vert_id_set(&edit, &sel);
+                let verts: std::collections::HashSet<VertexId> = selected_vert_id_set(&edit, &sel);
                 let survivor = operators::merge_at_center(&mut edit, &verts);
                 if let Some(v) = survivor {
                     sel.clear();
@@ -410,6 +409,7 @@ pub fn loop_cut_modal(
     viewport: Option<Res<ViewportState>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera>>,
+    editor_cam_q: Query<Entity, With<renzora::core::EditorCamera>>,
     mut scroll: MessageReader<MouseWheel>,
     grab: Res<GrabState>,
     mut state: ResMut<LoopCutState>,
@@ -419,6 +419,24 @@ pub fn loop_cut_modal(
     mut commands: Commands,
 ) {
     let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+
+    // Sync the modal's Preview state to a marker component on the editor
+    // camera so `renzora_camera`'s controller can detect it (the camera
+    // doesn't depend on this crate, so we can't use a Resource without
+    // provoking a crate dependency). Cleared on every non-Preview frame, so
+    // it cannot get stuck on if the user exits Edit mode mid-preview.
+    let previewing = matches!(*state, LoopCutState::Preview { .. });
+    for cam_entity in editor_cam_q.iter() {
+        if previewing {
+            commands
+                .entity(cam_entity)
+                .insert(renzora::core::LoopCutScrollConsumer);
+        } else {
+            commands
+                .entity(cam_entity)
+                .remove::<renzora::core::LoopCutScrollConsumer>();
+        }
+    }
 
     if matches!(*state, LoopCutState::JustFinished) {
         *state = LoopCutState::Idle;
@@ -472,9 +490,7 @@ pub fn loop_cut_modal(
         camera_q.single(),
     ) {
         let project = |p: Vec3| -> Option<Vec2> {
-            camera
-                .world_to_viewport(cam_gt, gt.transform_point(p))
-                .ok()
+            camera.world_to_viewport(cam_gt, gt.transform_point(p)).ok()
         };
         let mut best: Option<(f32, EdgeId)> = None;
         for (i, e) in edit.edges.iter().enumerate() {
@@ -516,16 +532,16 @@ pub fn loop_cut_modal(
         for i in 0..n {
             let a = face.verts[i].0;
             let b = face.verts[(i + 1) % n].0;
-            let is_ring = face.edges.get(i).map(|e| ring_set.contains(&e.0)).unwrap_or(false)
-                || edit
-                    .edges
-                    .iter()
-                    .enumerate()
-                    .any(|(k, e)| {
-                        ring_set.contains(&(k as u32))
-                            && ((e.verts[0].0 == a && e.verts[1].0 == b)
-                                || (e.verts[0].0 == b && e.verts[1].0 == a))
-                    });
+            let is_ring = face
+                .edges
+                .get(i)
+                .map(|e| ring_set.contains(&e.0))
+                .unwrap_or(false)
+                || edit.edges.iter().enumerate().any(|(k, e)| {
+                    ring_set.contains(&(k as u32))
+                        && ((e.verts[0].0 == a && e.verts[1].0 == b)
+                            || (e.verts[0].0 == b && e.verts[1].0 == a))
+                });
             if is_ring {
                 dirs.push((
                     edit.vertices[a as usize].position,
@@ -540,7 +556,11 @@ pub fn loop_cut_modal(
             let t = k as f32 / (*cuts + 1) as f32;
             let p0 = dirs[0].0.lerp(dirs[0].1, t);
             let p1 = dirs[1].0.lerp(dirs[1].1, 1.0 - t);
-            gizmos.line(gt.transform_point(p0), gt.transform_point(p1), preview_color);
+            gizmos.line(
+                gt.transform_point(p0),
+                gt.transform_point(p1),
+                preview_color,
+            );
         }
     }
 
@@ -632,8 +652,7 @@ pub fn join_selected(
         }
         if data.normals.len() == data.positions.len() {
             for chunk in data.normals.chunks_exact(3) {
-                let n = (normal_mat * Vec3::new(chunk[0], chunk[1], chunk[2]))
-                    .normalize_or_zero();
+                let n = (normal_mat * Vec3::new(chunk[0], chunk[1], chunk[2])).normalize_or_zero();
                 combined.normals.extend_from_slice(&[n.x, n.y, n.z]);
             }
         } else {

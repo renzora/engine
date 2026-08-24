@@ -53,6 +53,21 @@ pub struct EditorCamera2d;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ViewportCamera(pub usize);
 
+/// Marker on the editor camera signalling that a modal mesh-edit tool is
+/// currently consuming the wheel so the camera controller must NOT dolly on
+/// the same scroll events. Inserted by the loop-cut modal in
+/// `renzora_mesh_edit::loop_cut_modal` while `LoopCutState::Preview { .. }`
+/// is armed; removed on commit / cancel / exit-from-Edit.
+///
+/// A Component (and not a `Resource` like [`viewport_types::ModalToolActive`])
+/// because the camera's `Query<&mut Transform, With<EditorCamera>>` was
+/// already one of its 16 system parameters, and a 17th `Option<Res<T>>` deep
+/// parameter pushed the system into a trait-solver timeout. With this
+/// marker the camera re-uses its existing query shape and just adds a
+/// `Has<LoopCutScrollConsumer>` flag to the tuple — no new resource param.
+#[derive(Component)]
+pub struct LoopCutScrollConsumer;
+
 /// Identifies which multi-viewport slot a *2D* editor camera belongs to.
 ///
 /// The 2D sibling of [`ViewportCamera`]: there is one orthographic `Camera2d`

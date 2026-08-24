@@ -777,7 +777,7 @@ fn camera_controller(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
-    mut camera_query: Query<&mut Transform, With<EditorCamera>>,
+    mut camera_query: Query<(&mut Transform, Has<renzora::core::LoopCutScrollConsumer>), With<EditorCamera>>,
     mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     // Don't touch cursor or process input during play mode
@@ -805,7 +805,7 @@ fn camera_controller(
 
     let viewport_hovered = viewport.as_ref().is_none_or(|v| v.hovered);
 
-    let Ok(mut transform) = camera_query.single_mut() else {
+    let Ok((mut transform, loop_cut_consuming)) = camera_query.single_mut() else {
         mouse_motion.clear();
         scroll_events.clear();
         velocity.velocity = Vec3::ZERO;
@@ -960,10 +960,15 @@ fn camera_controller(
         return;
     }
 
-    // Skip scroll zoom when terrain/foliage tool is active — scroll controls brush radius instead
+    // Skip scroll zoom when terrain/foliage tool is active — scroll controls brush radius instead.
+    // Same skip while Edit-mode loop-cut is previewing: the modal consumes
+    // the wheel to set the cut count and the camera must NOT also dolly.
+    // Detected via the `LoopCutScrollConsumer` marker that `loop_cut_modal`
+    // attaches to the editor camera while its preview is armed.
     let tool_active = active_tool
         .as_ref()
-        .is_some_and(|t| t.is_terrain_or_foliage());
+        .is_some_and(|t| t.is_terrain_or_foliage())
+        || loop_cut_consuming;
 
     let mut scroll_changed = false;
     if !tool_active {
