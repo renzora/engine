@@ -124,11 +124,10 @@ impl MaterialCache {
     }
 }
 
-/// Marker component added to entities that have been resolved.
-#[derive(Component)]
-pub struct MaterialResolved {
-    pub source_path: String,
-}
+/// Marker component added to entities that have been resolved. Defined in the
+/// contract crate (every panel that rebinds a material has to remove it) and
+/// re-exported here so the resolver's own module path keeps working.
+pub use renzora::core::MaterialResolved;
 
 /// Outcome of compiling a `.material` file. The classifier in
 /// `standard_build` decides which variant we get based on the graph's nodes.

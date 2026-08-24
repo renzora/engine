@@ -10,6 +10,7 @@
 //! (`scene_starter`), and the visibility/lock suffix toggles (`row`/`systems`).
 
 mod add_entity;
+mod asset_drop;
 mod components;
 mod context_menu;
 mod create_asset;
@@ -78,6 +79,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<filter::HierSearch>();
     app.init_resource::<rename::HierRename>();
     app.init_resource::<scene_drop::ArmedHierSceneDrop>();
+    app.init_resource::<asset_drop::ArmedHierAssetDrop>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -195,8 +197,15 @@ pub fn register_native_hierarchy(app: &mut App) {
                 hier_responsive_header,
                 row::animate_audio_bars,
             ),
-            scene_drop::arm_hier_scene_drop,
-            scene_drop::commit_hier_scene_drop,
+            (
+                // Scene drops land at the scene root wherever they hit the
+                // panel; script/blueprint/material drops target the row under
+                // the cursor. Grouped so the tuple stays under bevy's arity cap.
+                scene_drop::arm_hier_scene_drop,
+                scene_drop::commit_hier_scene_drop,
+                asset_drop::arm_hier_asset_drop,
+                asset_drop::commit_hier_asset_drop,
+            ),
             context_menu::hier_context_menu,
             add_entity::hier_add_entity_open,
             filter::hier_filter_toggle,

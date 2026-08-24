@@ -9,6 +9,15 @@ pub(crate) struct HierRowClick {
     pub entity: Entity,
 }
 
+/// The row container itself, covering the *whole* row — including the
+/// eye/lock/badge strip that [`HierRowClick`] deliberately leaves out. Only
+/// asset drops use it (see [`super::asset_drop`]): landing a script on a row's
+/// eye icon should still attach it, whereas a *click* there must stay a toggle.
+#[derive(Component)]
+pub(crate) struct HierRowArea {
+    pub entity: Entity,
+}
+
 /// The eye toggle at a row's right edge. `visible` is the current state (so the
 /// click handler can record `was_visible` for undo).
 #[derive(Component)]

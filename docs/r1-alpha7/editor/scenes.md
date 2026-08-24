@@ -78,6 +78,22 @@ For **scripts and blueprints** there's also an **Attach to &lt;object&gt;** tick
 
 `Escape`, the backdrop, or **Cancel** closes the overlay without creating anything.
 
+### Attaching an existing asset by dropping it on a row
+
+To attach a file you already have, drag it out of the **Assets** panel and drop it straight onto the object's row in the Hierarchy. The row lights up as you hover it, so you can see exactly which object you're about to hit before you let go:
+
+- a **Lua script** (`.lua`) — added to the object's Script component;
+- a **Blueprint** (`.blueprint`, `.bp`) — added the same way (blueprints run through the Script component too);
+- a **Material** (`.material`) — assigned to the object.
+
+The object is selected after the drop, so the Inspector is already showing what you just attached, and its new **asset badge** appears on the row. Each drop is a single undo step.
+
+Dropping the same script on an object twice does nothing the second time — you don't end up running it twice by accident. A **multi-select drag** of several scripts attaches all of them in one go; a mixed drag only attaches the files matching the one you actually grabbed.
+
+**Materials and meshes.** If the row you drop on is a **model root** — an imported model that carries the name but no mesh of its own — the material is applied to **every mesh inside it**, which is what "put this material on that model" nearly always means. Drop it on a specific child row instead to change just that mesh. If the object has no mesh anywhere beneath it, nothing is applied and the editor tells you so.
+
+Scene files (`.bsn`, `.ron`) behave differently: dropping one anywhere in the panel [instances it into the scene](#reusing-scenes-inside-scenes) rather than attaching it to a row.
+
 ### Showing, hiding & color-coding
 
 Each row's **eye** toggles whether the object is visible, and the **lock** prevents accidental edits. Both are undoable. To keep a busy scene organized, give related objects a **label color** from the right-click menu.

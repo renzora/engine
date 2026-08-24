@@ -13,8 +13,8 @@ use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
 
 use super::components::{
-    BadgeKind, HierAssetBadge, HierCaretToggle, HierDropEdge, HierLockToggle, HierRowClick,
-    HierVisToggle,
+    BadgeKind, HierAssetBadge, HierCaretToggle, HierDropEdge, HierLockToggle, HierRowArea,
+    HierRowClick, HierVisToggle,
 };
 use super::drag::HierDrag;
 
@@ -188,6 +188,10 @@ pub(crate) fn build_row(
                 position_type: PositionType::Relative,
                 ..default()
             },
+            // Whole-row hit box for asset drops — wider than the click layer
+            // below, which stops short of the eye/lock strip.
+            bevy::ui::RelativeCursorPosition::default(),
+            HierRowArea { entity: s.entity },
             Name::new("hier-row"),
         ))
         .id();
@@ -539,6 +543,14 @@ pub(crate) fn build_row(
             {
                 return over(base, rgb(accent()).with_alpha(0.35));
             }
+        }
+        // Same tint for an asset drag (script / blueprint / material) hovering
+        // this row — the thing about to be attached to it.
+        if world
+            .get_resource::<super::asset_drop::ArmedHierAssetDrop>()
+            .is_some_and(|a| a.target() == Some(ent))
+        {
+            return over(base, rgb(accent()).with_alpha(0.35));
         }
         if world
             .get_resource::<EditorSelection>()

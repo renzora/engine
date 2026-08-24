@@ -329,6 +329,10 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
                 ..default()
             },
             Interaction::default(),
+            // A pinned header sits *over* the rows it scrolled past, so an asset
+            // drop has to be able to hit it — otherwise the drop falls through
+            // to whatever row is hidden underneath (see `super::asset_drop`).
+            bevy::ui::RelativeCursorPosition::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierPinClick { entity: p.entity },
             Name::new("hier-pin-hit"),
