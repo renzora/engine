@@ -221,8 +221,10 @@ fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
 
-type Port = (String, String, (u8, u8, u8));
+type Port = (String, String, (u8, u8, u8), u32);
 /// Neutral port colour for blueprint pins (material pins are typed/coloured).
+/// Blueprint pins are untyped, so they all share compat group 0 — any pin
+/// connects to any pin, as before the widget grouped ports.
 const BP_PORT: (u8, u8, u8) = (140, 150, 175);
 
 /// Per-input data for the inline editors: (pin template, is-connected). Aligned
@@ -241,8 +243,8 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                 let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
                 let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
                 let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-                let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
-                let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
+                let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), BP_PORT, 0)).collect();
+                let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), BP_PORT, 0)).collect();
                 // Aligned with `inputs`: clone the template + whether a wire feeds it.
                 let in_specs: Vec<InputSpec> = pins
                     .iter()

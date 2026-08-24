@@ -131,8 +131,10 @@ fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
 
-type Port = (String, String, (u8, u8, u8));
-/// Neutral port colour for particle pins.
+type Port = (String, String, (u8, u8, u8), u32);
+/// Neutral port colour for particle pins. Particle pins are untyped, so they
+/// all share compat group 0 — any pin connects to any pin, as before the
+/// widget grouped ports.
 const PART_PORT: (u8, u8, u8) = (140, 150, 175);
 
 #[allow(clippy::type_complexity)]
@@ -147,8 +149,8 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
             let title = n.node_type.display_name().to_string();
             let color = cat_color(n.node_type.category());
             let pins = n.node_type.pins();
-            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), PART_PORT)).collect();
-            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), PART_PORT)).collect();
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), PART_PORT, 0)).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), PART_PORT, 0)).collect();
             (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
         })
         .collect();

@@ -29,9 +29,10 @@ A few rules apply everywhere:
 - **Pin types coerce automatically.** `Float`, `Vec2`, `Vec3`, `Vec4`, and `Color`
   are freely inter-connectable. Wiring a scalar into a vector copies it across every
   lane; wiring a wider vector into a narrower pin takes the leading components. So a
-  `math/multiply` works on floats *or* colors with no extra nodes. `Bool` sits
-  outside that family. Where a graph wires one into a numeric pin, the compiler
-  casts it, turning `true` into `1.0` and `false` into `0.0`.
+  `math/multiply` works on floats *or* colors with no extra nodes. `Bool` is the
+  exception: it is not part of the numeric family, so the editor refuses to wire it
+  into a numeric pin. Graphs saved before that gate still compile — the compiler
+  casts, turning `true` into `1.0` and `false` into `0.0`.
 - **Unconnected UV inputs default to the mesh UVs.** Texture and pattern nodes that
   take a `uv` pin fall back to the mesh's UV attribute (`mat_uv`) when you leave it
   empty, so the simplest possible graph still works.

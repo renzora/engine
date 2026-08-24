@@ -348,7 +348,21 @@ fn pin_rgb(t: PinType) -> (u8, u8, u8) {
     }
 }
 
-type Port = (String, String, (u8, u8, u8));
+/// The graph widget's drop-filter group — mirrors `PinType::compatible`:
+/// the whole numeric family interconnects (vec sizes coerce at codegen),
+/// every other type only connects to itself. Pin *colour* stays per-type, so
+/// a Vec2 → Color wire is allowed and shows the gradient between the two.
+fn pin_group(t: PinType) -> u32 {
+    match t {
+        PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color => 0,
+        PinType::Bool => 1,
+        PinType::Texture2D => 2,
+        PinType::Sampler => 3,
+        PinType::String => 4,
+    }
+}
+
+type Port = (String, String, (u8, u8, u8), u32);
 
 struct NodeSnap {
     id: u64,
@@ -408,8 +422,8 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
             let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
-            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type), pin_group(p.pin_type))).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type), pin_group(p.pin_type))).collect();
             let tex_path = n.input_values.get("texture").and_then(|v| match v {
                 PinValue::TexturePath(p) if !p.is_empty() => Some(p.clone()),
                 _ => None,
@@ -804,8 +818,31 @@ fn mat_graph_sync(world: &mut World) {
                     }
                 }
                 GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
-                    st.graph.connect(from_node, &from_pin, to_node, &to_pin);
-                    structural = true;
+                    let pin_type = |node_id: u64, pin: &str, dir: PinDir| {
+                        st.graph
+                            .get_node(node_id)
+                            .and_then(|n| node_def(&n.node_type))
+                            .and_then(|d| {
+                                (d.pins)()
+                                    .into_iter()
+                                    .find(|p| p.name == pin && p.direction == dir)
+                            })
+                            .map(|p| p.pin_type)
+                    };
+                    match (
+                        pin_type(from_node, &from_pin, PinDir::Output),
+                        pin_type(to_node, &to_pin, PinDir::Input),
+                    ) {
+                        (Some(from_ty), Some(to_ty)) if !PinType::compatible(from_ty, to_ty) => {
+                            st.compile_errors = vec![format!(
+                                "Connection refused: {from_ty:?} → {to_ty:?} pins are incompatible ({from_pin} → {to_pin})"
+                            )];
+                        }
+                        _ => {
+                            st.graph.connect(from_node, &from_pin, to_node, &to_pin);
+                            structural = true;
+                        }
+                    }
                 }
                 GraphEdit::Disconnect { to_node, to_pin, .. } => {
                     st.graph.disconnect(to_node, &to_pin);
