@@ -660,7 +660,7 @@ fn layout_debug() -> DockTree {
 }
 
 /// Scene workspace: the viewport | one right column, hierarchy/scenes stacked
-/// over inspector/gamepad/history.
+/// over the inspector.
 ///
 /// **One side column, not two.** The hierarchy used to have a full-height
 /// column of its own on the left. Pairing it with the inspector instead follows
@@ -679,6 +679,13 @@ fn layout_debug() -> DockTree {
 /// panels, each with its own independent state, one directly above the other;
 /// and it would put the global panel's contents inside a workspace, where
 /// "Reset Workspace" would be entitled to overwrite them.
+///
+/// **The inspector is alone in the lower half.** `gamepad` and `history` used to
+/// be tabbed beside it. Neither is something you keep an eye on while editing —
+/// you open the undo history when you want to step back through it, and the
+/// gamepad panel when you are wiring up input — so as defaults they only cost
+/// the inspector two tab widths and gave a fresh install two tabs it would never
+/// click. Both are still one click away in the panel menu.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
@@ -687,7 +694,7 @@ pub fn scene_layout() -> DockTree {
         // hierarchy scrolls at any height.
         DockTree::vertical(
             DockTree::tabs(&["hierarchy", "scenes"]),
-            DockTree::tabs(&["inspector", "gamepad", "history"]),
+            DockTree::leaf("inspector"),
             0.45,
         ),
         0.84,
