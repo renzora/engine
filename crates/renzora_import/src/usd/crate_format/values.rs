@@ -221,9 +221,8 @@ impl Value {
 // USDC value type IDs (from OpenUSD's SdfValueTypeNames)
 // ---------------------------------------------------------------------------
 
-/// Known USDC value type IDs.
 pub mod type_id {
-    //! `TypeEnum` from Pixar's `crateDataTypes.h`.
+    //! Known USDC value type IDs — `TypeEnum` from Pixar's `crateDataTypes.h`.
     //!
     //! These are the values USD actually writes, confirmed against a real file:
     //! a prim's `typeName` and `kind` fields both report 11, which is `Token`.
