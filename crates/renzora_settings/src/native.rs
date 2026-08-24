@@ -2489,6 +2489,36 @@ fn tab_viewport(
     );
     settings_row(commands, fonts, body, 8, &tr("settings.row.gizmo_pivot_bottom"), t);
     note_row(commands, fonts, body, &tr("settings.hint.gizmo_pivot_bottom"));
+
+    // Edit-mode overlay tuning (vertex dots). Pixel sizes match Blender's
+    // `bTheme::space_view3d.vertex_size` theme value (which is `unsigned char`
+    // pixels); the dots are drawn as screen-space squares so the on-screen size
+    // is constant regardless of camera zoom or distance.
+    let (sec, body) = section(commands, fonts, "cube", &tr("settings.cat.mesh_edit"), A_PURPLE);
+    commands.entity(col).add_child(sec);
+    // Intentionally NOT focus_hide'd: this section is core to the
+    // Edit-mode UX and is reached most often by users who don't know the
+    // focus sub-key (which gates the rest of Viewport's sections by
+    // sub-topic). Always visible.
+    let dv = ctl_drag(
+        commands, fonts, vp.mesh_edit_vert_size as f32, 1.0, 12.0, 1.0,
+        |w| w.resource::<ViewportSettings>().mesh_edit_vert_size as f32,
+        |w, &v| {
+            w.resource_mut::<ViewportSettings>().mesh_edit_vert_size =
+                v.round().clamp(1.0, 12.0) as u8;
+        },
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.vert_size"), dv);
+    let dv = ctl_drag(
+        commands, fonts, vp.mesh_edit_vert_size_selected as f32, 1.0, 12.0, 1.0,
+        |w| w.resource::<ViewportSettings>().mesh_edit_vert_size_selected as f32,
+        |w, &v| {
+            w.resource_mut::<ViewportSettings>().mesh_edit_vert_size_selected =
+                v.round().clamp(1.0, 12.0) as u8;
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.vert_size_selected"), dv);
+    note_row(commands, fonts, body, &tr("settings.hint.mesh_edit"));
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────

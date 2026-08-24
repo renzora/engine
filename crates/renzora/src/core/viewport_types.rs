@@ -919,6 +919,16 @@ pub struct ViewportSettings {
     /// scaled or turned object stays standing on the surface instead of
     /// sinking into it. Settings → Viewport.
     pub gizmo_pivot_bottom: bool,
+    /// Pixel size of vertex dots in Edit mode. Blender-equivalent of
+    /// `bTheme::space_view3d.vertex_size` (which is `unsigned char` pixels).
+    /// The dot is drawn as a screen-space square — see `mesh_edit`'s
+    /// `draw_overlay` — so this number is in panel pixels regardless of
+    /// camera zoom or distance. Settings → Viewport → Mesh Edit.
+    pub mesh_edit_vert_size: u8,
+    /// Pixel size of vertex dots for the currently-selected verts. Like
+    /// Blender, selected dots are drawn larger than unselected so the
+    /// selection state reads at a glance. Settings → Viewport → Mesh Edit.
+    pub mesh_edit_vert_size_selected: u8,
 }
 
 impl Default for ViewportSettings {
@@ -962,6 +972,8 @@ impl Default for ViewportSettings {
             graphics_quality: GraphicsQuality::default(),
             gizmos_all_viewports: false,
             gizmo_pivot_bottom: true,
+            mesh_edit_vert_size: default_vert_size(),
+            mesh_edit_vert_size_selected: default_vert_size_selected(),
         }
     }
 }
@@ -1103,6 +1115,15 @@ pub struct PersistedViewportSettings {
     /// Missing in configs written before this field existed → `false`.
     #[serde(default)]
     pub gizmos_all_viewports: bool,
+    /// Pixel size of the edit-mode vertex dots (unselected). Missing in
+    /// configs from before the Mesh Edit section existed → Blender-ish 3 px.
+    #[serde(default = "default_vert_size")]
+    pub mesh_edit_vert_size: u8,
+    /// Pixel size of selected vertex dots. Missing in configs from before
+    /// the Mesh Edit section existed → Blender-ish 5 px (a touch bigger so
+    /// the selection state is visible).
+    #[serde(default = "default_vert_size_selected")]
+    pub mesh_edit_vert_size_selected: u8,
 }
 
 impl PersistedViewportSettings {
@@ -1171,6 +1192,8 @@ impl PersistedViewportSettings {
             gizmo_drag_opacity: s.gizmo_drag_opacity,
             graphics_quality: s.graphics_quality.label().to_string(),
             gizmos_all_viewports: s.gizmos_all_viewports,
+            mesh_edit_vert_size: s.mesh_edit_vert_size,
+            mesh_edit_vert_size_selected: s.mesh_edit_vert_size_selected,
         }
     }
 
@@ -1252,6 +1275,8 @@ impl PersistedViewportSettings {
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
         s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
         s.gizmos_all_viewports = self.gizmos_all_viewports;
+        s.mesh_edit_vert_size = self.mesh_edit_vert_size;
+        s.mesh_edit_vert_size_selected = self.mesh_edit_vert_size_selected;
     }
 }
 
@@ -1289,6 +1314,22 @@ fn default_label_max_distance() -> f32 {
 
 fn default_gizmo_drag_opacity() -> f32 {
     0.25
+}
+
+/// Default pixel size of an unselected edit-mode vertex dot. Blender's
+/// `bTheme::space_view3d.vertex_size` is similarly integer pixels with a
+/// similar default; 3 sits right around where you can see it without
+/// crowding dense meshes.
+fn default_vert_size() -> u8 {
+    3
+}
+
+/// Default pixel size of a selected vertex dot. Bigger than the unselected
+/// size so the selection state reads at a glance, matching Blender's
+/// `×2/×3` crease-driven sizing (we use selected-vs-not since our verts
+/// don't carry a crease weight).
+fn default_vert_size_selected() -> u8 {
+    5
 }
 
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
@@ -1391,6 +1432,9 @@ mod tests {
             graphics_quality: GraphicsQuality::High,
             // Non-default (default is false) so the round-trip exercises it.
             gizmos_all_viewports: true,
+            // Non-default (defaults are 3 / 5) so the round-trip exercises them.
+            mesh_edit_vert_size: 7,
+            mesh_edit_vert_size_selected: 9,
         }
     }
 
@@ -1443,6 +1487,11 @@ mod tests {
         assert_eq!(
             original.gizmos_all_viewports,
             restored.gizmos_all_viewports
+        );
+        assert_eq!(original.mesh_edit_vert_size, restored.mesh_edit_vert_size);
+        assert_eq!(
+            original.mesh_edit_vert_size_selected,
+            restored.mesh_edit_vert_size_selected
         );
     }
 

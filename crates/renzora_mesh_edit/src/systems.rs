@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::core::viewport_types::ViewportState;
+use renzora::core::viewport_types::{ViewportSettings, ViewportState};
 use renzora::core::EditorCamera;
 use renzora::core::InputFocusState;
 use renzora_editor_framework::{ActiveTool, EditorSelection};
@@ -839,6 +839,9 @@ pub fn bake_if_dirty(
 pub fn draw_overlay(
     mesh_selection: Res<MeshSelection>,
     edit_q: Query<(&EditMesh, &GlobalTransform)>,
+    camera_q: Query<(&Camera, &GlobalTransform, &Projection), With<EditorCamera>>,
+    viewport: Option<Res<ViewportState>>,
+    viewport_settings: Res<ViewportSettings>,
     mut gizmos: Gizmos,
 ) {
     let Some(target) = mesh_selection.target else {
@@ -848,6 +851,21 @@ pub fn draw_overlay(
         return;
     };
     let to_world = |v: Vec3| gt.transform_point(v);
+
+    // Camera + viewport pixel size for the screen-space vertex dots. Either
+    // missing → no dots (Vertex mode is 3D-only anyway, but stay defensive if
+    // the editor camera hasn't spawned).
+    let Ok((_camera, cam_gt, projection)) = camera_q.single() else {
+        return;
+    };
+    let Some(vp) = viewport.as_ref() else {
+        return;
+    };
+    let vp_px_height = if vp.current_size.y > 0 {
+        vp.current_size.y as f32
+    } else {
+        720.0
+    };
 
     // Edges: faint white unless selected.
     for (i, edge) in edit.edges.iter().enumerate() {
@@ -872,16 +890,40 @@ pub fn draw_overlay(
         gizmos.line(to_world(a), to_world(b), color);
     }
 
-    // Vertex dots (only drawn in vertex mode to reduce clutter).
+    // Vertex dots (only drawn in vertex mode to reduce clutter). Each dot is
+    // a screen-space filled square (`gizmos.rect_2d`) — matching Blender's
+    // `gl_PointSize` point-sprite rendering. Size is measured in panel
+    // pixels and reads the same regardless of camera zoom or distance.
     if mesh_selection.mode == SelectMode::Vertex {
+        let cam_pos = cam_gt.translation();
+        let px_unselected = f32::from(viewport_settings.mesh_edit_vert_size);
+        let px_selected = f32::from(viewport_settings.mesh_edit_vert_size_selected);
         for (i, v) in edit.vertices.iter().enumerate() {
             let selected = mesh_selection.verts.contains(&VertexId(i as u32));
-            let color = if selected {
-                Color::srgb(1.0, 0.55, 0.1)
+            let (color, px_half_extent) = if selected {
+                (Color::srgb(1.0, 0.55, 0.1), px_selected)
             } else {
-                Color::srgb(0.15, 0.55, 1.0)
+                (Color::srgb(0.15, 0.55, 1.0), px_unselected)
             };
-            gizmos.sphere(to_world(v.position), 0.03, color);
+            if px_half_extent <= 0.0 {
+                continue;
+            }
+            // Project the vertex's world position to viewport pixels, then
+            // draw a 2-D filled rect of the requested size centred there.
+            // `rect_2d` is depth-tested against the 2D layer, so these
+            // squares read on top of the mesh without z-fighting — same
+            // behaviour as Blender's `gl_PointSize` overlay.
+            let center_world = to_world(v.position);
+            let Some(center_screen) = _camera.world_to_viewport(cam_gt, center_world).ok()
+            else {
+                continue;
+            };
+            let size = Vec2::splat(px_half_extent * 2.0);
+            gizmos.rect_2d(
+                Isometry2d::new(center_screen, Rot2::IDENTITY),
+                size,
+                color,
+            );
         }
     }
 
@@ -908,6 +950,27 @@ pub fn draw_overlay(
                 gizmos.line(to_world(a), to_world(b), color);
             }
         }
+    }
+}
+
+/// World units per on-screen panel pixel at the vertex's distance from the
+/// camera. Perspective: `(2·d·tan(fov/2)) / vp_px_height`. Orthographic:
+/// `ortho.scale`. We only need this for vertex dots (small markers) so a
+/// flat Euclidean distance is good enough — for a strictly on-axis vertex it
+/// matches the camera-plane depth exactly.
+fn world_per_pixel(
+    dist_to_camera: f32,
+    projection: &Projection,
+    vp_px_height: f32,
+) -> f32 {
+    let h = vp_px_height.max(1.0);
+    match projection {
+        Projection::Perspective(p) => {
+            let half = (p.fov * 0.5).tan();
+            2.0 * dist_to_camera.max(0.001) * half / h
+        }
+        Projection::Orthographic(o) => o.scale,
+        _ => dist_to_camera.max(0.001) * 0.05,
     }
 }
 
