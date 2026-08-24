@@ -119,6 +119,21 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 | `F2` | Rename |
 | `H` / `Shift+H` | Hide selected / isolate selected |
 
+## Hierarchy
+
+These act on the selected row, and only while the Hierarchy is the panel you last clicked in — so the same keys stay free for the 2D nudge in the viewport, frame-stepping in the Timeline, and arrow-key panel scrolling everywhere else.
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move the selection to the previous / next visible row |
+| `→` | Expand the selected branch; step into its first child if it's already open |
+| `←` | Collapse the selected branch; step out to the parent if it's already closed |
+| `F2` | Rename in place (double-click does the same) |
+
+`↑`/`↓` walk what you can see: a collapsed branch is stepped *past*, not through, and the list scrolls to follow the selection when it reaches an edge. `Shift`+`↑`/`↓` doesn't extend the selection — use `Shift`+click for a range.
+
+> Clicking a row also folds it open (and shut again when the click deselects it). Turn that off at **Settings → Interface → Hierarchy → Toggle on Click** to leave folding entirely to the caret and these two keys.
+
 ## Edit
 
 | Key | Action |

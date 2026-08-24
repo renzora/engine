@@ -569,13 +569,16 @@ fn hovered_scroll_area<'a>(
 /// Holding ↑/↓ with the cursor over a scroll view scrolls it (keyboard scroll,
 /// like a browser). Skipped while anything is consuming arrow keys as caret
 /// motion — a focused text input, a focused code editor, or a numeric field in
-/// its typing state.
+/// its typing state — or while a focused list panel is walking its own selection
+/// with them ([`renzora::core::ArrowKeysClaimed`]; the hierarchy tree does
+/// this). Hover decides which view scrolls, but focus outranks hover for a key.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn scroll_arrow_keys(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     config: Res<ScrollConfig>,
     editing: Res<super::drag_value::AnyDragValueEditing>,
+    claimed: Option<Res<renzora::core::ArrowKeysClaimed>>,
     inputs: Query<&super::text_input::EmberTextInput>,
     editors: Query<&super::code_editor::CodeEditor>,
     mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
@@ -589,6 +592,7 @@ pub(crate) fn scroll_arrow_keys(
         _ => return,
     };
     if editing.0
+        || claimed.is_some_and(|c| c.0)
         || inputs.iter().any(|i| i.focused)
         || editors.iter().any(|e| e.is_focused())
     {

@@ -1893,6 +1893,17 @@ fn tab_interface(
         |w, &v| w.resource_mut::<EditorSettings>().hierarchy_parent_stacking = v,
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.parent_stacking"), t);
+    let t = ctl_toggle(
+        commands,
+        settings.hierarchy_toggle_on_click,
+        |w| w.resource::<EditorSettings>().hierarchy_toggle_on_click,
+        |w, &v| {
+            w.resource_mut::<EditorSettings>().hierarchy_toggle_on_click = v;
+            let _ = renzora::save_hierarchy_toggle_on_click(v);
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.toggle_on_click"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.toggle_on_click"));
 
     let (sec, body) = section(commands, fonts, "sliders", &tr("settings.cat.inspector"), A_PURPLE);
     commands.entity(col).add_child(sec);

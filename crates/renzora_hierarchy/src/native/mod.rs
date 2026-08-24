@@ -80,6 +80,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<rename::HierRename>();
     app.init_resource::<scene_drop::ArmedHierSceneDrop>();
     app.init_resource::<asset_drop::ArmedHierAssetDrop>();
+    app.init_resource::<renzora::core::ArrowKeysClaimed>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -184,7 +185,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             systems::hierarchy_scroll_to_selection,
             pin::hierarchy_parent_stack,
             pin::hierarchy_pin_click,
-            systems::hierarchy_caret_click,
+            (systems::hierarchy_caret_click, systems::hierarchy_arrow_keys),
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
             systems::hierarchy_badge_click,
@@ -216,6 +217,15 @@ pub fn register_native_hierarchy(app: &mut App) {
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active(PANEL_ID)),
+    );
+    // Kept ungated by panel visibility: it publishes `ArrowKeysClaimed`, which
+    // ember's arrow-key scrolling and the 2D viewport's nudge both read. Frozen
+    // while the hierarchy is backgrounded, a stuck "claimed" would swallow both
+    // until the tree came back. A handful of resource reads.
+    // panel-systems-ungated: publish_arrow_claim feeds ember's scroll_arrow_keys and renzora_gizmo's 2D nudge — other crates read it
+    app.add_systems(
+        Update,
+        systems::publish_arrow_claim.run_if(in_state(SplashState::Editor)),
     );
     scene_starter::register(app);
     create_asset::register(app);

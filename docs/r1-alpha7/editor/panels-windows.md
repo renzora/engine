@@ -24,7 +24,7 @@ While dragging, a highlight previews exactly where the panel will land. The `+` 
 Any scrollable panel (Hierarchy, Inspector, Assets, Console, …) accepts three gestures, always aimed at the panel under the cursor:
 
 - **Mouse wheel** — the classic smooth scroll.
-- **↑ / ↓ arrow keys** — hover the panel and hold an arrow key to scroll it, browser-style. Arrows stand down whenever something is using them as caret keys (a focused text field, the code editor, or a numeric field you're typing into).
+- **↑ / ↓ arrow keys** — hover the panel and hold an arrow key to scroll it, browser-style. Arrows stand down whenever something is using them as caret keys (a focused text field, the code editor, or a numeric field you're typing into), and whenever a focused list panel is walking its own selection with them — the [Hierarchy tree](/docs/r1-alpha7/editor/scenes#selecting-objects) does this, so clicking a row hands it the arrows until you click elsewhere.
 - **Middle-click drag** — grab the content and pan it with the cursor; the grip holds even if the drag strays outside the panel. Views that scroll both axes (like the tileset atlas) pan on both.
 
 All three honour **Settings → Interface → Display → Scroll Speed**, a multiplier on the scroll rate (1.5 is the default feel) persisted per user in `~/.renzora/editor.toml`.

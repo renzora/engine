@@ -229,6 +229,9 @@ mod wasm_prefs {
     pub fn save_doc_tabs_dropdown(_dropdown: bool) -> std::io::Result<()> {
         Ok(())
     }
+    pub fn save_hierarchy_toggle_on_click(_toggle: bool) -> std::io::Result<()> {
+        Ok(())
+    }
     pub fn save_autosave(_settings: &AutoSaveSettings) -> std::io::Result<()> {
         Ok(())
     }
@@ -341,6 +344,13 @@ struct EditorPrefFile {
     /// you're willing to spend on them, not a project property.
     #[serde(default)]
     doc_tabs_dropdown: bool,
+    /// Clicking a hierarchy row also expands/collapses its subtree (on by
+    /// default), on top of selecting it. Turning it off leaves the caret as the
+    /// only way to open a branch, which is what you want when you click through
+    /// a deep model and don't want every row you touch unfolding under you.
+    /// Per-user because it's a navigation habit, not a project property.
+    #[serde(default = "default_true")]
+    hierarchy_toggle_on_click: bool,
     /// Play launches the scene into a VR headset (external runtime process
     /// with `--vr`). Layered above `play_runtime_window`: when set, the Play
     /// button's target is "VR Headset" regardless of the window preference.
@@ -442,6 +452,7 @@ impl Default for EditorPrefFile {
             language: default_language(),
             play_runtime_window: false,
             doc_tabs_dropdown: false,
+            hierarchy_toggle_on_click: true,
             play_vr: false,
             scroll_speed: default_scroll_speed(),
             console_log_limit: default_console_log_limit(),
@@ -992,6 +1003,45 @@ pub fn save_doc_tabs_dropdown(dropdown: bool) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.doc_tabs_dropdown = dropdown;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load whether a hierarchy row click also toggles its subtree (default `true`).
+/// `EditorSettings.hierarchy_toggle_on_click` is seeded from this at startup.
+pub fn load_hierarchy_toggle_on_click() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        true
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.hierarchy_toggle_on_click)
+            .unwrap_or(true)
+    }
+}
+
+/// Persist the hierarchy click-to-toggle preference (read-modify-write, so
+/// other fields survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_hierarchy_toggle_on_click(toggle: bool) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.hierarchy_toggle_on_click = toggle;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

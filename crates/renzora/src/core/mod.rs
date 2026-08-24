@@ -1076,6 +1076,27 @@ pub struct AssetDropScrollRequest(pub bool);
 #[derive(Resource, Default)]
 pub struct SelectAllClaimed(pub bool);
 
+/// Set true while a focused panel is using the arrow keys to move through its
+/// own contents, so the editor's *hover*-driven arrow-key behaviours stand down:
+/// ember's keyboard scrolling and the 2D viewport's nudge.
+///
+/// Same referee problem as [`SelectAllClaimed`], with the twist that the two
+/// claimants key off *different* things. Ember scrolls whichever view the cursor
+/// rests over and the 2D nudge moves the selection while the viewport is hovered,
+/// but a list panel walks its selection because it has *focus*. All of them fire
+/// on the same keys, so with the cursor parked over the tree you'd move the
+/// selection and scroll the view out from under it at once — and with the cursor
+/// over the viewport you'd nudge the sprite while the selection walked off it.
+///
+/// Focus wins, which is the ordinary rule for keyboard input — a click elsewhere
+/// hands the arrows straight back to the hovered consumer. The claim is published
+/// from panel *state* (focused, not typing, something to move) rather than from
+/// the keypress, so it is already settled by the time a key arrives and never
+/// lands a frame late. The publisher must stay ungated by panel visibility, or a
+/// backgrounded panel leaves the flag stuck true and swallows the lot.
+#[derive(Resource, Default)]
+pub struct ArrowKeysClaimed(pub bool);
+
 /// One split static mesh referenced by an assembly `.prefab`: a display name
 /// and the project-relative path to its `.glb`. The mesh's world transform is
 /// baked into the `.glb` itself, so the assembly entity sits at identity.

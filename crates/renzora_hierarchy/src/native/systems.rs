@@ -197,6 +197,11 @@ pub(crate) fn hierarchy_scroll_to_selection(
 
 /// Row click → select the entity. Ctrl toggles it in the selection; Shift selects
 /// the range from the current anchor; a plain click replaces the selection.
+///
+/// A plain click also folds the row's subtree open (or shut, when the click
+/// deselects it) — unless `EditorSettings.hierarchy_toggle_on_click` is off, in
+/// which case selection and expansion are fully separate gestures and only the
+/// caret (or Left/Right — see [`hierarchy_arrow_keys`]) folds a branch.
 pub(crate) fn hierarchy_row_click(
     rows: Query<(&Interaction, &HierRowClick), Changed<Interaction>>,
     carets: Query<(&Interaction, &HierCaretToggle)>,
@@ -204,6 +209,7 @@ pub(crate) fn hierarchy_row_click(
     selection: Option<Res<EditorSelection>>,
     keys: Res<ButtonInput<KeyCode>>,
     cache: Res<HierarchyTreeCache>,
+    settings: Res<renzora_editor_framework::EditorSettings>,
     mut expanded: ResMut<HierExpanded>,
     time: Res<Time>,
     mut rename: ResMut<super::rename::HierRename>,
@@ -272,13 +278,186 @@ pub(crate) fn hierarchy_row_click(
             // collapses its subtree — one gesture to both drop the selection and
             // tidy the tree back up.
             selection.set(None);
-            expanded.0.remove(&row.entity);
+            if settings.hierarchy_toggle_on_click {
+                expanded.0.remove(&row.entity);
+            }
         } else {
             // Selecting a row also opens its subtree, so the thing you just
             // picked reveals its children (the mirror of the deselect-collapse
             // above).
             selection.set(Some(row.entity));
-            expanded.0.insert(row.entity);
+            if settings.hierarchy_toggle_on_click {
+                expanded.0.insert(row.entity);
+            }
+        }
+    }
+}
+
+/// Depth-first search for `target`'s node in the cached tree.
+fn find_tree_node(nodes: &[EntityNode], target: Entity) -> Option<&EntityNode> {
+    for n in nodes {
+        if n.entity == target {
+            return Some(n);
+        }
+        if let Some(found) = find_tree_node(&n.children, target) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Does the hierarchy own the arrow keys right now? True when it's the focused
+/// panel, nothing is typing, and there's a selection to walk from. Shared by the
+/// navigation system and the [`renzora::core::ArrowKeysClaimed`] publisher so
+/// the claim can never disagree with what the keys actually do.
+fn owns_arrow_keys(
+    focused: Option<&renzora_ember::dock::FocusedPanel>,
+    play_mode: Option<&renzora::core::PlayModeState>,
+    input_focus: &renzora::core::InputFocusState,
+    rename: &super::rename::HierRename,
+    selection: Option<&EditorSelection>,
+) -> bool {
+    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+        return false;
+    }
+    // The search box and the inline rename field both want these keys for caret
+    // motion while they hold the keyboard.
+    if input_focus.ui_wants_keyboard || rename.0.is_some() {
+        return false;
+    }
+    if focused.is_none_or(|f| f.0.as_deref() != Some(super::PANEL_ID)) {
+        return false;
+    }
+    selection.is_some_and(|s| s.get().is_some())
+}
+
+/// Publish [`renzora::core::ArrowKeysClaimed`] so the hover-driven arrow-key
+/// behaviours — ember's keyboard scrolling, the 2D viewport's nudge — stand down
+/// while the tree is walking its selection with them.
+///
+/// **Deliberately not gated on `panel_active`**, unlike the rest of the panel's
+/// systems: a backgrounded hierarchy would freeze the flag at whatever it last
+/// wrote, and a stuck `true` swallows arrow-key scrolling in every panel until
+/// you bring the tree back. It's a handful of resource reads.
+pub(crate) fn publish_arrow_claim(
+    focused: Option<Res<renzora_ember::dock::FocusedPanel>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    rename: Res<super::rename::HierRename>,
+    selection: Option<Res<EditorSelection>>,
+    mut claimed: ResMut<renzora::core::ArrowKeysClaimed>,
+) {
+    let owns = owns_arrow_keys(
+        focused.as_deref(),
+        play_mode.as_deref(),
+        &input_focus,
+        &rename,
+        selection.as_deref(),
+    );
+    if claimed.0 != owns {
+        claimed.0 = owns;
+    }
+}
+
+/// The arrow keys walk the tree, the way every tree view does it.
+///
+/// `↑`/`↓` move the selection to the previous/next **visible** row — the same
+/// flattened order shift-click ranges over, so a collapsed branch is stepped
+/// past rather than through. `→` opens a closed branch and, when it's already
+/// open, steps into its first child; `←` shuts an open branch and, when there's
+/// nothing left to shut, steps out to the parent. Together they walk a deep
+/// imported model without touching the mouse, and `←`/`→` are the only fold
+/// gesture besides the caret once `hierarchy_toggle_on_click` is off.
+///
+/// Gated on the hierarchy being the *focused* panel rather than merely visible,
+/// because all four keys are already spoken for elsewhere — nudging the
+/// selection in the 2D viewport, stepping frames in the animation timeline, and
+/// (for `↑`/`↓`) scrolling whichever panel the cursor rests over. The panel earns
+/// focus the moment you click a row, which is also the only way to have a
+/// selection to walk from. See [`publish_arrow_claim`] for how the scroll
+/// conflict is refereed.
+///
+/// `Shift`+`↑`/`↓` deliberately does *not* extend the selection: a range needs a
+/// fixed anchor and a moving cursor, and `EditorSelection` stores neither — it
+/// keeps a flat list whose first entry is the primary, so an extend would drag
+/// the "current row" to the top of the range and walk off in the wrong
+/// direction. Shift-click ranges work because they're one-shot.
+pub(crate) fn hierarchy_arrow_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    focused: Option<Res<renzora_ember::dock::FocusedPanel>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    rename: Res<super::rename::HierRename>,
+    selection: Option<Res<EditorSelection>>,
+    cache: Res<HierarchyTreeCache>,
+    mut expanded: ResMut<HierExpanded>,
+) {
+    let right = keys.just_pressed(KeyCode::ArrowRight);
+    let left = keys.just_pressed(KeyCode::ArrowLeft);
+    let down = keys.just_pressed(KeyCode::ArrowDown);
+    let up = keys.just_pressed(KeyCode::ArrowUp);
+    if !right && !left && !down && !up {
+        return;
+    }
+    if !owns_arrow_keys(
+        focused.as_deref(),
+        play_mode.as_deref(),
+        &input_focus,
+        &rename,
+        selection.as_deref(),
+    ) {
+        return;
+    }
+    // `owns_arrow_keys` already established both of these.
+    let Some(selection) = selection else {
+        return;
+    };
+    let Some(entity) = selection.get() else {
+        return;
+    };
+
+    if up || down {
+        // Walk the flattened visible order, so `↓` from a collapsed parent lands
+        // on its next sibling rather than on a child nobody can see. Clamped at
+        // both ends — wrapping around a 2000-row tree is a jump, not a step.
+        let order = visible_order(&cache, &expanded.0);
+        let Some(idx) = order.iter().position(|e| *e == entity) else {
+            return;
+        };
+        let next = if down {
+            idx.saturating_add(1).min(order.len().saturating_sub(1))
+        } else {
+            idx.saturating_sub(1)
+        };
+        if let Some(target) = order.get(next) {
+            if *target != entity {
+                selection.set(Some(*target));
+            }
+        }
+        return;
+    }
+
+    let Some(node) = find_tree_node(&cache.nodes, entity) else {
+        return;
+    };
+    let has_children = !node.children.is_empty();
+    let is_open = expanded.0.contains(&entity);
+
+    if right {
+        if has_children && !is_open {
+            expanded.0.insert(entity);
+        } else if has_children {
+            selection.set(Some(node.children[0].entity));
+        }
+    } else if has_children && is_open {
+        expanded.0.remove(&entity);
+    } else {
+        // Step out to the *displayed* parent, which is the tree's parent rather
+        // than the raw `ChildOf` one — the cache re-parents through hidden GLTF
+        // wrappers, and jumping to a row that isn't on screen would be a dead end.
+        let mut path = Vec::new();
+        if find_tree_path(&cache.nodes, entity, &mut path) && path.len() >= 2 {
+            selection.set(Some(path[path.len() - 2]));
         }
     }
 }

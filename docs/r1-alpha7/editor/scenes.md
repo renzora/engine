@@ -18,6 +18,16 @@ At the top you get three handy controls:
 
 Below that is the tree itself. Click the little arrows (carets) on the left to expand or collapse a group, like the imported model in the screenshot above. On the right of each row are an **eye** (show/hide) and a **lock** toggle.
 
+### Expanding & collapsing
+
+There are three ways to fold a branch open and shut:
+
+- **The caret** on the left of any row with children.
+- **The `←` / `→` arrow keys**, once you've clicked into the Hierarchy. `→` opens the selected branch, and — when it's already open — steps into its first child. `←` shuts an open branch, and steps out to the parent when there's nothing left to shut. With `↑`/`↓` for moving between rows, that's a whole imported model walked without touching the mouse. All four only apply while the Hierarchy is the panel you last clicked in, so they stay free for nudging a sprite in the viewport or stepping frames in the Timeline.
+- **Clicking the row itself** — selecting an object also opens it, and clicking it again to deselect folds it back up.
+
+That last one is a matter of taste, so it's a setting: **Settings → Interface → Hierarchy → Toggle on Click**, on by default. Turn it off when you're clicking through a deep model and don't want every row you touch unfolding under you — the caret and the arrow keys stay, and clicking becomes purely about selection.
+
 > Starting from scratch? When a scene is empty, the tree is replaced by a **starter picker** so you can begin from an Empty Scene, a 2D Scene, or other ready-made starters.
 
 ### Adding objects
@@ -44,8 +54,11 @@ Click a row to select it. The viewport and the Inspector both follow your select
 | `Ctrl`+Click (or `Cmd`+Click) | Add or remove this object from the selection |
 | `Shift`+Click | Select everything between the last pick and this one |
 | Double-click | Rename it right in the tree |
+| `↑` / `↓` | Move the selection to the previous / next visible row |
 | Drag from empty space | Rubber-band select every row the box sweeps over |
 | `Escape` | Deselect everything |
+
+The `↑`/`↓` keys work once you've clicked into the Hierarchy, and they walk what you can actually see — a collapsed group is stepped past rather than through, and the list scrolls to follow the selection when it reaches an edge. Because the tree has focus it takes the keys back from arrow-key panel scrolling; click somewhere else and they go straight back to it. (`Shift`+`↑`/`↓` doesn't extend the selection — use `Shift`+click for a range.)
 
 To **drag-select**, press in the empty area of the tree (below the last row) and drag a box over the rows you want — everything it touches is selected, and the list scrolls automatically when you reach its top or bottom edge. Hold `Ctrl` or `Shift` while you start the box to add to the current selection instead of replacing it. A plain click in that empty space clears the selection.
 

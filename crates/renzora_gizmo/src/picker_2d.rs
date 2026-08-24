@@ -1326,15 +1326,26 @@ pub fn update_cursor_2d(
 /// units when Shift is held. Gated on viewport hover (so typing in
 /// inspector text fields doesn't move the selection) and 2D view via
 /// the system's run-condition.
+///
+/// Also stands down while a focused list panel has claimed the arrows
+/// ([`renzora::core::ArrowKeysClaimed`] — the hierarchy tree walking its
+/// selection). Hover isn't enough on its own: click a row in the tree, drift the
+/// cursor over the viewport, and every press would nudge the sprite *and* walk
+/// the selection off it. Focus outranks hover for a keypress, so a click back in
+/// the viewport is what hands the arrows to the nudge.
 pub fn keyboard_nudge_2d(
     selection: Res<EditorSelection>,
     keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
+    claimed: Option<Res<renzora::core::ArrowKeysClaimed>>,
     mut transforms: Query<&mut Transform>,
     mut commands: Commands,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if claimed.is_some_and(|c| c.0) {
         return;
     }
     if !viewport.is_some_and(|v| v.hovered) {

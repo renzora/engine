@@ -1,7 +1,7 @@
 //! Parent stacking ("sticky" ancestors). As you scroll the tree, the ancestor
 //! chain of the topmost visible row pins to the top of the panel as compact
 //! header rows, so you never lose track of where a deep row lives. Toggled by
-//! `EditorSettings.hierarchy_parent_stacking` (Settings → Viewport → Hierarchy).
+//! `EditorSettings.hierarchy_parent_stacking` (Settings → Interface → Hierarchy).
 //!
 //! The pinned rows live in an absolutely-positioned overlay over the top of the
 //! scroll viewport (so they don't scroll). A pinned header reflects the current

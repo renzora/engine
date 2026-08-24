@@ -270,6 +270,11 @@ pub struct EditorSettings {
     pub ui_preview_by_default: bool,
     /// Pin expanded ancestor rows to the top of the hierarchy as you scroll.
     pub hierarchy_parent_stacking: bool,
+    /// A hierarchy row click expands/collapses its subtree as well as selecting
+    /// it. Off leaves the caret (and the Left/Right arrow keys) as the only way
+    /// to fold a branch, so clicking through a deep model doesn't unfold every
+    /// row you touch. Persisted per-user in `~/.renzora/editor.toml`.
+    pub hierarchy_toggle_on_click: bool,
     /// Which component sections start expanded when the inspector is built for a
     /// newly selected entity.
     pub inspector_expand_default: InspectorExpandDefault,
@@ -338,6 +343,7 @@ impl Default for EditorSettings {
             renderer_backend: renzora::load_renderer_backend(),
             ui_preview_by_default: true,
             hierarchy_parent_stacking: true,
+            hierarchy_toggle_on_click: renzora::load_hierarchy_toggle_on_click(),
             inspector_expand_default: InspectorExpandDefault::default(),
             inspector_component_filter_style: InspectorComponentFilterStyle::default(),
             show_settings: false,
