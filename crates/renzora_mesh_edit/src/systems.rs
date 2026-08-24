@@ -1182,27 +1182,70 @@ pub fn draw_overlay(
         }
     }
 
-    // Face highlights: draw the triangles' outline tinted when selected.
+    // Face highlights: draw a translucent fill (triangle fan from the
+    // centroid) plus the perimeter outline at full alpha. Matches
+    // Blender's `face_select` overlay, which fills the face with the
+    // theme's `face_select` color at low alpha and traces the perimeter
+    // on top. Drawing a true filled polygon isn't possible from a gizmo
+    // line-list, so the fan pattern reads as a tinted overlay.
     if mesh_selection.mode == SelectMode::Face {
         for (i, face) in edit.faces.iter().enumerate() {
-            let selected = mesh_selection
+            if !mesh_selection
                 .faces
-                .contains(&crate::edit_mesh::FaceId(i as u32));
-            let color = if selected {
-                Color::srgba(1.0, 0.55, 0.1, 0.9)
-            } else {
+                .contains(&crate::edit_mesh::FaceId(i as u32))
+            {
                 continue;
-            };
-            for w in face.verts.windows(2) {
-                let a = edit.vertices[w[0].0 as usize].position;
-                let b = edit.vertices[w[1].0 as usize].position;
-                gizmos.line(to_world(a), to_world(b), color);
             }
-            // Close the loop.
-            if let (Some(first), Some(last)) = (face.verts.first(), face.verts.last()) {
-                let a = edit.vertices[last.0 as usize].position;
-                let b = edit.vertices[first.0 as usize].position;
-                gizmos.line(to_world(a), to_world(b), color);
+            let n = face.verts.len();
+            if n < 3 {
+                continue;
+            }
+            // Centroid in mesh-local space → world space once. The fan's
+            // apex is the centroid, so the diagonals toward each vertex
+            // tessellate any n-gon (triangle, quad, fan) into triangles.
+            let mut centroid_local = Vec3::ZERO;
+            for vid in &face.verts {
+                if let Some(v) = edit.vertices.get(vid.0 as usize) {
+                    centroid_local += v.position;
+                }
+            }
+            centroid_local /= n as f32;
+            let centroid = to_world(centroid_local);
+
+            let fill_color = Color::srgba(1.0, 0.55, 0.1, 0.45);
+            let outline_color = Color::srgba(1.0, 0.55, 0.1, 0.9);
+
+            // Per-triangle fan edges (centroid→a, centroid→b, a→b) at low
+            // alpha. The perimeter (last → first) closes the fan.
+            let pairs: Vec<(Vec3, Vec3)> = face
+                .verts
+                .windows(2)
+                .map(|w| {
+                    (
+                        to_world(edit.vertices[w[0].0 as usize].position),
+                        to_world(edit.vertices[w[1].0 as usize].position),
+                    )
+                })
+                .chain(
+                    face.verts
+                        .first()
+                        .zip(face.verts.last())
+                        .map(|(&first, &last)| {
+                            (
+                                to_world(edit.vertices[last.0 as usize].position),
+                                to_world(edit.vertices[first.0 as usize].position),
+                            )
+                        }),
+                )
+                .collect();
+            for (a, b) in &pairs {
+                gizmos.line(centroid, *a, fill_color);
+                gizmos.line(centroid, *b, fill_color);
+                gizmos.line(*a, *b, fill_color);
+            }
+            // Outline on top — full alpha, no fill bleed.
+            for (a, b) in &pairs {
+                gizmos.line(*a, *b, outline_color);
             }
         }
     }
