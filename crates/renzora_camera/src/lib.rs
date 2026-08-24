@@ -419,6 +419,19 @@ fn sync_viewport_settings(
             orbit.pitch = cmd.pitch;
         }
     }
+
+    // Send the camera home (the viewport's Home button). Same reset the Home
+    // key's `ResetCamera` action performs, and guarded the same way as the view
+    // angle above so clearing the flag doesn't mark the resource changed every
+    // frame.
+    if vp.pending_camera_home {
+        vp.pending_camera_home = false;
+        let def = OrbitCameraState::default();
+        orbit.focus = def.focus;
+        orbit.distance = def.distance;
+        orbit.yaw = def.yaw;
+        orbit.pitch = def.pitch;
+    }
 }
 
 /// Consume each viewport slot's own `pending_view_angle` (set by that viewport's

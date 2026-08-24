@@ -399,10 +399,6 @@ version = "1.0"
 "viewport.camera.bottom" = "Bottom"
 "viewport.focus" = "Focus Selection"
 "viewport.frame_all" = "Frame All"
-"viewport.nav.home" = "Home View"
-"viewport.nav.pan" = "Pan (drag)"
-"viewport.nav.zoom" = "Zoom (drag)"
-"viewport.nav.grid" = "Toggle Grid"
 
 # ─── Splash screen ───────────────────────────────────────────────────────────
 "splash.title" = "Renzora Engine"

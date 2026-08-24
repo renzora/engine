@@ -34,9 +34,13 @@ The camera moves slowly when you're close to something and faster when you're fa
 | `End` | Move the focus point to wherever your cursor is pointing |
 | `[` / `]` | Slow down / speed up the camera |
 
-There's also a small button cluster on the right edge of each viewport for **Pan** and **Zoom** — press and drag them, dragging **up** on Zoom to move closer — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing.
+There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. Top to bottom, the cluster is:
 
-While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Grid and Scene Icons circles that used to sit under them are gone: both already have switches in the toolbar's Display and Gizmos dropdowns, and in *Settings → Viewport*.)
+- **Home** — one click puts the camera back at its starting position, the same reset as the `Home` key.
+- **Pan** and **Zoom** — press and drag them, dragging **up** on Zoom to move closer.
+- **Grid** — toggles the floor grid, and lights up while it's on. The same switch lives in the toolbar's Display dropdown and in *Settings → Viewport*; this one is here because the grid gets flipped often enough while modelling that a dropdown is two clicks too many.
+
+While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Scene Icons circle that used to sit down there is gone — that flag already has switches in the toolbar's Gizmos dropdown and in *Settings → Viewport*.)
 
 Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain modes **Sculpt / Paint Layers / Paint Foliage** — plus **Make Terrain** whenever the selection is a flat mesh, which [turns that plane into a terrain](terrain.md#making-a-terrain-out-of-a-plane) — mesh **Edit Mode** and **X Symmetry**, and any modes plugins add), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle and World/Local controls, left to right, wrapping onto another line when they need to. The **maximize** button is the exception: it floats hard against the **right edge** of the bar, whatever else is on it. It hides during play mode, all except Play, which becomes Stop and stays where it is.
 
@@ -174,7 +178,7 @@ hanging.
 
 ## The floor grid
 
-The **Display** dropdown's **Grid** row has the on/off switch and a **−  /  +** pair beside it. Each press of `+` divides the grid into smaller squares, and `−` goes back the other way — powers of two, so the finer lines always fall on the coarser ones. The number between them is the divisor: `1` is the base grid, `4` draws sixteenth-squares.
+The **Display** dropdown's **Grid** row has the on/off switch and a **−  /  +** pair beside it. Each press of `+` divides the grid into smaller squares, and `−` goes back the other way — powers of two, so the finer lines always fall on the coarser ones. The number between them is the divisor: `1` is the base grid, `4` draws sixteenth-squares. New projects start at `2` — quarter-squares — because the base grid on its own is too coarse to line anything up against at normal editing distances.
 
 It's a subdivision count rather than a cell size because this grid is infinite and unitless — there's nothing to measure a "16 units" against the way there is in the 2D view. (The old **Sub-grid** switch is no longer here: it only ever affected the *2D* editor's grid, and still lives in *Settings → Viewport*.)
 

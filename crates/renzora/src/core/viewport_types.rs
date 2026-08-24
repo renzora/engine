@@ -814,7 +814,8 @@ pub struct ViewportSettings {
     /// infinite grid's line frequency, stepped by the -/+ on the Display
     /// dropdown's Grid row. A count rather than a size because the grid is
     /// infinite and unitless — you subdivide what's there, you don't dial in a
-    /// cell width.
+    /// cell width. Defaults to **2**: the base cell alone is too coarse to place
+    /// anything against at normal editing distances.
     pub grid_divisions: u32,
     pub show_subgrid: bool,
     /// The 2D editor's own grid toggle — independent of the 3D `show_grid`
@@ -888,6 +889,13 @@ pub struct ViewportSettings {
     pub snap: SnapSettings,
     /// Pending view angle command (consumed by camera system).
     pub pending_view_angle: Option<ViewAngleCommand>,
+    /// A pending "send the camera home" request, consumed by the camera system,
+    /// which restores the orbit's default focus / distance / yaw / pitch — the
+    /// same thing the Home key's `ResetCamera` action does. A separate channel
+    /// from [`Self::pending_view_angle`] because that one only carries an angle:
+    /// a home is also a re-focus on the origin and a reset of the zoom.
+    /// Transient, so it is never persisted.
+    pub pending_camera_home: bool,
     /// Cap the framerate at the monitor refresh rate. Off lets the FPS
     /// counter reflect actual render capacity at the cost of possible
     /// screen tearing.
@@ -928,7 +936,7 @@ impl Default for ViewportSettings {
             visualization_mode: VisualizationMode::default(),
             toolbar_order: Vec::new(),
             show_grid: true,
-            grid_divisions: 1,
+            grid_divisions: 2,
             show_subgrid: true,
             show_grid_2d: false,
             // Matches the default tilemap tile size (16 units = 16 px art).
@@ -957,6 +965,7 @@ impl Default for ViewportSettings {
             camera: CameraSettingsState::default(),
             snap: SnapSettings::default(),
             pending_view_angle: None,
+            pending_camera_home: false,
             vsync: true,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
@@ -1260,7 +1269,7 @@ fn default_true() -> bool {
 }
 
 fn default_grid_divisions() -> u32 {
-    1
+    2
 }
 
 fn default_grid_size_2d() -> f32 {
@@ -1387,6 +1396,7 @@ mod tests {
                 floor_y: -1.5,
             },
             pending_view_angle: None,
+            pending_camera_home: false,
             vsync: false,
             gizmo_drag_opacity: 0.6,
             // Non-default tier (default is Medium) so the round-trip exercises it.
@@ -1403,7 +1413,8 @@ mod tests {
         let mut restored = ViewportSettings::default();
         persisted.apply(&mut restored);
 
-        // Skip pending_view_angle (transient) and viewport_mode (not persisted).
+        // Skip pending_view_angle / pending_camera_home (transient) and
+        // viewport_mode (not persisted).
         assert_eq!(original.render_toggles, restored.render_toggles);
         assert!(matches!(
             restored.visualization_mode,
