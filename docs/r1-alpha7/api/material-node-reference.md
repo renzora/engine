@@ -10,7 +10,12 @@ This page is the per-node companion to the [Material API](/docs/r1-alpha7/api/ma
 
 All nodes live in `renzora_shader` — declared in `material/nodes.rs` (`ALL_NODES`)
 and compiled to WGSL in `material/codegen.rs`. There are **13 categories** and
-roughly **124 node types**.
+**159 node types**. Every generated fragment shader — one synthetic graph per
+node type, plus every `.material` shipped under `assets/materials/` — is
+compiled in the test suite the way the engine compiles it: naga_oil's composer
+over bevy_pbr's own shader sources, then naga. Imports resolve to the real
+thing, so a node whose codegen drifts invalid is a CI failure rather than a
+silent runtime fallback.
 
 ## How to read this page
 
@@ -24,7 +29,9 @@ A few rules apply everywhere:
 - **Pin types coerce automatically.** `Float`, `Vec2`, `Vec3`, `Vec4`, and `Color`
   are freely inter-connectable. Wiring a scalar into a vector copies it across every
   lane; wiring a wider vector into a narrower pin takes the leading components. So a
-  `math/multiply` works on floats *or* colors with no extra nodes.
+  `math/multiply` works on floats *or* colors with no extra nodes. `Bool` sits
+  outside that family. Where a graph wires one into a numeric pin, the compiler
+  casts it, turning `true` into `1.0` and `false` into `0.0`.
 - **Unconnected UV inputs default to the mesh UVs.** Texture and pattern nodes that
   take a `uv` pin fall back to the mesh's UV attribute (`mat_uv`) when you leave it
   empty, so the simplest possible graph still works.
@@ -62,8 +69,9 @@ noted; they're where data *enters* the graph.
 
 Named graph-boundary inputs. The `name` pin is the identifier a **material
 instance** or a `MaterialOverrides` component overrides by name; the `default` pin
-is the value baked into the master shader. A graph may declare up to **32**
-parameters. Header color: purple.
+is the value baked into the master shader. A graph can declare up to **32**
+parameters. Past the cap the extra names alias the last slot, and the Problems
+panel shows a warning. Header color: purple.
 
 | Node | Inputs | Outputs | What it does |
 |------|--------|---------|--------------|

@@ -99,6 +99,11 @@ pub mod postprocess;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod runtime_warnings;
 
+// Per-file problems with authored content, behind the editor's Problems panel.
+// Here rather than in a plugin crate because the producer (the material
+// resolver) and the reader (the code editor) must agree on one definition.
+pub mod content_problems;
+
 // ── Editor contract (Operation Merge fold) ───────────────────────────────
 // The thin editor types shared across the binary↔bundle boundary live here in
 // the one shared `renzora` dylib (so `EditorSelection` et al. unify to one

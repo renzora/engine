@@ -173,6 +173,7 @@ struct Ctx<'a> {
     /// look up an already-allocated slot in O(1) when the same parameter
     /// name appears on multiple nodes.
     parameter_slots: HashMap<String, usize>,
+    warnings: Vec<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -223,6 +224,7 @@ impl<'a> Ctx<'a> {
             in_displacement_fn: false,
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -241,6 +243,15 @@ impl<'a> Ctx<'a> {
             // Once we hit the cap, every subsequent unique name aliases the
             // last slot. We still record the parameter so tooling can list
             // it, but the actual reads will collide.
+            self.warnings.push(format!(
+                "parameter '{name}' exceeds the {MAX_PARAMETER_SLOTS}-slot parameter buffer; \
+                 it aliases slot {} and will read as '{}'. Split the material or reuse names.",
+                MAX_PARAMETER_SLOTS - 1,
+                self.parameters
+                    .last()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or("?"),
+            ));
             return MAX_PARAMETER_SLOTS - 1;
         }
         self.parameters.push(MaterialParam {
@@ -328,7 +339,13 @@ impl<'a> Ctx<'a> {
         if let Some(def) = nodes::node_def(&node.node_type) {
             let pins = (def.pins)();
             if let Some(pin) = pins.iter().find(|p| p.name == pin_name) {
-                return pin.default_value.to_wgsl();
+                let expr = pin.default_value.to_wgsl();
+                // A pin with no default falls back to a plain `0.0`, so a Vec3 pin gets a float unless we widen it.
+                let vt = pin.default_value.pin_type();
+                if vt != pin.pin_type {
+                    return graph::PinType::cast_expr(vt, pin.pin_type, &expr);
+                }
+                return expr;
             }
         }
 
@@ -626,7 +643,7 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "position", "view.world_position.xyz".into());
             }
             "input/object_position" => {
-                // mesh_functions provides mesh[in.instance_index]
+                // Column 3 of the model matrix is the object's world-space translation.
                 self.set_out(
                     id,
                     "position",
@@ -1075,11 +1092,13 @@ impl<'a> Ctx<'a> {
 
                 let w = self.next_var("tri_w");
                 let v = self.next_var("tri");
+                // `var`, not `let` — WGSL has no shadowing, so the next line has to assign, not redeclare.
                 self.emit(format!(
-                    "    let {w} = pow(abs(in.world_normal), vec3<f32>({sharpness}));"
+                    "    var {w} = pow(abs(in.world_normal), vec3<f32>({sharpness}));"
                 ));
-                self.emit(format!("    let {w} = {w} / ({w}.x + {w}.y + {w}.z);"));
-                let p = format!("in.world_position.xyz * {scale}");
+                self.emit(format!("    {w} = {w} / ({w}.x + {w}.y + {w}.z);"));
+                // Brackets, or `.yz` below attaches to the last operand instead of the whole product.
+                let p = format!("(in.world_position.xyz * {scale})");
                 self.emit(format!("    let {v} = textureSample({tex_name}, texture_sampler, {p}.yz) * {w}.x + textureSample({tex_name}, texture_sampler, {p}.xz) * {w}.y + textureSample({tex_name}, texture_sampler, {p}.xy) * {w}.z;"));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -2314,10 +2333,10 @@ impl<'a> Ctx<'a> {
                 let dir = self.input(node, "direction");
                 let mip = self.input(node, "mip_level");
                 let v = self.next_var("env");
-                // Guarded for Bevy's two env-map binding variants. We only
-                // emit the sampling code itself; the bindings are imported
-                // from bevy_pbr::mesh_view_bindings (which Bevy already
-                // binds for every camera with a view bind group).
+                // No ENVIRONMENT_MAP means no binding at all, so a camera with
+                // no environment map light needs the fallback below or the
+                // material fails to compile for it.
+                self.emit("#ifdef ENVIRONMENT_MAP".to_string());
                 self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, normalize({dir}), {mip});"
@@ -2326,6 +2345,9 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, normalize({dir}), {mip});"
                 ));
+                self.emit("#endif".to_string());
+                self.emit("#else".to_string());
+                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
                 self.emit("#endif".to_string());
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -2344,6 +2366,8 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v}_rd = reflect(-{v}_vd, normalize({n}));"
                 ));
+                // Same fallback as `scene/env_map_sample` — see there.
+                self.emit("#ifdef ENVIRONMENT_MAP".to_string());
                 self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, {v}_rd, {mip});"
@@ -2352,6 +2376,9 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, {v}_rd, {mip});"
                 ));
+                self.emit("#endif".to_string());
+                self.emit("#else".to_string());
+                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
                 self.emit("#endif".to_string());
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -2584,7 +2611,7 @@ pub fn compile_with_functions(
         texture_bindings: ctx.texture_bindings,
         domain: graph.domain,
         errors,
-        warnings: Vec::new(),
+        warnings: ctx.warnings,
         requires_transmission,
         parameters: ctx.parameters,
     }
@@ -3114,6 +3141,7 @@ fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
     shader.push_str("#import bevy_pbr::forward_io::{VertexOutput, FragmentOutput}\n");
     shader.push_str("#import bevy_pbr::mesh_view_bindings::{view, globals}\n");
 
+    shader.push_str("#import bevy_pbr::mesh_functions\n");
     if ctx.uses_scene_depth || ctx.uses_scene_normal || ctx.uses_motion_vector {
         shader.push_str("#import bevy_pbr::prepass_utils\n");
     }
@@ -3121,10 +3149,12 @@ fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
         shader.push_str("#import bevy_pbr::mesh_view_bindings::{view_transmission_texture, view_transmission_sampler}\n");
     }
     if ctx.uses_env_map {
+        shader.push_str("#ifdef ENVIRONMENT_MAP\n");
         shader.push_str("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY\n");
         shader.push_str("#import bevy_pbr::mesh_view_bindings::{specular_environment_maps, environment_map_sampler}\n");
         shader.push_str("#else\n");
         shader.push_str("#import bevy_pbr::mesh_view_bindings::{specular_environment_map, environment_map_sampler}\n");
+        shader.push_str("#endif\n");
         shader.push_str("#endif\n");
     }
     shader.push('\n');

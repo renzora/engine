@@ -1293,7 +1293,7 @@ dependencies = [
  "bytemuck",
  "fixedbitset",
  "futures",
- "naga 29.0.3",
+ "naga",
  "naga_oil",
  "rand 0.10.1",
  "rand_pcg",
@@ -1977,7 +1977,7 @@ dependencies = [
  "indexmap",
  "itertools 0.14.0",
  "js-sys",
- "naga 29.0.3",
+ "naga",
  "nonmax",
  "offset-allocator",
  "profiling",
@@ -2049,7 +2049,7 @@ dependencies = [
  "bevy_platform 0.19.1",
  "bevy_reflect 0.19.1",
  "bevy_utils 0.19.1",
- "naga 29.0.3",
+ "naga",
  "naga_oil",
  "serde",
  "thiserror 2.0.18",
@@ -2526,27 +2526,12 @@ dependencies = [
 
 [[package]]
 name = "bit-set"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
-dependencies = [
- "bit-vec 0.8.0",
-]
-
-[[package]]
-name = "bit-set"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ddef2995421ab6a5c779542c81ee77c115206f4ad9d5a8e05f4ff49716a3dd"
 dependencies = [
- "bit-vec 0.9.1",
+ "bit-vec",
 ]
-
-[[package]]
-name = "bit-vec"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bit-vec"
@@ -5459,38 +5444,12 @@ dependencies = [
 
 [[package]]
 name = "naga"
-version = "27.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066cf25f0e8b11ee0df221219010f213ad429855f57c494f995590c861a9a7d8"
-dependencies = [
- "arrayvec",
- "bit-set 0.8.0",
- "bitflags 2.11.1",
- "cfg-if",
- "cfg_aliases",
- "codespan-reporting 0.12.0",
- "half",
- "hashbrown 0.16.1",
- "hexf-parse",
- "indexmap",
- "libm",
- "log",
- "num-traits",
- "once_cell",
- "pp-rs",
- "rustc-hash",
- "thiserror 2.0.18",
- "unicode-ident",
-]
-
-[[package]]
-name = "naga"
 version = "29.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0dd91265cc2454558f659b3b4b9640f0ddb8cc6521277f166b8a8c181c898079"
 dependencies = [
  "arrayvec",
- "bit-set 0.9.1",
+ "bit-set",
  "bitflags 2.11.1",
  "cfg-if",
  "cfg_aliases",
@@ -5519,7 +5478,7 @@ dependencies = [
  "codespan-reporting 0.12.0",
  "data-encoding",
  "indexmap",
- "naga 29.0.3",
+ "naga",
  "regex",
  "rustc-hash",
  "thiserror 2.0.18",
@@ -7219,7 +7178,7 @@ name = "renzora"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "naga 27.0.3",
+ "naga",
  "renzora_macros",
  "ron 0.8.1",
  "serde",
@@ -7503,7 +7462,7 @@ name = "renzora_clouds"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "naga 29.0.3",
+ "naga",
  "renzora",
  "serde",
 ]
@@ -8471,7 +8430,7 @@ name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "naga 27.0.3",
+ "naga",
  "renzora",
  "renzora_plugin",
 ]
@@ -8690,8 +8649,10 @@ name = "renzora_shader"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "naga 27.0.3",
+ "naga",
+ "naga_oil",
  "renzora",
+ "renzora_test_harness",
  "serde",
  "serde_json",
  "uuid",
@@ -8894,7 +8855,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
- "naga 29.0.3",
+ "naga",
  "png 0.17.16",
  "renzora",
  "renzora_physics",
@@ -9124,7 +9085,7 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
- "naga 29.0.3",
+ "naga",
  "renzora",
  "serde",
 ]
@@ -11024,7 +10985,7 @@ dependencies = [
  "hashbrown 0.16.1",
  "js-sys",
  "log",
- "naga 29.0.3",
+ "naga",
  "parking_lot",
  "portable-atomic",
  "profiling",
@@ -11046,8 +11007,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02da3ad1b568337f25513b317870960ef87073ea0945502e44b864b67a8c77b7"
 dependencies = [
  "arrayvec",
- "bit-set 0.9.1",
- "bit-vec 0.9.1",
+ "bit-set",
+ "bit-vec",
  "bitflags 2.11.1",
  "bytemuck",
  "cfg_aliases",
@@ -11055,7 +11016,7 @@ dependencies = [
  "hashbrown 0.16.1",
  "indexmap",
  "log",
- "naga 29.0.3",
+ "naga",
  "once_cell",
  "parking_lot",
  "portable-atomic",
@@ -11118,7 +11079,7 @@ dependencies = [
  "android_system_properties",
  "arrayvec",
  "ash",
- "bit-set 0.9.1",
+ "bit-set",
  "bitflags 2.11.1",
  "block2 0.6.2",
  "bytemuck",
@@ -11134,7 +11095,7 @@ dependencies = [
  "libc",
  "libloading 0.8.9",
  "log",
- "naga 29.0.3",
+ "naga",
  "ndk-sys",
  "objc2 0.6.4",
  "objc2-core-foundation",
@@ -11169,7 +11130,7 @@ version = "29.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59c654c483f058800972c3645e95388a7eca31bf9fe1933bc20e036588a0be02"
 dependencies = [
- "naga 29.0.3",
+ "naga",
  "wgpu-types 29.0.3",
 ]
 

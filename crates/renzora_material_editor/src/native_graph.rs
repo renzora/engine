@@ -885,7 +885,8 @@ fn pending_first_save(world: &mut World, entity: Entity) {
         let _ = std::fs::create_dir_all(&dir);
         let file = dir.join(format!("{}.material", graph_name));
         let mut graph_to_save = world.resource::<MaterialEditorState>().graph.clone();
-        if let Ok((json, _errors)) = renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph_to_save, &file) {
+        if let Ok((json, report)) = renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph_to_save, &file) {
+            crate::note_save_warnings(world, &asset_path, &report.warnings);
             let _ = std::fs::write(&file, &json);
             world.resource_mut::<MaterialEditorState>().graph = graph_to_save;
         }

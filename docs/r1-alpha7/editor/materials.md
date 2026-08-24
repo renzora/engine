@@ -259,6 +259,19 @@ If you want to write shader code directly, that's a **standalone shader**, not a
 
 > Materials written by an older version — the ones with a `.wgsl` and `.wgsl.meta` next to them — still load exactly as before. The next time you save one, its shader moves inside the `.material` and the two stale files are removed for you.
 
+Only a **write** counts. Opening a `.wgsl`, reading it, or touching its timestamp does not reload the material. The editor itself has the file open, so a reload triggered by a read re-triggers itself.
+
+## When a material fails to compile
+
+A graph can be well-formed and still produce WGSL the shader compiler rejects — most easily through a **Custom Code** node, whose contents nothing checks until the compiler sees them. The material then falls back to a plain surface in the viewport, and the compiler's errors show up in two places:
+
+- **The Problems panel**, as a row per distinct error, listed against the `.material` file it came from. Click a row to jump to that file if you have it open.
+- **The console**, once per compile — not once per frame, so a broken material does not flood the log.
+
+Both clear on their own as soon as the material compiles again. There is nothing to dismiss and no restart involved. Fix the graph, press **Apply**, and the row disappears.
+
+Some errors appear only under certain conditions — a mesh with vertex colors, or a camera with an environment map. Those rows carry a `[defines: …]` prefix naming the configurations that fail, because the configuration is part of what is wrong. An error with no prefix fails everywhere.
+
 ## Tips
 
 - **Keep roughness above ~0.05.** Perfectly smooth surfaces can sparkle with artifacts.

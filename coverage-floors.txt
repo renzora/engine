@@ -111,7 +111,7 @@ renzora_scene 6.0
 renzora_scripting 17.7
 renzora_scripting_editor 0.0
 renzora_settings 4.5
-renzora_shader 14.1
+renzora_shader 66.2
 renzora_shader_editor 0.0
 renzora_shape_library 84.2
 renzora_shell 0.0

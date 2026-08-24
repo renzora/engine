@@ -99,6 +99,10 @@ impl PinType {
             (PinType::Vec4, PinType::Vec2) => format!("({e}).xy"),
             (PinType::Vec4, PinType::Vec3) => format!("({e}).xyz"),
 
+            // `param/bool` emits a real WGSL `bool`. The fallthrough below
+            // hands it to a float pin unchanged, and naga rejects it.
+            (PinType::Bool, PinType::Float) => format!("select(0.0, 1.0, {e})"),
+
             _ => expr.to_string(),
         }
     }
@@ -153,7 +157,9 @@ impl PinValue {
             // Guard against non-finite values reaching the shader — `{:.6}` on
             // inf/NaN emits `inf`/`NaN`, which is not valid WGSL and would fail
             // pipeline creation for the whole material.
-            Self::Float(v) => format!("{:.6}", if v.is_finite() { *v } else { 0.0 }),
+            // `f32(..)`, not a bare literal: naga will not concretize a builtin
+            // call whose every argument is abstract, for example an unwired `math/lerp`.
+            Self::Float(v) => format!("f32({:.6})", if v.is_finite() { *v } else { 0.0 }),
             Self::Vec2([x, y]) => format!("vec2<f32>({:.6}, {:.6})", x, y),
             Self::Vec3([x, y, z]) => format!("vec3<f32>({:.6}, {:.6}, {:.6})", x, y, z),
             Self::Vec4([x, y, z, w]) | Self::Color([x, y, z, w]) => {
