@@ -1121,10 +1121,13 @@ fn track_hover(
         .find(|(i, _)| over(i))
         .map(|(_, t)| t.path.clone())
         .or_else(|| tree.iter().find(|(i, _)| over(i)).map(|(_, n)| n.0.clone()));
-    if let Some(p) = hovered {
-        if state.hovered.as_deref() != Some(p.as_path()) {
-            state.hovered = Some(p);
-        }
+    // Clear over empty space rather than letting the last hover stick. A sticky
+    // path made a right-click on the empty grid open the per-asset menu (Rename /
+    // Duplicate / Delete) for whatever the pointer happened to brush past on the
+    // way there — and those items then acted on that asset. `None` is what tells
+    // `asset_context_menu` to offer the folder-background menu instead.
+    if state.hovered != hovered {
+        state.hovered = hovered;
     }
 }
 
@@ -1147,9 +1150,6 @@ fn asset_context_menu(
     if !roots.iter().any(|rcp| rcp.cursor_over) {
         return;
     }
-    let Some(path) = state.hovered.clone() else {
-        return;
-    };
     let Some(win) = windows.iter().find(|w| w.cursor_position().is_some()) else {
         return;
     };
@@ -1157,6 +1157,11 @@ fn asset_context_menu(
         return;
     };
     let win_h = win.height();
+    // Nothing under the cursor → the click targets the *folder*, not an asset.
+    let Some(path) = state.hovered.clone() else {
+        background_context_menu(&mut commands, &fonts, &state, cursor, win_h);
+        return;
+    };
     let fav_label = if state.favorites.contains(&path) {
         renzora::lang::t("assets.context.unfavorite")
     } else {
@@ -1217,6 +1222,51 @@ fn asset_context_menu(
             }
         }),
     ]);
+    commands.entity(menu).add_children(&kids);
+}
+
+/// Right-click empty space → the menu for the folder you are *in*: New Folder,
+/// Import, the create-asset list and Reveal. None of the per-asset actions
+/// (Favorite / Rename / Duplicate / Delete) belong here, because there is no
+/// asset for them to act on.
+fn background_context_menu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    state: &NativeAssets,
+    cursor: Vec2,
+    win_h: f32,
+) {
+    // Same upward flip as the per-asset menu: the create-asset list is tall
+    // enough to be clipped by a click low in the window.
+    let menu = screen_menu_flip(commands, cursor.x, cursor.y, win_h);
+    let mut kids = vec![
+        menu_item(
+            commands,
+            fonts,
+            "folder-plus",
+            &renzora::lang::t("assets.new_folder"),
+            |w| create_asset(w, NewAsset::Folder),
+        ),
+        menu_item(
+            commands,
+            fonts,
+            "download-simple",
+            &renzora::lang::t("assets.import"),
+            request_import,
+        ),
+        menu_sep(commands),
+    ];
+    kids.extend(new_asset_menu_items(commands, fonts));
+    if let Some(folder) = state.current.clone() {
+        kids.push(menu_sep(commands));
+        kids.push(menu_item(
+            commands,
+            fonts,
+            "folder-open",
+            &renzora::lang::t("assets.context.reveal"),
+            move |_| reveal_in_explorer(&folder),
+        ));
+    }
     commands.entity(menu).add_children(&kids);
 }
 
