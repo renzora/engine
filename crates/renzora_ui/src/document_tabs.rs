@@ -18,7 +18,7 @@ pub const DOC_TAB_BAR_HEIGHT: f32 = TAB_HEIGHT + TOP_MARGIN;
 /// What type of asset a document tab represents. The layout that should be
 /// active when the tab is focused, and the icon used in its tab header, both
 /// follow from this.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DocTabKind {
     #[default]
     Scene,
@@ -109,6 +109,28 @@ impl DocTabKind {
             DocTabKind::Script => "code",
             DocTabKind::Shader => "graphics-card",
             DocTabKind::Other => "file",
+        }
+    }
+
+    /// The type's accent color, as sRGB bytes. Deliberately the same values the
+    /// asset browser gives these extensions in its tile accents and its "create
+    /// new" menu, so a material is the same green wherever you meet it — in the
+    /// grid, in the menu that made it, and in the tab you opened it into.
+    ///
+    /// Theme-independent on purpose: these are *type* identities, not chrome, so
+    /// they must not shift when the palette does. The tab strip paints the icon
+    /// with this in every state, active or not — the accent underline and the
+    /// brighter label are what mark which tab is current, which leaves the icon
+    /// free to say what kind of thing each tab holds.
+    pub fn color(self) -> (u8, u8, u8) {
+        match self {
+            DocTabKind::Scene => (115, 191, 242),
+            DocTabKind::Material => (0, 200, 130),
+            DocTabKind::Particle => (230, 160, 90),
+            DocTabKind::Blueprint => (100, 180, 255),
+            DocTabKind::Script => (120, 170, 255),
+            DocTabKind::Shader => (220, 120, 255),
+            DocTabKind::Other => (150, 155, 170),
         }
     }
 }

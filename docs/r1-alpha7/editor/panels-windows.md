@@ -46,8 +46,8 @@ Because it belongs to the editor and not to a workspace, **Reset Layout** and **
 
 - **It is pinned.** You can't move the panel itself — it has no drag handle, and it always spans the bottom of the window above the status bar. Individual **tabs** still drag in and out freely, so you decide what lives in it.
 - **Resize** by dragging its **top edge**, or the **empty space in its header** to the right of the tabs. Both show a ↕ cursor.
-- **`Ctrl+Space`** toggles it open and closed. Opening this way always gives it **a quarter of the editor's height**, not whatever height it had when you last closed it — so the shortcut is a reliable "show me the panel" rather than something that occasionally reopens a sliver. Use the chevron when you want the height you left it at.
-- **Closed doesn't mean gone**: it collapses to its **header strip**, a tab-bar-height row just above the status bar showing its tabs muted. **Click any tab** to reopen with that tab active, at a quarter of the editor's height.
+- **`Ctrl+Space`** toggles it open and closed. Opening this way always gives it **40% of the editor's height**, not whatever height it had when you last closed it — so the shortcut is a reliable "show me the panel" rather than something that occasionally reopens a sliver. Use the chevron when you want the height you left it at.
+- **Closed doesn't mean gone**: it collapses to its **header strip**, a tab-bar-height row just above the status bar showing its tabs muted. **Click any tab** to reopen with that tab active, at the same 40%.
 - **Chevron toggle** at the right end of the header in both states — **∨** collapses the open panel, **∧** reopens the collapsed strip.
 - **Drag it open**: grab the collapsed strip's background and pull upward — it opens and keeps sizing under your cursor in one gesture. **Drag it closed** the same way: pull the top edge down past its minimum and it snaps shut.
 

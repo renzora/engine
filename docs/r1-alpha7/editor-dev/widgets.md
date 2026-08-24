@@ -255,6 +255,8 @@ A **new** item has no remembered width, and the obvious answer — leave it in t
 
 `OverflowEntry::on_drag` makes the item's row in the caret menu draggable: press and move past a small threshold and the menu closes and the handler runs (the host takes over the drag), press and release without moving and the normal `action` runs. Setting it changes *when* the click fires — an ordinary menu row acts on press, which can't work when the press is also how a drag starts. The document tabs use it so a folded tab can be dragged back out into the strip.
 
+`OverflowEntry::icon_color` paints that row's glyph a given colour instead of the menu's muted default — for a strip where the icon's colour carries meaning the label doesn't. The document tabs pass each document's type colour, so a tab that folds into the caret menu keeps the same glyph in the same colour it had in the strip. It is only honoured on a draggable row; a plain row is drawn by `menu_item`, which owns its own colours.
+
 ### Wrapping, rearrangeable toolbars (`arrange_row`)
 
 `arrange_row(commands, name)` is a toolbar row that **wraps** rather than hiding what it can't fit, and whose groups can be dragged into a different order.

@@ -16,7 +16,7 @@ From the screenshot above:
 - **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. Other panels keep their tools the same way, in their own header; the strip under the top bar is your open document tabs.
 - **Left** — the **3D viewport** where you see and move your world, taking most of the window.
 - **Right** — one column, the **Scene** tree (everything in the current level) stacked over the **Inspector** (the settings of whatever you click). They're paired because that's the loop: pick an entity above, edit it below.
-- **Bottom** — the [global bottom panel](/docs/r1-alpha7/editor/panels-windows#the-bottom-panel): a collapsible strip with the **Assets** browser, Timeline, Console, Mixer, and Shape Library. `Ctrl+Space` toggles it, opening it to a quarter of the editor's height. It's shared by every workspace rather than belonging to this one.
+- **Bottom** — the [global bottom panel](/docs/r1-alpha7/editor/panels-windows#the-bottom-panel): a collapsible strip with the **Assets** browser, Timeline, Console, Mixer, and Shape Library. `Ctrl+Space` toggles it, opening it to 40% of the editor's height. It's shared by every workspace rather than belonging to this one.
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 

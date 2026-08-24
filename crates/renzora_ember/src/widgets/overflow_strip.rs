@@ -95,6 +95,11 @@ pub struct OverflowEntry {
     /// clicked. Setting it also changes when `action` fires: the row waits for
     /// the button to come back up, since a press is now how a drag starts too.
     pub drag: Option<Arc<dyn Fn(&mut World) + Send + Sync>>,
+    /// Colour for the menu row's glyph. `None` takes the menu's own muted
+    /// default; set it where the icon's colour carries meaning the label doesn't
+    /// (the document tabs paint theirs with the document's type colour, so a
+    /// folded tab looks in the menu the way it looked in the strip).
+    pub icon_color: Option<(u8, u8, u8)>,
 }
 
 impl OverflowEntry {
@@ -107,7 +112,16 @@ impl OverflowEntry {
             label: label.to_string(),
             action: Arc::new(action),
             drag: None,
+            icon_color: None,
         }
+    }
+
+    /// Paint this item's menu glyph a specific colour instead of the menu's
+    /// muted default. Only honoured on a draggable row (see [`Self::on_drag`]) —
+    /// a plain menu row draws through `menu_item`, which owns its own colours.
+    pub fn icon_color(mut self, color: (u8, u8, u8)) -> Self {
+        self.icon_color = Some(color);
+        self
     }
 
     /// Let this item be dragged out of the overflow menu — for a strip whose
@@ -462,7 +476,7 @@ pub(crate) fn overflow_more_click(
                         &fonts,
                         &entry.icon,
                         &entry.label,
-                        text_muted(),
+                        entry.icon_color.unwrap_or_else(text_muted),
                         text_primary(),
                     );
                     commands.entity(row).insert(OverflowMenuRow {

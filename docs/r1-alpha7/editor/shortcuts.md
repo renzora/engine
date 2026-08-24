@@ -147,7 +147,7 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 | `Alt+Z` | Toggle wireframe |
 | `Alt+Shift+Z` | Toggle lighting |
 | `Ctrl+G` | Toggle grid |
-| `Ctrl+Space` | Toggle bottom panel (opens to a quarter of the editor's height) |
+| `Ctrl+Space` | Toggle bottom panel (opens to 40% of the editor's height) |
 | `T` | Toggle snap |
 | `Shift+T` | Toggle edge snap |
 | `Alt+T` | Toggle scale-from-bottom |

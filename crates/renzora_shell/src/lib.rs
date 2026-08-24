@@ -2007,11 +2007,11 @@ fn bottom_set_rename_commit(
 /// (`close_bottom_panel`, `reopen_bottom_panel`, `bottom_snap_collapse`) are
 /// gone with it.
 ///
-/// Opening always goes to [`quarter_height`] rather than to the height the panel
-/// last had, for the same reason clicking a collapsed tab does: the remembered
-/// height can be anything, including the near-minimum a drag-to-close leaves
-/// behind, and a shortcut that opens the panel to a sliver reads as broken. The
-/// chevron is the control that reopens at the remembered height.
+/// Opening always goes to [`default_open_height`] rather than to the height the
+/// panel last had, for the same reason clicking a collapsed tab does: the
+/// remembered height can be anything, including the near-minimum a drag-to-close
+/// leaves behind, and a shortcut that opens the panel to a sliver reads as
+/// broken. The chevron is the control that reopens at the remembered height.
 fn toggle_bottom_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Option<Res<KeyBindings>>,
@@ -2028,22 +2028,28 @@ fn toggle_bottom_panel(
     }
     bottom.open = !bottom.open;
     if bottom.open {
-        if let Some(h) = quarter_height(&wraps) {
+        if let Some(h) = default_open_height(&wraps) {
             bottom.height = h;
         }
     }
 }
 
-/// A quarter of the dock region's height, in logical px, floored at the panel's
-/// minimum — the height the bottom panel opens to when something asks for it to
-/// be *shown* rather than restored.
+/// Share of the dock region the bottom panel takes when it is *shown* rather
+/// than restored. Enough that the panel opens onto real content — a readable
+/// run of console lines, a couple of rows of asset thumbnails — without the
+/// workspace above it stopping being the thing you are looking at.
+const BOTTOM_DOCK_OPEN_FRACTION: f32 = 0.40;
+
+/// [`BOTTOM_DOCK_OPEN_FRACTION`] of the dock region's height, in logical px,
+/// floored at the panel's minimum — the height the bottom panel opens to when
+/// something asks for it to be shown rather than restored.
 ///
 /// `None` before the wrapper node has been laid out, which the callers read as
 /// "leave the height alone" rather than falling back to a guess.
-fn quarter_height(wraps: &Query<&ComputedNode, With<DockAreaWrap>>) -> Option<f32> {
+fn default_open_height(wraps: &Query<&ComputedNode, With<DockAreaWrap>>) -> Option<f32> {
     let wrap = wraps.iter().next()?;
     let avail = wrap.size().y * wrap.inverse_scale_factor();
-    Some((avail * 0.25).max(dock::BOTTOM_DOCK_MIN_HEIGHT))
+    Some((avail * BOTTOM_DOCK_OPEN_FRACTION).max(dock::BOTTOM_DOCK_MIN_HEIGHT))
 }
 
 /// A live drag of the bottom panel's top edge: `(cursor y at press, panel
@@ -2615,12 +2621,12 @@ fn collapsed_bottom_tab_click(
             continue;
         }
         bottom.open = true;
-        // Open to a quarter of the dock region rather than the height it last
-        // had. Clicking a *tab* is a request to look at that panel, and the
-        // remembered height could be anything — including the near-minimum a
+        // Open to the standard share of the dock region rather than the height
+        // it last had. Clicking a *tab* is a request to look at that panel, and
+        // the remembered height could be anything — including the near-minimum a
         // drag-to-close leaves behind, which would reopen to a sliver of the
         // panel the click was asking to see.
-        if let Some(h) = quarter_height(&wraps) {
+        if let Some(h) = default_open_height(&wraps) {
             bottom.height = h;
         }
         fixed.tree.set_active_tab(&tab.0);
@@ -5487,13 +5493,27 @@ fn build_doc_tab_menu_group(
         }
     });
     // Kind glyph + name of the active document, both following it.
-    let icon = icon_text(commands, &fonts.phosphor, "film-slate", accent(), 12.0);
+    let icon = icon_text(
+        commands,
+        &fonts.phosphor,
+        "film-slate",
+        renzora_ui::DocTabKind::Scene.color(),
+        12.0,
+    );
     commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
     renzora_ember::reactive::tracked::bind_text(commands, icon, |w: &Rx| {
         let name = active_doc(w).map(|t| t.kind.icon()).unwrap_or("film-slate");
         renzora_ember::phosphor_map::icon_glyph(name)
             .unwrap_or('\u{E4C6}')
             .to_string()
+    });
+    // The glyph carries the active document's type color, same as its tab does
+    // in the strip — this trigger is that tab, in the compact layout that has no
+    // room for the strip.
+    renzora_ember::reactive::tracked::bind_text_color(commands, icon, |w: &Rx| {
+        rgb(active_doc(w)
+            .map(|t| t.kind.color())
+            .unwrap_or_else(|| renzora_ui::DocTabKind::Scene.color()))
     });
     let label = commands
         .spawn((
@@ -5632,7 +5652,7 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     // model refuses the last tab and the last *scene*, so a ✕ that only some of
     // these rows can honour would be worse than none.
     let scenes = state.tabs.iter().filter(|t| !t.kind.is_asset()).count();
-    let rows: Vec<(u64, String, &'static str, bool, bool, bool)> = state
+    let rows: Vec<(u64, String, renzora_ui::DocTabKind, bool, bool, bool)> = state
         .tabs
         .iter()
         .enumerate()
@@ -5640,7 +5660,7 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
             (
                 t.id,
                 t.name.clone(),
-                t.kind.icon(),
+                t.kind,
                 i == state.active_tab,
                 t.is_modified,
                 state.tabs.len() > 1 && (t.kind.is_asset() || scenes > 1),
@@ -5649,22 +5669,24 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .collect();
     let items: Vec<(u64, u64)> = rows
         .iter()
-        .map(|(id, name, icon, active, modified, can_close)| {
+        .map(|(id, name, kind, active, modified, can_close)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             id.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (name, icon, active, modified, can_close).hash(&mut h);
+            (name, kind, active, modified, can_close).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, name, icon, active, modified, can_close) = &rows[i];
+            let (id, name, kind, active, modified, can_close) = &rows[i];
             let row = doc_tab_menu_row_node(c, "doc-tab-menu-row");
             c.entity(row).insert(DocTabClick(*id));
-            let fg = if *active { accent() } else { text_muted() };
-            let ic = icon_text(c, &f.phosphor, icon, fg, 11.0);
+            // Type color on every row, matching the strip this dropdown stands
+            // in for: whichever of the two the user has chosen, a document is
+            // named by the same glyph in the same color.
+            let ic = icon_text(c, &f.phosphor, kind.icon(), kind.color(), 11.0);
             let label = c
                 .spawn((
                     Text::new(if *modified {
@@ -5786,13 +5808,17 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let scenes = state.tabs.iter().filter(|t| !t.kind.is_asset()).count();
     let renaming = world.get_resource::<DocTabRename>().and_then(|r| r.0);
     let last = state.tabs.len().saturating_sub(1);
-    // (id, name, icon glyph, active, modified, renaming, trailing seam, closable)
+    // (id, name, kind, active, modified, renaming, trailing seam, closable)
+    //
+    // The *kind* travels rather than the glyph it resolves to, because the tab
+    // now takes two things from it — the icon and that icon's type color — and
+    // one of them in the snapshot would leave the other to be looked up twice.
     //
     // The seam belongs to the *boundary*, not to either tab, so exactly one of
     // the pair draws it: the left one. Every tab but the last, including either
     // side of the active one — with no fill on any tab there is nothing else
     // marking where one ends and the next begins.
-    let tabs: Vec<(u64, String, &'static str, bool, bool, bool, bool, bool)> = state
+    let tabs: Vec<(u64, String, renzora_ui::DocTabKind, bool, bool, bool, bool, bool)> = state
         .tabs
         .iter()
         .enumerate()
@@ -5800,7 +5826,7 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
             (
                 t.id,
                 t.name.clone(),
-                t.kind.icon(),
+                t.kind,
                 i == state.active_tab,
                 t.is_modified,
                 renaming == Some(t.id),
@@ -5811,22 +5837,22 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .collect();
     let items: Vec<(u64, u64)> = tabs
         .iter()
-        .map(|(id, name, icon, active, modified, editing, seam, can_close)| {
+        .map(|(id, name, kind, active, modified, editing, seam, can_close)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             id.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (name, icon, active, modified, editing, seam, can_close).hash(&mut h);
+            (name, kind, active, modified, editing, seam, can_close).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, name, icon, active, modified, editing, seam, can_close) = &tabs[i];
+            let (id, name, kind, active, modified, editing, seam, can_close) = &tabs[i];
             if *editing {
                 build_doc_rename_field(c, &f.ui, *id, name)
             } else {
-                doc_tab_row(c, f, *id, name, icon, *active, *modified, *can_close, *seam)
+                doc_tab_row(c, f, *id, name, *kind, *active, *modified, *can_close, *seam)
             }
         }),
     }
@@ -5868,13 +5894,14 @@ fn doc_tab_row(
     fonts: &EmberFonts,
     id: u64,
     name: &str,
-    icon: &str,
+    kind: renzora_ui::DocTabKind,
     active: bool,
     modified: bool,
     can_close: bool,
     seam: bool,
 ) -> Entity {
     let fg = if active { text_primary() } else { text_muted() };
+    let icon = kind.icon();
     let tab = commands
         .spawn((
             Node {
@@ -5915,7 +5942,8 @@ fn doc_tab_row(
             // Dragging the row moves the tab instead of activating it, so a
             // folded tab isn't stranded at the end of the strip with no way back.
             renzora_ember::widgets::OverflowEntry::new(icon, name, move |w| activate_doc_tab(w, id))
-                .on_drag(move |w| start_doc_tab_drag(w, id)),
+                .on_drag(move |w| start_doc_tab_drag(w, id))
+                .icon_color(kind.color()),
             Name::new(format!("doc:{name}")),
         ))
         .id();
@@ -5947,11 +5975,13 @@ fn doc_tab_row(
     // zone, where every glyph cost a tab off the visible end; spanning the whole
     // viewport there's room for it again.
     //
-    // Coloured independently of the label: accent on the active tab, so the icon
-    // agrees with the rule beneath it, and muted on the rest. Matching `fg`
-    // exactly made each tab one flat block of a single colour.
-    let icon_fg = if active { accent() } else { text_muted() };
-    let kind_icon = icon_text(commands, &fonts.phosphor, icon, icon_fg, 12.0);
+    // The type color, in every state — the same green the asset browser gives a
+    // material, on the active tab and the inactive ones alike. Graying the
+    // inactive ones made the strip say "current tab" twice, once with the accent
+    // rule and again with six identical gray glyphs, while throwing away the one
+    // thing the icon is there for: which tab holds which kind of thing. Active
+    // state is the underline and the brighter label; the icon is type identity.
+    let kind_icon = icon_text(commands, &fonts.phosphor, icon, kind.color(), 12.0);
     // Elide the *name*, then add the modified marker — eliding afterwards would
     // eat the asterisk on exactly the tabs that most need it.
     let shown = elide(name, DOC_TAB_CHARS);
