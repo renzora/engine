@@ -174,3 +174,34 @@ fn sync_per_camera_grid(
 }
 
 renzora::add!(GridPlugin, Editor);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// The main-world half of the viewport's Grid toggle: `show_grid` off has to
+    /// reach the grid entity's `Visibility`. The render-world half (a phase item
+    /// that used to be retained past the frame it was queued in) can't be tested
+    /// headlessly, which is exactly why this end kept looking correct while the
+    /// toggle did nothing.
+    #[test]
+    fn clearing_show_grid_hides_the_grid_entity() {
+        let mut world = World::new();
+        world.insert_resource(ViewportSettings::default());
+        world.init_resource::<GridConfig>();
+        let grid = world
+            .spawn((
+                EditorGrid,
+                Visibility::Inherited,
+                InfiniteGridSettings::default(),
+            ))
+            .id();
+
+        world.resource_mut::<ViewportSettings>().show_grid = false;
+        world.run_system_once(sync_grid_from_viewport).unwrap();
+        world.run_system_once(apply_grid_config).unwrap();
+
+        assert_eq!(world.get::<Visibility>(grid), Some(&Visibility::Hidden));
+    }
+}

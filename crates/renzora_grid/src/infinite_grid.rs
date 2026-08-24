@@ -26,7 +26,6 @@ use bevy::math::{Mat3, Vec3, Vec4};
 use bevy::reflect::{std_traits::ReflectDefault, Reflect};
 use bevy::render::{
     camera::ExtractedCamera,
-    extract_component::{ExtractComponent, ExtractComponentPlugin},
     prelude::*,
     render_phase::{
         AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
@@ -54,16 +53,7 @@ impl Plugin for InfiniteGridPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "infinite_grid.wgsl");
         app.register_type::<InfiniteGrid>()
-            .register_type::<InfiniteGridSettings>()
-            // Extract `InfiniteGridSettings` that live on *cameras* into the
-            // render world, so `prepare_infinite_grids` can build a per-camera
-            // settings override (`PerCameraSettingsUniformOffset`). Without this
-            // the per-camera path is dead — every view would share the grid
-            // entity's single settings (fade radius, scale), which is exactly
-            // what made a zoomed-out viewport fade the grid at the focused
-            // camera's radius. (Grid *entity* settings are still extracted
-            // manually alongside their transform in `extract_infinite_grids`.)
-            .add_plugins(ExtractComponentPlugin::<InfiniteGridSettings>::default());
+            .register_type::<InfiniteGridSettings>();
     }
 
     fn finish(&self, app: &mut App) {
@@ -76,7 +66,10 @@ impl Plugin for InfiniteGridPlugin {
             .init_resource::<InfiniteGridPipeline>()
             .init_resource::<SpecializedRenderPipelines<InfiniteGridPipeline>>()
             .add_render_command::<Transparent3d, DrawInfiniteGrid>()
-            .add_systems(ExtractSchedule, extract_infinite_grids)
+            .add_systems(
+                ExtractSchedule,
+                (extract_infinite_grids, extract_per_camera_grid_settings),
+            )
             .add_systems(
                 Render,
                 prepare_infinite_grids.in_set(RenderSystems::PrepareResources),
@@ -112,7 +105,7 @@ pub struct InfiniteGrid;
 /// Component to configure the infinite grid
 ///
 /// This component can be applied directly on the grid entity or on a camera that can see the grid
-#[derive(Component, Copy, Clone, Reflect, ExtractComponent)]
+#[derive(Component, Copy, Clone, Reflect)]
 #[reflect(Component, Default)]
 pub struct InfiniteGridSettings {
     /// The color of the X axis
@@ -281,28 +274,37 @@ fn prepare_view_bind_groups(
     }
 }
 
-/// Pull the grids (and the cameras carrying a per-view settings override) into
-/// the render world.
+/// What [`extract_infinite_grids`] reads off one grid entity. A named alias only
+/// so the filtered query below stays under clippy's type-complexity bar.
+type GridExtractData<'a> = (
+    RenderEntity,
+    &'a InfiniteGridSettings,
+    &'a GlobalTransform,
+    Option<&'a InheritedVisibility>,
+    Option<&'a RenderLayers>,
+);
+
+/// Pull the grid entities into the render world.
 ///
 /// A hidden grid must be **actively removed**, not merely skipped: render
 /// entities are retained between frames, so last frame's settings would sit
 /// there and the grid would keep drawing after the viewport's Grid toggle turned
 /// it off. That's exactly what made that toggle look dead.
 ///
-/// `Option<&InheritedVisibility>` because a camera carrying an override has no
-/// visibility components at all — requiring them would drop every per-view
-/// override and take the per-camera fade with it.
+/// `With<InfiniteGrid>` so this system owns the grid *entities* and nothing
+/// else. A camera carrying a per-view override also has `InfiniteGridSettings`,
+/// and it must not be extracted here — its settings come from
+/// [`extract_per_camera_grid_settings`], which is the only other writer of this
+/// component in the render world. Two systems both writing it is exactly how the
+/// Grid toggle died before: a blanket `ExtractComponentPlugin` re-inserted the
+/// settings this system had just removed, and since neither was ordered against
+/// the other, the removal below only sometimes survived the frame.
+///
+/// `Option<&InheritedVisibility>` because a grid spawned without going through
+/// visibility propagation yet has none; missing means "visible".
 fn extract_infinite_grids(
     mut commands: Commands,
-    grids: Extract<
-        Query<(
-            RenderEntity,
-            &InfiniteGridSettings,
-            &GlobalTransform,
-            Option<&InheritedVisibility>,
-            Option<&RenderLayers>,
-        )>,
-    >,
+    grids: Extract<Query<GridExtractData, With<InfiniteGrid>>>,
 ) {
     let mut extracted = Vec::new();
     for (entity, grid, transform, visibility, layers) in grids.iter() {
@@ -316,6 +318,29 @@ fn extract_infinite_grids(
             commands.entity(entity).try_remove::<InfiniteGridSettings>();
         }
     }
+    commands.try_insert_batch(extracted);
+}
+
+/// Extract the `InfiniteGridSettings` that sit on **cameras** as a per-view
+/// override, so [`prepare_infinite_grids`] can build each view its own
+/// `PerCameraSettingsUniformOffset`. Without it every view shares the grid
+/// entity's single settings, which is what made a zoomed-out viewport fade the
+/// grid at the focused camera's radius.
+///
+/// This used to be a blanket `ExtractComponentPlugin::<InfiniteGridSettings>`,
+/// and that is what broke the viewport's Grid toggle: the plugin extracted the
+/// component from *every* entity carrying it — grid entities included — and
+/// re-inserted it each frame, undoing the removal
+/// [`extract_infinite_grids`] performs to hide a grid. Restricting the camera
+/// path to `With<Camera>` gives each system one kind of entity and no overlap.
+fn extract_per_camera_grid_settings(
+    mut commands: Commands,
+    cameras: Extract<Query<(RenderEntity, &InfiniteGridSettings), With<Camera>>>,
+) {
+    let extracted: Vec<_> = cameras
+        .iter()
+        .map(|(entity, settings)| (entity, *settings))
+        .collect();
     commands.try_insert_batch(extracted);
 }
 
@@ -462,7 +487,16 @@ fn queue_infinite_grids(
             if !plane_check(transform, view.world_from_view.translation()) {
                 continue;
             }
-            phase.add_retained(Transparent3d {
+            // `add_transient`, NOT `add_retained`: a retained item "persists
+            // between frames until removed", and nothing here ever removed it.
+            // Hiding the grid stops it being queued, but the item it queued
+            // while visible stayed in the phase forever and kept drawing from
+            // the `InfiniteGridUniformOffsets` and bind group left on the render
+            // entity from the last visible frame — which is why the viewport's
+            // Grid toggle did nothing at all. A transient item is dropped by
+            // `prepare_for_new_frame` and re-added by this system every frame,
+            // so "not queued" actually means "not drawn".
+            phase.add_transient(Transparent3d {
                 pipeline: pipeline_id,
                 entity: (*render_entity, *main_entity),
                 draw_function: draw_function_id,
@@ -470,8 +504,9 @@ fn queue_infinite_grids(
                 batch_range: 0..1,
                 extra_index: PhaseItemExtraIndex::None,
                 indexed: false,
-                // Retained items get their `distance` recomputed from `sorting_info`
-                // every frame, so the NEG_INFINITY above is overwritten. Sorting by
+                // Every item in the phase — transient included — gets its
+                // `distance` recomputed from `sorting_info` before the sort, so
+                // the NEG_INFINITY above is overwritten. Sorting by
                 // the world origin made the grid's draw order flip against
                 // non-depth-writing transparents (gaussian splats), drawing grid
                 // lines over them whenever the origin sorted nearer. The huge
