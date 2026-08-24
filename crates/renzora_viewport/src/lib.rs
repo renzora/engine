@@ -58,6 +58,12 @@ pub use renzora::core::viewport_types::{
     VisualizationMode,
 };
 
+/// Marker for the native `ImageNode` showing the slot's rendered scene.
+/// Re-exported so editor plugins (mesh edit's screen-space overlay, etc.)
+/// can find the viewport panel to attach per-frame UI overlays that should
+/// clip to the viewport's screen rect.
+pub use crate::native_viewport::ViewportImage;
+
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 720;
 

@@ -8233,6 +8233,7 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_undo",
+ "renzora_viewport",
 ]
 
 [[package]]

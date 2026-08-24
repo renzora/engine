@@ -31,6 +31,7 @@ use renzora_editor_framework::sdk::conditions::in_mode;
 pub mod edit_mesh;
 pub mod native;
 pub mod operators;
+pub mod overlay_ui;
 pub mod sculpt;
 pub mod selection;
 pub mod systems;
@@ -55,6 +56,7 @@ impl Plugin for MeshEditPlugin {
             .init_resource::<systems::GrabState>()
             .init_resource::<systems::EditModeActive>()
             .init_resource::<systems::MeshEditBoxSelect>()
+            .init_resource::<overlay_ui::EditOverlayEntities>()
             .init_resource::<tools::ModelingSettings>()
             .init_resource::<tools::PendingOps>()
             .init_resource::<tools::LoopCutState>()
@@ -115,6 +117,22 @@ impl Plugin for MeshEditPlugin {
                 // armed; `ActiveTool` can't arbitrate, because `enter_edit_mode`
                 // holds it at `None` for exactly as long as a draw tool would.
                 .run_if(no_modal_tool),
+        );
+
+        // Screen-space overlay (UI Node tree parented under the viewport
+        // panel) — vertex dots in Vertex mode, marquee rubber-band while
+        // box-selecting. Runs after `pick_element` so the marquee has the
+        // latest cursor position; runs in Edit Mode regardless of the
+        // modal-tool gate because nothing else writes to the overlay.
+        app.add_systems(
+            Update,
+            (
+                overlay_ui::ensure_overlay_root,
+                overlay_ui::update_vertex_dots,
+                overlay_ui::update_marquee,
+            )
+                .chain()
+                .run_if(in_mode(ViewportMode::Edit)),
         );
 
         // Scene-mode: Ctrl+J joins the selected mesh entities into one.

@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::core::viewport_types::{ViewportSettings, ViewportState};
+use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora::core::InputFocusState;
 use renzora_editor_framework::{ActiveTool, EditorSelection};
@@ -310,7 +310,6 @@ pub fn pick_element(
     mut active_tool: ResMut<ActiveTool>,
     mut commands: Commands,
     mut box_select: ResMut<MeshEditBoxSelect>,
-    mut gizmos: Gizmos,
 ) {
     // Busy or just-finished grabs / loop cuts own the mouse — a commit click
     // must not double as a pick.
@@ -385,7 +384,7 @@ pub fn pick_element(
         // silently lose every no-drag click.
     }
 
-    // ── WHILE DRAGGING: refresh rect and draw the rubber-band ──────────────
+    // ── WHILE DRAGGING: refresh rect (drawing is handled by overlay_ui::update_marquee)
     if let MeshEditBoxSelectState::Marqueeing {
         anchor_vp,
         current_vp,
@@ -396,6 +395,9 @@ pub fn pick_element(
     {
         // Refresh the current corner every frame so the rubber-band tracks
         // the cursor smoothly. Drop the existing value via replace.
+        // Rendering happens in `overlay_ui::update_marquee` — gizmo
+        // `line_2d` calls go through the 3D pipeline and vanish at the
+        // world's `z = 0` plane.
         box_select.state = MeshEditBoxSelectState::Marqueeing {
             anchor_vp,
             current_vp: cursor_vp,
@@ -403,13 +405,6 @@ pub fn pick_element(
             additive,
             target,
         };
-        let color = Color::srgba(1.0, 1.0, 1.0, 0.7);
-        let min = Vec2::new(anchor_vp.x.min(cursor_vp.x), anchor_vp.y.min(cursor_vp.y));
-        let max = Vec2::new(anchor_vp.x.max(cursor_vp.x), anchor_vp.y.max(cursor_vp.y));
-        gizmos.line_2d(Vec2::new(min.x, min.y), Vec2::new(max.x, min.y), color);
-        gizmos.line_2d(Vec2::new(max.x, min.y), Vec2::new(max.x, max.y), color);
-        gizmos.line_2d(Vec2::new(max.x, max.y), Vec2::new(min.x, max.y), color);
-        gizmos.line_2d(Vec2::new(min.x, max.y), Vec2::new(min.x, min.y), color);
     }
 
     // ── LMB JUST RELEASED ───────────────────────────────────────────────────
@@ -1099,8 +1094,6 @@ pub fn draw_overlay(
     mesh_selection: Res<MeshSelection>,
     edit_q: Query<(&EditMesh, &GlobalTransform)>,
     camera_q: Query<(&Camera, &GlobalTransform, &Projection), With<EditorCamera>>,
-    viewport: Option<Res<ViewportState>>,
-    viewport_settings: Res<ViewportSettings>,
     mut gizmos: Gizmos,
 ) {
     let Some(target) = mesh_selection.target else {
@@ -1116,14 +1109,6 @@ pub fn draw_overlay(
     // the editor camera hasn't spawned).
     let Ok((_camera, cam_gt, projection)) = camera_q.single() else {
         return;
-    };
-    let Some(vp) = viewport.as_ref() else {
-        return;
-    };
-    let vp_px_height = if vp.current_size.y > 0 {
-        vp.current_size.y as f32
-    } else {
-        720.0
     };
 
     // Edges: faint white unless selected.
@@ -1149,55 +1134,12 @@ pub fn draw_overlay(
         gizmos.line(to_world(a), to_world(b), color);
     }
 
-    // Vertex dots (only drawn in vertex mode to reduce clutter). Each dot is
-    // a screen-space filled square that matches Blender's `gl_PointSize`
-    // point-sprite rendering. Size is in panel pixels and reads the same
-    // regardless of camera zoom or distance.
-    //
-    // We draw BOTH a filled 2-D rect (`rect_2d`) AND a 4-corner outline
-    // (`line_2d`). The 2-D rect is the
-    // "right" rendering — it gives the solid square look at any color and
-    // any rotation. We keep the 4-corner outline as a safety net so that
-    // if a custom render configuration somewhere disables `GizmoRender2d`,
-    // the verts still show up as a small hollow square rather than
-    // silently disappearing, which is the failure mode that broke the
-    // previous build on a fresh project.
-    if mesh_selection.mode == SelectMode::Vertex {
-        let px_unselected = f32::from(viewport_settings.mesh_edit_vert_size);
-        let px_selected = f32::from(viewport_settings.mesh_edit_vert_size_selected);
-        for (i, v) in edit.vertices.iter().enumerate() {
-            let selected = mesh_selection.verts.contains(&VertexId(i as u32));
-            let (color, px_half_extent) = if selected {
-                (Color::srgb(1.0, 0.55, 0.1), px_selected)
-            } else {
-                (Color::srgb(0.15, 0.55, 1.0), px_unselected)
-            };
-            if px_half_extent <= 0.0 {
-                continue;
-            }
-            let center_world = to_world(v.position);
-            let Some(center_screen) = _camera.world_to_viewport(cam_gt, center_world).ok()
-            else {
-                continue;
-            };
-            // Filled square, drawn first so the outline draws on top of it.
-            gizmos.rect_2d(
-                Isometry2d::new(center_screen, Rot2::IDENTITY),
-                Vec2::splat(px_half_extent * 2.0),
-                color,
-            );
-            // Safety-net outline so the dot is never fully invisible.
-            let half = px_half_extent;
-            let tl = center_screen + Vec2::new(-half, -half);
-            let tr = center_screen + Vec2::new(half, -half);
-            let bl = center_screen + Vec2::new(-half, half);
-            let br = center_screen + Vec2::new(half, half);
-            gizmos.line_2d(tl, tr, color);
-            gizmos.line_2d(tr, br, color);
-            gizmos.line_2d(br, bl, color);
-            gizmos.line_2d(bl, tl, color);
-        }
-    }
+    // Vertex dots are rendered via `overlay_ui::update_vertex_dots` —
+    // Gizmos `rect_2d`/`line_2d` go through the 3D pipeline at world
+    // `(x, y, 0)` (see `bevy_gizmos-0.19.1/src/gizmos.rs:804`), so they
+    // vanish inside a perspective viewport. The overlay owns a UI Node
+    // tree parented under the viewport panel and positions each dot in
+    // true screen pixels.
 
     // Face highlights: draw a translucent fill (triangle fan from the
     // centroid) plus the perimeter outline at full alpha. Matches

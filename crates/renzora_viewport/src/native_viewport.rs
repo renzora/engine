@@ -31,8 +31,12 @@ struct NativeViewport(usize);
 /// The `ImageNode` showing the slot's rendered scene. Marked so
 /// [`round_scene_corners`] can round it: it covers the content area exactly, and
 /// its corners are the leaf's bottom corners.
+///
+/// `pub` so editor plugins (mesh edit's screen-space overlay, etc.) can find
+/// the viewport panel to attach per-frame UI overlays that should clip to the
+/// viewport's screen rect.
 #[derive(Component)]
-struct ViewportImage;
+pub struct ViewportImage;
 
 pub fn register_native_viewport(app: &mut App) {
     use renzora_editor_framework::SplashState;
