@@ -109,6 +109,24 @@ The toolbar above the viewport carries a **shapes** dropdown (the multi-square i
 
 It's the same shape list as the shape-library panel and the hierarchy's **Add Entity** menu, so whatever you register shows up in all three.
 
+### Dragging one in from the shape library
+
+To place a shape somewhere other than the origin, **drag it out of the shape
+library panel** and over the viewport. A solid ghost of the shape follows your
+cursor, standing on whatever is under it — the ground plane, or the face of an
+existing mesh, so you can stack a crate on a crate or stick one to a wall.
+Release to drop it there; release outside the viewport to cancel. Clicking a
+tile without dragging still adds it at the origin.
+
+**The move snap applies while you drag.** With the toolbar's **move** snap
+turned on, the ghost steps across the grid in whole snap increments rather than
+sliding smoothly, so what you drop is already aligned — and it aligns the same
+way the Move gizmo does, meaning a shape doesn't shift the first time you nudge
+it afterwards. That includes edge snapping: it's the shape's bottom corner that
+lands on the gridline, so a dropped cube fills a grid cell instead of straddling
+the line through its middle. The shape lands exactly where the ghost was
+standing.
+
 ## Dropping models in
 
 Drag a `.glb`/`.gltf` from the asset browser over the viewport and the real

@@ -181,7 +181,11 @@ impl Plugin for ViewportPlugin {
                     .before(shape_drop::update_shape_drag_preview),
                 shape_drop::update_shape_drag_preview,
                 (
-                    shape_drop::native_shape_drop,
+                    // Must run after the preview: the drop commits the ghost's
+                    // resolved position (surface offset + grid snap), so that
+                    // has to be this frame's, not the previous frame's.
+                    shape_drop::native_shape_drop
+                        .after(shape_drop::update_shape_drag_preview),
                     html_drop::native_html_drop,
                     // Native (bevy_ui) asset drops (material / scene / sprite).
                     // `arm` captures the hovering drop candidate each frame;

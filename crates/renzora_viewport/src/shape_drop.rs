@@ -4,10 +4,12 @@
 //! Follows the legacy pattern: a persistent `ShapeDragState` resource with fields
 //! mutated directly by UI code and polled by regular Bevy systems.
 
+use bevy::camera::primitives::MeshAabb;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use renzora::core::viewport_types::{SnapSettings, ViewportSettings};
 use renzora::core::{EditorCamera, ShapeRegistry};
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
@@ -15,6 +17,50 @@ use renzora_ui::shape_drag::{
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
 use crate::ViewportState;
+
+// ── Placement resolution ───────────────────────────────────────────────────
+
+/// Where a dragged shape would land right now: the surface hit (falling back to
+/// the ground plane) pushed half a unit along the surface normal so the shape
+/// rests on top instead of intersecting, then rounded onto the transform-snap
+/// grid. Returns `None` while the cursor is outside the viewport.
+fn placement_position(
+    drag_state: &ShapeDragState,
+    snap: &SnapSettings,
+    min_offset: Vec3,
+) -> Option<Vec3> {
+    let ground = drag_state.drag_ground_position?;
+    let hit = drag_state.drag_surface_position.unwrap_or(ground);
+    let normal = if drag_state.drag_surface_normal != Vec3::ZERO {
+        drag_state.drag_surface_normal
+    } else {
+        Vec3::Y
+    };
+    Some(snap_translation(hit + normal * 0.5, snap, min_offset))
+}
+
+/// Round a world position onto the translate-snap grid the same way the gizmo's
+/// translate handler does, so a shape doesn't shift the moment you first drag
+/// it after dropping. With edge snap on it is the AABB min corner that lands on
+/// the gridline, which makes a dropped unit cube fill a grid cell rather than
+/// straddle the line through its centre.
+fn snap_translation(pos: Vec3, snap: &SnapSettings, min_offset: Vec3) -> Vec3 {
+    if !snap.translate_enabled || snap.translate_snap <= 0.0 {
+        return pos;
+    }
+    let step = snap.translate_snap;
+    let off = if snap.translate_edge_snap {
+        min_offset
+    } else {
+        Vec3::ZERO
+    };
+    let target = pos + off;
+    Vec3::new(
+        (target.x / step).round() * step,
+        (target.y / step).round() * step,
+        (target.z / step).round() * step,
+    ) - off
+}
 
 // ── Native (bevy_ui) drop handler ──────────────────────────────────────────
 
@@ -48,12 +94,12 @@ pub fn native_shape_drop(
 
     if over_viewport {
         let shape_id = drag_state.dragging_shape.unwrap();
-        let position = drag_state
-            .drag_surface_position
-            .or(drag_state.drag_ground_position)
-            .unwrap_or(Vec3::ZERO);
-        let normal = drag_state.drag_surface_normal;
-        drag_state.pending_drop = Some(PendingShapeDrop { shape_id, position, normal });
+        // Commit the preview's own position (snap included) so the shape lands
+        // under the ghost. It is only missing when the placement ray found
+        // nothing at all — e.g. the camera is looking at the sky — in which
+        // case fall back to the origin as this handler always has.
+        let position = drag_state.preview_position.unwrap_or(Vec3::ZERO);
+        drag_state.pending_drop = Some(PendingShapeDrop { shape_id, position });
     }
     // Clear the drag in both cases (drop or cancel).
     drag_state.dragging_shape = None;
@@ -61,6 +107,7 @@ pub fn native_shape_drop(
     drag_state.drag_ground_position = None;
     drag_state.drag_surface_position = None;
     drag_state.drag_surface_normal = Vec3::ZERO;
+    drag_state.preview_position = None;
 }
 
 // ── Ground position tracking system ────────────────────────────────────────
@@ -236,28 +283,65 @@ pub fn update_shape_drag_preview(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    drag_state: Res<ShapeDragState>,
+    mut drag_state: ResMut<ShapeDragState>,
     registry: Res<ShapeRegistry>,
+    settings: Option<Res<ViewportSettings>>,
     checker: Option<Res<renzora::core::CheckerTexture>>,
     mut preview_state: ResMut<ShapeDragPreviewState>,
     mut transform_query: Query<&mut Transform, With<ShapeDragPreview>>,
     visibility_query: Query<&Visibility, With<ShapeDragPreview>>,
 ) {
-    let is_dragging = drag_state.dragging_shape.is_some();
+    let snap = settings.as_deref().map(|s| s.snap).unwrap_or_default();
     let shape_id = drag_state.dragging_shape;
 
-    match (is_dragging, preview_state.preview_entity) {
-        // Drag active, no preview yet — spawn when cursor enters viewport
-        (true, None) => {
-            let Some(ground_pos) = drag_state.drag_ground_position else {
+    // Drag ended — clear the placement and the ghost.
+    let Some(shape_id) = shape_id else {
+        drag_state.preview_position = None;
+        if let Some(entity) = preview_state.preview_entity.take() {
+            commands.entity(entity).despawn();
+            preview_state.preview_shape_id = None;
+            preview_state.preview_min_offset = Vec3::ZERO;
+        }
+        return;
+    };
+
+    // Shape changed mid-drag — retire the old ghost so the arm below builds a
+    // new one for the new shape (and, with it, a new min offset).
+    if preview_state.preview_shape_id != Some(shape_id) {
+        if let Some(entity) = preview_state.preview_entity.take() {
+            commands.entity(entity).despawn();
+        }
+        preview_state.preview_shape_id = None;
+        preview_state.preview_min_offset = Vec3::ZERO;
+    }
+
+    match preview_state.preview_entity {
+        // No preview yet — spawn it once the cursor is over the viewport.
+        None => {
+            // Bail before building the mesh: `create_mesh` inserts a new asset
+            // every call, so probing the placement first would leak one per
+            // frame for as long as the drag hovers outside the viewport.
+            if drag_state.drag_ground_position.is_none() {
+                drag_state.preview_position = None;
                 return;
-            };
-            let shape_id = shape_id.unwrap();
+            }
             let Some(entry) = registry.get(shape_id) else {
+                drag_state.preview_position = None;
                 return;
             };
 
             let mesh = (entry.create_mesh)(&mut meshes);
+            let min_offset = meshes
+                .get(&mesh)
+                .and_then(|m| m.compute_aabb())
+                .map(|aabb| Vec3::from(aabb.center - aabb.half_extents))
+                .unwrap_or(Vec3::ZERO);
+
+            let Some(spawn_pos) = placement_position(&drag_state, &snap, min_offset) else {
+                drag_state.preview_position = None;
+                return;
+            };
+
             // Match the checker the committed spawn will get so the preview
             // doesn't visibly "change material" on drop.
             let material = materials.add(StandardMaterial {
@@ -265,14 +349,6 @@ pub fn update_shape_drag_preview(
                 base_color_texture: checker.as_ref().map(|c| c.0.clone()),
                 ..default()
             });
-
-            let effective_pos = drag_state.drag_surface_position.unwrap_or(ground_pos);
-            let normal = if drag_state.drag_surface_normal != Vec3::ZERO {
-                drag_state.drag_surface_normal
-            } else {
-                Vec3::Y
-            };
-            let spawn_pos = effective_pos + normal * 0.5;
 
             let entity = commands
                 .spawn((
@@ -284,60 +360,19 @@ pub fn update_shape_drag_preview(
                 ))
                 .id();
 
+            drag_state.preview_position = Some(spawn_pos);
             preview_state.preview_entity = Some(entity);
             preview_state.preview_shape_id = Some(shape_id);
+            preview_state.preview_min_offset = min_offset;
         }
-        // Shape changed mid-drag — respawn
-        (true, Some(entity)) if preview_state.preview_shape_id != shape_id => {
-            commands.entity(entity).despawn();
+        // Same shape, ghost already up — move it, or hide it off-viewport.
+        Some(entity) => {
+            let placement = placement_position(&drag_state, &snap, preview_state.preview_min_offset);
+            drag_state.preview_position = placement;
 
-            let shape_id = shape_id.unwrap();
-            let Some(entry) = registry.get(shape_id) else {
-                preview_state.preview_entity = None;
-                preview_state.preview_shape_id = None;
-                return;
-            };
-
-            let mesh = (entry.create_mesh)(&mut meshes);
-            let material = materials.add(StandardMaterial {
-                base_color: Color::srgb(0.8, 0.7, 0.6),
-                base_color_texture: checker.as_ref().map(|c| c.0.clone()),
-                ..default()
-            });
-
-            let pos = drag_state.drag_ground_position.unwrap_or(Vec3::ZERO);
-            let effective_pos = drag_state.drag_surface_position.unwrap_or(pos);
-            let normal = if drag_state.drag_surface_normal != Vec3::ZERO {
-                drag_state.drag_surface_normal
-            } else {
-                Vec3::Y
-            };
-            let spawn_pos = effective_pos + normal * 0.5;
-
-            let new_entity = commands
-                .spawn((
-                    Mesh3d(mesh),
-                    MeshMaterial3d(material),
-                    Transform::from_translation(spawn_pos),
-                    Visibility::default(),
-                    ShapeDragPreview,
-                ))
-                .id();
-
-            preview_state.preview_entity = Some(new_entity);
-            preview_state.preview_shape_id = Some(shape_id);
-        }
-        // Still dragging same shape — update position or hide
-        (true, Some(entity)) => {
-            if let Some(ground_pos) = drag_state.drag_ground_position {
+            if let Some(pos) = placement {
                 if let Ok(mut tf) = transform_query.get_mut(entity) {
-                    let effective_pos = drag_state.drag_surface_position.unwrap_or(ground_pos);
-                    let normal = if drag_state.drag_surface_normal != Vec3::ZERO {
-                        drag_state.drag_surface_normal
-                    } else {
-                        Vec3::Y
-                    };
-                    tf.translation = effective_pos + normal * 0.5;
+                    tf.translation = pos;
                 }
                 if let Ok(vis) = visibility_query.get(entity) {
                     if *vis == Visibility::Hidden {
@@ -349,14 +384,6 @@ pub fn update_shape_drag_preview(
                 commands.entity(entity).insert(Visibility::Hidden);
             }
         }
-        // Drag ended — cleanup preview
-        (false, Some(entity)) => {
-            commands.entity(entity).despawn();
-            preview_state.preview_entity = None;
-            preview_state.preview_shape_id = None;
-        }
-        // Idle
-        (false, None) => {}
     }
 }
 
@@ -382,12 +409,9 @@ pub fn handle_shape_spawn(world: &mut World) {
         warn!("Shape '{}' not found in registry", drop.shape_id);
         return;
     };
-    let normal = if drop.normal != Vec3::ZERO {
-        drop.normal
-    } else {
-        Vec3::Y
-    };
-    let position = drop.position + normal * 0.5;
+    // Already the final placement — the preview resolved the surface offset
+    // and the grid snap.
+    let position = drop.position;
 
     renzora_undo::execute(
         world,
