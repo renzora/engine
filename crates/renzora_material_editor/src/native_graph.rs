@@ -572,6 +572,7 @@ fn mat_graph_load(world: &mut World) {
             // Persist unsaved edits to the outgoing material before switching.
             save_if_dirty(world);
             sync_to_file(world, path.clone());
+            request_fit(world);
             // Reflect the standalone document as a single tab.
             let label = file_stem_label(&path);
             let mut st = world.resource_mut::<MaterialEditorState>();
@@ -693,8 +694,26 @@ fn save_if_dirty(world: &mut World) {
     }
 }
 
+/// Ask every mounted graph view to re-frame its nodes.
+///
+/// A loaded graph brings its own saved node positions, which have nothing to do
+/// with where the previously edited material left the pan/zoom — without this,
+/// switching materials leaves the view parked wherever it was and the incoming
+/// graph is off-screen.
+fn request_fit(world: &mut World) {
+    let mut q = world.query_filtered::<&mut NodeGraphView, With<MatGraph>>();
+    for mut view in q.iter_mut(world) {
+        view.fit_request = true;
+    }
+}
+
 /// Load `tabs[idx]` into `MaterialEditorState::graph` and set the edit mode.
 fn load_material_tab(world: &mut World, idx: usize) {
+    load_material_tab_inner(world, idx);
+    request_fit(world);
+}
+
+fn load_material_tab_inner(world: &mut World, idx: usize) {
     let Some(tab) = world.resource::<MaterialEditorState>().tabs.get(idx).cloned() else {
         return;
     };

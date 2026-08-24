@@ -33,7 +33,10 @@ const WIRE_W: f32 = 2.5;
 /// Zoom bounds shared by wheel zoom ([`graph_zoom`]) and the toolbar ± ops
 /// ([`view::ngv_view_ops`]). The upper bound is deliberately modest — zooming
 /// in past ~1.5× just makes a few nodes fill the screen with no extra detail.
-pub(crate) const MIN_ZOOM: f32 = 0.4;
+/// The lower bound has to clear whatever a Fit can produce, or the view lands on
+/// a zoom the wheel then refuses to hold: a material's PBR output node alone is
+/// over a thousand pixels tall, so framing a real graph routinely wants ~0.3.
+pub(crate) const MIN_ZOOM: f32 = 0.25;
 pub(crate) const MAX_ZOOM: f32 = 1.5;
 
 mod view;

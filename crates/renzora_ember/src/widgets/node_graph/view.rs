@@ -43,7 +43,11 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops, ngv_highlight_slots, ngv_context, ngv_open_key));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_highlight_slots, ngv_context, ngv_open_key));
+        // A fit measures the nodes that are mounted *now*. Loading a different
+        // graph swaps the whole node set through the keyed list, so running
+        // before it would frame the outgoing graph and then clear the request.
+        app.add_systems(Update, ngv_view_ops.after(crate::reactive::run_keyed_lists));
         app.add_systems(Update, (ngv_comment_drag, ngv_comment_resize, ngv_comment_title, ngv_comment_delete, ngv_comment_key));
         // `ngv_apply_selection` bumps a selected node's tier, so it has to land
         // before the rebase turns tiers into the depths the renderer sees.
@@ -87,6 +91,13 @@ pub struct NodeGraphView {
     pub pending_connect: Option<(u64, String, bool, (u8, u8, u8))>,
     /// Caller sets to re-frame all nodes; cleared by the widget once applied.
     pub fit_request: bool,
+    /// Whether this view has ever been framed. A graph's node positions belong to
+    /// the *document*, not the viewport, so opening at pan 0 / zoom 1 routinely
+    /// lands on empty canvas with the graph off to one side — the widget
+    /// therefore fits once, by itself, as soon as the nodes have a real layout
+    /// size. Set (without fitting) if the user pans/zooms first, so a
+    /// deliberately placed view is never yanked out from under them.
+    pub(crate) framed: bool,
     /// Caller sets to recenter (keep zoom); cleared once applied.
     pub center_request: bool,
     /// Caller sets to multiply the zoom (toolbar +/−); cleared once applied.
@@ -176,8 +187,16 @@ struct NgvBoxRect;
 struct NgvPreview {
     viewport: Entity,
 }
-/// An inline value-editor row on a node. Marked so node-drag / box-select bail
-/// when the press is over it (otherwise scrubbing a field would drag the node).
+/// An inline value editor on a node. Marked so node-drag / box-select bail when
+/// the press is over it (otherwise scrubbing a field would drag the node).
+///
+/// It sits on the **editor widget**, not on the full-width row that holds it: the
+/// row spans the node, the control usually doesn't, and marking the row made the
+/// empty space next to a field refuse to drag the node.
+///
+/// The guard is a cursor test rather than focus blocking on purpose — `Node`
+/// requires `FocusPolicy`, which defaults to `Pass`, so a press over a field
+/// reaches the node root regardless of what the rows in between do.
 #[derive(Component)]
 struct NgvInputEditor;
 
@@ -359,13 +378,18 @@ pub fn graph_node_view(
                         justify_content: JustifyContent::FlexStart,
                         ..default()
                     },
-                    // Capture the pointer (don't Pass) + mark so node-drag/box-select
-                    // ignore presses here — scrubbing a field must not drag the node.
-                    RelativeCursorPosition::default(),
-                    NgvInputEditor,
-                    Name::new("ngv-input-editor"),
+                    // Click-through, and deliberately UNmarked: the row is full
+                    // width while the editor inside it is content-sized, so carrying
+                    // `NgvInputEditor` here made the whole line — including the empty
+                    // space beside a scrub field — refuse to start a node drag. That
+                    // space is node body and has to drag like it. The guard lives on
+                    // the editor instead, where it is exactly as wide as the control
+                    // it protects.
+                    bevy::ui::FocusPolicy::Pass,
+                    Name::new("ngv-input-editor-row"),
                 ))
                 .id();
+            commands.entity(editor).insert((NgvInputEditor, RelativeCursorPosition::default()));
             commands.entity(erow).add_child(editor);
             commands.entity(node).add_child(erow);
         }
@@ -1280,6 +1304,8 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
 /// Apply the caller's view requests: `fit_request` frames all nodes,
 /// `center_request` recenters at the current zoom, `zoom_request` multiplies the
 /// zoom (centre-anchored). Drives the canvas `GraphView` + `UiTransform`.
+///
+/// Also performs the one-off opening fit (see [`NodeGraphView::framed`]).
 #[allow(clippy::type_complexity)]
 fn ngv_view_ops(
     mut graphs: Query<(Entity, &mut NodeGraphView, &ComputedNode, &Children)>,
@@ -1287,7 +1313,9 @@ fn ngv_view_ops(
     nodes: Query<(&NgvNode, &Node, &ComputedNode)>,
 ) {
     for (vp, mut g, vcn, children) in &mut graphs {
-        if !g.fit_request && !g.center_request && g.zoom_request.is_none() {
+        // A view nobody has framed yet fits itself once (see `framed`).
+        let auto_fit = !g.framed;
+        if !auto_fit && !g.fit_request && !g.center_request && g.zoom_request.is_none() {
             continue;
         }
         let Some(canvas) = children.iter().find(|&c| canvases.contains(c)) else {
@@ -1298,6 +1326,12 @@ fn ngv_view_ops(
         };
         let vp_isf = vcn.inverse_scale_factor();
         let vp_size = vcn.size() * vp_isf;
+        // The panel itself may not be laid out yet (a graph mounted into a dock
+        // tab that is still being sized). Fitting to a zero viewport divides by
+        // nothing useful — wait for a real rect and keep the request.
+        if vp_size.cmple(Vec2::ZERO).any() {
+            continue;
+        }
         let center = vp_size * 0.5;
         let Ok((mut view, mut tf)) = canvases.get_mut(canvas) else { continue };
 
@@ -1310,33 +1344,52 @@ fn ngv_view_ops(
             view.zoom = new;
         }
 
-        if g.fit_request || g.center_request {
-            let z = view.zoom.max(0.01);
-            let (mut mn, mut mx, mut any) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false);
+        // The auto-fit is cancelled the moment the user pans or zooms: a view that
+        // has moved off its defaults is one somebody chose, so don't overrule it
+        // just because the graph was still empty when it opened.
+        if auto_fit && (view.pan != Vec2::ZERO || (view.zoom - 1.0).abs() > 1e-4) {
+            g.framed = true;
+        }
+
+        if g.fit_request || g.center_request || auto_fit {
+            let (mut mn, mut mx, mut any, mut unlaid) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false, false);
             for (n, node, ncn) in &nodes {
                 if n.viewport != vp {
                     continue;
                 }
                 let pos = Vec2::new(px(node.left), px(node.top));
-                let size = ncn.size() * vp_isf / z; // canvas-local logical
+                // Layout size, which is canvas-local already — the canvas's zoom
+                // is a render transform and never reaches `ComputedNode`. Dividing
+                // by the zoom here made every re-fit measure the nodes wrong by
+                // exactly the zoom the *previous* fit had set, so repeated Fit
+                // presses walked the view further out each time.
+                let size = ncn.size() * vp_isf;
+                if size.cmple(Vec2::ZERO).any() {
+                    unlaid = true;
+                }
                 mn = mn.min(pos);
                 mx = mx.max(pos + size);
                 any = true;
             }
-            if any {
+            // Nodes mounted this frame have no layout yet, and framing a
+            // zero-sized bbox slams the zoom to the maximum and centres on
+            // nothing — exactly the "off to the side and far too zoomed in" view.
+            // Leave the request standing and retry once `ui_layout_system` has run.
+            if any && !unlaid {
                 let bbox_c = (mn + mx) * 0.5;
                 let bbox_s = (mx - mn).max(Vec2::splat(1.0));
-                if g.fit_request {
+                if g.fit_request || auto_fit {
                     let pad = 80.0;
-                    let zoom = (vp_size.x / (bbox_s.x + pad)).min(vp_size.y / (bbox_s.y + pad)).clamp(0.25, 1.5);
+                    let zoom = (vp_size.x / (bbox_s.x + pad)).min(vp_size.y / (bbox_s.y + pad)).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
                     view.zoom = zoom;
                     view.pan = (center - bbox_c) * zoom;
                 } else {
                     view.pan = (center - bbox_c) * view.zoom;
                 }
+                g.framed = true;
+                g.fit_request = false;
+                g.center_request = false;
             }
-            g.fit_request = false;
-            g.center_request = false;
         }
         tf.translation = Val2::px(view.pan.x, view.pan.y);
         tf.scale = Vec2::splat(view.zoom);

@@ -172,6 +172,21 @@ The `+` picker doesn't filter out panels that are already open, so **any** panel
 
 **Gating on `RelativeCursorPosition::cursor_over` is fine and is the right default** — `correct_pointer_state` (in `renzora_ember`'s lib root) clears it on anything the topmost overlay or modal covers, so only the copy actually on top responds. **Do not** additionally check the `PointerOverOverlay` resource in a handler that already has a node to ask: the bottom panel is itself an overlay surface, so that resource reads true for a widget's own container and the widget goes dead for as long as it's docked there. That resource is for handlers with no UI rect of their own to test — a viewport raycast, a world-space drag.
 
+### Node graphs (`node_graph_view`) — framing the view
+
+A graph's node positions belong to the **document**, not to the viewport it is shown in. A view that opens at pan 0 / zoom 1 therefore shows wherever the file happened to put its nodes — for a material that is the far corner of a very tall PBR output node, i.e. empty canvas with the graph off to one side. So the widget **fits itself once**, automatically, the first time the mounted nodes have a real layout size, and records that it has done so (`NodeGraphView::framed`). Panning or zooming before that first fit lands cancels it: a view somebody positioned deliberately is never re-framed out from under them.
+
+That covers *opening*. Loading a different document into an already-open view is the caller's to signal — set `fit_request` after swapping the model (the material editor does it in `load_material_tab` / when a `.material` document tab is opened), or the view stays parked where the previous graph left it.
+
+Two rules make a fit land on the right thing:
+
+- **A fit measures `ComputedNode`, which is layout — not the canvas's zoom.** The pan/zoom lives in the canvas `UiTransform` and never reaches the node's computed size, so dividing that size by the current zoom (an easy assumption) makes each re-fit misjudge the graph by exactly the zoom the *previous* fit set, and repeated Fit presses walk the view further out every time.
+- **A node mounted this frame has a `ComputedNode` of size zero,** because `Node` requires the component but `ui_layout_system` hasn't run yet. Framing that bbox pins the zoom to the maximum and centres on nothing — the classic "off to the side and far too zoomed in" opening view. `ngv_view_ops` keeps the request standing and retries next frame instead, and runs `.after(run_keyed_lists)` so a document swap has already exchanged the node set before anything is measured.
+
+Fit's zoom clamp is the shared `MIN_ZOOM`/`MAX_ZOOM`, so a framed view is always a zoom the wheel will hold.
+
+**A "don't drag the node" guard goes on the control, not on its row.** Scrubbing an inline value editor must not drag the node underneath it, and because `Node` requires `FocusPolicy` — which defaults to `Pass` — a press over a field reaches the node root anyway; the guard is therefore a `RelativeCursorPosition::cursor_over` test (`NgvInputEditor`), not focus blocking. Put that marker on the full-width row holding the editor and the whole line goes dead to node drags, empty space included, which reads as a broken node: an editor is content-sized, a row is not. Mark the editor entity.
+
 ### Tooltips (`HoverTooltip`)
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
