@@ -23,6 +23,20 @@
 //! tracks nightlies. `stable`/`nightly` override it. See
 //! [`check::UpdateChannel`].
 //!
+//! **Nightlies are gated on developer mode.** With the toggle off every
+//! preference resolves to `stable`, because a nightly is last night's `main` and
+//! nobody who is just using the editor should be nudged onto one — least of all
+//! by a chip in the top bar. The stored preference survives the gate, so turning
+//! dev mode back on restores it.
+//!
+//! # Skipping a version
+//!
+//! "Skip This Version" records one tag in `~/.renzora/editor.toml` and silences
+//! the top bar's chip (and the Help menu's "Update to …") for it. One tag, not a
+//! list: skipping means "not this one", and the next release asks again. The
+//! dialog still lists a skipped version — someone who opened the dialog is
+//! asking — and downloading it clears the skip.
+//!
 //! # Running from a source checkout
 //!
 //! The editor then lives in `<checkout>/dist/<platform>/`, so installing a
@@ -32,6 +46,15 @@
 //! the action button reads "Overwrite dist/…", arms on the first click, and only
 //! installs on the second, naming the exact directory in between. Downloading is
 //! never gated — it writes to `~/.renzora/updates/`, not to the install.
+//!
+//! # Install path
+//!
+//! The dialog exposes where the swap lands, pre-filled with the directory this
+//! binary is running from — the detected default, and the right answer almost
+//! always. Retargeting re-derives everything that depends on the path (which
+//! binary to relaunch, and whether the destination is a checkout), so pointing
+//! the install away from `dist/` genuinely drops the overwrite confirmation
+//! rather than only moving the files.
 
 #[cfg(not(target_arch = "wasm32"))]
 mod check;
@@ -62,6 +85,19 @@ pub struct UpdateState {
     pub progress: Option<(u64, u64)>,
     /// The stored channel preference (`auto` / `stable` / `nightly`).
     pub channel_pref: String,
+    /// Mirror of [`renzora::core::DevMode`]. Nightlies are only offered while
+    /// this is on; see [`UpdateChannel::resolve`].
+    pub dev_mode: bool,
+    /// The release tag the user asked not to be told about again, if any. Only
+    /// suppresses the top bar's chip — the dialog still lists it, because
+    /// someone who opened the dialog is asking.
+    pub skipped: Option<String>,
+    /// Where the install goes.
+    ///
+    /// Empty means "the detected default", which is the directory this binary is
+    /// running from — the field is pre-filled with it, so the string is only
+    /// ever different from the default because someone typed something else.
+    pub install_path: String,
     pub layout: Option<install::InstallLayout>,
     /// True once the check has been kicked off at least once, so opening the
     /// dialog doesn't start a second one over the top of the first.
@@ -94,7 +130,7 @@ impl UpdateState {
         self.checked_once = true;
         self.error = None;
         self.overwrite_armed = false;
-        let channel = UpdateChannel::resolve(&self.channel_pref);
+        let channel = UpdateChannel::resolve(&self.channel_pref, self.dev_mode);
         self.check_rx = Some(std::sync::Mutex::new(check::spawn_check(channel)));
     }
 
@@ -121,12 +157,62 @@ impl UpdateState {
         self.layout.is_some()
     }
 
-    /// Is the editor running out of a source checkout's `dist/`?
+    /// The detected install location — what the path field defaults to, and what
+    /// it falls back to when left empty.
+    pub fn default_install_path(&self) -> String {
+        self.layout
+            .as_ref()
+            .map(|l| l.target.display().to_string())
+            .unwrap_or_default()
+    }
+
+    /// The layout the action button actually acts on: the detected one, aimed at
+    /// whatever the install-path field says.
+    pub fn effective_layout(&self) -> Option<install::InstallLayout> {
+        let base = self.layout.as_ref()?;
+        let typed = self.install_path.trim();
+        if typed.is_empty() {
+            return Some(base.clone());
+        }
+        let path = std::path::PathBuf::from(typed);
+        if path == base.target {
+            return Some(base.clone());
+        }
+        Some(base.retargeted(path))
+    }
+
+    /// Would installing overwrite a source checkout's `dist/`?
     ///
-    /// Not a veto any more — installing here is allowed, but it overwrites build
-    /// output, so the UI makes you say so twice.
+    /// Not a veto — installing there is allowed, but it overwrites build output,
+    /// so the UI makes you say so twice. Asked of the *effective* layout, so
+    /// retargeting the install away from the checkout also drops the extra
+    /// confirmation instead of nagging about a directory nothing will touch.
     pub fn is_source_checkout(&self) -> bool {
-        self.layout.as_ref().is_some_and(|l| l.is_source_checkout)
+        self.effective_layout()
+            .is_some_and(|l| l.is_source_checkout)
+    }
+
+    /// Stop offering the version currently on the table.
+    ///
+    /// Persisted, and only ever one tag: skipping is "stop nagging me about
+    /// *this one*", so the next release asks again. Returns the tag so the
+    /// caller can drop [`renzora::core::UpdateAvailable`] with it.
+    pub fn skip_target(&mut self) -> Option<String> {
+        let tag = self
+            .result
+            .as_ref()
+            .and_then(|r| r.latest_version.clone())?;
+        let _ = renzora::core::save_skipped_update(Some(&tag));
+        self.skipped = Some(tag.clone());
+        Some(tag)
+    }
+
+    /// Is the newest version on offer one the user already waved away?
+    pub fn target_is_skipped(&self) -> bool {
+        match (self.skipped.as_deref(), self.result.as_ref()) {
+            (Some(skipped), Some(r)) => r.latest_version.as_deref() == Some(skipped),
+            _ => false,
+        }
     }
 
     pub fn downloading(&self) -> bool {
@@ -167,7 +253,15 @@ impl Plugin for UpdatePlugin {
         {
             _app.init_resource::<UpdateState>()
                 .add_systems(Startup, load_prefs_and_check)
-                .add_systems(Update, (open_on_request, poll_check, poll_download));
+                .add_systems(
+                    Update,
+                    (
+                        watch_dev_mode,
+                        open_on_request,
+                        poll_check,
+                        poll_download,
+                    ),
+                );
             native::register(_app);
         }
     }
@@ -183,13 +277,47 @@ impl Plugin for UpdatePlugin {
 #[cfg(not(target_arch = "wasm32"))]
 fn load_prefs_and_check(mut state: ResMut<UpdateState>) {
     state.channel_pref = renzora::core::load_update_channel();
+    state.skipped = renzora::core::load_skipped_update();
+    // Read straight off disk rather than from `renzora::core::DevMode`: this is
+    // Startup, and the framework's mirror system has not run a frame yet.
+    // `watch_dev_mode` takes over from here.
+    state.dev_mode = renzora::load_dev_mode();
     match install::detect_layout() {
         Ok(layout) => {
+            state.install_path = layout.target.display().to_string();
             state.layout = Some(layout);
             state.start_check();
         }
         Err(e) => state.error = Some(e),
     }
+}
+
+/// Follow the developer-mode toggle: what the channel resolves to depends on it,
+/// so a stale result would keep offering (or keep hiding) nightlies after the
+/// switch flipped.
+///
+/// `UpdateAvailable` is dropped straight away rather than waiting for the new
+/// check to come back — the point of switching dev mode off is to stop being
+/// told about nightlies, and a chip that lingers for a network round-trip after
+/// the toggle reads as the toggle not working.
+#[cfg(not(target_arch = "wasm32"))]
+fn watch_dev_mode(
+    dev: Option<Res<renzora::core::DevMode>>,
+    mut state: ResMut<UpdateState>,
+    mut commands: Commands,
+) {
+    let Some(dev) = dev else { return };
+    if !dev.is_changed() || state.dev_mode == dev.0 {
+        return;
+    }
+    state.dev_mode = dev.0;
+    state.result = None;
+    state.staged = None;
+    state.progress = None;
+    state.selected_tag = None;
+    state.overwrite_armed = false;
+    commands.remove_resource::<renzora::core::UpdateAvailable>();
+    state.start_check();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -231,7 +359,15 @@ fn poll_check(mut state: ResMut<UpdateState>, mut commands: Commands) {
         Ok(result) => {
             if result.update_available {
                 if let Some(tag) = result.latest_version.clone() {
-                    commands.insert_resource(renzora::core::UpdateAvailable(tag));
+                    // A skipped tag still shows up in the dialog's list — the
+                    // user asked to stop being *told*, not to be prevented from
+                    // installing it later. Only the chip and the Help menu item
+                    // go quiet.
+                    if state.skipped.as_deref() == Some(tag.as_str()) {
+                        commands.remove_resource::<renzora::core::UpdateAvailable>();
+                    } else {
+                        commands.insert_resource(renzora::core::UpdateAvailable(tag));
+                    }
                 }
             } else {
                 // A channel switch can make a previously-available update
@@ -285,9 +421,16 @@ fn poll_download(mut state: ResMut<UpdateState>) {
 /// Begin downloading the update the last check found.
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn start_download(state: &mut UpdateState) {
-    let (Some(entry), Some(layout)) = (state.target().cloned(), state.layout.clone()) else {
+    let (Some(entry), Some(layout)) = (state.target().cloned(), state.effective_layout()) else {
         return;
     };
+    // Choosing to download a version is choosing to hear about it again: the
+    // skip only ever meant "not this one", and leaving it set would mute the
+    // chip for the very release about to be installed.
+    if state.skipped.as_deref() == Some(entry.tag.as_str()) {
+        state.skipped = None;
+        let _ = renzora::core::save_skipped_update(None);
+    }
     match install::spawn_download(&entry, &layout) {
         Ok(handle) => {
             state.progress = Some((0, handle.total));
@@ -301,7 +444,7 @@ pub(crate) fn start_download(state: &mut UpdateState) {
 /// Hand off to the sidecar. Does not return if it succeeds.
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn install_and_restart(state: &mut UpdateState) {
-    let (Some(staged), Some(layout)) = (state.staged.clone(), state.layout.clone()) else {
+    let (Some(staged), Some(layout)) = (state.staged.clone(), state.effective_layout()) else {
         return;
     };
     if let Err(e) = install::launch_sidecar(&staged, &layout) {

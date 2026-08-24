@@ -14,7 +14,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{overlay_sized, scroll_area};
+use renzora_ember::widgets::{overlay_sized, scroll_view};
 
 use crate::UpdateState;
 
@@ -32,6 +32,8 @@ pub(crate) fn register(app: &mut App) {
             action_label_sync,
             action_click,
             channel_click,
+            browse_click,
+            skip_click,
             notes_link_click,
             close_click,
         ),
@@ -45,8 +47,24 @@ struct UpdateRoot;
 /// The one button whose meaning depends on where you are in the update.
 #[derive(Component)]
 struct ActionBtn;
+/// The action button's *text* child.
+///
+/// Marked rather than found by walking the button's children, because that walk
+/// is what put a stray "D" on the download button: the label sync wrote its
+/// string into every `Text` child it found, the icon is a `Text` child too, and
+/// "Download" rendered in the Phosphor font is one .notdef box followed by the
+/// blank ligature-component glyphs for `ownload`. The icon binding set the right
+/// glyph and the label sync overwrote it a moment later, every frame.
+#[derive(Component)]
+struct ActionLabel;
+/// "Skip This Version" — records the tag so the top bar stops mentioning it.
+#[derive(Component)]
+struct SkipBtn;
 #[derive(Component)]
 struct NotesLinkBtn;
+/// "Browse…" — opens a native folder picker for the install location.
+#[derive(Component)]
+struct BrowseBtn;
 #[derive(Component, Clone, Copy)]
 struct ChannelBtn(&'static str);
 #[derive(Component)]
@@ -100,6 +118,18 @@ where
 ///
 /// Excludes `no_platform_builds`: a green tick beside "No builds for your
 /// platform" would be reassuring about the wrong thing.
+/// There is something to act on: an update to fetch, or one already downloaded
+/// and waiting to install.
+///
+/// Separate from `!up_to_date`, which is also true while a check is in flight and
+/// when the channel has no build for this platform — neither is news, and a card
+/// that lights up for them cries wolf.
+fn wants_attention(w: &Rx<'_>) -> bool {
+    w.get_resource::<UpdateState>().is_some_and(|s| {
+        s.staged.is_some() || s.result.as_ref().is_some_and(|r| r.update_available)
+    })
+}
+
 fn up_to_date(w: &Rx<'_>) -> bool {
     w.get_resource::<UpdateState>().is_some_and(|s| {
         !s.checking
@@ -234,7 +264,11 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         fonts,
         &renzora::lang::t("update.title"),
         560.0,
-        480.0,
+        // Sized for the tallest the card ever gets: the dev-mode row, the
+        // install path and the version list are always there, and progress /
+        // error / overwrite-warning lines appear on top of them. Fixed rather
+        // than content-sized so the card does not jump as those come and go.
+        560.0,
         true,
     );
     commands.entity(root).insert(UpdateRoot);
@@ -271,9 +305,16 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             BorderColor::all(rgb(divider())),
         ))
         .id();
+    // Three moods, not two: green when there is nothing to do, the theme accent
+    // when there is, and a plain neutral while the answer is still unknown. The
+    // accent tint is the same blue as the Download button the card is telling you
+    // to press, which is the point — an "update available" card that renders in
+    // the same flat grey as "checking…" is a headline with no headline.
     bind_bg(commands, card, |w| {
         if up_to_date(w) {
             ca(GREEN.0, GREEN.1, GREEN.2, 28)
+        } else if wants_attention(w) {
+            rgb(accent()).with_alpha(0.18)
         } else {
             ca(255, 255, 255, 10)
         }
@@ -281,6 +322,8 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
     bind_border(commands, card, |w| {
         if up_to_date(w) {
             ca(GREEN.0, GREEN.1, GREEN.2, 120)
+        } else if wants_attention(w) {
+            rgb(accent()).with_alpha(0.55)
         } else {
             rgb(divider())
         }
@@ -390,8 +433,18 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         ("nightly", "update.channel.nightly"),
     ] {
         let chip = channel_chip(commands, fonts, pref, &renzora::lang::t(key));
+        // Nightlies are dev-mode-only, so the chip that picks them goes away
+        // with the toggle. Hidden rather than disabled: a greyed-out control
+        // invites you to work out why, and the answer is a setting three panels
+        // away.
+        if pref == "nightly" {
+            bind_display(commands, chip, |w| {
+                w.get_resource::<UpdateState>().is_some_and(|s| s.dev_mode)
+            });
+        }
         commands.entity(channels).add_child(chip);
     }
+    let dev_row = dev_mode_row(commands, fonts);
 
     let rule = commands
         .spawn((
@@ -426,11 +479,17 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             VersionList { sig: 0 },
         ))
         .id();
-    let list_scroll = scroll_area(commands, list_col, 130.0);
+    // `scroll_view`, not `scroll_area(…, 130.0)`: a capped height left the card
+    // with dead space under the buttons and a scrollbar that stopped a third of
+    // the way down. Flex-filling hands the list every pixel the fixed rows above
+    // and below don't want, so the bar runs the full height of the card.
+    let list_scroll = scroll_view(commands, list_col);
 
     // The release notes are markdown and this card has no markdown renderer, so
     // the truncated plain-text dump that used to sit here is gone: the "Release
     // notes" button opens the real thing in a browser instead.
+
+    let install_path = install_path_row(commands, fonts);
 
     // ── Progress + error ─────────────────────────────────────────────────────
     let progress = commands
@@ -497,7 +556,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         })
         .id();
 
-    let (notes_link, _) = pill(commands, fonts, "arrow-square-out", &renzora::lang::t("update.btn.notes"));
+    let (notes_link, _, _) = pill(commands, fonts, "arrow-square-out", &renzora::lang::t("update.btn.notes"));
     commands.entity(notes_link).insert(NotesLinkBtn);
     bind_display(commands, notes_link, |w| {
         w.get_resource::<UpdateState>()
@@ -505,11 +564,25 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             .is_some_and(|r| r.release_url.is_some())
     });
 
-    let (close, _) = pill(commands, fonts, "x", &renzora::lang::t("update.btn.later"));
+    // Only offered while there is something to skip, and never once it has been
+    // skipped — a button that does nothing is worse than no button.
+    let (skip, _, _) = pill(commands, fonts, "bell-slash", &renzora::lang::t("update.btn.skip"));
+    commands.entity(skip).insert(SkipBtn);
+    bind_display(commands, skip, |w| {
+        w.get_resource::<UpdateState>().is_some_and(|s| {
+            !s.target_is_skipped()
+                && s.result
+                    .as_ref()
+                    .is_some_and(|r| r.update_available)
+        })
+    });
+
+    let (close, _, _) = pill(commands, fonts, "x", &renzora::lang::t("update.btn.later"));
     commands.entity(close).insert(CloseBtn);
 
-    let (action, action_ic) = pill(commands, fonts, "download-simple", "");
+    let (action, action_ic, action_label) = pill(commands, fonts, "download-simple", "");
     commands.entity(action).insert(ActionBtn);
+    commands.entity(action_label).insert(ActionLabel);
     bind_icon(commands, action_ic, |w| match w.get_resource::<UpdateState>() {
         Some(s) => action_icon(action_for(s), s.is_source_checkout()),
         None => "download-simple",
@@ -535,15 +608,17 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
 
     commands
         .entity(row)
-        .add_children(&[notes_link, spacer, close, action]);
+        .add_children(&[notes_link, spacer, skip, close, action]);
 
     commands.entity(body).add_children(&[
         card,
         sub,
         channels,
+        dev_row,
         rule,
         list_label,
         list_scroll,
+        install_path,
         progress,
         error,
         warning,
@@ -552,10 +627,17 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
     commands.entity(content).add_child(body);
 }
 
-/// A small pill button: icon + label. Returns `(button, icon)` — the icon is
-/// handed back because the action button's glyph changes with its meaning and
-/// binding needs the entity that owns the `Text`.
-fn pill(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> (Entity, Entity) {
+/// A small pill button: icon + label. Returns `(button, icon, label)` — both
+/// children are handed back because the action button's glyph *and* its text
+/// change with its meaning, and each binding needs the entity that owns its own
+/// `Text` (conflating the two is what produced the stray "D"; see
+/// [`ActionLabel`]).
+fn pill(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+) -> (Entity, Entity, Entity) {
     let btn = commands
         .spawn((
             Node {
@@ -583,7 +665,7 @@ fn pill(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) ->
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);
-    (btn, ic)
+    (btn, ic, t)
 }
 
 /// Open a URL in the user's browser.
@@ -835,23 +917,199 @@ fn version_row_click(
 
 /// Keep the action button's label in step with what it will do.
 ///
-/// A separate system rather than a `bind_text` at spawn time because the label
-/// lives on a child of the button, and the button is what carries the marker.
-fn action_label_sync(
-    q: Query<&Children, With<ActionBtn>>,
-    mut texts: Query<&mut Text>,
-    state: Res<UpdateState>,
-) {
+/// Targets the [`ActionLabel`] child directly. It used to walk every `Text`
+/// child of the button instead, which also hit the icon — see [`ActionLabel`].
+fn action_label_sync(mut q: Query<&mut Text, With<ActionLabel>>, state: Res<UpdateState>) {
     let want = action_label(&state);
-    for children in &q {
-        for child in children.iter() {
-            if let Ok(mut text) = texts.get_mut(child) {
-                if text.0 != want {
-                    text.0 = want.clone();
-                }
-            }
+    for mut text in &mut q {
+        if text.0 != want {
+            text.0 = want.clone();
         }
     }
+}
+
+/// The Developer Mode switch, sat directly under the channel picker.
+///
+/// The same flag as Settings ▸ Editor ▸ Developer Mode, not a second one: it
+/// drives [`renzora::core::DevMode`], which the settings panel mirrors both
+/// ways. It is repeated here because this is the one screen where the flag's
+/// effect is visible — it is what makes the Nightly chip exist — and sending
+/// someone to a different panel to find out why a channel is missing is how you
+/// get a bug report instead of a click.
+fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+
+    let sw = renzora_ember::widgets::toggle_switch(commands, false);
+    renzora_ember::reactive::tracked::bind_2way(
+        commands,
+        sw,
+        |w| {
+            w.get_resource::<renzora::core::DevMode>()
+                .is_some_and(|d| d.0)
+        },
+        |w, &on| {
+            // Write the contract resource, not `UpdateState`: that is what the
+            // settings panel mirrors and what `watch_dev_mode` re-checks on, so
+            // one write keeps the toggle, the Settings tab and the channel
+            // resolution in step.
+            if let Some(mut d) = w.get_resource_mut::<renzora::core::DevMode>() {
+                if d.0 != on {
+                    d.0 = on;
+                }
+            }
+            let _ = renzora::save_dev_mode(on);
+        },
+    );
+
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t("settings.row.dev_mode")),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(text_primary())),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let hint = commands
+        .spawn((
+            Text::new(renzora::lang::t("update.dev_mode_hint")),
+            ui_font(&fonts.ui, 10.5),
+            TextColor(rgb(text_muted())),
+            FocusPolicy::Pass,
+        ))
+        .id();
+
+    commands.entity(row).add_children(&[sw, label, hint]);
+    row
+}
+
+/// "Install to" — the directory the swap lands in, with a Browse… button.
+///
+/// Shows the detected install location, which is the directory this binary is
+/// running from and the right answer nearly always; it is exposed because
+/// "nearly" is not "always" — a portable copy, a second install, or a checkout
+/// you would rather not overwrite are all reasons to send it elsewhere.
+///
+/// A picker rather than a text field on purpose: this path decides which
+/// directory gets *replaced*, and a typo in a free-text box is not the kind of
+/// mistake you want to be one click from. The picker can only hand back a
+/// directory that exists.
+fn install_path_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(4.0),
+            ..default()
+        })
+        .id();
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t("update.install_path")),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+
+    // The path sits in its own clipping box: an install path is long, and
+    // letting it wrap would grow the row and shove the buttons off the card.
+    let box_e = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(section_bg())),
+            BorderColor::all(rgb(border())),
+        ))
+        .id();
+    let path = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    bind_text(commands, path, |w| {
+        let Some(s) = w.get_resource::<UpdateState>() else {
+            return String::new();
+        };
+        if s.install_path.trim().is_empty() {
+            s.default_install_path()
+        } else {
+            s.install_path.clone()
+        }
+    });
+    commands.entity(box_e).add_child(path);
+
+    let (browse, _, _) = pill(
+        commands,
+        fonts,
+        "folder-open",
+        &renzora::lang::t("update.btn.browse"),
+    );
+    commands.entity(browse).insert(BrowseBtn);
+
+    commands.entity(row).add_children(&[box_e, browse]);
+    commands.entity(col).add_children(&[label, row]);
+    col
+}
+
+/// Browse… → native folder picker → the chosen directory becomes the install
+/// target.
+///
+/// Opened straight from the system, like every other native dialog in the editor
+/// (the exporter, the importer, the hub). It blocks the frame it runs on, which
+/// is fine for a modal the user just clicked a button in and is the reason none
+/// of them bother with a worker thread.
+fn browse_click(
+    q: Query<&Interaction, (With<BrowseBtn>, Changed<Interaction>)>,
+    mut state: ResMut<UpdateState>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let start = if state.install_path.trim().is_empty() {
+        state.default_install_path()
+    } else {
+        state.install_path.clone()
+    };
+    let mut dialog = rfd::FileDialog::new().set_title(renzora::lang::t("update.dialog.install_to"));
+    if !start.is_empty() {
+        dialog = dialog.set_directory(&start);
+    }
+    let Some(dir) = dialog.pick_folder() else {
+        return;
+    };
+    state.install_path = dir.display().to_string();
+    // An armed overwrite named the *old* directory. Re-aiming the install has to
+    // disarm it, or the second click confirms a warning that was about somewhere
+    // else.
+    state.overwrite_armed = false;
 }
 
 /// A line spelling out exactly what an armed overwrite is about to replace.
@@ -870,7 +1128,9 @@ fn overwrite_warning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let Some(s) = w.get_resource::<UpdateState>() else {
             return String::new();
         };
-        match s.layout.as_ref() {
+        // The *effective* layout: the warning must name the directory the
+        // install-path field is aimed at, not the one it was detected at.
+        match s.effective_layout() {
             Some(l) => format!(
                 "{} {}",
                 renzora::lang::t("update.overwrite_warning"),
@@ -925,6 +1185,25 @@ fn channel_click(
     commands.queue(move |w: &mut World| {
         if let Some(mut state) = w.get_resource_mut::<UpdateState>() {
             state.set_channel(pref);
+        }
+    });
+}
+
+/// "Skip This Version" — remember the tag and take the chip out of the top bar.
+///
+/// Does not close the dialog: skipping is a decision about being *notified*, and
+/// closing on the click would hide the fact that the version is still listed and
+/// still installable if you change your mind in the next five seconds.
+fn skip_click(q: Query<&Interaction, (With<SkipBtn>, Changed<Interaction>)>, mut commands: Commands) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    commands.queue(|w: &mut World| {
+        let skipped = w
+            .get_resource_mut::<UpdateState>()
+            .and_then(|mut s| s.skip_target());
+        if skipped.is_some() {
+            w.remove_resource::<renzora::core::UpdateAvailable>();
         }
     });
 }

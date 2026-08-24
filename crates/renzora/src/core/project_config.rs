@@ -367,6 +367,13 @@ struct EditorPrefFile {
     /// channel, where a resolved `"nightly"` would keep them on nightlies forever.
     #[serde(default = "default_update_channel")]
     update_channel: String,
+    /// A release tag the user asked not to be told about again (empty = none).
+    ///
+    /// Only ever one tag, not a list: the point of skipping is "stop nagging me
+    /// about *this*", and the next version is a new question. Storing a set
+    /// would quietly suppress releases nobody ever decided to skip.
+    #[serde(default)]
+    skipped_update: String,
     /// Set once the onboarding tutorial has been completed or skipped. Per-user
     /// rather than per-project: the tutorial teaches the *editor*, so a user who
     /// has already sat through it doesn't want it again the next time they make
@@ -439,6 +446,7 @@ impl Default for EditorPrefFile {
             scroll_speed: default_scroll_speed(),
             console_log_limit: default_console_log_limit(),
             update_channel: default_update_channel(),
+            skipped_update: String::new(),
             tutorial_completed: false,
             tutorial_chapters: Vec::new(),
         }
@@ -670,6 +678,48 @@ pub fn save_update_channel(channel: &str) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.update_channel = channel.to_string();
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// The release tag the user chose to skip, if any.
+///
+/// `None` rather than an empty string at the boundary, because "no tag" and "a
+/// tag that happens to be empty" are the same thing to every caller and only one
+/// of them should be representable past this point.
+pub fn load_skipped_update() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.skipped_update)
+            .filter(|s| !s.is_empty())
+    }
+}
+
+/// Persist (or clear, with `None`) the skipped release tag. Read-modify-write so
+/// the other prefs survive.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_skipped_update(tag: Option<&str>) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.skipped_update = tag.unwrap_or_default().to_string();
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

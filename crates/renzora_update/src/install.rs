@@ -47,6 +47,40 @@ pub struct InstallLayout {
     pub is_source_checkout: bool,
 }
 
+impl InstallLayout {
+    /// The same layout aimed somewhere else — what the dialog's install-path
+    /// field produces.
+    ///
+    /// Everything derived from the path has to be re-derived, not carried over:
+    /// which binary to relaunch depends on whether the new target is a bundle,
+    /// a file or a plain directory, and `is_source_checkout` is a property of
+    /// *that* path — pointing the install at `C:\Program Files\Renzora` must not
+    /// keep warning about overwriting build output just because the editor you
+    /// clicked in happened to be running from a checkout (and the reverse
+    /// matters far more).
+    pub fn retargeted(&self, target: PathBuf) -> Self {
+        let is_bundle = target.extension().and_then(|e| e.to_str()) == Some("app");
+        // A single-file install (Linux AppImage) and a macOS bundle both relaunch
+        // the thing that was replaced; a plain directory relaunches the editor
+        // inside it, exactly as `detect_layout` does.
+        let relaunch = if self.kind == InstallKind::File || is_bundle {
+            target.clone()
+        } else {
+            target.join(if cfg!(windows) {
+                "renzora-editor.exe"
+            } else {
+                "renzora-editor"
+            })
+        };
+        Self {
+            kind: self.kind.clone(),
+            is_source_checkout: is_source_checkout(&target),
+            target,
+            relaunch,
+        }
+    }
+}
+
 /// Work out what to replace, from where the running editor actually lives.
 pub fn detect_layout() -> Result<InstallLayout, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Cannot locate this executable: {e}"))?;
@@ -464,6 +498,65 @@ mod tests {
         let nested = dir.join("dist").join("windows-x64");
         fs::create_dir_all(&nested).unwrap();
         assert!(is_source_checkout(&nested));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Retargeting has to re-derive, not carry over: the whole point of moving
+    /// the install off a checkout is that the overwrite confirmation goes away.
+    #[test]
+    fn retargeting_re_derives_relaunch_and_checkout() {
+        let dir = temp_dir("retarget");
+        fs::write(dir.join("Cargo.toml"), b"").unwrap();
+        fs::create_dir_all(dir.join("crates")).unwrap();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(dir.join("src").join("main.rs"), b"").unwrap();
+        // Deliberately a sibling of the checkout, not a child: a child would
+        // still walk up into it and the test would prove nothing.
+        let elsewhere = std::env::temp_dir().join(format!(
+            "renzora_update_retarget_elsewhere_{}",
+            std::process::id()
+        ));
+
+        let checkout = InstallLayout {
+            kind: InstallKind::Directory,
+            target: dir.clone(),
+            relaunch: dir.join("renzora-editor"),
+            is_source_checkout: true,
+        };
+        assert!(checkout.retargeted(dir.clone()).is_source_checkout);
+        let moved = checkout.retargeted(elsewhere.clone());
+        assert!(!moved.is_source_checkout);
+        assert_eq!(
+            moved.relaunch,
+            elsewhere.join(if cfg!(windows) {
+                "renzora-editor.exe"
+            } else {
+                "renzora-editor"
+            })
+        );
+
+        // A single-file install relaunches the file it just replaced, not a
+        // binary "inside" it.
+        let appimage = InstallLayout {
+            kind: InstallKind::File,
+            target: dir.join("Renzora.AppImage"),
+            relaunch: dir.join("Renzora.AppImage"),
+            is_source_checkout: false,
+        };
+        let to = elsewhere.join("Renzora.AppImage");
+        assert_eq!(appimage.retargeted(to.clone()).relaunch, to);
+
+        // ...and so does a macOS bundle, which is a directory that is still one
+        // unit of install.
+        let bundle = InstallLayout {
+            kind: InstallKind::Directory,
+            target: dir.join("Renzora.app"),
+            relaunch: dir.join("Renzora.app"),
+            is_source_checkout: false,
+        };
+        let to = elsewhere.join("Renzora.app");
+        assert_eq!(bundle.retargeted(to.clone()).relaunch, to);
+
         fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -58,9 +58,13 @@ unzip linux-x64.zip
 
 ## Keeping it up to date
 
-The editor updates itself. **Help ▸ Check for Updates** downloads the new version and installs it in place; when a background check at startup has already found one, that menu item reads **Update to `r1-alpha8`** instead, so you don't have to go looking.
+The editor updates itself. **Help ▸ Check for Updates** downloads the new version and installs it in place; when a background check at startup has already found one, that menu item reads **Update to `r1-alpha8`** instead and a **New update available** chip appears in the top bar, so you don't have to go looking.
 
 The dialog shows what you're running and what's available, and gives you one button that walks through Download → Install & Restart. **Release notes** opens the full notes for the selected version in your browser. The download is checksummed, and if anything goes wrong while the files are being replaced your existing install is put back — the worst case is that the update didn't happen.
+
+**Install to** is where the new version lands. It shows the folder the editor is running from, which is what you want unless you're keeping more than one copy around; **Browse…** picks a different one. It's a picker rather than a text box on purpose — this path decides which directory gets *replaced*.
+
+**Skip This Version** stops the top bar and the Help menu mentioning the version currently on offer. It's one version, not a mute button — the next release asks again — and the skipped version stays in the list, so downloading it later is still one click.
 
 **Channel** picks what you get offered:
 
@@ -68,9 +72,11 @@ The dialog shows what you're running and what's available, and gives you one but
 |---|---|
 | **Auto** (default) | Follows what you're running: a nightly is offered newer nightlies, a release is offered releases. |
 | **Stable** | Numbered `r1-alpha*` releases only. |
-| **Nightly** | The latest build of `main`, plus releases when they land. |
+| **Nightly** | Dated builds of `main` only. Requires Developer Mode. |
 
-> Running from a source checkout? The updater checks and shows you what's new, but won't install — replacing `dist/` with a release would overwrite what you just built. Use `git pull` and rebuild instead.
+> **Nightlies need Dev Mode.** With it off, every channel resolves to Stable, the Nightly chip is hidden, and the top bar stops mentioning nightly builds — a nightly is last night's `main`, and nothing should be nudging you onto one unless you asked. The switch sits right under the channel picker in the update dialog (it's the same flag as Settings ▸ Editor ▸ Dev Mode, so flipping either moves both). Your channel choice is remembered, so turning Dev Mode back on restores it.
+
+> Running from a source checkout? Installing there replaces the `dist/` tree you just built — recoverable by rebuilding, but never something to do on one stray click, so the dialog makes you confirm twice and names the exact directory in between. Pointing **Install to** somewhere else drops the confirmation, since nothing you built is at risk. Usually you want `git pull` and a rebuild instead.
 
 ## Build from source (recommended)
 

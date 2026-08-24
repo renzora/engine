@@ -27,8 +27,22 @@ pub enum UpdateChannel {
 
 impl UpdateChannel {
     /// Resolve the stored preference (`"auto"` / `"stable"` / `"nightly"`)
-    /// against the channel this build came from.
-    pub fn resolve(pref: &str) -> Self {
+    /// against the channel this build came from and whether dev mode is on.
+    ///
+    /// `dev_mode` is a hard gate, checked before anything else: a nightly is
+    /// last night's `main`, and offering one to someone who is just using the
+    /// editor is offering them an untested build. Off, the answer is always
+    /// [`Self::Stable`] — including for a source checkout, whose `auto` would
+    /// otherwise resolve to nightlies and put an "update available" chip in the
+    /// top bar of every developer machine that had dev mode switched off.
+    ///
+    /// The stored preference is left alone rather than rewritten to `"stable"`,
+    /// so switching dev mode back on restores the channel the user picked
+    /// instead of silently forgetting it.
+    pub fn resolve(pref: &str, dev_mode: bool) -> Self {
+        if !dev_mode {
+            return Self::Stable;
+        }
         match pref {
             "stable" => Self::Stable,
             "nightly" => Self::Nightly,
@@ -251,21 +265,37 @@ mod tests {
 
     #[test]
     fn explicit_channel_prefs_win_over_the_build() {
-        assert_eq!(UpdateChannel::resolve("stable"), UpdateChannel::Stable);
-        assert_eq!(UpdateChannel::resolve("nightly"), UpdateChannel::Nightly);
+        assert_eq!(UpdateChannel::resolve("stable", true), UpdateChannel::Stable);
+        assert_eq!(
+            UpdateChannel::resolve("nightly", true),
+            UpdateChannel::Nightly
+        );
     }
 
     #[test]
     fn auto_follows_this_build() {
         // The test binary is never CI-stamped, so this is the Dev case, which
         // tracks `main` — i.e. nightlies.
-        assert_eq!(UpdateChannel::resolve("auto"), UpdateChannel::Nightly);
+        assert_eq!(UpdateChannel::resolve("auto", true), UpdateChannel::Nightly);
         // An unrecognised value must behave like "auto", not panic or pick a
         // channel at random — a hand-edited editor.toml is a normal thing.
         assert_eq!(
-            UpdateChannel::resolve("banana"),
-            UpdateChannel::resolve("auto")
+            UpdateChannel::resolve("banana", true),
+            UpdateChannel::resolve("auto", true)
         );
+    }
+
+    /// With dev mode off there is no way to reach the nightly channel — not by
+    /// preference, and not by being a source build whose `auto` would pick it.
+    #[test]
+    fn nightlies_need_dev_mode() {
+        for pref in ["auto", "stable", "nightly", "banana"] {
+            assert_eq!(
+                UpdateChannel::resolve(pref, false),
+                UpdateChannel::Stable,
+                "{pref} must resolve to stable with dev mode off"
+            );
+        }
     }
 
     /// The screenshot bug: the check found `r1-alpha7-nightly-16aug26`, rendered

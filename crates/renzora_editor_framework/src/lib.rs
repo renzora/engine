@@ -470,6 +470,7 @@ impl Plugin for RenzoraEditorPlugin {
         app.add_plugins(plugin_dialog::PluginDialogBridge);
 
         app.init_resource::<EditorSettings>()
+            .init_resource::<renzora::core::DevMode>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
@@ -493,7 +494,7 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
-            .add_systems(Update, apply_vsync_setting)
+            .add_systems(Update, (apply_vsync_setting, sync_dev_mode))
             .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
                 Update,
@@ -560,6 +561,29 @@ fn enforce_entity_ids(
             // rather than a swallowed error.
             commands.entity(*e).try_insert(Name::new(unique));
         }
+    }
+}
+
+/// Keep `EditorSettings.dev_mode` and the contract-level
+/// [`renzora::core::DevMode`] agreeing, in both directions.
+///
+/// The contract resource exists so crates that must *watch* the toggle can use
+/// change detection instead of re-reading `editor.toml` every frame. It runs
+/// both ways because the flag now has two front ends — the Settings tab and the
+/// Software Update dialog's own switch — and each writes the one it can reach:
+/// the settings panel owns `EditorSettings`, `renzora_update` links no editor
+/// framework and can only reach the contract resource.
+///
+/// Settings wins a genuine tie, which only happens on the first frame where both
+/// resources are freshly inserted — `EditorSettings` is the one seeded from disk,
+/// so its value is the real answer and the default `DevMode(false)` is not.
+/// After that only one side is ever `is_changed()`. Both branches write only on a
+/// real difference, so neither re-triggers the other.
+fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora::core::DevMode>) {
+    if settings.is_changed() && dev.0 != settings.dev_mode {
+        dev.0 = settings.dev_mode;
+    } else if dev.is_changed() && settings.dev_mode != dev.0 {
+        settings.dev_mode = dev.0;
     }
 }
 

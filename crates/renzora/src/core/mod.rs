@@ -1012,6 +1012,20 @@ pub struct UpdateRequested;
 #[derive(Resource)]
 pub struct UpdateAvailable(pub String);
 
+/// Live mirror of the editor's developer-mode toggle.
+///
+/// [`load_dev_mode`] already answers "is dev mode on" from disk, but reading a
+/// file is not something a system can do every frame, and the flag has to be
+/// *watched*, not just read: `renzora_update` re-runs its check the moment the
+/// toggle flips, because nightlies are only offered in dev mode and the top
+/// bar's "update available" chip must appear and disappear with it.
+///
+/// Written by `renzora_editor_framework` from `EditorSettings.dev_mode`, which
+/// is the one place that knows about every way the toggle can change. Here in
+/// the contract crate so a reader does not have to link the editor framework.
+#[derive(Resource, Default)]
+pub struct DevMode(pub bool);
+
 /// Optional: carries the suggested target directory from the asset browser.
 #[derive(Resource)]
 pub struct ImportTargetDir(pub String);

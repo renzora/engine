@@ -14,6 +14,10 @@ serde = { version = "1", features = ["derive"] }
 # update path is compiled out on wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 renzora_net = { path = "../renzora_net" }
+# The "Install to ▸ Browse…" folder picker. Same direct `rfd` call every other
+# editor panel that needs a native dialog makes (the exporter, the importer, the
+# hub) — the C-ABI dialog bridge exists for *plugins*, which cannot link rfd.
+rfd = "0.15"
 serde_json = "1"
 sha2 = "0.10"
 zip = "2"
