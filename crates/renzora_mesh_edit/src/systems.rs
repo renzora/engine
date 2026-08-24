@@ -14,8 +14,14 @@ use crate::operators;
 use crate::selection::{MeshSelection, SelectMode};
 use crate::undo::{EditMeshSnapshotCmd, SelectionSnapshot};
 
-/// Pixels from the cursor at which a vertex or edge is considered picked.
-const PICK_RADIUS_PX: f32 = 8.0;
+/// Pixels from the cursor at which a **vertex** is considered picked.
+const PICK_RADIUS_PX_VERTEX: f32 = 8.0;
+
+/// Pixels from the cursor at which an **edge** is considered picked. Looser
+/// than the vertex radius because edges are 1-D and the cursor can otherwise
+/// miss a thin line by a few pixels — Blender ships with a comparable pad
+/// here.
+const PICK_RADIUS_PX_EDGE: f32 = 12.0;
 
 /// Distance the cursor must travel from the LMB-down point before a press
 /// "becomes" a marquee drag instead of a single click. Below this, the
@@ -426,7 +432,7 @@ pub fn pick_element(
                         for (i, v) in edit.vertices.iter().enumerate() {
                             if let Some(sp) = project(v.position) {
                                 let d = (sp - anchor_vp).length();
-                                if d <= PICK_RADIUS_PX
+                                if d <= PICK_RADIUS_PX_VERTEX
                                     && best.is_none_or(|(bd, _)| d < bd)
                                 {
                                     best = Some((d, VertexId(i as u32)));
@@ -455,7 +461,7 @@ pub fn pick_element(
                                 continue;
                             };
                             let d = point_to_segment(anchor_vp, a, b);
-                            if d <= PICK_RADIUS_PX
+                            if d <= PICK_RADIUS_PX_EDGE
                                 && best.is_none_or(|(bd, _)| d < bd)
                             {
                                 best = Some((d, crate::edit_mesh::EdgeId(i as u32)));
