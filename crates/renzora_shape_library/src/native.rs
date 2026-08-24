@@ -250,14 +250,27 @@ fn shape_drag_or_click(
     let Some(info) = press.0.as_ref() else { return };
 
     if mouse.just_released(MouseButton::Left) {
-        // No drag happened (else `press` would be cleared) → spawn at origin.
+        // No drag happened (else `press` would be cleared) → spawn at the
+        // editor's 3D cursor (Shift+RMB placement). Same fallback as the
+        // viewport shapes dropdown — no drag means no `ground_position`,
+        // but the cursor is still meaningful.
         if let Some(cmds) = cmds {
             let (shape_id, name, color) = (info.id.to_string(), info.name.to_string(), info.color);
             cmds.push(move |world: &mut World| {
+                let position = world
+                    .get_resource::<renzora::core::ThreeDCursor>()
+                    .map(|c| c.0)
+                    .unwrap_or(Vec3::ZERO);
                 renzora_undo::execute(
                     world,
                     UndoContext::Scene,
-                    Box::new(SpawnShapeCmd { entity: Entity::PLACEHOLDER, shape_id, name, position: Vec3::ZERO, color }),
+                    Box::new(SpawnShapeCmd {
+                        entity: Entity::PLACEHOLDER,
+                        shape_id,
+                        name,
+                        position,
+                        color,
+                    }),
                 );
             });
         }

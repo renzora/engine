@@ -1362,6 +1362,39 @@ version = "1.0"
 "common.coming_soon" = "Coming soon"
 "viewport.no_cameras" = "No cameras in scene"
 
+# Widget-level tooltips for the native viewport toolbar. These are the short
+# labels that show on plain hover; the matching `_ext` keys are the Shift+hover
+# descriptions (one sentence each — the icon can't carry the meaning on its
+# own). Keys are named after the widget, not the icon glyph, so renames don't
+# silently mistranslate.
+"viewport.widget.view" = "View"
+"viewport.widget.view_ext" = "Switch between 3D, 2D, and UI views"
+"viewport.widget.mode" = "Mode"
+"viewport.widget.mode_ext" = "Interaction mode for this viewport (Select, Move, …)"
+"viewport.widget.display" = "Display"
+"viewport.widget.display_ext" = "Visualization modes, render flags, and overlay toggles"
+"viewport.widget.gizmos" = "Gizmos"
+"viewport.widget.gizmos_ext" = "Editor-drawn overlays: selection box, lights, cameras, skeleton, colliders"
+"viewport.widget.camera" = "Camera"
+"viewport.widget.camera_ext" = "Projection, view angles, sensitivity, and reset"
+"viewport.widget.snap" = "Snap"
+"viewport.widget.snap_ext" = "Object and floor snapping, edge snap, scale anchor"
+"viewport.widget.shapes" = "Shapes"
+"viewport.widget.shapes_ext" = "Add a 3D primitive to the scene"
+"viewport.widget.overlay_2d" = "2D Overlays"
+"viewport.widget.overlay_2d_ext" = "Grid, rulers, and gizmos in the 2D view"
+"viewport.widget.view_angle" = "View Angle"
+"viewport.widget.view_angle_ext" = "Perspective, Front, Top, … — snaps this viewport's camera"
+"viewport.widget.maximize" = "Maximize"
+"viewport.widget.maximize_ext" = "Expand this viewport to fill the panel (and back)"
+"viewport.widget.snap_translate" = "Move Snap"
+"viewport.widget.snap_translate_ext" = "Toggle move snapping; drag the number to change the step"
+"viewport.widget.snap_rotate" = "Rotate Snap"
+"viewport.widget.snap_rotate_ext" = "Toggle rotation snapping; drag the number to change the angle"
+"viewport.widget.snap_scale" = "Scale Snap"
+"viewport.widget.snap_scale_ext" = "Toggle scale snapping; drag the number to change the step"
+"viewport.display.gizmo_size" = "Gizmo Size"
+
 # ─── inspector ───
 "inspector.filter_all" = "All components"
 "inspector.filter_placeholder" = "Filter components..."

@@ -29,12 +29,25 @@ use renzora_ember::widgets::OverlaySurface;
 
 use crate::{AXIS_GIZMO_MARGIN, AXIS_GIZMO_SIZE};
 
-/// Half-length of the projected axes (matches egui: SIZE/2 - 12).
+/// Half-length of the projected axes (matches egui: SIZE/2 - 12). The
+/// `AXIS_GIZMO_SIZE` constant sets the *base* size at slider value 5; the
+/// Display dropdown's "Gizmo Size" slider scales this and every other axis
+/// dimension (`CENTRE`, `POS_D`, `NEG_D`, line thickness) uniformly via
+/// [`gizmo_size_scale`].
 const AXIS_LEN: f32 = AXIS_GIZMO_SIZE / 2.0 - 12.0;
 /// Container-local centre.
 const CENTRE: f32 = AXIS_GIZMO_SIZE / 2.0;
 const POS_D: f32 = 18.0;
 const NEG_D: f32 = 12.0;
+
+/// Curve from slider value `s` (0..5) → multiplier on the base sizes above.
+/// 5.0 = the base (1.0×); 0.0 = 20% of base, the smallest that still reads
+/// as a usable click target. Linear so the slider feels even across its range.
+fn gizmo_size_scale(slider: f32) -> f32 {
+    let s = slider.clamp(0.0, 5.0);
+    // 0.20 at slider=0; 1.0 at slider=5. Linear in between.
+    0.20 + (s / 5.0) * 0.80
+}
 
 #[derive(Component)]
 struct AxisGizmoRoot;
@@ -79,13 +92,6 @@ pub(crate) fn register(app: &mut App) {
 
 fn rgba((r, g, b): (u8, u8, u8), a: f32) -> Color {
     Color::srgba(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a)
-}
-
-/// Project an axis direction to a (screen-space offset, depth) pair.
-fn project(dir: Vec3, cy: f32, sy: f32, cp: f32, sp: f32) -> (Vec2, f32) {
-    let r = Vec3::new(dir.x * cy + dir.z * sy, dir.y, -dir.x * sy + dir.z * cy);
-    let v = Vec3::new(r.x, r.y * cp + r.z * sp, -r.y * sp + r.z * cp);
-    (Vec2::new(v.x * AXIS_LEN, -v.y * AXIS_LEN), v.z)
 }
 
 /// Build the gizmo cluster on a viewport content node's top-right. Returns the
@@ -237,6 +243,15 @@ fn gizmo_layout(
     // Hidden during play mode for a clean game view, and in 2D view (the axis
     // orientation gizmo is a 3D-orbit control).
     let playing = play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
+    let gizmo_size = settings.as_ref().map(|s| s.gizmo_size).unwrap_or(5.0);
+    let scale = gizmo_size_scale(gizmo_size);
+    // Pre-scale the per-frame constants so the per-tip math stays simple.
+    let axis_len = AXIS_LEN * scale;
+    let centre = CENTRE * scale;
+    let pos_d = POS_D * scale;
+    let neg_d = NEG_D * scale;
+    let line_thickness = 2.5 * scale;
+    let root_size = AXIS_GIZMO_SIZE * scale;
     let show = settings
         .map(|s| {
             s.show_axis_gizmo
@@ -244,10 +259,22 @@ fn gizmo_layout(
         })
         .unwrap_or(true)
         && !playing;
+    // Keep the cluster container's size in step with the scaled dimensions so
+    // the cluster doesn't overflow its own bounds (and the backplate stays a
+    // circle, not a clipped square).
     for mut node in &mut roots {
-        let want = if show { Display::Flex } else { Display::None };
-        if node.display != want {
-            node.display = want;
+        let want_disp = if show { Display::Flex } else { Display::None };
+        if node.display != want_disp {
+            node.display = want_disp;
+        }
+        if node.width != Val::Px(root_size) {
+            node.width = Val::Px(root_size);
+        }
+        if node.height != Val::Px(root_size) {
+            node.height = Val::Px(root_size);
+        }
+        if node.border_radius != BorderRadius::all(Val::Px(root_size / 2.0)) {
+            node.border_radius = BorderRadius::all(Val::Px(root_size / 2.0));
         }
     }
     if !show {
@@ -269,14 +296,26 @@ fn gizmo_layout(
         orbit.as_deref().map(|o| (o.yaw, o.pitch)).unwrap_or((0.0, 0.0))
     };
 
-    for (tip, slot, mut node, mut bg, mut z) in &mut tips {
-        let (yaw, pitch) = slot_orbit(slot.0);
+    // Project is a free function that still uses the unscaled `AXIS_LEN`; pass
+    // the scaled length in via a tiny inline project so we don't duplicate the
+    // rotation math.
+    let project_at = |dir: Vec3, yaw: f32, pitch: f32| -> (Vec2, f32) {
         let (cy, sy) = (yaw.cos(), yaw.sin());
         let (cp, sp) = (pitch.cos(), pitch.sin());
-        let (off, depth) = project(tip.dir, cy, sy, cp, sp);
-        let d = if tip.positive { POS_D } else { NEG_D };
-        node.left = Val::Px(CENTRE + off.x - d / 2.0);
-        node.top = Val::Px(CENTRE + off.y - d / 2.0);
+        let r = Vec3::new(dir.x * cy + dir.z * sy, dir.y, -dir.x * sy + dir.z * cy);
+        let v = Vec3::new(r.x, r.y * cp + r.z * sp, -r.y * sp + r.z * cp);
+        (Vec2::new(v.x * axis_len, -v.y * axis_len), v.z)
+    };
+
+    for (tip, slot, mut node, mut bg, mut z) in &mut tips {
+        let (yaw, pitch) = slot_orbit(slot.0);
+        let (off, depth) = project_at(tip.dir, yaw, pitch);
+        let d = if tip.positive { pos_d } else { neg_d };
+        node.left = Val::Px(centre + off.x - d / 2.0);
+        node.top = Val::Px(centre + off.y - d / 2.0);
+        node.width = Val::Px(d);
+        node.height = Val::Px(d);
+        node.border_radius = BorderRadius::all(Val::Px(d / 2.0));
         let alpha = if depth < -0.1 { 0.45 } else { 1.0 };
         bg.0 = rgba(tip.color, alpha);
         *z = ZIndex(100 + (depth * 10.0) as i32);
@@ -284,15 +323,14 @@ fn gizmo_layout(
 
     for (line, slot, mut node, mut tf, mut bg, mut z) in &mut lines {
         let (yaw, pitch) = slot_orbit(slot.0);
-        let (cy, sy) = (yaw.cos(), yaw.sin());
-        let (cp, sp) = (pitch.cos(), pitch.sin());
-        let (off, depth) = project(line.dir, cy, sy, cp, sp);
+        let (off, depth) = project_at(line.dir, yaw, pitch);
         let len = off.length();
         node.width = Val::Px(len);
+        node.height = Val::Px(line_thickness);
         // Centre the line on the midpoint, then rotate about its own centre so it
         // spans centre -> tip.
-        node.left = Val::Px(CENTRE + off.x / 2.0 - len / 2.0);
-        node.top = Val::Px(CENTRE + off.y / 2.0 - 1.25);
+        node.left = Val::Px(centre + off.x / 2.0 - len / 2.0);
+        node.top = Val::Px(centre + off.y / 2.0 - line_thickness / 2.0);
         *tf = UiTransform::from_rotation(Rot2::radians(off.y.atan2(off.x)));
         let alpha = if depth < -0.1 { 0.4 } else { 0.9 };
         bg.0 = rgba(line.color, alpha);
@@ -300,15 +338,33 @@ fn gizmo_layout(
     }
 }
 
-/// Brighten the backplate while orbiting (or leave it subtle).
+/// Brighten the backplate while orbiting (or leave it subtle), and keep its
+/// size in step with the cluster's `gizmo_size` slider so the backplate stays
+/// a circle filling the root rather than a clipped square.
 fn gizmo_backplate(
     nav: Option<Res<NavOverlayState>>,
-    mut plates: Query<&mut BackgroundColor, With<AxisBackplate>>,
+    settings: Option<Res<ViewportSettings>>,
+    mut plates: Query<&mut Node, With<AxisBackplate>>,
+    mut bgs: Query<&mut BackgroundColor, With<AxisBackplate>>,
 ) {
     let active = nav.is_some_and(|n| n.orbit_dragging.load(Ordering::Relaxed));
     let a = if active { 0.38 } else { 0.22 };
-    for mut bg in &mut plates {
+    let size = AXIS_GIZMO_SIZE
+        * gizmo_size_scale(settings.as_ref().map(|s| s.gizmo_size).unwrap_or(5.0));
+    for mut bg in &mut bgs {
         bg.0 = Color::srgba(0.0, 0.0, 0.0, a);
+    }
+    for mut node in &mut plates {
+        if node.width != Val::Px(size) {
+            node.width = Val::Px(size);
+        }
+        if node.height != Val::Px(size) {
+            node.height = Val::Px(size);
+        }
+        let r = BorderRadius::all(Val::Px(size / 2.0));
+        if node.border_radius != r {
+            node.border_radius = r;
+        }
     }
 }
 

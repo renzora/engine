@@ -148,6 +148,8 @@ They are one control mirrored, not two widgets: orientation is a field on the wi
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
 
+A tooltip can also carry an **extended** description: `HoverTooltip::with_extended("Display", "Visualization modes, render flags, and overlay toggles")`. The short label shows on plain hover; holding **Shift** while hovering swaps the bubble to the extended text — same bubble, same delay, same render path, just a different string. Use it for widgets whose icon can't carry the meaning on its own (a single eye glyph can't say "Display" let alone what Display opens). If a widget has no extended text, holding Shift on it does nothing — the short label keeps showing, so the user gets no visible flicker.
+
 ### Dropdowns & popups — don't hand-roll them (`dropdown`, `Popup`)
 
 Two builders cover almost every "click a thing, a panel appears" case, and using them is not just about saving code:

@@ -103,6 +103,70 @@ fn loc_opt(s: &str) -> String {
     }
 }
 
+/// A label + (flex spacer) + boxed drag_value row, bound two-way to a
+/// `ViewportSettings` field via the `drag_row!` macro. Defined up here (before
+/// any of the dropdown builders) so `drag_row!` can expand with the function
+/// in scope at every call site.
+fn drag_row_build(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    min: f32,
+    max: f32,
+    step: f32,
+    get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
+    set: impl Fn(&mut World, f32) + Send + Sync + 'static,
+) -> Entity {
+    let lbl = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(value_text())),
+        ))
+        .id();
+    let spacer = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            ..default()
+        })
+        .id();
+    let dv = drag_value(commands, &fonts.ui, "", value_text(), min, step);
+    commands.entity(dv).insert(DragRange { min, max });
+    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("vp-drag-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[lbl, spacer, dv]);
+    row
+}
+
+/// Builds a label + boxed [`drag_value`] row bound to `ViewportSettings.<path>`.
+macro_rules! drag_row {
+    ($c:expr, $f:expr, $label:expr, $min:expr, $max:expr, $step:expr, $($field:tt)+) => {
+        drag_row_build(
+            $c, $f, $label, $min, $max, $step,
+            |w: &Rx| {
+                w.get_resource::<ViewportSettings>()
+                    .map(|s| s.$($field)+)
+                    .unwrap_or($min)
+            },
+            |w: &mut World, v: f32| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.$($field)+ = v;
+                }
+            },
+        )
+    };
+}
+
 /// Build the header controls, as a list of self-contained clusters.
 ///
 /// This was child 0 of the viewport panel, then a full-width strip in the shared
@@ -238,6 +302,10 @@ pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) 
         SIDE_ICON,
     );
     commands.entity(btn).insert(MaximizeSlot(slot));
+    commands.entity(btn).insert(renzora_ember::widgets::HoverTooltip::with_extended(
+        renzora::lang::t("viewport.widget.maximize"),
+        renzora::lang::t("viewport.widget.maximize_ext"),
+    ));
     btn
 }
 
@@ -651,7 +719,7 @@ fn update_space_toggle(
                 t.0 = g.to_string();
             }
         }
-        tip.0 = space_label(s);
+        tip.short = space_label(s);
     }
 }
 
@@ -795,6 +863,10 @@ fn view_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let labels: Vec<String> = ViewportView::ALL.iter().map(|v| loc_opt(v.label())).collect();
     let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let dd = dropdown_compact(commands, fonts, &refs, 0, 56.0);
+    commands.entity(dd).insert(renzora_ember::widgets::HoverTooltip::with_extended(
+        renzora::lang::t("viewport.widget.view"),
+        renzora::lang::t("viewport.widget.view_ext"),
+    ));
     bind_2way(
         commands,
         dd,
@@ -825,6 +897,10 @@ fn mode_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let dd = dropdown_compact(commands, fonts, &refs, 0, 80.0);
     commands.entity(dd).insert(ModeDropdown);
+    commands.entity(dd).insert(renzora_ember::widgets::HoverTooltip::with_extended(
+        renzora::lang::t("viewport.widget.mode"),
+        renzora::lang::t("viewport.widget.mode_ext"),
+    ));
     bind_2way(
         commands,
         dd,
@@ -921,6 +997,10 @@ fn view_angle_menu(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> 
             Popup::new(panel),
             DisplayTrigger,
             ViewAngleTrigger { slot, label: label_e },
+            renzora_ember::widgets::HoverTooltip::with_extended(
+                renzora::lang::t("viewport.widget.view_angle"),
+                renzora::lang::t("viewport.widget.view_angle_ext"),
+            ),
             Name::new("vp-view-angle"),
         ))
         .id();
@@ -1177,6 +1257,20 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     // the 3D grid is what the -/+ above does, and the 2D flag keeps its home in
     // Settings → Viewport.
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.axis_gizmo"), show_axis_gizmo));
+    // One slider covering the viewport-corner axis gizmo + the transform
+    // gizmo's translate arrows, rotate rings, and scale cubes. Default 5 =
+    // current size; 0 = smallest usable (20% of default). Lives in Display
+    // because the axis-gizmo switch is the closest neighbour — flipping the
+    // gizmo off hides it, but if it's on the user often wants a smaller one.
+    kids.push(drag_row!(
+        commands,
+        fonts,
+        &renzora::lang::t("viewport.display.gizmo_size"),
+        0.0,
+        5.0,
+        0.05,
+        gizmo_size
+    ));
     // Scene Icons / Labels and the whole collision-gizmo picker used to live
     // here; they moved to the Gizmos dropdown (`build_gizmos_dropdown`) so all
     // the "what's drawn over the scene" switches sit in one place. Display keeps
@@ -1184,7 +1278,12 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
 
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
-    commands.entity(trigger).insert(DisplayTrigger);
+    commands
+        .entity(trigger)
+        .insert((DisplayTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.display"),
+            renzora::lang::t("viewport.widget.display_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -1282,7 +1381,12 @@ fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
 
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "bounding-box", panel);
-    commands.entity(trigger).insert(DisplayTrigger);
+    commands
+        .entity(trigger)
+        .insert((DisplayTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.gizmos"),
+            renzora::lang::t("viewport.widget.gizmos_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -1321,7 +1425,12 @@ fn build_overlay_2d_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     ];
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
-    commands.entity(trigger).insert(DisplayTrigger);
+    commands
+        .entity(trigger)
+        .insert((DisplayTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.overlay_2d"),
+            renzora::lang::t("viewport.widget.overlay_2d_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -1719,6 +1828,28 @@ fn snap_val(w: &Rx, f: impl Fn(&SnapSettings) -> f32) -> f32 {
         .unwrap_or(0.0)
 }
 
+/// Tooltip for one snap-pill toggle. The drag_value next to it carries its own
+/// behaviour ("drag to change the step"), and intentionally has no tooltip —
+/// numeric scrubbers everywhere else also have none, and adding one here only
+/// would have looked like the pill as a whole had different affordances.
+fn snap_tooltip(which: SnapToggle) -> renzora_ember::widgets::HoverTooltip {
+    let (short, ext) = match which {
+        SnapToggle::Translate => (
+            renzora::lang::t("viewport.widget.snap_translate"),
+            renzora::lang::t("viewport.widget.snap_translate_ext"),
+        ),
+        SnapToggle::Rotate => (
+            renzora::lang::t("viewport.widget.snap_rotate"),
+            renzora::lang::t("viewport.widget.snap_rotate_ext"),
+        ),
+        SnapToggle::Scale => (
+            renzora::lang::t("viewport.widget.snap_scale"),
+            renzora::lang::t("viewport.widget.snap_scale_ext"),
+        ),
+    };
+    renzora_ember::widgets::HoverTooltip::with_extended(short, ext)
+}
+
 fn set_snap(w: &mut World, f: impl Fn(&mut SnapSettings) -> &mut f32, v: f32) {
     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
         *f(&mut s.snap) = v;
@@ -1753,6 +1884,7 @@ fn snap_pair(
             Interaction::default(),
             which,
             HoverCursor(SystemCursorIcon::Pointer),
+            snap_tooltip(which),
             Name::new("vp-snap-toggle"),
         ))
         .id();
@@ -2007,24 +2139,8 @@ const VIEW_ANGLES: &[(&str, &str, f32, f32)] = {
     ]
 };
 
-/// Builds a label + boxed [`drag_value`] row bound to `ViewportSettings.<path>`.
-macro_rules! drag_row {
-    ($c:expr, $f:expr, $label:expr, $min:expr, $max:expr, $step:expr, $($field:tt)+) => {
-        drag_row_build(
-            $c, $f, $label, $min, $max, $step,
-            |w: &Rx| {
-                w.get_resource::<ViewportSettings>()
-                    .map(|s| s.$($field)+)
-                    .unwrap_or($min)
-            },
-            |w: &mut World, v: f32| {
-                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                    s.$($field)+ = v;
-                }
-            },
-        )
-    };
-}
+// drag_row! macro definition lives near `loc_opt` (top of the dropdown
+// builder section) so the Display dropdown can use it. See that site.
 
 /// A label + click-to-fire row (view angles, reset).
 fn click_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, click: HeaderClick) -> Entity {
@@ -2101,46 +2217,8 @@ fn snap_button(
 }
 
 /// A label + (flex spacer) + boxed drag_value row, bound two-way.
-fn drag_row_build(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    label: &str,
-    min: f32,
-    max: f32,
-    step: f32,
-    get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
-    set: impl Fn(&mut World, f32) + Send + Sync + 'static,
-) -> Entity {
-    let lbl = commands
-        .spawn((
-            Text::new(label),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(value_text())),
-        ))
-        .id();
-    let spacer = commands
-        .spawn(Node {
-            flex_grow: 1.0,
-            ..default()
-        })
-        .id();
-    let dv = drag_value(commands, &fonts.ui, "", value_text(), min, step);
-    commands.entity(dv).insert(DragRange { min, max });
-    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                ..default()
-            },
-            Name::new("vp-drag-row"),
-        ))
-        .id();
-    commands.entity(row).add_children(&[lbl, spacer, dv]);
-    row
-}
+/// (The real definition lives just below `loc_opt` so `drag_row!` can expand
+/// with it in scope at every call site — see the comment up there.)
 
 #[allow(clippy::vec_init_then_push)]
 fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -2176,7 +2254,15 @@ fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.sensitivities")));
     kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.look"), 0.05, 2.0, 0.05, camera.look_sensitivity));
     kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.orbit"), 0.05, 2.0, 0.05, camera.orbit_sensitivity));
-    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.pan"), 0.1, 5.0, 0.1, camera.pan_sensitivity));
+    kids.push(drag_row!(
+        commands,
+        fonts,
+        &renzora::lang::t("viewport.camera.pan"),
+        0.0,
+        5.0,
+        0.05,
+        camera.pan_sensitivity
+    ));
     kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.zoom"), 0.1, 5.0, 0.1, camera.zoom_sensitivity));
 
     kids.push(separator_row(commands));
@@ -2191,7 +2277,12 @@ fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
 
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "cube", panel);
-    commands.entity(trigger).insert(CameraTrigger);
+    commands
+        .entity(trigger)
+        .insert((CameraTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.camera"),
+            renzora::lang::t("viewport.widget.camera_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -2236,7 +2327,12 @@ fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "magnet", panel);
-    commands.entity(trigger).insert(SnapTrigger);
+    commands
+        .entity(trigger)
+        .insert((SnapTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.snap"),
+            renzora::lang::t("viewport.widget.snap_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -2601,7 +2697,12 @@ fn build_shapes_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     // panel would grow off the left edge of the window.
     let panel = popup_panel_aligned(commands, &[scroll], PopupAlign::Left);
     let trigger = icon_popup_trigger(commands, fonts, "shapes", panel);
-    commands.entity(trigger).insert(ShapeMenuTrigger);
+    commands
+        .entity(trigger)
+        .insert((ShapeMenuTrigger, renzora_ember::widgets::HoverTooltip::with_extended(
+            renzora::lang::t("viewport.widget.shapes"),
+            renzora::lang::t("viewport.widget.shapes_ext"),
+        )));
     popup_anchor(commands, trigger, panel)
 }
 
@@ -2691,9 +2792,10 @@ fn populate_shapes(world: &mut World) {
     queue.apply(world);
 }
 
-/// Spawn the clicked shape at the origin (matching the hierarchy "Add Entity"
-/// menu) through the undo system, then leave the menu open so several shapes can
-/// be added in a row.
+/// Spawn the clicked shape at the editor's 3D cursor (`ThreeDCursor`, placed
+/// via Shift+RMB), falling back to world origin before the first placement.
+/// Through the undo system, then leave the menu open so several shapes can be
+/// added in a row.
 fn shape_spawn_click(
     q: Query<(&Interaction, &ShapeSpawn), Changed<Interaction>>,
     cmds: Option<Res<EditorCommands>>,
@@ -2713,6 +2815,13 @@ fn shape_spawn_click(
                 warn!("Shape '{id}' not found in registry");
                 return;
             };
+            // Read the cursor inside the closure so it runs on the latest value
+            // when the command is actually applied (Shift+RMB → click can be
+            // back-to-back). Default is `Vec3::ZERO` until the first placement.
+            let position = w
+                .get_resource::<renzora::core::ThreeDCursor>()
+                .map(|c| c.0)
+                .unwrap_or(Vec3::ZERO);
             execute(
                 w,
                 UndoContext::Scene,
@@ -2720,7 +2829,7 @@ fn shape_spawn_click(
                     entity: Entity::PLACEHOLDER,
                     shape_id,
                     name,
-                    position: Vec3::ZERO,
+                    position,
                     color,
                 }),
             );

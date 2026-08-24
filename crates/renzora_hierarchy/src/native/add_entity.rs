@@ -88,6 +88,13 @@ pub(crate) fn spawn_entries(
                 s.name,
                 category,
                 move |w: &mut World| {
+                    // Spawn at the editor's 3D cursor (Shift+RMB placement) so
+                    // a freshly added shape lands where the user is working,
+                    // not at world origin.
+                    let position = w
+                        .get_resource::<renzora::core::ThreeDCursor>()
+                        .map(|c| c.0)
+                        .unwrap_or(Vec3::ZERO);
                     execute(
                         w,
                         UndoContext::Scene,
@@ -95,7 +102,7 @@ pub(crate) fn spawn_entries(
                             entity: Entity::PLACEHOLDER,
                             shape_id: shape_id.clone(),
                             name: name.clone(),
-                            position: Vec3::ZERO,
+                            position,
                             color,
                         }),
                     );

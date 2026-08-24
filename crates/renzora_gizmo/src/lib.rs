@@ -50,6 +50,17 @@ const GIZMO_SCALE_REF_DIST: f32 = 10.0;
 pub(crate) const GIZMO_PLANE_SIZE: f32 = 0.8;
 pub(crate) const GIZMO_PLANE_OFFSET: f32 = 0.6;
 
+/// Curve from the Display dropdown's "Gizmo Size" slider (0..5) to a multiplier
+/// on the transform gizmo's world-space size. 5.0 → 1.0× (the existing
+/// translate arrows / rotate rings / scale cubes), 0.0 → 20% (smallest the
+/// handles stay clickable). Mirrors `gizmo_size_scale` in
+/// `renzora_viewport::native_axis_gizmo` so the corner axis gizmo and the
+/// transform gizmo move together with the same slider.
+fn viewport_gizmo_size_scale(slider: f32) -> f32 {
+    let s = slider.clamp(0.0, 5.0);
+    0.20 + (s / 5.0) * 0.80
+}
+
 // ── Pivot computation ───────────────────────────────────────────────────────
 
 /// Return the world-space pivot to anchor the gizmo on for `entity`.
@@ -1056,7 +1067,17 @@ fn update_gizmo_transforms(
         let basis = gizmo_basis(slot_space(i), *mode, sel_rot);
         let world_aligned = basis == Quat::IDENTITY;
         let dist = (cam - sel_world).length().max(0.1);
-        let scale = dist / GIZMO_SCALE_REF_DIST;
+        // Distance-based auto-scale (gizmos grow with zoom-out) composed with
+        // the user's "Gizmo Size" slider from the Display dropdown — slider 5
+        // leaves it at 1.0×, slider 0 shrinks the handles to 20% so a tight
+        // camera isn't dominated by the gizmo chrome.
+        let viewport_scale = viewport_gizmo_size_scale(
+            viewport_settings
+                .as_ref()
+                .map(|s| s.gizmo_size)
+                .unwrap_or(5.0),
+        );
+        let scale = (dist / GIZMO_SCALE_REF_DIST) * viewport_scale;
 
         // Per-axis signs: X and Z flip toward THIS slot's camera so handles stay
         // visible from its angle. Y stays +1 (the up arrow must never flip, or the
