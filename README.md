@@ -6,8 +6,6 @@ A 3D game engine and visual editor built on <a href="https://bevyengine.org/" ta
 
 > **Warning:** Early alpha. Expect bugs, incomplete features, and breaking changes between versions.
 
-> **AI-Assisted Development:** This project uses AI code generation tools (Claude by Anthropic) throughout development. If that's a concern, check out <a href="https://bevyengine.org/" target="_blank" rel="noopener noreferrer">Bevy</a>, <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">Godot</a>, or <a href="https://fyrox.rs/" target="_blank" rel="noopener noreferrer">Fyrox</a>.
-
 ## Getting Started
 
 **Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>.
@@ -82,3 +80,4 @@ Dual-licensed under MIT or Apache 2.0.
 
 - <a href="LICENSE-MIT" target="_blank" rel="noopener noreferrer">MIT License</a>
 - <a href="LICENSE-APACHE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>
+- <a href="https://github.com/renzora/engine/blob/main/docs/r1-alpha7/contributing/ai-policy.md" target="_blank" rel="noopener noreferrer">AI Policy</a>
