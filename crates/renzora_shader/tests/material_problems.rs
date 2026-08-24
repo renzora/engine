@@ -226,10 +226,33 @@ fn a_broken_material_is_reported_against_its_own_path() {
     );
 }
 
+/// The Console panel's buffer must hear a broken material too — the Problems
+/// panel alone leaves anyone watching the console blind.
+#[test]
+fn a_broken_material_reaches_the_console() {
+    renzora::console_log::init_global_log_buffer();
+    let buffer = renzora::console_log::get_global_log_buffer().unwrap();
+
+    let mut f = Fixture::new("console");
+    f.write(BROKEN);
+    f.spawn_user();
+    f.pump();
+
+    let entries = buffer.0.lock().unwrap();
+    assert!(
+        entries.iter().any(|e| {
+            e.level == renzora::console_log::LogLevel::Error
+                && e.category == "Material"
+                && e.message.contains("t.material")
+                && e.message.contains("no_such_symbol")
+        }),
+        "no Material error in the console buffer"
+    );
+}
+
 /// The one the user asked for: a repaired material must stop being reported.
 #[test]
-fn repairing_a_material_clears_its_report() {
-    let mut f = Fixture::new("repair");
+fn repairing_a_material_clears_its_report() {    let mut f = Fixture::new("repair");
     f.write(BROKEN);
     f.spawn_user();
     f.pump();

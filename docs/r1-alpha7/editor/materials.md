@@ -265,12 +265,13 @@ Only a **write** counts. Opening a `.wgsl`, reading it, or touching its timestam
 
 ## When a material fails to compile
 
-A graph can be well-formed and still produce WGSL the shader compiler rejects — most easily through a **Custom Code** node, whose contents nothing checks until the compiler sees them. The material then falls back to a plain surface in the viewport, and the compiler's errors show up in two places:
+A graph can be well-formed and still produce WGSL the shader compiler rejects — most easily through a **Custom Code** node, whose contents nothing checks until the compiler sees them. The material then falls back to a plain surface in the viewport, and the compiler's errors show up in three places:
 
+- **On the node itself.** The offending node gets a red warning icon in its title bar. Hover the node for the compiler's message.
 - **The Problems panel**, as a row per distinct error, listed against the `.material` file it came from. Click a row to jump to that file if you have it open.
 - **The console**, once per compile — not once per frame, so a broken material does not flood the log.
 
-Both clear on their own as soon as the material compiles again. There is nothing to dismiss and no restart involved. Fix the graph, press **Apply**, and the row disappears.
+All three clear on their own as soon as the material compiles again. There is nothing to dismiss and no restart involved. Fix the graph, press **Apply**, and the row and the icon disappear.
 
 Some errors appear only under certain conditions — a mesh with vertex colors, or a camera with an environment map. Those rows carry a `[defines: …]` prefix naming the configurations that fail, because the configuration is part of what is wrong. An error with no prefix fails everywhere.
 

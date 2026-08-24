@@ -226,11 +226,12 @@ fn report_material_problems(
         };
         let node_lines = cache.node_line_maps.get(path).map(Vec::as_slice).unwrap_or(&[]);
         let found = validator.problems_for_source(&source, node_lines);
-        // Logged as well as recorded: the uuid key means this runs once per
-        // compile, so the console gets the errors without repeating them every
-        // frame, and `runtime_warnings` picks them up for Scene Diagnostics.
+        // Logged to both consoles, once per compile (the uuid key): `warn!`
+        // feeds Scene Diagnostics via `runtime_warnings`, `console_error`
+        // feeds the Console panel's buffer.
         for problem in &found {
             warn!("{}: {}", path, problem.message);
+            renzora::console_log::console_error("Material", format!("{path}: {}", problem.message));
         }
         // Errors only — the compile sites own the Warning rows for this path.
         problems.set_severity(
@@ -473,6 +474,7 @@ fn resolve_material_refs(
                         is_derived, fs_path
                     );
                     warn!("Failed to resolve material file: {} ({})", path, err);
+                    renzora::console_log::console_error("Material", format!("Failed to resolve {path}: {err}"));
                     problems.set(
                         path.clone(),
                         vec![renzora::content_problems::ContentProblem {
@@ -1098,11 +1100,13 @@ fn resolve_graph_material_from_graph(
     if !result.errors.is_empty() {
         for err in &result.errors {
             error!("Material compile error in '{}': {}", path, err);
+            renzora::console_log::console_error("Material", format!("{path}: {err}"));
         }
         return None;
     }
     for warning in &result.warnings {
         warn!("Material compile warning in '{}': {}", path, warning);
+        renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
     }
 
     let (handle, parameters) = assemble_graph_material(

@@ -219,6 +219,7 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
 pub(crate) fn note_save_warnings(world: &mut World, path: &str, warnings: &[String]) {
     for warning in warnings {
         warn!("[material_editor] codegen warning in '{}': {}", path, warning);
+        renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
     }
     let Some(mut problems) = world.get_resource_mut::<ContentProblems>() else {
         return;
