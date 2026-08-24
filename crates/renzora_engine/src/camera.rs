@@ -52,8 +52,23 @@ pub fn spawn_editor_camera(
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut images: ResMut<Assets<Image>>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    existing: Query<Entity, With<ViewportCamera>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // Guard against double-spawn on Editor→Loading→Editor cycles. The splash
+    // auto-loads the most-recent project, and re-opening the same project from
+    // the splash re-enters Editor a second time without the prior cameras
+    // being despawned — leaving 8 cameras with `order: -1` all targeting the
+    // same render targets. Bevy logs `Camera order ambiguities detected` and
+    // routes input to an arbitrary one, which is typically a stale camera
+    // with no visible target, so the viewport goes blank and pan/orbit/zoom
+    // stop working. A count check is enough: `spawn_editor_camera` always
+    // creates exactly `VIEWPORT_COUNT` cameras, so count == VIEWPORT_COUNT
+    // means this slot's batch is already live.
+    if existing.count() as usize == VIEWPORT_COUNT {
+        return;
+    }
 
     // IBL probe face size for the primary bake camera — kept in lockstep with
     // `renzora_environment_map::sync_environment_map` (which rewrites the probe
@@ -345,8 +360,18 @@ pub fn orbit_transform(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -> Tran
 pub fn spawn_editor_2d_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    existing: Query<Entity, With<ViewportCamera2d>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // Same guard as `spawn_editor_camera`: `OnEnter(Editor)` runs twice when
+    // the splash auto-loads a project and the user re-opens it from the
+    // splash. Without the guard the second pass spawns 4 fresh 2D cameras on
+    // top of the live 4, compounding the camera-ambiguity warning and
+    // potentially routing input to the wrong slot.
+    if existing.count() as usize == VIEWPORT_COUNT {
+        return;
+    }
 
     for i in 0..VIEWPORT_COUNT {
         let slot_image = viewports.slots[i].image.clone();
