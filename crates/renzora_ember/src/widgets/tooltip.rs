@@ -24,6 +24,11 @@ impl HoverTooltip {
     }
 }
 
+/// Place the bubble above the hovered entity's own rect instead of beside the
+/// cursor — for things the user points at rather than reads (graph nodes).
+#[derive(Component)]
+pub struct TooltipAnchorAbove;
+
 /// Legacy wrapper API: wraps `target` in a hoverable node carrying a
 /// [`HoverTooltip`]. Prefer inserting `HoverTooltip` directly on widgets that
 /// already track `Interaction`.
@@ -58,6 +63,9 @@ pub(crate) struct HoverTipText;
 const SHOW_DELAY: f32 = 0.35;
 /// Cursor → bubble offset (logical px).
 const OFFSET: Vec2 = Vec2::new(14.0, 20.0);
+/// The bubble's maximum width — long diagnostics wrap instead of running off
+/// the window.
+const MAX_WIDTH: f32 = 360.0;
 
 pub(crate) fn hover_tooltip_system(
     mut commands: Commands,
@@ -65,7 +73,14 @@ pub(crate) fn hover_tooltip_system(
     windows: Query<(Entity, &Window)>,
     dock_windows: Option<Res<crate::dock::DockWindows>>,
     fonts: Option<Res<EmberFonts>>,
-    tips: Query<(Entity, &Interaction, &HoverTooltip)>,
+    tips: Query<(
+        Entity,
+        &Interaction,
+        &HoverTooltip,
+        Option<&ComputedNode>,
+        Option<&GlobalTransform>,
+        Has<TooltipAnchorAbove>,
+    )>,
     mut root_q: Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>,
     mut text_q: Query<&mut Text, With<HoverTipText>>,
     mut state: Local<Option<(Entity, f32)>>,
@@ -81,14 +96,14 @@ pub(crate) fn hover_tooltip_system(
 
     let hovered = tips
         .iter()
-        .find(|(_, i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        .find(|(_, i, _, _, _, _)| matches!(i, Interaction::Hovered | Interaction::Pressed));
     // The window the cursor is in — hover only fires there, so the tooltip's
     // coordinates and rendering target both follow it (a widget in a floating
     // dock window shows its tooltip in that window, not the primary).
     let cursor_win = windows
         .iter()
         .find_map(|(e, w)| w.cursor_position().map(|c| (e, w, c)));
-    let (Some((widget, _, tip)), Some((win_entity, win, cursor))) = (hovered, cursor_win) else {
+    let (Some((widget, _, tip, widget_cn, widget_tf, anchor_above)), Some((win_entity, win, cursor))) = (hovered, cursor_win) else {
         *state = None;
         hide(&mut root_q);
         return;
@@ -118,6 +133,7 @@ pub(crate) fn hover_tooltip_system(
                     position_type: PositionType::Absolute,
                     left: Val::Px(cursor.x + OFFSET.x),
                     top: Val::Px(cursor.y + OFFSET.y),
+                    max_width: Val::Px(MAX_WIDTH),
                     padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                     border: UiRect::all(Val::Px(1.0)),
                     border_radius: BorderRadius::all(Val::Px(4.0)),
@@ -139,7 +155,7 @@ pub(crate) fn hover_tooltip_system(
                 Text::new(tip.0.clone()),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::no_wrap(),
+                bevy::text::TextLayout::linebreak(bevy::text::LineBreak::WordBoundary),
                 Pickable::IGNORE,
                 HoverTipText,
             ))
@@ -173,15 +189,38 @@ pub(crate) fn hover_tooltip_system(
         }
     }
 
-    // Place beside the cursor, flipping/clamping at the window edges.
+    // Place the bubble. `TooltipAnchorAbove` centers it over the hovered
+    // entity's own rect (flipping below when there is no room); everything
+    // else rides beside the cursor, flipping/clamping at the window edges.
     // ComputedNode is physical px; Node offsets are logical.
     let size = cn.size() * cn.inverse_scale_factor();
-    let mut pos = cursor + OFFSET;
+    let anchored = anchor_above
+        .then(|| widget_cn.zip(widget_tf))
+        .flatten()
+        .map(|(wcn, wtf)| {
+            let half = wcn.size() * wcn.inverse_scale_factor() * 0.5;
+            let center = wtf.translation().xy() * wcn.inverse_scale_factor();
+            // Above the widget; below it when the bubble would leave the window.
+            let mut y = center.y - half.y - size.y - 8.0;
+            if y < 0.0 {
+                y = center.y + half.y + 8.0;
+            }
+            Vec2::new(center.x - size.x * 0.5, y)
+        });
+    let mut pos = anchored.unwrap_or(cursor + OFFSET);
     if pos.x + size.x > win.width() {
-        pos.x = (cursor.x - size.x - 8.0).max(0.0);
+        pos.x = if anchored.is_some() {
+            (win.width() - size.x).max(0.0)
+        } else {
+            (cursor.x - size.x - 8.0).max(0.0)
+        };
     }
     if pos.y + size.y > win.height() {
-        pos.y = (cursor.y - size.y - 8.0).max(0.0);
+        pos.y = if anchored.is_some() {
+            (win.height() - size.y).max(0.0)
+        } else {
+            (cursor.y - size.y - 8.0).max(0.0)
+        };
     }
     node.left = Val::Px(pos.x);
     node.top = Val::Px(pos.y);

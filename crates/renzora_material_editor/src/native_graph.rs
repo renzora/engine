@@ -380,6 +380,10 @@ struct NodeSnap {
     /// One entry per input pin, index-aligned with `inputs`: the pin template and
     /// whether it should carry an inline value editor. See [`wants_editor`].
     in_specs: Vec<(PinTemplate, bool)>,
+    /// The shader compiler's complaint about this node, if any — joined from
+    /// `ContentProblems` for the active material. Drives the header's warning
+    /// icon and the node's tooltip.
+    error: Option<String>,
 }
 
 /// Should this input pin show an inline value editor on the node?
@@ -412,6 +416,11 @@ fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::M
 fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let assets = world.get_resource::<AssetServer>();
+    let problems = world.get_resource::<renzora::content_problems::ContentProblems>();
+    let active_path = s
+        .active_tab
+        .and_then(|i| s.tabs.get(i))
+        .and_then(|t| t.path.as_deref());
     let sel = s.selected_node;
     let nodes: Vec<NodeSnap> = s
         .graph
@@ -435,7 +444,16 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                 .filter(|p| p.direction == PinDir::Input)
                 .map(|p| ((*p).clone(), wants_editor(&s.graph, n, p)))
                 .collect();
-            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs }
+            let error = active_path.zip(problems).and_then(|(path, problems)| {
+                let messages: Vec<&str> = problems
+                    .get(path)
+                    .iter()
+                    .filter(|p| p.node_id == Some(n.id))
+                    .map(|p| p.message.as_str())
+                    .collect();
+                (!messages.is_empty()).then(|| messages.join("\n"))
+            });
+            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs, error }
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
@@ -450,9 +468,10 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             // two-way. `sample_idx` is included so switching a sample node's type
             // rebuilds it (new pins + the dropdown's new selection), and the
             // per-input editor flags so wiring a pin makes its inline editor
-            // disappear (and unwiring brings it back).
+            // disappear (and unwiring brings it back), and the compile error so
+            // the warning icon appears when it lands and clears when it heals.
             let editors: Vec<bool> = n.in_specs.iter().map(|(_, e)| *e).collect();
-            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors).hash(&mut h);
+            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors, &n.error).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -460,7 +479,10 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
         items,
         build: Box::new(move |c, f, i| {
             let n = &nodes[i];
-            let header = n.sample_idx.map(|_| sample_switch_button(c, f, n.id));
+            let header = match (n.error.is_some(), n.sample_idx) {
+                (false, None) => None,
+                (has_error, sample) => Some(node_header_controls(c, f, n.id, has_error, sample)),
+            };
             // Values are edited on the node itself — this is the only place they
             // live now, so `wants_editor` above decides which pins get one.
             let editors: Vec<Option<Entity>> = n
@@ -468,9 +490,41 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                 .iter()
                 .map(|(pin, wanted)| wanted.then(|| crate::pin_editors::pin_editor(c, f, n.id, pin)))
                 .collect();
-            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &editors, header)
+            let node = graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &editors, header);
+            if let Some(error) = &n.error {
+                c.entity(node).insert((
+                    renzora_ember::widgets::HoverTooltip::new(error.clone()),
+                    renzora_ember::widgets::TooltipAnchorAbove,
+                ));
+            }
+            node
         }),
     }
+}
+
+/// The title bar's trailing controls: a red warning icon when the shader
+/// compiler has something to say about the node, plus the sample-variant
+/// caret when the node has one. One row entity, because the widget's header
+/// slot takes a single child.
+fn node_header_controls(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, has_error: bool, sample_idx: Option<usize>) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .id();
+    if has_error {
+        let icon = icon_text(commands, &fonts.phosphor, "warning", close_red(), 13.0);
+        commands.entity(row).add_child(icon);
+    }
+    if sample_idx.is_some() {
+        let caret = sample_switch_button(commands, fonts, node_id);
+        commands.entity(row).add_child(caret);
+    }
+    row
 }
 
 /// A small caret button for a texture-sample node's header. The node title already
