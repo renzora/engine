@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 use renzora_ember::reactive::Rx;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 
 use renzora::NativePanelIds;
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
@@ -109,6 +109,10 @@ impl Plugin for ShellPlugin {
             height: bottom_dock.height,
             open: bottom_dock.open,
             mode: bottom_dock.mode,
+            // Start at whichever end of the travel the restored state names —
+            // animating a panel into place on the first frame of a session
+            // reads as the editor still loading, not as a transition.
+            slide: if bottom_dock.open { 1.0 } else { 0.0 },
         });
         // Empty on purpose. These marked which panels identified a collapsible
         // bottom strip *inside* a workspace tree, so ember could give that leaf
@@ -148,6 +152,7 @@ impl Plugin for ShellPlugin {
         // every frame ("Resource does not exist") and silently never run, which
         // reads exactly like a resize handle that isn't being hit.
         app.init_resource::<BottomDockResize>();
+        app.init_resource::<BottomDockDragHide>();
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
         app.init_resource::<BottomSetRename>();
@@ -240,9 +245,17 @@ impl Plugin for ShellPlugin {
                     // of the same gesture can't be processed out of order.
                     bottom_dock_grip_press,
                     bottom_dock_resize_drag,
+                    // After everything that can flip `open`, before the node
+                    // sync that draws the result: the auto-hide decides what
+                    // `open` should be for this frame, then the animation
+                    // advances toward it.
+                    bottom_dock_drag_reveal,
+                    animate_bottom_dock,
                     // Last: apply whatever the above decided this frame, so the
                     // panel never renders a frame at a stale height or mode.
-                    sync_bottom_dock_node,
+                    // Nested so the outer tuple stays inside the 20-system
+                    // limit, and chained because both touch `Interaction`.
+                    (sync_bottom_dock_node, clear_bottom_dock_hover_on_hide).chain(),
                     sync_bottom_dock_mode_btn,
                 )
                     .chain(),
@@ -1238,6 +1251,15 @@ struct BottomDock {
     open: bool,
     /// Whether the panel floats over the workspace or takes height from it.
     mode: dock::BottomDockMode,
+    /// How far the slide-open animation has got: 0 = fully closed, 1 = fully
+    /// open at `height`. Chased toward `open` by [`animate_bottom_dock`], and
+    /// the only thing [`sync_bottom_dock_node`] scales the node by — `open` is
+    /// still the state everything else reads, so nothing else has to know the
+    /// panel moves rather than appearing.
+    ///
+    /// Deliberately not persisted: a session starts at whichever end of the
+    /// travel `open` says, not mid-slide.
+    slide: f32,
 }
 
 /// The bottom panel's named tab-sets, and which one is live.
@@ -2105,6 +2127,154 @@ fn clamp_bottom_dock_on_load(
     }
 }
 
+/// Seconds the bottom panel takes to travel its full height. Short enough that
+/// `Ctrl+Space` still answers instantly, long enough that the eye follows the
+/// panel to where it went instead of it simply being somewhere else — which is
+/// the whole point of animating a panel that covers 40% of the editor.
+const BOTTOM_DOCK_SLIDE_SECS: f32 = 0.16;
+
+/// Chase [`BottomDock::slide`] toward whatever `open` currently says.
+///
+/// Every path that opens or closes the panel — the shortcut, both chevrons, a
+/// tab click on the collapsed strip, the snap-shut drag, the drag-away hide —
+/// writes only `open`, so all of them animate without any of them knowing that
+/// they do. [`sync_bottom_dock_node`] is the one place that reads `slide`.
+///
+/// The resource is written *only* while the value is genuinely moving:
+/// [`sync_bottom_dock_mode_btn`] early-outs on `bottom.is_changed()`, and
+/// touching the `ResMut` every frame would quietly turn that into no early-out
+/// at all.
+/// On the **real** clock, not the virtual one: this is editor chrome, and it
+/// has to keep moving while play mode is paused or time-scaled.
+fn animate_bottom_dock(time: Res<Time<bevy::time::Real>>, mut bottom: ResMut<BottomDock>) {
+    let target = if bottom.open { 1.0 } else { 0.0 };
+    if bottom.slide == target {
+        return;
+    }
+    // Guard against a zero/absurd delta (a stalled frame, a debugger pause)
+    // stretching the slide across seconds of wall clock.
+    let step = (time.delta_secs() / BOTTOM_DOCK_SLIDE_SECS).clamp(0.0, 1.0);
+    bottom.slide = if bottom.slide < target {
+        (bottom.slide + step).min(target)
+    } else {
+        (bottom.slide - step).max(target)
+    };
+}
+
+/// Smoothstep the linear slide parameter, so the panel eases out of rest at
+/// both ends rather than starting and stopping at full speed.
+fn slide_ease(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// The bottom panel's open state as it was when the current drag began, and
+/// therefore what it gets back when the drag ends. `None` when no drag is being
+/// tracked — including a drag that started with the panel already closed, which
+/// this never touches.
+#[derive(Resource, Default)]
+struct BottomDockDragHide {
+    restore: Option<bool>,
+}
+
+/// How far above the dock region's bottom edge counts as "near the bottom", and
+/// so brings an auto-hidden panel back.
+///
+/// Deliberately a narrow strip rather than the panel's own footprint. The space
+/// a closed panel *would* occupy is a full-width band across the editor, and
+/// while it is closed that band is somebody else's — a hierarchy row, an
+/// inspector slot, the lower half of the viewport. Reopening the moment a drag
+/// crossed into it would put the panel on top of the drop target the user was
+/// heading for. Coming back has to be something you ask for by aiming at the
+/// bottom of the window, not something that happens on the way past.
+const BOTTOM_DOCK_REVEAL_BAND: f32 = 48.0;
+
+/// Drag an asset out of the bottom panel and the panel gets out of your way;
+/// bring the drag back to it — or anywhere near the bottom of the editor — and
+/// it comes back.
+///
+/// Almost everything worth dropping an asset *on* is underneath this panel: the
+/// viewport, the hierarchy, an inspector slot. Dragging out of the Assets tab
+/// therefore starts by covering the target with the panel you dragged from, and
+/// the old answer was to close the panel by hand first and lose sight of what
+/// you were dragging.
+///
+/// It writes `open` and nothing else, so the panel *slides* out of the way
+/// rather than blinking, and every other system continues to see one ordinary
+/// open/closed panel. The state the drag found is restored when the drag ends,
+/// wherever it was dropped — an auto-hide that outlived its gesture would just
+/// be the panel closing itself for no reason the user can see.
+///
+/// Shape-library drags are included because that panel is a bottom-panel tab
+/// too, and the gesture — drag out of the bottom panel, aim at the viewport — is
+/// the identical one.
+fn bottom_dock_drag_reveal(
+    asset_drag: Option<Res<renzora_ui::AssetDragPayload>>,
+    shape_drag: Option<Res<renzora_ui::ShapeDragState>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    wraps: Query<(&ComputedNode, &UiGlobalTransform), With<DockAreaWrap>>,
+    mut bottom: ResMut<BottomDock>,
+    mut hide: ResMut<BottomDockDragHide>,
+) {
+    // `is_detached` gates on the pointer having actually moved, so a plain
+    // click on an asset never flickers the panel.
+    let dragging = asset_drag.is_some_and(|d| d.is_detached)
+        || shape_drag.is_some_and(|s| s.dragging_shape.is_some());
+    if !dragging {
+        if let Some(open) = hide.restore.take() {
+            bottom.open = open;
+        }
+        return;
+    }
+    let Some(cursor) = windows.single().ok().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    let Some((node, transform)) = wraps.iter().next() else {
+        return;
+    };
+    let inv = node.inverse_scale_factor();
+    let size = node.size() * inv;
+    // The node exists at zero height for a few frames after it spawns, which is
+    // not a measurement — see `dock_region_height`.
+    if size.y <= 0.0 {
+        return;
+    }
+    let region_bottom = transform.translation.y * inv + size.y * 0.5;
+
+    if hide.restore.is_none() {
+        // A drag that began with the panel already closed is not ours: the
+        // asset came from somewhere else, and opening the panel under the
+        // cursor would be a surprise rather than a convenience.
+        if !bottom.open {
+            return;
+        }
+        hide.restore = Some(true);
+    }
+
+    // The two thresholds are deliberately different, and far apart.
+    //
+    // Leaving is judged against the panel's *own top edge*: everything below it
+    // is the panel, so a drag toward a folder tile or another tab inside it
+    // never triggers a hide. Coming back is judged against a narrow strip at
+    // the very bottom of the region — see [`BOTTOM_DOCK_REVEAL_BAND`] for why
+    // it can't be the footprint again.
+    //
+    // The gap between them is also what makes this stable. A single threshold
+    // put the open and closed states on either side of one line: the panel hid,
+    // which moved nothing, so the cursor was still on the line, so a pixel of
+    // jitter reopened it — and it flickered for as long as the drag hovered
+    // there. With hysteresis there is a wide dead band in the middle where
+    // neither test fires and the panel simply stays as it is.
+    let open = if bottom.open {
+        cursor.y >= region_bottom - dock::clamp_height(bottom.height, size.y)
+    } else {
+        cursor.y >= region_bottom - BOTTOM_DOCK_REVEAL_BAND
+    };
+    if bottom.open != open {
+        bottom.open = open;
+    }
+}
+
 /// A live drag of the bottom panel's top edge: `(cursor y at press, panel
 /// height at press)`. `None` when no drag is in flight.
 ///
@@ -2343,10 +2513,27 @@ fn sync_bottom_dock_node(
     // immediately re-hid it, and there was no way left to add a panel. An empty
     // one is not blank anyway; ember renders its "Add Panel" button, and the
     // panel-set dropdown sits in the corner beside it.
-    let show = bottom.open;
+    //
+    // Shown for the whole of the slide, not only while `open` — a closing panel
+    // has to stay on screen to be seen leaving.
+    let show = bottom.open || bottom.slide > 0.0;
     let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
-    let height = dock::clamp_height(bottom.height, avail);
+    // `target` is the height the panel has when it is fully open, and the
+    // height every decision below is made against; `eased` is how far along the
+    // travel it currently is.
+    let target = dock::clamp_height(bottom.height, avail);
+    let eased = slide_ease(bottom.slide);
     let want = if show { Display::Flex } else { Display::None };
+    // The grip and the corner buttons ride the panel's top edge, so mid-slide
+    // they would be somewhere the panel isn't yet — and at the bottom of the
+    // travel their inset arithmetic goes negative and puts them under it. They
+    // appear once the panel has arrived.
+    let show_controls = bottom.open && bottom.slide >= 1.0;
+    let want_controls = if show_controls {
+        Display::Flex
+    } else {
+        Display::None
+    };
 
     // Overlay: absolute, pinned to the wrapper's bottom edge, painted over the
     // dock area. Layout: an in-flow row of the dock column, so the dock area's
@@ -2356,8 +2543,31 @@ fn sync_bottom_dock_node(
     // The *effective* mode, not the stored one: a layout-mode panel dragged
     // past what the workspace can give up renders as an overlay for as long as
     // it stays that tall.
-    let layout_mode = bottom.mode.effective(height, avail) == dock::BottomDockMode::Layout;
-    let (position_type, inset) = if layout_mode {
+    // Measured against `target`: judging the effective mode by the animated
+    // height would start every open in layout mode and flip to overlay partway
+    // up, which reparents the panel and makes the whole workspace jump mid-slide.
+    let layout_mode = bottom.mode.effective(target, avail) == dock::BottomDockMode::Layout;
+    // The two modes have to animate differently, because the thing that moves
+    // is different.
+    //
+    // **Overlay** slides: the panel keeps its full height throughout and
+    // travels down past the wrapper's bottom edge, where `DockAreaWrap`'s
+    // `Overflow::clip()` takes it. Its contents are laid out once, at the size
+    // they will end at, so the tab bar and the panel body ride down intact.
+    //
+    // **Layout** can't do that — its height *is* the height the workspace above
+    // gives up, and a panel translated out of view would leave the gap it was
+    // occupying. So it opens as an accordion: the height itself grows, and
+    // every panel above reflows into what's left, which is the same thing
+    // dragging its top edge already does.
+    let (height, bottom_inset) = if layout_mode {
+        (target * eased, Val::Auto)
+    } else {
+        (target, Val::Px(-target * (1.0 - eased)))
+    };
+    // Cleared in layout mode because a relatively-positioned node treats an
+    // inset as an offset rather than as an anchor.
+    let (position_type, left_inset) = if layout_mode {
         (PositionType::Relative, Val::Auto)
     } else {
         (PositionType::Absolute, Val::Px(0.0))
@@ -2374,20 +2584,22 @@ fn sync_bottom_dock_node(
         if node.position_type != position_type {
             node.position_type = position_type;
         }
-        if node.left != inset {
-            node.left = inset;
+        if node.left != left_inset {
+            node.left = left_inset;
         }
-        if node.bottom != inset {
-            node.bottom = inset;
+        if node.bottom != bottom_inset {
+            node.bottom = bottom_inset;
         }
     }
     if let Ok(mut node) = grips.single_mut() {
-        if node.display != want {
-            node.display = want;
+        if node.display != want_controls {
+            node.display = want_controls;
         }
         // Centre the band on the panel's top edge so the drag works from just
-        // above it as well as just below.
-        let offset = Val::Px(height - BOTTOM_DOCK_GRIP_H * 0.5);
+        // above it as well as just below. Placed against `target`, not the
+        // animated height: it is hidden until the panel arrives there, and
+        // writing a moving inset would relayout it for nothing.
+        let offset = Val::Px(target - BOTTOM_DOCK_GRIP_H * 0.5);
         if node.bottom != offset {
             node.bottom = offset;
         }
@@ -2396,22 +2608,69 @@ fn sync_bottom_dock_node(
     // strip carries its own chevron for the closed state, in the same corner, so
     // the toggle appears continuous as the panel opens and closes.
     for mut node in &mut btns {
-        if node.display != want {
-            node.display = want;
+        if node.display != want_controls {
+            node.display = want_controls;
         }
         // Sit inside the panel, clear of the resize band above it, so a press
         // near the corner can't be ambiguous between closing and resizing.
-        let offset = Val::Px(height - 26.0);
+        // Against `target` for the same reason as the grip above.
+        let offset = Val::Px(target - 26.0);
         if node.bottom != offset {
             node.bottom = offset;
         }
     }
-    // Nothing hidden may stay `Hovered` (see the query's comment).
-    if !show {
+    // Nothing hidden may stay `Hovered` (see the query's comment). Keyed on the
+    // controls rather than on the panel: they are the nodes this system hides,
+    // and mid-slide they are hidden while the panel itself is still up.
+    if !show_controls {
         for mut interaction in &mut hidden_interactions {
             if *interaction != Interaction::None {
                 *interaction = Interaction::None;
             }
+        }
+    }
+}
+
+/// Reset the hover/press state of everything *inside* the bottom panel on the
+/// frame the panel is hidden.
+///
+/// Same hazard [`sync_bottom_dock_node`] handles for its own corner controls,
+/// but for the panel's contents, and with teeth: Bevy's focus pass skips hidden
+/// entities, so an asset tile or a folder row that was under the cursor when
+/// the panel went away keeps reading `Hovered` forever. The asset browser's
+/// drop handler treats a hovered *folder* as "move the dragged files in here",
+/// so a stranded one turns a drop into the viewport into a file move — and
+/// [`bottom_dock_drag_reveal`] hides the panel mid-drag as a matter of course,
+/// which is exactly the moment a folder row is likely to be the last thing the
+/// cursor touched.
+///
+/// Only on the transition, so closing the panel doesn't cost a subtree walk
+/// every frame it stays closed.
+fn clear_bottom_dock_hover_on_hide(
+    bottom: Res<BottomDock>,
+    areas: Query<Entity, With<renzora_ember::dock::FixedDockArea>>,
+    children: Query<&Children>,
+    mut interactions: Query<&mut Interaction>,
+    mut was_shown: Local<bool>,
+) {
+    let shown = bottom.open || bottom.slide > 0.0;
+    if shown == *was_shown {
+        return;
+    }
+    *was_shown = shown;
+    if shown {
+        return;
+    }
+    let Ok(area) = areas.single() else { return };
+    let mut stack = vec![area];
+    while let Some(entity) = stack.pop() {
+        if let Ok(mut interaction) = interactions.get_mut(entity) {
+            if *interaction != Interaction::None {
+                *interaction = Interaction::None;
+            }
+        }
+        if let Ok(kids) = children.get(entity) {
+            stack.extend(kids.iter());
         }
     }
 }
@@ -2493,6 +2752,11 @@ fn bottom_dock_resize_drag(
     let height = start_h + (start_y - cursor_y);
     if height < dock::BOTTOM_DOCK_MIN_HEIGHT * 0.5 {
         bottom.open = false;
+        // Snap, don't slide. The panel has been following the cursor down for
+        // the whole gesture and is already at a sliver; animating the last few
+        // px would play a transition *behind* a cursor that has finished
+        // moving, and read as lag rather than as the panel leaving.
+        bottom.slide = 0.0;
         resize.active = None;
         return;
     }
@@ -2795,6 +3059,10 @@ fn collapsed_bottom_bar_drag(
     // tracks the cursor from where the gesture started rather than jumping to
     // the remembered height and then following.
     bottom.open = true;
+    // No slide: the panel's top edge is being held by the cursor for the rest
+    // of this gesture, and an animation would put it somewhere else while the
+    // drag says it is here. Direct manipulation is its own transition.
+    bottom.slide = 1.0;
     bottom.height = dock::BOTTOM_DOCK_MIN_HEIGHT;
     resize.active = Some((cursor_y, dock::BOTTOM_DOCK_MIN_HEIGHT));
 }
