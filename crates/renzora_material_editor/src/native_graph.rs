@@ -24,7 +24,9 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_shader::material::codegen;
-use renzora_shader::material::graph::{MaterialGraph, PinDir, PinTemplate, PinType, PinValue};
+use renzora_shader::material::graph::{
+    resolve_math_ranks, resolved_pin_type, MaterialGraph, PinDir, PinTemplate, PinType, PinValue,
+};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
@@ -422,6 +424,10 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
         .and_then(|i| s.tabs.get(i))
         .and_then(|t| t.path.as_deref());
     let sel = s.selected_node;
+    // Latched math-node ranks, computed once per snapshot pass: pin colors,
+    // groups and inline editors all read the resolved type, so a node that
+    // latched Vec4 shows Vec4 pins everywhere.
+    let ranks = resolve_math_ranks(&s.graph);
     let nodes: Vec<NodeSnap> = s
         .graph
         .nodes
@@ -431,18 +437,25 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
             let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type), pin_group(p.pin_type))).collect();
-            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type), pin_group(p.pin_type))).collect();
+            let ty = |p: &PinTemplate| resolved_pin_type(&ranks, n, &p.name, p.direction).unwrap_or(p.pin_type);
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(ty(p)), pin_group(ty(p)))).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(ty(p)), pin_group(ty(p)))).collect();
             let tex_path = n.input_values.get("texture").and_then(|v| match v {
                 PinValue::TexturePath(p) if !p.is_empty() => Some(p.clone()),
                 _ => None,
             });
             let thumb = tex_path.as_ref().and_then(|p| assets.map(|a| a.load::<Image>(p)));
             let sample_idx = sample_variant_index(&n.node_type);
+            // The inline editor's template carries the *resolved* pin type, so
+            // a latched Vec4 pin mounts a vec4 editor that writes a Vec4 value.
             let in_specs: Vec<(PinTemplate, bool)> = pins
                 .iter()
                 .filter(|p| p.direction == PinDir::Input)
-                .map(|p| ((*p).clone(), wants_editor(&s.graph, n, p)))
+                .map(|p| {
+                    let mut rp = (*p).clone();
+                    rp.pin_type = ty(p);
+                    (rp, wants_editor(&s.graph, n, p))
+                })
                 .collect();
             let error = active_path.zip(problems).and_then(|(path, problems)| {
                 let messages: Vec<&str> = problems
@@ -468,9 +481,10 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             // two-way. `sample_idx` is included so switching a sample node's type
             // rebuilds it (new pins + the dropdown's new selection), and the
             // per-input editor flags so wiring a pin makes its inline editor
-            // disappear (and unwiring brings it back), and the compile error so
+            // disappear (and unwiring brings it back), the resolved pin type
+            // so a latch swaps the editor widget, and the compile error so
             // the warning icon appears when it lands and clears when it heals.
-            let editors: Vec<bool> = n.in_specs.iter().map(|(_, e)| *e).collect();
+            let editors: Vec<(PinType, bool)> = n.in_specs.iter().map(|(p, e)| (p.pin_type, *e)).collect();
             (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors, &n.error).hash(&mut h);
             (k.finish(), h.finish())
         })
@@ -872,16 +886,13 @@ fn mat_graph_sync(world: &mut World) {
                     }
                 }
                 GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
+                    // Resolved (latch-aware) types, so the refusal message
+                    // names the type the pin actually behaves as.
+                    let ranks = resolve_math_ranks(&st.graph);
                     let pin_type = |node_id: u64, pin: &str, dir: PinDir| {
                         st.graph
                             .get_node(node_id)
-                            .and_then(|n| node_def(&n.node_type))
-                            .and_then(|d| {
-                                (d.pins)()
-                                    .into_iter()
-                                    .find(|p| p.name == pin && p.direction == dir)
-                            })
-                            .map(|p| p.pin_type)
+                            .and_then(|n| resolved_pin_type(&ranks, n, pin, dir))
                     };
                     match (
                         pin_type(from_node, &from_pin, PinDir::Output),
@@ -1074,13 +1085,18 @@ fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEn
 fn mat_add_and_wire(world: &mut World, node_type: &str, base: [f32; 2], src: (u64, String, bool)) {
     let Some(mut s) = world.get_resource_mut::<MaterialEditorState>() else { return };
     let new_id = s.graph.add_node(node_type, base);
+    // The dragged pin's resolved type, so a wire off a latched Vec4 math node
+    // prefers a Vec4 partner over a bare Float one.
+    let ranks = resolve_math_ranks(&s.graph);
     let src_ty = s
         .graph
         .nodes
         .iter()
         .find(|n| n.id == src.0)
-        .and_then(|n| node_def(&n.node_type))
-        .and_then(|d| (d.pins)().into_iter().find(|p| p.name == src.1).map(|p| p.pin_type));
+        .and_then(|n| {
+            let dir = if src.2 { PinDir::Output } else { PinDir::Input };
+            resolved_pin_type(&ranks, n, &src.1, dir)
+        });
     let want_dir = if src.2 { PinDir::Input } else { PinDir::Output };
     let new_pins = node_def(node_type).map(|d| (d.pins)()).unwrap_or_default();
     let pick = new_pins

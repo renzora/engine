@@ -23,7 +23,9 @@ use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, text_input};
-use renzora_shader::material::graph::{PinDir, PinTemplate, PinType};
+use renzora_shader::material::graph::{
+    resolve_math_ranks, resolved_pin_type, PinDir, PinTemplate, PinType,
+};
 use renzora_shader::material::nodes::node_def;
 
 use crate::pin_editors::pin_editor;
@@ -135,7 +137,19 @@ fn node_snapshot(world: &Rx) -> KeyedSnapshot {
     let desc = def.map(|d| d.description).unwrap_or("").to_string();
     let icon = category_icon(category);
     let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-    let input_pins: Vec<PinTemplate> = pins.into_iter().filter(|p| p.direction == PinDir::Input).collect();
+    // Resolved (latch-aware) pin types, so a latched Vec4 math pin shows a
+    // vec4 editor here just like the one on the node.
+    let ranks = resolve_math_ranks(&s.graph);
+    let input_pins: Vec<PinTemplate> = pins
+        .into_iter()
+        .filter(|p| p.direction == PinDir::Input)
+        .map(|mut p| {
+            if let Some(t) = resolved_pin_type(&ranks, node, &p.name, p.direction) {
+                p.pin_type = t;
+            }
+            p
+        })
+        .collect();
     let connected: Vec<String> =
         s.graph.connections.iter().filter(|c| c.to_node == sel).map(|c| c.to_pin.clone()).collect();
 

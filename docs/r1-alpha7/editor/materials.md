@@ -19,6 +19,8 @@ You build a material by dragging nodes out of the category menu and **wiring the
 
 Wire dots are coloured by pin type, and any numeric types interconnect freely — a `Vec2` can feed a `Color` pin, a `Float` can feed a `Vec3`, and so on (the compiler inserts the right conversion). A wire between two *different* pin colours draws as a gradient from the source colour to the target colour, so you can see at a glance where a conversion is happening. Only genuinely incompatible pins (bool, texture, sampler) refuse the connection outright.
 
+**Math nodes adapt to their wires.** A Math node starts out as a plain `Float` node, but wire a `Vec4` into one of its inputs and the whole node follows: the other inputs and the result become `Vec4` too, the pin dots recolour, and any narrower wire feeding it is widened automatically. The widest wire wins (`Float` < `Vec2` < `Vec3` < `Vec4`), unplugging it drops the node back down, and a wide *consumer* on the result never widens the inputs — adaptation only flows from what feeds the node. One exception: `lerp`'s **T** pin always stays a `Float`, because a blend factor is a scalar.
+
 ![A material node graph: two Sample Texture nodes and a Sample Normal Map node wired by colored cables into the Surface Output node on the right](/assets/previews/material_graph.png)
 
 In the shot above, a color texture feeds the **Base Color** pin, another texture drives **Metallic** and **Roughness**, and a normal map plugs into **Normal** — all flowing into the **Surface Output** node on the right. That output node is the heart of every material.

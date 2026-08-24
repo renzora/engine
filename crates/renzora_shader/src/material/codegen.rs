@@ -189,6 +189,10 @@ struct Ctx<'a> {
     /// `(node, 0-based start line in the concatenated prelude, line count)`.
     prelude_spans: Vec<(NodeId, u32, u32)>,
     prelude_line_count: u32,
+    /// Latched vectorization rank per `math/*` node (see
+    /// [`graph::resolve_math_ranks`]). Swapped alongside `graph` when a
+    /// material function's internal graph is compiled.
+    math_ranks: HashMap<NodeId, graph::PinType>,
 }
 
 impl<'a> Ctx<'a> {
@@ -244,6 +248,7 @@ impl<'a> Ctx<'a> {
             body_spans: Vec::new(),
             prelude_spans: Vec::new(),
             prelude_line_count: 0,
+            math_ranks: graph::resolve_math_ranks(graph),
         }
     }
 
@@ -292,24 +297,29 @@ impl<'a> Ctx<'a> {
         self.output_vars.insert((node, pin.to_string()), expr);
     }
 
-    /// Look up the PinType for a given pin on a node definition.
+    /// Look up the PinType a pin behaves as — the latched vectorization rank
+    /// for a dynamic math pin, the declared template type for the rest.
     fn pin_type_for(
-        node_type: &str,
+        &self,
+        node: &MaterialNode,
         pin_name: &str,
         direction: graph::PinDir,
     ) -> Option<graph::PinType> {
-        let def = nodes::node_def(node_type)?;
-        let pins = (def.pins)();
-        pins.iter()
-            .find(|p| p.name == pin_name && p.direction == direction)
-            .map(|p| p.pin_type)
+        graph::resolved_pin_type(&self.math_ranks, node, pin_name, direction)
+    }
+
+    /// The math node's latched rank (Float when nothing is wired to it).
+    /// Every `math/*` node names its output pin `result`.
+    fn math_rank(&self, node: &MaterialNode) -> graph::PinType {
+        self.pin_type_for(node, "result", graph::PinDir::Output)
+            .unwrap_or(graph::PinType::Float)
     }
 
     /// Resolve an input pin value — follows connections or falls back to defaults.
     /// Applies automatic type coercion (e.g. Float → Vec4) when pin types differ.
     fn input(&mut self, node: &MaterialNode, pin_name: &str) -> String {
         // Determine expected type of destination pin
-        let dest_type = Self::pin_type_for(&node.node_type, pin_name, graph::PinDir::Input);
+        let dest_type = self.pin_type_for(node, pin_name, graph::PinDir::Input);
 
         // Check for connection
         if let Some(conn) = self.graph.connection_to(node.id, pin_name) {
@@ -328,8 +338,7 @@ impl<'a> Ctx<'a> {
             {
                 // Apply type coercion if source and dest types differ
                 if let (Some(dt), Some(src_node)) = (dest_type, self.graph.get_node(from_node)) {
-                    if let Some(st) =
-                        Self::pin_type_for(&src_node.node_type, &from_pin, graph::PinDir::Output)
+                    if let Some(st) = self.pin_type_for(src_node, &from_pin, graph::PinDir::Output)
                     {
                         return graph::PinType::cast_expr(st, dt, &expr);
                     }
@@ -359,16 +368,34 @@ impl<'a> Ctx<'a> {
             let pins = (def.pins)();
             if let Some(pin) = pins.iter().find(|p| p.name == pin_name) {
                 let expr = pin.default_value.to_wgsl();
-                // A pin with no default falls back to a plain `0.0`, so a Vec3 pin gets a float unless we widen it.
+                // A pin with no default falls back to a plain `0.0`, so a Vec3
+                // pin gets a float unless we widen it. The cast target is the
+                // *resolved* type, not the template's: a dynamic math pin
+                // declares Float even after the node latched wider, and an
+                // unwired `b` on a Vec4 Add would otherwise compose
+                // `vec4 + f32`.
                 let vt = pin.default_value.pin_type();
-                if vt != pin.pin_type {
-                    return graph::PinType::cast_expr(vt, pin.pin_type, &expr);
+                let dt = dest_type.unwrap_or(pin.pin_type);
+                if vt != dt {
+                    return graph::PinType::cast_expr(vt, dt, &expr);
                 }
                 return expr;
             }
         }
 
         "0.0".to_string()
+    }
+
+    /// A scalar guard literal at a math node's latched rank: plain for Float,
+    /// a splat `vecN<f32>(lit)` constructor for vectors. Deliberately not
+    /// `cast_expr(Float, rank, …)` — its Vec4 widening fills w with `1.0`,
+    /// which would clamp the guard's last component against 1.0 instead of
+    /// the epsilon and change what the guard protects.
+    fn guard_lit(t: graph::PinType, lit: &str) -> String {
+        match t {
+            graph::PinType::Float => lit.to_string(),
+            other => format!("{}({lit})", other.wgsl_type()),
+        }
     }
 
     fn emit(&mut self, line: String) {
@@ -505,6 +532,8 @@ impl<'a> Ctx<'a> {
 
         // Swap outer graph state for the function's local state.
         let saved_graph = std::mem::replace(&mut self.graph, &mat_fn.graph);
+        let saved_ranks =
+            std::mem::replace(&mut self.math_ranks, graph::resolve_math_ranks(&mat_fn.graph));
         let saved_lines = std::mem::take(&mut self.lines);
         let saved_output_vars = std::mem::take(&mut self.output_vars);
         let saved_processed = std::mem::take(&mut self.processed);
@@ -534,6 +563,7 @@ impl<'a> Ctx<'a> {
         self.output_vars = saved_output_vars;
         self.processed = saved_processed;
         self.graph = saved_graph;
+        self.math_ranks = saved_ranks;
 
         // Stitch into a WGSL function.
         let mut s = String::new();
@@ -1167,8 +1197,9 @@ impl<'a> Ctx<'a> {
             "math/divide" => {
                 let a = self.input(node, "a");
                 let b = self.input(node, "b");
+                let eps = Self::guard_lit(self.math_rank(node), "0.000001");
                 let v = self.next_var("div");
-                self.emit(format!("    let {v} = {a} / max({b}, 0.000001);"));
+                self.emit(format!("    let {v} = {a} / max({b}, {eps});"));
                 self.set_out(id, "result", v);
             }
             "math/power" => {
@@ -1192,8 +1223,9 @@ impl<'a> Ctx<'a> {
             }
             "math/one_minus" => {
                 let val = self.input(node, "value");
+                let one = Self::guard_lit(self.math_rank(node), "1.0");
                 let v = self.next_var("om");
-                self.emit(format!("    let {v} = 1.0 - {val};"));
+                self.emit(format!("    let {v} = {one} - {val};"));
                 self.set_out(id, "result", v);
             }
             "math/fract" => {
@@ -1265,8 +1297,9 @@ impl<'a> Ctx<'a> {
                 let in_max = self.input(node, "in_max");
                 let out_min = self.input(node, "out_min");
                 let out_max = self.input(node, "out_max");
+                let eps = Self::guard_lit(self.math_rank(node), "0.000001");
                 let v = self.next_var("remap");
-                self.emit(format!("    let {v} = {out_min} + ({val} - {in_min}) / max({in_max} - {in_min}, 0.000001) * ({out_max} - {out_min});"));
+                self.emit(format!("    let {v} = {out_min} + ({val} - {in_min}) / max({in_max} - {in_min}, {eps}) * ({out_max} - {out_min});"));
                 self.set_out(id, "result", v);
             }
             "math/sin" => {
@@ -1290,9 +1323,10 @@ impl<'a> Ctx<'a> {
             "math/modulo" => {
                 let a = self.input(node, "a");
                 let b = self.input(node, "b");
+                let eps = Self::guard_lit(self.math_rank(node), "0.000001");
                 let v = self.next_var("mod");
                 self.emit(format!(
-                    "    let {v} = {a} - {b} * floor({a} / max({b}, 0.000001));"
+                    "    let {v} = {a} - {b} * floor({a} / max({b}, {eps}));"
                 ));
                 self.set_out(id, "result", v);
             }
@@ -1329,20 +1363,25 @@ impl<'a> Ctx<'a> {
             }
             "math/log" => {
                 let val = self.input(node, "value");
+                let eps = Self::guard_lit(self.math_rank(node), "0.000001");
                 let v = self.next_var("log");
-                self.emit(format!("    let {v} = log(max({val}, 0.000001));"));
+                self.emit(format!("    let {v} = log(max({val}, {eps}));"));
                 self.set_out(id, "result", v);
             }
             "math/sqrt" => {
                 let val = self.input(node, "value");
+                let zero = Self::guard_lit(self.math_rank(node), "0.0");
                 let v = self.next_var("sqrt");
-                self.emit(format!("    let {v} = sqrt(max({val}, 0.0));"));
+                self.emit(format!("    let {v} = sqrt(max({val}, {zero}));"));
                 self.set_out(id, "result", v);
             }
             "math/reciprocal" => {
                 let val = self.input(node, "value");
+                let rt = self.math_rank(node);
+                let one = Self::guard_lit(rt, "1.0");
+                let eps = Self::guard_lit(rt, "0.000001");
                 let v = self.next_var("rcp");
-                self.emit(format!("    let {v} = 1.0 / max({val}, 0.000001);"));
+                self.emit(format!("    let {v} = {one} / max({val}, {eps});"));
                 self.set_out(id, "result", v);
             }
             "math/tan" => {
@@ -1353,14 +1392,20 @@ impl<'a> Ctx<'a> {
             }
             "math/asin" => {
                 let val = self.input(node, "value");
+                let rt = self.math_rank(node);
+                let lo = Self::guard_lit(rt, "-1.0");
+                let hi = Self::guard_lit(rt, "1.0");
                 let v = self.next_var("asin");
-                self.emit(format!("    let {v} = asin(clamp({val}, -1.0, 1.0));"));
+                self.emit(format!("    let {v} = asin(clamp({val}, {lo}, {hi}));"));
                 self.set_out(id, "result", v);
             }
             "math/acos" => {
                 let val = self.input(node, "value");
+                let rt = self.math_rank(node);
+                let lo = Self::guard_lit(rt, "-1.0");
+                let hi = Self::guard_lit(rt, "1.0");
                 let v = self.next_var("acos");
-                self.emit(format!("    let {v} = acos(clamp({val}, -1.0, 1.0));"));
+                self.emit(format!("    let {v} = acos(clamp({val}, {lo}, {hi}));"));
                 self.set_out(id, "result", v);
             }
             "math/radians" => {
@@ -3846,7 +3891,12 @@ mod tests {
         }
 
         let shader = compile(&graph).fragment_shader;
-        assert!(shader.contains("perceptual_roughness = 0.250000"));
+        // `to_wgsl` wraps floats in `f32(..)` so naga never faces a bare
+        // abstract literal; the point is the assignment carries no `*` factor.
+        assert!(
+            shader.contains("perceptual_roughness = f32(0.250000);"),
+            "unwired constant must pass straight through:\n{shader}"
+        );
     }
 
     /// A normal map decodes to tangent space, but the Surface Output `normal`

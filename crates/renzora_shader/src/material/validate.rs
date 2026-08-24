@@ -320,17 +320,46 @@ mod tests {
     /// `headless_app` builds `RenderPlugin` with no backend, so there is no
     /// adapter and no `RenderApp` — but `PbrPlugin::build` still runs and its
     /// shader libraries are ordinary assets, which is all the composer needs.
-    fn validator() -> ShaderValidator {
-        let mut app = renzora_test_harness::headless_app();
-        // The libraries are embedded assets, so they arrive through the asset
-        // server rather than at plugin-build time. One frame is enough.
-        app.update();
-        let shaders = app.world().resource::<Assets<Shader>>();
-        assert!(
-            shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == "bevy_pbr::pbr_functions"),
-            "bevy_pbr's shader libraries are missing; the composer would resolve no imports"
-        );
-        ShaderValidator::new(shaders)
+    ///
+    /// Built once per process and shared: the libraries are embedded assets
+    /// that stream in over several frames through the shared IO task pool,
+    /// and several headless apps pumping in parallel starve each other — an
+    /// app whose turn has not come yet sees a partial set, and its composer
+    /// then reports the missing ones as unresolved imports. `get_or_init`
+    /// blocks the other callers, so the one app that loads does so alone.
+    /// `compile_one` only composes from the registered modules, so sharing
+    /// the validator across tests is safe.
+    fn validator() -> std::sync::MutexGuard<'static, ShaderValidator> {
+        static VALIDATOR: std::sync::OnceLock<std::sync::Mutex<ShaderValidator>> =
+            std::sync::OnceLock::new();
+        let mutex = VALIDATOR.get_or_init(|| {
+            let mut app = renzora_test_harness::headless_app();
+            // Pump until the library set stops growing (and is non-empty —
+            // frame one reports zero, which is "stable" too).
+            let mut last = 0usize;
+            let mut stable = 0;
+            for _ in 0..500 {
+                app.update();
+                let n = importable_libraries(app.world().resource::<Assets<Shader>>()).len();
+                if n == last {
+                    stable += 1;
+                    if n > 0 && stable >= 3 {
+                        break;
+                    }
+                } else {
+                    stable = 0;
+                    last = n;
+                }
+            }
+            let shaders = app.world().resource::<Assets<Shader>>();
+            assert!(
+                shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == "bevy_pbr::pbr_functions"),
+                "bevy_pbr's shader libraries are missing; the composer would resolve no imports"
+            );
+            std::sync::Mutex::new(ShaderValidator::new(shaders))
+        });
+        // A panicking test poisons the lock; the validator itself is intact.
+        mutex.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]
@@ -546,5 +575,204 @@ mod tests {
         assert_eq!(problems.len(), 1, "one fault, one row: {problems:?}");
         assert_eq!(problems[0].line, Some(snippet_line as usize));
         assert_eq!(problems[0].node_id, Some(node));
+    }
+
+    // ── Math-node vectorization ─────────────────────────────────────────────
+
+    /// The five ranks a math node can latch to, each with the parameter node
+    /// whose `value` output drives it.
+    const RANK_SOURCES: [(&str, PinType); 5] = [
+        ("param/float", PinType::Float),
+        ("param/vec2", PinType::Vec2),
+        ("param/vec3", PinType::Vec3),
+        ("param/vec4", PinType::Vec4),
+        ("param/color", PinType::Color),
+    ];
+
+    /// What feeds the node's second dynamic input pin, when it has one.
+    #[derive(Clone, Copy, Debug)]
+    enum Sibling {
+        Unconnected,
+        Scalar,
+        SameRank,
+    }
+
+    /// One matrix cell: `node_type` driven on its first dynamic input by
+    /// `src_type`'s `value` output, `result` wired into the output node's
+    /// `base_color` so codegen actually visits the node.
+    fn vectorization_cell(
+        node_type: &str,
+        src_type: &str,
+        sibling: Sibling,
+    ) -> (MaterialGraph, u64) {
+        use crate::material::graph::is_dynamic_pin;
+
+        let mut graph =
+            MaterialGraph::new("vec", crate::material::graph::MaterialDomain::Surface);
+        let m = graph.add_node(node_type, [0.0, 0.0]);
+        let s = graph.add_node(src_type, [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+
+        let def = nodes::node_def(node_type).unwrap();
+        let dyn_inputs: Vec<String> = (def.pins)()
+            .into_iter()
+            .filter(|p| p.direction == PinDir::Input && is_dynamic_pin(node_type, &p.name))
+            .map(|p| p.name)
+            .collect();
+        graph.connect(s, "value", m, &dyn_inputs[0]);
+        if dyn_inputs.len() > 1 {
+            match sibling {
+                Sibling::Unconnected => {}
+                Sibling::Scalar => {
+                    let f = graph.add_node("param/float", [-200.0, 100.0]);
+                    graph.connect(f, "value", m, &dyn_inputs[1]);
+                }
+                Sibling::SameRank => {
+                    graph.connect(s, "value", m, &dyn_inputs[1]);
+                }
+            }
+        }
+        graph.connect(m, "result", output_id, "base_color");
+        (graph, m)
+    }
+
+    /// Every math node × every driving rank × every sibling shape must latch
+    /// to the widest wire and still compile to valid WGSL — this is where the
+    /// rank-aware guard literals (`max({b}, vec4<f32>(0.000001))` and friends)
+    /// get exercised, since a scalar guard under a latched vector node is a
+    /// naga type error.
+    #[test]
+    fn math_nodes_vectorize_to_widest_wire() {
+        use crate::material::graph::{is_dynamic_pin, resolve_math_ranks};
+
+        let mut validator = validator();
+        let mut failures = Vec::new();
+        let mut count = 0;
+        for def in nodes::ALL_NODES {
+            let node_type = def.node_type;
+            if !node_type.starts_with("math/") {
+                continue;
+            }
+            let dynamic_inputs = (def.pins)()
+                .into_iter()
+                .filter(|p| p.direction == PinDir::Input && is_dynamic_pin(node_type, &p.name))
+                .count();
+            for (src_type, rank) in RANK_SOURCES {
+                let siblings: &[Sibling] = if dynamic_inputs > 1 {
+                    &[Sibling::Unconnected, Sibling::Scalar, Sibling::SameRank]
+                } else {
+                    &[Sibling::Unconnected]
+                };
+                for sibling in siblings {
+                    count += 1;
+                    let (graph, m) = vectorization_cell(node_type, src_type, *sibling);
+                    let latched = resolve_math_ranks(&graph)
+                        .get(&m)
+                        .copied()
+                        .unwrap_or(PinType::Float);
+                    if latched != rank {
+                        failures.push(format!(
+                            "{node_type} driven by {src_type} ({sibling:?}): latched {latched:?}, want {rank:?}"
+                        ));
+                        continue;
+                    }
+                    let result = codegen::compile(&graph);
+                    if let Err(errors) = validator.validate(&result) {
+                        for err in errors {
+                            failures.push(format!(
+                                "{node_type} driven by {src_type} ({sibling:?}): {err}"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{count} vectorization cells, {} failures:\n{}",
+            failures.len(),
+            failures.join("\n\n")
+        );
+    }
+
+    /// A wide consumer on `result` must not widen the node's inputs — the
+    /// node never dictates types downstream, the sink's `cast_expr` narrows.
+    #[test]
+    fn math_node_does_not_latch_from_downstream() {
+        use crate::material::graph::resolve_math_ranks;
+
+        let mut graph =
+            MaterialGraph::new("no_back_latch", crate::material::graph::MaterialDomain::Surface);
+        let m = graph.add_node("math/add", [0.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        // base_color is a Color (rank-4) sink.
+        graph.connect(m, "result", output_id, "base_color");
+        let latched = resolve_math_ranks(&graph)
+            .get(&m)
+            .copied()
+            .unwrap_or(PinType::Float);
+        assert_eq!(latched, PinType::Float, "downstream sink must not latch");
+
+        let result = codegen::compile(&graph);
+        validator().validate(&result).unwrap_or_else(|errors| {
+            panic!("unlatched add into base_color must validate: {errors:?}")
+        });
+    }
+
+    /// Removing the wide wire drops the node back to Float, and both shapes
+    /// compile — resolution is recomputed, never remembered.
+    #[test]
+    fn math_node_unlatches_when_the_wide_wire_detaches() {
+        use crate::material::graph::resolve_math_ranks;
+
+        let mut validator = validator();
+        let (mut graph, m) = vectorization_cell("math/add", "param/vec4", Sibling::Unconnected);
+        assert_eq!(resolve_math_ranks(&graph)[&m], PinType::Vec4);
+        let result = codegen::compile(&graph);
+        validator
+            .validate(&result)
+            .unwrap_or_else(|e| panic!("latched vec4 add must validate: {e:?}"));
+
+        graph.disconnect(m, "a");
+        assert_eq!(resolve_math_ranks(&graph)[&m], PinType::Float);
+        let result = codegen::compile(&graph);
+        validator
+            .validate(&result)
+            .unwrap_or_else(|e| panic!("detached add must validate as Float: {e:?}"));
+    }
+
+    /// The divide guard splats its epsilon at the latched rank. Widening
+    /// through `cast_expr` instead would fill w with `1.0`, clamping the
+    /// guard's last component against 1.0 rather than the epsilon.
+    #[test]
+    fn divide_guard_splats_at_latched_rank() {
+        let (graph, _m) = vectorization_cell("math/divide", "param/vec4", Sibling::Unconnected);
+        let result = codegen::compile(&graph);
+        assert!(
+            result.fragment_shader.contains("vec4<f32>(0.000001)"),
+            "guard literal must splat at the latched rank:\n{}",
+            result.fragment_shader
+        );
+    }
+
+    /// Latched ranks are re-derived from the loaded graph: a serialized
+    /// vec3-latched Add loads, resolves identically, and validates.
+    #[test]
+    fn latched_graph_round_trips_through_serialization() {
+        use crate::material::graph::resolve_math_ranks;
+
+        let (graph, m) = vectorization_cell("math/add", "param/vec3", Sibling::Scalar);
+        let json = serde_json::to_string(&graph).unwrap();
+        let loaded: MaterialGraph = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            resolve_math_ranks(&graph).get(&m),
+            resolve_math_ranks(&loaded).get(&m),
+            "ranks are a pure function of the graph; a round-trip must not move them"
+        );
+
+        let result = codegen::compile(&loaded);
+        validator()
+            .validate(&result)
+            .unwrap_or_else(|e| panic!("round-tripped latched graph must validate: {e:?}"));
     }
 }

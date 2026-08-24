@@ -57,6 +57,8 @@ A node only stores *overrides* for its input pins in `input_values`. Pins with n
 
 All numeric/vector/color types are **freely inter-convertible at the graph level** — `PinType::compatible` allows the wire and `PinType::cast_expr` inserts the WGSL coercion (widening copies the scalar into every lane; narrowing takes the leading components). `String` pins only connect to other strings.
 
+For `math/*` nodes the declared `Float` is only the starting point: their pins are **dynamic**. A math node latches to the widest rank wired into any of its inputs (`Float` < `Vec2` < `Vec3` < `Vec4` = `Color`), and every dynamic pin — the other inputs and the result — adopts that rank; narrower sources are widened at the pin by `cast_expr`. A wide *consumer* on the result never widens the inputs, and `math/lerp`'s `t` stays `Float` (WGSL's `mix` takes a scalar blend factor). Resolution is a pure function of the graph (`resolve_math_ranks` in `material::graph`), so nothing is serialized. When a node's codegen guards against a scalar (`max({b}, 0.000001)`), emit the guard at the latched rank — a bare scalar under a latched vector node is a naga type error. `Ctx::guard_lit` splats the literal.
+
 ## Node types and categories
 
 Every node is identified by a namespaced `node_type` string (e.g. `"math/add"`, `"texture/sample"`, `"output/surface"`). `renzora_shader` ships over 150 built-in nodes across these categories (`nodes::categories()`):
