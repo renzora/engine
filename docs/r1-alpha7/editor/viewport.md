@@ -135,12 +135,28 @@ follows it until you let go. What you're placing is already the final entity;
 releasing over the viewport commits it in place rather than despawning the
 preview and spawning something new.
 
-Models **stand on the ground**: the drop point is the ground plane under the
-cursor, and the model is lifted so its lowest point rests there, not its origin.
-That matters because a GLB's origin is wherever the exporter left it — often the
-centre of the model, sometimes above it — so aligning on the origin buries or
-floats half of what you import. The lift is measured from the model's *complete*
-bounds, which means the editor waits for every mesh in the file to finish
+Where it lands depends on what's under the cursor:
+
+- **Over something** — another model, a terrain, a floor — the model is
+  **stood on it**: it's lifted so its lowest point rests on the surface, not its
+  origin. That's what you want when placing a prop on a table or a rock on a
+  hillside, and it matters because a GLB's origin is wherever the exporter left
+  it — often the centre of the model, sometimes above it — so aligning on the
+  origin would bury or float half of what you place.
+- **Over empty space** the model's **origin** goes on the ground plane and the
+  bounds are left alone.
+
+That second rule looks like the odd one out, but it's the one that makes large
+imports behave. Standing a model on its bounding box is only right when the
+lowest geometry *is* its footprint, and an environment model very often has one
+stray piece hanging below the origin — a basement slab, a foundation, a
+below-grade prop. Align on the bounds and that single piece lifts the whole
+building into the air, with no way to seat it at ground level. The origin is
+where the author put the floor, so on an empty drop that's what's honoured, and
+the piece that was modelled to sit under the floor stays under it.
+
+When the model *is* being stood on a surface, the lift is measured from its
+*complete* bounds, so the editor waits for every mesh in the file to finish
 loading before it settles; on a large model you may see it hold at the cursor for
 a moment first. If some mesh can never report bounds, it gives up after about two
 seconds and places the model from whatever it has, rather than leaving it

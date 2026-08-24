@@ -7,6 +7,26 @@
 //! placeholder. The preview entity is discarded on drop or cancel; the
 //! committed entity is spawned fresh through the normal pipeline so it picks
 //! up the import-pipeline-generated `.material` files via the resolver.
+//!
+//! # Where a dropped model lands
+//!
+//! There are two placement rules, and which one applies depends on whether the
+//! cursor is over existing geometry:
+//!
+//! - **Over a mesh** — the model is bottom-aligned, so its lowest point rests
+//!   on the surface under the cursor. This is what you want when placing a
+//!   prop on a table or a rock on terrain.
+//! - **Over empty space** — the model's *origin* goes straight onto the Y=0
+//!   plane and the bounds are never consulted.
+//!
+//! The second rule exists because bottom-aligning against the whole bounding
+//! box is only correct for a model whose lowest geometry *is* its footprint. A
+//! large environment GLB frequently has one stray piece hanging below the
+//! origin — a basement slab, a foundation, a below-grade prop — and aligning on
+//! the bounding box lifts the entire building by however far that one piece
+//! hangs down, leaving it floating with no way to seat it at Y=0. Author intent
+//! lives in the origin, so on an empty drop we honour the origin and let the
+//! stray geometry hang below the floor, which is what it was modelled to do.
 
 use std::path::PathBuf;
 
@@ -14,6 +34,7 @@ use bevy::asset::LoadState;
 use bevy::camera::primitives::Aabb;
 use bevy::gltf::GltfMaterialName;
 use bevy::pbr::MeshMaterial3d;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use bevy::window::PrimaryWindow;
@@ -41,9 +62,18 @@ pub struct PendingLoad {
     pub name: String,
     pub asset_path: String,
     pub spawn_position: Vec3,
+    /// World Y the model's *bottom* should settle at, or `None` when the drop
+    /// placed the origin directly and must not be re-seated by its bounds.
+    pub bottom_align_target: Option<f32>,
 }
 
-/// Marker component — entity needs its Y adjusted so the bottom sits on the ground.
+/// Marker component — entity needs its Y adjusted so the bottom sits on the
+/// surface it was dropped onto.
+///
+/// Only added for a drop that landed on existing geometry. A drop into empty
+/// space places the origin on the Y=0 plane and is already final, so it never
+/// gets this marker — see the module docs for why the bounds are the wrong
+/// thing to align by there.
 #[derive(Component)]
 pub struct NeedsGroundAlignment {
     pub target_y: f32,
@@ -84,13 +114,18 @@ pub struct ModelDragPreviewState {
     pub ghost_root: Option<Entity>,
     /// Last known cursor ground position (Y=0 plane).
     pub ground_position: Vec3,
+    /// World-space point where the drag ray last hit existing scene geometry,
+    /// or `None` when the cursor is over empty space. This is the switch
+    /// between the module's two placement rules.
+    pub surface_hit: Option<Vec3>,
     /// True when the cursor is currently over the viewport rect.
     pub cursor_in_viewport: bool,
     /// Signed distance from the preview root's origin down to the lowest point
-    /// of its geometry, once every mesh has loaded. Adding it to the ground
+    /// of its geometry, once every mesh has loaded. Adding it to the hit
     /// position is what puts the model's *bottom* under the cursor instead of
-    /// its origin, so the drag preview stands on the ground and the drop
-    /// doesn't pop the model into a new position.
+    /// its origin, so the drag preview stands on the surface and the drop
+    /// doesn't pop the model into a new position. Only consulted for a drop
+    /// onto geometry — an empty-space drop ignores the bounds entirely.
     pub bottom_offset: Option<f32>,
 }
 
@@ -102,8 +137,31 @@ impl ModelDragPreviewState {
         self.mesh_handle = None;
         self.ghost_root = None;
         self.ground_position = Vec3::ZERO;
+        self.surface_hit = None;
         self.cursor_in_viewport = false;
         self.bottom_offset = None;
+    }
+
+    /// Where the model root sits for the cursor's current position.
+    ///
+    /// Both the drag preview and the drop commit read this, so releasing the
+    /// mouse never moves the model away from where it was being previewed.
+    pub fn placement_translation(&self) -> Vec3 {
+        match self.surface_hit {
+            // Lift the root so the geometry's underside meets the surface.
+            // `bottom_offset` is `None` until every mesh has reported its
+            // bounds; the drop's `NeedsGroundAlignment` corrects the placement
+            // once they arrive.
+            Some(hit) => hit + Vec3::Y * self.bottom_offset.unwrap_or(0.0),
+            None => self.ground_position,
+        }
+    }
+
+    /// The world Y a dropped model's *bottom* should settle at, or `None` when
+    /// the drop takes the origin-on-the-ground rule and needs no correcting
+    /// once its meshes finish loading.
+    pub fn bottom_align_target(&self) -> Option<f32> {
+        self.surface_hit.map(|hit| hit.y)
     }
 }
 
@@ -153,15 +211,21 @@ pub(crate) fn commit_model_drop(
     path: PathBuf,
     name: String,
 ) {
-    // Prefer the ground position the ghost was tracking — it matches
-    // exactly what the user saw under their cursor at drop time.
-    let preview_pos = world
+    // Prefer the placement the ghost was tracking — it matches exactly what the
+    // user saw under their cursor at drop time. With no ghost (an
+    // out-of-project drag) there was no surface test either, so the model takes
+    // the empty-space rule and its origin lands on the Y=0 plane.
+    let preview = world
         .get_resource::<ModelDragPreviewState>()
         .filter(|s| s.origin_path.as_deref() == Some(path.as_path()))
-        .map(|s| s.ground_position);
-    let ground_pos = preview_pos
-        .or_else(|| compute_ground_position(world, screen_pos, vp_rect))
-        .unwrap_or(Vec3::ZERO);
+        .map(|s| (s.placement_translation(), s.bottom_align_target()));
+    let (spawn_pos, bottom_align_target) = match preview {
+        Some(placement) => placement,
+        None => (
+            compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO),
+            None,
+        ),
+    };
 
     // If we spawned a preview entity during drag (in-project
     // asset), promote it in place: add the production markers
@@ -196,8 +260,12 @@ pub(crate) fn commit_model_drop(
                 },
                 ImportedRoot,
                 PendingMaterialBinding { gltf_handle },
-                NeedsGroundAlignment::new(ground_pos.y),
             ));
+            // Only a drop onto geometry needs re-seating once the meshes
+            // load; an empty-space drop is already where it belongs.
+            if let Some(target_y) = bottom_align_target {
+                entity_mut.insert(NeedsGroundAlignment::new(target_y));
+            }
         }
         // Add `PendingFlatten` to the entity's SceneRoot child so
         // the flatten pass collapses gltf wrapper nodes once the
@@ -224,7 +292,7 @@ pub(crate) fn commit_model_drop(
         // path skipped this asset because it wasn't already in the
         // project). Run the import-then-spawn pipeline so the GLB
         // gets copied into the project and a fresh entity spawned.
-        initiate_model_load(world, path, name, ground_pos);
+        initiate_model_load(world, path, name, spawn_pos, bottom_align_target);
     }
 }
 
@@ -284,7 +352,7 @@ pub fn native_model_drop(
     // state (so neither cleanup nor `update_model_drag_ghost` touch the entity
     // again) but leave `origin_path` set so `track_model_drag_preview` skips
     // re-initializing for the payload that may linger one extra frame.
-    let ground_pos = state.ground_position;
+    let bottom_align_target = state.bottom_align_target();
     let asset_path = state.asset_path.take();
     let gltf_handle = state.mesh_handle.take();
     state.ghost_root = None;
@@ -301,8 +369,17 @@ pub fn native_model_drop(
         },
         ImportedRoot,
         PendingMaterialBinding { gltf_handle },
-        NeedsGroundAlignment::new(ground_pos.y),
     ));
+
+    // Dropped onto geometry: re-seat the model once its meshes finish loading,
+    // since the preview's lift was measured from whatever bounds existed then.
+    // Dropped onto empty space: the preview's origin-on-the-ground placement is
+    // already final and must not be second-guessed by the bounds.
+    if let Some(target_y) = bottom_align_target {
+        commands
+            .entity(entity)
+            .insert(NeedsGroundAlignment::new(target_y));
+    }
 
     // Tag the SceneRoot child so the flatten pass collapses gltf wrappers once
     // the scene is fully populated.
@@ -475,7 +552,13 @@ fn run_import_pipeline(
 }
 
 /// Initiate loading a model file — called from a deferred `EditorCommands` closure.
-fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_position: Vec3) {
+fn initiate_model_load(
+    world: &mut World,
+    path: PathBuf,
+    name: String,
+    spawn_position: Vec3,
+    bottom_align_target: Option<f32>,
+) {
     // Compute asset-relative path. Each model gets its own folder under
     // `assets/models/<stem>/` so derived assets (animations, textures,
     // materials) from the proper import pipeline stay grouped with it.
@@ -524,6 +607,7 @@ fn initiate_model_load(world: &mut World, path: PathBuf, name: String, spawn_pos
             name,
             asset_path,
             spawn_position,
+            bottom_align_target,
         });
 }
 
@@ -593,10 +677,14 @@ pub fn spawn_loaded_gltfs(
             PendingFlatten::default(),
         ));
 
-        // Attach ground alignment marker
-        commands
-            .entity(parent)
-            .insert(NeedsGroundAlignment::new(load.spawn_position.y));
+        // Re-seat onto the surface it was dropped on once the meshes report
+        // bounds. Absent for an empty-space drop, whose spawn position is the
+        // final one — see the module docs.
+        if let Some(target_y) = load.bottom_align_target {
+            commands
+                .entity(parent)
+                .insert(NeedsGroundAlignment::new(target_y));
+        }
 
         // Auto-select the new entity
         selection.set(Some(parent));
@@ -686,7 +774,7 @@ fn lowest_mesh_y(
 }
 
 /// System: once every child mesh has an AABB, offset the parent so the model's
-/// bottom sits on the ground plane it was dropped onto.
+/// bottom sits on the surface it was dropped onto.
 pub fn align_models_to_ground(
     mut commands: Commands,
     mut query: Query<(Entity, &mut NeedsGroundAlignment), With<Children>>,
@@ -782,6 +870,7 @@ pub fn auto_discover_animations(
 /// System: track the active model drag, kick off the full Gltf load the
 /// first time it enters the viewport, and update the cursor ground position
 /// every frame.
+#[allow(clippy::too_many_arguments)]
 pub fn track_model_drag_preview(
     mut state: ResMut<ModelDragPreviewState>,
     payload: Option<Res<AssetDragPayload>>,
@@ -790,6 +879,8 @@ pub fn track_model_drag_preview(
     viewport: Res<ViewportState>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    mut mesh_ray_cast: MeshRayCast,
+    parent_query: Query<&ChildOf>,
 ) {
     // No payload (or wrong kind) → leave any existing ghost alone; cleanup
     // runs in its own system once the resource is removed.
@@ -880,6 +971,58 @@ pub fn track_model_drag_preview(
             state.ground_position = Vec3::new(hit.x, 0.0, hit.z);
         }
     }
+
+    // Is there real geometry under the cursor? That decides which placement
+    // rule applies, so it has to be re-tested every frame of the drag rather
+    // than latched — dragging off the edge of a table has to fall back to the
+    // ground plane the moment the cursor leaves it.
+    let ghost_root = state.ghost_root;
+    state.surface_hit = cast_to_scene_surface(&mut mesh_ray_cast, ray, ghost_root, &parent_query);
+}
+
+/// First hit of `ray` against scene geometry, skipping the drag preview's own
+/// meshes.
+///
+/// The preview follows the cursor, so its own geometry sits directly under the
+/// ray every frame — without the exclusion the model would read as standing on
+/// itself and climb away from the cursor.
+fn cast_to_scene_surface(
+    mesh_ray_cast: &mut MeshRayCast,
+    ray: Ray3d,
+    preview_root: Option<Entity>,
+    parent_query: &Query<&ChildOf>,
+) -> Option<Vec3> {
+    // `early_exit_test` off: the nearest hit is usually the preview itself, and
+    // stopping there would report no surface at all.
+    let hits = mesh_ray_cast.cast_ray(
+        ray,
+        &MeshRayCastSettings {
+            early_exit_test: &|_| false,
+            ..MeshRayCastSettings::default()
+        },
+    );
+
+    for (hit_entity, hit) in hits.iter() {
+        if let Some(root) = preview_root {
+            if *hit_entity == root || is_descendant_of(*hit_entity, root, parent_query) {
+                continue;
+            }
+        }
+        return Some(hit.point);
+    }
+    None
+}
+
+/// Walk `entity`'s ancestors looking for `ancestor`.
+fn is_descendant_of(entity: Entity, ancestor: Entity, parent_query: &Query<&ChildOf>) -> bool {
+    let mut current = entity;
+    while let Ok(child_of) = parent_query.get(current) {
+        current = child_of.parent();
+        if current == ancestor {
+            return true;
+        }
+    }
+    false
 }
 
 /// System: spawn the model entity once its Gltf is loaded, then track
@@ -908,11 +1051,13 @@ pub fn update_model_drag_ghost(
     // Already spawned → just sync transform + visibility.
     if let Some(root) = state.ghost_root {
         // Measure how far the geometry hangs below the root origin, once — a
-        // GLB is free to put its origin anywhere, and models whose origin sits
+        // GLB is free to put its origin anywhere, and a model whose origin sits
         // at the centre (or at the top of a hanging prop) would otherwise be
-        // dragged half-buried and then jump on drop when the ground alignment
-        // finally ran. Both values come from the same propagation, so the
-        // one-frame staleness cancels out.
+        // dragged half-buried into whatever it is being placed on, then jump on
+        // drop when the alignment finally ran. Both values come from the same
+        // propagation, so the one-frame staleness cancels out. Only the
+        // drop-onto-geometry rule uses this; an empty-space drop places the
+        // origin and leaves the bounds alone.
         if state.bottom_offset.is_none() {
             if let (Some(lowest_y), Ok(root_global)) = (
                 lowest_mesh_y(root, &children_query, &aabb_query, &mesh_query),
@@ -921,9 +1066,8 @@ pub fn update_model_drag_ghost(
                 state.bottom_offset = Some(root_global.translation().y - lowest_y);
             }
         }
-        let lift = state.bottom_offset.unwrap_or(0.0);
         if let Ok(mut tf) = transform_query.get_mut(root) {
-            tf.translation = state.ground_position + Vec3::Y * lift;
+            tf.translation = state.placement_translation();
         }
         if let Ok(mut vis) = visibility_query.get_mut(root) {
             *vis = if state.cursor_in_viewport {
