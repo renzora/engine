@@ -72,6 +72,20 @@ pub fn try_build_standard_material(
 
     let output = graph.output_node()?;
 
+    // Two output pins carry constants this path cannot express, and both are
+    // now reachable from the node's inline editors rather than only from a
+    // wire. `ao` has no StandardMaterial factor at all — occlusion is a texture
+    // and nothing else — and `reflectance` is a `Vec3` in the graph (matching
+    // the GPU uniform) against an `f32` here. Left alone, either would be
+    // accepted by the editor and then silently dropped. Hand the graph to
+    // codegen instead, where the constant compiles in like any other
+    // expression; slower to build, but it actually renders what was typed.
+    if output.input_values.contains_key("ao")
+        || matches!(output.input_values.get("reflectance"), Some(PinValue::Vec3(_)))
+    {
+        return None;
+    }
+
     // Apply graph-level flags first; nothing below should override these.
     let mut mat = StandardMaterial {
         alpha_mode: match graph.alpha_mode {

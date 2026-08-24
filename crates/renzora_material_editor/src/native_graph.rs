@@ -373,16 +373,15 @@ struct NodeSnap {
 /// A pin fed by a wire never does — the wire supplies the value, and an editor
 /// there would look editable while doing nothing.
 ///
-/// The **output node** is the exception among unconnected pins. It's the sink,
-/// with fifteen-odd pins, and giving every one of them a field buries the wires
-/// in a wall of numbers. Its unset pins deliberately fall through to
-/// `StandardMaterial`'s own defaults (see the node's own description), so an
-/// editor on one would be inventing a value the material never had. It gets an
-/// editor only where an override already exists — typed here earlier, or written
-/// by the model importer, which stores base-colour / metallic / roughness factors
-/// as exactly this kind of override. Those stay visible and adjustable; the rest
-/// stay out of the way. To drive a bare output pin, wire a Constant or Parameter
-/// node into it.
+/// Every other unconnected pin gets one, the output node included. Its fields
+/// start on the pin's declared default and only write an override into the graph
+/// once you actually drag one, so a node you haven't touched still falls through
+/// to `StandardMaterial`'s own defaults exactly as before — the editors just make
+/// the values reachable without wiring a Constant node into each pin.
+///
+/// `normal` on an output node is the one pin left bare. It's a direction, its
+/// default is "unset" rather than a vector, and the zero vector a field would
+/// start on normalizes to NaN — so it stays wire-only.
 fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::MaterialNode, pin: &PinTemplate) -> bool {
     if graph.connections.iter().any(|c| c.to_node == node.id && c.to_pin == pin.name) {
         return false;
@@ -390,8 +389,8 @@ fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::M
     if !crate::pin_editors::has_pin_editor(pin.pin_type) {
         return false;
     }
-    if node.node_type.starts_with("output/") {
-        return node.input_values.contains_key(&pin.name);
+    if node.node_type.starts_with("output/") && pin.name == "normal" {
+        return false;
     }
     true
 }

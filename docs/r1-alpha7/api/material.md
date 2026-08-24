@@ -111,7 +111,9 @@ Every graph has exactly one output node, fixed by its `domain`. The output node 
 
 ### `output/surface` — Surface
 
-Full PBR surface that maps 1:1 onto Bevy's `StandardMaterial`. Disconnected pins keep `StandardMaterial` defaults.
+Full PBR surface that maps 1:1 onto Bevy's `StandardMaterial`. Disconnected pins keep `StandardMaterial` defaults until you set one, at which point the value is stored in the node's `input_values` and takes over.
+
+Two of those stored constants can't be expressed as `StandardMaterial` fields — `ao` (occlusion is texture-only there) and `reflectance` (a `Vec3` in the graph against an `f32` on the material) — so a graph that sets either is classified as procedural and compiled through codegen instead of taking the trivial fast path.
 
 | Pin | Type | Default | Purpose |
 |-----|------|---------|---------|

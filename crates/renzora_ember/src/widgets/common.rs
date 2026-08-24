@@ -33,6 +33,15 @@ pub(crate) fn format_num(v: f32) -> String {
         return format!("{v}");
     }
     let m = v.abs();
+    // Past a billion, the digits stop being information and start being a wall:
+    // the material output's attenuation distance defaults to 1e37 (a stand-in
+    // for "never attenuates"), which spelled out is thirty-eight characters in a
+    // field a few centimetres wide. Scientific notation keeps it readable, and
+    // the threshold sits high enough that ordinary large numbers still print
+    // plainly.
+    if m >= 1.0e9 {
+        return format!("{v:e}");
+    }
     // Enough decimals to keep ~3 significant digits at any magnitude.
     let decimals = if m >= 1.0 || m == 0.0 {
         1

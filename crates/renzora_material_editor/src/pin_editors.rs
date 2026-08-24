@@ -73,7 +73,8 @@ pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u
     match pin.pin_type {
         PinType::Float => {
             let init = scalar(&default);
-            let field = num_field(commands, fonts, "", value_text(), init, 0.01, -1000.0, 1000.0, {
+            let (min, max, step) = float_range(&name);
+            let field = num_field(commands, fonts, "", value_text(), init, step, min, max, {
                 let n = name.clone();
                 let d = default.clone();
                 move |w| match pin_value(w, node_id, &n).unwrap_or(d.clone()) {
@@ -330,6 +331,32 @@ fn set_pin(w: &mut World, node_id: u64, pin: &str, val: PinValue) {
             n.input_values.insert(pin.to_string(), val);
         }
         s.is_dirty = true;
+    }
+}
+
+/// Scrub range and step for a float pin, by name: `(min, max, step)`.
+///
+/// A `drag_value` only draws its slider track when it has a range, and the
+/// generic ±1000 fallback puts every 0-to-1 material value in the middle of a
+/// 2000-unit track — a slider you cannot aim. The pins below are the ones whose
+/// units are fixed by the PBR model, so their real range is known and the track
+/// becomes usable. Names are shared across nodes on purpose: a `roughness` pin
+/// means the same thing wherever it appears.
+///
+/// `min == max` means "no range" — no track, and no clamping. That is what
+/// `attenuation_distance` wants: its default is a stand-in for infinity, so any
+/// slider bound we picked would silently cut it down on the first nudge.
+fn float_range(pin: &str) -> (f32, f32, f32) {
+    match pin {
+        "metallic" | "roughness" | "ao" | "alpha" | "specular_transmission"
+        | "diffuse_transmission" | "clearcoat" | "clearcoat_roughness"
+        | "anisotropy_strength" | "height" => (0.0, 1.0, 0.005),
+        // Bevy stores the anisotropy direction as radians around the tangent.
+        "anisotropy_rotation" => (0.0, std::f32::consts::TAU, 0.01),
+        // Air 1.0 → water 1.33 → glass 1.5 → diamond 2.42.
+        "ior" => (1.0, 3.0, 0.005),
+        "attenuation_distance" => (0.0, 0.0, 1.0),
+        _ => (-1000.0, 1000.0, 0.01),
     }
 }
 
