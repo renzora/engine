@@ -451,6 +451,139 @@ fn texture_path(node: &MaterialNode) -> Option<String> {
     }
 }
 
+/// Fill `mat` with whatever of `graph` a plain `StandardMaterial` can express,
+/// ignoring everything it cannot.
+///
+/// This is [`try_build_standard_material`]'s lenient twin, and it exists for a
+/// completely different reason. That one asks "is this graph *entirely*
+/// expressible?", so it can hand the material to Bevy's stock pipeline; it is
+/// deliberately all-or-nothing. This one asks "how much of it can we express?"
+/// and takes the answer, however partial.
+///
+/// A `GraphMaterial` is an `ExtendedMaterial<StandardMaterial, SurfaceGraphExt>`
+/// whose generated fragment shader is **forward-only** — `specialize()` skips
+/// the shader swap for prepass, shadow and deferred pipelines, because the
+/// generated code imports `apply_pbr_lighting` and reads `forward_io`. Every one
+/// of those passes therefore shades with the *base* `StandardMaterial`, and
+/// until now that base was `Color::WHITE` with no textures at all. The results
+/// were bad in ways that looked unrelated to each other:
+///
+/// - **Alpha-masked geometry lost its cutout in the prepass.** `alpha_mode` was
+///   set, but with no `base_color_texture` the base samples opaque white and
+///   discards nothing, so the depth prepass wrote the *whole* leaf quad. The
+///   forward pass then depth-tests against that, and anything behind a leaf's
+///   transparent region fails the test and is never shaded — foliage and signs
+///   render as solid cards.
+/// - **Shadows had the same problem**, from the same missing texture.
+/// - **Deferred rendered the scene white**, because the G-buffer pass is one of
+///   the passes that falls back to the base.
+/// - **`renzora_lumen` voxelised the wrong colour**, since it reads
+///   `StandardMaterial.base_color` on the CPU to tint its voxels — so global
+///   illumination bounced white light off every imported surface.
+///
+/// One empty struct, four unrelated-looking bugs. Filling it in fixes all four
+/// at once, and it is the same representation a ray tracer needs at a hit point,
+/// where a per-material fragment shader cannot be run.
+///
+/// The base is an *approximation*, and deliberately so: the generated shader
+/// still overrides it in the forward pass, so anything procedural — noise,
+/// blends, UV math, custom WGSL — is invisible here and stays that way. What
+/// matters is that the parts every other pass needs (albedo and its alpha,
+/// normals, metallic-roughness, occlusion, emissive) are truthful.
+pub fn apply_base_approximation(
+    mat: &mut StandardMaterial,
+    graph: &MaterialGraph,
+    asset_server: &AssetServer,
+) {
+    let Some(output) = graph.output_node() else {
+        return;
+    };
+
+    // ── base colour: factor, then texture ───────────────────────────────
+    if let Some(PinValue::Color(c)) = output.input_values.get("base_color") {
+        mat.base_color = Color::linear_rgba(c[0], c[1], c[2], c[3]);
+    }
+    if let Some(conn) = graph.connection_to(output.id, "base_color") {
+        if let Some(src) = graph.get_node(conn.from_node) {
+            if is_param_node(src) {
+                if let Some(PinValue::Color(c)) = src.input_values.get("default") {
+                    mat.base_color = Color::linear_rgba(c[0], c[1], c[2], c[3]);
+                }
+            } else if is_texture_sample(src) && matches!(conn.from_pin.as_str(), "color" | "rgb") {
+                mat.base_color_texture = texture_path(src).map(|p| asset_server.load(p));
+            }
+        }
+    }
+
+    // The alpha pin is what the prepass and shadow cutout actually read, so it
+    // matters more here than anywhere else. A constant lands on `base_color.a`;
+    // a texture's `.a` needs nothing, because it rides along in the base colour
+    // texture that was just loaded.
+    if let Some(PinValue::Float(a)) = output.input_values.get("alpha") {
+        let c = mat.base_color.to_linear();
+        mat.base_color = Color::linear_rgba(c.red, c.green, c.blue, *a);
+    }
+
+    // ── metallic + roughness ────────────────────────────────────────────
+    if let Some(PinValue::Float(m)) = output.input_values.get("metallic") {
+        mat.metallic = *m;
+    }
+    if let Some(PinValue::Float(r)) = output.input_values.get("roughness") {
+        mat.perceptual_roughness = *r;
+    }
+    // Only the glTF packing — one texture feeding both pins — maps onto
+    // StandardMaterial's single `metallic_roughness_texture`. Two separate
+    // greyscale maps cannot be represented, so the base keeps the factors and
+    // the generated shader supplies the real values in the forward pass.
+    let mr = (
+        pin_texture_source(graph, output.id, "metallic", "b"),
+        pin_texture_source(graph, output.id, "roughness", "g"),
+    );
+    if let (Some(PinSource::Texture(m)), Some(PinSource::Texture(r))) = mr {
+        if m == r {
+            if let Some(path) = graph.get_node(m).and_then(texture_path) {
+                mat.metallic_roughness_texture = Some(asset_server.load(path));
+            }
+        }
+    }
+
+    // ── normal map ──────────────────────────────────────────────────────
+    if let Some(conn) = graph.connection_to(output.id, "normal") {
+        if let Some(src) = graph.get_node(conn.from_node) {
+            if src.node_type == "texture/sample_normal" && conn.from_pin == "normal" {
+                mat.normal_map_texture = texture_path(src).map(|p| asset_server.load(p));
+                if let Some(PinValue::Bool(true)) = src.input_values.get("flip_green") {
+                    mat.flip_normal_map_y = true;
+                }
+            }
+        }
+    }
+
+    // ── emissive ────────────────────────────────────────────────────────
+    if let Some(PinValue::Vec3(e)) = output.input_values.get("emissive") {
+        mat.emissive = LinearRgba::new(e[0], e[1], e[2], 1.0);
+    }
+    if let Some(conn) = graph.connection_to(output.id, "emissive") {
+        if let Some(src) = graph.get_node(conn.from_node) {
+            if is_texture_sample(src) && matches!(conn.from_pin.as_str(), "rgb" | "color") {
+                mat.emissive_texture = texture_path(src).map(|p| asset_server.load(p));
+                if !output.input_values.contains_key("emissive") {
+                    mat.emissive = LinearRgba::WHITE;
+                }
+            }
+        }
+    }
+
+    // ── ambient occlusion ───────────────────────────────────────────────
+    if let Some(conn) = graph.connection_to(output.id, "ao") {
+        if let Some(src) = graph.get_node(conn.from_node) {
+            if is_texture_sample(src) && conn.from_pin == "r" {
+                mat.occlusion_texture = texture_path(src).map(|p| asset_server.load(p));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -741,5 +874,111 @@ mod tests {
             try_build_standard_material(&graph, asset_server).is_none(),
             "a uv connection anywhere in the graph rejects the trivial path"
         );
+    }
+
+    /// The bug this exists for: alpha-masked foliage. `alpha_mode` was already
+    /// set on the base, but with no `base_color_texture` the prepass sampled
+    /// opaque white and cut nothing, so it wrote depth for the whole leaf quad.
+    /// The forward pass depth-tests against that, so anything behind a leaf's
+    /// transparent region was never shaded — foliage and signs rendered as
+    /// solid cards. The base needs the albedo texture, alpha included.
+    #[test]
+    fn the_base_gets_the_albedo_texture_so_the_prepass_can_cut_alpha() {
+        let mut graph = MaterialGraph::new("Leaves", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+
+        let bc = graph.add_node("texture/sample", [-200.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(bc) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("leaf.rmip".into()));
+        }
+        graph.connect(bc, "color", output_id, "base_color");
+        graph.connect(bc, "a", output_id, "alpha");
+
+        let app = asset_app();
+        let mut mat = StandardMaterial::default();
+        apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
+        assert!(
+            mat.base_color_texture.is_some(),
+            "without this the prepass cannot alpha-cut foliage"
+        );
+    }
+
+    /// The approximation has to survive a graph the *strict* classifier
+    /// rejects — that is the whole point of it existing separately. A UV-math
+    /// node makes this non-trivial, but the albedo, normal and MR maps are
+    /// still exactly what the prepass, shadow pass and deferred G-buffer need.
+    #[test]
+    fn a_non_trivial_graph_still_yields_a_usable_base() {
+        let mut graph = MaterialGraph::new("Scrolled", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+
+        // UV math — an instant rejection for `try_build_standard_material`.
+        let uv = graph.add_node("input/uv_scale", [-600.0, 0.0]);
+
+        let bc = graph.add_node("texture/sample", [-400.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(bc) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("bc.rmip".into()));
+        }
+        graph.connect(uv, "uv", bc, "uv");
+        graph.connect(bc, "color", output_id, "base_color");
+
+        let mr = graph.add_node("texture/sample", [-400.0, 200.0]);
+        if let Some(n) = graph.get_node_mut(mr) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("mr.rmip".into()));
+        }
+        graph.connect(mr, "g", output_id, "roughness");
+        graph.connect(mr, "b", output_id, "metallic");
+
+        let nm = graph.add_node("texture/sample_normal", [-400.0, 400.0]);
+        if let Some(n) = graph.get_node_mut(nm) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("n.rmip".into()));
+        }
+        graph.connect(nm, "normal", output_id, "normal");
+
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(
+            try_build_standard_material(&graph, asset_server).is_none(),
+            "uv math must stay off the trivial fast path"
+        );
+
+        let mut mat = StandardMaterial::default();
+        apply_base_approximation(&mut mat, &graph, asset_server);
+        assert!(mat.base_color_texture.is_some());
+        assert!(mat.metallic_roughness_texture.is_some());
+        assert!(mat.normal_map_texture.is_some());
+    }
+
+    /// Two separate greyscale maps cannot ride StandardMaterial's single
+    /// `metallic_roughness_texture`, so the base keeps the factors rather than
+    /// binding whichever map it happened to see last. The generated shader
+    /// supplies the real values in the forward pass either way.
+    #[test]
+    fn split_metallic_and_roughness_maps_leave_the_base_texture_unset() {
+        let mut graph = MaterialGraph::new("Split", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+
+        let m = graph.add_node("texture/sample", [-400.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(m) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("m.rmip".into()));
+        }
+        graph.connect(m, "b", output_id, "metallic");
+
+        let r = graph.add_node("texture/sample", [-400.0, 200.0]);
+        if let Some(n) = graph.get_node_mut(r) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("r.rmip".into()));
+        }
+        graph.connect(r, "g", output_id, "roughness");
+
+        let app = asset_app();
+        let mut mat = StandardMaterial::default();
+        apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
+        assert!(mat.metallic_roughness_texture.is_none());
     }
 }

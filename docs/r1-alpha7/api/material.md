@@ -13,7 +13,33 @@ There are two compile paths, chosen automatically by the resolver:
 
 Compiled results are cached per file path in the `MaterialCache` resource, so editing one material in the editor invalidates and recompiles only that material.
 
-> When you save through the editor, codegen also writes the generated WGSL beside the `.material` file and records its project-relative path in the graph's `wgsl_path` field. The runtime follows that link to skip codegen entirely. Legacy files without a `wgsl_path` fall back to live codegen.
+> When you save through the editor, codegen bakes the generated WGSL into the `.material` file itself, under a `compiled` block alongside its binding metadata. The runtime reads that and skips codegen entirely. Materials written by an older editor — the ones with a `.wgsl` and `.wgsl.meta` beside them — still load, and move to the embedded form the next time you save.
+
+### The base material a `GraphMaterial` carries
+
+A `GraphMaterial`'s generated shader is **forward-only**. Bevy's prepass, shadow
+pass and deferred G-buffer pass all shade from the *base* `StandardMaterial`
+instead, and `renzora_lumen` reads its `base_color` on the CPU to tint GI voxels.
+
+So the resolver fills that base in with as much of the graph as a plain
+`StandardMaterial` can express — albedo and its alpha, normal map,
+metallic-roughness, occlusion, emissive — via
+`standard_build::apply_base_approximation`. Anything procedural is invisible
+there and stays that way; the generated shader still overrides it in the forward
+pass.
+
+This matters more than it sounds. When the base was left empty, alpha-masked
+foliage kept its `alpha_mode` but had no albedo texture to test against, so the
+depth prepass wrote the *whole* leaf quad and the forward pass — which
+depth-tests against that prepass — never shaded anything behind a leaf's
+transparent region. Foliage and cut-out signage rendered as solid cards.
+Shadows had the same gap, deferred rendered the scene white, and GI bounced
+white light off every imported surface.
+
+> Two separate greyscale maps on Metallic and Roughness can't ride
+> `StandardMaterial`'s single `metallic_roughness_texture`, so the base keeps the
+> factors in that case. Pack them into one glTF-style texture (G = roughness,
+> B = metallic) if you want the other passes to see them.
 
 ## Attaching a material to an entity
 

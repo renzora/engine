@@ -415,6 +415,8 @@ fn resolve_material_refs(
                         meta.requires_transmission,
                         &meta.texture_bindings,
                         meta.parameters,
+                        // Legacy `.wgsl` + `.meta` layout — no graph beside it.
+                        None,
                         &mut graph_materials,
                         &mut shaders,
                         &fallback_texture,
@@ -639,6 +641,7 @@ fn resolve_material_file(
             meta.requires_transmission,
             &meta.texture_bindings,
             meta.parameters.clone(),
+            Some(&graph),
             graph_materials,
             shaders,
             fallback_texture,
@@ -661,6 +664,9 @@ fn resolve_material_file(
                 meta.requires_transmission,
                 &meta.texture_bindings,
                 meta.parameters,
+                // The shader came from a sidecar, but the graph is right here
+                // in the `.material` — approximate the base from it.
+                Some(&graph),
                 graph_materials,
                 shaders,
                 fallback_texture,
@@ -864,6 +870,7 @@ fn resolve_material_instance_file(
                 meta.requires_transmission,
                 &meta.texture_bindings,
                 meta.parameters,
+                Some(&master_graph),
                 graph_materials,
                 shaders,
                 fallback_texture,
@@ -960,6 +967,7 @@ fn resolve_graph_material_from_graph(
         result.requires_transmission,
         &result.texture_bindings,
         result.parameters,
+        Some(graph),
         materials,
         shaders,
         fallback_texture,
@@ -981,6 +989,12 @@ fn assemble_graph_material(
     requires_transmission: bool,
     texture_bindings: &[super::codegen::TextureBinding],
     parameters: Vec<MaterialParam>,
+    // The graph this material came from, when the caller has it. Used to fill
+    // the base `StandardMaterial` with an approximation of the graph — see
+    // `standard_build::apply_base_approximation` for why the base being empty
+    // broke prepass cutouts, shadows, deferred and Lumen at once. `None` only
+    // for the legacy `.wgsl` + `.meta` layout, which has no graph beside it.
+    graph: Option<&MaterialGraph>,
     materials: &mut Assets<GraphMaterial>,
     shaders: &mut Assets<Shader>,
     fallback_texture: &Option<Res<FallbackTexture>>,
@@ -1002,6 +1016,14 @@ fn assemble_graph_material(
         new_graph_material(&FallbackTexture(Handle::default()))
     };
     mat.extension.shader_uuid = Some(shader_uuid);
+
+    // Fill the base with as much of the graph as a StandardMaterial can hold,
+    // before the authoritative per-material state below overwrites the fields
+    // it owns. Every pass except the forward one — prepass, shadow, deferred —
+    // shades from this, and Lumen reads its `base_color` on the CPU.
+    if let Some(graph) = graph {
+        super::standard_build::apply_base_approximation(&mut mat.base, graph, asset_server);
+    }
 
     match domain {
         MaterialDomain::Unlit => {
