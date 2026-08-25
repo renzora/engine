@@ -62,9 +62,18 @@ perimeter outline, the Blender-style `face_select` overlay look:
 - **Fill** — a real 3D mesh (triangle fan from the face's centroid)
   parented to the edit target, drawn with a translucent `unlit`
   `StandardMaterial` (`srgba(1.0, 0.55, 0.1, 0.45)`). The fan is in
-  mesh-local space, so the fill follows the mesh's transform.
+  mesh-local space, so the fill follows the mesh's transform. The
+  material has `depth_bias: -1.0` so the overlay always draws in
+  front of the cube's geometry — no z-fighting artefacts as you orbit.
 - **Outline** — a per-edge `gizmos.line` at full alpha on top of the
   fill. Reads as a crisp boundary against the translucent interior.
+
+Clicking a quad highlights the whole logical face (both triangles),
+not just the triangle under the cursor. The picker walks the
+face-adjacency graph (`Edge::faces`) and collects every coplanar
+neighbour of the hit triangle into one selection group. Works for
+tris, quads, and planar fan-triangle n-gons — anything coplanar that's
+topologically connected.
 
 ### Gizmo Thickness (Settings → Viewport)
 
