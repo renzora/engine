@@ -492,6 +492,9 @@ impl Plugin for GizmoPlugin {
             // Per-slot transform / plane line groups, each bound to its slot's
             // private overlay layer so a viewport draws only its own handle
             // (see `draw_line_gizmos`). Widths mirror the shared groups above.
+            // The user-facing thickness multiplier (`ViewportSettings.gizmo_thickness`)
+            // is applied per-frame by `update_gizmo_thickness`, which mutates
+            // these configs in-place; we set the *base* widths here.
             .insert_gizmo_config(
                 SlotTransformGroup0,
                 slot_line_config(0, 3.0),
@@ -513,6 +516,11 @@ impl Plugin for GizmoPlugin {
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
             .add_systems(PostStartup, setup_gizmo_meshes)
+            .add_systems(
+                Update,
+                update_gizmo_thickness
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+            )
             // Selection shortcuts (Delete / Deselect / CreateNode) aren't
             // 3D-specific — Delete on a 2D entity should also work from
             // any panel. Pull these out of the in_three_view chain so they
@@ -1196,7 +1204,7 @@ fn update_gizmo_materials(
 
 /// We still use Bevy's immediate-mode gizmos for circles (rotate), scale cubes,
 /// and the plane-drag squares since those change per-mode.
-use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup, GizmoLineConfig};
+use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup, GizmoConfigStore, GizmoLineConfig};
 use bevy::gizmos::AppGizmoBuilder;
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -1265,6 +1273,83 @@ fn slot_line_config(slot: usize, width: f32) -> GizmoConfig {
         ),
         ..default()
     }
+}
+
+/// Apply the user's `ViewportSettings.gizmo_thickness` slider to every
+/// gizmo-line group's `line.width`. Runs each frame so the slider takes
+/// effect live. The base widths are seeded by `build` (3 px for transform
+/// lines, 6 px for plane-drag squares, 3 px for overlay, 1.5 px for
+/// labels); this system multiplies each by `gizmo_thickness`.
+///
+/// Detection of the slider change is intentionally avoided: the cost is
+/// a dozen cheap multiplies per frame, well below the noise floor of the
+/// editor's frame budget.
+fn update_gizmo_thickness(
+    viewport_settings: Res<renzora::core::viewport_types::ViewportSettings>,
+    mut gizmo_store: ResMut<GizmoConfigStore>,
+) {
+    let thickness = viewport_settings.gizmo_thickness.clamp(0.1, 10.0);
+
+    gizmo_store
+        .config_mut::<OverlayGizmoGroup>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<TransformGizmoGroup>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<PlaneGizmoGroup>()
+        .0
+        .line
+        .width = 6.0 * thickness;
+    gizmo_store
+        .config_mut::<LabelGizmoGroup>()
+        .0
+        .line
+        .width = 1.5 * thickness;
+    gizmo_store
+        .config_mut::<SlotTransformGroup0>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotPlaneGroup0>()
+        .0
+        .line
+        .width = 6.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotTransformGroup1>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotPlaneGroup1>()
+        .0
+        .line
+        .width = 6.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotTransformGroup2>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotPlaneGroup2>()
+        .0
+        .line
+        .width = 6.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotTransformGroup3>()
+        .0
+        .line
+        .width = 3.0 * thickness;
+    gizmo_store
+        .config_mut::<SlotPlaneGroup3>()
+        .0
+        .line
+        .width = 6.0 * thickness;
 }
 
 fn draw_line_gizmos(

@@ -2488,6 +2488,16 @@ fn tab_viewport(
         |w, &v| w.resource_mut::<ViewportSettings>().gizmo_pivot_bottom = v,
     );
     settings_row(commands, fonts, body, 8, &tr("settings.row.gizmo_pivot_bottom"), t);
+
+    // Multiplier on the line width of every transform-gizmo line
+    // (translate arrows, rotate rings, scale cubes). Live-applied each
+    // frame in `renzora_gizmo::update_gizmo_thickness`.
+    let dv = ctl_drag(
+        commands, fonts, vp.gizmo_thickness, 0.5, 2.5, 0.1,
+        |w| w.resource::<ViewportSettings>().gizmo_thickness,
+        |w, &v| w.resource_mut::<ViewportSettings>().gizmo_thickness = v.clamp(0.5, 2.5),
+    );
+    settings_row(commands, fonts, body, 9, &tr("settings.row.gizmo_thickness"), dv);
     note_row(commands, fonts, body, &tr("settings.hint.gizmo_pivot_bottom"));
 
     // Edit-mode overlay tuning (vertex dots). Pixel sizes match Blender's

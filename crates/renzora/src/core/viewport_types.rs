@@ -935,6 +935,10 @@ pub struct ViewportSettings {
     /// `true` to allow through-selection (current Blender "X-Ray" toggle).
     /// Settings → Viewport → Mesh Edit.
     pub mesh_edit_xray_select: bool,
+    /// Multiplier on the line width of every transform-gizmo line
+    /// (translate arrows, rotate rings, scale cubes). Default `1.0` =
+    /// unchanged. Range 0.5–2.5. Settings → Viewport.
+    pub gizmo_thickness: f32,
 }
 
 impl Default for ViewportSettings {
@@ -986,6 +990,9 @@ impl Default for ViewportSettings {
             // want through-selection can flip the toggle in
             // Settings → Viewport → Mesh Edit.
             mesh_edit_xray_select: false,
+            // Default thickness multiplier: 1.0 = unchanged gizmo line
+            // widths. Settings → Viewport has the slider.
+            gizmo_thickness: default_gizmo_thickness(),
         }
     }
 }
@@ -1141,6 +1148,11 @@ pub struct PersistedViewportSettings {
     /// field existed → `false` (depth-tested, the safer behaviour).
     #[serde(default)]
     pub mesh_edit_xray_select: bool,
+    /// Multiplier on the line width of every transform-gizmo line.
+    /// Missing in configs from before this field existed → `1.0`
+    /// (unchanged from the previous default).
+    #[serde(default = "default_gizmo_thickness")]
+    pub gizmo_thickness: f32,
 }
 
 impl PersistedViewportSettings {
@@ -1212,6 +1224,7 @@ impl PersistedViewportSettings {
             mesh_edit_vert_size: s.mesh_edit_vert_size,
             mesh_edit_vert_size_selected: s.mesh_edit_vert_size_selected,
             mesh_edit_xray_select: s.mesh_edit_xray_select,
+            gizmo_thickness: s.gizmo_thickness,
         }
     }
 
@@ -1296,6 +1309,7 @@ impl PersistedViewportSettings {
         s.mesh_edit_vert_size = self.mesh_edit_vert_size;
         s.mesh_edit_vert_size_selected = self.mesh_edit_vert_size_selected;
         s.mesh_edit_xray_select = self.mesh_edit_xray_select;
+        s.gizmo_thickness = self.gizmo_thickness;
     }
 }
 
@@ -1349,6 +1363,11 @@ fn default_vert_size() -> u8 {
 /// don't carry a crease weight).
 fn default_vert_size_selected() -> u8 {
     5
+}
+
+/// Default line-width multiplier for the transform-gizmo lines.
+fn default_gizmo_thickness() -> f32 {
+    1.0
 }
 
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
@@ -1456,6 +1475,8 @@ mod tests {
             mesh_edit_vert_size_selected: 9,
             // Non-default (default is false) so the round-trip exercises it.
             mesh_edit_xray_select: true,
+            // Non-default (default is 1.0) so the round-trip exercises it.
+            gizmo_thickness: 1.7,
         }
     }
 
@@ -1518,6 +1539,7 @@ mod tests {
             original.mesh_edit_xray_select,
             restored.mesh_edit_xray_select
         );
+        assert_eq!(original.gizmo_thickness, restored.gizmo_thickness);
     }
 
     #[test]
