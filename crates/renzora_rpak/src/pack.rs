@@ -321,11 +321,17 @@ where
                 if visited.insert(actual_key.clone()) {
                     let _ = packer.add_from_disk(project_dir, &disk_path);
                     on_packed(&actual_key);
-                    // Compiled material `.wgsl` files travel with a
-                    // `<path>.meta` sidecar that holds texture bindings,
+                    // Legacy compiled-material `.wgsl` files travel with a
+                    // `<path>.meta` sidecar holding texture bindings,
                     // parameters, alpha mode, etc. The .wgsl itself contains
                     // no quoted asset paths, so the BFS would otherwise
                     // never reach the meta. Pack it here.
+                    //
+                    // Current materials embed their shader in the `.material`
+                    // and emit no `.wgsl`, so this finds nothing for them. It
+                    // stays because a project can be exported without its
+                    // materials ever being re-saved, and stripping the sidecar
+                    // would ship those unrenderable.
                     if actual_key.ends_with(".wgsl") {
                         let meta_key = format!("{}.meta", actual_key);
                         if !visited.contains(&meta_key) {

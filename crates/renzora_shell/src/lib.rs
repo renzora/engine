@@ -7763,10 +7763,15 @@ fn build_menu_items(
             }),
             menu_sep(commands),
             // Same request the asset panel's Import button fires; renzora_import_ui
-            // picks it up and opens the file picker / import overlay. No
-            // ImportTargetDir here, so files land in the importer's default folder.
-            menu_item(commands, fonts, "download-simple", &renzora::lang::t("menu.file.import_assets"), |w| {
-                w.insert_resource(renzora::core::ImportRequested);
+            // picks it up and opens the matching picker, then the import overlay.
+            // No ImportTargetDir here, so assets land in the importer's default
+            // folder. Two rows because no OS dialog picks files and folders at
+            // once — see `renzora::core::ImportPick`.
+            menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| {
+                w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
+            }),
+            menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| {
+                w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
             }),
             menu_sep(commands),
             menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| {

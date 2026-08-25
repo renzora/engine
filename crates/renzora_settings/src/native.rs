@@ -14,8 +14,7 @@ use renzora::{
     WindowMode,
 };
 use renzora_editor_framework::{
-    EditorSettings, InspectorComponentFilterStyle, InspectorExpandDefault, MonoFont,
-    SelectionGranularity, SettingsTab, UiFont,
+    EditorSettings, InspectorExpandDefault, MonoFont, SelectionGranularity, SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -1926,39 +1925,13 @@ fn tab_interface(
     settings_row(commands, fonts, body, 0, &tr("settings.row.default_expand"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.default_expand"));
 
-    let filter_strs: Vec<String> = InspectorComponentFilterStyle::ALL
-        .iter()
-        .map(|m| loc_opt(m.label()))
-        .collect();
-    let filter_labels: Vec<&str> = filter_strs.iter().map(|s| s.as_str()).collect();
-    let dd = ctl_dropdown(
-        commands,
-        fonts,
-        &filter_labels,
-        inspector_filter_style_index(settings.inspector_component_filter_style),
-        |w| {
-            inspector_filter_style_index(
-                w.resource::<EditorSettings>().inspector_component_filter_style,
-            )
-        },
-        |w, &i| {
-            w.resource_mut::<EditorSettings>().inspector_component_filter_style =
-                InspectorComponentFilterStyle::ALL
-                    .get(i)
-                    .copied()
-                    .unwrap_or_default();
-        },
-    );
-    settings_row(commands, fonts, body, 1, &tr("settings.row.component_filter"), dd);
-    note_row(commands, fonts, body, &tr("settings.hint.component_filter"));
-
     let t = ctl_toggle(
         commands,
         settings.drag_value_rail_sweep,
         |w| w.resource::<EditorSettings>().drag_value_rail_sweep,
         |w, &v| w.resource_mut::<EditorSettings>().drag_value_rail_sweep = v,
     );
-    settings_row(commands, fonts, body, 2, &tr("settings.row.rail_sweep"), t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.rail_sweep"), t);
     note_row(commands, fonts, body, &tr("settings.hint.rail_sweep"));
 
     // UI Workspace — one toggle, so it lives here as a section of Interface
@@ -1995,13 +1968,6 @@ fn tab_interface(
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.doc_tabs"), dd);
-}
-
-fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {
-    InspectorComponentFilterStyle::ALL
-        .iter()
-        .position(|m| *m == v)
-        .unwrap_or(0)
 }
 
 fn inspector_expand_index(v: InspectorExpandDefault) -> usize {

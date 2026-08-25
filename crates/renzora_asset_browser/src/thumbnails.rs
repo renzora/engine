@@ -370,6 +370,203 @@ impl ThumbnailCache {
     }
 }
 
+// ============================================================================
+// Folder previews
+// ============================================================================
+
+/// How many images a folder tile's mosaic shows. Four fills a 2×2 grid; more
+/// than that is unreadable at a 96 px tile.
+pub const FOLDER_PREVIEW_MAX: usize = 4;
+
+/// Ceiling on directory entries examined per folder scan. A texture library can
+/// hold thousands of files, and the mosaic only needs the first handful — this
+/// stops a scan from walking the whole tree to find images it won't show.
+const FOLDER_SCAN_BUDGET: usize = 512;
+
+/// How far below a folder the scan looks. Assets are usually one or two levels
+/// down (`textures/wood/`, `characters/hero/`), so a folder holding only
+/// subfolders still gets a mosaic instead of a bare glyph.
+const FOLDER_SCAN_DEPTH: usize = 2;
+
+/// Folders scanned per frame. Navigating into a directory of 50 subfolders
+/// would otherwise do 50 recursive walks in the frame the tiles appear.
+const FOLDER_SCANS_PER_FRAME: usize = 4;
+
+/// How long a folder's scan is trusted before a visible tile rescans it. The
+/// safety net for images added by another tool, mirroring the listing's own
+/// slow rescan — but far lazier, because a scan walks subdirectories.
+const FOLDER_PREVIEW_TTL: f32 = 5.0;
+
+/// The images each folder shows in its tile, so the browser previews a folder's
+/// contents instead of drawing the same glyph on all of them.
+///
+/// Cached rather than read per frame: the mosaic is built from a recursive walk,
+/// which is far too expensive to repeat for every visible folder every frame.
+#[derive(Resource, Default)]
+pub struct FolderPreviews {
+    /// Folder → (up to [`FOLDER_PREVIEW_MAX`] image paths, when it was scanned).
+    /// An empty vec means "scanned, no images" — the miss is cached too.
+    entries: HashMap<PathBuf, (std::sync::Arc<Vec<PathBuf>>, f32)>,
+    /// Bumped only when a scan actually changes a folder's images. The grid's
+    /// dirty token folds this in, which is what makes tiles rebuild once their
+    /// scan lands — without it the mosaic would sit invisible until something
+    /// unrelated (a click, a resize) happened to re-snapshot the grid.
+    version: u64,
+}
+
+impl FolderPreviews {
+    /// The images to draw in `folder`'s tile. `None` until the scan lands.
+    pub fn images(&self, folder: &PathBuf) -> Option<std::sync::Arc<Vec<PathBuf>>> {
+        self.entries.get(folder).map(|(paths, _)| paths.clone())
+    }
+
+    /// Changes whenever any folder's images change. See [`FolderPreviews::version`]'s field docs.
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+}
+
+/// Walks the folders that currently have a tile on screen and records which
+/// images each should show. Budgeted per frame, and each folder is re-walked at
+/// most once per [`FOLDER_PREVIEW_TTL`].
+pub(crate) fn scan_folder_previews(
+    time: Res<Time>,
+    tiles: Query<&crate::native::AssetTile>,
+    mut previews: ResMut<FolderPreviews>,
+) {
+    let now = time.elapsed_secs();
+    let mut budget = FOLDER_SCANS_PER_FRAME;
+    for tile in &tiles {
+        if budget == 0 {
+            break;
+        }
+        if !tile.is_dir {
+            continue;
+        }
+        let fresh = previews
+            .entries
+            .get(&tile.path)
+            .is_some_and(|(_, at)| now - *at < FOLDER_PREVIEW_TTL);
+        if fresh {
+            continue;
+        }
+        let found = collect_folder_preview(&tile.path);
+        budget -= 1;
+        // An unchanged rescan only restamps the clock. Replacing the entry would
+        // bump `version` and re-hash the whole grid every few seconds for a
+        // picture that didn't change.
+        if previews
+            .entries
+            .get(&tile.path)
+            .is_some_and(|(paths, _)| **paths == found)
+        {
+            if let Some(slot) = previews.entries.get_mut(&tile.path) {
+                slot.1 = now;
+            }
+            continue;
+        }
+        previews
+            .entries
+            .insert(tile.path.clone(), (std::sync::Arc::new(found), now));
+        previews.version = previews.version.wrapping_add(1);
+    }
+}
+
+/// The first [`FOLDER_PREVIEW_MAX`] images at or below `root`, breadth-first so
+/// a folder's own images win over a subfolder's.
+///
+/// Each directory's entries are sorted by name before being taken. Filesystem
+/// order isn't guaranteed stable, and an unstable result would rewrite the
+/// tile's rebuild key on every rescan — the mosaic would visibly reshuffle
+/// every few seconds.
+#[cfg(not(target_arch = "wasm32"))]
+fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut queue: std::collections::VecDeque<(PathBuf, usize)> = std::collections::VecDeque::new();
+    queue.push_back((root.to_path_buf(), 0));
+    let mut budget = FOLDER_SCAN_BUDGET;
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut images: Vec<PathBuf> = Vec::new();
+        let mut subdirs: Vec<PathBuf> = Vec::new();
+        for e in rd.flatten() {
+            if budget == 0 {
+                break;
+            }
+            budget -= 1;
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            match e.file_type() {
+                Ok(ft) if ft.is_dir() => {
+                    if depth < FOLDER_SCAN_DEPTH {
+                        subdirs.push(e.path());
+                    }
+                }
+                Ok(_) if supports_thumbnail(&name) => images.push(e.path()),
+                _ => {}
+            }
+        }
+        images.sort();
+        subdirs.sort();
+        for image in images {
+            found.push(image);
+            if found.len() >= FOLDER_PREVIEW_MAX {
+                return found;
+            }
+        }
+        if budget == 0 {
+            break;
+        }
+        queue.extend(subdirs.into_iter().map(|d| (d, depth + 1)));
+    }
+    found
+}
+
+/// Web: the browser's directory handle answers from a cache, and a miss returns
+/// nothing rather than blocking. A folder whose subdirectories haven't been
+/// read yet simply gets its images on a later rescan.
+#[cfg(target_arch = "wasm32")]
+fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut queue: std::collections::VecDeque<(PathBuf, usize)> = std::collections::VecDeque::new();
+    queue.push_back((root.to_path_buf(), 0));
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        let Some(list) = renzora_webfs::list_dir(&dir) else {
+            continue;
+        };
+        let mut images: Vec<PathBuf> = Vec::new();
+        let mut subdirs: Vec<PathBuf> = Vec::new();
+        for e in list {
+            if e.name.starts_with('.') {
+                continue;
+            }
+            if e.is_dir {
+                if depth < FOLDER_SCAN_DEPTH {
+                    subdirs.push(dir.join(&e.name));
+                }
+            } else if supports_thumbnail(&e.name) {
+                images.push(dir.join(&e.name));
+            }
+        }
+        images.sort();
+        subdirs.sort();
+        for image in images {
+            found.push(image);
+            if found.len() >= FOLDER_PREVIEW_MAX {
+                return found;
+            }
+        }
+        queue.extend(subdirs.into_iter().map(|d| (d, depth + 1)));
+    }
+    found
+}
+
 /// Returns `true` if the file extension is a supported image thumbnail format.
 /// EXR is excluded — Bevy's EXR loader doesn't support all compression methods
 /// or single-channel layouts, which causes errors on common PBR texture sets.
@@ -386,6 +583,15 @@ pub fn supports_thumbnail(filename: &str) -> bool {
 pub fn supports_material_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     ext == "material"
+}
+
+/// Returns `true` if the file may have a scene thumbnail — a viewport snapshot
+/// a previous save left in the thumbnail cache. Unlike the other kinds this is
+/// only a *maybe*: nothing renders one on demand, so a scene that has never
+/// been saved from this editor simply keeps its type glyph.
+pub fn supports_scene_thumbnail(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "bsn" | "ron")
 }
 
 /// Returns `true` if the file has a rendered thumbnail available through
@@ -460,5 +666,57 @@ pub fn update_thumbnail_cache(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod folder_preview_tests {
+    use super::*;
+
+    /// The scan finds a folder's own images, and finds images in a subfolder
+    /// when the folder itself holds none.
+    #[test]
+    fn scan_walks_into_subfolders() {
+        let root = std::env::temp_dir().join("renzora_folder_preview_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        for n in ["a.png", "b.jpg"] {
+            std::fs::write(root.join("nested").join(n), b"x").unwrap();
+        }
+        std::fs::write(root.join("readme.txt"), b"x").unwrap();
+
+        let found = collect_folder_preview(&root);
+        assert_eq!(found.len(), 2, "expected the nested images, got {found:?}");
+
+        std::fs::write(root.join("top.png"), b"x").unwrap();
+        let found = collect_folder_preview(&root);
+        assert_eq!(found.first().unwrap().file_name().unwrap(), "top.png");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The system, run in an app, populates the registry for a folder tile.
+    #[test]
+    fn system_populates_registry() {
+        let root = std::env::temp_dir().join("renzora_folder_preview_sys_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.png"), b"x").unwrap();
+
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<FolderPreviews>()
+            .add_systems(Update, scan_folder_previews);
+        app.world_mut().spawn(crate::native::AssetTile {
+            path: root.clone(),
+            is_dir: true,
+        });
+        app.update();
+
+        let previews = app.world().resource::<FolderPreviews>();
+        let images = previews.images(&root).expect("folder was never scanned");
+        assert_eq!(images.len(), 1, "got {images:?}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

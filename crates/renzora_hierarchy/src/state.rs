@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 use renzora_editor_framework::{
-    ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter,
-    HierarchyOrder,
+    ComponentIconRegistry, EditorLocked, EntityIcon, EntityLabelColor, HideInHierarchy,
+    HierarchyFilter, HierarchyOrder,
 };
 
 /// A node in the entity tree, built from ECS data. Cached in
@@ -447,13 +447,22 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
 
 /// Detect an icon and color for an entity using the `ComponentIconRegistry`.
 /// Falls back to a generic circle icon if no match is found.
+///
+/// An [`EntityIcon`] override replaces the *glyph* only — the colour keeps
+/// coming from the registry, so an overridden light still reads as a light in
+/// the tree's colour language and the override says what kind of one it is.
 fn entity_icon(world: &World, entity: Entity) -> (&'static str, [u8; 3]) {
-    if let Some(registry) = world.get_resource::<ComponentIconRegistry>() {
-        if let Some((icon, rgb)) = registry.entity_icon(world, entity) {
-            return (icon, rgb);
-        }
+    let (icon, color) = world
+        .get_resource::<ComponentIconRegistry>()
+        .and_then(|registry| registry.entity_icon(world, entity))
+        .unwrap_or(("circle", [150, 150, 165]));
+    match world.get::<EntityIcon>(entity) {
+        // Resolved through the curated table rather than used raw: the icon
+        // name has to outlive the `EntityNode` that carries it, and a name the
+        // font has no glyph for would draw an empty box instead of falling back.
+        Some(o) => (renzora_editor_framework::entity_icon_name(&o.0).unwrap_or(icon), color),
+        None => (icon, color),
     }
-    ("circle", [150, 150, 165])
 }
 
 /// Filter the tree to only include nodes whose name matches the search.

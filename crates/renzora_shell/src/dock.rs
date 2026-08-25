@@ -702,17 +702,21 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Scene workspace: the viewport | one right column, hierarchy/scenes stacked
-/// over the inspector.
+/// Scene workspace: hierarchy/scenes | the viewport | the inspector.
 ///
-/// **One side column, not two.** The hierarchy used to have a full-height
-/// column of its own on the left. Pairing it with the inspector instead follows
-/// how the two are actually used — pick an entity in the tree, edit it in the
-/// panel right below — and hands the width the left column was using to the
-/// viewport, which is the panel that can always spend it. The column is
-/// narrower than the old inspector column for the same reason: neither a name
-/// list nor a stack of labelled fields needs the width, and every pixel it
-/// gives up goes to the viewport.
+/// **The tree gets the left column, not a shelf above the inspector.** For a
+/// while these two shared one right-hand column, tree stacked over inspector, on
+/// the reasoning that you pick an entity and then edit it right below. In use
+/// that mostly meant both panels were short: a scene tree is a *tall* list, and
+/// halving its height costs it more than the narrow column ever gave back, while
+/// the inspector's own content grows with the selection and wants the same
+/// height for itself. They're back to a column each, which is also the shape
+/// every other workspace here already uses — Scripting, Animation and Debug all
+/// lead with a hierarchy column on the left.
+///
+/// Both side columns stay narrow. Neither a list of names nor a stack of
+/// labelled fields needs width, and every pixel they give up goes to the
+/// viewport, which is the panel that can always spend it.
 ///
 /// **No bottom strip, and no `assets`.** Both used to live here: assets as the
 /// lower half of the left column, and console/timeline/mixer/shape_library as a
@@ -723,24 +727,21 @@ fn layout_debug() -> DockTree {
 /// and it would put the global panel's contents inside a workspace, where
 /// "Reset Workspace" would be entitled to overwrite them.
 ///
-/// **The inspector is alone in the lower half.** `gamepad` and `history` used to
-/// be tabbed beside it. Neither is something you keep an eye on while editing —
-/// you open the undo history when you want to step back through it, and the
-/// gamepad panel when you are wiring up input — so as defaults they only cost
-/// the inspector two tab widths and gave a fresh install two tabs it would never
+/// **The inspector is alone in its column.** `gamepad` and `history` used to be
+/// tabbed beside it. Neither is something you keep an eye on while editing — you
+/// open the undo history when you want to step back through it, and the gamepad
+/// panel when you are wiring up input — so as defaults they only cost the
+/// inspector two tab widths and gave a fresh install two tabs it would never
 /// click. Both are still one click away in the panel menu.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
-        // Slightly less than half to the tree: the inspector's content grows
-        // with the selection (a physics body plus a script fills it), while the
-        // hierarchy scrolls at any height.
-        DockTree::vertical(
-            DockTree::tabs(&["hierarchy", "scenes"]),
+        DockTree::tabs(&["hierarchy", "scenes"]),
+        DockTree::horizontal(
+            DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
             DockTree::leaf("inspector"),
-            0.45,
+            0.78,
         ),
-        0.84,
+        0.15,
     )
 }
 

@@ -49,10 +49,11 @@ use renzora::SplashState;
 use renzora_auth::marketplace::AssetSummary;
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
-/// A fresh render layer for the marketplace preview — distinct from the material
-/// preview (8), studio preview (10), and the asset-browser thumbnail captures
-/// (7/8) so none of them can see each other's content.
-const MODEL_VIEWER_LAYER: usize = 13;
+/// This viewer's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — that registry is what keeps it
+/// distinct from the previews and thumbnail captures that would otherwise
+/// render their contents into the marketplace preview.
+use renzora::core::viewport_types::MODEL_VIEWER_LAYER;
 
 /// Offscreen render-target resolution. 16:9 to match the overlay's landscape
 /// header viewer; 640×360 is crisp at the ~600px card width with HiDPI headroom.

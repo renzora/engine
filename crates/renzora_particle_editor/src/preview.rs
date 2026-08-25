@@ -22,7 +22,9 @@ use renzora_hanabi::{
 };
 use bevy_hanabi::EffectMaterial;
 
-pub const PARTICLE_PREVIEW_LAYER: usize = 7;
+/// This preview's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+pub use renzora::core::viewport_types::PARTICLE_PREVIEW_LAYER;
 
 #[derive(Resource)]
 pub struct ParticlePreviewImage {

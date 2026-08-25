@@ -310,8 +310,13 @@ fn collect_items(
         ("Export Project...", |w| {
             w.insert_resource(renzora::core::ExportRequested);
         }),
-        ("File: Import...", |w| {
-            w.insert_resource(renzora::core::ImportRequested);
+        // Two entries, not one: the importer needs to know which OS dialog to
+        // open, because none of them selects files and folders together.
+        ("File: Import Files...", |w| {
+            w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
+        }),
+        ("File: Import Folder...", |w| {
+            w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
         }),
         ("Help: Getting Started Tutorial", |w| {
             w.insert_resource(renzora::core::TutorialRequested);

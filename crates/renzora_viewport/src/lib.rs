@@ -95,7 +95,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<bevy::winit::WinitSettings>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastToggleState>()
-            .init_resource::<render_systems::DefaultCheckerTexture>()
+            .init_resource::<render_systems::DefaultGridTexture>()
             // Per-material-type viz-swap state (one of each per registered type).
             .init_resource::<render_systems::LastVizState<StandardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<StandardMaterial>>()

@@ -286,7 +286,7 @@ pub fn update_shape_drag_preview(
     mut drag_state: ResMut<ShapeDragState>,
     registry: Res<ShapeRegistry>,
     settings: Option<Res<ViewportSettings>>,
-    checker: Option<Res<renzora::core::CheckerTexture>>,
+    grid: Option<Res<renzora::core::GridTexture>>,
     mut preview_state: ResMut<ShapeDragPreviewState>,
     mut transform_query: Query<&mut Transform, With<ShapeDragPreview>>,
     visibility_query: Query<&Visibility, With<ShapeDragPreview>>,
@@ -342,13 +342,14 @@ pub fn update_shape_drag_preview(
                 return;
             };
 
-            // Match the checker the committed spawn will get so the preview
-            // doesn't visibly "change material" on drop.
-            let material = materials.add(StandardMaterial {
-                base_color: Color::srgb(0.8, 0.7, 0.6),
-                base_color_texture: checker.as_ref().map(|c| c.0.clone()),
-                ..default()
-            });
+            // Match the material the committed spawn will get so the preview
+            // doesn't visibly "change material" on drop — which meant matching
+            // its tint too: this used to hardcode a tan, so every ghost was a
+            // different color from the shape that landed.
+            let material = materials.add(renzora_engine::blockout::blockout_material(
+                entry.default_color,
+                grid.as_deref(),
+            ));
 
             let entity = commands
                 .spawn((

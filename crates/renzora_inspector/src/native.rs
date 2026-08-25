@@ -34,16 +34,15 @@ use bevy::ui::{ComputedNode, FocusPolicy, ScrollPosition, UiGlobalTransform};
 
 use renzora_editor_framework::{
     EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue,
-    InspectorComponentFilterStyle, InspectorExpandDefault, InspectorRegistry, NativeInspectorDrawer,
-    NativeInspectorRegistry,
+    InspectorExpandDefault, InspectorRegistry, NativeInspectorDrawer, NativeInspectorRegistry,
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown, dropdown_with_icons, scroll_view, set_section_open,
-    text_input, toggle_switch, DragRange, EmberTextInput, Section,
+    bind_text_input, drag_value, dropdown, scroll_view, set_section_open, text_input,
+    toggle_switch, DragRange, EmberTextInput, Section,
 };
 use renzora_theme::ThemeManager;
 
@@ -53,8 +52,8 @@ use renzora_theme::ThemeManager;
 // by a type path + field path known only at runtime — there is no `fn` pointer
 // that can carry those. `Arc<dyn Fn>` is `Clone + Send + Sync + 'static`, so it
 // still lives in the widget marker Components that drive the edit handlers.
-type GetFn = std::sync::Arc<dyn Fn(&World, Entity) -> Option<FieldValue> + Send + Sync>;
-type SetFn = std::sync::Arc<dyn Fn(&mut World, Entity, FieldValue) + Send + Sync>;
+pub(crate) type GetFn = std::sync::Arc<dyn Fn(&World, Entity) -> Option<FieldValue> + Send + Sync>;
+pub(crate) type SetFn = std::sync::Arc<dyn Fn(&mut World, Entity, FieldValue) + Send + Sync>;
 // Boxed for the same reason as `GetFn`/`SetFn` above: a generated section's
 // remove/enable actions are parameterised by a runtime type path.
 type Pred = std::sync::Arc<dyn Fn(&World, Entity) -> bool + Send + Sync>;
@@ -70,7 +69,7 @@ type SetEnabled = std::sync::Arc<dyn Fn(&mut World, Entity, bool) + Send + Sync>
 /// Consecutive edits of the *same* field merge into one step (see
 /// `FieldChangeCmd::merge`), so a drag-scrub that fires this every frame is a
 /// single undo entry; `renzora_undo`'s gesture seal splits separate gestures.
-fn record_field_change(
+pub(crate) fn record_field_change(
     w: &mut World,
     entity: Entity,
     name: &'static str,
@@ -94,7 +93,7 @@ fn record_field_change(
 }
 
 
-fn c(rgb: (u8, u8, u8)) -> Color {
+pub(crate) fn c(rgb: (u8, u8, u8)) -> Color {
     Color::srgb_u8(rgb.0, rgb.1, rgb.2)
 }
 
@@ -230,14 +229,11 @@ struct InspectorRoot;
 struct InspectorFilter;
 
 #[derive(Resource, Default)]
-struct NativeInspectorState {
+pub(crate) struct NativeInspectorState {
     sig: Option<u64>,
-    locked: Option<Entity>,
+    pub(crate) locked: Option<Entity>,
     /// Lowercased component-name filter (empty = show all).
     filter: String,
-    /// Exact component display-name picked from the left component menu
-    /// (`None` = show all components). ANDed with `filter`.
-    selected: Option<String>,
 }
 
 /// Marks the inspector's expand/collapse-all button in the top bar.
@@ -269,16 +265,18 @@ struct InspectorSectionHeader {
 
 /// Should a section start expanded under `policy`, ignoring any remembered state?
 ///
-/// Keyed on `type_id`, not the display name — the two are easy to confuse (the
-/// "ID" section's `type_id` is `"name"`), and matching on the localized-adjacent
-/// display string would silently stop working if a label were reworded. Shared by
+/// Keyed on `type_id`, not the display name — the two are easy to confuse (a
+/// section's title is localized at render time), and matching on the display
+/// string would silently stop working if a label were reworded. Shared by
 /// `collect_sections` and `apply_expand_policy_change` so the two can never drift.
 fn policy_open(policy: InspectorExpandDefault, type_id: &str) -> bool {
     match policy {
         InspectorExpandDefault::AllOpen => true,
         InspectorExpandDefault::AllClosed => false,
+        // No `name` here any more: the entity id is in the fixed header, which
+        // is always visible and has nothing to expand.
         InspectorExpandDefault::Essentials => {
-            matches!(type_id, "name" | "transform" | "script_component")
+            matches!(type_id, "transform" | "script_component")
         }
     }
 }
@@ -296,34 +294,6 @@ fn policy_open(policy: InspectorExpandDefault, type_id: &str) -> bool {
 /// toggles.
 #[derive(Resource, Default)]
 struct InspectorSectionsOpen(std::collections::HashMap<&'static str, bool>);
-
-/// Stable host for the vertical component menu down the left of the inspector.
-/// `rebuild_inspector` despawns this host's children and rebuilds one icon button
-/// per component (plus an "All" entry) whenever the component set changes.
-#[derive(Component)]
-struct ComponentMenuHost;
-
-/// A single button in the left-side component menu. `name` is the component's
-/// display name to filter to, or `None` for the "All components" entry.
-#[derive(Component)]
-struct ComponentMenuButton {
-    name: Option<String>,
-}
-
-/// Stable host for the top-bar component-filter dropdown (the alternative to the
-/// vertical menu, chosen via `inspector_component_filter_style`). Rebuilt in
-/// place by `rebuild_inspector`; shown only in `Dropdown` mode.
-#[derive(Component)]
-struct FilterDropdownHost;
-
-/// The user's chosen component-filter presentation (defaults to the vertical
-/// menu if settings aren't available yet).
-fn filter_style(world: &Rx) -> InspectorComponentFilterStyle {
-    world
-        .get_resource::<EditorSettings>()
-        .map(|s| s.inspector_component_filter_style)
-        .unwrap_or_default()
-}
 
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
@@ -345,30 +315,29 @@ pub fn register_native_inspector(app: &mut App) {
     // they exist whichever crate loads first (and stay default when it's absent).
     app.init_resource::<renzora::ActiveTimeline>();
     app.init_resource::<renzora::KeyframeRequests>();
-    // `scroll: false` — we manage scrolling ourselves so the top bar (filter
-    // input + expand-all) and the Add Component row beneath it stay *fixed* while
-    // only the component list scrolls.
+    // `scroll: false` — we manage scrolling ourselves so the top bar (Add
+    // Component + filter input + expand-all) stays *fixed* while only the
+    // component list scrolls.
     app.register_panel_content("inspector", false, |commands, fonts| {
-        // Outer row: the vertical component menu down the left + the main column
-        // (top bar, add row, scrolling list) on the right.
+        // One column: fixed top bar, fixed entity header, scrolling list.
         let root = commands
             .spawn((
                 Node {
                     width: Val::Percent(100.0),
                     flex_grow: 1.0,
+                    min_width: Val::Px(0.0),
                     min_height: Val::Px(0.0),
-                    flex_direction: FlexDirection::Row,
+                    flex_direction: FlexDirection::Column,
                     ..default()
                 },
                 Name::new("inspector-panel"),
             ))
             .id();
-        // Left rail: vertical component menu (rebuilt by `rebuild_inspector`).
-        let menu = build_component_menu_host(commands);
-        // Fixed top bar: component-filter input + expand-all.
+        // Fixed top bar: Add Component + component-filter input + expand-all.
         let top = build_top_bar(commands, fonts);
-        // Fixed Add Component row, pinned directly under the top bar.
-        let add_row = build_add_row(commands, fonts);
+        // Fixed entity header (icon · id · label colour · visibility · lock),
+        // sitting directly on top of the component list it identifies.
+        let entity_header = crate::entity_header::build_entity_header_host(commands);
         // Scrolling component list (`InspectorRoot` is despawned/repopulated by
         // `rebuild_inspector`; the bars around it are stable).
         let content = commands
@@ -388,20 +357,9 @@ pub fn register_native_inspector(app: &mut App) {
             ))
             .id();
         let scroll = scroll_view(commands, content);
-        let main = commands
-            .spawn((
-                Node {
-                    flex_grow: 1.0,
-                    min_width: Val::Px(0.0),
-                    min_height: Val::Px(0.0),
-                    flex_direction: FlexDirection::Column,
-                    ..default()
-                },
-                Name::new("inspector-main"),
-            ))
-            .id();
-        commands.entity(main).add_children(&[top, add_row, scroll]);
-        commands.entity(root).add_children(&[menu, main]);
+        commands
+            .entity(root)
+            .add_children(&[top, entity_header, scroll]);
         root
     });
     app.add_systems(
@@ -413,12 +371,18 @@ pub fn register_native_inspector(app: &mut App) {
             reset_click,
             add_keyframe_click,
             lock_click,
+            // Deliberately unordered against `screen_menu_dismiss`: an ordering
+            // edge inserts an `ApplyDeferred` before dismiss, which flushes the
+            // menu this system just queued and lets dismiss despawn it on the
+            // frame it appeared — that once broke every right-click menu in the
+            // editor. Dismiss skips freshly-added menus on its own.
+            crate::entity_header::entity_icon_menu_open,
+            crate::entity_header::entity_visibility_click,
             asset_drop,
             asset_clear_click,
             asset_create_click,
             asset_drop_highlight,
             inspector_filter_sync,
-            component_menu_click,
             expand_all_click,
             sync_expand_glyph,
             stripe_collapsed_headers,
@@ -597,50 +561,15 @@ fn category_rgb(theme: &renzora_theme::Theme, category: &str) -> ((u8, u8, u8), 
 // ── Component filter ─────────────────────────────────────────────────────────
 
 /// The entity the inspector is showing (the lock wins over the live selection).
-fn inspected_entity(w: &Rx) -> Option<Entity> {
+pub(crate) fn inspected_entity(w: &Rx) -> Option<Entity> {
     let locked = w.get_resource::<NativeInspectorState>().and_then(|s| s.locked);
     locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
 }
 
-/// `(display_name, icon, category)` for every registered component currently on
-/// `entity`, in registry order — the source list for the filter dropdown and the
-/// vertical menu (matches the set of sections `collect_sections` would show with
-/// no filter). The category rides along so the menu can tint each button the same
-/// way that component's section header is tinted.
-fn present_components(
-    world: &Rx,
-    entity: Entity,
-) -> Vec<(&'static str, &'static str, &'static str)> {
-    let Some(reg) = world.get_resource::<InspectorRegistry>() else {
-        return Vec::new();
-    };
-    reg.iter()
-        .filter(|e| (e.has_fn)(world.untracked(), entity))
-        .map(|e| (e.display_name, e.icon, e.category))
-        .collect()
-}
-
-/// The fixed top bar: the component-filter dropdown (shown only in `Dropdown`
-/// mode) + the component-filter text input + the expand/collapse-all toggle. (In
-/// `VerticalMenu` mode the component menu lives in the left rail; the Add
-/// Component button is in the row directly below.) Hidden when nothing is selected.
+/// The fixed top bar: the Add Component button + the component-filter text input
+/// + the expand/collapse-all toggle. Hidden when nothing is selected.
 fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    // Stable host for the dropdown; populated by `rebuild_inspector` and shown
-    // only when the user picked the `Dropdown` filter style.
-    let dropdown_host = commands
-        .spawn((
-            Node {
-                flex_shrink: 0.0,
-                ..default()
-            },
-            FilterDropdownHost,
-            Name::new("filter-dropdown-host"),
-        ))
-        .id();
-    bind_display(commands, dropdown_host, |w| {
-        inspected_entity(w).is_some()
-            && filter_style(w) == InspectorComponentFilterStyle::Dropdown
-    });
+    let add_btn = add_bar(commands, fonts);
     let input = text_input(commands, &fonts.ui, &renzora::lang::t("inspector.filter_placeholder"), "");
     commands.entity(input).insert((
         InspectorFilter,
@@ -700,215 +629,7 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("inspector-top-bar"),
         ))
         .id();
-    commands.entity(bar).add_children(&[dropdown_host, input, expand_btn]);
-    bind_display(commands, bar, |w| inspected_entity(w).is_some());
-    bar
-}
-
-/// Stable host for the left-side vertical component menu. `rebuild_inspector`
-/// repopulates it with one icon button per component whenever the set changes.
-/// Hidden when nothing is selected.
-fn build_component_menu_host(commands: &mut Commands) -> Entity {
-    let host = commands
-        .spawn((
-            Node {
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                // The rail stretches the panel's full height, so centre the
-                // stack in it rather than letting it hang off the top bar.
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                ..default()
-            },
-            // No fill: the rail dissolves into the inspector panel, so the only
-            // things that read are the category-tinted glyphs and the single
-            // filled pill marking the active component.
-            BackgroundColor(Color::NONE),
-            ComponentMenuHost,
-            Name::new("inspector-component-menu"),
-        ))
-        .id();
-    bind_display(commands, host, |w| {
-        inspected_entity(w).is_some()
-            && filter_style(w) == InspectorComponentFilterStyle::VerticalMenu
-    });
-    host
-}
-
-/// Build the ember `dropdown` filtering the inspector by component, from the
-/// `present` components (display names). Index 0 is "All components"; selecting
-/// it clears the filter. Two-way bound to `NativeInspectorState::selected`.
-fn build_filter_dropdown(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    present: &[(&'static str, &'static str, &'static str)],
-    selected: &Option<String>,
-) -> Entity {
-    // Options: "All components" + one per present component, each with its icon.
-    let filter_all = renzora::lang::t("inspector.filter_all");
-    let names: Vec<&str> = present.iter().map(|(n, _, _)| *n).collect();
-    let mut options: Vec<(&str, &str)> = Vec::with_capacity(present.len() + 1);
-    options.push(("list", filter_all.as_str()));
-    options.extend(present.iter().map(|(name, icon, _)| (*icon, *name)));
-
-    let init = selected
-        .as_deref()
-        .and_then(|s| names.iter().position(|n| *n == s).map(|i| i + 1))
-        .unwrap_or(0);
-
-    let dd = dropdown_with_icons(commands, fonts, &options, init);
-    // Size to the selected label (caps at max_width, where the label truncates),
-    // instead of the widget's fixed 140px min-width.
-    commands.entity(dd).insert(Node {
-        max_width: Val::Px(190.0),
-        flex_direction: FlexDirection::Row,
-        align_items: AlignItems::Center,
-        column_gap: Val::Px(6.0),
-        padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-        border_radius: BorderRadius::all(Val::Px(4.0)),
-        position_type: PositionType::Relative,
-        ..default()
-    });
-
-    // index ↔ selected display-name (index 0 ⇒ None).
-    let names_get: Vec<String> = names.iter().map(|s| s.to_string()).collect();
-    let names_set = names_get.clone();
-    bind_2way(
-        commands,
-        dd,
-        move |w| {
-            w.get_resource::<NativeInspectorState>()
-                .and_then(|s| s.selected.clone())
-                .and_then(|s| names_get.iter().position(|n| *n == s).map(|i| i + 1))
-                .unwrap_or(0)
-        },
-        move |w, idx: &usize| {
-            let sel = if *idx == 0 {
-                None
-            } else {
-                names_set.get(*idx - 1).cloned()
-            };
-            if let Some(mut st) = w.get_resource_mut::<NativeInspectorState>() {
-                if st.selected != sel {
-                    st.selected = sel;
-                }
-            }
-        },
-    );
-    dd
-}
-
-/// Build the vertical component menu's buttons: an "All" entry (clears the
-/// filter) followed by one icon button per present component. Clicking a button
-/// filters the inspector to that component; the active one is highlighted. Each
-/// carries `ComponentMenuButton` so `component_menu_click` can toggle the filter.
-///
-/// `colors` is the per-component `(accent, header_bg)` pair from
-/// [`category_rgb`], parallel to `present` — the rail can't read the theme
-/// itself because the caller holds `Commands` (and so a `&mut World`) while
-/// building. Tinting each button by category makes the rail readable at a glance
-/// and matches the header colour of the section it filters to.
-fn build_component_menu(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    present: &[(&'static str, &'static str, &'static str)],
-    colors: &[((u8, u8, u8), (u8, u8, u8))],
-    selected: &Option<String>,
-) -> Vec<Entity> {
-    let mut out = Vec::with_capacity(present.len() + 1);
-    // "All" first — no category of its own, so it stays on the neutral theme
-    // accent rather than borrowing some component's colour.
-    out.push(component_menu_button(
-        commands,
-        fonts,
-        "list",
-        None,
-        (renzora_ember::theme::accent(), renzora_ember::theme::panel_bg()),
-        selected.is_none(),
-    ));
-    for (i, (name, icon, _)) in present.iter().enumerate() {
-        let active = selected.as_deref() == Some(*name);
-        let tint = colors
-            .get(i)
-            .copied()
-            .unwrap_or((renzora_ember::theme::accent(), renzora_ember::theme::panel_bg()));
-        out.push(component_menu_button(
-            commands,
-            fonts,
-            icon,
-            Some((*name).to_string()),
-            tint,
-            active,
-        ));
-    }
-    out
-}
-
-/// One icon button in the left component menu. The rail is icon-only, so each
-/// button carries a [`HoverTooltip`] naming its component — the shared global
-/// bubble can't be clipped by the rail/panel the way the old per-button
-/// bubble children were.
-///
-/// `tint` is the component category's `(accent, header_bg)`. Idle buttons draw
-/// only their glyph in the category accent — no fill, so the rail stays quiet
-/// and the one filled button is unambiguously the active one.
-fn component_menu_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    icon: &str,
-    name: Option<String>,
-    tint: ((u8, u8, u8), (u8, u8, u8)),
-    active: bool,
-) -> Entity {
-    let (accent, _header_bg) = tint;
-    let (bg, glyph_color) = if active {
-        (c(accent), renzora_ember::theme::on_accent())
-    } else {
-        (Color::NONE, accent)
-    };
-    let label = name.clone().unwrap_or_else(|| renzora::lang::t("inspector.filter_all"));
-    let btn = commands
-        .spawn((
-            Node {
-                width: Val::Px(32.0),
-                height: Val::Px(32.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..default()
-            },
-            BackgroundColor(bg),
-            Interaction::default(),
-            FocusPolicy::Block,
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(label),
-            ComponentMenuButton { name },
-            Name::new("component-menu-button"),
-        ))
-        .id();
-    let glyph = phosphor_glyph(commands, fonts, icon, glyph_color, 20.0);
-    commands.entity(btn).add_child(glyph);
-    btn
-}
-
-/// The fixed Add Component row, pinned under the top bar: a full-width Add
-/// Component button. Hidden when nothing is selected.
-fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let btn = add_bar(commands, fonts);
-    let bar = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            Name::new("inspector-add-row"),
-        ))
-        .id();
-    commands.entity(bar).add_child(btn);
+    commands.entity(bar).add_children(&[add_btn, input, expand_btn]);
     bind_display(commands, bar, |w| inspected_entity(w).is_some());
     bar
 }
@@ -923,30 +644,6 @@ fn inspector_filter_sync(
         let v = inp.value.to_lowercase();
         if state.filter != v {
             state.filter = v;
-        }
-    }
-}
-
-/// Click a left-menu button to filter the inspector to that component. Clicking
-/// the already-active button (or "All") clears the filter. Mirrors what the old
-/// filter dropdown did into `NativeInspectorState::selected`; `rebuild_inspector`
-/// then rebuilds the menu so the highlight follows.
-fn component_menu_click(
-    q: Query<(&Interaction, &ComponentMenuButton), Changed<Interaction>>,
-    mut state: ResMut<NativeInspectorState>,
-) {
-    for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        // Toggle: re-clicking the active component clears back to "All".
-        let next = if state.selected == btn.name {
-            None
-        } else {
-            btn.name.clone()
-        };
-        if state.selected != next {
-            state.selected = next;
         }
     }
 }
@@ -982,17 +679,6 @@ fn rebuild_inspector(
             .and_then(|s| s.get())
     });
 
-    // Drop a stale menu pick if that component isn't on the current entity
-    // (e.g. selection changed) so we don't strand the inspector on an empty list.
-    if let Some(sel) = world.resource::<NativeInspectorState>().selected.clone() {
-        let still_present = entity
-            .map(|e| present_components(&Rx::new(&*world), e).iter().any(|(n, _, _)| *n == sel))
-            .unwrap_or(false);
-        if !still_present {
-            world.resource_mut::<NativeInspectorState>().selected = None;
-        }
-    }
-
     let Some(container) = container_q.iter(world).next() else {
         return;
     };
@@ -1003,48 +689,24 @@ fn rebuild_inspector(
     }
 
     let sections = collect_sections(&Rx::new(&*world), entity);
-    let state = world.resource::<NativeInspectorState>();
-    let filter_active = !state.filter.is_empty() || state.selected.is_some();
+    let filter_active = !world.resource::<NativeInspectorState>().filter.is_empty();
     let existing: Vec<Entity> = world
         .get::<Children>(container)
         .map(|ch| ch.iter().collect())
         .unwrap_or_default();
 
-    // The component filter renders as either a left rail of icon buttons or a
-    // top-bar dropdown; we rebuild whichever the user picked and clear the other.
-    let style = filter_style(&Rx::new(&*world));
-    let menu_host = {
-        let mut hq = world.query_filtered::<Entity, With<ComponentMenuHost>>();
+    let header_host = {
+        let mut hq = world.query_filtered::<Entity, With<crate::entity_header::EntityHeaderHost>>();
         hq.iter(world).next()
     };
-    let menu_host_children: Vec<Entity> = menu_host
+    let header_host_children: Vec<Entity> = header_host
         .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
         .unwrap_or_default();
-    let dropdown_host = {
-        let mut hq = world.query_filtered::<Entity, With<FilterDropdownHost>>();
-        hq.iter(world).next()
-    };
-    let dropdown_host_children: Vec<Entity> = dropdown_host
-        .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
-        .unwrap_or_default();
-    let present: Vec<(&'static str, &'static str, &'static str)> =
-        entity.map(|e| present_components(&Rx::new(&*world), e)).unwrap_or_default();
-    // Resolve each component's category colours up front: the rail is built
-    // through `Commands` (which borrows the world mutably), so it can't reach
-    // `ThemeManager` itself.
-    let menu_colors: Vec<((u8, u8, u8), (u8, u8, u8))> = {
-        let theme = world.get_resource::<ThemeManager>();
-        present
-            .iter()
-            .map(|(_, _, category)| {
-                theme
-                    .map(|tm| category_rgb(&tm.active_theme, category))
-                    .unwrap_or(((120, 140, 200), (44, 44, 54)))
-            })
-            .collect()
-    };
-    let selected_now = world.resource::<NativeInspectorState>().selected.clone();
-
+    // Read before `Commands` borrows the world: the eye is only built for an
+    // entity that has something to hide.
+    let header_has_visibility = entity
+        .map(|e| crate::entity_header::has_visibility(world, e))
+        .unwrap_or(false);
     // Native-drawer sections: (body, drawer, entity) — filled after the queue
     // applies, since drawers need exclusive &mut World.
     let mut native_pending: Vec<(Entity, NativeInspectorDrawer, Entity)> = Vec::new();
@@ -1056,36 +718,20 @@ fn rebuild_inspector(
             commands.entity(child).despawn();
         }
 
-        // Clear both filter hosts, then rebuild only the active style's widget.
-        // (The inactive host stays empty and is hidden by its `bind_display`.)
-        for child in &menu_host_children {
+        // The entity header's bindings capture the inspected entity, so it is
+        // rebuilt on every signature change rather than kept and re-bound.
+        for child in &header_host_children {
             commands.entity(*child).despawn();
         }
-        for child in &dropdown_host_children {
-            commands.entity(*child).despawn();
+        if let (Some(host), Some(entity)) = (header_host, entity) {
+            let kids = crate::entity_header::build_entity_header(
+                &mut commands,
+                &fonts,
+                entity,
+                header_has_visibility,
+            );
+            commands.entity(host).add_children(&kids);
         }
-        match style {
-            InspectorComponentFilterStyle::VerticalMenu => {
-                if let Some(host) = menu_host {
-                    let buttons = build_component_menu(
-                        &mut commands,
-                        &fonts,
-                        &present,
-                        &menu_colors,
-                        &selected_now,
-                    );
-                    commands.entity(host).add_children(&buttons);
-                }
-            }
-            InspectorComponentFilterStyle::Dropdown => {
-                if let Some(host) = dropdown_host {
-                    let dd =
-                        build_filter_dropdown(&mut commands, &fonts, &present, &selected_now);
-                    commands.entity(host).add_child(dd);
-                }
-            }
-        }
-
         match entity {
             None => {
                 let l = empty_label(&mut commands, &fonts, &renzora::lang::t("inspector.no_selection"));
@@ -1101,10 +747,8 @@ fn rebuild_inspector(
                     let l = empty_label(&mut commands, &fonts, &msg);
                     commands.entity(container).add_child(l);
                 }
-                let locked_here = locked == Some(entity);
                 for sec in sections.iter() {
-                    let (root, body) =
-                        build_section(&mut commands, &fonts, sec, entity, locked_here);
+                    let (root, body) = build_section(&mut commands, &fonts, sec, entity);
                     commands.entity(container).add_child(root);
                     // Only an OPEN section's drawer runs here; a collapsed one is
                     // left to `reconcile_section_bodies` to run if it's expanded.
@@ -1151,13 +795,11 @@ fn inspector_signature(
     locked.hash(&mut h);
     if let Some(s) = world.get_resource::<NativeInspectorState>() {
         s.filter.hash(&mut h);
-        s.selected.hash(&mut h);
     }
-    // Changing the default-expand policy re-applies it to the current view, and
-    // switching the filter style swaps the rail/dropdown — both force a rebuild.
+    // Changing the default-expand policy re-applies it to the current view, so
+    // it forces a rebuild.
     if let Some(s) = world.get_resource::<EditorSettings>() {
         (s.inspector_expand_default as u8).hash(&mut h);
-        (s.inspector_component_filter_style as u8).hash(&mut h);
     }
     match entity {
         Some(e) => {
@@ -1206,9 +848,9 @@ fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<SectionSpec> {
     };
     let theme = world.get_resource::<ThemeManager>();
     let native_reg = world.get_resource::<NativeInspectorRegistry>();
-    let (filter, selected) = world
+    let filter = world
         .get_resource::<NativeInspectorState>()
-        .map(|s| (s.filter.clone(), s.selected.clone()))
+        .map(|s| s.filter.clone())
         .unwrap_or_default();
 
     // Initial expand state per section, from the user's `inspector_expand_default`
@@ -1233,12 +875,6 @@ fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<SectionSpec> {
     for entry in reg.iter() {
         if !(entry.has_fn)(world.untracked(), entity) {
             continue;
-        }
-        // Exact component pick from the dropdown (ANDed with the text filter).
-        if let Some(sel) = &selected {
-            if entry.display_name != sel {
-                continue;
-            }
         }
         // Component-name filter (case-insensitive substring on the display name).
         if !filter.is_empty() && !entry.display_name.to_lowercase().contains(&filter) {
@@ -1551,11 +1187,10 @@ fn append_reflected_sections(
 /// registry order under the stable sort in [`collect_sections`].
 fn section_priority(title: &str) -> u8 {
     match title {
-        "ID" => 0,
-        "Transform" => 1,
-        "Scripts" => 2,
-        "Material" => 3,
-        _ => 4,
+        "Transform" => 0,
+        "Scripts" => 1,
+        "Material" => 2,
+        _ => 3,
     }
 }
 
@@ -1629,8 +1264,8 @@ struct RemoveBtn {
 }
 
 #[derive(Component)]
-struct LockBtn {
-    entity: Entity,
+pub(crate) struct LockBtn {
+    pub(crate) entity: Entity,
 }
 
 /// Marks a `FieldType::Button` widget so [`field_button_click`] runs its action.
@@ -2103,7 +1738,6 @@ fn build_section(
     fonts: &EmberFonts,
     sec: &SectionSpec,
     entity: Entity,
-    locked_here: bool,
 ) -> (Entity, Entity) {
     // Compose the shared ember section (caret · accent icon · title + colored
     // header + ember-owned collapse); override the body padding to the inspector's
@@ -2193,46 +1827,10 @@ fn build_section(
     let spacer = commands
         .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
         .id();
+    // (The inspector lock used to hang off the "ID" section header. It belongs
+    // to the entity rather than to any one component, so it moved to the entity
+    // header with the rest of the identity controls — see `build_lock_button`.)
     let mut extra = vec![spacer];
-    if sec.type_id == "name" {
-        let lock = phosphor_glyph(
-            commands,
-            fonts,
-            if locked_here { "lock-simple" } else { "lock-simple-open" },
-            if locked_here { (120, 170, 255) } else { renzora_ember::theme::text_muted() },
-            14.0,
-        );
-        commands
-            .entity(lock)
-            .insert((Interaction::default(), FocusPolicy::Block, LockBtn { entity }));
-        // Bind the glyph rather than leaving it baked. `locked` reaches the UI
-        // *only* through the inspector's global rebuild signature today, so the
-        // baked-in version works purely by accident — and this glyph is the sole
-        // consumer of `locked_here`, so under granular rebuilds nothing about the
-        // panel would change when you click lock: the state would flip and the
-        // icon would sit there, making the button look broken.
-        let locked_now = move |w: &Rx| {
-            w.get_resource::<NativeInspectorState>()
-                .and_then(|s| s.locked)
-                == Some(entity)
-        };
-        let g = locked_now;
-        bind_text(commands, lock, move |w| {
-            let name = if g(w) { "lock-simple" } else { "lock-simple-open" };
-            renzora_ember::phosphor_map::icon_glyph(name)
-                .unwrap_or('\u{E4C6}')
-                .to_string()
-        });
-        bind_text_color(commands, lock, move |w| {
-            let (r, gg, b) = if locked_now(w) {
-                (120, 170, 255)
-            } else {
-                renzora_ember::theme::text_muted()
-            };
-            c((r, gg, b))
-        });
-        extra.push(lock);
-    }
     if let Some((_, set_enabled)) = sec.enable.clone() {
         let sw = toggle_switch(commands, sec.enabled_now);
         // Block the press from bubbling to the section header behind it, so
@@ -3087,7 +2685,7 @@ fn asset_drop_highlight(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// A Phosphor icon by *name* (resolved via ember's map).
-fn phosphor_glyph(
+pub(crate) fn phosphor_glyph(
     commands: &mut Commands,
     fonts: &EmberFonts,
     name: &str,
@@ -3124,9 +2722,11 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let btn = renzora_ember::widgets::icon_label_button(commands, fonts, "puzzle-piece", &renzora::lang::t("inspector.add_component"));
     commands.entity(btn).insert((
         AddButton,
-        // Full-width + centered; the theme fills padding/radius/colors.
+        // Sits in the top bar beside the filter input, so it sizes to its own
+        // label and refuses to shrink — the input takes the slack. The theme
+        // fills padding/radius/colors.
         Node {
-            width: Val::Percent(100.0),
+            flex_shrink: 0.0,
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,

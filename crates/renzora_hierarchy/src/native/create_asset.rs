@@ -23,7 +23,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::Bound;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    button, checkbox, folder_picker, menu_item_styled, menu_submenu_styled, overlay_sized,
+    button, checkbox, folder_new_button, folder_picker, menu_item_styled, menu_submenu_styled, overlay_sized,
     text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
 };
 use renzora_scripting::ScriptComponent;
@@ -250,6 +250,7 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
     );
 
     let name_input = text_input(&mut commands, &fonts.ui, kind.stem(), kind.stem());
+    let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH);
     let mut kids = vec![
         field_row(
             &mut commands,
@@ -258,7 +259,7 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
             name_input,
         ),
         section_label(&mut commands, &fonts, &renzora::lang::t("hierarchy.create.destination")),
-        folder_picker(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH),
+        picker,
     ];
 
     let attach = kind.attachable().then(|| {
@@ -282,11 +283,15 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
             ..default()
         })
         .id();
+    // New Folder rides in the button row rather than under the tree — one row of
+    // controls, not two. It floats at the row's left edge (absolute, out of
+    // flow), so Cancel and Create lay out untouched.
+    let new_folder = folder_new_button(&mut commands, &fonts, picker);
     let cancel = button(&mut commands, &fonts.ui, &renzora::lang::t("common.cancel"));
     commands.entity(cancel).insert(CreateCancelBtn);
     let confirm = button(&mut commands, &fonts.ui, &renzora::lang::t("hierarchy.create.confirm"));
     commands.entity(confirm).insert(CreateConfirmBtn);
-    commands.entity(buttons).add_children(&[cancel, confirm]);
+    commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
     kids.push(buttons);
 
     let body = commands

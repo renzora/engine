@@ -408,19 +408,15 @@ impl UndoCommand for SpawnShapeCmd {
             return;
         };
         let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-        // Fresh shapes wear the engine checker as their "no texture yet"
+        // Fresh shapes wear the engine blockout grid as their "no texture yet"
         // look, tinted by the preset color.
-        let checker = world
-            .get_resource::<renzora::core::CheckerTexture>()
-            .map(|c| c.0.clone());
+        let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
         let material = world
             .resource_mut::<Assets<StandardMaterial>>()
-            .add(StandardMaterial {
-                base_color: self.color,
-                base_color_texture: checker,
-                perceptual_roughness: 0.9,
-                ..default()
-            });
+            .add(renzora_engine::blockout::blockout_material(
+                self.color,
+                grid.as_ref(),
+            ));
         self.entity = world
             .spawn((
                 Name::new(self.name.clone()),
@@ -486,19 +482,15 @@ impl UndoCommand for DeleteShapesCmd {
                 continue;
             };
             let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-            // Same default material as SpawnShapeCmd, checker included, so
+            // Same default material as SpawnShapeCmd, grid included, so
             // undoing a delete doesn't bring the shape back flat.
-            let checker = world
-                .get_resource::<renzora::core::CheckerTexture>()
-                .map(|c| c.0.clone());
+            let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
-                .add(StandardMaterial {
-                    base_color: item.color,
-                    base_color_texture: checker,
-                    perceptual_roughness: 0.9,
-                    ..default()
-                });
+                .add(renzora_engine::blockout::blockout_material(
+                    item.color,
+                    grid.as_ref(),
+                ));
             item.entity = world
                 .spawn((
                     Name::new(item.name.clone()),

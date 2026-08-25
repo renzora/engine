@@ -82,10 +82,9 @@ When you select something, the **Inspector** shows all of its settings, grouped 
 
 ![The Inspector showing the selected World Environment entity with its components: Name, Transform with Position/Rotation/Scale fields, Visibility, and a Directional Light with Illuminance, Color, and Shadows.](/assets/previews/inspector.png)
 
-In the shot above you can see common components:
+The fixed row at the top is the **entity header** — the object's icon, its ID, its Hierarchy label colour, an eye to show or hide it, and a lock to pin the Inspector to it. Below that comes one section per component:
 
 - **Transform** — position, rotation, and scale.
-- **Visibility** — show or hide the object.
 - **Directional Light** — brightness, color, and shadows.
 
 Type new numbers into any field to change them live. Use **Add** at the top to attach more components (a physics body, a script, a custom one your plugins provide). For the full list of what each component does, see the [Inspector](/docs/r1-alpha7/editor/inspector) docs.
@@ -112,6 +111,8 @@ The Console keeps the most recent **100** messages by default and drops the olde
 
 The **Assets** browser along the bottom is a file explorer for your project: a folder tree on the left and a grid (or list) of the current folder's files and sub-folders on the right.
 
+Tiles show the asset, not a generic icon: textures show themselves, `.material` and `.glb` files show a rendered preview, and a scene shows [the viewport snapshot taken when you last saved it](/docs/r1-alpha7/editor/scenes#scene-thumbnails). **Folders** show a mosaic of up to four images found inside them — the folder's own images first, then a couple of levels down — so a texture library reads as its contents instead of forty identical folder glyphs. The mosaic sits inset from the tile edge with a small folder badge in its corner, in the folder's own accent colour, so a previewing folder still reads as a folder and not as a texture. A folder with no images keeps its plain centred icon.
+
 What you can do here:
 
 - **Double-click** a folder to open it, or a file to open it in its editor (materials, blueprints, scripts, particles, …). Double-clicking a **scene** (`.bsn`) opens it in its own scene tab, loaded from disk.
@@ -120,7 +121,14 @@ What you can do here:
 - **Drag** a file onto a folder to move it, or out into the viewport to spawn it. Dragging a **scene** (`.bsn`) onto the viewport or the Hierarchy adds it as a nested **scene instance**. While mid-drag, **hover over another panel's tab** for a moment and that tab springs to the front — so you can reveal a drop target (the Viewport, the Inspector, …) that's hidden behind another tab without ever letting go of the drag.
 - **Right-click** any item for an **Open** action (routes to the matching editor; for a scene this is **Open Scene**, which loads it into its own tab), **Rename**, Duplicate, Favorite, Reveal in Explorer, Delete — and a color-coded **create-new** section (the same one the **Add** button opens) so you can make a new asset without reaching for the toolbar. New files land in the current folder.
 - To rename a file or folder inline, press **`F2`**, **click its name** while it's already selected, or pick **Rename** from the right-click menu. The whole name starts highlighted, so typing (or `Delete`) replaces it; press `Enter` to confirm or `Esc` to cancel.
+  - **Extensions stay out of your way.** Tiles, list rows and the tree all label a file by its name alone — `main.bsn` reads as **main** — because the icon, its accent colour and the type label already tell you what it is. The rename field is seeded the same way, and the extension is put back when you confirm, so renaming `rock.png` to `boulder` gives you `boulder.png`.
+  - Write an extension explicitly to change the type (`boulder.jpg`), or end the name with a dot (`boulder.`) to drop it entirely. Folder names are left exactly as typed — a dot in a folder name is part of the name. Search still matches the real file name, so typing `png` finds every PNG.
 - Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles. The **Add** menu (and the right-click menu) creates a **Material**, **Blueprint**, **Lua Script**, **Rhai Script**, **Particle**, **Template** (HTML markup UI), or **Scene (BSN)** — each row color-coded to match its file type's accent on the tiles.
+- **Import** opens a short menu with two choices, because no operating-system dialog can select files *and* folders in one pass:
+  - **Import Files…** — the multi-select file picker, filtered to every extension the importer accepts.
+  - **Import Folder…** — the folder picker. The chosen directory is walked recursively for importable files, and its subfolder tree is recreated under the destination, so a `props/` folder with `crates/` and `barrels/` inside it arrives with those subfolders intact. A folder holding nothing importable says so instead of silently doing nothing.
+
+  Whichever you pick, the import overlay opens pre-loaded with what you chose, and models start converting straight away. The same two choices appear on the right-click menu in empty space, on the narrow layout's **+ Add** menu, under **File** in the title bar, and in the command palette. The overlay's own **Files** / **Folder** buttons add more to the queue once it's open, as does dragging files or folders in from the desktop.
 
 ## Settings
 

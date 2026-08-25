@@ -6,6 +6,7 @@
 pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
+pub mod entity_icons;
 pub mod material_thumbnail_registry;
 // The bridge that answers a C-ABI plugin's file-dialog request. Native-only
 // because it is built on `renzora_plugin`'s host half, and the host loads
@@ -13,6 +14,7 @@ pub mod material_thumbnail_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_dialog;
 pub mod model_thumbnail_registry;
+pub mod scene_thumbnail_registry;
 pub mod sdk;
 pub mod settings;
 
@@ -42,6 +44,7 @@ pub use material_thumbnail_registry::{
     MaterialThumbnailRegistry,
 };
 pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
+pub use scene_thumbnail_registry::{scene_thumb_path, SceneThumbnailRegistry};
 pub use renzora_macros::{post_process, Inspectable};
 
 /// Late-bound hooks for actions that live in downstream crates the editor
@@ -130,17 +133,19 @@ pub struct OpenAddComponentMenuRequest {
     pub screen_pos: bevy::prelude::Vec2,
 }
 pub use settings::{
-    CustomFonts, EditorSettings, InspectorComponentFilterStyle, InspectorExpandDefault, MonoFont,
-    SelectionGranularity, SettingsTab, UiFont,
+    CustomFonts, EditorSettings, InspectorExpandDefault, MonoFont, SelectionGranularity,
+    SettingsTab, UiFont,
 };
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
 pub use renzora::SplashState;
 pub use renzora::{EditorCamera, EditorLocked, HideInHierarchy};
 
-/// Optional label color for an entity row in the hierarchy.
-#[derive(Component)]
-pub struct EntityLabelColor(pub [u8; 3]);
+// Both authored identity components moved into the contract crate so a scene
+// save carries them into the runtime; re-exported here because every editor
+// crate already reaches for them under this path.
+pub use renzora::{EntityIcon, EntityLabelColor};
+pub use entity_icons::{entity_icon_name, ENTITY_ICON_CHOICES};
 
 // `HierarchyOrder` moved into `renzora` core (re-exported at top of file).
 
@@ -423,6 +428,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<EditorActionHooks>()
             .init_resource::<MaterialThumbnailRegistry>()
             .init_resource::<ModelThumbnailRegistry>()
+            .init_resource::<SceneThumbnailRegistry>()
             .init_resource::<renzora::core::IsolationMode>();
 
         register_builtin_tools(&mut app.world_mut().resource_mut::<ToolbarRegistry>());

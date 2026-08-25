@@ -41,7 +41,7 @@ In the Inspector you can:
 
 - Edit values directly — type a number, drag it, flip a switch, or pick a color.
 - Click **Add** to attach a new component.
-- Use **Filter components...** to jump to one quickly.
+- Use the **Filter...** box to jump to one quickly.
 - Click the trash icon on a section to remove that component.
 
 In the shot above, the selected "World Environment" entity carries a Transform (its rotation), a Directional Light (the sun — here an Illuminance of 40000 with shadows on), and a few rendering options. They're all just components layered onto one entity.

@@ -303,3 +303,7 @@ pub struct InspectorEntry {
     pub fields: Vec<FieldDef>,
 }
 ```
+
+`InspectorRegistry::register` pins `transform` first and `material_ref` second; everything else keeps its registration order.
+
+> **Not everything belongs in a section.** The entity's id, icon, hierarchy label colour and visibility are rendered by the Inspector's fixed *entity header*, not by registry entries — none of them is a component you can add or remove, so a collapsible card with add/remove/enable affordances was the wrong container for them. If you are adding something that describes the *entity* rather than a component on it, extend `renzora_inspector::entity_header` instead of registering an entry. The authored halves (`renzora::EntityIcon`, `renzora::EntityLabelColor`) live in the contract crate and are reflect-registered by `renzora_engine`, so they serialize into the scene and resolve in the runtime.

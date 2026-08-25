@@ -86,6 +86,7 @@ impl Plugin for AssetBrowserPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] AssetBrowserPlugin");
         app.init_resource::<thumbnails::ThumbnailCache>()
+            .init_resource::<thumbnails::FolderPreviews>()
             .add_systems(Update, thumbnails::update_thumbnail_cache)
             .add_plugins(model_thumbnails::ModelThumbnailPlugin);
         native::register_native_asset_browser(app);

@@ -349,11 +349,16 @@ natural:
   became hundreds of archetype moves in a single frame. It also doubled the archetype
   count for UI, since each UI component-set then existed both with and without it.
 
-**Behaviour contract this changes:** a named `bevy_ui` node no longer receives a
-`ScriptComponent` automatically. Authored game UI still does — `renzora_ember::game_ui`
-inserts one on `UiWidget`/`UiCanvas` so `<input bind="Entity.var">` resolves — but if
-you spawn a UI entity outside that path and need script variables on it, insert the
-component yourself.
+**Behaviour contract this changes:** *nothing* receives a `ScriptComponent`
+automatically any more. The auto-insert observer was first narrowed to skip `bevy_ui`
+nodes and has since been removed outright — an empty component on every named entity
+still cost an archetype move each and left the executor's `&ScriptComponent` query
+walking entities with no scripts on them. Every path that needs the component now
+creates it on demand: the inspector's **Scripts** entry, dropping a script or
+blueprint file onto an entity, the hierarchy's New Asset menu, saving a blueprint
+graph, and `renzora_ember::game_ui`, which still inserts one on `UiWidget`/`UiCanvas`
+so `<input bind="Entity.var">` resolves. If you spawn an entity outside those paths
+and need script variables on it, insert the component yourself.
 
 **`ghost_nodes` is deliberately off.** It's a `bevy_ui` feature that swaps
 `UiChildren` for a much slower implementation on the editor's hottest path.

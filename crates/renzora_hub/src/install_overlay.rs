@@ -18,7 +18,7 @@ use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{button, folder_picker, overlay_sized, FolderPick};
+use renzora_ember::widgets::{button, folder_new_button, folder_picker, overlay_sized, FolderPick};
 use renzora_theme::ThemeManager;
 
 use crate::install;
@@ -98,7 +98,8 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // Destination: the project's own directory structure, via ember's shared
     // picker (the same widget the hierarchy's Create-asset overlay uses). It
     // flex-grows to fill the overlay so the buttons stay pinned to the bottom.
-    kids.push(folder_picker(&mut commands, &fonts, &root, &default_dest, 1));
+    let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, 1);
+    kids.push(picker);
 
     kids.push(paragraph(
         &mut commands,
@@ -117,11 +118,15 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
             ..default()
         })
         .id();
+    // New Folder rides in the button row rather than under the tree — one row of
+    // controls, not two. It floats at the row's left edge (absolute, out of
+    // flow), so the Cancel/Install pair lays out untouched.
+    let new_folder = folder_new_button(&mut commands, &fonts, picker);
     let cancel = button(&mut commands, &fonts.ui, "Cancel");
     commands.entity(cancel).insert(InstallDismissBtn(overlay));
     let install_btn = button(&mut commands, &fonts.ui, "Download & Install");
     commands.entity(install_btn).insert(InstallConfirmBtn);
-    commands.entity(buttons).add_children(&[cancel, install_btn]);
+    commands.entity(buttons).add_children(&[new_folder, cancel, install_btn]);
     kids.push(buttons);
 
     // Pad the content so it isn't flush against the overlay edge.

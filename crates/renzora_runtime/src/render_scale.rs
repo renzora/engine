@@ -43,8 +43,9 @@ use bevy::window::{PrimaryWindow, WindowResized};
 use renzora::core::{CameraRenderResolution, StretchMode};
 
 /// Render layer for the upscale blit sprite + camera. Distinct from
-/// `viewport_stretch`'s layer (31) so the two present passes never collide.
-const RS_BLIT_LAYER: usize = 30;
+/// `viewport_stretch`'s so the two present passes never collide — both are
+/// allocated in the contract crate's registry, alongside every offscreen rig's.
+use renzora::core::viewport_types::RENDER_SCALE_BLIT_LAYER as RS_BLIT_LAYER;
 
 /// Marker on the sprite that displays the downscaled offscreen image.
 #[derive(Component)]

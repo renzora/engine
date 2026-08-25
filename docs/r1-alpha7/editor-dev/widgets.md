@@ -113,7 +113,7 @@ Two things that are **not** affected, and shouldn't be "fixed" with `Block`:
 | Data viz | `gauge`, `line_chart`, `bar_chart`, `sparkline`, `line_chart_live`, `waveform`, `vu_meter`, `mixer` |
 | Containers | `card`, `section`, `accordion`, `collapsible`, `tabs`, `divider`, `scroll_area` |
 | Data display | `table`, `tree`, `grid`, `avatar`, `chip`, `badge`, `list_group`, `timeline_view` |
-| Pickers | `folder_picker`, `font_picker`, `asset_slot` |
+| Pickers | `folder_picker`, `folder_new_button`, `font_picker`, `asset_slot` |
 | Overlays | `modal`, `popover`, `tooltip`, `popup`, `menu`, `screen_menu`, `menu_submenu`, `context_menu`, `toast`, `alert` |
 | Navigation | `navbar`, `breadcrumb`, `pagination` |
 | Editors | `node_graph`, `code_editor`, `property_row`, `vec3_edit` |
@@ -189,7 +189,7 @@ Fit's zoom clamp is the shared `MIN_ZOOM`/`MAX_ZOOM`, so a framed view is always
 
 ### Tooltips (`HoverTooltip`)
 
-Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
+Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons and panel toolbar buttons both use it.
 
 ### Dropdowns & popups — don't hand-roll them (`dropdown`, `Popup`)
 
@@ -311,6 +311,12 @@ Used by the onboarding tutorial's card, which parks bottom-right — occasionall
 
 ```rust
 let picker = folder_picker(commands, fonts, &project_root, &default_dest, 2);
+
+// Let the user make a folder that doesn't exist yet. Spawned parentless — drop
+// it into your right-aligned button row and it floats at that row's left edge.
+let new_folder = folder_new_button(commands, fonts, picker);
+commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
+
 // …later, when your overlay is confirmed:
 let dest = pick.path().unwrap_or(&default_dest);   // pick: Res<FolderPick>
 ```
@@ -319,7 +325,21 @@ The pick lives in **one `FolderPick` resource**, not in each caller's state. Tha
 
 `root` is always the first row (so "top level" needs no scrolling), `max_depth` bounds the walk below it, and the scan skips dotfolders, `target/` and `node_modules/` and caps out at 300 rows so a huge project can't stall the overlay opening. `folder_dirs(root, max_depth)` exposes the same walk if you want to render rows yourself.
 
-Used by the marketplace's **Install into** confirmation and the Hierarchy's **Attach ▸** overlay.
+**Creating a destination (`folder_new_button`).** It behaves like a file manager's New Folder, not like a form. Click the row you want the folder to sit *inside*, press **New Folder**, and the folder is created **immediately** as `New Folder` (or `New Folder 1`, `New Folder 2`, … if that name is taken), selected, with its name open for editing **in place on its own row**. **Enter** keeps what you typed, **Escape** keeps the generated name, and clicking away commits like Enter. There is no confirm/cancel pair because there is nothing to confirm — the folder exists either way, so the only open question is what it's called, and there is no half-finished state to abandon.
+
+The button is handed back **parentless** on purpose: it belongs at the left end of the overlay's own Cancel/Confirm row, and a bar of its own under the tree reads as a second, competing row of controls. Only the widget knows how to wire it, only the caller knows where it goes.
+
+It positions itself **absolutely at the row's left edge**, out of flow, so the row's existing buttons lay out exactly as they did before it was added. Don't "fix" that back to an in-flow child with `margin-right: auto`: in a `JustifyContent::FlexEnd` row the auto margin claims the free space the other buttons were sized against, and anything still on the default `flex_shrink: 1` — a plain `button`, unlike `icon_label_button` — gets squeezed to zero width and disappears from the row.
+
+The new folder comes back **already selected**, so confirming the host overlay immediately afterwards lands the asset in it — the caller needs no extra wiring beyond placing the button, and every picker gets the affordance at once instead of three overlays growing three versions of it.
+
+Three things to know if you host a picker:
+
+- **An open rename owns Enter and Escape.** `folder_rename_keys` runs in `PreUpdate` ahead of both `form_enter_submit` and `overlay_dismiss` and consumes the press with `clear_just_pressed` — otherwise Escape would close your whole overlay and Enter would fire its Create button mid-rename.
+- A folder created below the picker's `max_depth` **raises** that bound rather than being created invisibly.
+- Names are validated before the rename — no separators, no `..`, no reserved Windows characters, and no leading dot (the walk skips dotfolders, so creating one would look exactly like a silent failure). An unusable or already-taken name keeps the generated one and logs to the console rather than holding the field open; the folder is validly named either way.
+
+Used by the marketplace's **Install into** confirmation, the Hierarchy's **Create asset** overlay and the material editor's **Save as** prompt.
 
 ### Code editor (`code_editor`)
 

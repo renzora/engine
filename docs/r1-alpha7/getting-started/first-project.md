@@ -91,7 +91,7 @@ Every object you add shows up in the **Hierarchy** panel as a list. This is your
 
 Select your cube and look at the **Inspector** panel. This is where you change an object's properties.
 
-You'll see its **Name**, a **Transform** section with Position, Rotation, and Scale, a **Visibility** toggle, and a section for each component the object has. Type new numbers into the Transform fields and watch the cube update in the viewport instantly.
+At the top you'll see the **entity header** — the cube's icon, its ID, its label colour and an eye to hide it — and below that a **Transform** section with Position, Rotation and Scale, plus a section for each component the object has. Type new numbers into the Transform fields and watch the cube update in the viewport instantly.
 
 ![The Inspector showing a selected object's properties: name, transform (position, rotation, scale), and component settings.](/assets/previews/inspector.png)
 

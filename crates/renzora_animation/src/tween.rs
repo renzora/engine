@@ -167,8 +167,11 @@ pub fn update_procedural_tweens(
         if tween.start_value.is_none() {
             tween.start_value = Some(match &tween.property {
                 TweenProperty::Position(_) => transform.translation,
+                // YXZ, matching `set_rotation` and the inspector — a tween that
+                // starts from the pose the inspector shows must decompose the
+                // same way, or the first frame snaps to a different orientation.
                 TweenProperty::Rotation(_) => {
-                    let (x, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
+                    let (y, x, z) = transform.rotation.to_euler(EulerRot::YXZ);
                     Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees())
                 }
                 TweenProperty::Scale(_) => transform.scale,
@@ -194,9 +197,9 @@ pub fn update_procedural_tweens(
             }
             TweenProperty::Rotation(_) => {
                 transform.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    current.x.to_radians(),
+                    EulerRot::YXZ,
                     current.y.to_radians(),
+                    current.x.to_radians(),
                     current.z.to_radians(),
                 );
             }

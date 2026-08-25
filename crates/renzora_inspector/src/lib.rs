@@ -6,6 +6,7 @@
 //! re-exported for drawers in other crates.
 
 mod camera_presets;
+mod entity_header;
 mod native;
 pub mod reflect_source;
 mod resources;

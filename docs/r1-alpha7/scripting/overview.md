@@ -65,15 +65,17 @@ A few things to notice:
 
 ## Attaching a script to an object
 
-In the editor:
+The quickest way is to **drag the script file out of the asset browser and drop it on the object's row in the hierarchy**. The object gets a **Scripts** section holding that file, and dropping a second file on it adds another entry alongside the first.
+
+If you'd rather do it from the properties panel:
 
 1. Select the object you want to bring to life.
-2. In its properties, add a **script entry**.
-3. Point that entry at a file in your project's `scripts/` folder.
+2. Add the **Scripts** component to it, if it doesn't have one yet.
+3. Add a **script entry** and point it at a file in your project's `scripts/` folder.
 
 That's it — press play and the script runs. Edit and save the file and it **hot-reloads** automatically, so you can tweak numbers and see the change without restarting.
 
-> Tip: an object becomes scriptable as soon as it has a name, so most of the time the script slot is already waiting for you.
+> Objects don't carry a script slot until you give them one, so an object you've never scripted simply won't show a **Scripts** section. Dropping a file on it creates the section for you.
 
 ## Previewing one script without play mode
 

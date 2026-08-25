@@ -44,8 +44,9 @@ use bevy::ui_render::UiMaterialPlugin;
 
 use crate::SplashState;
 
-/// Free render layer (5 = vello, 7 = material thumbs, 8 = model thumbs).
-const CHAMBER_LAYER: usize = 6;
+/// This chamber's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+use renzora::core::viewport_types::SPLASH_CHAMBER_LAYER as CHAMBER_LAYER;
 
 /// Offscreen render size. Deliberately below 1080p: this scene's cost is
 /// dominated by the volumetric raymarch, which is pure fill rate, and the image

@@ -55,13 +55,13 @@ pub struct BoneTrack {
 // Property animation (keyframes bound to component fields)
 // ----------------------------------------------------------------------------
 
-/// Editor/runtime cache of the **Euler angles** (degrees, XYZ order) last dialed
-/// into a rotation — by the inspector or a rotation animation. **Keyed per
+/// Editor/runtime cache of the **Euler angles** (degrees, `YXZ` order) last
+/// dialed into a rotation — by the inspector or a rotation animation. **Keyed per
 /// component** so several rotation fields on one entity (e.g. `Transform` *and*
 /// `EnvironmentMapLight`) each keep their own slot instead of fighting over one.
 ///
 /// A quaternion stores only an orientation, so converting it back to Euler angles
-/// is lossy: the middle axis wraps at ±90° and full turns (360°, 720°) collapse
+/// is lossy: the middle axis (pitch) wraps at ±90° and full turns (360°, 720°) collapse
 /// onto the same value. This keeps the *typed* angles intact so the inspector
 /// shows what you entered and a 0→360 rotation key pair animates a real spin.
 /// Each slot's `quat` is a staleness fingerprint: when the live rotation no
@@ -99,24 +99,37 @@ impl EditorEulerCache {
     }
 }
 
-/// Quaternion from Euler **degrees** (XYZ order).
+/// Quaternion from Euler **degrees**, applied yaw → pitch → roll (`YXZ`).
+///
+/// The order matters and is not arbitrary. It matches what the scripting side
+/// already does (`set_rotation` in `renzora_scripting`, and the `rotation_x/y/z`
+/// context fields), so typing `(30, 45, 0)` in the inspector and calling
+/// `set_rotation(30, 45, 0)` from a script now land on the same orientation.
+/// They did not while this built `XYZ` and scripting built `YXZ`.
 pub fn euler_deg_to_quat(deg: Vec3) -> Quat {
     Quat::from_euler(
-        EulerRot::XYZ,
-        deg.x.to_radians(),
+        EulerRot::YXZ,
         deg.y.to_radians(),
+        deg.x.to_radians(),
         deg.z.to_radians(),
     )
 }
 
-/// The Euler degrees (XYZ) to display/record for `rotation` under `key`,
-/// preferring the cache when it still matches, else deriving from the quaternion
-/// (which wraps the middle axis to ±90° — the unavoidable lossy fallback).
+/// The Euler degrees to display/record for `rotation` under `key`, preferring
+/// the cache when it still matches, else deriving from the quaternion.
+///
+/// The fallback decomposes as `YXZ`, so the axis that gets pinned to ±90° — the
+/// unavoidable lossy one, whichever order you pick — is **pitch**, not yaw.
+/// That is what people expect: things spin around Y far more often than they
+/// tip past straight up. Decomposing as `XYZ` made yaw the pinned axis, so a
+/// plain spin script (`rotate(0, 90 * delta, 0)`) showed X and Z snapping
+/// between 0 and ±180 every time yaw crossed 90°, with Y folding back — a
+/// display artefact of a perfectly smooth rotation.
 pub fn rotation_euler_deg(rotation: Quat, cache: Option<&EditorEulerCache>, key: &str) -> Vec3 {
     if let Some(deg) = cache.and_then(|c| c.degrees_for(key, rotation)) {
         return deg;
     }
-    let (x, y, z) = rotation.to_euler(EulerRot::XYZ);
+    let (y, x, z) = rotation.to_euler(EulerRot::YXZ);
     Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees())
 }
 

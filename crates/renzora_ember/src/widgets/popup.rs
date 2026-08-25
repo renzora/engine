@@ -67,6 +67,74 @@ pub fn screen_menu_flip(commands: &mut Commands, x: f32, y: f32, win_h: f32) -> 
     }
 }
 
+/// Anchor a menu to a **button** rather than to the cursor: open downward from
+/// `below_y` (the button's bottom edge), flipping up to `above_y` (its top edge)
+/// only when `est_h` genuinely won't fit below.
+///
+/// [`screen_menu_flip`]'s "lower half of the window → open upward" rule is the
+/// right one for a *context* menu, where the anchor is the click point and a
+/// menu clamped back on-screen would land on top of the cursor. It is the wrong
+/// one for a button: the Assets panel is docked at the bottom, so its toolbar
+/// sits in the lower half at all times and a two-row dropdown flipped upward
+/// over the panel's own tabs with half the window free underneath it.
+///
+/// The flip decision is [`dropdown::flips_up`](super::dropdown::flips_up), the
+/// same predicate `popup_position` and [`dropdown`](super::dropdown) use, so
+/// every menu in the editor agrees on when to flip — including its "cramped both
+/// ways → stay down rather than flip into *less* room" tiebreak. The window is
+/// the bound rather than a `CalculatedClip`, because a [`ScreenMenu`] is a root
+/// overlay and no ancestor clips it.
+///
+/// `est_h` comes from [`screen_menu_est_height`] — a menu has to be placed
+/// before layout can measure it, so its height is estimated from its row count,
+/// the way `dropdown_toggle` estimates from its option count.
+pub fn screen_menu_under(commands: &mut Commands, rect: Rect, win_h: f32, est_h: f32) -> Entity {
+    if super::dropdown::flips_up(rect.min.y, rect.max.y, est_h, 0.0, win_h) {
+        screen_menu_anchored(
+            commands,
+            rect.min.x,
+            Val::Auto,
+            Val::Px((win_h - rect.min.y + 2.0).max(0.0)),
+        )
+    } else {
+        screen_menu_anchored(commands, rect.min.x, Val::Px(rect.max.y + 2.0), Val::Auto)
+    }
+}
+
+/// A trigger button's on-screen rect, recovered from the cursor position and the
+/// cursor's normalized position *inside* the button.
+///
+/// `UiGlobalTransform` would be the obvious source, but a press handler already
+/// has the cursor and a `RelativeCursorPosition` (needed anyway for outside-click
+/// dismissal), and this needs no extra query. The asset browser's Add button,
+/// [`icon_menu_button`](super::icon_menu::icon_menu_button) and the Import button
+/// each had their own copy of this arithmetic before it moved here.
+pub fn trigger_rect(cursor: Vec2, rcp: &RelativeCursorPosition, cn: &ComputedNode) -> Rect {
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    Rect::from_corners(top_left, top_left + size)
+}
+
+/// Estimated height of a [`screen_menu`] holding `rows` [`menu_item`] rows and
+/// `separators` [`menu_sep`] rules, in logical pixels.
+///
+/// For [`screen_menu_under`], which must decide "does this fit below the
+/// button?" *before* the menu exists — waiting for `ComputedNode` means one
+/// frame drawn in the wrong place. Derived from the shared row metrics so it
+/// tracks them; the 1.25 is the icon glyph's line height, which sets the row
+/// height (the label is smaller). Prefer erring low: an under-estimate opens
+/// downward and lets [`screen_menu_clamp`] nudge it back on-screen, while an
+/// over-estimate flips a menu that would have fit.
+///
+/// Capped at [`SCREEN_MENU_MAX_H`] because that is where the menu stops growing
+/// and starts scrolling — a 40-row menu is 420px tall, not 900.
+pub fn screen_menu_est_height(rows: usize, separators: usize) -> f32 {
+    const ROW_H: f32 = MENU_ICON * 1.25 + MENU_PAD_Y * 2.0;
+    const SEP_H: f32 = 1.0 + 2.0 * 2.0; // rule + vertical margin
+    const CARD_CHROME: f32 = (4.0 + 1.0) * 2.0; // card padding + border, both edges
+    (rows as f32 * ROW_H + separators as f32 * SEP_H + CARD_CHROME).min(SCREEN_MENU_MAX_H)
+}
+
 /// Shared body of [`screen_menu`] / [`screen_menu_flip`]: spawns the floating menu
 /// at `left = x` with the given vertical anchor (`top` for downward menus,
 /// `bottom` for upward ones — the other should be [`Val::Auto`]).

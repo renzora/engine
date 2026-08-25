@@ -15,7 +15,9 @@ use renzora_editor_framework::DockingState;
 
 use crate::AnimationEditorState;
 
-pub const STUDIO_PREVIEW_LAYER: usize = 10;
+/// This preview's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+pub use renzora::core::viewport_types::STUDIO_PREVIEW_LAYER;
 
 /// Run condition: `true` when the Studio Preview panel is in the active dock
 /// tree. All expensive studio-preview work (camera rendering, model cloning,

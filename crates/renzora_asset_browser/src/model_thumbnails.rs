@@ -16,7 +16,7 @@
 
 use std::path::PathBuf;
 
-use bevy::asset::LoadState;
+use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
@@ -31,10 +31,10 @@ use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamer
 use renzora_editor_framework::{model_thumb_path, ModelThumbnailRegistry};
 
 /// Render layer the offscreen capture lives on so the user's viewport
-/// camera doesn't see the spawned model. Different from the material
-/// thumbnail's layer 7 so the two systems can run concurrently without
-/// rendering each other's content.
-pub const MODEL_THUMBNAIL_LAYER: usize = 8;
+/// camera doesn't see the spawned model. Allocated in the contract crate
+/// alongside every other offscreen rig's, which is what keeps it distinct
+/// from the material thumbnail rig's and from every preview panel's.
+pub use renzora::core::viewport_types::MODEL_THUMBNAIL_LAYER;
 
 /// Output resolution for the captured PNG. Same as material thumbnails
 /// — asset browser displays at ~96px so 256 leaves headroom for HiDPI.
@@ -900,7 +900,7 @@ pub(crate) fn tick_warmup_and_dispatch(
                     cls.free(cell_idx);
                     cmds.entity(parent).despawn();
 
-                    let captured = trigger.image.clone();
+                    let mut captured = trigger.image.clone();
                     if let Some(parent_dir) = thumb_path.parent() {
                         let _ = std::fs::create_dir_all(parent_dir);
                     }
@@ -918,6 +918,11 @@ pub(crate) fn tick_warmup_and_dispatch(
                         Err(e) => warn!("[model_thumbnails] capture format unsupported: {}", e),
                     }
 
+                    // The readback arrives as `RenderAssetUsages::MAIN_WORLD`, so
+                    // it has CPU pixels but no GPU texture — the PNG written above
+                    // is correct while the handle we publish here would draw a
+                    // black tile. Opt into both worlds before handing it to the UI.
+                    captured.asset_usage = RenderAssetUsages::default();
                     let captured_handle = imgs.add(captured);
                     reg.complete(model_path.clone(), captured_handle);
 

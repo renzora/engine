@@ -327,6 +327,36 @@ pub struct Persistent;
 #[derive(Component)]
 pub struct EditorLocked;
 
+/// Author-chosen icon for an entity, overriding the one derived from its
+/// components.
+///
+/// Normally the hierarchy row and the inspector's entity header get their icon
+/// from `ComponentIconRegistry`, which reads the archetype: a `Mesh3d` is a
+/// cube, a `PointLight` a bulb. That is right nearly always, and blind to the
+/// one thing it cannot see — a hundred sibling empties that mean quite
+/// different things to whoever built the scene. Holding a Phosphor icon name
+/// here lets them say which is which. An empty string means "no override";
+/// so does an unknown name, which falls back rather than drawing a blank.
+///
+/// Lives in the contract crate, not the editor SDK, because a saved scene
+/// carries it into the runtime — a type the runtime cannot resolve fails the
+/// whole file's load, not just this component's.
+#[derive(Component, Reflect, Default, Clone, Debug)]
+#[reflect(Component)]
+pub struct EntityIcon(pub String);
+
+/// Author-chosen colour for an entity's label in the hierarchy, as `[r, g, b]`
+/// bytes. Absent means the theme's default label colour.
+///
+/// Here rather than in `renzora_editor_framework` for the same reason as
+/// [`EntityIcon`]: it is authored data that rides along in the scene file, so
+/// the runtime has to be able to resolve it. It also had to become `Reflect` to
+/// get there at all — before that, picking a label colour looked like it worked
+/// and was gone the next time the scene loaded.
+#[derive(Component, Reflect, Clone, Copy, Debug)]
+#[reflect(Component)]
+pub struct EntityLabelColor(pub [u8; 3]);
+
 /// Marker component — viewport picking stops at this entity instead of walking
 /// past it to a higher-up named ancestor. Apply to compound entities (terrains,
 /// prefab roots, etc.) that own many named children but should be selectable

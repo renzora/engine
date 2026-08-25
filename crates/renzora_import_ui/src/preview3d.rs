@@ -34,16 +34,13 @@ use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 
 /// A render layer of this preview's own.
 ///
-/// The editor hands out layers by hand, and the taken ones are: 6 splash
-/// chamber, 7 material thumbnails / particle preview, 8 model thumbnails /
-/// material preview, 9 shader preview, 10 studio preview, 13 marketplace model
-/// viewer, 14 marketplace **material** viewer, 30/31 runtime blits.
-///
-/// This started on 14 and collided with the marketplace material viewer, whose
+/// It started on 14 and collided with the marketplace material viewer, whose
 /// sphere is permanently visible at the world origin — which is exactly where
 /// this preview re-centres its model, so it appeared as a grey ball embedded in
-/// every import. Anything added here has to check that list first.
-const PREVIEW_LAYER: usize = 16;
+/// every import. The hand-maintained list of taken layers that used to live in
+/// this comment is now the registry in the contract crate; that is the only
+/// place a new rig should read or write.
+use renzora::core::viewport_types::IMPORT_PREVIEW_LAYER as PREVIEW_LAYER;
 
 /// Initial render target size. The texture is resized every frame to match the
 /// panel it is drawn into (see [`match_viewport_size`]) — a fixed size is both

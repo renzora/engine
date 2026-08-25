@@ -145,6 +145,32 @@ pub fn color_field(
     get: impl Fn(&Rx) -> [f32; 3] + Clone + Send + Sync + 'static,
     set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
 ) -> Entity {
+    color_field_anchored(commands, get, set, false)
+}
+
+/// [`color_field`] with a compact square swatch whose picker opens to the
+/// *left*, for a control that sits near the right edge of its panel.
+///
+/// The default field grows rightwards from a 44 px swatch, which is right in an
+/// inspector row and wrong in a header: the picker is ~200 px wide, so a swatch
+/// 90 px from the panel's right edge would open a popup that the panel's own
+/// clip rect eats most of.
+pub fn color_swatch_field_right(
+    commands: &mut Commands,
+    get: impl Fn(&Rx) -> [f32; 3] + Clone + Send + Sync + 'static,
+    set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
+) -> Entity {
+    color_field_anchored(commands, get, set, true)
+}
+
+/// Shared body of [`color_field`] / [`color_swatch_field_right`]. `compact`
+/// squares the swatch and right-aligns the popup.
+fn color_field_anchored(
+    commands: &mut Commands,
+    get: impl Fn(&Rx) -> [f32; 3] + Clone + Send + Sync + 'static,
+    set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
+    compact: bool,
+) -> Entity {
     // Seed HSV; bind_hsv_picker re-syncs from the real value next frame.
     let picker = hsv_picker(commands, 0.0, 0.0, 0.5);
     bind_hsv_picker(commands, picker, get.clone(), set);
@@ -154,7 +180,8 @@ pub fn color_field(
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Percent(100.0),
-                left: Val::Px(0.0),
+                left: if compact { Val::Auto } else { Val::Px(0.0) },
+                right: if compact { Val::Px(0.0) } else { Val::Auto },
                 margin: UiRect::top(Val::Px(2.0)),
                 padding: UiRect::all(Val::Px(6.0)),
                 border: UiRect::all(Val::Px(1.0)),
@@ -174,8 +201,8 @@ pub fn color_field(
     let swatch = commands
         .spawn((
             Node {
-                width: Val::Px(44.0),
-                height: Val::Px(16.0),
+                width: Val::Px(if compact { 18.0 } else { 44.0 }),
+                height: Val::Px(if compact { 18.0 } else { 16.0 }),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()

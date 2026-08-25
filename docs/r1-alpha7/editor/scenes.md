@@ -176,6 +176,16 @@ A tab with unsaved edits shows a **`*`** after its name, and the **save button**
 
 Press `Ctrl+S` to save. Scenes are stored as `.ron` files, kept by convention in your project's `scenes/` folder. You almost never edit these by hand — the editor writes them for you — but they are plain text if you ever want to peek.
 
+### Scene thumbnails
+
+Every save also takes a snapshot of the viewport and keeps it as the scene file's thumbnail, so the **Assets** browser shows you the level instead of a generic scene icon. Whatever the focused viewport was showing at the moment you pressed `Ctrl+S` is the picture you get — frame the shot you want, then save.
+
+Thumbnails are always a 256×256 square, centre-cropped out of the viewport. Your dock layout decides the viewport's shape — widen the assets panel, open a second panel beside the viewport — and a thumbnail that inherited that shape would come out different every time you rearranged the editor. The centre of the view is what you framed, so that's what's kept; nothing is squashed to fit.
+
+This is the only moment the picture is free to take. A material or a model thumbnail can be rendered on demand, but reproducing a scene's would mean loading the whole scene — the exact work the browser is there to save you. So a scene that has never been saved from the editor simply keeps its icon, and one you saved with the viewport panel closed keeps whatever thumbnail it already had.
+
+Snapshots live in `<project>/.cache/thumbnails/scenes/`, alongside the texture, material and model thumbnail caches. That folder is disposable — delete it and everything else regenerates on demand, while scene thumbnails come back on the next save.
+
 ### Auto-save
 
 The editor saves for you on a timer — **on by default**, every 5 minutes. Adjust it under **Settings → Auto-Save** (in the sidebar's **Editor** group): toggle it off, or change the interval (in seconds). In the last few seconds before each save the bottom-left status bar replaces **Ready** with a live **Auto save in Ns** countdown; when it reaches zero the scene is saved — through the exact same path as `Ctrl+S`, so a focused asset tab (a material, script, etc.) is never overwritten — and the label returns to **Ready**. Auto-save pauses while you're in Play mode.

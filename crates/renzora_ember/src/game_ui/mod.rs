@@ -247,13 +247,13 @@ fn on_canvas_inserted(
 /// Give authored game-UI nodes a `ScriptComponent`, so `<input bind="Entity.var">`
 /// has one to resolve to (see `markup::input_field::sync_inputs`).
 ///
-/// This exists because `renzora_scripting::auto_insert_script_component`
-/// deliberately skips every `bevy_ui` node. It used to blanket-apply the
-/// component to all named entities, and the editor's own chrome is by far the
-/// largest population of those — ~955 on an empty scene — with each insert
-/// costing an archetype move. Game UI is the small, controlled population that
-/// actually wants the component, so it opts in here instead of the entire UI
-/// tree paying for it.
+/// This exists because nothing inserts a `ScriptComponent` automatically any
+/// more. `renzora_scripting` used to blanket-apply it to every named entity, and
+/// the editor's own chrome is by far the largest population of those — ~955 on
+/// an empty scene — with each insert costing an archetype move; the observer was
+/// first narrowed to skip `bevy_ui` nodes and then dropped entirely. Game UI is
+/// the small, controlled population that actually wants the component, so it
+/// opts in here rather than waiting for a blanket insert that no longer comes.
 fn on_game_ui_node_inserted(
     trigger: On<Insert, (UiWidget, UiCanvas)>,
     mut commands: Commands,

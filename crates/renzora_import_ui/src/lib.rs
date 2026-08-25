@@ -160,30 +160,43 @@ fn import_orchestrate_system(world: &mut World) {
         .unwrap_or(true);
 
     // Check for ImportRequested marker from the asset browser
-    let import_requested = world
-        .remove_resource::<renzora::core::ImportRequested>()
-        .is_some();
+    let import_requested = world.remove_resource::<renzora::core::ImportRequested>();
     let requested_target = world.remove_resource::<renzora::core::ImportTargetDir>();
 
-    if import_requested {
+    if let Some(renzora::core::ImportRequested(pick)) = import_requested {
         if let Some(ref target) = requested_target {
             world.resource_mut::<overlay::ImportOverlayState>().target_directory =
                 target.0.clone();
         }
-        // An explicit Import click opens the **OS file picker first**, then
-        // shows the overlay pre-loaded with the chosen files — rather than
-        // opening an empty overlay the user then has to Browse from. The picker
-        // is filtered to every importable kind (models + copyable assets).
-        // Folders can't come through this picker (no OS dialog picks both), so
-        // they arrive via the overlay's Browse folder button or a drop.
+        // An explicit Import click opens the **OS picker first**, then shows the
+        // overlay pre-loaded with what was chosen — rather than opening an empty
+        // overlay the user then has to Browse from.
+        //
+        // Which picker is the caller's call, because no OS dialog picks files
+        // and folders at once: a folder in a file dialog can only be navigated
+        // into, which read as "Import won't import folders". Every Import entry
+        // point therefore asks first (a Files / Folder menu) and passes the
+        // answer through as [`ImportPick`].
+        //
         // If the user cancels but files are already queued (e.g. from a prior
         // drop), we still surface the overlay so those aren't stranded.
-        let picked = native::pick_and_queue_files(world);
+        let picked = match pick {
+            renzora::core::ImportPick::Files => native::pick_and_queue_files(world),
+            renzora::core::ImportPick::Folder => native::pick_and_queue_folder(world),
+        };
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()
             .pending_files
             .is_empty();
-        if picked || has_pending {
+        // A folder holding nothing importable leaves an explanatory message in
+        // `progress` and returns `false`; without this the overlay would stay
+        // shut and the explanation would never be seen — the folder pick would
+        // look exactly like a cancelled one.
+        let reported = matches!(
+            world.resource::<overlay::ImportOverlayState>().progress,
+            overlay::ImportProgress::Error(_)
+        );
+        if picked || has_pending || reported {
             world.resource_mut::<overlay::ImportOverlayState>().visible = true;
             // Start converting straight away. Every model stages to the project
             // cache and blocks for a verdict, so the work is already done by the

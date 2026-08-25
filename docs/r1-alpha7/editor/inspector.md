@@ -14,7 +14,19 @@ Don't have anything to inspect yet? Open the **Add Entity** menu to drop a new o
 
 ![The Add Entity menu, with a search box and categories like General, Lighting, and Camera listing objects you can add to your scene.](/assets/previews/add_entity.png)
 
-> Want the Inspector to stay on one object while you click around elsewhere? Use the **lock** toggle in a section header. It pins the Inspector to the current object until you unlock it.
+> Want the Inspector to stay on one object while you click around elsewhere? Use the **lock** toggle at the right of the entity header. It pins the Inspector to the current object until you unlock it.
+
+## The entity header
+
+Directly above the component list is a single fixed row describing the object itself, rather than any component on it. From left to right:
+
+- **Icon** — the glyph this object shows in the Hierarchy. Click it to open a grid of icons and pick one; **Auto (from components)** at the top clears your choice and goes back to letting the object's components decide (a mesh gets a cube, a light gets a bulb). Useful when a scene is full of empty objects that all look alike but mean quite different things — a spawn point, a patrol waypoint, a trigger volume.
+- **ID** — the object's unique identifier, and the name scripts use to find it. Typing here sanitizes what you enter (spaces and punctuation become `_`, everything lowercases) and de-duplicates it against every other object, so two things can never end up sharing an ID.
+- **Label colour** — the colour of this object's row in the Hierarchy. Click the swatch for a colour picker.
+- **Eye** — show or hide the object. A hidden object's eye is crossed out and tinted.
+- **Lock** — pin the Inspector to this object, as above.
+
+Both the icon and the label colour are saved with the scene, so they survive a reload and travel with the file to anyone else opening the project.
 
 Some state isn't attached to any object — the time, the editor's own settings, a plugin's configuration. That is a **resource**, and because there is nothing to select, it never shows up here. Open the **Resources** panel instead (Add-Panel picker → *Debug*): it lists every resource in the running world and edits it the same way this panel edits a component. See [Resources & State](/docs/r1-alpha7/engine-core/resources).
 
@@ -29,21 +41,18 @@ In a section header you'll find:
 - An **on/off toggle** (on components that support it) so you can switch a feature off without deleting it.
 - A **trash** button to remove the component entirely. (**Scripts** and **Material** don't have one — they manage their own contents, with a per-script remove and the material binding controls instead.)
 
-Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Name**, **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
+Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
 
-To focus a single component, use the **component filter**. It comes in two styles, switched in **Settings → Interface → Inspector → Component Filter**:
+> The object's ID, icon, label colour and visibility are *not* in this list — they aren't components you can add or remove, so they live in the [entity header](#the-entity-header) above it instead.
 
-- **Dropdown** *(default)* — a single dropdown in the top bar listing the components on the object; pick one to filter, or **All components** to clear it.
-- **Vertical Menu** — one icon button per component down the left edge, plus an **All** entry at the top. Hover a button for a tooltip naming the component (the bubble stays on-screen, flipping to the other side or sliding up/down near an edge). Click to filter the panel to just that component; click it again (or **All**) to show everything. The active button is highlighted.
-
-At the very top is a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click it once to open every section, again to collapse them all; it resets when you select a different object. (The bottom of the list has an **Add Component** button.)
+The top bar holds three things: the **Add Component** button, a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click that once to open every section, again to collapse them all; it resets when you select a different object.
 
 ### Which sections start open
 
 By default every section starts expanded. Hit the collapse-all button to fold them, or change the starting state in **Settings → Interface → Inspector → Default Expand**:
 
 - **All Open** *(default)* — every section starts expanded.
-- **Essentials Only** — Name, Transform, and Scripts open; the rest closed.
+- **Essentials Only** — Transform and Scripts open; the rest closed.
 - **All Closed** — every section starts collapsed.
 
 **What All Open costs.** A collapsed section is not merely hidden — its rows are despawned and the space reserved with a placeholder, so it genuinely costs nothing to have. Expanding is the expensive direction: on a scene with a world environment, terrain and camera, selecting an entity with everything open added ~1,082 bevy_ui nodes, and bevy_ui walks every node in the tree every frame whether or not anything changed. That measured ~3 ms/frame — about 72 fps down to 59. If a long component list starts costing you frames, **Essentials Only** is the setting to reach for.
@@ -70,7 +79,7 @@ Different settings get different controls, picked automatically to match the val
 
 ## Adding and removing components
 
-- **Add** — click **Add Component** (top or bottom of the panel) to open a list of everything you can add, grouped by category. Type to filter.
+- **Add** — click **Add Component** in the panel's top bar to open a list of everything you can add, grouped by category. Type to filter.
 - **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead.
 - **Turn off** — flip the header toggle to disable a component without removing it.
 

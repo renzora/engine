@@ -146,26 +146,19 @@ pub struct InspectorRegistry {
 impl InspectorRegistry {
     /// Register an inspector entry for a component.
     ///
-    /// Ordering: `name` is always first, `transform` second, `material_ref`
-    /// third; everything else is appended in registration order.
+    /// Ordering: `transform` is always first, `material_ref` second; everything
+    /// else is appended in registration order. (There is no `name` entry any
+    /// more — the entity id moved into the inspector's fixed header, which sits
+    /// above this list rather than in it.)
     pub fn register(&mut self, entry: InspectorEntry) {
         match entry.type_id {
-            "name" => self.entries.insert(0, entry),
-            "transform" => {
-                // Insert after any existing "name" entry.
-                let pos = self
-                    .entries
-                    .iter()
-                    .position(|e| e.type_id != "name")
-                    .unwrap_or(self.entries.len());
-                self.entries.insert(pos, entry);
-            }
+            "transform" => self.entries.insert(0, entry),
             "material_ref" => {
-                // Insert after name + transform, before everything else.
+                // Insert after transform, before everything else.
                 let pos = self
                     .entries
                     .iter()
-                    .position(|e| e.type_id != "name" && e.type_id != "transform")
+                    .position(|e| e.type_id != "transform")
                     .unwrap_or(self.entries.len());
                 self.entries.insert(pos, entry);
             }

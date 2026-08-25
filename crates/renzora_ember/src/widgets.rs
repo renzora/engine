@@ -281,6 +281,17 @@ impl Plugin for WidgetsPlugin {
             bevy::app::PreUpdate,
             form::form_enter_submit.after(bevy::ui::UiSystems::Focus),
         );
+        // An open inline folder rename owns Enter and Escape, and consumes them
+        // (`clear_just_pressed`) so neither reaches the form above or the
+        // overlay's Escape-to-close during Update. That only works from ahead of
+        // both, which is why this sits in PreUpdate rather than with the other
+        // folder-picker systems.
+        app.add_systems(
+            bevy::app::PreUpdate,
+            folder_picker::folder_rename_keys
+                .after(bevy::ui::UiSystems::Focus)
+                .before(form::form_enter_submit),
+        );
         app.add_systems(
             Update,
             (
@@ -393,6 +404,7 @@ impl Plugin for WidgetsPlugin {
                     audio_player::audio_player_scrub,
                     audio_player::audio_player_apply,
                     folder_picker::folder_pick_click,
+                    folder_picker::folder_new_click,
                     // After the keyed lists that fill these strips: a row built
                     // this frame must be folded (or not) before the layout that
                     // would otherwise draw it in a strip it doesn't fit in.

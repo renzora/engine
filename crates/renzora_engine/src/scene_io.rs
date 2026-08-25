@@ -1938,7 +1938,7 @@ pub fn rehydrate_meshes(
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
-    checker: Option<Res<renzora::core::CheckerTexture>>,
+    grid: Option<Res<renzora::core::GridTexture>>,
 ) {
     let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
         return;
@@ -1957,13 +1957,15 @@ pub fn rehydrate_meshes(
         }
 
         let base_color = color.map_or(Color::WHITE, |c| c.0);
-        // Same "no texture yet" checker the shape was spawned with — a
-        // reloaded untextured primitive shouldn't come back flat.
-        let material = materials.add(StandardMaterial {
+        // Same "no texture yet" blockout grid the shape was spawned with — a
+        // reloaded untextured primitive shouldn't come back flat. Only
+        // `MeshColor` is serialized, so this system *is* the material after a
+        // reload: anything it gets wrong shows up as shapes changing appearance
+        // when you save and open the scene again.
+        let material = materials.add(crate::blockout::blockout_material(
             base_color,
-            base_color_texture: checker.as_ref().map(|c| c.0.clone()),
-            ..default()
-        });
+            grid.as_deref(),
+        ));
 
         commands
             .entity(entity)

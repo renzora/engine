@@ -104,6 +104,62 @@ pub const VIEWPORT_2D_GRID_LAYER_BASE: usize = 20;
 /// layers (`VIEWPORT_2D_GRID_LAYER_BASE`, 20..) and the low scene layers (0/1).
 pub const VIEWPORT_3D_GIZMO_LAYER_BASE: usize = 24;
 
+// ── Offscreen rig render layers ──────────────────────────────────────────────
+//
+// Every preview panel and thumbnail capture in the editor is its own little
+// scene — a camera, its own lights, sometimes a floor or a backdrop — sharing
+// one `World` with all the others and with the real scene. A bevy `RenderLayers`
+// index is the only thing keeping them apart, so each rig owns exactly one and
+// no two rigs may own the same.
+//
+// They live here, in the contract crate, because a rig can only tell it has
+// picked a free layer by looking at every *other* rig, and none of those crates
+// depend on each other. When each defined its own private constant there was
+// nowhere to look, and the allocation duplicated in the obvious way: the
+// particle preview and the material thumbnail capture both took layer 7, and
+// the material preview and the model thumbnail capture both took layer 8. A
+// shared layer is not a crash — it is a quiet cross-contamination. The particle
+// preview's checkerboard floor and its 5000-lux directional light rendered into
+// every `.material` thumbnail, which is where the grey tiles under the sphere
+// came from, and the material thumbnail rig's own two lights lit the particle
+// preview back.
+//
+// Adding a rig means adding a constant here, not a private one next to the
+// camera it belongs to.
+
+/// The splash screen's 3D chamber.
+pub const SPLASH_CHAMBER_LAYER: usize = 6;
+/// Offscreen sphere capture for `.material` file thumbnails (asset browser).
+pub const MATERIAL_THUMBNAIL_LAYER: usize = 7;
+/// Offscreen capture for model (`.glb`/`.fbx`/…) file thumbnails (asset browser).
+pub const MODEL_THUMBNAIL_LAYER: usize = 8;
+/// The shader editor's live preview panel.
+pub const SHADER_PREVIEW_LAYER: usize = 9;
+/// The animation editor's studio preview panel.
+pub const STUDIO_PREVIEW_LAYER: usize = 10;
+/// The material editor's live preview panel (mesh + HDRI backdrop).
+pub const MATERIAL_PREVIEW_LAYER: usize = 11;
+/// The particle editor's preview panel (effect + checkerboard floor).
+pub const PARTICLE_PREVIEW_LAYER: usize = 12;
+/// The hub's model viewer.
+pub const MODEL_VIEWER_LAYER: usize = 13;
+/// The hub's material viewer.
+pub const MATERIAL_VIEWER_LAYER: usize = 14;
+/// The import dialog's 3D model preview.
+pub const IMPORT_PREVIEW_LAYER: usize = 16;
+/// The import dialog's material preview.
+pub const IMPORT_MATERIAL_PREVIEW_LAYER: usize = 17;
+/// The runtime's render-scale upscale blit (sprite + present camera).
+pub const RENDER_SCALE_BLIT_LAYER: usize = 30;
+/// The runtime's viewport-stretch blit (sprite + present camera). Distinct from
+/// [`RENDER_SCALE_BLIT_LAYER`] so the two present passes never collide.
+pub const VIEWPORT_STRETCH_BLIT_LAYER: usize = 31;
+
+// Layer 0 is the scene and layer 1 the shared world-space overlays; 20..23 are
+// the per-slot 2D grids and 24..27 the per-slot 3D gizmos (the two `_BASE`
+// constants above, one each per `VIEWPORT_COUNT` slot). That leaves 2, 3, 4, 5,
+// 15, 18, 19, 28 and 29 free for the next rig.
+
 /// Per-slot state for one editor viewport: its render-target image, panel rect,
 /// and its own orbit camera (focus / distance / yaw / pitch).
 ///

@@ -28,6 +28,9 @@ mod panel;
 mod tab_asset_cache;
 pub use tab_asset_cache::TabAssetCache;
 
+mod thumbnail;
+use thumbnail::PendingSceneThumbnail;
+
 mod native_diagnostics;
 mod native_scenes;
 use native_diagnostics::NativeSceneDiagnostics;
@@ -180,6 +183,14 @@ fn teardown_for_project_switch(world: &mut World) {
     }
     if let Some(mut overlay_active) = world.get_resource_mut::<EditorLoadingOverlayActive>() {
         overlay_active.0 = false;
+    }
+    // Drop the previous project's scene thumbnails — its cached hits AND its
+    // known-misses, which would otherwise short-circuit lookups for the new
+    // project's identically-named scenes.
+    if let Some(mut thumbs) =
+        world.get_resource_mut::<renzora_editor_framework::SceneThumbnailRegistry>()
+    {
+        thumbs.reset();
     }
     if count > 0 {
         info!(
@@ -533,6 +544,11 @@ fn save_scene_system(world: &mut World) {
         }
     }
 
+    // Snapshot the viewport for the browser tile. Queued rather than taken
+    // here because this is an exclusive system and the readback needs the
+    // render target — see `thumbnail::capture_scene_thumbnail`.
+    world.insert_resource(PendingSceneThumbnail(save_path.clone()));
+
     renzora::core::console_log::console_success(
         "Scene",
         format!("Saved scene to {}", save_path.display()),
@@ -598,6 +614,11 @@ fn save_as_scene_system(world: &mut World) {
                 }
             }
         }
+
+        // Same viewport snapshot the plain Save takes — a Save As is the first
+        // time this path exists, so without it a brand-new scene would have no
+        // tile until the next Ctrl+S.
+        world.insert_resource(PendingSceneThumbnail(file_path.clone()));
 
         renzora::core::console_log::console_success(
             "Scene",
@@ -1596,6 +1617,7 @@ impl Plugin for ScenePlugin {
                     detect_file_keybindings,
                     save_scene_system,
                     save_as_scene_system,
+                    thumbnail::capture_scene_thumbnail,
                     new_scene_system,
                     open_scene_system,
                     open_scene_path_system,

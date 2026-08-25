@@ -77,26 +77,26 @@ pub struct LastToggleState {
     toggles: Option<RenderToggles>,
 }
 
-/// Generated grey checkerboard used as the base-color texture when the Textures
-/// toggle is off. It mirrors the dark/light grey checker terrain shows when a
-/// chunk has no material ([`TerrainCheckerboardMaterial::default`]), so an
-/// untextured `StandardMaterial` reads the same way — a recognizable "no
-/// material" default rather than a flat grey fill. Built once at startup.
+/// Generated blockout grid used as the base-color texture when the Textures
+/// toggle is off. It's the same image a freshly spawned untextured primitive
+/// wears, so "this has no texture" reads identically whether you got there by
+/// spawning a shape or by flipping the toggle — a recognizable "no material"
+/// default rather than a flat fill. Built once at startup.
 #[derive(Resource)]
-pub struct DefaultCheckerTexture(pub Handle<Image>);
+pub struct DefaultGridTexture(pub Handle<Image>);
 
-impl FromWorld for DefaultCheckerTexture {
+impl FromWorld for DefaultGridTexture {
     fn from_world(world: &mut World) -> Self {
         // Reuse the engine-wide handle when it's already there (the runtime
-        // inserts renzora::core::CheckerTexture at startup) so Textures-off
+        // inserts renzora::core::GridTexture at startup) so Textures-off
         // and "fresh untextured shape" share one image; otherwise build it
         // from the same contract-crate source of truth.
-        if let Some(shared) = world.get_resource::<renzora::core::CheckerTexture>() {
+        if let Some(shared) = world.get_resource::<renzora::core::GridTexture>() {
             return Self(shared.0.clone());
         }
-        let image = renzora::core::build_checker_image();
-        let mut images = world.resource_mut::<Assets<Image>>();
-        Self(images.add(image))
+        let image = renzora::core::build_grid_image();
+        let mut assets = world.resource_mut::<Assets<Image>>();
+        Self(assets.add(image))
     }
 }
 
@@ -211,7 +211,7 @@ pub fn update_render_toggles(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut original_states: ResMut<OriginalMaterialStates>,
     mut last_state: ResMut<LastToggleState>,
-    checker: Res<DefaultCheckerTexture>,
+    grid: Res<DefaultGridTexture>,
     mut material_events: MessageReader<AssetEvent<StandardMaterial>>,
 ) {
     let toggles = settings.render_toggles;
@@ -301,17 +301,17 @@ pub fn update_render_toggles(
             material.unlit = true;
         }
         if !toggles.textures {
-            // Textures-off = the default "no material" checker, STILL lit by the
-            // real scene lights and receiving shadows. Swap the base-color map for
-            // the generated grey checker (matching terrain's untextured look) and
-            // drop the other maps; leave `unlit` driven solely by the lighting
-            // toggle above so shading + shadows are unaffected. (Without this,
-            // textures-off swapped the whole mesh to the unlit flat-clay shader,
-            // which read as lighting + shadows being turned off too.) Mirror the
-            // terrain checker's matte PBR (non-metallic, fairly rough) so every
+            // Textures-off = the default "no material" blockout grid, STILL lit
+            // by the real scene lights and receiving shadows. Swap the base-color
+            // map for the generated grid (matching a freshly spawned untextured
+            // primitive) and drop the other maps; leave `unlit` driven solely by
+            // the lighting toggle above so shading + shadows are unaffected.
+            // (Without this, textures-off swapped the whole mesh to the unlit
+            // flat-clay shader, which read as lighting + shadows being turned off
+            // too.) Force matte PBR (non-metallic, fairly rough) so every
             // untextured surface reads consistently regardless of its material.
             material.base_color = Color::WHITE;
-            material.base_color_texture = Some(checker.0.clone());
+            material.base_color_texture = Some(grid.0.clone());
             material.emissive = LinearRgba::BLACK;
             material.emissive_texture = None;
             material.normal_map_texture = None;

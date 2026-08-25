@@ -452,3 +452,51 @@ toolbar it sits on.
 ### Or just put it in your panel
 
 A toolbar is only UI, so you don't *have* to use the strip — an editor can build the same ember widgets directly inside its own panel. The **code editor** (its font-size + Minimap/Whitespace bar, below the tab strip) and the **UI canvas** (its align/grid/snap/zoom bar) do exactly that. The widgets and their click systems behave identically either way — systems query by marker component, not by tree position. Use the strip when the toolbar belongs in the shared chrome below the tabs; build it in-panel when it belongs to that panel's own layout.
+
+## If your panel renders a 3D preview: claim a render layer
+
+Plenty of panels show a little 3D scene of their own — the material and shader
+previews, the particle preview, the animation studio, the import dialog's model
+view, the asset browser's thumbnail captures. Each of those is a real camera, its
+own lights, and often a floor or a backdrop, all spawned into the **same `World`**
+as the actual scene and as every other preview.
+
+The only thing keeping them apart is a bevy `RenderLayers` index. Every rig puts
+its camera and all of its content on one layer, so a camera sees its own scene
+and nothing else.
+
+Those indices are handed out by a registry in the contract crate,
+`renzora::core::viewport_types` — `MATERIAL_PREVIEW_LAYER`,
+`PARTICLE_PREVIEW_LAYER`, `MODEL_THUMBNAIL_LAYER`, and so on, plus a comment
+listing which numbers are still free. **Take your layer from there and add a
+constant for your rig; don't define a private one next to your camera.** A rig
+can only tell that a layer is free by checking every other rig, and the crates
+that own them don't depend on each other — a private constant has nothing to
+check against.
+
+Two layers ended up double-booked exactly that way. The particle preview and the
+`.material` thumbnail capture both sat on 7, so the particle preview's
+checkerboard floor and its directional light rendered into every material
+thumbnail in the asset browser; the material preview and the model thumbnail
+capture both sat on 8. Sharing a layer never errors — it silently draws one rig's
+contents into the other's, and because most rigs park their geometry at the world
+origin, that shows up as another preview's mesh embedded in yours.
+
+```rust
+use renzora::core::viewport_types::MY_PREVIEW_LAYER;
+
+commands.spawn((
+    Camera3d::default(),
+    Camera { target: RenderTarget::Image(image.into()), is_active: false, ..default() },
+    RenderLayers::layer(MY_PREVIEW_LAYER),
+    // Skip the editor's environment/skybox takeover systems, which would
+    // otherwise attach a scene env-map to your offscreen camera.
+    IsolatedCamera,
+    HideInHierarchy,
+    EditorLocked,
+));
+```
+
+`IsolatedCamera`, `HideInHierarchy` and `EditorLocked` belong on every entity in
+the rig: they keep it out of the hierarchy panel, out of selection, and out of
+the systems that push scene lighting onto cameras.

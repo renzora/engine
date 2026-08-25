@@ -113,6 +113,31 @@ The toolbar above the viewport carries a **shapes** dropdown (the multi-square i
 
 It's the same shape list as the shape-library panel and the hierarchy's **Add Entity** menu, so whatever you register shows up in all three.
 
+### What a new shape looks like
+
+A shape you've just added has no material of its own yet, so it wears the
+**blockout grid**: rounded tiles with dark grout between them, a heavy black rule
+around every four-by-four section, and a cross marking that section's middle —
+all tinted by the shape's own colour. A default 1-unit cube shows four tiles a
+side, and the section rule lands on its edges.
+
+It's deliberately flat — a texture, not relief. It gives you a sense of scale to
+judge your greybox against, and nothing more; anything with visible depth to it
+would compete with the shape of the geometry you're actually blocking out.
+
+**Scaling doesn't stretch it.** The tiles stay the same size in world units
+however you scale the object, so a cube pulled out into a wall gets more tiles
+rather than four tall rectangles, and every surface in the scene measures the
+same. (That stops once you assign a material of your own — from then on the UVs
+are yours.)
+
+The grid means *no texture*, so it disappears the moment you assign a
+[material](materials.md). It isn't a file in your project — the engine generates
+it at startup, which is also why there's nothing to lose track of or ship. It's
+the same image the viewport's **Textures** toggle swaps in (see [Display
+toggles](#display-toggles)), so "this has no texture yet" looks the same however
+you got there.
+
 ### Dragging one in from the shape library
 
 To place a shape somewhere other than the origin, **drag it out of the shape
@@ -175,6 +200,12 @@ hanging.
 | `Ctrl + G` | Grid on / off |
 
 > These use `Alt` so they don't clash with `Ctrl+Z` (undo). Note that `H` hides the selected object.
+
+The **Display** dropdown carries the rest: mesh, textures, lighting, shadows.
+**Textures** off doesn't unlight the scene — every surface keeps its real
+lighting and shadows and swaps its maps for the [blockout
+grid](#what-a-new-shape-looks-like), so the scene reads as untextured geometry
+rather than as geometry in the dark.
 
 ## The floor grid
 

@@ -4,7 +4,7 @@ Write per-entity gameplay logic in Lua 5.4 — the full-featured scripting backe
 
 Renzora's scripting core is language-agnostic: the backend is chosen by file extension, and a `.lua` file runs on the **Lua** backend (mlua 0.10, Lua 5.4, vendored). Lua ships as a standalone plugin on every native build; it is **not** available on the web (wasm) target. It exposes the full API (~70 functions and all eight lifecycle hooks).
 
-A `ScriptComponent` is auto-inserted on any entity that receives a `Name`, so naming an entity in the editor is all you need before attaching a script to it. The one exception is `bevy_ui` nodes: authored game UI gets its `ScriptComponent` from `renzora_ember::game_ui` instead, and editor chrome gets none at all (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script)` and persists across frames.
+Scripts live on a `ScriptComponent`, and an entity only gets one when you give it one — either by dragging a `.lua` file onto the entity's row in the hierarchy, or from the inspector's **Add Component → Scripts** entry. Both routes create the component if it isn't there yet, so there's no separate "add the component first" step. Authored game UI is the exception that gets one for free: `renzora_ember::game_ui` inserts it on every `UiWidget`/`UiCanvas` so `<input bind="Entity.var">` resolves (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script)` and persists across frames.
 
 ## Your first script
 
@@ -21,7 +21,7 @@ function on_update()
 end
 ```
 
-Name an entity in the Inspector, add the script under its `ScriptComponent`, and hit play — the entity moves with the movement input axis (WASD / left stick).
+Drag `player.lua` onto an entity in the hierarchy (or add the **Scripts** component in the Inspector and pick the file there), then hit play — the entity moves with the movement input axis (WASD / left stick).
 
 > The transform globals (`position_x`, `rotation_y`, …) are **read-only inputs** refreshed each frame. Assigning to them does nothing. To move an entity, call a transform function such as `translate(x, y, z)` or `set_position(x, y, z)`, or drive it through physics (`set_velocity`, `apply_impulse`).
 

@@ -494,7 +494,9 @@ fn fmt_vec3(v: &[f32; 3]) -> String {
 }
 
 fn fmt_quat(v: &[f32; 4]) -> String {
-    let (x, y, z) = bevy::prelude::Quat::from_array(*v).to_euler(bevy::math::EulerRot::XYZ);
+    // YXZ so a keyed spin reads as yaw climbing, not as X/Z snapping to ±180
+    // every time it crosses 90° — same order the inspector shows.
+    let (y, x, z) = bevy::prelude::Quat::from_array(*v).to_euler(bevy::math::EulerRot::YXZ);
     format!("({:.0}°, {:.0}°, {:.0}°)", x.to_degrees(), y.to_degrees(), z.to_degrees())
 }
 

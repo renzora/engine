@@ -29,7 +29,8 @@ use renzora::core::{AspectMode, StretchMode};
 /// Render layer that holds the blit sprite + blit camera. Separated
 /// from the default game world (layer 0) so the game camera doesn't
 /// re-render the blit sprite on top of the gameplay it already drew.
-const BLIT_RENDER_LAYER: usize = 31;
+/// Allocated in the contract crate's registry, alongside every other rig's.
+use renzora::core::viewport_types::VIEWPORT_STRETCH_BLIT_LAYER as BLIT_RENDER_LAYER;
 
 /// Resource: the offscreen image the game camera renders to. Only
 /// inserted when stretch mode is `Viewport`. Other systems read this

@@ -151,9 +151,6 @@ impl Plugin for ScriptingPlugin {
         // Listen for editor reset-script-states event (Observer pattern)
         app.add_observer(handle_reset_script_states);
 
-        // Auto-insert ScriptComponent on new named entities (decouples hierarchy from scripting)
-        app.add_observer(auto_insert_script_component);
-
         // Tell backends when a scripted entity goes away. A backend keeps a VM
         // per (entity, script) so a script's globals are per-entity state, and
         // without this that map grows for the life of the process — which is
@@ -326,36 +323,26 @@ fn sync_scripts_folder(
     }
 }
 
-/// Auto-insert `ScriptComponent` on newly spawned entities that have a `Name`
-/// but no `ScriptComponent` yet. This decouples the hierarchy from the scripting crate.
-///
-/// **`Without<Node>` is the editor-chrome boundary and is load-bearing.** Every
-/// named entity used to get one, and the editor's own `bevy_ui` chrome is by far
-/// the biggest population of named entities in the process — on an empty scene it
-/// was ~955 of them. Each insert is a deferred *archetype move* (the entity's
-/// whole component set is copied to a new table), and editor chrome respawns in
-/// bursts, so a panel rebuild turned into a burst of hundreds of archetype moves
-/// in a single frame. It also doubled the archetype count for UI, since every UI
-/// component-set then existed both with and without this component.
-///
-/// Filtering here is free: `Without<Node>` is resolved per archetype, so chrome
-/// is never visited rather than visited and rejected.
-///
-/// Game UI genuinely does need this component — `<input bind="Entity.var">`
-/// resolves to a `ScriptComponent` on a named UI node — but game UI is a small,
-/// controlled population, so it is inserted deliberately where it is spawned
-/// (see `renzora_ember::game_ui`) instead of blanket-applied to all UI.
-fn auto_insert_script_component(
-    trigger: On<Insert, Name>,
-    mut commands: Commands,
-    query: Query<(), (Without<ScriptComponent>, Without<bevy::ui::Node>)>,
-) {
-    let entity = trigger.entity;
-    // Only add if the entity doesn't already have ScriptComponent
-    if query.get(entity).is_ok() {
-        commands.entity(entity).insert(ScriptComponent::new());
-    }
-}
+// No entity gets a `ScriptComponent` automatically.
+//
+// There used to be an `Insert, Name` observer here that gave one to every named
+// entity that wasn't a `bevy_ui` node, so that naming a thing in the editor was
+// enough to attach a script to it. That convenience cost more than it was worth:
+// each insert is a deferred *archetype move* (the entity's whole component set
+// is copied to a new table), it doubled the archetype count for the populations
+// it touched, and it left the executor's `&ScriptComponent` query walking
+// hundreds of entities that had no scripts on them at all. The observer had
+// already been narrowed once, to exclude editor chrome — ~955 empty components
+// on an empty scene — which is the shape of the problem.
+//
+// The component is now only ever inserted deliberately, and every path that
+// needs one creates it on demand: the inspector's Scripts entry (`add_fn` in
+// `renzora_scripting_editor`), dropping a script or blueprint file onto an
+// entity (`renzora_hierarchy::native::asset_drop`), creating a script from the
+// hierarchy's New Asset menu, saving a blueprint graph
+// (`renzora_blueprint_editor::graph_panel`), and authored game UI, which needs
+// one for `<input bind="Entity.var">` to resolve against
+// (`renzora_ember::game_ui`).
 
 /// Drop backend state for entities whose `ScriptComponent` has gone.
 ///

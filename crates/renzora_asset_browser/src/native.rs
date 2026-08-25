@@ -1,9 +1,9 @@
 //! Bevy-native (ember) Asset Browser — the sole asset browser implementation.
 //!
-//! Toolbar (back + breadcrumb + search) over a wrapping grid of folder/file
-//! tiles read from the current folder. Click a folder to navigate in, a file to
-//! select. Includes thumbnails, the folder tree, drag-drop, rename/delete and
-//! the context menu. The former egui `AssetBrowserPanel` has been removed.
+//! Toolbar (actions + search) and a breadcrumb row over a wrapping grid of
+//! folder/file tiles read from the current folder. Click a folder to navigate
+//! in, a file to select. Includes thumbnails, the folder tree, drag-drop,
+//! rename/delete and the context menu. The former egui `AssetBrowserPanel` has been removed.
 
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -13,7 +13,10 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora_editor_framework::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
+use renzora_editor_framework::{
+    EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SceneThumbnailRegistry,
+    SplashState,
+};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
@@ -27,12 +30,14 @@ use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button_collapsing, icon_label_button_parts, menu_card, menu_header, menu_item,
-    menu_item_styled, menu_sep, screen_menu, screen_menu_flip, scroll_view, slider,
-    text_input, EmberScroll, EmberTextInput, ScrollbarBusy,
+    menu_item_styled, menu_sep, screen_menu, screen_menu_est_height, screen_menu_flip,
+    screen_menu_under, scroll_view, slider, text_input, trigger_rect, EmberScroll,
+    EmberTextInput, ScrollbarBusy,
 };
 
 use crate::thumbnails::{
-    supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail, ThumbnailCache,
+    supports_material_thumbnail, supports_model_thumbnail, supports_scene_thumbnail,
+    supports_thumbnail, ThumbnailCache,
 };
 
 /// Which thumbnail source a file uses.
@@ -41,6 +46,7 @@ enum ThumbKind {
     Image,
     Model,
     Material,
+    Scene,
 }
 
 fn thumb_kind(name: &str) -> Option<ThumbKind> {
@@ -50,6 +56,8 @@ fn thumb_kind(name: &str) -> Option<ThumbKind> {
         Some(ThumbKind::Model)
     } else if supports_material_thumbnail(name) {
         Some(ThumbKind::Material)
+    } else if supports_scene_thumbnail(name) {
+        Some(ThumbKind::Scene)
     } else {
         None
     }
@@ -61,6 +69,7 @@ fn handle_for(w: &Rx, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image>> 
         ThumbKind::Image => w.get_resource::<ThumbnailCache>().and_then(|c| c.handle(path)),
         ThumbKind::Model => w.get_resource::<ModelThumbnailRegistry>().and_then(|r| r.handle(path)),
         ThumbKind::Material => w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(path)),
+        ThumbKind::Scene => w.get_resource::<SceneThumbnailRegistry>().and_then(|r| r.handle(path)),
     }
 }
 
@@ -318,9 +327,9 @@ struct TreeAddBtn;
 struct Splitter;
 
 #[derive(Component)]
-struct AssetTile {
-    path: PathBuf,
-    is_dir: bool,
+pub(crate) struct AssetTile {
+    pub(crate) path: PathBuf,
+    pub(crate) is_dir: bool,
 }
 /// Marks the inline rename text field in a grid tile / list row, carrying the
 /// asset path it renames. The keyed-list rebuild spawns it when `renaming` is set.
@@ -516,6 +525,7 @@ pub fn register_native_asset_browser(app: &mut App) {
             back_click,
             search_sync,
             request_thumbnails,
+            crate::thumbnails::scan_folder_previews,
             tree_toggle_click,
             tree_nav_click,
             tree_tab_click,
@@ -703,35 +713,83 @@ fn create_asset_click(
     }
 }
 
+/// Click the toolbar's Import button → open a two-row menu asking *what* to
+/// import, rather than going straight to a picker.
+///
+/// It used to insert [`ImportRequested`](renzora::core::ImportRequested) and let
+/// the importer open the multi-select **file** dialog. That made folder import
+/// unreachable and, worse, look broken: no OS dialog selects files and folders
+/// in one pass, so clicking a folder in a file dialog just navigates into it —
+/// which reads as "Import refuses to import a folder". One extra click buys a
+/// choice that is actually visible.
 fn import_click(
-    q: Query<&Interaction, (With<ImportBtn>, Changed<Interaction>)>,
+    q: Query<
+        (
+            &Interaction,
+            &bevy::ui::RelativeCursorPosition,
+            &bevy::ui::ComputedNode,
+        ),
+        (With<ImportBtn>, Changed<Interaction>),
+    >,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
-    state: Res<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    let Some(fonts) = fonts else {
         return;
-    }
-    commands.insert_resource(renzora::core::ImportRequested);
-    // Pass a PROJECT-RELATIVE target (e.g. "models/foo"), not an absolute path —
-    // the overlay prefixes it with "assets/". Empty (project root) → use default.
-    let Some(project) = project else { return };
-    let folder = state.current.clone().unwrap_or_else(|| project.path.clone());
-    let target_dir = folder
-        .strip_prefix(&project.path)
-        .ok()
-        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_default();
-    if !target_dir.is_empty() {
-        commands.insert_resource(renzora::core::ImportTargetDir(target_dir));
-    }
+    };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, ..)| **i == Interaction::Pressed) else {
+        return;
+    };
+    let Some((win_h, cursor)) = windows
+        .iter()
+        .find_map(|w| w.cursor_position().map(|c| (w.height(), c)))
+    else {
+        return;
+    };
+    // Hang the menu off the button's own box, flipping up only if the two rows
+    // genuinely don't fit below. The window-half rule the Add menu uses is wrong
+    // here: the Assets panel is docked at the bottom, so its toolbar is always in
+    // the lower half and a short dropdown flipped up over the panel's own tabs
+    // with the whole file grid free underneath it.
+    let menu = screen_menu_under(
+        &mut commands,
+        trigger_rect(cursor, rcp, cn),
+        win_h,
+        screen_menu_est_height(2, 0),
+    );
+    let kids = import_menu_items(&mut commands, &fonts);
+    commands.entity(menu).add_children(&kids);
 }
 
-/// Queue an import targeting the browser's current folder — the world-side twin
-/// of [`import_click`], for the tree "+" menu's Import row (menu rows run as
-/// world closures, not as buttons the click system can see).
-fn request_import(world: &mut World) {
-    world.insert_resource(renzora::core::ImportRequested);
+/// The Files / Folder rows, shared by the Import button and both right-click
+/// menus so no entry point can quietly offer only half the choice.
+fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
+    vec![
+        menu_item(
+            commands,
+            fonts,
+            "file",
+            &renzora::lang::t("assets.import_files"),
+            |w| request_import(w, renzora::core::ImportPick::Files),
+        ),
+        menu_item(
+            commands,
+            fonts,
+            "folder-open",
+            &renzora::lang::t("assets.import_folder"),
+            |w| request_import(w, renzora::core::ImportPick::Folder),
+        ),
+    ]
+}
+
+/// Queue an import targeting the browser's *current* folder — the one path
+/// every Import row in this panel takes (menu rows run as world closures, not
+/// as buttons a click system can see). The title bar's File menu and the
+/// command palette insert the request themselves and set no target, so their
+/// assets land in the importer's default folder instead.
+fn request_import(world: &mut World, pick: renzora::core::ImportPick) {
+    world.insert_resource(renzora::core::ImportRequested(pick));
     let Some(root) = world
         .get_resource::<renzora::core::CurrentProject>()
         .map(|p| p.path.clone())
@@ -971,6 +1029,7 @@ fn drag_ghost(
     cache: Option<Res<ThumbnailCache>>,
     model: Option<Res<ModelThumbnailRegistry>>,
     material: Option<Res<MaterialThumbnailRegistry>>,
+    scene: Option<Res<SceneThumbnailRegistry>>,
     mut ghosts: Query<(Entity, &mut Node), With<DragGhost>>,
 ) {
     let Some(payload) = payload.filter(|_| state.dragging) else {
@@ -1023,6 +1082,7 @@ fn drag_ghost(
         ThumbKind::Image => cache.as_ref().and_then(|c| c.handle(&payload.path)),
         ThumbKind::Model => model.as_ref().and_then(|r| r.handle(&payload.path)),
         ThumbKind::Material => material.as_ref().and_then(|r| r.handle(&payload.path)),
+        ThumbKind::Scene => scene.as_ref().and_then(|r| r.handle(&payload.path)),
     });
     let lead = match handle {
         Some(image) => commands
@@ -1239,23 +1299,15 @@ fn background_context_menu(
     // Same upward flip as the per-asset menu: the create-asset list is tall
     // enough to be clipped by a click low in the window.
     let menu = screen_menu_flip(commands, cursor.x, cursor.y, win_h);
-    let mut kids = vec![
-        menu_item(
-            commands,
-            fonts,
-            "folder-plus",
-            &renzora::lang::t("assets.new_folder"),
-            |w| create_asset(w, NewAsset::Folder),
-        ),
-        menu_item(
-            commands,
-            fonts,
-            "download-simple",
-            &renzora::lang::t("assets.import"),
-            request_import,
-        ),
-        menu_sep(commands),
-    ];
+    let mut kids = vec![menu_item(
+        commands,
+        fonts,
+        "folder-plus",
+        &renzora::lang::t("assets.new_folder"),
+        |w| create_asset(w, NewAsset::Folder),
+    )];
+    kids.extend(import_menu_items(commands, fonts));
+    kids.push(menu_sep(commands));
     kids.extend(new_asset_menu_items(commands, fonts));
     if let Some(folder) = state.current.clone() {
         kids.push(menu_sep(commands));
@@ -1312,23 +1364,15 @@ fn add_menu_open(
     };
     let mut kids = Vec::new();
     if file_actions {
-        kids.extend([
-            menu_item(
-                &mut commands,
-                &fonts,
-                "folder-plus",
-                &renzora::lang::t("assets.new_folder"),
-                |w| create_asset(w, NewAsset::Folder),
-            ),
-            menu_item(
-                &mut commands,
-                &fonts,
-                "download-simple",
-                &renzora::lang::t("assets.import"),
-                request_import,
-            ),
-            menu_sep(&mut commands),
-        ]);
+        kids.push(menu_item(
+            &mut commands,
+            &fonts,
+            "folder-plus",
+            &renzora::lang::t("assets.new_folder"),
+            |w| create_asset(w, NewAsset::Folder),
+        ));
+        kids.extend(import_menu_items(&mut commands, &fonts));
+        kids.push(menu_sep(&mut commands));
     }
     kids.extend(new_asset_menu_items(&mut commands, &fonts));
     commands.entity(menu).add_children(&kids);
@@ -1762,7 +1806,10 @@ fn asset_rename_commit(
     let new_name: String = inp.value.replace('\n', "").trim().to_string();
     state.renaming = None;
     *had_focus = false;
-    if new_name.is_empty() || new_name == file_name_of(&path) {
+    // The field was seeded with the *displayed* name, so an untouched stem is a
+    // no-op even though it isn't the on-disk file name.
+    let current = file_name_of(&path);
+    if new_name.is_empty() || new_name == display_name(&current, path.is_dir()) {
         return;
     }
     commands.queue(move |world: &mut World| finish_rename(world, &path, &new_name));
@@ -1775,11 +1822,11 @@ fn finish_rename(world: &mut World, old: &Path, new_name: &str) {
     let Some(parent) = old.parent() else {
         return;
     };
-    let dest = parent.join(new_name);
+    let is_dir = old.is_dir();
+    let dest = parent.join(keep_extension(old, new_name, is_dir));
     if dest == old || dest.exists() {
         return;
     }
-    let is_dir = old.is_dir();
     if std::fs::rename(old, &dest).is_err() {
         return;
     }
@@ -1802,13 +1849,41 @@ fn finish_rename(world: &mut World, old: &Path, new_name: &str) {
     }
 }
 
+/// The file name a rename of `old` to `new_name` should actually produce.
+///
+/// Typing just the stem keeps the old extension, so renaming `rock.png` to
+/// `boulder` yields `boulder.png` rather than an extension-less file the
+/// importers no longer recognise. This matches the OS file browsers and the
+/// scene-tab rename in `renzora_shell`. Writing an extension explicitly still
+/// wins (`boulder.jpg` stays `.jpg`), and a trailing dot (`boulder.`) is the
+/// escape hatch for genuinely dropping one. Folders are left alone — a dot in
+/// a folder name is part of the name, not a type.
+fn keep_extension(old: &Path, new_name: &str, is_dir: bool) -> String {
+    if is_dir {
+        return new_name.to_string();
+    }
+    // Windows strips a trailing dot from the real file name, so trim it here and
+    // Linux drops the extension the same way instead of keeping a literal
+    // `boulder.` on disk.
+    if let Some(stem) = new_name.strip_suffix('.') {
+        return stem.to_string();
+    }
+    // "No dot at all" rather than `Path::extension`, so a dotfile name like
+    // `.gitignore` reads as a deliberate choice and doesn't collect the old
+    // extension on the end.
+    match old.extension().and_then(|e| e.to_str()) {
+        Some(ext) if !new_name.contains('.') => format!("{new_name}.{ext}"),
+        _ => new_name.to_string(),
+    }
+}
+
 /// Two width breakpoints, both measured on the panel root:
 /// - below `TREE_ONLY_WIDTH`, collapse to a tree-only file browser (no room for
 ///   a usable grid beside the tree — mirrors the egui browser's behaviour);
 /// - below `COMPACT_WIDTH`, keep the grid but drop the toolbar's action labels.
 ///   The full row (Add + Import + New Folder + Sort + view + search + zoom) needs
-///   roughly this much before the breadcrumb is left with a usable share; under
-///   it, icon-only buttons buy back ~150px for the path.
+///   roughly this much before it starts wrapping; under it, icon-only buttons
+///   buy back ~150px and keep everything reachable on one line.
 fn responsive_layout(
     root: Query<&bevy::ui::ComputedNode, With<AssetRoot>>,
     mut state: ResMut<NativeAssets>,
@@ -1830,6 +1905,32 @@ fn responsive_layout(
     if state.compact != compact {
         state.compact = compact;
     }
+}
+
+/// The band behind the action toolbar — a step lighter than the plain panel
+/// header.
+fn header_surface() -> Color {
+    renzora_ember::theme::mix(
+        renzora_ember::theme::header_bg(),
+        renzora_ember::theme::section_bg(),
+        0.25,
+    )
+}
+
+/// The band behind the breadcrumb row — a further step lighter again, so the
+/// path reads as its own strip rather than as more toolbar.
+///
+/// Shade alone wasn't enough: at one step off the header the two rows looked
+/// like a single flat block, which is why the row also carries hairline rules
+/// top and bottom. Both bands are mixed *toward* `section_bg` rather than
+/// lightened by a fixed amount, so they land between two colours the theme
+/// author picked and can't invert on a light palette.
+fn crumb_surface() -> Color {
+    renzora_ember::theme::mix(
+        renzora_ember::theme::header_bg(),
+        renzora_ember::theme::section_bg(),
+        0.7,
+    )
 }
 
 /// True once the panel is too tight for the toolbar's full action labels.
@@ -2440,7 +2541,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
+            BackgroundColor(header_surface()),
         ))
         .id();
     let back = commands
@@ -2453,7 +2554,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
+            BackgroundColor(Color::NONE),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             AssetBack,
@@ -2462,9 +2563,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", text_primary(), 13.0);
     commands.entity(back).add_child(back_icon);
-    // Collapsed at the project root (nowhere to go up to). Now that the crumb
-    // box frames the path, we fully remove the button from layout via
-    // `Display::None` rather than just hiding it, so it leaves no empty gap.
+    // Bare on the crumb strip, lit only on hover. A constant `hover_bg` chip
+    // would be all but invisible against the lightened strip, and a permanent
+    // frame here is exactly the card the row just lost.
+    bind_bg(commands, back, move |w| match w.get::<Interaction>(back) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::selection()),
+        _ => Color::NONE,
+    });
+    // Collapsed at the project root (nowhere to go up to) — fully removed from
+    // layout via `Display::None` rather than just hidden, so it leaves no empty
+    // gap before the path.
     bind_display(commands, back, |w| current_folder(w) != project_root(w));
 
     let new_folder = toolbar_action(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
@@ -2474,7 +2582,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .entity(add)
         .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
     let import = toolbar_action(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
-    commands.entity(import).insert(ImportBtn);
+    // `RelativeCursorPosition` lets `import_click` anchor its Files/Folder menu
+    // to the button's own box instead of the cursor, same as the Add button.
+    commands
+        .entity(import)
+        .insert((ImportBtn, bevy::ui::RelativeCursorPosition::default()));
 
     // Sort dropdown (opens a screen_menu of sort modes + direction).
     let sort_btn = toolbar_action(commands, fonts, "sort-ascending", &renzora::lang::t("assets.sort"));
@@ -2513,31 +2625,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(view_btn).add_child(view_icon);
 
-    // Breadcrumb path, sitting just right of the "new folder" button with the
-    // back button to its left, wrapped in an inset framed box so the path reads
-    // as its own distinct control (matching the zoom/search boxes).
-    let crumb_box = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                flex_shrink: 1.0,
-                // Never let the path collapse to a sliver: it shrinks, but only
-                // down to a floor that still shows the current folder. The search
-                // box (shrink 3) gives up its width first.
-                min_width: Val::Px(72.0),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::panel_bg())),
-            BorderColor::all(rgb(renzora_ember::theme::border())),
-            Name::new("assets-crumb-box"),
-        ))
-        .id();
+    // Breadcrumb path, on its own row under the action buttons with the back
+    // button to its left. Deliberately unframed — it sits directly on the header
+    // band rather than in an inset card, so the path reads as a location label
+    // and not as another control competing with the buttons above it.
     let crumbs = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -2649,7 +2740,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // grid space (vs. on a tile or the tree).
     commands.entity(grid_scroll).insert((GridArea, bevy::ui::RelativeCursorPosition::default()));
 
-    // Live item count — trails the breadcrumb path in the toolbar.
+    // Live item count — trails the breadcrumb path on the crumb row.
     let count = commands
         .spawn((
             Text::new("0 items"),
@@ -2675,24 +2766,36 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    // Nice-to-know, not need-to-know: it's the first thing dropped when the row
-    // is tight, ahead of anything interactive.
-    bind_display(commands, count, |w| !is_compact(w));
+    // Crumb row: its own line beneath the toolbar, so the path gets the panel's
+    // full width instead of competing with the actions for a share of one row.
+    // Back button, path and count sit straight on the header band — no card.
+    let crumb_row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                width: Val::Percent(100.0),
+                column_gap: Val::Px(6.0),
+                padding: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(5.0), Val::Px(6.0)),
+                // Hairline rules top and bottom: they're what actually separate
+                // this strip from the buttons above and the grid below, since a
+                // shade step on its own read as one flat header.
+                border: UiRect::vertical(Val::Px(1.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(crumb_surface()),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            Name::new("assets-crumb-row"),
+        ))
+        .id();
+    commands.entity(crumb_row).add_children(&[back, crumbs, count]);
 
-    // The framed breadcrumb box holds the back button + path; the item count
-    // trails just outside it.
-    commands.entity(crumb_box).add_children(&[back, crumbs]);
-
-    // Single toolbar row: action buttons | breadcrumb box + count | spacer |
-    // sort/view/search/zoom. The breadcrumb sits right of "new folder" so the
-    // current path reads inline with the actions, freeing the vertical space the
-    // old dedicated crumb bar used.
+    // Toolbar row: action buttons | spacer | sort/view/search/zoom.
     commands.entity(toolbar).add_children(&[
         add,
         import,
         new_folder,
-        crumb_box,
-        count,
         spacer,
         sort_btn,
         view_btn,
@@ -2700,7 +2803,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         zoom_box,
     ]);
 
-    commands.entity(content).add_children(&[toolbar, grid_scroll]);
+    commands.entity(content).add_children(&[toolbar, crumb_row, grid_scroll]);
 
     // Responsive: when the panel is too narrow, hide the grid + splitter so the
     // tree fills it as a file browser (see `responsive_layout` / `narrow`).
@@ -2871,6 +2974,26 @@ struct Entry {
     is_dir: bool,
     size: u64,
     modified: u64,
+}
+
+/// What the browser *shows* for an entry: a file drops its extension, a folder
+/// keeps its whole name (a dot in a folder name is part of the name, not a
+/// type). The type icon, its accent colour and the type label under the tile
+/// already say what the file is, so the extension is noise on the label — and
+/// the rename field seeds from this too, so you edit exactly the text you were
+/// reading and [`keep_extension`] puts the extension back on commit.
+///
+/// Sorting, searching and thumbnail routing all still work off the real
+/// `Entry::name`; this is presentation only.
+fn display_name(name: &str, is_dir: bool) -> &str {
+    if is_dir {
+        return name;
+    }
+    match name.rsplit_once('.') {
+        // A leading-dot name (`.gitignore`) is all name and no extension.
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => name,
+    }
 }
 
 /// Lowercase file extension (`""` for none / folders).
@@ -3104,10 +3227,11 @@ fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
     }
 }
 
-/// The inline rename text field for a grid/list entry, seeded with its current
-/// name and tagged so `asset_rename_commit` can find it.
+/// The inline rename text field for a grid/list entry, seeded with the name as
+/// displayed (extension-less for files) and tagged so `asset_rename_commit` can
+/// find it.
 fn rename_field(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
-    rename_field_for(commands, fonts, &entry.path, &entry.name)
+    rename_field_for(commands, fonts, &entry.path, display_name(&entry.name, entry.is_dir))
 }
 
 /// The inline rename field from a bare path + name — shared by the grid tiles and
@@ -3187,7 +3311,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
     } else {
         commands
             .spawn((
-                Text::new(entry.name.clone()),
+                Text::new(display_name(&entry.name, is_dir).to_string()),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
@@ -3333,6 +3457,179 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         commands.entity(thumb).add_child(star);
     }
 
+    // Folders preview their contents: a mosaic of up to four images found at or
+    // just below them, so a texture library doesn't render as forty identical
+    // glyphs.
+    //
+    // The cells are spawned unconditionally and everything about them — how
+    // many are visible, how big they are, which image each shows — is decided
+    // by the binding below. Baking the scanned image list into the tile's
+    // structure at build time does NOT work: `scan_folder_previews` runs after
+    // the tile already exists, so the tile would have to be torn down and
+    // rebuilt to gain a mosaic, and the grid only rebuilds a tile when its
+    // content hash changes. Making the mosaic runtime state instead of build
+    // state takes the rebuild out of the picture entirely.
+    if is_dir {
+        // Geometry in px rather than percentages, because the mosaic needs a
+        // margin off the tile edge and gutters between the cells — and neither
+        // can be expressed as a percentage of a box the cells also have to fill.
+        // `card_w` is already the zoom-scaled tile width, so this tracks zoom.
+        let inset = (card_w * 0.075).round().max(3.0);
+        let gutter = (card_w * 0.025).round().max(2.0);
+        // The thumb box is the card minus its 1px border, so it isn't square —
+        // fit a square mosaic to the smaller side and centre it by hand rather
+        // than insetting all four edges, which would leave the cells' fixed
+        // sizes guessing at a box width they'd overflow and wrap out of.
+        let box_w = (card_w - 2.0).max(1.0);
+        let span = (box_w.min(thumb_h) - inset * 2.0).max(8.0);
+        let grid = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(((box_w - span) / 2.0).round()),
+                    top: Val::Px(((thumb_h - span) / 2.0).round()),
+                    width: Val::Px(span),
+                    height: Val::Px(span),
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: Val::Px(gutter),
+                    row_gap: Val::Px(gutter),
+                    // Wrapped rows sit at the top at their own height; the
+                    // default stretches the two lines apart.
+                    align_content: AlignContent::FlexStart,
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    overflow: Overflow::clip(),
+                    // Hidden until the scan finds something, so a folder with no
+                    // images keeps its glyph rather than showing an empty box.
+                    display: Display::None,
+                    ..default()
+                },
+                Name::new("asset-folder-mosaic"),
+            ))
+            .id();
+        commands.entity(thumb).add_child(grid);
+        let cells: Vec<Entity> = (0..crate::thumbnails::FOLDER_PREVIEW_MAX)
+            .map(|_| {
+                let cell = commands
+                    .spawn((
+                        // `Stretch` fills the cell; the default `Auto`
+                        // letterboxes, which would leave ragged gaps inside the
+                        // gutters and turn a tidy contact sheet into rubble. At
+                        // quadrant size the aspect distortion is invisible.
+                        ImageNode {
+                            image_mode: bevy::ui::widget::NodeImageMode::Stretch,
+                            ..default()
+                        },
+                        Node {
+                            display: Display::None,
+                            border_radius: BorderRadius::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        Name::new("asset-folder-mosaic-cell"),
+                    ))
+                    .id();
+                commands.entity(grid).add_child(cell);
+                cell
+            })
+            .collect();
+
+        // A folder showing its contents must still read as a folder — without
+        // this, a tile of four textures is indistinguishable from a texture
+        // asset at a glance. The chip keeps the glyph legible over a bright
+        // image, and keeps the per-folder accent colour the plain tiles use.
+        let badge_sz = (card_w * 0.2).round().max(9.0);
+        let badge_icon = icon_text(
+            commands,
+            &fonts.phosphor,
+            icon_for(&entry.path, is_dir),
+            type_color,
+            badge_sz,
+        );
+        let badge = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(3.0),
+                    bottom: Val::Px(3.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    padding: UiRect::axes(Val::Px(3.0), Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.05, 0.05, 0.07, 0.78)),
+                Name::new("asset-folder-badge"),
+            ))
+            .id();
+        commands.entity(badge).add_child(badge_icon);
+        commands.entity(thumb).add_child(badge);
+
+        let folder = entry.path.clone();
+        bind_with(
+            commands,
+            grid,
+            move |w| {
+                let images = w
+                    .get_resource::<crate::thumbnails::FolderPreviews>()
+                    .and_then(|p| p.images(&folder))
+                    .unwrap_or_default();
+                images
+                    .iter()
+                    .take(crate::thumbnails::FOLDER_PREVIEW_MAX)
+                    .map(|path| {
+                        w.get_resource::<ThumbnailCache>()
+                            .and_then(|c| c.handle(path))
+                    })
+                    .collect::<Vec<Option<Handle<Image>>>>()
+            },
+            move |w, e, handles: &Vec<Option<Handle<Image>>>| {
+                // Sized from the *scanned* count, not the count that has finished
+                // loading, so cells fill in without the mosaic reflowing.
+                // 4 images → 2×2; fewer → equal columns, because one image parked
+                // in a quadrant of an otherwise empty box reads as a broken tile.
+                let (cell_w, cell_h) = if handles.len() >= 4 {
+                    let half = ((span - gutter) / 2.0).max(1.0);
+                    (half, half)
+                } else {
+                    let cols = handles.len().max(1) as f32;
+                    (
+                        ((span - gutter * (cols - 1.0)) / cols).max(1.0),
+                        span,
+                    )
+                };
+                let mut shown = 0;
+                for (i, &cell) in cells.iter().enumerate() {
+                    let handle = handles.get(i).and_then(|h| h.clone());
+                    if let Some(handle) = handle.clone() {
+                        if let Some(mut image) = w.get_mut::<ImageNode>(cell) {
+                            image.image = handle;
+                        }
+                        shown += 1;
+                    }
+                    if let Some(mut node) = w.get_mut::<Node>(cell) {
+                        node.width = Val::Px(cell_w);
+                        node.height = Val::Px(cell_h);
+                        node.display = if handle.is_some() {
+                            Display::Flex
+                        } else {
+                            Display::None
+                        };
+                    }
+                }
+                // Glyph and mosaic swap both ways: a folder whose images are
+                // deleted goes back to its plain centred icon, badge and all.
+                let previewing = shown > 0;
+                for (target, visible) in [(e, previewing), (badge, previewing), (icon, !previewing)]
+                {
+                    if let Some(mut node) = w.get_mut::<Node>(target) {
+                        node.display = if visible { Display::Flex } else { Display::None };
+                    }
+                }
+            },
+        );
+    }
+
     if let Some(kind) = (!is_dir).then(|| thumb_kind(&entry.name)).flatten() {
         let img = commands
             .spawn((
@@ -3384,7 +3681,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
     } else {
         commands
             .spawn((
-                Text::new(entry.name.clone()),
+                Text::new(display_name(&entry.name, is_dir).to_string()),
                 ui_font(&fonts.ui, 10.0),
                 TextColor(rgb(text_primary())),
                 Node {
@@ -3941,7 +4238,7 @@ fn tree_row(
     let name = if is_renaming {
         // Inline rename field (same widget the grid uses), laid out to grow in
         // the row rather than force a fixed width.
-        let f = rename_field_for(commands, fonts, &r.path, &r.name);
+        let f = rename_field_for(commands, fonts, &r.path, display_name(&r.name, !r.is_file));
         commands.entity(f).insert(Node {
             flex_grow: 1.0,
             min_width: Val::Px(0.0),
@@ -3959,7 +4256,7 @@ fn tree_row(
         // for selection while still registering the name press that arms rename.
         commands
             .spawn((
-                Text::new(r.name.clone()),
+                Text::new(display_name(&r.name, false).to_string()),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
@@ -4440,12 +4737,21 @@ fn request_thumbnails(
     mut cache: ResMut<ThumbnailCache>,
     mut model: Option<ResMut<ModelThumbnailRegistry>>,
     mut material: Option<ResMut<MaterialThumbnailRegistry>>,
+    mut scene: Option<ResMut<SceneThumbnailRegistry>>,
+    folders: Res<crate::thumbnails::FolderPreviews>,
     asset_server: Res<AssetServer>,
     project: Option<Res<renzora::core::CurrentProject>>,
 ) {
     let project = project.as_deref();
     for tile in &tiles {
         if tile.is_dir {
+            // A folder's tile draws a mosaic of images found inside it — those
+            // are ordinary image thumbnails and load through the same cache.
+            if let Some(images) = folders.images(&tile.path) {
+                for image in images.iter() {
+                    cache.request(image.clone(), &asset_server, project);
+                }
+            }
             continue;
         }
         let Some(name) = tile.path.file_name().and_then(|n| n.to_str()) else {
@@ -4463,6 +4769,11 @@ fn request_thumbnails(
             Some(ThumbKind::Material) => {
                 if let Some(material) = material.as_mut() {
                     material.request(tile.path.clone());
+                }
+            }
+            Some(ThumbKind::Scene) => {
+                if let Some(scene) = scene.as_mut() {
+                    scene.request(tile.path.clone(), &asset_server, project);
                 }
             }
             None => {}

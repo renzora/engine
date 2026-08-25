@@ -15,7 +15,7 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use renzora_editor_framework::{
-    EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
+    EditorLocked, EntityIcon, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
 };
 
 use crate::state::{build_entity_tree, EntityNode, HierarchySpawnSeq};
@@ -50,14 +50,16 @@ pub fn mark_hierarchy_dirty(
     changed_name: Query<(), Or<(Added<Name>, Changed<Name>)>>,
     changed_child_of: Query<(), Changed<ChildOf>>,
     changed_visibility: Query<(), Changed<Visibility>>,
-    changed_label: Query<(), Changed<EntityLabelColor>>,
     changed_locked: Query<(), Changed<EditorLocked>>,
     changed_hide: Query<(), Changed<HideInHierarchy>>,
     changed_order: Query<(), Changed<HierarchyOrder>>,
     mut removed_name: RemovedComponents<Name>,
     mut removed_child_of: RemovedComponents<ChildOf>,
     mut removed_hide: RemovedComponents<HideInHierarchy>,
-    mut removed_label: RemovedComponents<EntityLabelColor>,
+    // The label colour and icon override, grouped for the same reason as
+    // `AssetBadgeChanges` below — four more bare params would push this system
+    // past Bevy's per-system cap.
+    mut identity: IdentityChanges,
     // Asset badges (script/blueprint/material) ride on these components, so
     // their add/change/remove must rebuild the tree too (grouped into one param
     // to stay under Bevy's per-system param-count cap).
@@ -75,17 +77,38 @@ pub fn mark_hierarchy_dirty(
     if !changed_name.is_empty()
         || !changed_child_of.is_empty()
         || !changed_visibility.is_empty()
-        || !changed_label.is_empty()
         || !changed_locked.is_empty()
         || !changed_hide.is_empty()
         || !changed_order.is_empty()
         || removed_name.read().next().is_some()
         || removed_child_of.read().next().is_some()
         || removed_hide.read().next().is_some()
-        || removed_label.read().next().is_some()
+        || identity.dirty()
         || badges.dirty()
     {
         dirty.0 = true;
+    }
+}
+
+/// Change detection for the entity's *authored* identity — the label colour and
+/// the icon override the inspector's entity header edits. Both are set and
+/// cleared from outside the hierarchy, so without the removal halves an entity
+/// reset to "Auto" would keep drawing its old icon until something unrelated
+/// dirtied the tree.
+#[derive(SystemParam)]
+pub struct IdentityChanges<'w, 's> {
+    changed_label: Query<'w, 's, (), Changed<EntityLabelColor>>,
+    changed_icon: Query<'w, 's, (), Changed<EntityIcon>>,
+    removed_label: RemovedComponents<'w, 's, EntityLabelColor>,
+    removed_icon: RemovedComponents<'w, 's, EntityIcon>,
+}
+
+impl IdentityChanges<'_, '_> {
+    fn dirty(&mut self) -> bool {
+        !self.changed_label.is_empty()
+            || !self.changed_icon.is_empty()
+            || self.removed_label.read().next().is_some()
+            || self.removed_icon.read().next().is_some()
     }
 }
 

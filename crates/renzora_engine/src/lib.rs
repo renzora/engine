@@ -7,6 +7,8 @@
 pub mod asset_progress;
 pub mod asset_reader;
 pub mod autoload;
+#[cfg(feature = "render_3d")]
+pub mod blockout;
 pub mod camera;
 pub mod camera_script;
 pub mod crash;
@@ -295,6 +297,11 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::CameraPreset>()
             .register_type::<renzora::CameraPresets>()
             .register_type::<renzora::EntityGroup>()
+            // Authored identity: the icon and label colour picked in the
+            // inspector's entity header. Registered by the host, not the
+            // editor, so a scene carrying them still loads in the shipped game.
+            .register_type::<renzora::EntityIcon>()
+            .register_type::<renzora::EntityLabelColor>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::YSort>()
@@ -307,22 +314,22 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
 
-        // Engine-wide checker handle for untextured primitives. Registered
-        // UNCONDITIONALLY (editor and game sessions both spawn shapes) —
-        // it must not live in the `!is_editor` startup block below, where a
-        // first version of this silently never ran in the editor. Built at
-        // plugin-build time so the editor bundle's later
-        // `DefaultCheckerTexture::from_world` finds and reuses the handle;
+        // Engine-wide blockout-grid handle for untextured primitives.
+        // Registered UNCONDITIONALLY (editor and game sessions both spawn
+        // shapes) — it must not live in the `!is_editor` startup block below,
+        // where a first version of this silently never ran in the editor. Built
+        // at plugin-build time so the editor bundle's later
+        // `DefaultGridTexture::from_world` finds and reuses the handle;
         // `add_default_rendering` runs before the engine plugins, so
         // `Assets<Image>` already exists (headless server: it doesn't, and
-        // the checker is correctly skipped).
+        // the grid is correctly skipped).
         #[cfg(feature = "render_3d")]
         if app.world().contains_resource::<Assets<Image>>() {
             let handle = app
                 .world_mut()
                 .resource_mut::<Assets<Image>>()
-                .add(renzora::core::build_checker_image());
-            app.insert_resource(renzora::core::CheckerTexture(handle));
+                .add(renzora::core::build_grid_image());
+            app.insert_resource(renzora::core::GridTexture(handle));
         }
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -582,6 +589,15 @@ impl Plugin for RuntimePlugin {
         // "disabled").
         #[cfg(feature = "render_3d")]
         {
+            // Keep the blockout grid a constant size in world units as shapes
+            // are scaled. In `PostUpdate` after transform propagation because
+            // it reads world scale, and a frame behind would show the stretched
+            // grid for that frame every time the gizmo moves.
+            app.add_systems(
+                PostUpdate,
+                blockout::retile_blockout_grid.after(TransformSystems::Propagate),
+            );
+
             // Distance LODs ride the mesh-instance rehydrate wave:
             // probe → spawn variants → tag meshes with VisibilityRange. The
             // first two load `_lodN.glb` variants through `bevy::gltf`, so they
@@ -725,7 +741,14 @@ impl Plugin for RuntimePlugin {
                 name: "Sphere",
                 icon: "",
                 category: "Shapes",
-                create_mesh: |m| m.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+                // A UV sphere, not an icosphere. Bevy's `ico` tessellation has
+                // no clean UV layout: its seam runs in a zigzag around the
+                // icosahedron's triangle edges, which any tiling texture — the
+                // default blockout grid included — draws as a visible jagged
+                // scar down one side. `uv` gives the ordinary lat/long
+                // parametrization with a single straight seam, at a vertex
+                // count in the same ballpark.
+                create_mesh: |m| m.add(Sphere::new(0.5).mesh().uv(32, 18)),
                 default_color: Color::srgb(0.2, 0.5, 0.8),
             });
             reg.register(ShapeEntry {

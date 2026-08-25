@@ -23,10 +23,10 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 
-/// Its own layer. See the layer map in [`crate::preview3d`] for what is already
+/// Its own layer. See the registry in the contract crate for what is already
 /// taken — sharing one with another preview means seeing its contents, because
 /// every one of them parks geometry at the world origin.
-const MAT_LAYER: usize = 17;
+use renzora::core::viewport_types::IMPORT_MATERIAL_PREVIEW_LAYER as MAT_LAYER;
 
 /// Initial size only — the target is resized to the panel each frame, both so
 /// the sphere is crisp and so it is not letterboxed inside a differently-shaped
