@@ -364,12 +364,14 @@ pub static SAMPLE_NORMAL: MaterialNodeDef = MaterialNodeDef {
     node_type: "texture/sample_normal",
     display_name: "Sample Normal Map",
     category: CAT_TEXTURE,
-    description: "Sample and decode a normal map texture",
+    description: "Sample and decode a normal map texture. Decoding assumes the OpenGL convention (+Y green points up) — turn on Flip Green for a DirectX map, which stores green inverted and otherwise renders with its lighting flipped on one axis.",
     pins: || {
         vec![
             PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
             PinTemplate::input("strength", "Strength", PinType::Float)
                 .with_default(PinValue::Float(1.0)),
+            PinTemplate::input("flip_green", "Flip Green (DirectX)", PinType::Bool)
+                .with_default(PinValue::Bool(false)),
             PinTemplate::output("normal", "Normal", PinType::Vec3),
         ]
     },
@@ -2562,8 +2564,18 @@ pub static OUTPUT_SURFACE: MaterialNodeDef = MaterialNodeDef {
         PinTemplate::input("metallic", "Metallic", PinType::Float).with_default(PinValue::Float(0.0)),
         PinTemplate::input("roughness", "Roughness", PinType::Float).with_default(PinValue::Float(0.5)),
         PinTemplate::input("normal", "Normal", PinType::Vec3),
+        // Parallax occlusion mapping. `displacement` is a HEIGHT: white/1.0 is
+        // the peak, black/0.0 the valley — the convention every PBR texture set
+        // ships (and the inverse of Bevy's own `depth_map`, which is why a
+        // connected displacement pin always compiles through codegen instead of
+        // the StandardMaterial fast path). Only a *connection* does anything: a
+        // constant height is the same surface everywhere and has no relief to
+        // march through. `displacement_scale` is read as a literal, not an
+        // expression — it is a loop constant, resolved before the graph body runs.
+        PinTemplate::input("displacement", "Displacement (Height)", PinType::Float).with_default(PinValue::Float(0.0)),
+        PinTemplate::input("displacement_scale", "Displacement Scale", PinType::Float).with_default(PinValue::Float(0.05)),
         PinTemplate::input("emissive", "Emissive", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::input("ao", "AO", PinType::Float).with_default(PinValue::Float(1.0)),
+        PinTemplate::input("ao", "Ambient Occlusion (AO)", PinType::Float).with_default(PinValue::Float(1.0)),
         PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
         PinTemplate::input("reflectance", "Reflectance", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
 
@@ -2573,6 +2585,7 @@ pub static OUTPUT_SURFACE: MaterialNodeDef = MaterialNodeDef {
         PinTemplate::input("thickness", "Thickness", PinType::Float).with_default(PinValue::Float(0.0)),
         PinTemplate::input("ior", "Index of Refraction", PinType::Float).with_default(PinValue::Float(1.5)),
         PinTemplate::input("attenuation_distance", "Attenuation Distance", PinType::Float).with_default(PinValue::Float(1.0e37)),
+        PinTemplate::input("attenuation_color", "Attenuation Color", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
 
         // Clearcoat (second specular layer — car paint, lacquer)
         PinTemplate::input("clearcoat", "Clearcoat", PinType::Float).with_default(PinValue::Float(0.0)),
@@ -2622,7 +2635,8 @@ pub static OUTPUT_VEGETATION: MaterialNodeDef = MaterialNodeDef {
             PinTemplate::input("normal", "Normal", PinType::Vec3),
             PinTemplate::input("emissive", "Emissive", PinType::Vec3)
                 .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-            PinTemplate::input("ao", "AO", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("ao", "Ambient Occlusion (AO)", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
             PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
             PinTemplate::input("vertex_offset", "Vertex Offset", PinType::Vec3)
                 .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),

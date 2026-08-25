@@ -93,7 +93,7 @@ tan.
 | Node | Inputs | Outputs | What it does |
 |------|--------|---------|--------------|
 | `texture/sample` — **Sample Texture** | `uv` (Vec2 = mesh UV) | `color` (Color), `rgb` (Vec3), `r`, `g`, `b`, `a` (Float) | Standard 2D `textureSample`. |
-| `texture/sample_normal` — **Sample Normal Map** | `uv` (Vec2 = mesh UV), `strength` (Float = 1) | `normal` (Vec3) | Samples and decodes a tangent-space normal map (`rgb*2-1`), scales XY by `strength`, renormalizes. |
+| `texture/sample_normal` — **Sample Normal Map** | `uv` (Vec2 = mesh UV), `strength` (Float = 1), `flip_green` (Bool = false) | `normal` (Vec3) | Samples and decodes a tangent-space normal map (`rgb*2-1`), scales XY by `strength`, renormalizes. Decoding assumes the **OpenGL** convention; `flip_green` negates Y for a **DirectX** map. |
 | `texture/triplanar` — **Triplanar Sample** | `scale` (Float = 1), `sharpness` (Float = 2) | `color` (Color), `rgb` (Vec3) | Projects the texture along world X/Y/Z and blends by the world normal — **no UVs, no seams**. `sharpness` tightens the blend. |
 | `texture/sample_lod` — **Sample Texture LOD** | `uv` (Vec2 = mesh UV), `lod` (Float = 0) | `color`, `rgb`, `r`, `g`, `b`, `a` | `textureSampleLevel` at an explicit mip. Blur reflections with a roughness-driven LOD, or sample mip 0 inside a branch/loop where automatic derivatives are invalid. |
 | `texture/sample_grad` — **Sample Texture Grad** | `uv` (Vec2 = mesh UV), `ddx` (Vec2), `ddy` (Vec2) | `color`, `rgb`, `r`, `g`, `b`, `a` | `textureSampleGrad` with explicit derivatives. Fixes mip selection when UVs are rotated or polar-warped — crisp anisotropic filtering. |
@@ -373,6 +373,8 @@ The full PBR master; maps 1:1 onto Bevy's `StandardMaterial`.
 | `metallic` | Float | `0` | Dielectric ↔ metal |
 | `roughness` | Float | `0.5` | Smooth ↔ matte |
 | `normal` | Vec3 | — | Surface normal |
+| `displacement` | Float | `0` | Height for parallax occlusion mapping (white = peak). Only a connection does anything; needs mesh tangents |
+| `displacement_scale` | Float | `0.05` | Parallax depth — a loop constant, read as a literal rather than an expression |
 | `emissive` | Vec3 | `0` | Self-illumination |
 | `ao` | Float | `1` | Ambient occlusion |
 | `alpha` | Float | `1` | Opacity |
@@ -382,6 +384,7 @@ The full PBR master; maps 1:1 onto Bevy's `StandardMaterial`.
 | `thickness` | Float | `0` | Volume thickness |
 | `ior` | Float | `1.5` | Index of refraction |
 | `attenuation_distance` | Float | `1e37` | Volume attenuation distance |
+| `attenuation_color` | Vec3 | `1` | Colour light attenuates toward over that distance |
 | `clearcoat` | Float | `0` | Second specular layer (car paint) |
 | `clearcoat_roughness` | Float | `0.5` | Clearcoat roughness |
 | `anisotropy_strength` | Float | `0` | Directional specular (brushed metal, hair) |

@@ -31,7 +31,9 @@ use renzora_shader::material::runtime::{
 
 use crate::{MaterialEditMode, MaterialEditorState};
 
-pub const MATERIAL_PREVIEW_LAYER: usize = 8;
+/// This preview's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+pub use renzora::core::viewport_types::MATERIAL_PREVIEW_LAYER;
 
 /// Side length of the preview's render target, in pixels.
 ///
@@ -345,7 +347,7 @@ fn setup_material_preview(
     ));
 
     // Preview sphere — all texture slots filled with fallback for stable pipeline layout
-    let sphere_mesh = meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap());
+    let sphere_mesh = meshes.add(with_tangents(Sphere::new(1.0).mesh().ico(5).unwrap()));
     let material = materials.add(new_graph_material(&fallback));
 
     commands.spawn((
@@ -804,12 +806,30 @@ fn swap_preview_shape(
                         Sphere::new(1.0).mesh().ico(5).unwrap()
                     }
                 };
-                mesh3d.0 = meshes.add(new_mesh);
+                mesh3d.0 = meshes.add(with_tangents(new_mesh));
                 *transform = Transform::default();
                 *applied = Some(AppliedShape::Primitive(orbit.shape));
             }
         }
     }
+}
+
+/// Give a preview primitive the tangents parallax mapping needs.
+///
+/// Bevy's shape meshes ship position/normal/UV and nothing else, and the
+/// parallax march is gated on `VERTEX_TANGENTS` — so without this a material
+/// with a displacement map renders flat in the preview and with relief on an
+/// imported mesh, which reads as "displacement is broken" rather than as a
+/// property of the preview shape.
+///
+/// A failure here is not worth refusing to draw over: `generate_tangents`
+/// only fails on degenerate UVs, and the mesh is still perfectly renderable
+/// without the attribute — it just loses parallax.
+fn with_tangents(mut mesh: Mesh) -> Mesh {
+    if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
+        warn!("material preview: couldn't generate tangents, parallax will be inactive");
+    }
+    mesh
 }
 
 // ── Shader hot-swap ─────────────────────────────────────────────────────────

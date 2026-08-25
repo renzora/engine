@@ -18,7 +18,7 @@
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
-use bevy::asset::LoadState;
+use bevy::asset::{LoadState, RenderAssetUsages};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
@@ -37,7 +37,9 @@ use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::runtime::{new_graph_material, FallbackTexture, GraphMaterial};
 use renzora_splash::{LoadingTaskHandle, LoadingTasks, SplashState};
 
-pub const MATERIAL_THUMBNAIL_LAYER: usize = 7;
+/// This capture rig's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+pub use renzora::core::viewport_types::MATERIAL_THUMBNAIL_LAYER;
 /// Off-screen render target resolution. The asset browser displays
 /// thumbnails at roughly 96px, but rendering at higher resolution gives
 /// noticeably cleaner detail (normals, silhouettes, fine procedural noise)
@@ -643,7 +645,7 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
                         cmds.entity(*e).despawn();
                     }
 
-                    let captured = trigger.image.clone();
+                    let mut captured = trigger.image.clone();
 
                     if cache_to_disk {
                         if let Some(parent) = thumb_path.parent() {
@@ -672,6 +674,17 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
                     // Publish the rendered thumbnail's `Handle<Image>` to the
                     // registry; the native (bevy_ui) browser/inspector display it
                     // via `ImageNode`.
+                    //
+                    // Bevy hands the readback back as `RenderAssetUsages::MAIN_WORLD`
+                    // — the CPU pixels are there (which is why the PNG on disk is
+                    // correct) but the image is never extracted into the render
+                    // world, so it has no GPU texture and the `ImageNode` draws a
+                    // black tile. Saving a material therefore looked like "the
+                    // thumbnail wasn't generated": the freshly captured handle was
+                    // unrenderable, and only the *next* session's disk-cache reload
+                    // (which goes through the asset server, RENDER_WORLD included)
+                    // showed anything. Opt the copy we keep into both worlds.
+                    captured.asset_usage = RenderAssetUsages::default();
                     let captured_handle = images.add(captured);
                     registry.complete(material_path.clone(), captured_handle.clone());
 

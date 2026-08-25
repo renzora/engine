@@ -167,7 +167,7 @@ A `.material` file is a JSON-serialized `MaterialGraph`. Master materials and de
 }
 ```
 
-`wgsl_path` (omitted above) is added automatically when the editor saves: it points at the precompiled `.wgsl` so the runtime skips codegen. `alpha_mode` is `Opaque`, `{ "Mask": { "cutoff": 0.5 } }`, or `Blend`.
+`compiled` (omitted above) is added automatically when the editor saves: it carries the WGSL your nodes compiled to plus its binding metadata, so the runtime skips codegen entirely. `alpha_mode` is `Opaque`, `{ "Mask": { "cutoff": 0.5 } }`, or `Blend`.
 
 ## Custom shader backends (code shaders)
 

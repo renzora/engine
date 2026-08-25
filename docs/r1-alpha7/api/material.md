@@ -44,7 +44,22 @@ A master `.material` file is a JSON-serialized `MaterialGraph`:
 | `next_id` | u64 | Next node id the editor will allocate |
 | `alpha_mode` | enum | `Opaque` (default), `{ "Mask": { "cutoff": 0.5 } }`, or `Blend` |
 | `double_sided` | bool | Render back faces too (default `false`) |
-| `wgsl_path` | string | Optional — link to the precompiled `.wgsl` (omitted when absent) |
+| `compiled` | object | The compiled shader, written on save (omitted when absent) |
+| `wgsl_path` | string | Legacy — link to a precompiled `.wgsl` beside the material. Read-only; never written (omitted when absent) |
+
+`compiled` is a `CompiledArtifact`, and it's what the renderer actually loads — with it present, the graph is never parsed for rendering at all:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `wgsl` | string | The fragment shader codegen emitted |
+| `meta.domain` | enum | Domain the shader was compiled for |
+| `meta.alpha_mode` | enum | Copied from the graph at compile time |
+| `meta.double_sided` | bool | Copied from the graph at compile time |
+| `meta.requires_transmission` | bool | Enables Bevy's transmission pipeline on the base material |
+| `meta.texture_bindings` | array | `{ name, binding, asset_path, kind }` per sampled texture |
+| `meta.parameters` | array | `{ name, kind, default }` per `param/*` node — what a `.material_instance` may override |
+
+The field is absent on a graph that has never been saved and on one whose last compile failed; both fall back to compiling the graph at load time so the material still renders while you work on it. Materials written before `compiled` existed keep their `.wgsl` + `.wgsl.meta` pair and load through `wgsl_path`, until the next save folds the shader in and deletes those files.
 
 Each entry in `nodes` is a `MaterialNode`:
 
@@ -113,7 +128,7 @@ Every graph has exactly one output node, fixed by its `domain`. The output node 
 
 Full PBR surface that maps 1:1 onto Bevy's `StandardMaterial`. Disconnected pins keep `StandardMaterial` defaults until you set one, at which point the value is stored in the node's `input_values` and takes over.
 
-Two of those stored constants can't be expressed as `StandardMaterial` fields — `ao` (occlusion is texture-only there) and `reflectance` (a `Vec3` in the graph against an `f32` on the material) — so a graph that sets either is classified as procedural and compiled through codegen instead of taking the trivial fast path.
+Two of those stored constants can't be expressed as `StandardMaterial` fields — `ao` (occlusion is texture-only there) and `reflectance` (a `Vec3` in the graph against an `f32` on the material) — so a graph that sets either is classified as procedural and compiled through codegen instead of taking the trivial fast path. A wired `displacement` pin does the same, for a different reason: `StandardMaterial::depth_map` is a *depth* (white = bottom) while `displacement` is a *height* (white = peak), and Bevy has no invert, so routing it through would render every material's relief inside-out. Codegen owns the height convention and every displacement graph goes there.
 
 | Pin | Type | Default | Purpose |
 |-----|------|---------|---------|
@@ -121,6 +136,8 @@ Two of those stored constants can't be expressed as `StandardMaterial` fields �
 | `metallic` | Float | `0.0` | Dielectric ↔ metal |
 | `roughness` | Float | `0.5` | Smooth ↔ matte |
 | `normal` | Vec3 | — | Tangent-space normal |
+| `displacement` | Float | `0.0` | Height for parallax occlusion mapping (white = peak). Only a *connection* does anything |
+| `displacement_scale` | Float | `0.05` | Parallax depth. Read as a literal, not an expression — it is a loop constant |
 | `emissive` | Vec3 | `[0,0,0]` | Self-illumination |
 | `ao` | Float | `1.0` | Ambient occlusion |
 | `alpha` | Float | `1.0` | Opacity |
@@ -130,6 +147,7 @@ Two of those stored constants can't be expressed as `StandardMaterial` fields �
 | `thickness` | Float | `0.0` | Volume thickness |
 | `ior` | Float | `1.5` | Index of refraction |
 | `attenuation_distance` | Float | `1.0e37` | Volume attenuation |
+| `attenuation_color` | Vec3 | `[1,1,1]` | Colour light attenuates toward over that distance |
 | `clearcoat` | Float | `0.0` | Second specular layer (car paint) |
 | `clearcoat_roughness` | Float | `0.5` | Clearcoat roughness |
 | `anisotropy_strength` | Float | `0.0` | Directional specular (brushed metal, hair) |
@@ -206,7 +224,7 @@ Named graph-boundary inputs that material instances and `MaterialOverrides` can 
 | Node type | Name | Description |
 |-----------|------|-------------|
 | `texture/sample` | Sample Texture | Sample a 2D texture; outputs `color`, `rgb`, `r`, `g`, `b`, `a` |
-| `texture/sample_normal` | Sample Normal Map | Sample + decode a normal map (with `strength`) |
+| `texture/sample_normal` | Sample Normal Map | Sample + decode a normal map (with `strength`). Decoding assumes the OpenGL convention; `flip_green` handles a DirectX map |
 | `texture/triplanar` | Triplanar Sample | World-projected sampling, no UV seams |
 | `texture/sample_lod` | Sample Texture LOD | Sample at an explicit mip (`textureSampleLevel`) |
 | `texture/sample_grad` | Sample Texture Grad | Sample with explicit UV derivatives |

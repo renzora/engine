@@ -393,11 +393,15 @@ fn resolve_material_refs(
             || path.ends_with(".frag")
             || path.ends_with(".vert")
         {
-            // A `.wgsl` paired with a `<path>.meta` sidecar is the compiled
-            // output of a `.material` graph — assemble it as a GraphMaterial
-            // (the same asset type the resolver builds when following a
-            // `wgsl_path` link from inside a `.material`). No sidecar →
-            // hand-written code shader, fall through to the raw-shader path.
+            // A `.wgsl` paired with a `<path>.meta` sidecar is compiled output
+            // from the legacy three-file layout — assemble it as a
+            // GraphMaterial so a scene still renders if something points
+            // straight at one. Current editors embed the shader in the
+            // `.material` and write no `.wgsl` at all.
+            //
+            // No sidecar → hand-written shader, which is a first-class asset
+            // in its own right: it falls through to the raw-shader path and
+            // stays editable in place (including hot-reload).
             if path.ends_with(".wgsl") {
                 if let Some((wgsl, meta)) =
                     load_compiled_from_vfs(&fs_path, project.as_deref(), reader)
@@ -622,8 +626,30 @@ fn resolve_material_file(
         return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
     }
 
-    // Precompiled .wgsl on disk — written by the editor on save. Read the
-    // shader + sidecar metadata, skip codegen entirely.
+    // Compiled shader baked into the `.material` on save — the normal path.
+    // Everything the renderer needs is right here, so codegen never runs.
+    if let Some(compiled) = graph.compiled.as_ref() {
+        let meta = &compiled.meta;
+        let (handle, parameters) = assemble_graph_material(
+            path,
+            compiled.wgsl.clone(),
+            meta.domain,
+            meta.alpha_mode,
+            meta.double_sided,
+            meta.requires_transmission,
+            &meta.texture_bindings,
+            meta.parameters.clone(),
+            graph_materials,
+            shaders,
+            fallback_texture,
+            asset_server,
+        );
+        return Some(CompiledMaterial::Graph { handle, parameters });
+    }
+
+    // Legacy three-file layout: the shader lives in a `.wgsl` beside this
+    // material with a `.wgsl.meta` sidecar. Materials written before the
+    // artifact was embedded land here until their next save.
     if let Some(wgsl_path) = graph.wgsl_path.as_deref() {
         if let Some((wgsl, meta)) = load_compiled_from_vfs(wgsl_path, project, reader) {
             let (handle, parameters) = assemble_graph_material(
@@ -648,8 +674,9 @@ fn resolve_material_file(
         );
     }
 
-    // Legacy fallback: no `wgsl_path` link or it failed to load. Run the
-    // full graph→WGSL codegen now.
+    // Nothing compiled to load — a graph that has never been saved, or one
+    // whose last compile failed. Run the full graph→WGSL codegen now so it
+    // still renders while the user is working on it.
     let (handle, parameters) = resolve_graph_material_from_graph(
         path,
         &graph,
@@ -666,6 +693,11 @@ fn resolve_material_file(
 /// must be present for this to succeed — a `.wgsl` without a sidecar isn't
 /// a graph-material artifact (could be a hand-written code shader, handled
 /// elsewhere) and can't be assembled into a `GraphMaterial`.
+///
+/// This reads the **legacy** three-file layout. Materials saved by a current
+/// editor carry their shader in `MaterialGraph::compiled` and never reach
+/// here; this exists so a project authored before that keeps rendering until
+/// its materials are next saved.
 ///
 /// `wgsl_path` is project-relative (as stored in `MaterialGraph::wgsl_path`).
 /// The runtime VFS reader uses project-relative keys directly. The editor's
@@ -810,9 +842,18 @@ fn resolve_material_instance_file(
     //    cache both the GraphMaterial handle and the parameter list. Two
     //    instances of the same master share this compilation.
     if !cache.graph_materials.contains_key(&master_key) {
-        let from_precompiled = master_graph.wgsl_path.as_deref().and_then(|wp| {
-            load_compiled_from_vfs(wp, project, reader).map(|loaded| (wp.to_string(), loaded))
-        });
+        // Embedded artifact first, then the legacy `.wgsl` + sidecar for a
+        // master an older editor wrote. Either way every instance reuses the
+        // master's compiled shader; only the parameter UBO differs.
+        let from_precompiled = match master_graph.compiled.as_ref() {
+            Some(compiled) => Some((
+                master_key.clone(),
+                (compiled.wgsl.clone(), compiled.meta.clone()),
+            )),
+            None => master_graph.wgsl_path.as_deref().and_then(|wp| {
+                load_compiled_from_vfs(wp, project, reader).map(|loaded| (wp.to_string(), loaded))
+            }),
+        };
         let (handle, parameters) = if let Some((wgsl_key, (wgsl, meta))) = from_precompiled {
             assemble_graph_material(
                 &wgsl_key,
@@ -987,6 +1028,13 @@ fn assemble_graph_material(
     } else {
         Some(bevy::render::render_resource::Face::Back)
     };
+    // Both halves of "double sided", not just the culling half. `cull_mode`
+    // decides whether the back face is *drawn*; this flag is what sets
+    // `STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT`, which is what makes Bevy
+    // flip the normal on the faces it draws. Setting only the first left back
+    // faces shaded with the front's normal — a leaf lit from behind came out
+    // lit from the front.
+    mat.base.double_sided = double_sided;
 
     for tb in texture_bindings {
         if tb.asset_path.is_empty() {

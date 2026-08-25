@@ -128,8 +128,7 @@ where
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum PinValue {
     Float(#[serde(deserialize_with = "de_lenient_f32")] f32),
     Vec2([f32; 2]),
@@ -146,7 +145,6 @@ pub enum PinValue {
     #[default]
     None,
 }
-
 
 impl PinValue {
     /// Convert to a WGSL literal expression.
@@ -226,8 +224,7 @@ impl PinTemplate {
 // ── Material domain ─────────────────────────────────────────────────────────
 
 /// What kind of shader this material graph compiles to.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
 pub enum MaterialDomain {
     /// Standard PBR surface material (meshes, props).
     #[default]
@@ -250,7 +247,6 @@ impl MaterialDomain {
         }
     }
 }
-
 
 // ── Connection ──────────────────────────────────────────────────────────────
 
@@ -293,19 +289,15 @@ impl MaterialNode {
 /// Per-graph alpha behavior. Maps directly onto Bevy's `AlphaMode` at
 /// resolve time. Default is `Opaque` so existing materials (which omit
 /// the field on disk) continue to render unchanged.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum AlphaMode {
     #[default]
     Opaque,
     /// Discard fragments below `cutoff`. Used for foliage, masks.
-    Mask {
-        cutoff: f32,
-    },
+    Mask { cutoff: f32 },
     /// Standard alpha blending. Used for glass, smoke, decals.
     Blend,
 }
-
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MaterialGraph {
@@ -321,11 +313,22 @@ pub struct MaterialGraph {
     /// Render back faces too. `#[serde(default)]` for the same reason.
     #[serde(default)]
     pub double_sided: bool,
-    /// Project-relative path to the `.wgsl` file produced by codegen the
-    /// last time this graph was saved. The runtime resolver follows this
-    /// link to skip codegen entirely; the editor follows it for play-mode
-    /// rendering. `None` when the graph has never been saved through a
-    /// precompile-aware editor (legacy files fall back to live codegen).
+    /// The shader this graph compiles to, baked in on save. The resolver
+    /// reads it directly and skips codegen entirely, in the editor and at
+    /// runtime alike.
+    ///
+    /// `None` for a graph that has never been saved, and for one whose last
+    /// compile failed — both fall back to live codegen so a material still
+    /// renders while you're working on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compiled: Option<super::precompiled::CompiledArtifact>,
+    /// Project-relative path to a `.wgsl` written beside this `.material` by
+    /// the three-file layout that predates [`MaterialGraph::compiled`].
+    ///
+    /// Only ever read, never written: the resolver follows it when no artifact
+    /// is embedded so materials authored by an older editor keep rendering,
+    /// and the next save replaces it with an embedded artifact and deletes the
+    /// files it pointed at.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wgsl_path: Option<String>,
     /// Comment / group boxes. `#[serde(default)]` keeps older `.material` files
@@ -364,6 +367,7 @@ impl MaterialGraph {
             next_id: 1,
             alpha_mode: AlphaMode::Opaque,
             double_sided: false,
+            compiled: None,
             wgsl_path: None,
             comments: Vec::new(),
             muted_slots: HashMap::new(),

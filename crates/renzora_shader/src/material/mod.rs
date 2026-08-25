@@ -98,15 +98,7 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
     };
 
     let mut graph = pbr_build::pbr_to_graph(&inputs);
-    let project_root = if ev.project_root.as_os_str().is_empty() {
-        // Fall back to the material's own directory; produces an absolute
-        // wgsl_path which still works for the editor reader, just isn't
-        // portable across machines.
-        path.parent().unwrap_or(&path).to_path_buf()
-    } else {
-        ev.project_root.clone()
-    };
-    match precompiled::save_compiled_and_serialize(&mut graph, &project_root, &path) {
+    match precompiled::save_compiled_and_serialize(&mut graph, &path) {
         Ok((json, errors)) => {
             for err in &errors {
                 warn!("[material] codegen '{}': {}", ev.name, err);

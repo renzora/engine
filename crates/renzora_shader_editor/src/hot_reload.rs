@@ -1,10 +1,15 @@
 //! WGSL hot-reload: pick up `.wgsl` edits made outside the editor.
 //!
-//! The material graph editor's own Apply already invalidates the resolver cache
-//! and re-resolves the affected entities synchronously
-//! (`renzora_material_editor::apply_material`), so this is not what makes Apply
-//! work. What it adds is the other direction: editing a compiled `.wgsl` in a
-//! text editor and having the viewport pick it up.
+//! This serves **hand-written** shaders — a `.wgsl` you authored and pointed a
+//! mesh at. Edit it in any text editor and the viewport picks it up.
+//!
+//! It deliberately does *not* serve materials. A `.material` carries its
+//! compiled shader inside it (`MaterialGraph::compiled`) and writes no `.wgsl`
+//! to edit, because a graph and a hand-edited copy of its output drifting
+//! apart is a corrupt material with no way to tell which half is right. The
+//! graph editor's own Apply re-resolves affected entities synchronously
+//! (`renzora_material_editor::apply_material`), so materials need nothing from
+//! this module.
 //!
 //! Lives in the editor crate rather than behind a feature on `renzora_shader`.
 //! A feature would be unified across a `cargo build --workspace` (the editor
@@ -26,8 +31,9 @@ use renzora::core::CurrentProject;
 use renzora_shader::material::precompiled::project_relative;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
-/// Debounce window for file events. Long enough that a compile writing `.wgsl`
-/// and `.wgsl.meta` back to back arrives as one event rather than two.
+/// Debounce window for file events. Long enough that an editor's save —
+/// which often lands as a truncate followed by a write — arrives as one event
+/// rather than two.
 const DEBOUNCE: Duration = Duration::from_millis(200);
 
 /// Lifetime handle for the watcher. Dropping it stops the watcher thread and
@@ -49,11 +55,9 @@ pub struct WgslHotReload {
 impl WgslHotReload {
     /// Start a watcher over `project_root`, replacing any previous one.
     ///
-    /// Watches the project root **recursively**, not `<root>/materials`.
-    /// `precompiled::save_compiled` writes each `.wgsl` next to its `.material`,
-    /// so a model-imported material's compiled shader lands in
-    /// `models/<name>/materials/` — outside a `<root>/materials` watch, and
-    /// outside a non-recursive one even for a subfolder of `materials/` itself.
+    /// Watches the project root **recursively**, not `<root>/materials`. A
+    /// hand-written shader can live anywhere the author puts it, and a
+    /// non-recursive watch would miss even a subfolder of `materials/`.
     fn install(project_root: PathBuf) -> Self {
         let (tx, rx) = unbounded::<DebounceEventResult>();
         let handler = move |result: DebounceEventResult| {
@@ -137,15 +141,11 @@ fn drain_wgsl_events(
 
 /// Invalidate whatever a changed `.wgsl` at `path` feeds.
 ///
-/// Both keys are dropped, because either can be the one the resolver cached:
-/// a `MaterialRef` normally names the `.material`, but it can name a `.wgsl`
-/// directly — the resolver assembles a `.wgsl` + `.wgsl.meta` pair into a
-/// `GraphMaterial` in its own right.
-///
-/// The `.material` path is derived from where the `.wgsl` actually sits rather
-/// than assumed to be `materials/<stem>.material`. Compiled output lives beside
-/// its source, so that assumption pointed at a non-existent cache key for every
-/// material that isn't in the project's top-level `materials/` folder.
+/// One key, the `.wgsl`'s own — that is what the resolver caches a
+/// hand-written shader under. This used to also invalidate a sibling
+/// `<stem>.material`, back when saving a graph wrote its compiled shader out
+/// beside it. Materials embed that shader now, so no `.wgsl` on disk belongs
+/// to one and there is no second key to drop.
 fn invalidate_for_wgsl(
     path: &Path,
     project_root: &Path,
@@ -157,18 +157,16 @@ fn invalidate_for_wgsl(
         return;
     }
     let wgsl_key = project_relative(project_root, path);
-    let material_key = project_relative(project_root, &path.with_extension("material"));
 
     cache.invalidate(&wgsl_key);
-    cache.invalidate(&material_key);
-    info!("WGSL hot-reload: {wgsl_key} changed, invalidating {material_key}");
+    info!("WGSL hot-reload: {wgsl_key} changed, invalidating");
 
-    // Re-evaluate entities using either key. Without dropping the marker the
+    // Re-evaluate entities using this key. Without dropping the marker the
     // resolver's `Without<MaterialResolved>` filter skips them, and they keep
     // holding a `MeshMaterial3d` whose material was just dropped from the cache.
     let mut re_eval = 0;
     for (entity, mat) in resolved.iter() {
-        if mat.source_path == wgsl_key || mat.source_path == material_key {
+        if mat.source_path == wgsl_key {
             commands.entity(entity).remove::<MaterialResolved>();
             re_eval += 1;
         }

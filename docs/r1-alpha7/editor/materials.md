@@ -27,9 +27,17 @@ In the shot above, a color texture feeds the **Base Color** pin, another texture
 
 **The Material panel** (left, under the preview) is the same values in list form. Click a node and the panel shows its name, what it does, and one labelled row per input pin — handy when a node's pins aren't obvious from their dots alone, or when you're zoomed out too far to read the node itself. Pins that already have a cable read *(connected)*. It's the same value either way, so editing in the panel updates the node and vice versa. The top of the panel also holds the material's **Name** and its **Domain**.
 
-**The output node included.** Its unwired pins each show a field too, and the ones with a fixed range — Metallic, Roughness, AO, Alpha, the transmission and clearcoat amounts, IOR — carry a slider under the number, so you can dial a whole material in on the output node without wiring a Constant into every pin. A field you haven't touched is showing the pin's default, not an override: leave it alone and the pin still falls through to the engine's own defaults, exactly as a bare pin always did. Scrub it once and it becomes a value the material carries. **Normal** is the one pin left bare — a direction has no sensible number to type, so it stays wire-only.
+**The output node included.** Its unwired pins each show a field too, and the ones with a fixed range — Metallic, Roughness, Ambient Occlusion (AO), Alpha, the transmission and clearcoat amounts, IOR — carry a slider under the number, so you can dial a whole material in on the output node without wiring a Constant into every pin. A field you haven't touched is showing the pin's default, not an override: leave it alone and the pin still falls through to the engine's own defaults, exactly as a bare pin always did. Scrub it once and it becomes a value the material carries. **Normal** is the one pin left bare — a direction has no sensible number to type, so it stays wire-only.
 
 **Dropping a texture:** drag an image straight from the **Assets** browser onto the graph and release — a **Sample Texture** node appears under the cursor with that image already bound, ready to wire into a pin. Drop several images at once and you get one node per image, cascaded so they don't stack exactly on top of each other.
+
+**DirectX vs OpenGL normal maps:** texture packs often ship both — a
+`_NormalDX` and a `_NormalGL`. They hold the same data with the green channel
+inverted, and the engine decodes the **OpenGL** convention, so reach for the
+`GL` file. If you only have the DX one, tick **Flip Green (DirectX)** on the
+Sample Normal Map node. Getting this wrong doesn't look broken so much as
+subtly off: bumps light as though they were dents, and only along one axis, so
+it tends to show up when the light moves rather than at first glance.
 
 **Switching a sample's type:** every 2D texture-sample node carries a small **caret** button in its header. Click it to pick a different sampling mode for the same image — **Sample Texture**, **Sample Normal Map**, **Sample Texture LOD**, or **Sample Texture Grad** — without re-dropping it. The bound image is kept; any wires to pins the new mode doesn't have are dropped. (The rest of the header stays a drag handle for moving the node.) The switcher stays within plain-2D modes; array, 3D, and cubemap samples need a matching texture, so add those from the palette.
 
@@ -43,6 +51,16 @@ The Surface Output node is what shows up on your mesh. The pins you'll reach for
 - **Metallic** — usually `0` for non-metal, `1` for metal.
 - **Roughness** — `0` is mirror-smooth, `1` is fully matte.
 - **Normal** — plug in a normal map for surface bumps and detail.
+- **Displacement (Height)** — plug in a height map and the surface gets real
+  parallax: bricks occlude their own mortar, and the relief shifts correctly as
+  you move around it. White is the peak, black the valley — the way every PBR
+  texture set ships its Displacement or Height map, so it goes straight in with
+  nothing to invert. **Displacement Scale** next to it sets how deep the effect
+  reads; `0.05` is a good starting point and much past `0.1` starts to swim at
+  grazing angles. Two things to know: the mesh needs **tangents** (imported
+  models have them; primitive shapes don't), and this is a shading trick, not
+  geometry — the silhouette of the object doesn't change. A constant typed into
+  the pin does nothing; parallax needs a map to march through.
 - **Emissive** — makes a surface glow (great for screens, lava, neon).
 
 A minimal material only needs **Base Color** — everything you leave unplugged just keeps its sensible default. There are more advanced pins too (clearcoat for car paint, transmission for glass and water, anisotropy for brushed metal), all listed in the [Material API reference](/docs/r1-alpha7/api/material).
@@ -124,8 +142,8 @@ there when you do want the node graph.
 
 Once the object has a material, one row per PBR channel appears below the
 field — **Base Color**, **Normal**, **Roughness**, **Metallic**, **Ambient
-Occlusion** and **Emissive**. There's no heading over them; each row names its
-own channel.
+Occlusion**, **Emissive** and **Displacement**. There's no heading over them;
+each row names its own channel.
 
 **Drag an image onto a row** (or click the row to browse for one) and it is
 wired into the material graph for you: the sampler node is created, connected to
@@ -152,8 +170,11 @@ created for you — a new `.material` named after the object, in the project's
 
 **Dropping a whole texture set:** drag several images at once onto the *material
 slot* at the top and each one is routed by its filename — `rock_normal.png` goes
-to Normal, `rock_rough.png` to Roughness, `rock_basecolor.png` to Base Color, and
-so on. Packed maps are understood too: an `ORM`/`ARM` file fills occlusion,
+to Normal, `rock_rough.png` to Roughness, `rock_basecolor.png` to Base Color,
+`rock_displacement.png` (or `_height`) to Displacement, and so on. One
+exception worth knowing: `_bump` is routed to **Normal**, because enough packs
+ship a `_Bump` that is really a normal map — if yours is a true height map, drop
+it on the Displacement row by hand. Packed maps are understood too: an `ORM`/`ARM` file fills occlusion,
 roughness *and* metallic from a single sampler (which is also the fastest way for
 the engine to render it), and a `metallicRoughness` file fills those two. A
 single image whose name says nothing in particular is treated as base color; in a
@@ -228,13 +249,15 @@ The **Preview** panel renders your material on a test shape with an orbit camera
 
 The preview renders anti-aliased, with SMAA on top of a render target larger than the panel displays — so silhouettes stay clean and a normal map's specular doesn't sparkle at you while you're trying to judge it. There's nothing to switch on; it's how the panel always draws.
 
-## Editing the compiled shader by hand
+## What a saved material contains
 
-Saving a material writes two files next to the `.material`: a compiled **`.wgsl`** and a `.wgsl.meta` sidecar describing its textures and parameters. The engine watches your project for changes to those `.wgsl` files, so if you open one in an external editor and save, the viewport picks it up within about a fifth of a second — no restart, and no need to touch the graph.
+A `.material` is one file holding two things: the node graph you author, and the shader that graph compiles to. Pressing **Apply** recompiles the shader and stores it back inside the same file. There are no loose `.wgsl` or `.wgsl.meta` files beside it to keep track of, move together, or accidentally leave behind.
 
-This is a one-way door, though: the next time you press **Apply** in the graph editor, the `.wgsl` is regenerated from the nodes and your hand edits are overwritten. Treat it as a way to experiment with shader code quickly, not as a place to keep changes.
+The compiled shader isn't meant to be edited. A graph and a hand-edited copy of its output can disagree, and once they do there's no way to tell which half is right — so the graph stays the single source of truth, and pressing Apply always regenerates from the nodes.
 
-> Watching is editor-only — a shipped game reads the compiled `.wgsl` as-is and never watches for changes.
+If you want to write shader code directly, that's a **standalone shader**, not a material: create a `.wgsl` or `.shader` asset and point a mesh at it. Those are yours to edit freely, in the built-in Shader Editor or any external editor — the engine watches your project and the viewport picks up a save within about a fifth of a second, with no restart. Watching is editor-only; a shipped game reads the shader as-is.
+
+> Materials written by an older version — the ones with a `.wgsl` and `.wgsl.meta` next to them — still load exactly as before. The next time you save one, its shader moves inside the `.material` and the two stale files are removed for you.
 
 ## Tips
 

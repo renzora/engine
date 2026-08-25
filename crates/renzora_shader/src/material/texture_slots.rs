@@ -97,6 +97,18 @@ pub const TEXTURE_SLOTS: &[TextureSlot] = &[
         node_type: "texture/sample",
         channel: "rgb",
     },
+    // Height, not depth: white is the peak. `r` because a displacement map is
+    // greyscale, so any channel would do and `r` is the one the AO slot already
+    // uses — a set that ships AO and displacement packed together still reuses
+    // one sampler node.
+    TextureSlot {
+        key: "displacement",
+        label: "Displacement",
+        icon: "stack",
+        pin: "displacement",
+        node_type: "texture/sample",
+        channel: "r",
+    },
 ];
 
 /// Look a slot up by its [`TextureSlot::key`].
@@ -155,7 +167,10 @@ pub fn set_slot_muted(graph: &mut MaterialGraph, slot: &TextureSlot, muted: bool
         if graph.muted_slots.contains_key(slot.key) {
             return false;
         }
-        let Some(source) = graph.connection_to(output_id, slot.pin).map(|c| c.from_node) else {
+        let Some(source) = graph
+            .connection_to(output_id, slot.pin)
+            .map(|c| c.from_node)
+        else {
             return false;
         };
         disconnect_input(graph, output_id, slot.pin);
@@ -256,7 +271,10 @@ pub fn clear_slot(graph: &mut MaterialGraph, slot: &TextureSlot) -> bool {
         prune_orphan_sampler(graph, parked);
         return true;
     }
-    let Some(previous) = graph.connection_to(output_id, slot.pin).map(|c| c.from_node) else {
+    let Some(previous) = graph
+        .connection_to(output_id, slot.pin)
+        .map(|c| c.from_node)
+    else {
         return false;
     };
     disconnect_input(graph, output_id, slot.pin);
@@ -280,17 +298,42 @@ pub fn clear_slot(graph: &mut MaterialGraph, slot: &TextureSlot) -> bool {
 /// A packed map returns several slots, so dropping `rock_ORM.png` on the
 /// material fills occlusion, roughness and metallic from one sampler.
 pub fn guess_slots(path: &Path) -> Vec<&'static TextureSlot> {
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
     let tokens = tokenize(stem);
     let has = |set: &[&str]| tokens.iter().any(|t| set.contains(&t.as_str()));
 
-    const NORMAL: &[&str] = &["n", "nrm", "nrml", "nor", "norm", "normal", "normalmap", "bump"];
+    const NORMAL: &[&str] = &[
+        "n",
+        "nrm",
+        "nrml",
+        "nor",
+        "norm",
+        "normal",
+        "normalmap",
+        "bump",
+    ];
     const ROUGHNESS: &[&str] = &["r", "rgh", "rough", "roughness"];
     const METALLIC: &[&str] = &["m", "mtl", "metal", "metallic", "metalness"];
     const AO: &[&str] = &["ao", "occ", "occlusion", "ambientocclusion"];
     const EMISSIVE: &[&str] = &["e", "emit", "emissive", "emission", "glow"];
+    // "bump" is deliberately absent — NORMAL already claims it, and enough
+    // packs ship a `_Bump` that is really a normal map that moving it would
+    // break more materials than it fixed. A true height map is named
+    // displacement or height in every set we've seen.
+    const DISPLACEMENT: &[&str] = &["disp", "displace", "displacement", "height", "heightmap"];
     const BASE_COLOR: &[&str] = &[
-        "d", "bc", "col", "color", "colour", "albedo", "diffuse", "basecolor", "base",
+        "d",
+        "bc",
+        "col",
+        "color",
+        "colour",
+        "albedo",
+        "diffuse",
+        "basecolor",
+        "base",
     ];
 
     let by_key = |keys: &[&str]| -> Vec<&'static TextureSlot> {
@@ -304,14 +347,13 @@ pub fn guess_slots(path: &Path) -> Vec<&'static TextureSlot> {
     if has(PACKED_ORM) || (has(ROUGHNESS) && has(METALLIC) && has(AO)) {
         return by_key(&["ao", "roughness", "metallic"]);
     }
-    if has(&["mr", "metallicroughness", "roughnessmetallic"])
-        || (has(ROUGHNESS) && has(METALLIC))
-    {
+    if has(&["mr", "metallicroughness", "roughnessmetallic"]) || (has(ROUGHNESS) && has(METALLIC)) {
         return by_key(&["roughness", "metallic"]);
     }
 
     for (set, key) in [
         (NORMAL, "normal"),
+        (DISPLACEMENT, "displacement"),
         (AO, "ao"),
         (ROUGHNESS, "roughness"),
         (METALLIC, "metallic"),
@@ -408,10 +450,14 @@ fn sampler_for(
     if node.node_type != slot.node_type {
         return None;
     }
-    let drives_only_this = graph.connections.iter().filter(|c| c.from_node == prev).all(|c| {
-        c.to_node == output_id
-            && (c.to_pin == slot.pin || (slot.key == "base_color" && c.to_pin == "alpha"))
-    });
+    let drives_only_this = graph
+        .connections
+        .iter()
+        .filter(|c| c.from_node == prev)
+        .all(|c| {
+            c.to_node == output_id
+                && (c.to_pin == slot.pin || (slot.key == "base_color" && c.to_pin == "alpha"))
+        });
     drives_only_this.then_some(prev)
 }
 
@@ -484,7 +530,10 @@ mod tests {
         assert!(set_slot_texture(&mut g, normal, "tex/rock_n.png"));
         assert_eq!(slot_texture(&g, normal).as_deref(), Some("tex/rock_n.png"));
         assert_eq!(
-            g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
+            g.nodes
+                .iter()
+                .filter(|n| n.node_type == "texture/sample_normal")
+                .count(),
             1
         );
     }
@@ -505,7 +554,10 @@ mod tests {
         assert!(slot_muted(&g, normal));
         assert_eq!(slot_texture(&g, normal).as_deref(), Some("tex/rock_n.png"));
         assert_eq!(
-            g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
+            g.nodes
+                .iter()
+                .filter(|n| n.node_type == "texture/sample_normal")
+                .count(),
             1
         );
 
@@ -578,7 +630,10 @@ mod tests {
         assert!(!slot_muted(&g, normal));
         assert_eq!(slot_texture(&g, normal), None);
         assert_eq!(
-            g.nodes.iter().filter(|n| n.node_type == "texture/sample_normal").count(),
+            g.nodes
+                .iter()
+                .filter(|n| n.node_type == "texture/sample_normal")
+                .count(),
             0
         );
     }
@@ -602,7 +657,10 @@ mod tests {
             set_slot_texture(&mut g, slot(key).unwrap(), "tex/rock_orm.png");
         }
         assert_eq!(
-            g.nodes.iter().filter(|n| n.node_type == "texture/sample").count(),
+            g.nodes
+                .iter()
+                .filter(|n| n.node_type == "texture/sample")
+                .count(),
             1
         );
         for key in ["ao", "roughness", "metallic"] {
@@ -620,7 +678,10 @@ mod tests {
         set_slot_texture(&mut g, rough, "tex/a.png");
         set_slot_texture(&mut g, rough, "tex/b.png");
         assert_eq!(
-            g.nodes.iter().filter(|n| n.node_type == "texture/sample").count(),
+            g.nodes
+                .iter()
+                .filter(|n| n.node_type == "texture/sample")
+                .count(),
             1
         );
         assert_eq!(slot_texture(&g, rough).as_deref(), Some("tex/b.png"));
@@ -643,11 +704,23 @@ mod tests {
         assert_eq!(keys(guess_slots(Path::new("rock_normal.png"))), ["normal"]);
         assert_eq!(keys(guess_slots(Path::new("rock_nrm.png"))), ["normal"]);
         assert_eq!(keys(guess_slots(Path::new("Rock_N.png"))), ["normal"]);
-        assert_eq!(keys(guess_slots(Path::new("wood_Roughness.png"))), ["roughness"]);
+        assert_eq!(
+            keys(guess_slots(Path::new("wood_Roughness.png"))),
+            ["roughness"]
+        );
         assert_eq!(keys(guess_slots(Path::new("wood_AO.png"))), ["ao"]);
-        assert_eq!(keys(guess_slots(Path::new("lava_emissive.png"))), ["emissive"]);
-        assert_eq!(keys(guess_slots(Path::new("wood_BaseColor.png"))), ["base_color"]);
-        assert_eq!(keys(guess_slots(Path::new("wood_albedo.png"))), ["base_color"]);
+        assert_eq!(
+            keys(guess_slots(Path::new("lava_emissive.png"))),
+            ["emissive"]
+        );
+        assert_eq!(
+            keys(guess_slots(Path::new("wood_BaseColor.png"))),
+            ["base_color"]
+        );
+        assert_eq!(
+            keys(guess_slots(Path::new("wood_albedo.png"))),
+            ["base_color"]
+        );
         assert_eq!(
             keys(guess_slots(Path::new("rock_ORM.png"))),
             ["ao", "roughness", "metallic"]
@@ -656,6 +729,16 @@ mod tests {
             keys(guess_slots(Path::new("rock_metallicRoughness.png"))),
             ["roughness", "metallic"]
         );
+        assert_eq!(
+            keys(guess_slots(Path::new("Ground109_1K-JPG_Displacement.jpg"))),
+            ["displacement"]
+        );
+        assert_eq!(
+            keys(guess_slots(Path::new("cliff_height.png"))),
+            ["displacement"]
+        );
+        // `_Bump` stays with normal — see the note on DISPLACEMENT.
+        assert_eq!(keys(guess_slots(Path::new("cliff_bump.png"))), ["normal"]);
         assert!(guess_slots(Path::new("untitled.png")).is_empty());
     }
 

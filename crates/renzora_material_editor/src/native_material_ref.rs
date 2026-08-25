@@ -51,7 +51,7 @@ use renzora_ember::theme::{
     text_primary,
 };
 use renzora_ember::widgets::{
-    button, checkbox, drag_value, folder_picker, overlay_sized, text_input, EmberForm,
+    button, checkbox, drag_value, folder_new_button, folder_picker, overlay_sized, text_input, EmberForm,
     EmberTextInput, FolderPick, HoverTint, HoverTooltip,
 };
 
@@ -1857,11 +1857,15 @@ fn open_create_overlay(world: &mut World, entity: Entity) {
                 ..default()
             })
             .id();
+        // New Folder rides in the button row rather than under the tree — one
+        // row of controls, not two. It floats at the row's left edge (absolute,
+        // out of flow), so Cancel and Create lay out untouched.
+        let new_folder = folder_new_button(&mut commands, &fonts, picker);
         let cancel = button(&mut commands, &fonts.ui, "Cancel");
         commands.entity(cancel).insert(MatCreateCancelBtn);
         let confirm = button(&mut commands, &fonts.ui, "Create");
         commands.entity(confirm).insert(MatCreateConfirmBtn);
-        commands.entity(buttons).add_children(&[cancel, confirm]);
+        commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
 
         let body = commands
             .spawn((

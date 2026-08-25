@@ -131,16 +131,16 @@ pub fn apply_material(world: &mut World) {
         return;
     }
     // Mirror the freshly-saved graph back into editor state so UI sees the
-    // updated wgsl_path link (and a future diff doesn't think it's dirty).
+    // embedded compile output (and a future diff doesn't think it's dirty).
     let mut state = world.resource_mut::<MaterialEditorState>();
     state.graph = graph;
     state.is_dirty = false;
 }
 
-/// Compile `graph`, write it (plus its `.wgsl` + `.wgsl.meta`) to the
-/// project-relative `path`, and invalidate every cache that holds the old
-/// version — resolver, thumbnails, and the `MaterialResolved` marker on each
-/// entity using the material.
+/// Compile `graph`, write it — shader and all — to the project-relative
+/// `path`, and invalidate every cache that holds the old version: resolver,
+/// thumbnails, and the `MaterialResolved` marker on each entity using the
+/// material.
 ///
 /// Split out of [`apply_material`] so callers that edit a material *without* it
 /// being the one open in the graph editor — the component inspector's texture
@@ -148,7 +148,7 @@ pub fn apply_material(world: &mut World) {
 /// implementation that would drift on the next change to the compile pipeline.
 ///
 /// Returns `false` (having written nothing) when there is no project open or
-/// the write failed. `graph` is left carrying the `wgsl_path` link that
+/// the write failed. `graph` is left carrying the compiled artifact that
 /// compilation produced, so the caller can keep the saved copy.
 pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGraph) -> bool {
     let project_root = match world.get_resource::<CurrentProject>() {
@@ -165,11 +165,7 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
     }
 
     let (graph_json, errors) =
-        match renzora_shader::material::precompiled::save_compiled_and_serialize(
-            graph,
-            &project_root,
-            &fs_path,
-        ) {
+        match renzora_shader::material::precompiled::save_compiled_and_serialize(graph, &fs_path) {
             Ok(out) => out,
             Err(e) => {
                 warn!("[material_editor] Save compile failed: {}", e);

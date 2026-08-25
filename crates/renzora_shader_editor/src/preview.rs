@@ -13,7 +13,9 @@ use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
 
 use crate::ShaderEditorState;
 
-pub const SHADER_PREVIEW_LAYER: usize = 9;
+/// This preview's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's — see the registry there for why.
+pub use renzora::core::viewport_types::SHADER_PREVIEW_LAYER;
 
 // ---- Preview mesh selection -------------------------------------------------
 

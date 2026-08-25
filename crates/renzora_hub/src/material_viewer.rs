@@ -40,9 +40,10 @@ use renzora_shader::file::{self, ParamType, ParamValue, ShaderParam};
 use renzora_shader::registry::{self, ShaderBackendRegistry};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache, ShaderUniforms};
 
-/// A dedicated render layer — distinct from the model viewer (13) and every
-/// other preview so nothing cross-contaminates.
-const MATERIAL_VIEWER_LAYER: usize = 14;
+/// This viewer's private render layer. Allocated in the contract crate
+/// alongside every other offscreen rig's, which is what keeps it distinct from
+/// the model viewer and every preview so nothing cross-contaminates.
+use renzora::core::viewport_types::MATERIAL_VIEWER_LAYER;
 
 /// Offscreen render-target resolution (16:9, matches the overlay header viewer).
 const RTT_W: u32 = 640;

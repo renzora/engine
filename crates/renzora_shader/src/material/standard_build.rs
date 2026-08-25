@@ -81,8 +81,23 @@ pub fn try_build_standard_material(
     // codegen instead, where the constant compiles in like any other
     // expression; slower to build, but it actually renders what was typed.
     if output.input_values.contains_key("ao")
-        || matches!(output.input_values.get("reflectance"), Some(PinValue::Vec3(_)))
+        || matches!(
+            output.input_values.get("reflectance"),
+            Some(PinValue::Vec3(_))
+        )
     {
+        return None;
+    }
+
+    // Displacement always compiles through codegen, even though StandardMaterial
+    // has `depth_map` and would parallax this for free. The two disagree about
+    // what the texture means: `depth_map` is a *depth* (white = bottom), while a
+    // Displacement map out of any PBR set is a *height* (white = peak). Wiring
+    // the pin straight through would render every material's relief inside-out,
+    // and Bevy offers no invert. Codegen owns the height convention, so sending
+    // every displacement graph there keeps one answer instead of two opposite
+    // ones depending on how complicated the rest of the graph happens to be.
+    if graph.connection_to(output.id, "displacement").is_some() {
         return None;
     }
 
@@ -98,6 +113,11 @@ pub fn try_build_standard_material(
         } else {
             Some(bevy::render::render_resource::Face::Back)
         },
+        // Not redundant with `cull_mode`: that one decides whether the back
+        // face is drawn, this one sets the flag that makes Bevy flip the
+        // normal on it. Without it a two-sided leaf shaded its back with the
+        // front's normal and lit from the wrong side.
+        double_sided: graph.double_sided,
         ..Default::default()
     };
 
@@ -202,6 +222,12 @@ pub fn try_build_standard_material(
             return None;
         }
         mat.normal_map_texture = Some(asset_server.load(texture_path(src)?));
+        // StandardMaterial has the same DirectX/OpenGL switch the sampler node
+        // exposes, so a flipped map stays on the fast path instead of dragging
+        // the whole material into codegen for one negated channel.
+        if let Some(PinValue::Bool(true)) = src.input_values.get("flip_green") {
+            mat.flip_normal_map_y = true;
+        }
     }
 
     // ── emissive (factor + texture) ─────────────────────────────────────
@@ -269,6 +295,18 @@ pub fn try_build_standard_material(
     }
     if let Some(PinValue::Float(v)) = output.input_values.get("attenuation_distance") {
         mat.attenuation_distance = *v;
+    }
+    // Vec3 pin, so it can't ride the `scalar_ext_pins` loop below — and a
+    // *connection* to it would be silently dropped there, hence the explicit
+    // bail.
+    if let Some(PinValue::Vec3(c)) = output.input_values.get("attenuation_color") {
+        mat.attenuation_color = Color::linear_rgb(c[0], c[1], c[2]);
+    }
+    if graph
+        .connection_to(output.id, "attenuation_color")
+        .is_some()
+    {
+        return None;
     }
     if let Some(PinValue::Float(v)) = output.input_values.get("clearcoat") {
         mat.clearcoat = *v;
@@ -453,6 +491,41 @@ mod tests {
         let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         assert!(try_build_standard_material(&graph, asset_server).is_none());
+    }
+
+    #[test]
+    fn rejects_a_wired_displacement_pin() {
+        // Even though StandardMaterial has `depth_map` — the height/depth
+        // conventions are inverted, so codegen owns this one.
+        let mut graph = MaterialGraph::new("Parallax", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let height = graph.add_node("texture/sample", [-200.0, 0.0]);
+        graph.connect(height, "r", output_id, "displacement");
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(try_build_standard_material(&graph, asset_server).is_none());
+    }
+
+    #[test]
+    fn a_directx_normal_map_stays_on_the_fast_path() {
+        let mut graph = MaterialGraph::new("DxNormal", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
+        graph
+            .get_node_mut(n)
+            .unwrap()
+            .input_values
+            .insert("texture".into(), PinValue::TexturePath("n.png".into()));
+        graph
+            .get_node_mut(n)
+            .unwrap()
+            .input_values
+            .insert("flip_green".into(), PinValue::Bool(true));
+        graph.connect(n, "normal", output_id, "normal");
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
+        assert!(mat.flip_normal_map_y);
     }
 
     #[test]

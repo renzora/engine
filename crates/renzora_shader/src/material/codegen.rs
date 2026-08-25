@@ -71,7 +71,7 @@ pub struct CompileResult {
 /// Master shaders bake the default value into the WGSL; downstream tooling
 /// (material instances, the inspector) consults this list to know what
 /// overrides are valid and what defaults they replace.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MaterialParam {
     /// Identifier the user authored on the parameter node (e.g. "BaseColor").
     pub name: String,
@@ -103,7 +103,7 @@ pub enum TextureKind {
     D3,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextureBinding {
     pub name: String,
     pub binding: u32,
@@ -152,6 +152,16 @@ struct Ctx<'a> {
     uses_cube_0: bool,
     uses_array_0: bool,
     uses_volume_0: bool,
+    /// Set once the graph's `displacement` pin has been compiled into a
+    /// `graph_displacement` helper — the signal for `build_pbr_shader` to
+    /// emit the parallax march that rebinds `mat_uv`.
+    uses_parallax: bool,
+    /// True while emitting the body of `graph_displacement`. Texture reads
+    /// switch to `textureSampleLevel` in that window: the helper is called
+    /// from a variable-length loop, and the wgpu DX12 (FXC) backend refuses
+    /// to compile gradient instructions inside one — the same reason Bevy's
+    /// own `sample_depth_map` is level-sampled.
+    in_displacement_fn: bool,
     /// Named parameters discovered while walking the graph. The `Vec`'s
     /// position is the slot index in `material_params.slots[N]` — codegen
     /// emits reads keyed on that index, and the resolver writes the
@@ -209,6 +219,8 @@ impl<'a> Ctx<'a> {
             uses_cube_0: false,
             uses_array_0: false,
             uses_volume_0: false,
+            uses_parallax: false,
+            in_displacement_fn: false,
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
         }
@@ -369,6 +381,67 @@ impl<'a> Ctx<'a> {
             "    let {v} = {v}_x * {v}_w.x + {v}_y * {v}_w.y + {v}_z * {v}_w.z;"
         ));
         self.set_out(id, "value", v);
+    }
+
+    /// A 2D texture read, level-sampled while compiling `graph_displacement`.
+    ///
+    /// See [`Ctx::in_displacement_fn`] — inside the parallax loop the mip
+    /// level has to be supplied rather than derived, or DX12 fails to build
+    /// the pipeline. Everywhere else the derivative-based sample is what we
+    /// want, so this is a single call site's worth of branching rather than
+    /// a global change of sampling strategy.
+    fn sample_call(&self, tex_name: &str, uv: &str) -> String {
+        if self.in_displacement_fn {
+            format!("textureSampleLevel({tex_name}, texture_sampler, {uv}, 0.0)")
+        } else {
+            format!("textureSample({tex_name}, texture_sampler, {uv})")
+        }
+    }
+
+    /// Compile the output node's `displacement` subgraph into
+    /// `fn graph_displacement(in: VertexOutput, mat_uv: vec2<f32>) -> f32`.
+    ///
+    /// Parallax needs a *function* of UV, not a value: the march evaluates the
+    /// height at a dozen different UVs along the view ray. Resolving the pin
+    /// inline the way every other pin is resolved would give one height at one
+    /// UV, which is no relief at all. Compiling it standalone also breaks what
+    /// would otherwise be a cycle — every sampler wants the parallaxed UV, and
+    /// the parallaxed UV wants a height sample.
+    ///
+    /// `mat_uv` is the function's parameter, so any node that reads it (texture
+    /// samples, UV-driven noise) is re-evaluated at the marched UV for free.
+    /// `in` is passed through so world-position and vertex-attribute nodes keep
+    /// working inside the helper.
+    ///
+    /// Line/var state is swapped exactly the way `compile_function_body` does
+    /// it, so nothing memoized in here leaks into the main body — a texture
+    /// node shared with `base_color` must be emitted again out there, against
+    /// the parallaxed UV rather than the raw one.
+    fn compile_displacement_fn(&mut self, output_node: &MaterialNode) -> String {
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_output_vars = std::mem::take(&mut self.output_vars);
+        let saved_processed = std::mem::take(&mut self.processed);
+        self.in_displacement_fn = true;
+
+        let height = self.input(output_node, "displacement");
+
+        self.in_displacement_fn = false;
+        let body_lines = std::mem::replace(&mut self.lines, saved_lines);
+        self.output_vars = saved_output_vars;
+        self.processed = saved_processed;
+
+        let mut s = String::new();
+        s.push_str(
+            "\nfn graph_displacement(in: VertexOutput, mat_uv: vec2<f32>) -> f32 {\n\
+             #ifdef VERTEX_COLORS\n    let mat_vertex_color = in.color;\n\
+             #else\n    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n#endif\n",
+        );
+        for line in &body_lines {
+            s.push_str(line);
+            s.push('\n');
+        }
+        s.push_str(&format!("    return {height};\n}}\n"));
+        s
     }
 
     /// Compile a MaterialFunction's internal graph into a standalone WGSL fn
@@ -669,11 +742,9 @@ impl<'a> Ctx<'a> {
                     kind: TextureKind::D2,
                 });
 
-                let uv_expr = uv;
                 let v = self.next_var("tex");
-                self.emit(format!(
-                    "    let {v} = textureSample({tex_name}, texture_sampler, {uv_expr});"
-                ));
+                let sample = self.sample_call(&tex_name, &uv);
+                self.emit(format!("    let {v} = {sample};"));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -712,15 +783,82 @@ impl<'a> Ctx<'a> {
                     kind: TextureKind::D2,
                 });
 
+                let flip = self.input(node, "flip_green");
                 let raw = self.next_var("nraw");
+                let nxy = self.next_var("nxy");
+                let nt = self.next_var("ntan");
                 let n = self.next_var("nmap");
+                let sample = self.sample_call(&tex_name, &uv);
+                // Read X and Y only and *derive* Z, rather than trusting the
+                // blue channel. The import pipeline bakes normal maps to
+                // `Bc5RgUnorm` — two channels, no blue — because that is the
+                // right GPU format for them. Sampling `.b` off one of those
+                // returns 0, which decodes to z = -1: a normal pointing
+                // straight *into* the surface, so the model lights inside-out.
+                // Bevy hits the same problem on `StandardMaterial` and solves it
+                // with its `TWO_COMPONENT_NORMAL_MAP` flag; codegen has no
+                // material flags to consult and does not need them, because a
+                // tangent-space normal is a unit vector with z > 0 and Z is
+                // therefore recoverable from XY — exactly, for a three-channel
+                // map just as much as for a two-channel one.
+                self.emit(format!("    let {raw} = {sample}.rg * 2.0 - 1.0;"));
+                // DirectX normal maps store green inverted relative to OpenGL.
+                // Negating Y at decode time is the whole difference; without it
+                // the surface lights as though every bump were a dent, and only
+                // along one axis, which reads as "subtly wrong" rather than as
+                // an obvious error.
                 self.emit(format!(
-                    "    let {raw} = textureSample({tex_name}, texture_sampler, {uv}).rgb * 2.0 - 1.0;"
+                    "    let {nxy} = {raw} * {strength} * vec2<f32>(1.0, select(1.0, -1.0, {flip}));"
                 ));
+                // `max(0.0, ..)` because a strength above 1 can push the pair
+                // outside the unit disc, and `sqrt` of a negative is NaN — one
+                // NaN normal poisons the whole lighting result.
                 self.emit(format!(
-                    "    let {n} = normalize(vec3<f32>({raw}.xy * {strength}, {raw}.z));"
+                    "    let {nt} = vec3<f32>({nxy}, sqrt(max(0.0, 1.0 - dot({nxy}, {nxy}))));"
                 ));
-                self.set_out(id, "normal", n);
+
+                // That decode is a *tangent-space* normal, but the Surface
+                // Output `normal` pin is world-space — which is the whole reason
+                // `normal_from_height` has a separate `world_normal_from_height`
+                // sibling. Handing the tangent-space vector straight to
+                // `pbr_input.N` makes a flat region of a normal map, (0,0,1),
+                // become world +Z: a floor claiming to face sideways. Half of
+                // every light then lands on the wrong side of `N·L` and is
+                // clamped away, which shows up as a spot light lighting a clean
+                // half-disc with a hard straight edge, and as the light
+                // behaving wrongly under X and Z rotation. Reproduce it by
+                // pointing a spot light at any surface with a normal map wired.
+                //
+                // Only the codegen path is affected: a graph that is just
+                // base-colour/normal/AO compiles to a plain StandardMaterial
+                // (see `standard_build`), where Bevy applies the TBN itself.
+                // Wiring displacement or a standalone roughness texture pushes
+                // the same graph off that fast path and onto this code, which is
+                // why adding either pin appeared to "break the lighting".
+                //
+                // Mikktspace, matching `apply_normal_mapping` exactly, so both
+                // paths shade identically. With no vertex tangents there is no
+                // frame to map through, so fall back to the interpolated vertex
+                // normal — what StandardMaterial renders for a mesh that has a
+                // normal map but no tangents.
+                if self.graph.domain == MaterialDomain::TerrainLayer {
+                    // Terrain compiles to `layer_main()`, whose `FakeIn` has no
+                    // `world_tangent` and which never imports `pbr_functions`.
+                    // Its layer shader consumes the tangent-space value
+                    // directly, so that domain stays exactly as it was.
+                    self.set_out(id, "normal", nt);
+                } else {
+                    let tbn = self.next_var("ntbn");
+                    self.emit("#ifdef VERTEX_TANGENTS".to_string());
+                    self.emit(format!(
+                        "    let {tbn} = pbr_functions::calculate_tbn_mikktspace(in.world_normal, in.world_tangent);"
+                    ));
+                    self.emit(format!("    let {n} = normalize({tbn} * {nt});"));
+                    self.emit("#else".to_string());
+                    self.emit(format!("    let {n} = normalize(in.world_normal);"));
+                    self.emit("#endif".to_string());
+                    self.set_out(id, "normal", n);
+                }
             }
 
             "texture/sample_lod" => {
@@ -2386,9 +2524,37 @@ pub fn compile_with_functions(
         Vec::new()
     };
 
-    // Resolve each output pin's input (triggers recursive codegen)
+    // Parallax first, and out of band: it rewrites `mat_uv`, so its subgraph
+    // has to be compiled before any pin that samples with it. Only a wired
+    // `displacement` counts — a constant height describes a flat surface, and
+    // marching one would burn a loop to return the UV it started with.
+    if graph.domain == MaterialDomain::Surface
+        && graph
+            .connection_to(output_node.id, "displacement")
+            .is_some()
+    {
+        let scale = match output_node.input_values.get("displacement_scale") {
+            Some(PinValue::Float(v)) => *v,
+            _ => 0.05,
+        };
+        let disp_fn = ctx.compile_displacement_fn(&output_node);
+        ctx.module_prelude.push(disp_fn);
+        ctx.module_prelude.push(parallax_helper_wgsl(scale));
+        ctx.uses_parallax = true;
+    }
+
+    // Resolve each output pin's input (triggers recursive codegen).
+    //
+    // The two displacement pins are skipped: they produce no `pbr_input`
+    // mutation, the march above is their only consumer, and resolving them
+    // again out here would emit the height subgraph a second time — a second
+    // texture *binding* for the same image, out of the six 2D slots the
+    // extension has, plus a sample nothing reads.
     let mut resolved: HashMap<String, String> = HashMap::new();
     for pin_name in &output_pins {
+        if matches!(pin_name.as_str(), "displacement" | "displacement_scale") {
+            continue;
+        }
         let expr = ctx.input(&output_node, pin_name);
         resolved.insert(pin_name.clone(), expr);
     }
@@ -2807,11 +2973,77 @@ fn emit_module_prelude(ctx: &Ctx, s: &mut String) {
 /// graph code references `mat_uv` / `mat_vertex_color` instead of `in.uv` /
 /// `in.color` so a mesh without those attributes still compiles — the
 /// `#ifdef` falls back to a sane default (zeroed UV, white vertex color).
+/// Steep-parallax march over `graph_displacement`, plus one interpolation step
+/// (parallax *occlusion* mapping — Bevy's default method for `depth_map`).
+///
+/// Deliberately not Bevy's `parallaxed_uv`: that one reads `depth_map_texture`
+/// at a fixed StandardMaterial binding, and our height comes out of the graph.
+/// The march is the same algorithm against a different source.
+///
+/// Height convention is the one every PBR texture set ships — white is the
+/// peak — so it is inverted into a depth here. Bevy's `depth_map` is the other
+/// way round, which is exactly why a displacement graph never takes the
+/// StandardMaterial fast path: one convention, whatever the graph looks like.
+fn parallax_helper_wgsl(depth_scale: f32) -> String {
+    format!(
+        r#"
+const GRAPH_PARALLAX_SCALE: f32 = {depth_scale:.6};
+const GRAPH_PARALLAX_MAX_LAYERS: f32 = 16.0;
+
+fn graph_parallax_uv(in: VertexOutput, original_uv: vec2<f32>, Vt: vec3<f32>) -> vec2<f32> {{
+    // Shallow view angles need more layers; head-on needs one. `max` keeps a
+    // surface exactly edge-on from dividing by zero.
+    let view_steepness = max(abs(Vt.z), 0.0001);
+    let layer_count = mix(GRAPH_PARALLAX_MAX_LAYERS, 1.0, view_steepness);
+    let layer_depth = 1.0 / layer_count;
+    let delta_uv = GRAPH_PARALLAX_SCALE * layer_depth * Vt.xy * vec2<f32>(1.0, -1.0) / view_steepness;
+
+    var uv = original_uv;
+    var current_layer_depth = 0.0;
+    var texture_depth = 1.0 - graph_displacement(in, uv);
+    for (var i = 0; texture_depth > current_layer_depth && i <= i32(layer_count); i++) {{
+        current_layer_depth += layer_depth;
+        uv += delta_uv;
+        texture_depth = 1.0 - graph_displacement(in, uv);
+    }}
+
+    // Interpolate across the layer the ray crossed, so the relief doesn't
+    // read as a staircase at the sampling resolution.
+    let previous_uv = uv - delta_uv;
+    let next_depth = texture_depth - current_layer_depth;
+    let previous_depth = (1.0 - graph_displacement(in, previous_uv)) - current_layer_depth + layer_depth;
+    let denom = next_depth - previous_depth;
+    let weight = select(0.0, next_depth / denom, abs(denom) > 0.0001);
+    return mix(uv, previous_uv, weight);
+}}
+"#
+    )
+}
+
+/// The parallax march, emitted into `fragment` right after the aliases so every
+/// later texture read picks up the offset UV.
+///
+/// Gated on `VERTEX_TANGENTS` because the view ray has to be expressed in
+/// tangent space and there is no tangent frame without them — the same gate
+/// Bevy puts on its own parallax block. A mesh without tangents keeps the raw
+/// UV rather than rendering something wrong.
+const PARALLAX_FRAGMENT_WGSL: &str = r#"#ifdef VERTEX_TANGENTS
+    {
+        let pom_tbn = pbr_functions::calculate_tbn_mikktspace(in.world_normal, in.world_tangent);
+        let pom_vt = vec3<f32>(dot(pbr_input.V, pom_tbn[0]), dot(pbr_input.V, pom_tbn[1]), dot(pbr_input.V, pom_tbn[2]));
+        // Flipped to point into the surface, which is the direction the march walks.
+        mat_uv = graph_parallax_uv(in, mat_uv, -pom_vt);
+    }
+#endif
+"#;
+
 fn fragment_input_aliases() -> String {
+    // `var`, not `let`: the parallax block reassigns `mat_uv` in place so that
+    // every downstream sampler picks up the offset without knowing about it.
     r#"#ifdef VERTEX_UVS_A
-    let mat_uv = in.uv;
+    var mat_uv = in.uv;
 #else
-    let mat_uv = vec2<f32>(0.0, 0.0);
+    var mat_uv = vec2<f32>(0.0, 0.0);
 #endif
 #ifdef VERTEX_COLORS
     let mat_vertex_color = in.color;
@@ -2943,6 +3175,12 @@ fn build_pbr_shader(
     // referencing `in.uv` directly would fail to compile for them.
     shader.push_str(&fragment_input_aliases());
 
+    // Must land between the aliases and the body: it consumes `mat_uv` and
+    // replaces it, and every sampler in the body reads it afterwards.
+    if ctx.uses_parallax {
+        shader.push_str(PARALLAX_FRAGMENT_WGSL);
+    }
+
     // Graph body — runs between the StandardMaterial init and the mutations.
     for line in &ctx.lines {
         shader.push_str(line);
@@ -3022,6 +3260,15 @@ fn build_pbr_shader(
         let e = resolved.get("attenuation_distance").unwrap();
         shader.push_str(&format!(
             "    pbr_input.material.attenuation_distance = {e};\n"
+        ));
+    }
+    // The colour light attenuates *toward* over that distance. Without it the
+    // distance pin was half a control: thick glass got darker but never took
+    // on a tint.
+    if is_connected("attenuation_color") {
+        let e = resolved.get("attenuation_color").unwrap();
+        shader.push_str(&format!(
+            "    pbr_input.material.attenuation_color = vec4<f32>({e}, 1.0);\n"
         ));
     }
 
@@ -3217,7 +3464,9 @@ mod tests {
         let graph = MaterialGraph::new("Test", MaterialDomain::Surface);
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
-        assert!(result.fragment_shader.contains("pbr_input_from_standard_material"));
+        assert!(result
+            .fragment_shader
+            .contains("pbr_input_from_standard_material"));
         assert!(result.fragment_shader.contains("apply_pbr_lighting"));
     }
 
@@ -3259,7 +3508,9 @@ mod tests {
         // Unlit uses the same extension-hook skeleton as Surface — the
         // resolver's `unlit = true` on the base material is what makes
         // `apply_pbr_lighting` pass base_color through unlit.
-        assert!(result.fragment_shader.contains("pbr_input_from_standard_material"));
+        assert!(result
+            .fragment_shader
+            .contains("pbr_input_from_standard_material"));
         assert!(result.fragment_shader.contains("apply_pbr_lighting"));
     }
 
@@ -3282,5 +3533,132 @@ mod tests {
             "Expected float→vec4 coercion in shader:\n{}",
             result.fragment_shader
         );
+    }
+
+    #[test]
+    fn displacement_emits_a_parallax_march_before_the_body() {
+        let mut graph = MaterialGraph::new("Parallax", MaterialDomain::Surface);
+        let height = graph.add_node("texture/sample", [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(height, "r", output_id, "displacement");
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+        let s = &result.fragment_shader;
+        assert!(s.contains("fn graph_displacement("), "shader:\n{s}");
+        assert!(s.contains("fn graph_parallax_uv("), "shader:\n{s}");
+        // `mat_uv` has to be assignable, and the march has to run before the
+        // graph body that samples through it.
+        assert!(s.contains("var mat_uv = in.uv;"), "shader:\n{s}");
+        let march = s.find("graph_parallax_uv(in, mat_uv").expect("march call");
+        let aliases = s.find("var mat_uv = in.uv;").expect("alias");
+        assert!(march > aliases, "march must follow the alias:\n{s}");
+        // Height reads sit inside a variable-length loop, so they must not
+        // carry gradient instructions.
+        assert!(
+            s.contains("textureSampleLevel(texture_0, texture_sampler, mat_uv, 0.0)"),
+            "shader:\n{s}"
+        );
+        // The height texture must claim exactly one of the six 2D slots — the
+        // subgraph is compiled standalone, so a second resolve out in the main
+        // body would silently bind the same image twice.
+        assert_eq!(result.texture_bindings.len(), 1, "shader:\n{s}");
+    }
+
+    #[test]
+    fn a_constant_displacement_emits_no_march() {
+        // No relief to walk through — marching would spend a loop arriving
+        // back at the UV it started from.
+        let mut graph = MaterialGraph::new("Flat", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        graph
+            .get_node_mut(output_id)
+            .unwrap()
+            .input_values
+            .insert("displacement".into(), PinValue::Float(0.7));
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+        assert!(!result.fragment_shader.contains("graph_parallax_uv"));
+    }
+
+    #[test]
+    fn flip_green_negates_the_normal_maps_y() {
+        let mut graph = MaterialGraph::new("DxNormal", MaterialDomain::Surface);
+        let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(n, "normal", output_id, "normal");
+
+        let plain = compile(&graph);
+        assert!(plain.fragment_shader.contains("select(1.0, -1.0, false)"));
+
+        graph
+            .get_node_mut(n)
+            .unwrap()
+            .input_values
+            .insert("flip_green".into(), PinValue::Bool(true));
+        let flipped = compile(&graph);
+        assert!(flipped.fragment_shader.contains("select(1.0, -1.0, true)"));
+    }
+
+    /// A normal map decodes to tangent space, but the Surface Output `normal`
+    /// pin feeds `pbr_input.N`, which `apply_pbr_lighting` reads as world
+    /// space. Handing the tangent-space vector over unmapped makes a flat map
+    /// region — (0,0,1) — claim the surface faces world +Z, so a floor loses
+    /// half of every light to `N·L` clamping: a spot light renders as a
+    /// half-disc with a hard straight edge, and rotating it in X or Z moves
+    /// that edge instead of moving the pool. Reproduce with a spot light over
+    /// any surface that has a normal map wired.
+    #[test]
+    fn a_sampled_normal_map_reaches_the_normal_pin_in_world_space() {
+        let mut graph = MaterialGraph::new("WorldNormal", MaterialDomain::Surface);
+        let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(n, "normal", output_id, "normal");
+
+        let shader = compile(&graph).fragment_shader;
+        assert!(
+            shader.contains("calculate_tbn_mikktspace(in.world_normal, in.world_tangent)"),
+            "expected a mikktspace TBN, got:\n{shader}"
+        );
+        // Tangent-less meshes have no frame to map through; StandardMaterial
+        // falls back to the vertex normal and so must we.
+        assert!(shader.contains("normalize(in.world_normal)"));
+    }
+
+    /// The import pipeline bakes normal maps to `Bc5RgUnorm`, which has no blue
+    /// channel. Reading `.b` off one of those gives 0 → z = -1, a normal facing
+    /// into the surface, and the model lights inside-out. Z must be derived from
+    /// XY, which is also exact for an ordinary three-channel map.
+    #[test]
+    fn a_normal_map_derives_z_instead_of_sampling_blue() {
+        let mut graph = MaterialGraph::new("Bc5Normal", MaterialDomain::Surface);
+        let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(n, "normal", output_id, "normal");
+
+        let shader = compile(&graph).fragment_shader;
+        assert!(
+            shader.contains("sqrt(max(0.0, 1.0 -"),
+            "expected a derived Z, got:\n{shader}"
+        );
+        // `.rgb` would drag in the absent blue channel.
+        assert!(!shader.contains(".rgb * 2.0 - 1.0"));
+    }
+
+    /// Terrain compiles to `layer_main()`, whose `FakeIn` has no
+    /// `world_tangent` and which never imports `pbr_functions` — emitting the
+    /// TBN conversion there would simply fail to compile. That domain consumes
+    /// the tangent-space value directly, so it must stay untouched.
+    #[test]
+    fn a_terrain_layer_normal_map_stays_in_tangent_space() {
+        let mut graph = MaterialGraph::new("TerrainNormal", MaterialDomain::TerrainLayer);
+        let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(n, "normal", output_id, "normal");
+
+        let shader = compile(&graph).fragment_shader;
+        assert!(!shader.contains("calculate_tbn_mikktspace"));
+        assert!(!shader.contains("in.world_tangent"));
     }
 }
