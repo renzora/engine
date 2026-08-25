@@ -3159,6 +3159,48 @@ fn build_pbr_shader(
             || output_node.input_values.contains_key(pin)
     };
 
+    /// A pin's constant, as a WGSL literal, but **only when it is also wired**.
+    ///
+    /// glTF's factors multiply their texture: `roughness = roughnessFactor *
+    /// mr.g`, `baseColor = baseColorFactor * baseColorTexture`, and so on.
+    /// Treating the constant as a mere fallback — used only when nothing is
+    /// connected — silently discards it on every imported material, which is
+    /// exactly what the importer writes for all of them.
+    ///
+    /// The Porsche is the case that made this obvious. Its `coat` is a
+    /// clear-coat over a separate `paint` material, authored with
+    /// `baseColorFactor.a = 0.243`. Dropped, the coat rendered fully opaque and
+    /// its metallic shell replaced the silver paint underneath entirely.
+    ///
+    /// Multiplying also keeps this path level with the other two. The trivial
+    /// fast path writes the factor *and* the texture onto a `StandardMaterial`
+    /// and lets Bevy's shader multiply them, and so does the base approximation
+    /// every non-forward pass shades from. Codegen was the only one dropping it,
+    /// so the same material shaded differently depending on which path it took.
+    fn wired_factor(node: &MaterialNode, graph: &MaterialGraph, pin: &str) -> Option<String> {
+        graph.connection_to(node.id, pin)?;
+        node.input_values.get(pin).map(|v| v.to_wgsl())
+    }
+
+    // `expr`, scaled by the pin's constant when it has one. `dims` is how many
+    // components the pin carries, so a scalar factor widens to match a vector
+    // expression rather than failing to type-check.
+    let scaled = |pin: &str, expr: &str, dims: usize| -> String {
+        match wired_factor(output_node, ctx.graph, pin) {
+            None => expr.to_string(),
+            Some(f) => {
+                // `to_wgsl` emits a Color/Vec4 as `vec4<f32>(..)` and a Float as
+                // a bare literal; widen the scalar so `f32 * vec3` never appears.
+                let f = if dims > 1 && !f.starts_with("vec") {
+                    format!("vec{dims}<f32>({f})")
+                } else {
+                    f
+                };
+                format!("(({f}) * ({expr}))")
+            }
+        }
+    };
+
     let mut shader = String::new();
     emit_ext_shader_header(ctx, &mut shader);
     shader.push_str(&texture_bindings_wgsl(ctx));
@@ -3194,20 +3236,24 @@ fn build_pbr_shader(
     shader.push_str("\n    // Graph → PbrInput mutations\n");
     if is_connected("base_color") {
         let e = resolved.get("base_color").unwrap();
+        let e = scaled("base_color", e, 4);
         shader.push_str(&format!("    pbr_input.material.base_color = {e};\n"));
     }
     if is_connected("metallic") {
         let e = resolved.get("metallic").unwrap();
+        let e = scaled("metallic", e, 1);
         shader.push_str(&format!("    pbr_input.material.metallic = {e};\n"));
     }
     if is_connected("roughness") {
         let e = resolved.get("roughness").unwrap();
+        let e = scaled("roughness", e, 1);
         shader.push_str(&format!(
             "    pbr_input.material.perceptual_roughness = {e};\n"
         ));
     }
     if is_connected("emissive") {
         let e = resolved.get("emissive").unwrap();
+        let e = scaled("emissive", e, 3);
         shader.push_str(&format!(
             "    pbr_input.material.emissive = vec4<f32>({e}, 1.0);\n"
         ));
@@ -3225,6 +3271,10 @@ fn build_pbr_shader(
     }
     if is_connected("alpha") {
         let e = resolved.get("alpha").unwrap();
+        // glTF folds opacity into `baseColorFactor.a`, and the importer puts it
+        // on this pin. A clear-coat authored at 0.243 that ignores its factor
+        // renders solid and hides whatever it was meant to sit over.
+        let e = scaled("alpha", e, 1);
         shader.push_str(&format!("    pbr_input.material.base_color.a = {e};\n"));
     }
     if is_connected("reflectance") {
@@ -3599,6 +3649,52 @@ mod tests {
             .insert("flip_green".into(), PinValue::Bool(true));
         let flipped = compile(&graph);
         assert!(flipped.fragment_shader.contains("select(1.0, -1.0, true)"));
+    }
+
+    /// glTF factors multiply their texture; treating them as fallbacks
+    /// discarded them on every imported material. Values are the Porsche's
+    /// `coat`: a clear-coat over a separate `paint` material, authored at
+    /// `baseColorFactor.a = 0.243`. Dropping that rendered the coat opaque and
+    /// its metallic shell replaced the silver paint underneath.
+    #[test]
+    fn a_wired_pin_still_multiplies_by_its_factor() {
+        let mut graph = MaterialGraph::new("Coat", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+
+        let tex = graph.add_node("texture/sample", [-200.0, 0.0]);
+        graph.connect(tex, "color", output_id, "base_color");
+        graph.connect(tex, "a", output_id, "alpha");
+        graph.connect(tex, "g", output_id, "roughness");
+
+        if let Some(out) = graph.get_node_mut(output_id) {
+            out.input_values
+                .insert("alpha".into(), PinValue::Float(0.242617));
+            out.input_values
+                .insert("roughness".into(), PinValue::Float(0.716311));
+        }
+
+        let shader = compile(&graph).fragment_shader;
+        assert!(
+            shader.contains("0.242617"),
+            "the opacity factor must reach the shader:\n{shader}"
+        );
+        assert!(shader.contains("0.716311"), "roughness factor dropped");
+    }
+
+    /// A pin with a constant and *no* wire keeps writing the constant straight
+    /// through — multiplying is only for the both-present case, or every
+    /// unwired slider would square itself.
+    #[test]
+    fn an_unwired_factor_is_not_multiplied_by_itself() {
+        let mut graph = MaterialGraph::new("Plain", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        if let Some(out) = graph.get_node_mut(output_id) {
+            out.input_values
+                .insert("roughness".into(), PinValue::Float(0.25));
+        }
+
+        let shader = compile(&graph).fragment_shader;
+        assert!(shader.contains("perceptual_roughness = 0.250000"));
     }
 
     /// A normal map decodes to tangent space, but the Surface Output `normal`
