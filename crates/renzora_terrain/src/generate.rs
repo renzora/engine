@@ -13,6 +13,17 @@
 //! terrain with that one thing different, because nothing about the result
 //! depends on mouse history.
 //!
+//! # Two sources, one pipeline
+//!
+//! [`GenSource`] chooses where the 0..1 heightfield comes from: procedural
+//! noise, or a heightmap image you loaded. Everything downstream of that choice
+//! — the exponent, the base and amplitude, the blend mode, the feather, the
+//! region — is shared, and that is deliberate. A heightmap that could only be
+//! stamped over the whole terrain at full amplitude would be an import button;
+//! run through this pipeline it is a *source*, so you can drop a real-world DEM
+//! into one corner at 40 m of relief, Max-blended onto ground you already
+//! sculpted, and feather it into the hillside around it.
+//!
 //! # Coordinate space
 //!
 //! Everything here is in **terrain-local metres with the origin at the grid's
@@ -31,10 +42,57 @@
 //! whatever is already there rather than toward a fixed level, and a region
 //! generated over an existing hillside still lands on that hillside.
 
+use std::sync::Arc;
+
 use bevy::prelude::*;
 
 use crate::data::{NoiseMode, StampBlendMode, TerrainChunkData, TerrainData};
+use crate::heightmap_import::HeightmapImage;
 use crate::sculpt::eval_noise;
+
+/// Where the generator's 0..1 heightfield comes from.
+///
+/// Both sources feed the *same* rest of the pipeline — exponent, base, height,
+/// blend mode, feather, region. That is the whole reason a loaded heightmap is a
+/// source here rather than its own import path: a real-world DEM you drop on a
+/// terrain almost never wants to land as-is at full amplitude over the whole
+/// grid, and every dial that makes it usable already exists on this bar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GenSource {
+    /// Procedural noise, driven by `mode` / `scale` / `octaves` / `seed`.
+    #[default]
+    Noise,
+    /// A loaded image, driven by `heightmap` / `heightmap_fit`.
+    Heightmap,
+}
+
+impl GenSource {
+    pub fn all() -> &'static [GenSource] {
+        &[GenSource::Noise, GenSource::Heightmap]
+    }
+}
+
+/// How a heightmap image is laid over the generate region.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HeightmapFit {
+    /// Fill the region, distorting the image's aspect ratio to match it. The
+    /// default: the usual case is a square heightmap on a square terrain, where
+    /// there is no distortion to avoid, and when there is one, filling the
+    /// rectangle you dragged is what dragging it meant.
+    #[default]
+    Stretch,
+    /// Fit the whole image inside the region without distorting it. The band
+    /// left over on the long axis samples as 0 — the floor — so with a Replace
+    /// blend it flattens to `base` rather than smearing the image's edge across
+    /// it.
+    Contain,
+}
+
+impl HeightmapFit {
+    pub fn all() -> &'static [HeightmapFit] {
+        &[HeightmapFit::Stretch, HeightmapFit::Contain]
+    }
+}
 
 /// Region rectangle in terrain-local metres, origin at the grid's minimum
 /// corner. `min` is always componentwise ≤ `max`; [`GenRegion::normalized`]
@@ -107,6 +165,37 @@ pub struct TerrainGenSettings {
     pub region_min: Vec2,
     pub region_max: Vec2,
 
+    /// Which heightfield the region is filled from.
+    pub source: GenSource,
+
+    /// The loaded image, for [`GenSource::Heightmap`].
+    ///
+    /// `Arc` because this resource is cloned wholesale on every Generate press
+    /// and read every preview frame, and a 4096² heightmap is 64 MB of `f32`.
+    /// `None` is a valid state — it is what you have between switching the
+    /// source and picking a file, and the generator no-ops rather than
+    /// flattening the terrain while you are in it.
+    pub heightmap: Option<Arc<HeightmapImage>>,
+    /// The file the image came from. Kept for the bar's label and so a reload
+    /// after an edit in another program is one click, not another file dialog.
+    pub heightmap_path: String,
+    /// Stretch the image's own value range back out to full 0..1 before it
+    /// becomes a height.
+    ///
+    /// On by default, because it is what makes a real heightmap usable at all.
+    /// A downloaded 16-bit DEM typically spans about a fifth of its container's
+    /// range — 0 and 65535 are sea level and the top of the world, not the low
+    /// and high points of *this tile* — so without levelling, a 30 m amplitude
+    /// produces 6 m of relief floating 14 m above the floor, which reads as a
+    /// flat terrain and looks like the feature is broken. Turn it off when the
+    /// absolute values carry meaning: tiles that must share a datum, or a file
+    /// whose 0..1 maps to a known elevation range.
+    pub heightmap_normalize: bool,
+    /// Flip the image's black and white. Some sources ship height as depth.
+    pub heightmap_invert: bool,
+    /// How the image maps onto the region.
+    pub heightmap_fit: HeightmapFit,
+
     pub mode: NoiseMode,
     /// Metres per unit of noise — the size of the largest features. This is the
     /// dial that decides "alpine range" from "gravel".
@@ -146,6 +235,12 @@ impl Default for TerrainGenSettings {
             whole_terrain: true,
             region_min: Vec2::ZERO,
             region_max: Vec2::splat(256.0),
+            source: GenSource::Noise,
+            heightmap: None,
+            heightmap_path: String::new(),
+            heightmap_normalize: true,
+            heightmap_invert: false,
+            heightmap_fit: HeightmapFit::Stretch,
             // Hybrid is ridged noise with FBM mixed back in: ridges give the
             // sharp crest lines that read as mountains, the FBM keeps the
             // flanks from looking machined. It is the mode this feature exists
@@ -197,6 +292,79 @@ impl TerrainGenSettings {
     pub fn effective_height(&self, terrain: &TerrainData) -> f32 {
         self.height.min(terrain.height_range().max(0.0))
     }
+
+    /// Whether the current source has a heightfield to generate from. A
+    /// Heightmap source between "picked the source" and "picked a file" does
+    /// not, and that state has to be a no-op rather than a flatten.
+    pub fn is_ready(&self) -> bool {
+        self.source != GenSource::Heightmap || self.heightmap.is_some()
+    }
+
+    /// Adopt a freshly decoded image and switch to it. Switching the source too
+    /// is the point: loading a file is an unambiguous statement of intent, and
+    /// having to then find the Source dropdown to see any effect is a bug
+    /// report waiting to happen.
+    pub fn set_heightmap(&mut self, path: impl Into<String>, image: HeightmapImage) {
+        self.heightmap_path = path.into();
+        self.heightmap = Some(Arc::new(image));
+        self.source = GenSource::Heightmap;
+    }
+
+    /// Drop the image and fall back to noise.
+    pub fn clear_heightmap(&mut self) {
+        self.heightmap = None;
+        self.heightmap_path.clear();
+        self.source = GenSource::Noise;
+    }
+}
+
+/// The heightmap's normalized value at a point, or 0 (the floor) where the image
+/// does not reach.
+fn sample_image(g: &TerrainGenSettings, region: &GenRegion, x: f32, z: f32) -> f32 {
+    let Some(image) = g.heightmap.as_ref() else {
+        return 0.0;
+    };
+    let size = region.size();
+    if size.x <= 0.0 || size.y <= 0.0 || image.width == 0 || image.height == 0 {
+        return 0.0;
+    }
+
+    let mut u = (x - region.min.x) / size.x;
+    let mut v = (z - region.min.y) / size.y;
+
+    if g.heightmap_fit == HeightmapFit::Contain {
+        // Rescale the axis the image doesn't fill, about the region's centre, so
+        // the image keeps its aspect ratio and sits centred in the rectangle.
+        let region_aspect = size.x / size.y;
+        let image_aspect = image.width as f32 / image.height as f32;
+        if image_aspect > region_aspect {
+            // Wider than the region: it spans the full width, banded top and
+            // bottom. `covered` is the fraction of the region's height it takes.
+            let covered = region_aspect / image_aspect;
+            v = (v - (1.0 - covered) * 0.5) / covered;
+        } else {
+            let covered = image_aspect / region_aspect;
+            u = (u - (1.0 - covered) * 0.5) / covered;
+        }
+        // The bands are floor, not the edge pixel smeared outward — sampling
+        // clamped would run the image's border across them.
+        if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+            return 0.0;
+        }
+    }
+
+    let mut s = image.sample_uv(u, v);
+    if g.heightmap_normalize {
+        let (min, max) = image.range();
+        if max > min {
+            s = (s - min) / (max - min);
+        }
+    }
+    if g.heightmap_invert {
+        1.0 - s
+    } else {
+        s
+    }
 }
 
 /// Cheap smoothstep on an already-clamped `t`.
@@ -237,21 +405,38 @@ pub fn region_weight(region: &GenRegion, feather: f32, x: f32, z: f32) -> f32 {
     wx.min(wz)
 }
 
-/// The generator's raw output at a point, in world metres, ignoring the region
-/// and whatever the terrain already looks like.
-pub fn sample_height(g: &TerrainGenSettings, terrain: &TerrainData, x: f32, z: f32) -> f32 {
-    let scale = g.scale.max(0.1);
-    let n = eval_noise(
-        x / scale,
-        z / scale,
-        g.mode,
-        g.octaves.clamp(1, 8),
-        g.lacunarity,
-        g.persistence,
-        g.seed,
-        g.warp_strength,
-    )
-    .clamp(0.0, 1.0);
+/// The generator's raw output at a point, in world metres, ignoring the region's
+/// feather and whatever the terrain already looks like.
+///
+/// It takes the region even so, because a heightmap has to be *placed*: the
+/// rectangle is what decides which patch of ground the image covers. Noise
+/// ignores the argument — it is a field over the whole plane, which is exactly
+/// why moving a noise region slides the terrain under it instead of carrying
+/// the same shape along.
+pub fn sample_height(
+    g: &TerrainGenSettings,
+    terrain: &TerrainData,
+    region: &GenRegion,
+    x: f32,
+    z: f32,
+) -> f32 {
+    let n = match g.source {
+        GenSource::Noise => {
+            let scale = g.scale.max(0.1);
+            eval_noise(
+                x / scale,
+                z / scale,
+                g.mode,
+                g.octaves.clamp(1, 8),
+                g.lacunarity,
+                g.persistence,
+                g.seed,
+                g.warp_strength,
+            )
+            .clamp(0.0, 1.0)
+        }
+        GenSource::Heightmap => sample_image(g, region, x, z).clamp(0.0, 1.0),
+    };
     let shaped = n.powf(g.exponent.max(0.05));
     g.base + shaped * g.effective_height(terrain)
 }
@@ -271,6 +456,12 @@ pub fn blended_height(
     x: f32,
     z: f32,
 ) -> f32 {
+    // A Heightmap source with nothing loaded has no field to apply, and under
+    // Replace "no field" would mean flattening the region to `base`. Pressing
+    // Generate before picking a file has to do nothing, not level the terrain.
+    if !g.is_ready() {
+        return current;
+    }
     let w = region_weight(region, g.feather, x, z);
     if w <= 0.0 {
         return current;
@@ -279,7 +470,7 @@ pub fn blended_height(
     if range <= 0.0 {
         return current;
     }
-    let elevation = sample_height(g, terrain, x, z);
+    let elevation = sample_height(g, terrain, region, x, z);
     // Absolute height, for the modes that place terrain at an elevation…
     let absolute = (elevation - terrain.min_height) / range;
     // …and the part above the floor, for the modes that add to what's there.
@@ -484,9 +675,10 @@ mod tests {
             seed: next_seed(a.seed),
             ..a.clone()
         };
+        let r = a.region(&t);
         let differs = (0..64).any(|i| {
             let p = i as f32 * 3.0;
-            (sample_height(&a, &t, p, p) - sample_height(&b, &t, p, p)).abs() > 1e-4
+            (sample_height(&a, &t, &r, p, p) - sample_height(&b, &t, &r, p, p)).abs() > 1e-4
         });
         assert!(differs, "reseeding produced an identical heightfield");
     }
@@ -497,9 +689,13 @@ mod tests {
     fn generation_is_deterministic() {
         let t = terrain();
         let g = TerrainGenSettings::default();
+        let r = g.region(&t);
         for i in 0..32 {
             let p = i as f32 * 5.0;
-            assert_eq!(sample_height(&g, &t, p, p), sample_height(&g, &t, p, p));
+            assert_eq!(
+                sample_height(&g, &t, &r, p, p),
+                sample_height(&g, &t, &r, p, p)
+            );
         }
     }
 
@@ -624,13 +820,259 @@ mod tests {
             exponent: 3.0,
             ..flat.clone()
         };
+        let r = flat.region(&t);
         let mean = |g: &TerrainGenSettings| {
             let n = 40;
             (0..n)
-                .map(|i| sample_height(g, &t, i as f32 * 7.0, i as f32 * 5.0))
+                .map(|i| sample_height(g, &t, &r, i as f32 * 7.0, i as f32 * 5.0))
                 .sum::<f32>()
                 / n as f32
         };
         assert!(mean(&peaky) < mean(&flat));
+    }
+
+    // ── Heightmap source ────────────────────────────────────────────────────
+
+    /// A `width`×`height` ramp running 0 at the left edge to 1 at the right,
+    /// constant down each column. Every assertion below reads it on the axis it
+    /// is testing, so a mixed-up u/v shows as a wrong value rather than passing.
+    fn ramp(width: u32, height: u32) -> HeightmapImage {
+        ramp_over(width, height, 0.0, 1.0)
+    }
+
+    /// The same ramp confined to `lo..hi` — what a real DEM looks like, and the
+    /// case levelling exists for.
+    fn ramp_over(width: u32, height: u32, lo: f32, hi: f32) -> HeightmapImage {
+        let samples = (0..height)
+            .flat_map(|_| {
+                (0..width).map(move |x| lo + (hi - lo) * (x as f32 / (width - 1) as f32))
+            })
+            .collect();
+        HeightmapImage::new(width, height, samples)
+    }
+
+    fn with_heightmap(image: HeightmapImage) -> TerrainGenSettings {
+        let mut g = TerrainGenSettings {
+            feather: 0.0,
+            exponent: 1.0,
+            base: 0.0,
+            ..Default::default()
+        };
+        g.set_heightmap("ramp.png", image);
+        g
+    }
+
+    /// Loading an image is an unambiguous "use this", so it selects the source
+    /// too — otherwise nothing appears to happen until you find a dropdown.
+    #[test]
+    fn loading_an_image_selects_the_heightmap_source() {
+        let g = with_heightmap(ramp(8, 8));
+        assert_eq!(g.source, GenSource::Heightmap);
+        assert!(g.is_ready());
+    }
+
+    /// The destructive case: Replace with no image would flatten the region to
+    /// `base`. Pressing Generate before picking a file must do nothing at all.
+    #[test]
+    fn a_heightmap_source_with_no_image_is_a_no_op() {
+        let t = terrain();
+        let g = TerrainGenSettings {
+            source: GenSource::Heightmap,
+            blend: StampBlendMode::Replace,
+            feather: 0.0,
+            ..Default::default()
+        };
+        assert!(!g.is_ready());
+        let r = g.region(&t);
+        let mut chunk = TerrainChunkData::new(0, 0, t.chunk_resolution, 0.37);
+        chunk.dirty = false;
+        assert!(!apply_to_chunk(&mut chunk, &t, &g, &r));
+        assert!(!chunk.dirty);
+        assert!(chunk.base_heights.iter().all(|h| (*h - 0.37).abs() < 1e-6));
+    }
+
+    /// Stretch maps the image's 0..1 across the region's full extent — the
+    /// placement half of "generate a terrain from this file".
+    #[test]
+    fn stretch_spans_the_region() {
+        let g = with_heightmap(ramp(16, 16));
+        let r = GenRegion::new(Vec2::ZERO, Vec2::new(100.0, 60.0));
+        let z = 30.0;
+        assert!(sample_image(&g, &r, 0.0, z) < 1e-4);
+        assert!((sample_image(&g, &r, 100.0, z) - 1.0).abs() < 1e-4);
+        assert!((sample_image(&g, &r, 50.0, z) - 0.5).abs() < 0.05);
+    }
+
+    /// Nothing about the placement may depend on where the terrain sits: the
+    /// same region shape somewhere else must read the same image values.
+    #[test]
+    fn placement_follows_the_region_not_the_origin() {
+        let g = with_heightmap(ramp(16, 16));
+        let a = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        let b = GenRegion::new(Vec2::splat(400.0), Vec2::splat(500.0));
+        for i in 0..=10 {
+            let f = i as f32 / 10.0;
+            let sa = sample_image(&g, &a, f * 100.0, 50.0);
+            let sb = sample_image(&g, &b, 400.0 + f * 100.0, 450.0);
+            assert!((sa - sb).abs() < 1e-5, "drifted at t={f}");
+        }
+    }
+
+    #[test]
+    fn invert_flips_the_image() {
+        let g = with_heightmap(ramp(16, 16));
+        let inverted = TerrainGenSettings {
+            heightmap_invert: true,
+            ..g.clone()
+        };
+        let r = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        for i in 0..=10 {
+            let x = i as f32 * 10.0;
+            let s = sample_image(&g, &r, x, 50.0);
+            assert!((sample_image(&inverted, &r, x, 50.0) - (1.0 - s)).abs() < 1e-5);
+        }
+    }
+
+    /// The case that makes downloaded heightmaps usable. A DEM spanning 0.48 to
+    /// 0.68 of its container — the real measured range of a 16-bit terrain PNG —
+    /// must come out as full-range relief, not as a fifth of the amplitude
+    /// hovering above the floor.
+    #[test]
+    fn levelling_stretches_a_narrow_range_to_full_relief() {
+        let g = with_heightmap(ramp_over(64, 64, 0.481, 0.683));
+        let r = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        assert!(g.heightmap_normalize, "levelling must be on by default");
+        assert!(sample_image(&g, &r, 0.0, 50.0) < 1e-3);
+        assert!((sample_image(&g, &r, 100.0, 50.0) - 1.0).abs() < 1e-3);
+    }
+
+    /// Off, the file's absolute values survive — for tiles that share a datum.
+    #[test]
+    fn levelling_off_keeps_the_files_own_values() {
+        let g = TerrainGenSettings {
+            heightmap_normalize: false,
+            ..with_heightmap(ramp_over(64, 64, 0.481, 0.683))
+        };
+        let r = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        assert!((sample_image(&g, &r, 0.0, 50.0) - 0.481).abs() < 1e-3);
+        assert!((sample_image(&g, &r, 100.0, 50.0) - 0.683).abs() < 1e-3);
+    }
+
+    /// Levelling must not turn a genuinely flat image into garbage by dividing
+    /// by a zero range.
+    #[test]
+    fn levelling_a_flat_image_is_not_a_divide_by_zero() {
+        let g = with_heightmap(ramp_over(16, 16, 0.5, 0.5));
+        let r = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        for i in 0..=4 {
+            let s = sample_image(&g, &r, i as f32 * 25.0, 50.0);
+            assert!(s.is_finite(), "non-finite sample from a flat image");
+            assert!((s - 0.5).abs() < 1e-4);
+        }
+    }
+
+    /// Levelling and inverting compose in the order the labels imply: stretch
+    /// the file's own range out, *then* flip it.
+    #[test]
+    fn levelling_happens_before_invert() {
+        let g = TerrainGenSettings {
+            heightmap_invert: true,
+            ..with_heightmap(ramp_over(64, 64, 0.481, 0.683))
+        };
+        let r = GenRegion::new(Vec2::ZERO, Vec2::splat(100.0));
+        assert!((sample_image(&g, &r, 0.0, 50.0) - 1.0).abs() < 1e-3);
+        assert!(sample_image(&g, &r, 100.0, 50.0) < 1e-3);
+    }
+
+    /// Contain keeps the image square inside a wide region and floors the bands
+    /// either side, rather than smearing the edge pixel across them.
+    #[test]
+    fn contain_letterboxes_a_mismatched_aspect() {
+        let g = TerrainGenSettings {
+            heightmap_fit: HeightmapFit::Contain,
+            ..with_heightmap(ramp(16, 16))
+        };
+        // Square image, region twice as wide: the image covers the middle half.
+        let r = GenRegion::new(Vec2::ZERO, Vec2::new(200.0, 100.0));
+        assert_eq!(sample_image(&g, &r, 10.0, 50.0), 0.0, "left band");
+        assert_eq!(sample_image(&g, &r, 190.0, 50.0), 0.0, "right band");
+        // Inside: 50..150 carries the whole ramp.
+        assert!(sample_image(&g, &r, 52.0, 50.0) < 0.1);
+        assert!(sample_image(&g, &r, 148.0, 50.0) > 0.9);
+        assert!((sample_image(&g, &r, 100.0, 50.0) - 0.5).abs() < 0.05);
+    }
+
+    /// Stretch on the same mismatched region distorts instead of banding —
+    /// which is the point of having both.
+    #[test]
+    fn stretch_fills_where_contain_bands() {
+        let stretch = with_heightmap(ramp(16, 16));
+        let contain = TerrainGenSettings {
+            heightmap_fit: HeightmapFit::Contain,
+            ..stretch.clone()
+        };
+        let r = GenRegion::new(Vec2::ZERO, Vec2::new(200.0, 100.0));
+        assert_eq!(sample_image(&contain, &r, 10.0, 50.0), 0.0);
+        assert!(sample_image(&stretch, &r, 10.0, 50.0) > 0.0);
+    }
+
+    /// The shared tail of the pipeline — heights land inside the terrain's range
+    /// whatever the image says, exactly as they do for noise.
+    #[test]
+    fn heightmap_heights_stay_inside_the_terrain_range() {
+        let t = terrain();
+        let g = TerrainGenSettings {
+            height: 10_000.0,
+            base: -10_000.0,
+            ..with_heightmap(ramp(16, 16))
+        };
+        let r = g.region(&t);
+        for i in 0..64 {
+            let p = i as f32 * 2.0;
+            let h = blended_height(&g, &t, &r, 0.5, p, p);
+            assert!((0.0..=1.0).contains(&h), "height {h} out of range at {p}");
+        }
+    }
+
+    /// Applying an image writes real relief, not a constant — and flags the
+    /// chunk so the mesh actually rebuilds.
+    #[test]
+    fn applying_a_heightmap_writes_and_flags_the_chunk() {
+        let t = terrain();
+        let g = with_heightmap(ramp(64, 64));
+        let r = g.region(&t);
+        let mut chunk = TerrainChunkData::new(0, 0, t.chunk_resolution, 0.2);
+        assert!(apply_to_chunk(&mut chunk, &t, &g, &r));
+        assert!(chunk.dirty);
+        let lo = chunk.base_heights.iter().copied().fold(f32::MAX, f32::min);
+        let hi = chunk.base_heights.iter().copied().fold(f32::MIN, f32::max);
+        assert!(hi - lo > 0.01, "the ramp came out flat");
+        assert!(chunk.base_heights.iter().all(|h| (0.0..=1.0).contains(h)));
+    }
+
+    /// Same file, same settings, same terrain — twice. Generating from an image
+    /// is as repeatable as generating from noise.
+    #[test]
+    fn heightmap_generation_is_idempotent_under_replace() {
+        let t = terrain();
+        let g = with_heightmap(ramp(64, 64));
+        let r = g.region(&t);
+        let mut chunk = TerrainChunkData::new(0, 0, t.chunk_resolution, 0.2);
+        apply_to_chunk(&mut chunk, &t, &g, &r);
+        let once = chunk.base_heights.clone();
+        assert!(!apply_to_chunk(&mut chunk, &t, &g, &r));
+        assert_eq!(once, chunk.base_heights);
+    }
+
+    /// Clearing goes back to a working generator rather than to a source with
+    /// nothing behind it.
+    #[test]
+    fn clearing_the_image_falls_back_to_noise() {
+        let mut g = with_heightmap(ramp(8, 8));
+        g.clear_heightmap();
+        assert_eq!(g.source, GenSource::Noise);
+        assert!(g.heightmap.is_none());
+        assert!(g.heightmap_path.is_empty());
+        assert!(g.is_ready());
     }
 }

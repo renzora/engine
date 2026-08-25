@@ -102,28 +102,62 @@ They sit in their own bar across the top of the scene, the same surface the brus
 
 | Setting | What it does |
 |---|---|
-| **Noise** | FBM / Ridge / Billow / Warped / Hybrid. **Hybrid** is the default — ridged noise with FBM mixed back in, which gives sharp crest lines with flanks that don't look machined. |
-| **Scale** | Metres per unit of noise: the size of the largest features. The dial that decides "alpine range" from "gravel". Set it wider than the terrain to get one mountain rather than a range. |
-| **Oct** | Octaves, 1–8. More detail per doubling of frequency. |
-| **Rough** | Persistence — how much each octave contributes relative to the one before. |
-| **Peaks** | Raises the noise to this power before it becomes a height. Above 1 it pushes the midrange down, turning rolling lumps into peaks separated by valley floors; below 1 it flattens the tops into plateaus. |
+| **Source** | **Noise** or **Heightmap** — where the heightfield comes from. See [Generating from a heightmap](#generating-from-a-heightmap). Everything below this row applies to both. |
+| **Noise** | *(Noise source)* FBM / Ridge / Billow / Warped / Hybrid. **Hybrid** is the default — ridged noise with FBM mixed back in, which gives sharp crest lines with flanks that don't look machined. |
+| **Scale** | *(Noise source)* Metres per unit of noise: the size of the largest features. The dial that decides "alpine range" from "gravel". Set it wider than the terrain to get one mountain rather than a range. |
+| **Oct** | *(Noise source)* Octaves, 1–8. More detail per doubling of frequency. |
+| **Rough** | *(Noise source)* Persistence — how much each octave contributes relative to the one before. |
+| **Peaks** | Raises the 0–1 field to this power before it becomes a height. Above 1 it pushes the midrange down, turning rolling lumps into peaks separated by valley floors; below 1 it flattens the tops into plateaus. On a heightmap it's the contrast dial — the one control that turns a washed-out 8-bit DEM into ground with valleys in it. |
 | **Height** | Peak-to-floor amplitude in world metres. Capped by the terrain's own `max_height - min_height` — asking for 500 m on a 50 m terrain gives you 50, not a plateau of clipped values. |
-| **Base** | Elevation the noise floor sits at, in world metres. |
+| **Base** | Elevation the floor sits at, in world metres. |
 | **Blend** | How the result meets what is already there: Replace / Add / Subtract / Max / Min. **Replace** is the default, for the usual case of a flat terrain you just spawned. |
 | **Feather** | Width of the edge blend, as a fraction of the region's half-extent. 0 is a hard edge. It blends toward whatever is already there, not toward a fixed level, so a region generated over an existing hillside still lands on that hillside. |
-| **Seed** | The landscape. |
+| **Seed** | *(Noise source)* The landscape. |
 
 Three buttons finish the bar:
 
-- **Re-roll** advances the seed by one. Nothing is written — the preview just becomes a different landscape, so you can walk through them until one looks right. Stepping rather than randomising means you can walk back to the one you passed.
+- **Re-roll** advances the seed by one. Nothing is written — the preview just becomes a different landscape, so you can walk through them until one looks right. Stepping rather than randomising means you can walk back to the one you passed. Noise source only; a heightmap has no seed to walk.
 - **Generate** commits it, as **one** undo step labelled "Generate Terrain".
 - **Flatten** levels the terrain's base layer to the **Base** height, as its own undo step. It's the forwards way out of a generate you don't like.
+
+### Generating from a heightmap
+
+Set **Source** to **Heightmap** and the noise dials are replaced by a file button. Click it, pick an image, and the [preview](#the-preview) shows that heightmap laid over your region — nothing is written until you press **Generate**, exactly as with noise.
+
+| Control | What it does |
+|---|---|
+| **Load Heightmap…** | Opens a file picker and loads the image. Once loaded the button shows the filename, and clicking it again swaps the file. |
+| **Fit** | **Stretch** fills the region, distorting the image's aspect ratio to match it (the default — a square heightmap on a square terrain has no distortion to avoid, and when there is one, filling the rectangle you dragged is what dragging it meant). **Contain** fits the whole image inside the region without distorting it; the band left over on the long axis sits at the floor. |
+| **Levels** | Stretches the image's own value range back out to full 0–1 before it becomes a height. **On by default** — see below. |
+| **Invert** | Flips the image's black and white, for sources that ship height as depth. Applied after Levels. |
+| **Clear** | Drops the image and goes back to the noise source. Appears once something is loaded. |
+
+Accepted formats are **any PNG** — 8- or 16-bit, grayscale, grayscale+alpha, RGB, RGBA or palettised — and **RAW16** (`.r16` / `.raw`, 16-bit unsigned little-endian, row-major). Colour images collapse to luminance, so a grayscale heightmap saved as RGB reads identically to the same file saved as grayscale, and a tinted or hillshaded one reads as the grey a human sees rather than as its red separation. The format is sniffed from the file's own bytes rather than its extension, and a RAW16's side length is inferred from its byte count — which works because terrain generators export square images, and a byte count with no integer side is an error rather than a skewed landscape.
+
+#### Levels, and why it's on
+
+A downloaded heightmap almost never uses the full range its file format allows. A 16-bit DEM of a mountain range typically spans something like **0.48 to 0.68** of the container, because 0 and 65535 are sea level and the highest point on Earth — not the low and high points of that tile.
+
+Fed in raw, that would give you a fifth of the amplitude you asked for, floating partway up: set **Height** to 30 m and you get 6 m of relief sitting 14 m above the floor, which reads as a flat terrain and looks like the tool is broken. **Levels** rescales the file's actual range to 0–1 first, so **Height** means what it says.
+
+Turn it off when the absolute values carry meaning — adjacent tiles that have to share a datum, or a file whose 0–1 you know maps to a specific elevation range. The load message in the console reports the range that was found, so you can see what levelling is doing before deciding.
+
+**This is a source, not an import.** That distinction is the point of putting it here rather than behind another Import button: the region, blend mode, feather, base, amplitude and Peaks all still apply, so you can
+
+- drop a real-world DEM into **one corner** of an existing terrain by dragging the region over it,
+- **Max**-blend it onto ground you already sculpted so it only ever raises,
+- **Feather** it into the surrounding hillside instead of leaving a wall at the border,
+- and cap it at 40 m of relief with **Height**, whatever the source file's range was.
+
+The whole-terrain, full-amplitude case — the one [Import Heightmap…](#heightmap-import--export) does — is still one click away: leave the region on **whole terrain**, Blend on **Replace**, Feather at 0.
+
+Generate does nothing at all while the source is Heightmap and no file is loaded. Under Replace, "no heightfield" would otherwise mean flattening the region to **Base**, and pressing the button before picking a file should not level your terrain.
 
 ### What it writes
 
 Generate writes each chunk's `base_heights` — the same layer the sculpt brushes write — so a generated landscape is something the brushes then carve into, and the height-layer stack composes on top of it exactly as it does for hand-sculpted ground. Chunks the region never touches are skipped whole and never flagged for a mesh rebuild.
 
-The generator's maths lives in `renzora_terrain::generate` and takes no `World`, so it is unit-tested directly; the tool in `renzora_terrain_editor::generate_tool` is only the cursor-to-rectangle part.
+The generator's maths lives in `renzora_terrain::generate` and takes no `World`, so it is unit-tested directly; the tool in `renzora_terrain_editor::generate_tool` is only the cursor-to-rectangle part. Both sources go through the same `sample_height` → `blended_height` → `apply_to_chunk` path — `GenSource` only decides where the 0–1 field comes from, which is why a heightmap gets the region, blend and feather behaviour for free.
 
 ## The tool shelf and the brush bar
 
@@ -217,8 +251,10 @@ Sculpt and paint strokes are snapshotted on mouse-down and recorded onto the edi
 
 The Sculpt tab's **Heightmap Import** section has **Import Heightmap…** and **Export Heightmap…** buttons.
 
-- **Import** accepts **8- or 16-bit grayscale PNG** (8-bit RGB/RGBA use the red channel) or **RAW16** (`.r16` / `.raw`, 16-bit unsigned, row-major). The image is bilinearly resampled across every chunk and written into `base_heights`.
+- **Import** accepts **any PNG** (8- or 16-bit; grayscale, grayscale+alpha, RGB, RGBA or palettised, with colour collapsing to luminance) or **RAW16** (`.r16` / `.raw`, 16-bit unsigned little-endian, row-major). The format is detected from the file's own bytes, and a RAW16's dimensions are inferred from its byte count assuming a square image. The image is bilinearly resampled across every chunk and written into `base_heights` at full amplitude — with **no levelling**, so a file that only uses part of its range imports as a correspondingly shallow terrain.
 - **Export** writes a single **16-bit grayscale PNG** of the composed heightmap across all chunks.
+
+Import is the blunt version: whole terrain, raw values, no blending. When you want the heightmap *placed* — in a region, feathered, capped at an amplitude, levelled, or blended onto ground you already have — use the Generate tool's [Heightmap source](#generating-from-a-heightmap) instead. For most real-world files that is the one you want.
 
 ## Painting layers
 
