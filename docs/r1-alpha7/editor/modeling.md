@@ -59,28 +59,12 @@ Three controls tune how Edit-mode selection looks and behaves:
 Selected faces in Face mode get a translucent tinted fill plus a sharp
 perimeter outline, the Blender-style `face_select` overlay look:
 
-- **Fill** — a real 3D mesh triangulated the same way as
-  `EditMesh::bake_to_mesh`: an `(n - 2)` triangle fan anchored at the
-  face's first perimeter vertex, with the remaining vertices in
-  `face.verts` order. Parenting to the edit target lets the overlay
-  inherit the entity's transform. Drawn with a translucent `unlit`
-  `StandardMaterial` (`srgba(1.0, 0.55, 0.1, 0.45)`).
-  `depth_bias: 1.0` pulls the overlay in front of the cube's geometry
-  as a small additional safeguard — in Bevy 0.19 positive `depth_bias`
-  values render closer to the camera. **The triangulation match is the
-  primary fix for the fan-shaped flicker:** the overlay and the
-  underlying mesh rasterize the same surface into the same triangles,
-  so the GPU's per-pixel depth interpolation doesn't disagree between
-  them.
+- **Fill** — a real 3D mesh (triangle fan from the face's centroid)
+  parented to the edit target, drawn with a translucent `unlit`
+  `StandardMaterial` (`srgba(1.0, 0.55, 0.1, 0.45)`). The fan is in
+  mesh-local space, so the fill follows the mesh's transform.
 - **Outline** — a per-edge `gizmos.line` at full alpha on top of the
   fill. Reads as a crisp boundary against the translucent interior.
-
-Clicking a quad highlights the whole logical face (both triangles),
-not just the triangle under the cursor. The picker walks the
-face-adjacency graph (`Edge::faces`) and collects every coplanar
-neighbour of the hit triangle into one selection group. Works for
-tris, quads, and planar fan-triangle n-gons — anything coplanar that's
-topologically connected.
 
 ### Gizmo Thickness (Settings → Viewport)
 
