@@ -75,12 +75,12 @@ perimeter outline, the Blender-style `face_select` overlay look:
 - **Outline** — a per-edge `gizmos.line` at full alpha on top of the
   fill. Reads as a crisp boundary against the translucent interior.
 
-Clicking a quad highlights the whole logical face (both triangles),
-not just the triangle under the cursor. The picker walks the
-face-adjacency graph (`Edge::faces`) and collects every coplanar
-neighbour of the hit triangle into one selection group. Works for
-tris, quads, and planar fan-triangle n-gons — anything coplanar that's
-topologically connected.
+Clicking a face selects exactly the bounded `Face` the ray hits —
+not every coplanar neighbour. Imported triangle pairs are already
+merged into quads at bake (`merge_coplanar_triangle_pairs`), and an
+edge between two coplanar faces (e.g. a freshly-extruded cube's top
+and bottom quad) is a real topological boundary that Blender treats as
+a face-to-face edge. Selection respects that boundary.
 
 ### Gizmo Thickness (Settings → Viewport)
 

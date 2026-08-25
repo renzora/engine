@@ -557,35 +557,16 @@ let hit_any = match mode {
                                 }
                             }
                         }
-                        // Expand to the whole coplanar logical-face group. Every face in this codebase is a single triangle,
-                        // so clicking a quad hits one of its two triangles;
-                        // `coplanar_group` walks the adjacency graph to
-                        // collect every coplanar triangle sharing the seed,
-                        // which merges the two halves of a quad (and any
-                        // fan-triangle n-gon) back together for selection.
-                        let group: Vec<crate::edit_mesh::FaceId> = best
-                            .as_ref()
-                            .map(|(_, id)| coplanar_group(*id, edit))
-                            .unwrap_or_default();
-                        let hit = !group.is_empty();
-                        // `apply_pick` is single-ID; faces need group
-                        // handling. Non-additive: clear, then add the
-                        // whole group. Additive: toggle each face in the
-                        // group so a Shift-click on an already-selected
-                        // logical face removes it as a unit.
-                        if !additive {
-                            sel.faces.clear();
-                        }
-                        for fid in group {
-                            if additive {
-                                if !sel.faces.insert(fid) {
-                                    sel.faces.remove(&fid);
-                                }
-                            } else {
-                                sel.faces.insert(fid);
-                            }
-                        }
-                        hit
+                        // Select exactly the hit `FaceId`. `EditMesh` already represents
+                        // logical faces — imported triangle pairs are
+                        // merged into quads by
+                        // `merge_coplanar_triangle_pairs`, and extrusion
+                        // / loop-cut produce separate bounded faces. An
+                        // edge between two coplanar faces is a real
+                        // topological boundary, so we don't
+                        // flood-fill through it. Blender-style.
+                        let hit = best.map(|(_, face_id)| face_id);
+                        commit_face_pick(&mut sel.faces, hit, additive)
                     }
                 };
 
@@ -723,93 +704,43 @@ fn apply_pick<T: Copy + Eq + std::hash::Hash>(
     }
 }
 
-/// Walk from `seed` through face-adjacency edges, collecting every coplanar
-/// triangle that connects back to `seed`. Returns the whole logical-face
-/// group — typically a single triangle, the two triangles of a quad, or
-/// the fan-triangles of a planar n-gon.
+/// Commit a single FaceId hit to the face-selection set. Extracted
+/// from `pick_element`'s Face branch so it can be unit-tested without
+/// spinning up a Bevy `App`.
 ///
-/// In this codebase, every face is a single triangle (see the comment at
-/// the top of `edit_mesh.rs`: "Phase 2: faces are triangles... N-gon
-/// merging comes in Phase 3"). Clicking a quad selects only the triangle
-/// the ray hit; this helper merges the two triangles back together so a
-/// user gets Blender-style "click on a face, the whole logical face
-/// highlights" without restructuring the data model.
+/// Behaviour:
+/// - `additive == false`, `hit == Some(f)` → clear the set, insert `f`
+/// - `additive == true`,  `hit == Some(f)` → toggle `f`
+/// - `additive == false`, `hit == None`    → clear the set
+/// - `additive == true`,  `hit == None`    → no-op (preserve)
 ///
-/// The test is geometric, not topological: two triangles are "coplanar"
-/// when they share the same plane, regardless of normal direction. This
-/// matches Blender's face adjacency for triangulated quads (where the
-/// two triangles have OPPOSITE per-triangle normals but lie in the same
-/// plane) and for fanned n-gons (where all triangles share a common
-/// diagonal apex).
-fn coplanar_group(
-    seed: crate::edit_mesh::FaceId,
-    edit: &crate::edit_mesh::EditMesh,
-) -> Vec<crate::edit_mesh::FaceId> {
-    let Some(seed_face) = edit.faces.get(seed.0 as usize) else {
-        return vec![seed];
-    };
-    if seed_face.verts.len() < 3 {
-        return vec![seed];
+/// Critically, this only operates on the single `FaceId` passed in. It
+/// does **not** flood-fill through coplanar neighbours — that was a
+/// 2026-08-25 mistake (`coplanar_group`) that bypassed the data
+/// model's bounded-face semantics. Imported triangle pairs are merged
+/// into quads at bake; extruded quads are separate. An edge between
+/// two coplanar faces is a real topological boundary and is treated as
+/// one.
+///
+/// Returns `true` if the hit was non-empty (something was actually
+/// committed), `false` otherwise — used by the picker to set the
+/// `hit_any` flag for the empty-space-clears-target path.
+pub(crate) fn commit_face_pick(
+    selection: &mut std::collections::HashSet<crate::edit_mesh::FaceId>,
+    hit: Option<crate::edit_mesh::FaceId>,
+    additive: bool,
+) -> bool {
+    if !additive {
+        selection.clear();
     }
-    // Compute the seed's plane once. We test "is this other triangle in
-    // the same plane?" by checking that all of its vertices project onto
-    // the seed's plane within `COPLANAR_TOLERANCE` world units.
-    let p0 = match edit.vertices.get(seed_face.verts[0].0 as usize) {
-        Some(v) => v.position,
-        None => return vec![seed],
-    };
-    let p1 = match edit.vertices.get(seed_face.verts[1].0 as usize) {
-        Some(v) => v.position,
-        None => return vec![seed],
-    };
-    let p2 = match edit.vertices.get(seed_face.verts[2].0 as usize) {
-        Some(v) => v.position,
-        None => return vec![seed],
-    };
-    let n = (p1 - p0).cross(p2 - p0);
-    // If the seed triangle is degenerate (collinear verts), fall back to
-    // just the seed — don't BFS through a zero-area face.
-    if n.length_squared() < 1e-12 {
-        return vec![seed];
-    }
-    const COPLANAR_TOLERANCE: f32 = 1.0e-3;
-
-    let mut visited: std::collections::HashSet<crate::edit_mesh::FaceId> =
-        std::collections::HashSet::new();
-    let mut queue: std::collections::VecDeque<crate::edit_mesh::FaceId> =
-        std::collections::VecDeque::new();
-    visited.insert(seed);
-    queue.push_back(seed);
-    while let Some(fid) = queue.pop_front() {
-        let Some(face) = edit.faces.get(fid.0 as usize) else { continue };
-        for &edge_id in &face.edges {
-            let Some(edge) = edit.edges.get(edge_id.0 as usize) else { continue };
-            for &other in &edge.faces {
-                if visited.contains(&other) {
-                    continue;
-                }
-                let Some(other_face) = edit.faces.get(other.0 as usize) else { continue };
-                // Test that all of `other`'s vertices are on the seed's plane.
-                let mut coplanar = true;
-                for &vid in &other_face.verts {
-                    let Some(v) = edit.vertices.get(vid.0 as usize) else { coplanar = false; break };
-                    if (v.position - p0).dot(n).abs() > COPLANAR_TOLERANCE {
-                        coplanar = false;
-                        break;
-                    }
-                }
-                if coplanar {
-                    visited.insert(other);
-                    queue.push_back(other);
-                }
-            }
+    if let Some(face_id) = hit {
+        if additive && !selection.insert(face_id) {
+            selection.remove(&face_id);
+        } else {
+            selection.insert(face_id);
         }
     }
-    let mut out: Vec<crate::edit_mesh::FaceId> = visited.into_iter().collect();
-    // Stable order: keep `seed` first so the picker still reports a
-    // primary "hit" face for tools that need one (extrude, etc.).
-    out.sort_by_key(|f| if *f == seed { 0 } else { 1 });
-    out
+    hit.is_some()
 }
 
 // ── Extrude (E) ────────────────────────────────────────────────────────────
@@ -1501,4 +1432,129 @@ pub(crate) fn point_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     }
     let t = ((p - a).dot(ab) / len2).clamp(0.0, 1.0);
     (p - (a + ab * t)).length()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commit_face_pick;
+    use crate::edit_mesh::FaceId;
+    use std::collections::HashSet;
+
+    fn empty_selection() -> HashSet<FaceId> {
+        HashSet::new()
+    }
+
+    /// The Face picker must commit **exactly** the hit `FaceId`. Earlier
+    /// code (`coplanar_group`) flood-filled to every coplanar triangle
+    /// reachable through shared edges — that bypassed the data model's
+    /// bounded-face semantics (imported quads are already merged; an
+    /// edge between two coplanar extruded quads is a real topological
+    /// boundary). Blender-style face selection treats each bounded
+    /// face independently.
+
+    #[test]
+    fn coplanar_faces_remain_separately_selectable() {
+        // Two coplanar quads sharing an edge (e.g. a subdivided plane,
+        // or a face that was extruded and re-adjacent to a neighbour
+        // on the same plane). After committing face A, the selection
+        // must contain exactly A — never B.
+        let mut s = empty_selection();
+        let face_a = FaceId(0);
+        let face_b = FaceId(1);
+        assert!(commit_face_pick(&mut s, Some(face_a), false));
+        assert_eq!(s.len(), 1, "selection must hold exactly the hit face");
+        assert!(s.contains(&face_a));
+        assert!(
+            !s.contains(&face_b),
+            "committing face A must NOT flood-fill to coplanar face B"
+        );
+
+        // Re-commit B non-additively: selection becomes just B.
+        assert!(commit_face_pick(&mut s, Some(face_b), false));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&face_b));
+        assert!(!s.contains(&face_a));
+    }
+
+    #[test]
+    fn extruded_cube_top_does_not_select_bottom() {
+        // After extruding a cube, the top face and bottom face are two
+        // separate bounded quads that happen to be coplanar to their
+        // respective inner parallels and share a vertical axis. Clicking
+        // one must not include the other.
+        let mut s = empty_selection();
+        let top_face = FaceId(5); // first face of the extruded top
+        let bottom_face = FaceId(0); // first face of the original bottom
+        assert!(commit_face_pick(&mut s, Some(top_face), false));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&top_face));
+        assert!(
+            !s.contains(&bottom_face),
+            "clicking the top face must NOT include the bottom face"
+        );
+    }
+
+    #[test]
+    fn shift_click_toggles_only_the_clicked_face() {
+        let mut s = empty_selection();
+        let a = FaceId(0);
+        let b = FaceId(1);
+
+        // Normal click on A.
+        assert!(commit_face_pick(&mut s, Some(a), false));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&a));
+
+        // Shift-click on A: toggles off.
+        assert!(commit_face_pick(&mut s, Some(a), true));
+        assert!(s.is_empty(), "shift-click on selected face must toggle off");
+
+        // Shift-click on B: adds B.
+        assert!(commit_face_pick(&mut s, Some(b), true));
+        assert!(s.contains(&b));
+        assert!(
+            !s.contains(&a),
+            "shift-click on B must NOT touch the unrelated face A"
+        );
+
+        // Normal click on A: clears the set, adds only A.
+        assert!(commit_face_pick(&mut s, Some(a), false));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&a));
+        assert!(
+            !s.contains(&b),
+            "normal click must clear the set, not add to it"
+        );
+    }
+
+    #[test]
+    fn imported_cube_merged_quad_selects_as_one_whole_face() {
+        // Imported cube has 8 verts and 6 quads after
+        // `merge_coplanar_triangle_pairs` runs at bake. Clicking any
+        // single quad must select only that quad — the two triangle
+        // halves of the quad have already been merged into one
+        // `Face` by bake, so there's nothing to "expand" here.
+        let mut s = empty_selection();
+        let quad = FaceId(2); // pick one of the 6 cube quads
+        assert!(commit_face_pick(&mut s, Some(quad), false));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&quad));
+    }
+
+    #[test]
+    fn empty_hit_clears_when_not_additive() {
+        let mut s = empty_selection();
+        s.insert(FaceId(5));
+        assert!(!commit_face_pick(&mut s, None, false));
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn empty_hit_preserves_when_additive() {
+        let mut s = empty_selection();
+        s.insert(FaceId(5));
+        assert!(!commit_face_pick(&mut s, None, true));
+        assert_eq!(s.len(), 1);
+        assert!(s.contains(&FaceId(5)));
+    }
 }
