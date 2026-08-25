@@ -58,17 +58,29 @@ pub(crate) const SLIDER_W: f32 = 78.0;
 /// are 0; this sits below them, hard against the scene.
 const BAR_ORDER: i32 = 100;
 
+/// The fill shared by every one of the viewport's context bars — this one and
+/// the generator's.
+///
+/// A step *past* the surface the tool strip above it uses, so the two read as
+/// two bands rather than one tall one: the strip is flat `panel`, and mixing
+/// `panel` toward `extreme` landed only two levels off it, which at a 1px rule's
+/// worth of separation was not enough to see. Starting from `extreme` and
+/// leaning toward the active-tab surface keeps both ends *theme* colours — the
+/// thing that stops this walking into the background on a light palette, where
+/// "a bit lighter" would mean "a bit closer to the page".
+pub(crate) fn context_bar_bg() -> Color {
+    mix(header_bg(), tab_active(), 0.22)
+}
+
 pub fn register() {
     renzora_ember::toolbar::register_viewport_top_strip(BAR_ORDER, build);
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // The bar: full width, its own band of chrome, closed off underneath against
-    // the scene. Same treatment as the scene-tab strip immediately above it —
-    // a half-step off `panel` toward the theme's contrasting surface, mixing
-    // between two *theme* colours so it stays differentiated on light themes
-    // too. Wraps rather than overflows: a brush with many options (Stamp) is
-    // wider than a narrow viewport.
+    // the scene and lifted off the tool strip above it (see [`context_bar_bg`]).
+    // Wraps rather than overflows: a brush with many options (Stamp) is wider
+    // than a narrow viewport.
     let bar = commands
         .spawn((
             Node {
@@ -84,7 +96,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(mix(panel_bg(), header_bg(), 0.55)),
+            BackgroundColor(context_bar_bg()),
             BorderColor::all(rgb(divider())),
             // The bar spans the top of the viewport's picking area, so it has to
             // swallow pointer events — otherwise a click on the gap between two

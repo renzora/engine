@@ -31,7 +31,7 @@ use renzora_ember::widgets::{
     Popup, PopupAlign,
 };
 use renzora_ember::theme::{
-    border, hover_bg, panel_bg, rgb, tab_active, text_muted, text_primary, value_text,
+    border, divider, hover_bg, panel_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
@@ -301,9 +301,16 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
             row_gap: Val::Px(2.0),
             padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
             flex_shrink: 0.0,
+            // Closed off underneath, the same 1px rule the context bars below it
+            // carry. Without it the strip and whichever bar follows it — a
+            // terrain bar, or the scene itself — meet with nothing between them,
+            // and a two-row toolbar in particular reads as an indeterminate slab
+            // of chrome rather than as one band that ends here.
+            border: UiRect::bottom(Val::Px(1.0)),
             ..default()
         },
         BackgroundColor(side_toolbar_bg()),
+        BorderColor::all(rgb(divider())),
         bevy::ui::RelativeCursorPosition::default(),
         OverlaySurface,
         Name::new("vp-side-toolbar"),
@@ -443,8 +450,19 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     }
 
     // Track the live theme (the static BackgroundColor above only covers the
-    // first frame).
+    // first frame). The closing rule needs the same treatment, and there is no
+    // `bind_border`, so it goes through the generic binding.
     renzora_ember::reactive::tracked::bind_bg(commands, bar, |_| side_toolbar_bg());
+    renzora_ember::reactive::tracked::bind_with(
+        commands,
+        bar,
+        |_: &Rx| rgb(divider()),
+        |world, target, c: &Color| {
+            if let Some(mut b) = world.get_mut::<BorderColor>(target) {
+                *b = BorderColor::all(*c);
+            }
+        },
+    );
     bar
 }
 
