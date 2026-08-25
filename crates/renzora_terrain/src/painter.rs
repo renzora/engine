@@ -109,8 +109,7 @@ pub const PAINTER_OVERSAMPLE: u32 = 2;
 /// so `PaintLayer::grid_size`'s sqrt stays exact; the extra cells past the
 /// short axis simply never match a triangle.
 pub fn painter_grid_size(terrain: &TerrainData) -> u32 {
-    terrain.chunks_x.max(terrain.chunks_z) * (terrain.chunk_resolution - 1) * PAINTER_OVERSAMPLE
-        + 1
+    terrain.chunks_x.max(terrain.chunks_z) * (terrain.chunk_resolution - 1) * PAINTER_OVERSAMPLE + 1
 }
 
 // ── Systems ──────────────────────────────────────────────────────────────────
@@ -346,6 +345,7 @@ fn build_layer_mesh_from_terrain(
     let vertex_count = (grid_size * grid_size) as usize;
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(vertex_count);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(vertex_count);
+    let mut tangents: Vec<[f32; 4]> = Vec::with_capacity(vertex_count);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(vertex_count);
     let mut colors: Vec<[f32; 4]> = Vec::with_capacity(vertex_count);
 
@@ -370,46 +370,50 @@ fn build_layer_mesh_from_terrain(
             })
             .unwrap_or(terrain.min_height)
     };
-    // Bilinear height at fractional terrain-vertex coordinates — mask cells
-    // sit between sculpt vertices when oversampled, so the overlay has to
-    // interpolate the surface exactly like the GPU rasterizes the chunk
-    // triangles, or it would dip below the terrain between vertices.
+    // Height at fractional terrain-vertex coordinates. Mask cells sit between
+    // sculpt vertices when oversampled, so this has to reproduce the surface
+    // the rasterizer actually draws — and that surface is two triangles per
+    // cell, not a bilinear patch. `build_chunk_mesh` splits every cell as
+    // (tl, bl, tr) + (tr, bl, br), i.e. along the bl→tr diagonal, so each
+    // half is a plane. Bilinear cuts the corner off that crease by
+    // `(h_tl + h_br - h_bl - h_tr) / 4` at the cell centre — and at a 2×
+    // oversample every odd mask vertex lands exactly on that centre. On
+    // jagged terrain the error is metres against a 2 cm lift, so the terrain
+    // punched through the overlay in a regular grid of blotches, one per
+    // cell. Evaluating the same two planes puts the overlay exactly on the
+    // surface instead, and leaves `height_offset` as the whole separation.
     let sample_height_f = |vx_f: f32, vz_f: f32| -> f32 {
         let x0 = vx_f.floor().max(0.0) as u32;
         let z0 = vz_f.floor().max(0.0) as u32;
         let tx = (vx_f - x0 as f32).clamp(0.0, 1.0);
         let tz = (vz_f - z0 as f32).clamp(0.0, 1.0);
-        let h00 = sample_height(x0, z0);
-        let h10 = sample_height(x0 + 1, z0);
-        let h01 = sample_height(x0, z0 + 1);
-        let h11 = sample_height(x0 + 1, z0 + 1);
-        (h00 * (1.0 - tx) + h10 * tx) * (1.0 - tz) + (h01 * (1.0 - tx) + h11 * tx) * tz
+        let h_tl = sample_height(x0, z0);
+        let h_tr = sample_height(x0 + 1, z0);
+        let h_bl = sample_height(x0, z0 + 1);
+        let h_br = sample_height(x0 + 1, z0 + 1);
+        if tx + tz <= 1.0 {
+            h_tl + (h_tr - h_tl) * tx + (h_bl - h_tl) * tz
+        } else {
+            h_br + (h_bl - h_br) * (1.0 - tx) + (h_tr - h_br) * (1.0 - tz)
+        }
     };
     // Mask cell → fractional terrain-vertex coordinate.
     let vert_per_cell = cell / spacing.max(1e-6);
 
-    for gz in 0..grid_size {
-        for gx in 0..grid_size {
-            let wx = gx as f32 * cell - half_w;
-            let wz = gz as f32 * cell - half_d;
-            let vx_f = gx as f32 * vert_per_cell;
-            let vz_f = gz as f32 * vert_per_cell;
-            let wy = sample_height_f(vx_f, vz_f) + layer.height_offset + index_lift;
-            positions.push([wx, wy, wz]);
-            uvs.push([
-                gx as f32 / (grid_size - 1).max(1) as f32,
-                gz as f32 / (grid_size - 1).max(1) as f32,
-            ]);
-            normals.push([0.0, 1.0, 0.0]);
-            let m = layer.mask[(gz * grid_size + gx) as usize];
-            colors.push([1.0, 1.0, 1.0, vertex_alpha(m)]);
-        }
-    }
+    // The lift is applied along +Y, but what keeps the overlay in front of
+    // the terrain is the distance *perpendicular* to the surface, and that
+    // is only `lift * n.y`. On a near-vertical cliff face n.y goes to zero
+    // and the gap with it, so a flat +Y lift z-fights exactly where the
+    // terrain is steepest. Dividing by n.y holds the perpendicular gap at
+    // `height_offset` on any slope; the clamp stops a cliff from launching
+    // the overlay off the surface entirely.
+    let min_slope_cos = 0.15f32;
 
     for gz in 0..grid_size {
         for gx in 0..grid_size {
             let vx_f = gx as f32 * vert_per_cell;
             let vz_f = gz as f32 * vert_per_cell;
+
             let hl = sample_height_f(vx_f - vert_per_cell, vz_f);
             let hr = sample_height_f(vx_f + vert_per_cell, vz_f);
             let hd = sample_height_f(vx_f, vz_f - vert_per_cell);
@@ -417,7 +421,31 @@ fn build_layer_mesh_from_terrain(
             let dx = (hr - hl) / (2.0 * cell.max(1e-4));
             let dz = (hu - hd) / (2.0 * cell.max(1e-4));
             let n = Vec3::new(-dx, 1.0, -dz).normalize_or_zero();
-            normals[(gz * grid_size + gx) as usize] = [n.x, n.y, n.z];
+            normals.push([n.x, n.y, n.z]);
+
+            // A layer material with a normal map renders unlit-flat without
+            // ATTRIBUTE_TANGENT — Bevy 0.19 drops the map silently rather
+            // than erroring. `generate_tangents()` would work but costs a
+            // full mikktspace pass on a grid that rebuilds every frame of a
+            // stroke, and it isn't needed: UVs here are a plain linear
+            // function of (x, z), so dP/du is exactly (1, dh/dx, 0) — and
+            // that is already perpendicular to (-dh/dx, 1, -dh/dz), so no
+            // Gram-Schmidt step either. `w = -1` because the bitangent
+            // `cross(N, T) * w` has to point along +Z, the direction v grows.
+            let t = Vec3::new(1.0, dx, 0.0).normalize_or_zero();
+            tangents.push([t.x, t.y, t.z, -1.0]);
+
+            let wx = gx as f32 * cell - half_w;
+            let wz = gz as f32 * cell - half_d;
+            let lift = (layer.height_offset + index_lift) / n.y.max(min_slope_cos);
+            let wy = sample_height_f(vx_f, vz_f) + lift;
+            positions.push([wx, wy, wz]);
+            uvs.push([
+                gx as f32 / (grid_size - 1).max(1) as f32,
+                gz as f32 / (grid_size - 1).max(1) as f32,
+            ]);
+            let m = layer.mask[(gz * grid_size + gx) as usize];
+            colors.push([1.0, 1.0, 1.0, vertex_alpha(m)]);
         }
     }
 
@@ -455,10 +483,42 @@ fn build_layer_mesh_from_terrain(
     );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U32(indices));
     mesh
+}
+
+/// Turn an asset-relative `.material` path into the key the
+/// `VirtualFileReader` actually accepts.
+///
+/// Layer paths are stored asset-relative (`materials/foo.material`) because
+/// that is what survives a scene save and what the asset server wants for
+/// textures — but the reader is not asset-relative. On disk it is a bare
+/// `std::fs::read_to_string`, resolved against the process CWD, which is not
+/// the project; in a shipped game it is an rpak lookup keyed from the archive
+/// root. Both need the project prefix applied first. Skipping it is what made
+/// every dropped material read back as `None` and render as the magenta
+/// "couldn't read this" fallback.
+///
+/// The `./` strip matters for the rpak case: a shipped game's `CurrentProject`
+/// carries `.` as a sentinel path, so joining produces `./materials/foo` and
+/// the archive has no such key. Same normalization the material resolver in
+/// `renzora_shader` does.
+pub fn resolve_material_key(path: &str, project: Option<&renzora::core::CurrentProject>) -> String {
+    if std::path::Path::new(path).is_absolute() {
+        return path.to_string();
+    }
+    let Some(project) = project else {
+        return path.to_string();
+    };
+    let raw = project.resolve_path(path).to_string_lossy().to_string();
+    let normalized = raw.replace('\\', "/");
+    normalized
+        .strip_prefix("./")
+        .unwrap_or(&normalized)
+        .to_string()
 }
 
 /// Loads each layer's `.material` file and (re)builds the
@@ -469,6 +529,7 @@ pub fn apply_painter_layer_materials_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     vfs: Res<renzora::core::VirtualFileReader>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     mut painter_query: Query<&mut Painter>,
     mesh_query: Query<(
         Entity,
@@ -491,7 +552,12 @@ pub fn apply_painter_layer_materials_system(
         let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
             continue;
         };
-        let mat = build_material(&layer.material_path, &asset_server, &vfs);
+        let mat = build_material(
+            &layer.material_path,
+            &asset_server,
+            &vfs,
+            project.as_deref(),
+        );
         let handle = materials.add(mat);
         commands.entity(mesh_entity).insert(MeshMaterial3d(handle));
         layer.material_dirty = false;
@@ -502,6 +568,7 @@ fn build_material(
     material_path: &Option<String>,
     asset_server: &AssetServer,
     vfs: &renzora::core::VirtualFileReader,
+    project: Option<&renzora::core::CurrentProject>,
 ) -> StandardMaterial {
     // Alpha-blended: the layer mesh carries per-vertex alpha that feathers
     // coverage edges (see `build_layer_mesh_from_terrain`); an opaque
@@ -518,7 +585,9 @@ fn build_material(
             ..Default::default()
         };
     };
-    let Some(json) = vfs.read_string(path) else {
+    let key = resolve_material_key(path, project);
+    let Some(json) = vfs.read_string(&key) else {
+        warn!("terrain paint layer: couldn't read material '{key}' (from '{path}')");
         return StandardMaterial {
             base_color: Color::srgb(0.9, 0.3, 0.6),
             perceptual_roughness: 0.85,
@@ -583,8 +652,13 @@ fn extract_layer_textures_from_json(
                     return Some(s.to_string());
                 }
             }
+            // `PinValue` (the material-graph one in `renzora_shader`) is an
+            // externally-tagged enum, so a texture pin serializes as
+            // `{"TexturePath": "..."}`. There has never been a `Texture`
+            // variant — looking for one meant every textured material came
+            // back with no maps at all and the layer rendered flat white.
             if let Some(obj) = v.as_object() {
-                if let Some(tex) = obj.get("Texture").and_then(|v| v.as_str()) {
+                if let Some(tex) = obj.get("TexturePath").and_then(|v| v.as_str()) {
                     if !tex.is_empty() {
                         return Some(tex.to_string());
                     }

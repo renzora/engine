@@ -272,6 +272,7 @@ pub fn apply_brush_layer_material_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     vfs: Res<renzora::core::VirtualFileReader>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     mut layer_query: Query<(
         Entity,
         &mut TerrainBrushLayer,
@@ -282,7 +283,7 @@ pub fn apply_brush_layer_material_system(
         if !layer.material_dirty && existing_mat.is_some() {
             continue;
         }
-        let mat = build_material_for_layer(&layer, &asset_server, &vfs);
+        let mat = build_material_for_layer(&layer, &asset_server, &vfs, project.as_deref());
         let handle = materials.add(mat);
         commands.entity(entity).insert(MeshMaterial3d(handle));
         layer.material_dirty = false;
@@ -293,6 +294,7 @@ fn build_material_for_layer(
     layer: &TerrainBrushLayer,
     asset_server: &AssetServer,
     vfs: &renzora::core::VirtualFileReader,
+    project: Option<&renzora::core::CurrentProject>,
 ) -> StandardMaterial {
     // No material path yet — placeholder gray.
     let Some(path) = layer.material_path.as_deref() else {
@@ -303,7 +305,10 @@ fn build_material_for_layer(
         };
     };
 
-    let Some(json) = vfs.read_string(path) else {
+    // Asset-relative → reader key. See `painter::resolve_material_key`.
+    let key = crate::painter::resolve_material_key(path, project);
+    let Some(json) = vfs.read_string(&key) else {
+        warn!("terrain brush layer: couldn't read material '{key}' (from '{path}')");
         return StandardMaterial {
             base_color: Color::srgb(0.9, 0.3, 0.6),
             perceptual_roughness: 0.85,
@@ -376,8 +381,10 @@ fn extract_layer_textures_from_json(
                     return Some(s.to_string());
                 }
             }
+            // Externally-tagged `PinValue` — see the note on the matching
+            // extractor in `painter.rs`. The tag is `TexturePath`.
             if let Some(obj) = val.as_object() {
-                if let Some(tex) = obj.get("Texture").and_then(|v| v.as_str()) {
+                if let Some(tex) = obj.get("TexturePath").and_then(|v| v.as_str()) {
                     if !tex.is_empty() {
                         return Some(tex.to_string());
                     }

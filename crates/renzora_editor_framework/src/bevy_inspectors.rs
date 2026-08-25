@@ -10,11 +10,8 @@ use bevy::light::{
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
 
-use crate::{
-    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
-};
 use crate::{ComponentIconEntry, ComponentIconRegistry};
-use crate::EntityLabelColor;
+use crate::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 
 /// Register spawn presets for core Bevy entity types.
 pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
@@ -95,8 +92,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
             world
                 .spawn((
                     Name::new("Rect Light"),
-                    Transform::from_xyz(0.0, 3.0, 0.0)
-                        .looking_at(Vec3::ZERO, Vec3::Z),
+                    Transform::from_xyz(0.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
                     RectLight::default(),
                 ))
                 .id()
@@ -366,9 +362,11 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
 /// lights, cameras, etc.).  Called automatically by the editor framework
 /// plugin — downstream crates do **not** need to call this.
 pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
-    registry.register(name_entry());
+    // No `name`/`visibility` sections: the entity id, label colour, icon and
+    // visibility toggle all live in the inspector's fixed entity header now
+    // (`renzora_inspector::native`), which is where a component list has no
+    // business being anyway — none of them are components you can add or remove.
     registry.register(transform_entry());
-    registry.register(visibility_entry());
     registry.register(directional_light_entry());
     registry.register(point_light_entry());
     registry.register(spot_light_entry());
@@ -380,7 +378,8 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
     registry.register(camera3d_entry());
-    registry.register(mesh3d_entry());
+    // No `mesh3d` section: its one field was a read-only "Mesh attached", which
+    // told you nothing the Material section and the viewport didn't already.
     registry.register(environment_map_light_entry());
     registry.register(light_probe_entry());
     registry.register(parallax_correction_entry());
@@ -434,9 +433,7 @@ fn mesh_lod_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<renzora::MeshLod>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(renzora::MeshLod::default());
+            world.entity_mut(entity).insert(renzora::MeshLod::default());
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<renzora::MeshLod>();
@@ -455,7 +452,11 @@ fn mesh_lod_entry() -> InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "LOD1 Distance",
-                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 1.0,
+                    max: 10000.0,
+                },
                 get_fn: |w, e| {
                     w.get::<renzora::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 0)))
@@ -470,7 +471,11 @@ fn mesh_lod_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "LOD2 Distance",
-                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 1.0,
+                    max: 10000.0,
+                },
                 get_fn: |w, e| {
                     w.get::<renzora::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 1)))
@@ -485,7 +490,11 @@ fn mesh_lod_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "LOD3 Distance",
-                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 1.0,
+                    max: 10000.0,
+                },
                 get_fn: |w, e| {
                     w.get::<renzora::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 2)))
@@ -500,7 +509,11 @@ fn mesh_lod_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Crossfade",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 100.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 100.0,
+                },
                 get_fn: |w, e| {
                     w.get::<renzora::MeshLod>(e)
                         .map(|l| FieldValue::Float(l.crossfade))
@@ -515,7 +528,11 @@ fn mesh_lod_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Cull Distance",
-                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 100000.0 },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 0.0,
+                    max: 100000.0,
+                },
                 get_fn: |w, e| {
                     w.get::<renzora::MeshLod>(e)
                         .map(|l| FieldValue::Float(l.cull_distance))
@@ -569,7 +586,8 @@ fn sprite_image_entry() -> InspectorEntry {
                                 .iter()
                                 .map(|p| p.rsplit(['/', '\\']).next().unwrap_or(p).to_string())
                                 .collect()
-                        } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity) {
+                        } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity)
+                        {
                             if p.0.is_empty() {
                                 Vec::new()
                             } else {
@@ -606,14 +624,20 @@ fn sprite_image_entry() -> InspectorEntry {
                 name: "Add Sheet",
                 field_type: FieldType::Asset {
                     extensions: vec![
-                        "png".into(), "jpg".into(), "jpeg".into(), "webp".into(), "ktx2".into(),
+                        "png".into(),
+                        "jpg".into(),
+                        "jpeg".into(),
+                        "webp".into(),
+                        "ktx2".into(),
                         "rmip".into(),
                     ],
                 },
                 // Empty prompt — write-only ("drag to add").
                 get_fn: |_world, _entity| Some(FieldValue::Asset(None)),
                 set_fn: |world, entity, val| {
-                    let FieldValue::Asset(Some(path)) = val else { return };
+                    let FieldValue::Asset(Some(path)) = val else {
+                        return;
+                    };
                     if path.is_empty() {
                         return;
                     }
@@ -647,11 +671,16 @@ fn sprite_image_entry() -> InspectorEntry {
             // demand. `field_anim_path` maps their keyframes onto `SpriteSheet`.
             FieldDef {
                 name: "H Frames",
-                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
+                field_type: FieldType::Int {
+                    min: 1.0,
+                    max: 1024.0,
+                },
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
-                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.hframes).unwrap_or(1)
-                            as f32,
+                        world
+                            .get::<renzora::core::SpriteSheet>(entity)
+                            .map(|s| s.hframes)
+                            .unwrap_or(1) as f32,
                     ))
                 },
                 set_fn: |world, entity, val| {
@@ -671,11 +700,16 @@ fn sprite_image_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "V Frames",
-                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
+                field_type: FieldType::Int {
+                    min: 1.0,
+                    max: 1024.0,
+                },
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
-                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.vframes).unwrap_or(1)
-                            as f32,
+                        world
+                            .get::<renzora::core::SpriteSheet>(entity)
+                            .map(|s| s.vframes)
+                            .unwrap_or(1) as f32,
                     ))
                 },
                 set_fn: |world, entity, val| {
@@ -695,11 +729,16 @@ fn sprite_image_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Frame",
-                field_type: FieldType::Int { min: 0.0, max: 1_048_576.0 },
+                field_type: FieldType::Int {
+                    min: 0.0,
+                    max: 1_048_576.0,
+                },
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
-                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.frame).unwrap_or(0)
-                            as f32,
+                        world
+                            .get::<renzora::core::SpriteSheet>(entity)
+                            .map(|s| s.frame)
+                            .unwrap_or(0) as f32,
                     ))
                 },
                 set_fn: |world, entity, val| {
@@ -725,7 +764,9 @@ fn sprite_image_entry() -> InspectorEntry {
                 name: "Flip X",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
-                    world.get::<Sprite>(entity).map(|s| FieldValue::Bool(s.flip_x))
+                    world
+                        .get::<Sprite>(entity)
+                        .map(|s| FieldValue::Bool(s.flip_x))
                 },
                 set_fn: |world, entity, val| {
                     if let (FieldValue::Bool(b), Some(mut s)) =
@@ -739,7 +780,9 @@ fn sprite_image_entry() -> InspectorEntry {
                 name: "Flip Y",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
-                    world.get::<Sprite>(entity).map(|s| FieldValue::Bool(s.flip_y))
+                    world
+                        .get::<Sprite>(entity)
+                        .map(|s| FieldValue::Bool(s.flip_y))
                 },
                 set_fn: |world, entity, val| {
                     if let (FieldValue::Bool(b), Some(mut s)) =
@@ -829,64 +872,11 @@ fn sprite_image_entry() -> InspectorEntry {
 // Sprite Image section above; the `frame` field is the one users animate from
 // the animation panel (it shows up in the Add Property picker via reflection).
 
-fn name_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "name",
-        display_name: "ID",
-        icon: "hash",
-        category: "transform",
-        has_fn: |world, entity| world.get::<Name>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            // The single canonical identifier: a unique, snake_case id stored in
-            // `Name`. Typing anything here is sanitized (spaces/punctuation →
-            // `_`, lowercased) and de-duplicated against every other entity, so
-            // ids stay unique and space-free. This replaces the old separate
-            // Name + Tag pair.
-            FieldDef {
-                name: "ID",
-                field_type: FieldType::String,
-                get_fn: |world, entity| {
-                    world
-                        .get::<Name>(entity)
-                        .map(|n| FieldValue::String(n.as_str().to_string()))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::String(v) = val {
-                        let id = renzora::unique_entity_name(world, &v, entity);
-                        if let Some(mut n) = world.get_mut::<Name>(entity) {
-                            *n = Name::new(id);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Label Color",
-                field_type: FieldType::Color,
-                get_fn: |world, entity| {
-                    let c = world
-                        .get::<EntityLabelColor>(entity)
-                        .map(|lc| lc.0)
-                        .unwrap_or([220, 222, 228]);
-                    Some(FieldValue::Color([
-                        c[0] as f32 / 255.0,
-                        c[1] as f32 / 255.0,
-                        c[2] as f32 / 255.0,
-                    ]))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Color([r, g, b]) = val {
-                        let color = [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8];
-                        world.entity_mut(entity).insert(EntityLabelColor(color));
-                    }
-                },
-            },
-        ],
-    }
-}
+// The entity id (`Name`), its label colour and its icon used to be a "ID"
+// component section here. They are not components you can add or remove, so
+// they now render as the inspector's fixed entity header instead — see
+// `renzora_inspector::native::build_entity_header`, which owns the same
+// sanitize-and-deduplicate rule for the id that this section did.
 
 fn transform_entry() -> InspectorEntry {
     InspectorEntry {
@@ -930,7 +920,12 @@ fn transform_entry() -> InspectorEntry {
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Vec3(v) = val {
-                        let q = renzora::cache_euler_deg(world, entity, "transform", Vec3::from_array(v));
+                        let q = renzora::cache_euler_deg(
+                            world,
+                            entity,
+                            "transform",
+                            Vec3::from_array(v),
+                        );
                         if let Some(mut t) = world.get_mut::<Transform>(entity) {
                             t.rotation = q;
                         }
@@ -957,39 +952,8 @@ fn transform_entry() -> InspectorEntry {
     }
 }
 
-fn visibility_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "visibility",
-        display_name: "Visibility",
-        icon: "eye",
-        category: "rendering",
-        has_fn: |world, entity| world.get::<Visibility>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Visible",
-            field_type: FieldType::Bool,
-            get_fn: |world, entity| {
-                world.get::<Visibility>(entity).map(|v| {
-                    FieldValue::Bool(matches!(*v, Visibility::Inherited | Visibility::Visible))
-                })
-            },
-            set_fn: |world, entity, val| {
-                if let FieldValue::Bool(v) = val {
-                    if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
-                        *vis = if v {
-                            Visibility::Inherited
-                        } else {
-                            Visibility::Hidden
-                        };
-                    }
-                }
-            },
-        }],
-    }
-}
+// A whole "Visibility" section for one boolean was the clearest case of the
+// same thing: it is now the eye toggle in the entity header.
 
 fn directional_light_entry() -> InspectorEntry {
     InspectorEntry {
@@ -1522,9 +1486,11 @@ fn light_probe_entry() -> InspectorEntry {
                 .insert((LightProbe::default(), ReflectionProbeSource::default()));
         }),
         remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(LightProbe, ReflectionProbeSource, GeneratedEnvironmentMapLight)>();
+            world.entity_mut(entity).remove::<(
+                LightProbe,
+                ReflectionProbeSource,
+                GeneratedEnvironmentMapLight,
+            )>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -1565,7 +1531,11 @@ fn light_probe_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Intensity",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10000.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 10000.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<ReflectionProbeSource>(entity)
@@ -1695,24 +1665,22 @@ fn generated_environment_map_entry() -> InspectorEntry {
         remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Affects Lightmaps",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<GeneratedEnvironmentMapLight>(entity)
-                        .map(|g| FieldValue::Bool(g.affects_lightmapped_mesh_diffuse))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(b) = val {
-                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
-                            g.affects_lightmapped_mesh_diffuse = b;
-                        }
-                    }
-                },
+        fields: vec![FieldDef {
+            name: "Affects Lightmaps",
+            field_type: FieldType::Bool,
+            get_fn: |world, entity| {
+                world
+                    .get::<GeneratedEnvironmentMapLight>(entity)
+                    .map(|g| FieldValue::Bool(g.affects_lightmapped_mesh_diffuse))
             },
-        ],
+            set_fn: |world, entity, val| {
+                if let FieldValue::Bool(b) = val {
+                    if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
+                        g.affects_lightmapped_mesh_diffuse = b;
+                    }
+                }
+            },
+        }],
     }
 }
 
@@ -1900,30 +1868,6 @@ fn camera3d_entry() -> InspectorEntry {
                 world
                     .get::<Camera3d>(entity)
                     .map(|_| FieldValue::ReadOnly("Perspective 3D".to_string()))
-            },
-            set_fn: |_, _, _| {},
-        }],
-    }
-}
-
-fn mesh3d_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "mesh3d",
-        display_name: "Mesh 3D",
-        icon: "cube",
-        category: "rendering",
-        has_fn: |world, entity| world.get::<Mesh3d>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Mesh",
-            field_type: FieldType::ReadOnly,
-            get_fn: |world, entity| {
-                world
-                    .get::<Mesh3d>(entity)
-                    .map(|_| FieldValue::ReadOnly("Mesh attached".to_string()))
             },
             set_fn: |_, _, _| {},
         }],
