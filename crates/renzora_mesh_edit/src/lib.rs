@@ -130,6 +130,7 @@ impl Plugin for MeshEditPlugin {
                 overlay_ui::ensure_overlay_root,
                 overlay_ui::update_vertex_dots,
                 overlay_ui::update_marquee,
+                overlay_ui::update_face_overlays,
             )
                 .chain()
                 .run_if(in_mode(ViewportMode::Edit)),

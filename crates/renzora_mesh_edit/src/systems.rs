@@ -557,8 +557,34 @@ let hit_any = match mode {
                                 }
                             }
                         }
-                        let hit = best.is_some();
-                        apply_pick(&mut sel.faces, best.map(|(_, id)| id), additive);
+                        // Expand to the whole coplanar logical-face group. Every face in this codebase is a single triangle,
+                        // so clicking a quad hits one of its two triangles;
+                        // `coplanar_group` walks the adjacency graph to
+                        // collect every coplanar triangle sharing the seed,
+                        // which merges the two halves of a quad (and any
+                        // fan-triangle n-gon) back together for selection.
+                        let group: Vec<crate::edit_mesh::FaceId> = best
+                            .as_ref()
+                            .map(|(_, id)| coplanar_group(*id, edit))
+                            .unwrap_or_default();
+                        let hit = !group.is_empty();
+                        // `apply_pick` is single-ID; faces need group
+                        // handling. Non-additive: clear, then add the
+                        // whole group. Additive: toggle each face in the
+                        // group so a Shift-click on an already-selected
+                        // logical face removes it as a unit.
+                        if !additive {
+                            sel.faces.clear();
+                        }
+                        for fid in group {
+                            if additive {
+                                if !sel.faces.insert(fid) {
+                                    sel.faces.remove(&fid);
+                                }
+                            } else {
+                                sel.faces.insert(fid);
+                            }
+                        }
                         hit
                     }
                 };
@@ -695,6 +721,95 @@ fn apply_pick<T: Copy + Eq + std::hash::Hash>(
         (None, false) => set.clear(),
         (None, true) => {}
     }
+}
+
+/// Walk from `seed` through face-adjacency edges, collecting every coplanar
+/// triangle that connects back to `seed`. Returns the whole logical-face
+/// group — typically a single triangle, the two triangles of a quad, or
+/// the fan-triangles of a planar n-gon.
+///
+/// In this codebase, every face is a single triangle (see the comment at
+/// the top of `edit_mesh.rs`: "Phase 2: faces are triangles... N-gon
+/// merging comes in Phase 3"). Clicking a quad selects only the triangle
+/// the ray hit; this helper merges the two triangles back together so a
+/// user gets Blender-style "click on a face, the whole logical face
+/// highlights" without restructuring the data model.
+///
+/// The test is geometric, not topological: two triangles are "coplanar"
+/// when they share the same plane, regardless of normal direction. This
+/// matches Blender's face adjacency for triangulated quads (where the
+/// two triangles have OPPOSITE per-triangle normals but lie in the same
+/// plane) and for fanned n-gons (where all triangles share a common
+/// diagonal apex).
+fn coplanar_group(
+    seed: crate::edit_mesh::FaceId,
+    edit: &crate::edit_mesh::EditMesh,
+) -> Vec<crate::edit_mesh::FaceId> {
+    let Some(seed_face) = edit.faces.get(seed.0 as usize) else {
+        return vec![seed];
+    };
+    if seed_face.verts.len() < 3 {
+        return vec![seed];
+    }
+    // Compute the seed's plane once. We test "is this other triangle in
+    // the same plane?" by checking that all of its vertices project onto
+    // the seed's plane within `COPLANAR_TOLERANCE` world units.
+    let p0 = match edit.vertices.get(seed_face.verts[0].0 as usize) {
+        Some(v) => v.position,
+        None => return vec![seed],
+    };
+    let p1 = match edit.vertices.get(seed_face.verts[1].0 as usize) {
+        Some(v) => v.position,
+        None => return vec![seed],
+    };
+    let p2 = match edit.vertices.get(seed_face.verts[2].0 as usize) {
+        Some(v) => v.position,
+        None => return vec![seed],
+    };
+    let n = (p1 - p0).cross(p2 - p0);
+    // If the seed triangle is degenerate (collinear verts), fall back to
+    // just the seed — don't BFS through a zero-area face.
+    if n.length_squared() < 1e-12 {
+        return vec![seed];
+    }
+    const COPLANAR_TOLERANCE: f32 = 1.0e-3;
+
+    let mut visited: std::collections::HashSet<crate::edit_mesh::FaceId> =
+        std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<crate::edit_mesh::FaceId> =
+        std::collections::VecDeque::new();
+    visited.insert(seed);
+    queue.push_back(seed);
+    while let Some(fid) = queue.pop_front() {
+        let Some(face) = edit.faces.get(fid.0 as usize) else { continue };
+        for &edge_id in &face.edges {
+            let Some(edge) = edit.edges.get(edge_id.0 as usize) else { continue };
+            for &other in &edge.faces {
+                if visited.contains(&other) {
+                    continue;
+                }
+                let Some(other_face) = edit.faces.get(other.0 as usize) else { continue };
+                // Test that all of `other`'s vertices are on the seed's plane.
+                let mut coplanar = true;
+                for &vid in &other_face.verts {
+                    let Some(v) = edit.vertices.get(vid.0 as usize) else { coplanar = false; break };
+                    if (v.position - p0).dot(n).abs() > COPLANAR_TOLERANCE {
+                        coplanar = false;
+                        break;
+                    }
+                }
+                if coplanar {
+                    visited.insert(other);
+                    queue.push_back(other);
+                }
+            }
+        }
+    }
+    let mut out: Vec<crate::edit_mesh::FaceId> = visited.into_iter().collect();
+    // Stable order: keep `seed` first so the picker still reports a
+    // primary "hit" face for tools that need one (extrude, etc.).
+    out.sort_by_key(|f| if *f == seed { 0 } else { 1 });
+    out
 }
 
 // ── Extrude (E) ────────────────────────────────────────────────────────────
@@ -1197,13 +1312,12 @@ pub fn draw_overlay(
     // tree parented under the viewport panel and positions each dot in
     // true screen pixels.
 
-    // Face highlights: draw a translucent fill (triangle fan from the
-    // centroid) plus the perimeter outline at full alpha. Matches
-    // Blender's `face_select` overlay, which fills the face with the
-    // theme's `face_select` color at low alpha and traces the perimeter
-    // on top. Drawing a true filled polygon isn't possible from a gizmo
-    // line-list, so the fan pattern reads as a tinted overlay.
+    // Face perimeter outline — drawn at full alpha on top of the
+    // translucent fill that `overlay_ui::update_face_overlays` spawns.
+    // The fill is a real 3D mesh (good for the tinted look); the outline
+    // is a gizmo line-list (cheaper, and reads sharper than a mesh edge).
     if mesh_selection.mode == SelectMode::Face {
+        let outline_color = Color::srgba(1.0, 0.55, 0.1, 0.9);
         for (i, face) in edit.faces.iter().enumerate() {
             if !mesh_selection
                 .faces
@@ -1215,52 +1329,25 @@ pub fn draw_overlay(
             if n < 3 {
                 continue;
             }
-            // Centroid in mesh-local space → world space once. The fan's
-            // apex is the centroid, so the diagonals toward each vertex
-            // tessellate any n-gon (triangle, quad, fan) into triangles.
-            let mut centroid_local = Vec3::ZERO;
-            for vid in &face.verts {
-                if let Some(v) = edit.vertices.get(vid.0 as usize) {
-                    centroid_local += v.position;
+            // Perimeter (last → first) at full alpha. The mesh-fill handles
+            // the interior, so we only need the boundary.
+            for w in face.verts.windows(2) {
+                let (Some(a), Some(b)) = (
+                    edit.vertices.get(w[0].0 as usize).map(|v| v.position),
+                    edit.vertices.get(w[1].0 as usize).map(|v| v.position),
+                ) else {
+                    continue;
+                };
+                gizmos.line(to_world(a), to_world(b), outline_color);
+            }
+            // Close the loop.
+            if let (Some(&first), Some(&last)) = (face.verts.first(), face.verts.last()) {
+                if let (Some(a), Some(b)) = (
+                    edit.vertices.get(last.0 as usize).map(|v| v.position),
+                    edit.vertices.get(first.0 as usize).map(|v| v.position),
+                ) {
+                    gizmos.line(to_world(a), to_world(b), outline_color);
                 }
-            }
-            centroid_local /= n as f32;
-            let centroid = to_world(centroid_local);
-
-            let fill_color = Color::srgba(1.0, 0.55, 0.1, 0.45);
-            let outline_color = Color::srgba(1.0, 0.55, 0.1, 0.9);
-
-            // Per-triangle fan edges (centroid→a, centroid→b, a→b) at low
-            // alpha. The perimeter (last → first) closes the fan.
-            let pairs: Vec<(Vec3, Vec3)> = face
-                .verts
-                .windows(2)
-                .map(|w| {
-                    (
-                        to_world(edit.vertices[w[0].0 as usize].position),
-                        to_world(edit.vertices[w[1].0 as usize].position),
-                    )
-                })
-                .chain(
-                    face.verts
-                        .first()
-                        .zip(face.verts.last())
-                        .map(|(&first, &last)| {
-                            (
-                                to_world(edit.vertices[last.0 as usize].position),
-                                to_world(edit.vertices[first.0 as usize].position),
-                            )
-                        }),
-                )
-                .collect();
-            for (a, b) in &pairs {
-                gizmos.line(centroid, *a, fill_color);
-                gizmos.line(centroid, *b, fill_color);
-                gizmos.line(*a, *b, fill_color);
-            }
-            // Outline on top — full alpha, no fill bleed.
-            for (a, b) in &pairs {
-                gizmos.line(*a, *b, outline_color);
             }
         }
     }

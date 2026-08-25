@@ -34,6 +34,62 @@ click a different entity to edit it without leaving the mode.
 | Alt+Click (edge mode) | Select the whole edge loop |
 | `A` | Select all / deselect all |
 
+### Mesh-edit overlay (Settings → Viewport → Mesh Edit)
+
+Three controls tune how Edit-mode selection looks and behaves:
+
+- **Vertex Size** — pixel side length of every unselected vertex dot.
+  Range 1–12 (default 3). Dots are screen-space squares, so the size
+  is constant regardless of camera zoom or distance.
+- **Vertex Size (Selected)** — pixel side length of selected vertex
+  dots. Range 1–12 (default 5). Bigger than the unselected size so the
+  selection state reads at a glance, the way Blender's
+  `bTheme::space_view3d.vertex_size` works.
+- **X-Ray Select** — when off (default), Edit-mode vertex picking does
+  a depth test: only the vertex closest to the camera is selectable.
+  This stops a click near a sphere's silhouette from accidentally
+  selecting the back-side vertex that happens to project onto the same
+  screen point. Toggle on to allow through-selection (picks the
+  closest vertex in *screen* space within the 8 px pick radius, so the
+  back-side vertex can win when its projected position is closer to
+  the cursor than the front-side vertex's).
+
+### Face highlight (selected faces, Edit → Face mode)
+
+Selected faces in Face mode get a translucent tinted fill plus a sharp
+perimeter outline, the Blender-style `face_select` overlay look:
+
+- **Fill** — a real 3D mesh triangulated the same way as
+  `EditMesh::bake_to_mesh`: an `(n - 2)` triangle fan anchored at the
+  face's first perimeter vertex, with the remaining vertices in
+  `face.verts` order. Parenting to the edit target lets the overlay
+  inherit the entity's transform. Drawn with a translucent `unlit`
+  `StandardMaterial` (`srgba(1.0, 0.55, 0.1, 0.45)`).
+  `depth_bias: 1.0` pulls the overlay in front of the cube's geometry
+  as a small additional safeguard — in Bevy 0.19 positive `depth_bias`
+  values render closer to the camera. **The triangulation match is the
+  primary fix for the fan-shaped flicker:** the overlay and the
+  underlying mesh rasterize the same surface into the same triangles,
+  so the GPU's per-pixel depth interpolation doesn't disagree between
+  them.
+- **Outline** — a per-edge `gizmos.line` at full alpha on top of the
+  fill. Reads as a crisp boundary against the translucent interior.
+
+Clicking a quad highlights the whole logical face (both triangles),
+not just the triangle under the cursor. The picker walks the
+face-adjacency graph (`Edge::faces`) and collects every coplanar
+neighbour of the hit triangle into one selection group. Works for
+tris, quads, and planar fan-triangle n-gons — anything coplanar that's
+topologically connected.
+
+### Gizmo Thickness (Settings → Viewport)
+
+Multiplier on the line width of every transform-gizmo line — translate
+arrows, rotate rings, scale cubes, plus the plane-drag squares and
+selection labels. Range 0.5–2.5, default 1.0 (unchanged). Live-applied
+each frame, so the slider takes effect immediately on the gizmo
+without restarting the editor.
+
 ## Modeling tools
 
 | Input | Tool |

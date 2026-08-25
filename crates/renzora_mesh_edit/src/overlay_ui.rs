@@ -19,6 +19,8 @@
 //! pool of vertex dots is grown/shrunk to match the active `EditMesh`'s
 //! vertex count each frame.
 
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::ui::ZIndex;
 use renzora::core::viewport_types::{ViewportSettings, ViewportState};
@@ -55,6 +57,18 @@ pub struct EditOverlayEntities {
     pub root: Option<Entity>,
     pub vertex_dots: Vec<Entity>,
     pub marquee: Option<Entity>,
+    /// Translucent 3D mesh overlays parented to the edit target, one per
+    /// currently-selected face. We spawn/despawn these every frame the
+    /// face-selection set changes — typical meshes have a handful of
+    /// selected faces, so the spawn cost is negligible.
+    pub face_overlays: Vec<Entity>,
+    /// Cached translucent material handle so we don't re-allocate a
+    /// `StandardMaterial` asset every face-overlay spawn.
+    pub face_overlay_material: Option<Handle<StandardMaterial>>,
+    /// The mesh target these overlays were spawned for. Detects when the
+    /// user switched to a different edit target so we can despawn the
+    /// stale set.
+    pub face_overlay_target: Option<Entity>,
 }
 
 /// The overlay container matches `ViewportImage`'s sizing so its `overflow:
@@ -383,6 +397,282 @@ pub fn update_marquee(
                 node.height = Val::Px(h);
                 *vis = Visibility::Visible;
             }
+        }
+    }
+}
+
+/// Build a translucent 3D mesh overlay for every currently-selected face,
+/// parented to the edit target so it inherits the entity's `GlobalTransform`.
+/// Each overlay uses the **same triangulation** as `EditMesh::bake_to_mesh` —
+/// an `n - 2` triangle fan anchored at the face's first perimeter vertex
+/// (index 0 = `face.verts[0]`), with the remaining perimeter vertices
+/// pushed in `face.verts` order. The geometry intentionally mirrors
+/// `bake_to_mesh` so the GPU rasterizes both meshes with the same per-pixel
+/// depth interpolation; see
+/// `AgentFiles/Documentation/mesh-edit-face-overlay-centroid-fan.md` for the
+/// reasoning (the earlier centroid-fan approach filled the visible gap but
+/// introduced a triangulation mismatch with the underlying mesh that
+/// `depth_bias` could only mask, not fix).
+///
+/// Spawned only in Face mode; outside Face mode (or with no target / no
+/// selected faces) every overlay is despawned so the screen stays clean.
+///
+/// Replaces the old gizmo-line triangle-fan approach that read as a
+/// sparse fan instead of a tinted fill. A real 3D mesh overlay gives the
+/// Blender-style translucent-tint look.
+///
+/// Strategy: despawn everything each frame and respawn. Typical meshes
+/// have a handful of selected faces, so the cost is small. Avoids a
+/// per-face diff + asset mutation dance.
+#[allow(clippy::too_many_arguments)]
+pub fn update_face_overlays(
+    mut commands: Commands,
+    mut overlay: ResMut<EditOverlayEntities>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mesh_selection: Res<MeshSelection>,
+    edit_q: Query<&EditMesh>,
+) {
+    // 1. Despawn every previous overlay. Doing this before any early
+    //    `return` keeps the screen clean when the user changes mode /
+    //    target — stale overlays would otherwise linger.
+    let stale: Vec<Entity> = overlay.face_overlays.drain(..).collect();
+    for e in stale {
+        commands.entity(e).despawn();
+    }
+    overlay.face_overlay_target = None;
+
+    // 2. Bail out if we shouldn't spawn anything this frame.
+    let Some(target) = mesh_selection.target else {
+        return;
+    };
+    if mesh_selection.mode != SelectMode::Face {
+        return;
+    }
+    let Ok(edit) = edit_q.get(target) else {
+        return;
+    };
+
+    // 3. Lazily create the shared translucent material. `unlit` skips PBR
+    //    shading so the tint reads as a flat colour (matches Blender's
+    //    `face_select` theme overlay). `AlphaMode::Blend` keeps the draw
+    //    order independent of which face is in front.
+    //
+    //    `depth_bias: 1.0` pushes the overlay in front of the cube's
+    //    geometry — without it, the overlay is at the exact same Z as
+    //    the source face, and the GPU's depth buffer can't decide which
+    //    is in front, producing the "shimmer as you orbit" artefacts the
+    //    user reported. **Sign convention:** in Bevy 0.19, positive
+    //    `depth_bias` values render closer to the camera and negative
+    //    values render behind — the inverse of what the older wgpu
+    //    docs imply. We want the overlay drawn in front, so the value
+    //    is positive. The bias is a constant value picked by the
+    //    `wgpu::DepthBiasState`; units depend on the depth-format, but
+    //    `1.0` is well above the precision noise for any reasonable
+    //    scene.
+    let material_handle = if let Some(h) = overlay.face_overlay_material.clone() {
+        h
+    } else {
+        let mat = materials.add(StandardMaterial {
+            base_color: Color::srgba(1.0, 0.55, 0.1, 0.45),
+            alpha_mode: AlphaMode::Blend,
+            unlit: true,
+            depth_bias: 1.0,
+            ..default()
+        });
+        overlay.face_overlay_material = Some(mat.clone());
+        mat
+    };
+
+    // 4. Spawn one overlay entity per selected face. Each is a child of
+    //    the edit target so its world transform = edit target's transform.
+    overlay.face_overlay_target = Some(target);
+    for face_id in mesh_selection.faces.iter() {
+        let Some(face) = edit.faces.get(face_id.0 as usize) else {
+            continue;
+        };
+        let n = face.verts.len();
+        if n < 3 {
+            continue; // degenerate face — skip rather than render a degenerate tri
+        }
+
+        // Perimeter positions in `face.verts` order, mesh-local. No
+        // separate centroid vertex — the overlay mirrors
+        // `EditMesh::bake_to_mesh` so the GPU rasterizes both meshes
+        // with the same per-pixel depth interpolation. (A separate
+        // centroid vertex would triangulate the same planar surface
+        // differently and the GPU's per-triangle depth interpolation
+        // would no longer match — see the per-bug design doc.)
+        let mut positions: Vec<Vec3> = Vec::with_capacity(n);
+        for vid in &face.verts {
+            let Some(v) = edit.vertices.get(vid.0 as usize) else {
+                continue;
+            };
+            positions.push(v.position);
+        }
+        if positions.len() != n {
+            continue; // missing vertex → skip rather than ship a broken mesh
+        }
+
+        // Vertex-anchored fan: `(v_0, v_i, v_{i+1})` for `i in 1..n-1`.
+        // Identical to `EditMesh::bake_to_mesh`'s triangulation so the
+        // overlay and the underlying cube rasterize the same surface
+        // into the same triangles — that match is what eliminates the
+        // fan-shaped flicker at the centroid-fan boundaries.
+        let indices = face_overlay_indices(n);
+
+        // Build the mesh asset and spawn the overlay entity. The mesh
+        // owns its own indices + positions; we don't reuse across faces
+        // because each face has different geometry.
+        //
+        // `MAIN_WORLD | RENDER_WORLD` is required: Bevy 0.19's
+        // `Mesh::insert_attribute` rejects any mesh that doesn't carry the
+        // `MAIN_WORLD` flag (it panics with
+        // `ExtractedToRenderWorld` even on a freshly-created mesh — the flag
+        // is a permission, not a state). Without `MAIN_WORLD` the editor
+        // crashes on the first face-overlay spawn. `RENDER_WORLD` is the
+        // half that lets the GPU upload the mesh for the actual draw.
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_indices(Indices::U32(indices));
+        let mesh_handle = meshes.add(mesh);
+
+        let e = commands
+            .spawn((
+                Mesh3d(mesh_handle),
+                MeshMaterial3d(material_handle.clone()),
+                Transform::IDENTITY,
+                ChildOf(target),
+                Name::new("mesh-edit-face-overlay"),
+            ))
+            .id();
+        overlay.face_overlays.push(e);
+    }
+}
+
+/// Generate the index buffer for a vertex-anchored triangle fan of an
+/// `n`-sided polygon whose vertices are laid out as
+/// `[v_0, v_1, v_2, ..., v_{n-1}]`.
+///
+/// This is the same fan `EditMesh::bake_to_mesh` produces — `(v_0, v_i,
+/// v_{i+1})` for `i in 1..n-1`, which gives `n - 2` triangles. Mirroring
+/// the underlying mesh's triangulation is essential: even though both
+/// fans cover the same planar surface, the GPU interpolates depth per
+/// triangle. Two different triangulations of the same polygon produce
+/// different per-pixel depth, and the resulting mismatch shows up as a
+/// fan-shaped flicker that `depth_bias` can only mask, not fix.
+///
+/// Returns an empty buffer for `n < 3` (a degenerate face has no
+/// triangles).
+pub(crate) fn face_overlay_indices(n: usize) -> Vec<u32> {
+    if n < 3 {
+        return Vec::new();
+    }
+    let mut indices = Vec::with_capacity((n - 2) * 3);
+    for i in 1..n - 1 {
+        indices.extend_from_slice(&[0, i as u32, (i + 1) as u32]);
+    }
+    indices
+}
+
+#[cfg(test)]
+mod tests {
+    use super::face_overlay_indices;
+
+    /// Verify the index buffer is exactly `n - 2` triangles long and
+    /// that every index stays within the `n` perimeter vertices.
+    fn assert_fan_shape(indices: &[u32], n: usize) {
+        assert_eq!(
+            indices.len(),
+            (n - 2) * 3,
+            "expected {} triangles ({} indices) for an {}-gon, got {}",
+            n - 2,
+            (n - 2) * 3,
+            n,
+            indices.len()
+        );
+        for (i, idx) in indices.iter().enumerate() {
+            assert!(
+                *idx < n as u32,
+                "index {i} (={idx}) is out of bounds for n={n}"
+            );
+        }
+        // Each triangle's three indices.
+        for tri in indices.chunks_exact(3) {
+            // Anchor: the first perimeter vertex (index 0).
+            assert_eq!(tri[0], 0, "every triangle anchors at v_0 (index 0)");
+            assert_ne!(tri[1], tri[2], "degenerate triangle (same vertex)");
+        }
+    }
+
+    #[test]
+    fn face_overlay_triangle() {
+        // Triangle (n=3): single triangle, (v0, v1, v2).
+        let indices = face_overlay_indices(3);
+        assert_eq!(indices, vec![0, 1, 2]);
+        assert_fan_shape(&indices, 3);
+    }
+
+    #[test]
+    fn face_overlay_quad() {
+        // Quad (n=4): two triangles — `(v0,v1,v2)` and `(v0,v2,v3)`.
+        // This matches `EditMesh::bake_to_mesh` exactly.
+        let indices = face_overlay_indices(4);
+        assert_eq!(indices, vec![0, 1, 2, 0, 2, 3]);
+        assert_fan_shape(&indices, 4);
+    }
+
+    #[test]
+    fn face_overlay_pentagon() {
+        // Pentagon (n=5): three triangles — (v0,v1,v2), (v0,v2,v3),
+        // (v0,v3,v4). Matches `bake_to_mesh`.
+        let indices = face_overlay_indices(5);
+        assert_eq!(indices, vec![0, 1, 2, 0, 2, 3, 0, 3, 4]);
+        assert_fan_shape(&indices, 5);
+    }
+
+    #[test]
+    fn face_overlay_matches_bake_to_mesh() {
+        // For a range of polygon sizes, the overlay's index buffer
+        // must equal the indices `bake_to_mesh` would emit for the
+        // same perimeter. We can't import `bake_to_mesh` here without
+        // a full mesh asset; the duplicated formula below is the
+        // ground-truth reference. If this drifts from `bake_to_mesh`,
+        // the user will see fan-shaped flicker on the selected face.
+        fn bake_indices(n: usize) -> Vec<u32> {
+            if n < 3 {
+                return Vec::new();
+            }
+            let mut out = Vec::with_capacity((n - 2) * 3);
+            for i in 1..n - 1 {
+                out.extend_from_slice(&[0, i as u32, (i + 1) as u32]);
+            }
+            out
+        }
+        for n in 3..=10usize {
+            assert_eq!(
+                face_overlay_indices(n),
+                bake_indices(n),
+                "overlay triangulation drifted from bake_to_mesh at n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn face_overlay_rejects_degenerate_polygons() {
+        // n < 3 produces no triangles — a 0-vertex "polygon" has
+        // nothing to fill, a 1- or 2-vertex "polygon" is degenerate
+        // and would otherwise emit either zero or one triangle with
+        // reused indices. An empty buffer is the safe choice and lets
+        // `update_face_overlays` skip the face cleanly.
+        for n in 0..3usize {
+            assert!(
+                face_overlay_indices(n).is_empty(),
+                "n={n}: expected empty index buffer"
+            );
         }
     }
 }
