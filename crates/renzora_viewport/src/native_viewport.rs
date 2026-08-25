@@ -154,6 +154,12 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         // ActiveTool, and four copies of a palette would all fight over it.
         let shelf = crate::native_tool_shelf::build(commands, fonts);
         commands.entity(content).add_child(shelf);
+
+        // Statistics readout, bottom-left. Primary slot only: the counts
+        // describe the scene rather than the view, so four of them would say
+        // the same thing four times.
+        let stats = crate::native_stats_overlay::build(commands, fonts);
+        commands.entity(content).add_child(stats);
     }
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the

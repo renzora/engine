@@ -849,6 +849,15 @@ pub struct ViewportSettings {
     /// Overlays dropdown (2D view only).
     pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
+    /// The statistics readout in the scene's bottom-left corner — object /
+    /// vertex / triangle totals, and the elevation range of the terrain you
+    /// have in hand.
+    ///
+    /// **Off** by default. The numbers matter when you go looking for them —
+    /// a scene that has started to feel heavy, a terrain whose relief you want
+    /// against its envelope — and the rest of the time they are a block of
+    /// chrome sitting on the render. Display → Overlays → Statistics.
+    pub show_stats: bool,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
     /// Toggle for in-viewport entity name labels (drawn with Bevy's stroke-font
@@ -948,6 +957,7 @@ impl Default for ViewportSettings {
             grid_color_2d: [255, 255, 255, 20],
             show_gizmos_2d: true,
             show_axis_gizmo: true,
+            show_stats: false,
             show_scene_icons: true,
             show_labels: false,
             label_size: 1.0,
@@ -1046,6 +1056,11 @@ pub struct PersistedViewportSettings {
     #[serde(default = "default_true")]
     pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
+    /// Statistics-overlay toggle. Defaults off, matching a fresh project — a
+    /// project saved before the overlay existed shouldn't gain chrome it never
+    /// asked for on first open.
+    #[serde(default)]
+    pub show_stats: bool,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
     #[serde(default)]
@@ -1137,6 +1152,7 @@ impl PersistedViewportSettings {
             grid_color_2d: s.grid_color_2d,
             show_gizmos_2d: s.show_gizmos_2d,
             show_axis_gizmo: s.show_axis_gizmo,
+            show_stats: s.show_stats,
             show_scene_icons: s.show_scene_icons,
             show_labels: s.show_labels,
             label_size: s.label_size,
@@ -1210,6 +1226,7 @@ impl PersistedViewportSettings {
         s.grid_color_2d = self.grid_color_2d;
         s.show_gizmos_2d = self.show_gizmos_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
+        s.show_stats = self.show_stats;
         s.show_scene_icons = self.show_scene_icons;
         s.show_labels = self.show_labels;
         s.label_size = self.label_size;
@@ -1354,6 +1371,8 @@ mod tests {
             grid_color_2d: [128, 200, 255, 60],
             show_gizmos_2d: false,
             show_axis_gizmo: false,
+            // Defaults to false, so true is the non-default here.
+            show_stats: true,
             // Defaults to true, so false is the non-default this test wants.
             gizmo_pivot_bottom: false,
             show_scene_icons: false,
@@ -1430,6 +1449,7 @@ mod tests {
         assert_eq!(original.show_cursor_coords_2d, restored.show_cursor_coords_2d);
         assert_eq!(original.show_gizmos_2d, restored.show_gizmos_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
+        assert_eq!(original.show_stats, restored.show_stats);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
         assert_eq!(original.show_labels, restored.show_labels);
         assert_eq!(original.label_size, restored.label_size);

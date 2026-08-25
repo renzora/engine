@@ -24,6 +24,7 @@ mod native_game;
 pub mod native_header;
 mod native_height_ruler;
 mod native_nav;
+mod native_stats_overlay;
 mod native_tool_shelf;
 mod native_viewport;
 pub mod particle_drop;
@@ -262,6 +263,7 @@ impl Plugin for ViewportPlugin {
         native_camera_preview::register(app);
         native_modal_hud::register(app);
         native_overlay_2d::register(app);
+        native_stats_overlay::register(app);
     }
 }
 

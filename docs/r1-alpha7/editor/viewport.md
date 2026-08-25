@@ -182,6 +182,31 @@ The **Display** dropdown's **Grid** row has the on/off switch and a **−  /  +*
 
 It's a subdivision count rather than a cell size because this grid is infinite and unitless — there's nothing to measure a "16 units" against the way there is in the 2D view. (The old **Sub-grid** switch is no longer here: it only ever affected the *2D* editor's grid, and still lives in *Settings → Viewport*.)
 
+## The statistics readout
+
+Turn it on in the **Display** dropdown (the eye), under **Overlays →
+Statistics**, and a small block of numbers appears in the bottom-left corner of
+the scene. It's off by default, and the choice is saved with the project.
+
+| Row | What it counts |
+|-----|----------------|
+| **Objects** | Mesh instances the renderer is drawing. Not the same as entities in the hierarchy — an imported model is usually several. |
+| **Verts** | Total vertices across all of them. |
+| **Tris** | Total triangles. This is the number to watch when a scene starts feeling heavy. |
+| **Height** | *(terrain only)* The lowest and highest point of the terrain's **actual** ground, in world metres. |
+| **Range** | *(terrain only)* The envelope those heights are stored inside — the terrain's Min Height and Max Height. |
+
+The two terrain rows appear when a terrain is selected, or whenever the scene
+has exactly one terrain, and are hidden otherwise. **Height** against **Range**
+is the pair worth reading together: `-2.4m – 31.8m` inside a range of
+`-10.0m – 40.0m` says you have sculpted 34 m of relief and have headroom left
+above it. When Height reaches Range, sculpting upward stops doing anything and
+you need a taller envelope — see [Terrain](terrain.md).
+
+The counts refresh four times a second, not every frame — a counter nobody can
+read at 120 Hz isn't worth the frame time. Clicks pass straight through the
+readout to the scene behind it, so it never costs you a corner of the viewport.
+
 ## Choosing which gizmos are drawn
 
 Next to the **Display** dropdown (the eye) in the viewport toolbar is the **Gizmos** dropdown (the bounding-box icon). Display controls what the *renderer* produces — visualization mode, mesh / textures / lighting / shadows, the grid. Gizmos controls what the *editor* draws on top of your scene:

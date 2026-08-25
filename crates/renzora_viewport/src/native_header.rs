@@ -1216,6 +1216,10 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     // the 3D grid is what the -/+ above does, and the 2D flag keeps its home in
     // Settings → Viewport.
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.axis_gizmo"), show_axis_gizmo));
+    // Sits with the axis gizmo rather than in Gizmos: both are corner chrome
+    // that belongs to the *view*, where everything in Gizmos is drawn per
+    // scene object.
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.stats"), show_stats));
     // Scene Icons / Labels and the whole collision-gizmo picker used to live
     // here; they moved to the Gizmos dropdown (`build_gizmos_dropdown`) so all
     // the "what's drawn over the scene" switches sit in one place. Display keeps

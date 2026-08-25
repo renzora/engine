@@ -43,6 +43,10 @@ Flat meshes that are *part of an imported model* don't offer the button — the 
 
 Selecting the terrain root shows a **Terrain** section in the inspector: a read-only **Size** summary, an **Edit Terrain…** button that opens the [Terrain Settings overlay](#the-terrain-settings-overlay), and the live fields — **Min/Max Height** (clamped to keep ≥1 m of range) and the **Stream Chunks** / **Stream Radius** pair.
 
+**Min / Max Height are an envelope, not a height.** They define the band sculpting is allowed to reach — default `-10 m` to `+40 m`, so 50 m of range — and heights are stored *normalized* inside it. Two things follow. Generate's **Height** is capped by the range (50 m), not by Max Height. And **changing either field rescales the ground you already have**: a vertex stored at 0.2 sits at y = 0 with the default range, and at y = +10 if you push Max Height to 90. Set the envelope before you sculpt, rather than reaching for it later to make mountains taller.
+
+To see how much of that band you're actually using, read the **Height** and **Range** rows of the [statistics readout](viewport.md#the-statistics-readout) in the viewport's bottom-left corner: Height is the real relief of the ground, Range is the envelope it has to live in.
+
 > The *structural* fields — grid size, chunk size and resolution — are deliberately **not** live inspector fields. A scrubbable field writes on every tick of the drag, and each write respawns every chunk with a fresh trimesh collider, so dragging the grid from 1 to 8 built every size in between. They live in the overlay instead, which stages the edit and applies it once. What's left in the inspector is the set that rebuilds in place, where a live drag is cheap.
 
 A **Layers** section sits below it, editing the *active* paint layer: a layer picker, **Name**, **Material** (`.material` drop), **Height Offset**, **Coverage Threshold**, an **Enabled** toggle (hides that layer's overlay), plus **Add Layer** / **Remove Layer** buttons. It's the same data the Terrain Tools panel's layer list edits.
