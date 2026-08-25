@@ -636,6 +636,20 @@ pub struct MeshPrimitive(pub String);
 /// wins over both (its rehydrate system runs after `rehydrate_meshes` and
 /// replaces the `Mesh3d` handle). Arrays are flat (`xyzxyz…`) because
 /// scene reflection round-trips flat `Vec<f32>` reliably.
+///
+/// `face_vertices` + `face_vertex_counts` carry the editor's *topology* —
+/// the bounded face boundaries that the render-time `indices` (a flat
+/// triangle list) cannot recover on its own. Bevy's `Mesh` only stores
+/// triangles, so `to_mesh` discards the topology at exit. Without
+/// persisted topology, `EditMesh::from_mesh` would have to guess which
+/// triangles belong to which face — and once the user has extruded
+/// adjacent coplanar quads, that guess is ambiguous and produces
+/// diagonal-boundary faces on re-entry. Storing the topology here lets
+/// the editor rebuild `EditMesh.faces` exactly on re-entry.
+///
+/// Both fields are `#[serde(default)]` so old scene files (and old
+/// `from_mesh`-only snapshots) still load through the
+/// triangle-import + `merge_coplanar_triangle_pairs` fallback.
 #[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct EditedMesh {
@@ -647,11 +661,26 @@ pub struct EditedMesh {
     pub uvs: Vec<f32>,
     /// Triangle list indices.
     pub indices: Vec<u32>,
+    /// Flattened vertex IDs for every editable face, in perimeter order.
+    /// Each face contributes `face_vertex_counts[i]` consecutive entries
+    /// here. Empty when the topology is absent (older snapshots, imported
+    /// triangle-only meshes that have not yet been baked through the
+    /// editor).
+    #[serde(default)]
+    pub face_vertices: Vec<u32>,
+    /// Number of vertices belonging to each editable face. Pairs with
+    /// `face_vertices` to delimit the per-face windows. Empty when
+    /// `face_vertices` is empty.
+    #[serde(default)]
+    pub face_vertex_counts: Vec<u32>,
 }
 
 impl EditedMesh {
     /// Snapshot a triangle-list `Mesh`'s geometry. Returns `None` when the
-    /// mesh is missing positions or indices.
+    /// mesh is missing positions or indices. This is the *triangle-only*
+    /// path: it produces no editable topology. The editor uses it as a
+    /// fallback when no `face_vertices` are present (older snapshots,
+    /// fresh imports).
     pub fn from_mesh(mesh: &Mesh) -> Option<Self> {
         use bevy::mesh::VertexAttributeValues;
         let positions = match mesh.attribute(Mesh::ATTRIBUTE_POSITION)? {
@@ -675,10 +704,98 @@ impl EditedMesh {
             normals,
             uvs,
             indices,
+            face_vertices: Vec::new(),
+            face_vertex_counts: Vec::new(),
         })
     }
 
-    /// Rebuild a renderable `Mesh` from the stored geometry.
+    /// Snapshot an `EditMesh`-style topology alongside geometry. Takes
+    /// the post-weld geometry arrays (positions / normals / uvs /
+    /// indices) plus the editor's face boundaries, which mirror the
+    /// fields `EditMesh::bake_to_mesh` writes.
+    ///
+    /// `face_perimeters` is one slice of vertex IDs per face, in
+    /// perimeter order. The contract-crate boundary stays clean — the
+    /// caller (`renzora_mesh_edit`) is the only place that knows
+    /// `EditMesh::faces` exists; this function takes plain `Vec<u32>`
+    /// data so the contract crate has no dependency on the editor
+    /// crate.
+    ///
+    /// Faces with fewer than 3 vertex IDs are skipped — they have no
+    /// perimeter to record and would corrupt the topology on re-entry.
+    pub fn from_edit_mesh(
+        positions: &[f32],
+        normals: &[f32],
+        uvs: &[f32],
+        indices: &[u32],
+        face_perimeters: &[Vec<u32>],
+    ) -> Self {
+        let total: usize = face_perimeters.iter().map(|f| f.len()).sum();
+        let count = face_perimeters
+            .iter()
+            .filter(|f| f.len() >= 3)
+            .count();
+        let mut face_vertices: Vec<u32> = Vec::with_capacity(total);
+        let mut face_vertex_counts: Vec<u32> = Vec::with_capacity(count);
+        for face in face_perimeters {
+            if face.len() < 3 {
+                continue;
+            }
+            face_vertex_counts.push(face.len() as u32);
+            face_vertices.extend(face.iter().copied());
+        }
+
+        Self {
+            positions: positions.to_vec(),
+            normals: normals.to_vec(),
+            uvs: uvs.to_vec(),
+            indices: indices.to_vec(),
+            face_vertices,
+            face_vertex_counts,
+        }
+    }
+
+    /// True when this snapshot carries editable topology that can be
+    /// trusted on re-entry. False for triangle-only snapshots from the
+    /// `from_mesh` path.
+    pub fn has_face_topology(&self) -> bool {
+        !self.face_vertices.is_empty() && !self.face_vertex_counts.is_empty()
+    }
+
+    /// Validate persisted face topology against the geometry. Returns
+    /// `true` when every face has at least 3 vertices, every vertex ID
+    /// is in range, and the flattened length matches the counts.
+    /// Callers should fall back to triangle-import when this returns
+    /// `false`.
+    pub fn face_topology_is_valid(&self) -> bool {
+        if self.face_vertices.is_empty() && self.face_vertex_counts.is_empty() {
+            return false; // empty topology — use the import fallback
+        }
+        if self.face_vertices.len()
+            != self.face_vertex_counts.iter().map(|&c| c as usize).sum::<usize>()
+        {
+            return false;
+        }
+        let vert_count = self.positions.len() / 3;
+        let mut offset = 0usize;
+        for &count in &self.face_vertex_counts {
+            if count < 3 {
+                return false;
+            }
+            for i in 0..count as usize {
+                let v = self.face_vertices[offset + i];
+                if v as usize >= vert_count {
+                    return false;
+                }
+            }
+            offset += count as usize;
+        }
+        true
+    }
+
+    /// Rebuild a renderable `Mesh` from the stored geometry. The
+    /// topology fields are editor-only and don't appear in the render
+    /// output.
     pub fn to_mesh(&self) -> Mesh {
         use bevy::asset::RenderAssetUsages;
         use bevy::mesh::{Indices, PrimitiveTopology};

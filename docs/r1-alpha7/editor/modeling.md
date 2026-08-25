@@ -24,6 +24,46 @@ ship with the exported game.
 While in Edit mode, clicking empty space releases the current mesh so you can
 click a different entity to edit it without leaving the mode.
 
+### Persistent editable topology
+
+Edits are stored as a flat triangle list when you leave Edit mode (or
+on every dirty live-bake, with the `EditedMeshApplied` marker
+suppressing the scene-load rehydrator while the mesh is being
+edited in place). The triangle list is enough to redraw the mesh,
+but it can't express the *bounded faces* the editor uses to pick,
+extrude, and loop-cut. A flat triangle list also can't tell two
+coplanar extruded quads apart from one quad split across the
+extrusion boundary.
+
+Renzora solves this by storing the editor's bounded-face topology
+alongside the triangle list on the same `EditedMesh` component:
+
+- `face_vertices: Vec<u32>` — flattened vertex IDs for every
+  editable face, in perimeter order. Each face contributes
+  `face_vertex_counts[i]` consecutive entries here.
+- `face_vertex_counts: Vec<u32>` — number of vertices per face.
+
+When you re-enter Edit mode, the picker rebuilds `EditMesh.faces`
+from these two arrays exactly, then re-derives the edge topology. No
+triangle-guessing, no diagonal-boundary artefacts. Both fields are
+`#[serde(default)]`, so scene files written before this change still
+load through the import heuristic (`from_mesh` + coplanar-triangle
+merge) — they just lose the explicit bounded-face contract.
+
+If the topology is malformed (length mismatch, out-of-range vertex
+ID, fewer than 3 vertices per face), the validator refuses it and
+the system falls back to the import heuristic with a warning. The
+fallback is hermetic — it never panics, never silently ships a
+broken face layout.
+
+This is the same model Blender has used for years: the render-time
+triangle list is separate from the editable quad / n-gon face
+boundaries, and the editor re-loads the latter verbatim on every
+entry. Re-entry is also what makes multiple *Edit → bake → re-Edit*
+cycles idempotent — each round of edits preserves the user's
+extruded quads as quads, not as triangles the next guess might
+mis-pair.
+
 ## Selection
 
 | Input | Action |

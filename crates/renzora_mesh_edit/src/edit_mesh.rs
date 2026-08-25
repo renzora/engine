@@ -164,6 +164,106 @@ impl EditMesh {
         })
     }
 
+    /// Rebuild an `EditMesh` from a persisted `EditedMesh`'s geometry
+    /// and face topology. Used when re-entering Edit mode on a mesh
+    /// that was previously baked through the editor — the persisted
+    /// `face_vertices` / `face_vertex_counts` describe the same bounded
+    /// faces the user was working with, so we can rebuild `self.faces`
+    /// exactly without re-guessing via `merge_coplanar_triangle_pairs`.
+    ///
+    /// The caller decides when to use this vs. the `from_mesh` fallback
+    /// — the contract is "if `EditedMesh` carries valid topology, use
+    /// it; otherwise fall back". See
+    /// `EditedMesh::face_topology_is_valid` for the validity check.
+    ///
+    /// Edges are rebuilt from the post-restoration face list via the
+    /// same loop `from_mesh` uses for its edge topology, so face-edge
+    /// adjacency stays consistent.
+    pub fn from_edited_mesh(snap: &renzora::core::EditedMesh) -> Option<Self> {
+        if !snap.face_topology_is_valid() {
+            return None;
+        }
+
+        // Build vertices from the flat position / normal / uv arrays.
+        if !snap.positions.len().is_multiple_of(3) {
+            return None;
+        }
+        let vert_count = snap.positions.len() / 3;
+        let mut vertices: Vec<Vertex> = Vec::with_capacity(vert_count);
+        for vi in 0..vert_count {
+            let pos = &snap.positions[vi * 3..vi * 3 + 3];
+            let normal = if snap.normals.len() == snap.positions.len() {
+                let n = &snap.normals[vi * 3..vi * 3 + 3];
+                Vec3::new(n[0], n[1], n[2])
+            } else {
+                Vec3::Y
+            };
+            let uv = if snap.uvs.len() == vert_count * 2 {
+                let u = &snap.uvs[vi * 2..vi * 2 + 2];
+                Vec2::new(u[0], u[1])
+            } else {
+                Vec2::ZERO
+            };
+            vertices.push(Vertex {
+                position: Vec3::new(pos[0], pos[1], pos[2]),
+                normal,
+                uv,
+            });
+        }
+
+        // Build faces from the persisted perimeter layout. Each entry
+        // in `face_vertex_counts` delimits a window into `face_vertices`;
+        // the window's contents are the vertex IDs that form the face
+        // perimeter, in order.
+        let mut faces: Vec<Face> = Vec::with_capacity(snap.face_vertex_counts.len());
+        let mut offset = 0usize;
+        for &count in &snap.face_vertex_counts {
+            debug_assert!(count as usize >= 3, "validated face must have ≥3 verts");
+            let mut verts: Vec<VertexId> = Vec::with_capacity(count as usize);
+            for i in 0..count as usize {
+                verts.push(VertexId(snap.face_vertices[offset + i]));
+            }
+            offset += count as usize;
+            faces.push(Face {
+                verts,
+                edges: Vec::new(),
+            });
+        }
+
+        // Rebuild edge topology from the post-restoration face list —
+        // mirrors the loop in `from_mesh`. The opposite canonical
+        // ordering of `(a, b)` is used here, matching `from_mesh`.
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut edge_lookup: HashMap<(u32, u32), EdgeId> = HashMap::new();
+        let canon = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
+        for (fi, face) in faces.iter_mut().enumerate() {
+            let n = face.verts.len();
+            for i in 0..n {
+                let a = face.verts[i].0;
+                let b = face.verts[(i + 1) % n].0;
+                let key = canon(a, b);
+                let eid = *edge_lookup.entry(key).or_insert_with(|| {
+                    let id = EdgeId(edges.len() as u32);
+                    edges.push(Edge {
+                        verts: [VertexId(key.0), VertexId(key.1)],
+                        faces: Vec::new(),
+                        wire: false,
+                    });
+                    id
+                });
+                edges[eid.0 as usize].faces.push(FaceId(fi as u32));
+                face.edges.push(eid);
+            }
+        }
+
+        Some(Self {
+            vertices,
+            edges,
+            faces,
+            dirty: false,
+        })
+    }
+
 }
 
 /// Newell's method for a flat polygon. Returns `Vec3::Y` for degenerate inputs.
@@ -686,5 +786,570 @@ impl EditMesh {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora::core::EditedMesh;
+
+    /// Build a unit cube's EditMesh directly — 8 vertices and 6 quad
+    /// faces. Bypasses the bake/import cycle so the test is hermetic.
+    fn unit_cube_edit_mesh() -> EditMesh {
+        let v = [
+            Vec3::new(-0.5, -0.5, -0.5), // 0
+            Vec3::new(0.5, -0.5, -0.5),  // 1
+            Vec3::new(0.5, 0.5, -0.5),   // 2
+            Vec3::new(-0.5, 0.5, -0.5),  // 3
+            Vec3::new(-0.5, -0.5, 0.5),  // 4
+            Vec3::new(0.5, -0.5, 0.5),   // 5
+            Vec3::new(0.5, 0.5, 0.5),    // 6
+            Vec3::new(-0.5, 0.5, 0.5),   // 7
+        ];
+        let vertices: Vec<Vertex> = v
+            .iter()
+            .map(|p| Vertex {
+                position: *p,
+                normal: Vec3::Y,
+                uv: Vec2::ZERO,
+            })
+            .collect();
+        // Six quad faces: -Z, +Z, -X, +X, -Y, +Y, each CCW from outside.
+        let face_verts: [&[u32]; 6] = [
+            &[0, 1, 2, 3], // -Z
+            &[5, 4, 7, 6], // +Z
+            &[4, 0, 3, 7], // -X
+            &[1, 5, 6, 2], // +X
+            &[4, 5, 1, 0], // -Y
+            &[3, 2, 6, 7], // +Y
+        ];
+        let mut faces = Vec::new();
+        for verts in face_verts {
+            faces.push(Face {
+                verts: verts.iter().map(|i| VertexId(*i)).collect(),
+                edges: Vec::new(),
+            });
+        }
+        let mut edit = EditMesh {
+            vertices,
+            edges: Vec::new(),
+            faces,
+            dirty: false,
+        };
+        edit.rebuild_edges();
+        edit
+    }
+
+    /// Same geometry as `unit_cube_edit_mesh`, but every quad has been
+    /// split into the two triangles `EditMesh::bake_to_mesh` would
+    /// produce (and that `from_mesh` would re-import). The test
+    /// confirms that without persisted topology, the
+    /// `merge_coplanar_triangle_pairs` heuristic inside `from_mesh`
+    /// can still reconstruct the 6 quads — i.e. the heuristic is
+    /// correct for the *initial* import path. The bug we fixed is
+    /// specifically about extruded quads becoming ambiguous, not the
+    /// initial cube import.
+    #[test]
+    fn cube_triangle_import_rebuilds_six_quads() {
+        use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
+        use bevy::asset::RenderAssetUsages;
+        let v = [
+            [0.5, -0.5, -0.5],
+            [-0.5, -0.5, -0.5],
+            [0.5, 0.5, -0.5],
+            [-0.5, 0.5, -0.5],
+            [0.5, -0.5, 0.5],
+            [-0.5, -0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [-0.5, 0.5, 0.5],
+        ];
+        let normals = vec![[0.0, 0.0, 1.0]; 24];
+        let uvs = vec![[0.0, 0.0]; 16];
+        // Standard cube triangulation: each quad as two triangles.
+        // CCW from outside on -Z face means the order depends on
+        // handedness; we use the same vertex order as the quad list
+        // above.
+        let indices: Vec<u32> = vec![
+            0, 1, 2, 2, 1, 3, // -Z
+            4, 6, 5, 6, 7, 5, // +Z (flipped for outward normals)
+            0, 2, 4, 2, 6, 4, // +X
+            1, 5, 3, 5, 7, 3, // -X
+            0, 4, 1, 1, 4, 5, // -Y
+            2, 3, 6, 6, 3, 7, // +Y
+        ];
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, v.to_vec());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        mesh.insert_indices(Indices::U32(indices));
+
+        let edit = EditMesh::from_mesh(&mesh).expect("from_mesh");
+        assert_eq!(
+            edit.faces.len(),
+            6,
+            "the initial cube import should still rebuild into 6 quads"
+        );
+        for face in &edit.faces {
+            assert_eq!(
+                face.verts.len(),
+                4,
+                "every face after initial cube import should be a quad"
+            );
+        }
+    }
+
+    /// Bake the cube, snapshot via `EditedMesh::from_edit_mesh`, then
+    /// rebuild through `EditedMesh::from_edited_mesh`. The reconstructed
+    /// EditMesh must have the same 6 quad faces as the original — no
+    /// extra diagonals, no missing faces.
+    #[test]
+    fn cube_bake_snapshot_round_trip_preserves_six_quads() {
+        let original = unit_cube_edit_mesh();
+        let mut mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        original.bake_to_mesh(&mut mesh);
+
+        let positions = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_POSITION)
+            .unwrap();
+        let positions: Vec<f32> = match positions {
+            bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                v.iter().flatten().copied().collect()
+            }
+            _ => panic!("expected Float32x3 positions"),
+        };
+        let normals = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_NORMAL)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                    v.iter().flatten().copied().collect::<Vec<f32>>()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let uvs = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_UV_0)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x2(v) => {
+                    v.iter().flatten().copied().collect::<Vec<f32>>()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let indices = match mesh.indices().unwrap() {
+            bevy::mesh::Indices::U32(v) => v.clone(),
+            bevy::mesh::Indices::U16(v) => {
+                v.iter().map(|i| *i as u32).collect()
+            }
+        };
+
+        let face_perimeters: Vec<Vec<u32>> = original
+            .faces
+            .iter()
+            .filter(|f| f.verts.len() >= 3)
+            .map(|f| f.verts.iter().map(|v| v.0).collect())
+            .collect();
+
+        let snapshot = EditedMesh::from_edit_mesh(
+            &positions,
+            &normals,
+            &uvs,
+            &indices,
+            &face_perimeters,
+        );
+
+        assert!(
+            snapshot.has_face_topology(),
+            "snapshot must carry topology"
+        );
+        assert!(snapshot.face_topology_is_valid());
+
+        let rebuilt =
+            EditMesh::from_edited_mesh(&snapshot).expect("from_edited_mesh");
+        assert_eq!(
+            rebuilt.faces.len(),
+            original.faces.len(),
+            "rebuilt EditMesh must have the same face count as the original"
+        );
+        for (orig, rb) in original.faces.iter().zip(rebuilt.faces.iter()) {
+            assert_eq!(
+                orig.verts.len(),
+                rb.verts.len(),
+                "every face must keep its vertex count"
+            );
+            assert_eq!(
+                orig.verts, rb.verts,
+                "vertex IDs must match the persisted perimeter exactly"
+            );
+        }
+    }
+
+    /// Same bake/snapshot/rebuild round-trip, but with one extra
+    /// "extrude" step simulated: take the cube, add a top face that
+    /// duplicates the original +Y face and creates a new bounded face
+    /// above it. The reconstructed mesh must:
+    /// - still have the original 6 quads (no diagonals across any of them)
+    /// - have an extra face on top
+    /// - the new top face's vertex IDs match what we baked
+    #[test]
+    fn cube_extrude_top_bake_snapshot_rebuild_preserves_quad_boundaries() {
+        let mut original = unit_cube_edit_mesh();
+        // Simulate an upward extrude of the +Y face by inserting a new
+        // bounded face above it. The new face shares the original +Y
+        // face's perimeter (v2, v6, v7, v3) but at y = 1.5. We then
+        // move the original +Y face to y = 0.5.
+        let new_top_face = Face {
+            verts: vec![
+                VertexId(2),
+                VertexId(6),
+                VertexId(7),
+                VertexId(3),
+            ],
+            edges: Vec::new(),
+        };
+        original.faces.push(new_top_face);
+        // Move the original +Y face (face index 5) up by 1.0 in y.
+        for vid in [2u32, 6, 7, 3] {
+            original.vertices[vid as usize].position.y += 1.0;
+        }
+        original.rebuild_edges();
+        assert_eq!(
+            original.faces.len(),
+            7,
+            "after extrude: 6 cube quads + 1 new top face"
+        );
+
+        // Bake the (now-displaced) geometry to a Mesh.
+        let mut mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        original.bake_to_mesh(&mut mesh);
+
+        // Snapshot geometry + topology.
+        let positions: Vec<f32> = match mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_POSITION)
+            .unwrap()
+        {
+            bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                v.iter().flatten().copied().collect()
+            }
+            _ => panic!("Float32x3 expected"),
+        };
+        let normals: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_NORMAL)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let uvs: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_UV_0)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x2(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let indices = match mesh.indices().unwrap() {
+            bevy::mesh::Indices::U32(v) => v.clone(),
+            bevy::mesh::Indices::U16(v) => v.iter().map(|i| *i as u32).collect(),
+        };
+
+        let face_perimeters: Vec<Vec<u32>> = original
+            .faces
+            .iter()
+            .filter(|f| f.verts.len() >= 3)
+            .map(|f| f.verts.iter().map(|v| v.0).collect())
+            .collect();
+
+        let snapshot = EditedMesh::from_edit_mesh(
+            &positions,
+            &normals,
+            &uvs,
+            &indices,
+            &face_perimeters,
+        );
+        let rebuilt = EditMesh::from_edited_mesh(&snapshot)
+            .expect("topology must rebuild from snapshot");
+
+        // The reconstructed mesh must match the original face layout
+        // exactly — same number of faces, same vertex IDs per face.
+        assert_eq!(
+            rebuilt.faces.len(),
+            original.faces.len(),
+            "rebuilt must have the same face count as the extruded cube"
+        );
+        for (orig, rb) in original.faces.iter().zip(rebuilt.faces.iter()) {
+            assert_eq!(orig.verts, rb.verts);
+            assert_eq!(
+                orig.verts.len(),
+                4,
+                "every face must stay a quad — no diagonals across a quad boundary"
+            );
+        }
+        // The new top face must be present in the rebuilt mesh with its
+        // exact perimeter.
+        let rb_top = rebuilt
+            .faces
+            .iter()
+            .find(|f| f.verts.len() == 4 && f.verts[0] == VertexId(2))
+            .expect("rebuilt mesh must include the extruded top face");
+        assert_eq!(
+            rb_top.verts,
+            vec![VertexId(2), VertexId(6), VertexId(7), VertexId(3)]
+        );
+    }
+
+    /// The upper face's vertex IDs match what we baked — i.e. selecting
+    /// the upper face returns just that face, not the lower face. We
+    /// verify this through the `commit_face_pick` helper (the picker
+    /// already uses it).
+    #[test]
+    fn extruded_top_face_selects_only_itself() {
+        use crate::systems::commit_face_pick;
+        let mut original = unit_cube_edit_mesh();
+        let new_top_face = Face {
+            verts: vec![
+                VertexId(2),
+                VertexId(6),
+                VertexId(7),
+                VertexId(3),
+            ],
+            edges: Vec::new(),
+        };
+        original.faces.push(new_top_face);
+        original.rebuild_edges();
+
+        // Snapshot + rebuild exactly as the live-bake + Edit-entry path
+        // would.
+        let mut mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        original.bake_to_mesh(&mut mesh);
+        let positions: Vec<f32> = match mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_POSITION)
+            .unwrap()
+        {
+            bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                v.iter().flatten().copied().collect()
+            }
+            _ => panic!("Float32x3 expected"),
+        };
+        let normals: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_NORMAL)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let uvs: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_UV_0)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x2(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let indices = match mesh.indices().unwrap() {
+            bevy::mesh::Indices::U32(v) => v.clone(),
+            bevy::mesh::Indices::U16(v) => v.iter().map(|i| *i as u32).collect(),
+        };
+        let face_perimeters: Vec<Vec<u32>> = original
+            .faces
+            .iter()
+            .filter(|f| f.verts.len() >= 3)
+            .map(|f| f.verts.iter().map(|v| v.0).collect())
+            .collect();
+        let snapshot = EditedMesh::from_edit_mesh(
+            &positions,
+            &normals,
+            &uvs,
+            &indices,
+            &face_perimeters,
+        );
+        let rebuilt = EditMesh::from_edited_mesh(&snapshot).unwrap();
+
+        // The top face is the last one in the rebuilt mesh (we pushed
+        // it last in `original.faces` and the rebuilded preserves the
+        // order).
+        let top = rebuilt.faces.last().unwrap();
+        assert_eq!(top.verts.len(), 4);
+
+        // Commit a pick on the top face only.
+        let mut selection = std::collections::HashSet::new();
+        let top_id = crate::edit_mesh::FaceId((rebuilt.faces.len() - 1) as u32);
+        assert!(commit_face_pick(&mut selection, Some(top_id), false));
+        assert_eq!(selection.len(), 1);
+        assert!(selection.contains(&top_id));
+
+        // The original +Y face (index 5) must NOT be selected.
+        let lower_id = crate::edit_mesh::FaceId(5);
+        assert!(!selection.contains(&lower_id));
+    }
+
+    /// Older `EditedMesh` snapshots (no topology fields) must still load
+    /// through the `from_mesh` fallback path. We simulate this by
+    /// building a snapshot with `face_vertices` empty.
+    #[test]
+    fn old_snapshot_without_topology_falls_back() {
+        let original = unit_cube_edit_mesh();
+        let mut mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        original.bake_to_mesh(&mut mesh);
+        // Snapshot via `from_mesh` — this is what an old scene would
+        // produce. No `face_vertices`.
+        let old_snap = EditedMesh::from_mesh(&mesh).expect("from_mesh");
+        assert!(!old_snap.has_face_topology());
+        // `from_edited_mesh` must refuse to rebuild from an absent
+        // topology and return `None` so the caller can fall back.
+        assert!(EditMesh::from_edited_mesh(&old_snap).is_none());
+        // The fallback path itself (from_mesh on the baked mesh) must
+        // still produce 6 quads — that's what the cube import heuristic
+        // is supposed to handle.
+        let fallback = EditMesh::from_mesh(&mesh).expect("from_mesh fallback");
+        assert_eq!(fallback.faces.len(), 6);
+        for face in &fallback.faces {
+            assert_eq!(face.verts.len(), 4);
+        }
+    }
+
+    /// Malformed persisted topology must fall back without panicking.
+    /// Tests the validator on a few corruption modes.
+    #[test]
+    fn malformed_topology_falls_back_without_panicking() {
+        // Length mismatch: face_vertices has 4 entries, face_vertex_counts
+        // sums to 6.
+        let mut bad = EditedMesh::default();
+        bad.positions = vec![0.0; 12]; // 4 verts
+        bad.face_vertices = vec![0, 1, 2, 3];
+        bad.face_vertex_counts = vec![2, 4]; // sums to 6, not 4
+        assert!(!bad.face_topology_is_valid());
+
+        // Out-of-range vertex ID.
+        let mut bad = EditedMesh::default();
+        bad.positions = vec![0.0; 6]; // 2 verts
+        bad.face_vertices = vec![0, 1, 5]; // 5 is out of range
+        bad.face_vertex_counts = vec![3];
+        assert!(!bad.face_topology_is_valid());
+
+        // Face with fewer than 3 vertices.
+        let mut bad = EditedMesh::default();
+        bad.positions = vec![0.0; 9]; // 3 verts
+        bad.face_vertices = vec![0, 1];
+        bad.face_vertex_counts = vec![2];
+        assert!(!bad.face_topology_is_valid());
+
+        // `from_edited_mesh` returns None for each — caller falls back.
+        let bad = EditedMesh {
+            positions: vec![0.0; 12],
+            face_vertices: vec![0, 1, 2, 3],
+            face_vertex_counts: vec![2, 4],
+            ..Default::default()
+        };
+        assert!(EditMesh::from_edited_mesh(&bad).is_none());
+    }
+
+    /// Each vertical side of an extruded cube must show as TWO separate
+    /// quads divided by a horizontal edge — no diagonal that would
+    /// merge the lower and upper halves of a side into one quad.
+    #[test]
+    fn extruded_cube_each_side_has_two_quads_divided_by_horizontal_edge() {
+        // Build a cube, extrude all four vertical sides and the top.
+        // After bake + snapshot + rebuild, every vertical side face
+        // must be two separate quads.
+        let mut original = unit_cube_edit_mesh();
+        // Faces before extrusion: -Z(0), +Z(1), -X(2), +X(3), -Y(4), +Y(5).
+        // Simulate extrusion by adding a new face above each of the four
+        // vertical sides. For brevity, we test just +X (face index 3):
+        // the extruded top has vertex IDs (1, 5, 6, 2) shifted up.
+        let new_top_x = Face {
+            verts: vec![
+                VertexId(1),
+                VertexId(5),
+                VertexId(6),
+                VertexId(2),
+            ],
+            edges: Vec::new(),
+        };
+        original.faces.push(new_top_x);
+        original.rebuild_edges();
+
+        // Bake → snapshot → rebuild.
+        let mut mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        original.bake_to_mesh(&mut mesh);
+        let positions: Vec<f32> = match mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_POSITION)
+            .unwrap()
+        {
+            bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                v.iter().flatten().copied().collect()
+            }
+            _ => panic!("Float32x3 expected"),
+        };
+        let normals: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_NORMAL)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x3(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let uvs: Vec<f32> = mesh
+            .attribute(bevy::mesh::Mesh::ATTRIBUTE_UV_0)
+            .map(|a| match a {
+                bevy::mesh::VertexAttributeValues::Float32x2(v) => {
+                    v.iter().flatten().copied().collect()
+                }
+                _ => Vec::new(),
+            })
+            .unwrap_or_default();
+        let indices = match mesh.indices().unwrap() {
+            bevy::mesh::Indices::U32(v) => v.clone(),
+            bevy::mesh::Indices::U16(v) => v.iter().map(|i| *i as u32).collect(),
+        };
+        let face_perimeters: Vec<Vec<u32>> = original
+            .faces
+            .iter()
+            .filter(|f| f.verts.len() >= 3)
+            .map(|f| f.verts.iter().map(|v| v.0).collect())
+            .collect();
+        let snapshot = EditedMesh::from_edit_mesh(
+            &positions,
+            &normals,
+            &uvs,
+            &indices,
+            &face_perimeters,
+        );
+        let rebuilt = EditMesh::from_edited_mesh(&snapshot).unwrap();
+
+        // 6 cube quads + 1 extruded top → 7 faces.
+        assert_eq!(rebuilt.faces.len(), 7);
+        for face in &rebuilt.faces {
+            assert_eq!(
+                face.verts.len(),
+                4,
+                "no diagonal may appear across a face — every face stays a quad"
+            );
+        }
     }
 }

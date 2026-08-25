@@ -83,6 +83,7 @@ pub fn enter_edit_mode(
     meshes: Res<Assets<Mesh>>,
     mesh_q: Query<&Mesh3d>,
     has_edit: Query<(), With<EditMesh>>,
+    edited_mesh_q: Query<&renzora::core::EditedMesh>,
     mut commands: Commands,
 ) {
     active_flag.0 = true;
@@ -112,7 +113,19 @@ pub fn enter_edit_mode(
 
     if let Ok(mesh3d) = mesh_q.get(target) {
         if let Some(mesh) = meshes.get(&mesh3d.0) {
-            if let Some(edit) = EditMesh::from_mesh(mesh) {
+            // Prefer persisted editable topology if the entity carries
+            // one — that means a previous Edit-mode session already
+            // baked through this mesh and saved the bounded faces.
+            // Rebuilding from `EditedMesh::face_vertices` keeps the
+            // original quads intact; the `from_mesh` fallback would
+            // re-guess via `merge_coplanar_triangle_pairs`, which is
+            // ambiguous once extruded quads share an edge.
+            let edit = edited_mesh_q
+                .get(target)
+                .ok()
+                .and_then(EditMesh::from_edited_mesh)
+                .or_else(|| EditMesh::from_mesh(mesh));
+            if let Some(edit) = edit {
                 commands.entity(target).insert(edit);
             } else {
                 warn!("[mesh_edit] cannot edit non-triangle mesh");
@@ -150,8 +163,30 @@ pub fn exit_edit_mode(
         mesh_selection.clear();
         if let (Ok(edit), Ok(mesh3d)) = (edit_q.get(target), mesh_q.get(target)) {
             if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
+                // Capture the bounded-face topology *before* `bake_to_mesh`
+                // runs (the bake doesn't invalidate face data, but the
+                // capture is conceptually paired with the geometry read
+                // below). Persisting topology here means a later Edit-mode
+                // entry rebuilds the same bounded faces exactly, instead
+                // of re-guessing from the triangulated indices (which is
+                // ambiguous once extruded quads share a horizontal edge).
+                let face_perimeters: Vec<Vec<u32>> = edit
+                    .faces
+                    .iter()
+                    .filter(|f| f.verts.len() >= 3)
+                    .map(|f| f.verts.iter().map(|v| v.0).collect())
+                    .collect();
                 edit.bake_to_mesh(&mut mesh);
-                if let Some(snapshot) = renzora::core::EditedMesh::from_mesh(&mesh) {
+                if let Some(geometry_only) =
+                    renzora::core::EditedMesh::from_mesh(&mesh)
+                {
+                    let snapshot = renzora::core::EditedMesh::from_edit_mesh(
+                        &geometry_only.positions,
+                        &geometry_only.normals,
+                        &geometry_only.uvs,
+                        &geometry_only.indices,
+                        &face_perimeters,
+                    );
                     commands
                         .entity(target)
                         .try_insert((snapshot, renzora::core::EditedMeshApplied));
@@ -1175,12 +1210,30 @@ pub fn bake_if_dirty(
             continue;
         }
         if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
+            // Capture bounded-face topology *before* the bake so a
+            // later Edit-mode entry rebuilds the same face layout.
+            // See `exit_edit_mode` for the same dance at Edit exit.
+            let face_perimeters: Vec<Vec<u32>> = edit
+                .faces
+                .iter()
+                .filter(|f| f.verts.len() >= 3)
+                .map(|f| f.verts.iter().map(|v| v.0).collect())
+                .collect();
             edit.bake_to_mesh(&mut mesh);
             // Persist the edit: scene saves carry the geometry, and the
             // rehydrator rebuilds it on load instead of the pristine
             // primitive / glTF source. The Applied marker keeps the
             // rehydrator's hands off while we're live-editing.
-            if let Some(snapshot) = renzora::core::EditedMesh::from_mesh(&mesh) {
+            if let Some(geometry_only) =
+                renzora::core::EditedMesh::from_mesh(&mesh)
+            {
+                let snapshot = renzora::core::EditedMesh::from_edit_mesh(
+                    &geometry_only.positions,
+                    &geometry_only.normals,
+                    &geometry_only.uvs,
+                    &geometry_only.indices,
+                    &face_perimeters,
+                );
                 commands
                     .entity(entity)
                     .try_insert((snapshot, renzora::core::EditedMeshApplied));
