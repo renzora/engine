@@ -989,6 +989,34 @@ fn apply_window_icon(
 /// plugins are auto-discovered via the `inventory` registry — those
 /// don't care about ordering and just self-register through
 /// `renzora::add!(MyPlugin)` in their crate.
+/// Leave the process on `AppExit` instead of unwinding the World.
+///
+/// The editor has done this since the teardown stall (`kill_on_app_exit` in
+/// `renzora_viewport`); the game runtime never did, and unwinding costs it the
+/// same things: `FreeLibrary` on every plugin image, wgpu device destruction,
+/// worker-thread joins — none of which does anything the OS does not already do
+/// at process exit, and none of which the engine needs, because nothing saves
+/// state from a `Drop` (saves are user actions).
+///
+/// Belt to the `ManuallyDrop` braces in `renzora_plugin`'s loader: that fixes
+/// the plugin images specifically, this keeps the whole teardown off the table.
+/// `Last`, so it runs after every other system in the final frame.
+/// `RENZORA_FULL_TEARDOWN=1` restores the unwinding exit for debugging.
+fn fast_exit_on_app_exit(mut exits: MessageReader<bevy::app::AppExit>) {
+    let Some(exit) = exits.read().last().cloned() else {
+        return;
+    };
+    if std::env::var_os("RENZORA_FULL_TEARDOWN").is_some() {
+        return;
+    }
+    let code = match exit {
+        bevy::app::AppExit::Success => 0,
+        bevy::app::AppExit::Error(n) => i32::from(n.get()),
+    };
+    info!("[exit] fast exit (code {code})");
+    std::process::exit(code);
+}
+
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // Runtime editor-vs-game signal for the dual-mode crates (they're compiled
     // without an `editor` cargo feature now, so they branch on this at runtime).
@@ -1034,6 +1062,7 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         app.add_plugins(viewport_stretch::ViewportStretchPlugin);
         info!("[runtime] foundation: RenderScalePlugin");
         app.add_plugins(render_scale::RenderScalePlugin);
+        app.add_systems(Last, fast_exit_on_app_exit);
     }
 
     // ── The rest of the engine (see `plugins.rs`) ──────────────────────
