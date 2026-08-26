@@ -173,11 +173,22 @@ impl Plugin for MaterialResolverPlugin {
             .register_type::<MaterialRef>()
             .register_type::<super::material_ref::MaterialOverrides>()
             .register_type::<super::material_ref::ParamValue>()
+            .add_systems(Update, resolve_material_refs);
+        // Problems-panel validation: re-composes every graph material's WGSL
+        // against all of bevy_pbr's modules and naga-validates it on the main
+        // thread. Editor-only — a shipped game has no Problems panel.
+        #[cfg(feature = "editor")]
+        app
             // `PreUpdate`: the validator arrives via `Commands`, and a material
             // resolved the same frame reports nothing, then is never looked at
-            // again.
-            .add_systems(PreUpdate, ensure_shader_validator)
-            .add_systems(Update, (resolve_material_refs, report_material_problems).chain());
+            // again. `resource_changed` because the check otherwise allocates
+            // a map over every shader each frame, forever; library assets only
+            // stream in while the asset set is actually changing.
+            .add_systems(
+                PreUpdate,
+                ensure_shader_validator.run_if(resource_changed::<Assets<Shader>>),
+            )
+            .add_systems(Update, report_material_problems.after(resolve_material_refs));
     }
 }
 
@@ -186,6 +197,7 @@ impl Plugin for MaterialResolverPlugin {
 /// Keyed on the shader uuid rather than driven off the resolve, because the
 /// validator needs bevy_pbr's libraries and those land a frame after the first
 /// material resolves. A fresh uuid per compile catches recompiles too.
+#[cfg(feature = "editor")]
 fn report_material_problems(
     mut checked: Local<HashMap<String, (Uuid, usize)>>,
     cache: Res<MaterialCache>,
@@ -250,6 +262,7 @@ fn report_material_problems(
 /// land in `Assets<Shader>` over the frames that follow, so a validator built
 /// on the first one that appears is missing most of the imports a material
 /// needs.
+#[cfg(feature = "editor")]
 fn ensure_shader_validator(
     mut commands: Commands,
     existing: Option<Res<super::validate::ShaderValidator>>,

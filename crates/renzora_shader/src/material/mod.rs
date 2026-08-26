@@ -11,6 +11,10 @@ pub mod runtime;
 pub mod standard_build;
 pub mod surface_ext;
 pub mod texture_slots;
+// Problems-panel validation: a naga_oil composer over all of bevy_pbr's
+// modules plus a naga pass per material. A shipped game has no Problems
+// panel, so it never pays for this.
+#[cfg(feature = "editor")]
 pub mod validate;
 
 // Re-export the public asset type at module root so downstream code can write

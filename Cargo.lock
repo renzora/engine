@@ -8651,6 +8651,7 @@ dependencies = [
  "naga",
  "naga_oil",
  "renzora",
+ "renzora_shader",
  "renzora_test_harness",
  "serde",
  "serde_json",
