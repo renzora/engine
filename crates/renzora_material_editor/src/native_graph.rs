@@ -14,8 +14,10 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
+use renzora::core::keybindings::KeyBinding;
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{AssetDragPayload, DocTabKind, EditorContext, EditorSelection, SplashState};
+use renzora_editor_framework::{AppEditorExt, AssetDragPayload, DocTabKind, EditorContext, EditorSelection, ShortcutEntry, SplashState};
+use renzora_ember::dock::{Dock, DockWindows, FixedDock};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
@@ -80,11 +82,39 @@ pub struct NativeMaterialGraph;
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
+        // Ctrl+S saves the graph through the shortcut registry: rebindable in
+        // Settings → Shortcuts, listed in the command palette, exact-modifier
+        // matched (so Ctrl+Shift+S stays Save Scene As), and skipped while
+        // typing. Chord-sharing with the built-in scene save is deliberate:
+        // one keystroke saves everything.
+        app.register_shortcut(ShortcutEntry::new(
+            "material_graph.save",
+            "Save Material Graph",
+            "File",
+            KeyBinding::new(KeyCode::KeyS).ctrl(),
+            |w| {
+                // The shortcut system scopes globally, not per panel — its
+                // only focus gate is text input. So the panel check rides in
+                // the handler, and it means what `panel_active` means: the
+                // graph is the visible active tab in some dock area. Ctrl+S
+                // typed while another visible panel has the keyboard still
+                // saves this graph, the same way it still saves the scene.
+                let visible = renzora_ember::dock::panel_visible_anywhere(
+                    "material_graph",
+                    w.get_resource::<Dock>(),
+                    w.get_resource::<FixedDock>(),
+                    w.get_resource::<DockWindows>(),
+                );
+                if visible {
+                    crate::apply_material(w);
+                }
+            },
+        ));
         // The graph's actions live in the shared toolbar strip (shown when the
         // material graph is the active panel), not inside the panel itself.
         app.add_systems(
             Update,
-            (apply_click, save_shortcut, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
+            (apply_click, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("material_graph")),
         );
@@ -1018,18 +1048,6 @@ fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(crate::apply_material);
-    }
-}
-
-/// Ctrl+S saves the graph — the same path the Apply button takes, because
-/// reaching for a toolbar button every time is impractical. Chord-sharing
-/// with the built-in scene save is deliberate: one keystroke saves
-/// everything. Gated on the graph being the active panel like the other
-/// toolbar systems, so it never fires while the user works elsewhere.
-fn save_shortcut(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands) {
-    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-    if ctrl && keys.just_pressed(KeyCode::KeyS) {
         commands.queue(crate::apply_material);
     }
 }
