@@ -156,6 +156,16 @@ impl Plugin for MeshEditPlugin {
                 .chain()
                 .run_if(in_mode(ViewportMode::Sculpt)),
         );
+
+        // Always-on cleanup for the Edit-mode screen-space overlay (vertex
+        // dots, marquee, face-fill meshes). The gated overlay systems above
+        // only fire while `ViewportMode::Edit`; without this every dot,
+        // marquee border, and translucent face overlay lingers on screen
+        // after the user exits Edit mode — see known-bugs entry #17.
+        app.add_systems(
+            Update,
+            overlay_ui::cleanup_overlay_when_not_editing,
+        );
     }
 }
 

@@ -23,7 +23,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::ui::ZIndex;
-use renzora::core::viewport_types::{ViewportSettings, ViewportState};
+use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportState};
 use renzora::core::EditorCamera;
 use renzora_viewport::ViewportImage;
 
@@ -576,6 +576,39 @@ pub(crate) fn face_overlay_indices(n: usize) -> Vec<u32> {
         indices.extend_from_slice(&[0, i as u32, (i + 1) as u32]);
     }
     indices
+}
+
+/// Always-on cleanup: when the viewport isn't in Edit mode, hide every
+/// vertex dot and marquee, and despawn every face overlay. The
+/// `update_vertex_dots` / `update_marquee` / `update_face_overlays`
+/// systems — all gated by `in_mode(ViewportMode::Edit)` — never fire
+/// after Edit mode exits, so without this the dots, marquee, and 3D-mesh
+/// overlays linger on screen until something else re-triggers them
+/// (re-entering Edit mode, switching selection, respawning the mesh).
+/// The user-facing symptom was: enter Edit mode, press `Tab` to exit,
+/// press `Tab` again to re-enter Scene mode — the blue vertex dots from
+/// the prior Edit-mode session are still drawn on the cube.
+pub fn cleanup_overlay_when_not_editing(
+    mut commands: Commands,
+    mut overlay: ResMut<EditOverlayEntities>,
+    viewport_settings: Res<ViewportSettings>,
+    mut dot_q: Query<&mut Visibility, With<EditVertexDot>>,
+    mut marquee_q: Query<&mut Visibility, With<EditMarqueeRect>>,
+) {
+    if viewport_settings.viewport_mode == ViewportMode::Edit {
+        return;
+    }
+    for mut vis in &mut dot_q {
+        *vis = Visibility::Hidden;
+    }
+    for mut vis in &mut marquee_q {
+        *vis = Visibility::Hidden;
+    }
+    let stale: Vec<Entity> = overlay.face_overlays.drain(..).collect();
+    for e in stale {
+        commands.entity(e).despawn();
+    }
+    overlay.face_overlay_target = None;
 }
 
 #[cfg(test)]
