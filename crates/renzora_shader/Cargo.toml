@@ -10,9 +10,22 @@ editor = []
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-naga = { version = "27", features = ["wgsl-in", "wgsl-out", "glsl-in"] }
+naga = { version = "29", features = ["wgsl-in", "wgsl-out", "glsl-in"] }
 uuid = { version = "1", features = ["v4"] }
 renzora = { path = "../renzora", default-features = false }
+# The composer Bevy resolves `#import` with. Pinned to what `bevy_shader` links
+# — a second version would be a second definition of `#import`, which is the
+# thing this crate's validator exists to avoid.
+naga_oil = "0.22"
+
+[dev-dependencies]
+# An App is how you get at `Assets<Shader>`, which is where bevy_pbr keeps the
+# sources the validator composes against.
+renzora_test_harness = { path = "../renzora_test_harness" }
+# Tests exercise the Problems-panel validator, which is `editor`-gated; a self
+# dev-dependency turns the feature on for test builds without enabling it for
+# downstream (shipped-game) builds.
+renzora_shader = { path = ".", features = ["editor"] }
 
 [lints]
 workspace = true

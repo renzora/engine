@@ -54,6 +54,11 @@ pub struct CompiledMaterialMeta {
     pub requires_transmission: bool,
     pub texture_bindings: Vec<TextureBinding>,
     pub parameters: Vec<MaterialParam>,
+    /// `(node id, first line, last line)` — which graph node authored which
+    /// lines of the shader, so a compile error can point at a node. Empty
+    /// for artifacts written before this field existed.
+    #[serde(default)]
+    pub node_line_map: Vec<(u64, u32, u32)>,
 }
 
 /// Filesystem path of the legacy `.wgsl` for a `.material` at
@@ -85,11 +90,19 @@ pub fn project_relative(project_root: &Path, fs_path: &Path) -> String {
         .unwrap_or_else(|_| fs_path.to_string_lossy().replace('\\', "/"))
 }
 
+/// What a save-compile has to say. `errors` non-empty means no artifact was
+/// embedded. `warnings` means one was, but the graph is on borrowed time.
+#[derive(Debug, Default)]
+pub struct SaveReport {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
 /// Run codegen on `graph` and store the result in [`MaterialGraph::compiled`]
 /// so a subsequent `serde_json::to_string_pretty(&graph)` in the caller writes
 /// the shader into the `.material` file itself.
 ///
-/// Returns the codegen errors. An empty `Vec` means the artifact was embedded
+/// Returns the [`SaveReport`]. Empty `errors` means the artifact was embedded
 /// successfully. On codegen error the artifact is cleared, so the resolver
 /// falls back to live codegen rather than rendering a stale shader.
 ///
@@ -102,12 +115,15 @@ pub fn project_relative(project_root: &Path, fs_path: &Path) -> String {
 pub fn save_compiled(
     graph: &mut MaterialGraph,
     material_fs_path: &Path,
-) -> io::Result<Vec<String>> {
+) -> io::Result<SaveReport> {
     let result = codegen::compile_with_functions(graph, None);
     if !result.errors.is_empty() {
         graph.compiled = None;
         graph.wgsl_path = None;
-        return Ok(result.errors);
+        return Ok(SaveReport {
+            errors: result.errors,
+            warnings: result.warnings,
+        });
     }
 
     graph.compiled = Some(CompiledArtifact {
@@ -119,11 +135,15 @@ pub fn save_compiled(
             requires_transmission: result.requires_transmission,
             texture_bindings: result.texture_bindings,
             parameters: result.parameters,
+            node_line_map: result.node_lines,
         },
     });
     graph.wgsl_path = None;
     remove_legacy_artifacts(material_fs_path);
-    Ok(Vec::new())
+    Ok(SaveReport {
+        errors: Vec::new(),
+        warnings: result.warnings,
+    })
 }
 
 /// Delete the `.wgsl` + `.wgsl.meta` pair the three-file layout wrote next to
@@ -156,10 +176,10 @@ fn remove_legacy_artifacts(material_fs_path: &Path) {
 pub fn save_compiled_and_serialize(
     graph: &mut MaterialGraph,
     material_fs_path: &Path,
-) -> io::Result<(String, Vec<String>)> {
-    let errors = save_compiled(graph, material_fs_path)?;
+) -> io::Result<(String, SaveReport)> {
+    let report = save_compiled(graph, material_fs_path)?;
     let json = serde_json::to_string_pretty(graph).map_err(io::Error::other)?;
-    Ok((json, errors))
+    Ok((json, report))
 }
 
 #[cfg(test)]
@@ -174,10 +194,10 @@ mod tests {
     #[test]
     fn compiled_artifact_survives_a_save_load_round_trip() {
         let mut graph = MaterialGraph::new("RoundTrip", MaterialDomain::Surface);
-        let (json, errors) =
+        let (json, report) =
             save_compiled_and_serialize(&mut graph, Path::new("materials/round_trip.material"))
                 .expect("save");
-        assert!(errors.is_empty(), "codegen errors: {errors:?}");
+        assert!(report.errors.is_empty(), "codegen errors: {:?}", report.errors);
 
         let reloaded: MaterialGraph = serde_json::from_str(&json).expect("parse");
         let artifact = reloaded.compiled.as_ref().expect("artifact embedded");

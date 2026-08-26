@@ -23,7 +23,7 @@ use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver};
 use notify_debouncer_full::{
     new_debouncer,
-    notify::{RecommendedWatcher, RecursiveMode},
+    notify::{event::ModifyKind, EventKind, RecommendedWatcher, RecursiveMode},
     DebounceEventResult, Debouncer, RecommendedCache,
 };
 
@@ -105,6 +105,24 @@ fn ensure_watcher_for_current_project(
     commands.insert_resource(WgslHotReload::install(project.path.clone()));
 }
 
+/// Whether an event says the file's *content* moved, as opposed to somebody
+/// having looked at it.
+///
+/// inotify reports opens, reads and closes too, and the resolver reads every
+/// `.wgsl` it re-resolves — so treating an access as an edit makes the watcher
+/// feed itself: invalidate, re-resolve, read, invalidate. Measured at 80
+/// self-inflicted reloads in 20 seconds on a project nobody was editing, one
+/// per debounce window, each one a frame with no pipeline to draw with.
+///
+/// `Any` stays in because it is what a backend emits when it cannot say more
+/// precisely, and dropping it silently disables hot-reload there.
+pub fn is_content_change(kind: &EventKind) -> bool {
+    !matches!(
+        kind,
+        EventKind::Access(_) | EventKind::Other | EventKind::Modify(ModifyKind::Metadata(_))
+    )
+}
+
 /// Drain pending file events and invalidate the resolver cache for any changed
 /// `.wgsl`.
 fn drain_wgsl_events(
@@ -119,6 +137,9 @@ fn drain_wgsl_events(
         match result {
             Ok(events) => {
                 for event in events {
+                    if !is_content_change(&event.kind) {
+                        continue;
+                    }
                     for path in &event.paths {
                         invalidate_for_wgsl(
                             path,

@@ -9,13 +9,17 @@ Switch to the **Materials** workspace in the editor, then pick what you want to 
 - **Click a mesh in the viewport.** Its material loads straight into the graph, ready to tweak.
 - **Or double-click a `.material` file** in the asset browser to open it on its own tab.
 
-Your changes save automatically as you work, and the mesh updates live so you can see the result right away. There's also an **Apply** button in the panel toolbar if you want to force a save.
+Your changes save automatically as you work, and the mesh updates live so you can see the result right away. Press **Ctrl+S** (or the **Apply** button in the panel toolbar) to force a save.
 
 > Materials are saved as `.material` files (plain JSON). When you import a 3D model, every material on it is written out as a `.material` next to the model automatically — so you can open and edit any imported look as a node graph.
 
 ## The node graph
 
 You build a material by dragging nodes out of the category menu and **wiring them together**: drag from a node's output dot (on its right edge) into another node's input dot (on its left edge). Anything you leave unconnected just uses the value typed into the node.
+
+Wire dots are coloured by pin type, and any numeric types interconnect freely — a `Vec2` can feed a `Color` pin, a `Float` can feed a `Vec3`, and so on (the compiler inserts the right conversion). A wire between two *different* pin colours draws as a gradient from the source colour to the target colour, so you can see at a glance where a conversion is happening. Only genuinely incompatible pins (bool, texture, sampler) refuse the connection outright.
+
+**Math nodes adapt to their wires.** A Math node starts out as a plain `Float` node, but wire a `Vec4` into one of its inputs and the whole node follows: the other inputs and the result become `Vec4` too, the pin dots recolour, and any narrower wire feeding it is widened automatically. The widest wire wins (`Float` < `Vec2` < `Vec3` < `Vec4`), unplugging it drops the node back down, and a wide *consumer* on the result never widens the inputs — adaptation only flows from what feeds the node. One exception: `lerp`'s **T** pin always stays a `Float`, because a blend factor is a scalar.
 
 ![A material node graph: two Sample Texture nodes and a Sample Normal Map node wired by colored cables into the Surface Output node on the right](/assets/previews/material_graph.png)
 
@@ -258,6 +262,20 @@ The compiled shader isn't meant to be edited. A graph and a hand-edited copy of 
 If you want to write shader code directly, that's a **standalone shader**, not a material: create a `.wgsl` or `.shader` asset and point a mesh at it. Those are yours to edit freely, in the built-in Shader Editor or any external editor — the engine watches your project and the viewport picks up a save within about a fifth of a second, with no restart. Watching is editor-only; a shipped game reads the shader as-is.
 
 > Materials written by an older version — the ones with a `.wgsl` and `.wgsl.meta` next to them — still load exactly as before. The next time you save one, its shader moves inside the `.material` and the two stale files are removed for you.
+
+Only a **write** counts. Opening a `.wgsl`, reading it, or touching its timestamp does not reload the material. The editor itself has the file open, so a reload triggered by a read re-triggers itself.
+
+## When a material fails to compile
+
+A graph can be well-formed and still produce WGSL the shader compiler rejects — most easily through a **Custom Code** node, whose contents nothing checks until the compiler sees them. The material then falls back to a plain surface in the viewport, and the compiler's errors show up in three places:
+
+- **On the node itself.** The offending node gets a red warning icon in its title bar. Hover the node for the compiler's message.
+- **The Problems panel**, as a row per distinct error, listed against the `.material` file it came from. Click a row to jump to that file if you have it open.
+- **The console**, once per compile — not once per frame, so a broken material does not flood the log.
+
+All three clear on their own as soon as the material compiles again. There is nothing to dismiss and no restart involved. Fix the graph, press **Apply**, and the row and the icon disappear.
+
+Some errors appear only under certain conditions — a mesh with vertex colors, or a camera with an environment map. Those rows carry a `[defines: …]` prefix naming the configurations that fail, because the configuration is part of what is wrong. An error with no prefix fails everywhere.
 
 ## Tips
 

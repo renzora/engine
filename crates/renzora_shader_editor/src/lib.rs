@@ -1,7 +1,7 @@
 //! Shader Editor — code-based shader authoring with multi-language support.
 
 mod code_panel;
-mod hot_reload;
+pub mod hot_reload;
 mod native_compiler_log;
 mod native_preview;
 mod native_properties;

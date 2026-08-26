@@ -13,6 +13,7 @@ mod pin_editors;
 pub mod preview;
 
 use bevy::prelude::*;
+use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
@@ -164,7 +165,7 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
         let _ = std::fs::create_dir_all(parent);
     }
 
-    let (graph_json, errors) =
+    let (graph_json, report) =
         match renzora_shader::material::precompiled::save_compiled_and_serialize(graph, &fs_path) {
             Ok(out) => out,
             Err(e) => {
@@ -172,9 +173,10 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
                 return false;
             }
         };
-    for err in &errors {
+    for err in &report.errors {
         warn!("[material_editor] codegen error in '{}': {}", path, err);
     }
+    note_save_warnings(world, path, &report.warnings);
 
     if let Err(e) = std::fs::write(&fs_path, &graph_json) {
         warn!("[material_editor] Save failed: {}", e);
@@ -207,6 +209,34 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
         world.entity_mut(entity).remove::<MaterialResolved>();
     }
     true
+}
+
+/// Console + Problems panel for a save-compile's warnings.
+///
+/// Compile sites own the path's Warning rows — `set_severity` replaces them
+/// without touching whatever the validator has to say. An empty `warnings`
+/// still runs: a repaired graph must clear last save's rows.
+pub(crate) fn note_save_warnings(world: &mut World, path: &str, warnings: &[String]) {
+    for warning in warnings {
+        warn!("[material_editor] codegen warning in '{}': {}", path, warning);
+        renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
+    }
+    let Some(mut problems) = world.get_resource_mut::<ContentProblems>() else {
+        return;
+    };
+    problems.set_severity(
+        path,
+        ProblemSeverity::Warning,
+        warnings
+            .iter()
+            .map(|w| ContentProblem {
+                severity: ProblemSeverity::Warning,
+                message: w.clone(),
+                line: None,
+                node_id: None,
+            })
+            .collect(),
+    );
 }
 
 /// Load the graph at `path`, hand it to `edit`, and save it if `edit` changed

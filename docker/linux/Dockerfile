@@ -83,8 +83,8 @@ RUN set -eux; \
 # NATIVE arch, which is correct).
 #
 # The linker is a WRAPPER, not the cross-gcc directly, because the repo's Linux
-# `target.rustflags` pass `-fuse-ld=/usr/bin/mold` as an absolute PATH — clang
-# accepts that, GCC rejects it ("unrecognized command-line option"). We can't
+# `target.rustflags` pass `-fuse-ld=mold`, which aims the NATIVE mold at a
+# foreign target. We can't
 # drop it via CARGO_TARGET_<triple>_RUSTFLAGS: unlike LINKER, that env does NOT
 # override a config file's `target.rustflags` (a cargo precedence quirk — config
 # wins), so the flag always reaches the linker. The wrapper strips exactly that
@@ -93,7 +93,7 @@ RUN set -eux; \
 RUN XGNU=$(cat /etc/renzora-linux-cross-gnu); XRUST=$(cat /etc/renzora-linux-cross-triple); \
     XRUST_US=$(echo "$XRUST" | tr - _); \
     XRUST_ENV=$(echo "$XRUST" | tr 'a-z-' 'A-Z_'); \
-    printf '#!/bin/bash\n# Strip three args before handing them to the cross-gcc:\n#   -fuse-ld=/usr/bin/mold    clang accepts an absolute path here, GCC does not.\n#   -fuse-ld=lld, -B*/gcc-ld  rustc aims these at its own bundled rust-lld in the\n#     HOST sysroot (.../x86_64-unknown-linux-gnu/bin/gcc-ld). Following them links\n#     an aarch64 target with an x86_64-flavoured lld, which then rejects the\n#     aarch64-only flag the cross-gcc driver adds:\n#       rust-lld: error: --fix-cortex-a53-843419 is only supported on AArch64\n#     That is what cost every release its linux-arm64 slice. The lane is\n#     best-effort, so it was a WARN and the build still went green.\nargs=()\nfor a in "$@"; do\n  case "$a" in\n    -fuse-ld=/usr/bin/mold|-fuse-ld=lld) continue ;;\n    -B*/gcc-ld) continue ;;\n  esac\n  args+=("$a")\ndone\nexec %s-gcc "${args[@]}"\n' "$XGNU" \
+    printf '#!/bin/bash\n# Strip three args before handing them to the cross-gcc:\n#   -fuse-ld=mold             the native mold, aimed at a foreign target.\n#   -fuse-ld=lld, -B*/gcc-ld  rustc aims these at its own bundled rust-lld in the\n#     HOST sysroot (.../x86_64-unknown-linux-gnu/bin/gcc-ld). Following them links\n#     an aarch64 target with an x86_64-flavoured lld, which then rejects the\n#     aarch64-only flag the cross-gcc driver adds:\n#       rust-lld: error: --fix-cortex-a53-843419 is only supported on AArch64\n#     That is what cost every release its linux-arm64 slice. The lane is\n#     best-effort, so it was a WARN and the build still went green.\nargs=()\nfor a in "$@"; do\n  case "$a" in\n    -fuse-ld=mold|-fuse-ld=/usr/bin/mold|-fuse-ld=lld) continue ;;\n    -B*/gcc-ld) continue ;;\n  esac\n  args+=("$a")\ndone\nexec %s-gcc "${args[@]}"\n' "$XGNU" \
         > /usr/local/bin/renzora-cross-linker && \
     chmod +x /usr/local/bin/renzora-cross-linker && \
     { \

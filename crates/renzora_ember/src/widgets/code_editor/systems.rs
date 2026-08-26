@@ -828,6 +828,49 @@ pub(crate) fn code_theme_watch(
     }
 }
 
+pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes: Query<&mut Node>) {
+    let on = (time.elapsed_secs() * 1.6).fract() < 0.5;
+    for ed in &editors {
+        let Ok(mut n) = nodes.get_mut(ed.caret) else {
+            continue;
+        };
+        let m = ed.metrics();
+        let rows = ed.rows();
+        let cr = layout::row_of(&rows, ed.cursor_line, ed.cursor_col);
+        let on_screen = cr >= ed.scroll && cr < ed.scroll + ed.visible;
+        // Assign through `set_if_neq`-style guards: this runs every frame, and a
+        // plain write marks the node changed, which makes bevy_ui re-run layout
+        // on it (and its ancestors) 60 times a second for a caret that hasn't
+        // moved. Only the blink phase should normally cost anything.
+        let want = if ed.focused && on && on_screen && m.char_w > 0.0 {
+            let x_col = ed.cursor_col.saturating_sub(rows[cr].start_col);
+            Some((
+                Val::Px(m.caret_h),
+                Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w),
+                Val::Px((cr - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0),
+            ))
+        } else {
+            None
+        };
+        match want {
+            Some((height, left, top)) => {
+                if n.display != Display::Flex || n.height != height || n.left != left || n.top != top {
+                    let n = &mut *n;
+                    n.display = Display::Flex;
+                    n.height = height;
+                    n.left = left;
+                    n.top = top;
+                }
+            }
+            None => {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+        }
+    }
+}
+
 /// Drive the editor's real systems headlessly so a key storm can be replayed in
 /// a test. The widget spawns plain components (no layout/render needed), so an
 /// `App` with `MinimalPlugins` + `InputPlugin` exercises input → edit → render
@@ -1052,48 +1095,5 @@ mod tests {
             edit::toggle_fold(&mut ed, 1);
         }
         hold(&mut app, editor, Key::Delete, KeyCode::Delete, 2);
-    }
-}
-
-pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes: Query<&mut Node>) {
-    let on = (time.elapsed_secs() * 1.6).fract() < 0.5;
-    for ed in &editors {
-        let Ok(mut n) = nodes.get_mut(ed.caret) else {
-            continue;
-        };
-        let m = ed.metrics();
-        let rows = ed.rows();
-        let cr = layout::row_of(&rows, ed.cursor_line, ed.cursor_col);
-        let on_screen = cr >= ed.scroll && cr < ed.scroll + ed.visible;
-        // Assign through `set_if_neq`-style guards: this runs every frame, and a
-        // plain write marks the node changed, which makes bevy_ui re-run layout
-        // on it (and its ancestors) 60 times a second for a caret that hasn't
-        // moved. Only the blink phase should normally cost anything.
-        let want = if ed.focused && on && on_screen && m.char_w > 0.0 {
-            let x_col = ed.cursor_col.saturating_sub(rows[cr].start_col);
-            Some((
-                Val::Px(m.caret_h),
-                Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w),
-                Val::Px((cr - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0),
-            ))
-        } else {
-            None
-        };
-        match want {
-            Some((height, left, top)) => {
-                if n.display != Display::Flex || n.height != height || n.left != left || n.top != top {
-                    let n = &mut *n;
-                    n.display = Display::Flex;
-                    n.height = height;
-                    n.left = left;
-                    n.top = top;
-                }
-            }
-            None => {
-                if n.display != Display::None {
-                    n.display = Display::None;
-                }
-            }
-        }
     }
 }

@@ -14,8 +14,10 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
+use renzora::core::keybindings::KeyBinding;
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{AssetDragPayload, DocTabKind, EditorContext, EditorSelection, SplashState};
+use renzora_editor_framework::{AppEditorExt, AssetDragPayload, DocTabKind, EditorContext, EditorSelection, ShortcutEntry, SplashState};
+use renzora_ember::dock::{Dock, DockWindows, FixedDock};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
@@ -24,7 +26,9 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_shader::material::codegen;
-use renzora_shader::material::graph::{MaterialGraph, PinDir, PinTemplate, PinType, PinValue};
+use renzora_shader::material::graph::{
+    resolve_math_ranks, resolved_pin_type, MaterialGraph, PinDir, PinTemplate, PinType, PinValue,
+};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
@@ -78,6 +82,34 @@ pub struct NativeMaterialGraph;
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
+        // Ctrl+S saves the graph through the shortcut registry: rebindable in
+        // Settings → Shortcuts, listed in the command palette, exact-modifier
+        // matched (so Ctrl+Shift+S stays Save Scene As), and skipped while
+        // typing. Chord-sharing with the built-in scene save is deliberate:
+        // one keystroke saves everything.
+        app.register_shortcut(ShortcutEntry::new(
+            "material_graph.save",
+            "Save Material Graph",
+            "File",
+            KeyBinding::new(KeyCode::KeyS).ctrl(),
+            |w| {
+                // The shortcut system scopes globally, not per panel — its
+                // only focus gate is text input. So the panel check rides in
+                // the handler, and it means what `panel_active` means: the
+                // graph is the visible active tab in some dock area. Ctrl+S
+                // typed while another visible panel has the keyboard still
+                // saves this graph, the same way it still saves the scene.
+                let visible = renzora_ember::dock::panel_visible_anywhere(
+                    "material_graph",
+                    w.get_resource::<Dock>(),
+                    w.get_resource::<FixedDock>(),
+                    w.get_resource::<DockWindows>(),
+                );
+                if visible {
+                    crate::apply_material(w);
+                }
+            },
+        ));
         // The graph's actions live in the shared toolbar strip (shown when the
         // material graph is the active panel), not inside the panel itself.
         app.add_systems(
@@ -348,7 +380,21 @@ fn pin_rgb(t: PinType) -> (u8, u8, u8) {
     }
 }
 
-type Port = (String, String, (u8, u8, u8));
+/// The graph widget's drop-filter group — mirrors `PinType::compatible`:
+/// the whole numeric family interconnects (vec sizes coerce at codegen),
+/// every other type only connects to itself. Pin *colour* stays per-type, so
+/// a Vec2 → Color wire is allowed and shows the gradient between the two.
+fn pin_group(t: PinType) -> u32 {
+    match t {
+        PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color => 0,
+        PinType::Bool => 1,
+        PinType::Texture2D => 2,
+        PinType::Sampler => 3,
+        PinType::String => 4,
+    }
+}
+
+type Port = (String, String, (u8, u8, u8), u32);
 
 struct NodeSnap {
     id: u64,
@@ -366,6 +412,10 @@ struct NodeSnap {
     /// One entry per input pin, index-aligned with `inputs`: the pin template and
     /// whether it should carry an inline value editor. See [`wants_editor`].
     in_specs: Vec<(PinTemplate, bool)>,
+    /// The shader compiler's complaint about this node, if any — joined from
+    /// `ContentProblems` for the active material. Drives the header's warning
+    /// icon and the node's tooltip.
+    error: Option<String>,
 }
 
 /// Should this input pin show an inline value editor on the node?
@@ -398,7 +448,16 @@ fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::M
 fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let assets = world.get_resource::<AssetServer>();
+    let problems = world.get_resource::<renzora::content_problems::ContentProblems>();
+    let active_path = s
+        .active_tab
+        .and_then(|i| s.tabs.get(i))
+        .and_then(|t| t.path.as_deref());
     let sel = s.selected_node;
+    // Latched math-node ranks, computed once per snapshot pass: pin colors,
+    // groups and inline editors all read the resolved type, so a node that
+    // latched Vec4 shows Vec4 pins everywhere.
+    let ranks = resolve_math_ranks(&s.graph);
     let nodes: Vec<NodeSnap> = s
         .graph
         .nodes
@@ -408,20 +467,36 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
             let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
-            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
+            let ty = |p: &PinTemplate| resolved_pin_type(&ranks, n, &p.name, p.direction).unwrap_or(p.pin_type);
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(ty(p)), pin_group(ty(p)))).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(ty(p)), pin_group(ty(p)))).collect();
             let tex_path = n.input_values.get("texture").and_then(|v| match v {
                 PinValue::TexturePath(p) if !p.is_empty() => Some(p.clone()),
                 _ => None,
             });
             let thumb = tex_path.as_ref().and_then(|p| assets.map(|a| a.load::<Image>(p)));
             let sample_idx = sample_variant_index(&n.node_type);
+            // The inline editor's template carries the *resolved* pin type, so
+            // a latched Vec4 pin mounts a vec4 editor that writes a Vec4 value.
             let in_specs: Vec<(PinTemplate, bool)> = pins
                 .iter()
                 .filter(|p| p.direction == PinDir::Input)
-                .map(|p| ((*p).clone(), wants_editor(&s.graph, n, p)))
+                .map(|p| {
+                    let mut rp = (*p).clone();
+                    rp.pin_type = ty(p);
+                    (rp, wants_editor(&s.graph, n, p))
+                })
                 .collect();
-            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs }
+            let error = active_path.zip(problems).and_then(|(path, problems)| {
+                let messages: Vec<&str> = problems
+                    .get(path)
+                    .iter()
+                    .filter(|p| p.node_id == Some(n.id))
+                    .map(|p| p.message.as_str())
+                    .collect();
+                (!messages.is_empty()).then(|| messages.join("\n"))
+            });
+            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs, error }
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
@@ -436,9 +511,11 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
             // two-way. `sample_idx` is included so switching a sample node's type
             // rebuilds it (new pins + the dropdown's new selection), and the
             // per-input editor flags so wiring a pin makes its inline editor
-            // disappear (and unwiring brings it back).
-            let editors: Vec<bool> = n.in_specs.iter().map(|(_, e)| *e).collect();
-            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors).hash(&mut h);
+            // disappear (and unwiring brings it back), the resolved pin type
+            // so a latch swaps the editor widget, and the compile error so
+            // the warning icon appears when it lands and clears when it heals.
+            let editors: Vec<(PinType, bool)> = n.in_specs.iter().map(|(p, e)| (p.pin_type, *e)).collect();
+            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx, &editors, &n.error).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -446,7 +523,10 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
         items,
         build: Box::new(move |c, f, i| {
             let n = &nodes[i];
-            let header = n.sample_idx.map(|_| sample_switch_button(c, f, n.id));
+            let header = match (n.error.is_some(), n.sample_idx) {
+                (false, None) => None,
+                (has_error, sample) => Some(node_header_controls(c, f, n.id, has_error, sample)),
+            };
             // Values are edited on the node itself — this is the only place they
             // live now, so `wants_editor` above decides which pins get one.
             let editors: Vec<Option<Entity>> = n
@@ -454,9 +534,41 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                 .iter()
                 .map(|(pin, wanted)| wanted.then(|| crate::pin_editors::pin_editor(c, f, n.id, pin)))
                 .collect();
-            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &editors, header)
+            let node = graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &editors, header);
+            if let Some(error) = &n.error {
+                c.entity(node).insert((
+                    renzora_ember::widgets::HoverTooltip::new(error.clone()),
+                    renzora_ember::widgets::TooltipAnchorAbove,
+                ));
+            }
+            node
         }),
     }
+}
+
+/// The title bar's trailing controls: a red warning icon when the shader
+/// compiler has something to say about the node, plus the sample-variant
+/// caret when the node has one. One row entity, because the widget's header
+/// slot takes a single child.
+fn node_header_controls(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, has_error: bool, sample_idx: Option<usize>) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .id();
+    if has_error {
+        let icon = icon_text(commands, &fonts.phosphor, "warning", close_red(), 13.0);
+        commands.entity(row).add_child(icon);
+    }
+    if sample_idx.is_some() {
+        let caret = sample_switch_button(commands, fonts, node_id);
+        commands.entity(row).add_child(caret);
+    }
+    row
 }
 
 /// A small caret button for a texture-sample node's header. The node title already
@@ -804,8 +916,36 @@ fn mat_graph_sync(world: &mut World) {
                     }
                 }
                 GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
-                    st.graph.connect(from_node, &from_pin, to_node, &to_pin);
-                    structural = true;
+                    // Resolved (latch-aware) types, so the refusal message
+                    // names the type the pin actually behaves as.
+                    let ranks = resolve_math_ranks(&st.graph);
+                    let pin_type = |node_id: u64, pin: &str, dir: PinDir| {
+                        st.graph
+                            .get_node(node_id)
+                            .and_then(|n| resolved_pin_type(&ranks, n, pin, dir))
+                    };
+                    match (
+                        pin_type(from_node, &from_pin, PinDir::Output),
+                        pin_type(to_node, &to_pin, PinDir::Input),
+                    ) {
+                        (Some(from_ty), Some(to_ty)) if !PinType::compatible(from_ty, to_ty) => {
+                            // Not a compile error — those belong to codegen,
+                            // and one sitting in compile_errors freezes the
+                            // preview until the next recompile. The Console
+                            // panel is where the editor's other material
+                            // feedback already goes.
+                            renzora::console_log::console_warn(
+                                "Material",
+                                format!(
+                                    "Connection refused: {from_ty:?} → {to_ty:?} pins are incompatible ({from_pin} → {to_pin})"
+                                ),
+                            );
+                        }
+                        _ => {
+                            st.graph.connect(from_node, &from_pin, to_node, &to_pin);
+                            structural = true;
+                        }
+                    }
                 }
                 GraphEdit::Disconnect { to_node, to_pin, .. } => {
                     st.graph.disconnect(to_node, &to_pin);
@@ -885,7 +1025,8 @@ fn pending_first_save(world: &mut World, entity: Entity) {
         let _ = std::fs::create_dir_all(&dir);
         let file = dir.join(format!("{}.material", graph_name));
         let mut graph_to_save = world.resource::<MaterialEditorState>().graph.clone();
-        if let Ok((json, _errors)) = renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph_to_save, &file) {
+        if let Ok((json, report)) = renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph_to_save, &file) {
+            crate::note_save_warnings(world, &asset_path, &report.warnings);
             let _ = std::fs::write(&file, &json);
             world.resource_mut::<MaterialEditorState>().graph = graph_to_save;
         }
@@ -970,13 +1111,18 @@ fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEn
 fn mat_add_and_wire(world: &mut World, node_type: &str, base: [f32; 2], src: (u64, String, bool)) {
     let Some(mut s) = world.get_resource_mut::<MaterialEditorState>() else { return };
     let new_id = s.graph.add_node(node_type, base);
+    // The dragged pin's resolved type, so a wire off a latched Vec4 math node
+    // prefers a Vec4 partner over a bare Float one.
+    let ranks = resolve_math_ranks(&s.graph);
     let src_ty = s
         .graph
         .nodes
         .iter()
         .find(|n| n.id == src.0)
-        .and_then(|n| node_def(&n.node_type))
-        .and_then(|d| (d.pins)().into_iter().find(|p| p.name == src.1).map(|p| p.pin_type));
+        .and_then(|n| {
+            let dir = if src.2 { PinDir::Output } else { PinDir::Input };
+            resolved_pin_type(&ranks, n, &src.1, dir)
+        });
     let want_dir = if src.2 { PinDir::Input } else { PinDir::Output };
     let new_pins = node_def(node_type).map(|d| (d.pins)()).unwrap_or_default();
     let pick = new_pins

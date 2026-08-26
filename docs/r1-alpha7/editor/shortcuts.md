@@ -151,7 +151,7 @@ These act on the selected row, and only while the Hierarchy is the panel you las
 |---|---|
 | `Ctrl+N` | New scene |
 | `Ctrl+O` | Open scene |
-| `Ctrl+S` | Save scene |
+| `Ctrl+S` | Save scene; also saves the open material graph when the Material Graph panel is a visible tab (`material_graph.save`, rebindable) |
 | `Ctrl+Shift+S` | Save scene as |
 | `Ctrl+,` | Open Settings |
 

@@ -111,7 +111,7 @@ RUN if [ "$(uname -m)" = "aarch64" ]; then HOSTRUST=aarch64-unknown-linux-gnu; e
 # section (cross-gcc linker) is appended by docker/linux/Dockerfile.
 [target.${HOSTRUST}]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 TOML
 
 # ── UPX ──────────────────────────────────────────────────────────────────────

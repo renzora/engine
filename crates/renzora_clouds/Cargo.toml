@@ -11,11 +11,5 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 
-[dev-dependencies]
-# Compiles the WGSL in a unit test. A shader error otherwise surfaces only as a
-# pipeline that never becomes ready — the sky simply stays empty, with the reason
-# buried in the log. Same version wgpu uses, so validation matches load time.
-naga = { version = "29", features = ["wgsl-in"] }
-
 [lints]
 workspace = true

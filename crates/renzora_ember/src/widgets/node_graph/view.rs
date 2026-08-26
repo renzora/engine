@@ -86,9 +86,10 @@ pub struct NodeGraphView {
     /// The (multi-) selection set — drives node borders in place (no rebuild, so
     /// a drag-started selection never kills the drag).
     pub selected: HashSet<u64>,
-    /// The port a cable is being dragged from: `(node, pin, is_output, colour)`.
-    /// Releasing over an opposite-direction, colour-matching port completes it.
-    pub pending_connect: Option<(u64, String, bool, (u8, u8, u8))>,
+    /// The port a cable is being dragged from: `(node, pin, is_output, colour,
+    /// compat_group)`. Releasing over an opposite-direction port in the same
+    /// group completes it. Colour rides along only to tint the preview cable.
+    pub pending_connect: Option<(u64, String, bool, (u8, u8, u8), u32)>,
     /// Caller sets to re-frame all nodes; cleared by the widget once applied.
     pub fit_request: bool,
     /// Whether this view has ever been framed. A graph's node positions belong to
@@ -160,6 +161,11 @@ struct NgvPort {
     pin: String,
     is_output: bool,
     color: (u8, u8, u8),
+    /// Compatibility group: a cable can drop on a port of the opposite
+    /// direction in the **same group**. Callers group their pin types so
+    /// colour can stay per-type (a Vec2 and a Color pin look different) while
+    /// every mutually-coercible type shares a group and interconnects.
+    group: u32,
     viewport: Entity,
     /// The port's label, whose background is tinted while the grab slot is hovered
     /// (sized to the text, so the highlight tracks the name, not the whole row).
@@ -275,8 +281,12 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
     NodeGraphHandle { viewport, canvas }
 }
 
-/// Build one node at `(x, y)` (canvas px) with typed input/output pins
-/// (`(pin_id, label)`). Returns the node entity (add it to `handle.canvas`).
+/// Build one node at `(x, y)` (canvas px) with typed input/output pins.
+/// Pins are `(pin_id, label, colour, compat_group)`: colour is purely visual,
+/// while a dragged cable can only drop on an opposite-direction pin in the
+/// same group — so coercible types (a Vec2 and a Color) share a group even
+/// though their dot colours differ. Returns the node entity (add it to
+/// `handle.canvas`).
 #[allow(clippy::too_many_arguments)]
 pub fn graph_node_view(
     commands: &mut Commands,
@@ -286,8 +296,8 @@ pub fn graph_node_view(
     node_id: u64,
     title: &str,
     color: (u8, u8, u8),
-    inputs: &[(String, String, (u8, u8, u8))],
-    outputs: &[(String, String, (u8, u8, u8))],
+    inputs: &[(String, String, (u8, u8, u8), u32)],
+    outputs: &[(String, String, (u8, u8, u8), u32)],
     x: f32,
     y: f32,
     selected: bool,
@@ -361,8 +371,8 @@ pub fn graph_node_view(
     }
     commands.entity(node).add_child(title_bar);
 
-    for (idx, (pin, label, pin_color)) in inputs.iter().enumerate() {
-        let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color);
+    for (idx, (pin, label, pin_color, group)) in inputs.iter().enumerate() {
+        let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color, *group);
         commands.entity(node).add_child(r);
         // Inline value editor for an unconnected input, on its own row. Left-aligned
         // to sit under the pin it belongs to — input pins hug the left edge, so a
@@ -412,8 +422,8 @@ pub fn graph_node_view(
     } else {
         node
     };
-    for (pin, label, pin_color) in outputs {
-        let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color);
+    for (pin, label, pin_color, group) in outputs {
+        let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color, *group);
         commands.entity(out_col).add_child(r);
     }
     // Optional preview thumbnail (e.g. texture nodes). Output pins hug the right
@@ -467,7 +477,7 @@ pub fn graph_node_view(
 /// lands the cable endpoint at the node edge. Hovering the slot tints the row (see
 /// [`ngv_highlight_slots`]) to advertise the grab.
 #[allow(clippy::too_many_arguments)]
-fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport: Entity, pin: &str, label: &str, is_output: bool, color: (u8, u8, u8)) -> Entity {
+fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport: Entity, pin: &str, label: &str, is_output: bool, color: (u8, u8, u8), group: u32) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -514,7 +524,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
                 width: Val::Px(SLOT_W),
                 ..default()
             },
-            NgvPort { node_id, pin: pin.to_string(), is_output, color, viewport, label: text },
+            NgvPort { node_id, pin: pin.to_string(), is_output, color, group, viewport, label: text },
             Interaction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("ngv-port-slot"),
@@ -738,7 +748,7 @@ fn ngv_preview(
         // Live drag follows the cursor; otherwise a parked (frozen) cable runs to
         // the open menu's anchor.
         let endpoint = graphs.get(pv.viewport).ok().and_then(|g| {
-            if let Some((nid, pin, is_out, _)) = g.pending_connect.clone() {
+            if let Some((nid, pin, is_out, _, _)) = g.pending_connect.clone() {
                 cur.map(|c| (nid, pin, is_out, c))
             } else {
                 g.frozen_cable
@@ -766,6 +776,8 @@ fn ngv_preview(
             m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
             m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
             m.color = Vec4::new(lin.red, lin.green, lin.blue, 0.7);
+            // A dragged cable has no target yet — single hue until it lands.
+            m.color_b = m.color;
             m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
         }
         node.display = Display::Flex;
@@ -913,7 +925,7 @@ fn ngv_connect(
         }
         if let Some((_, p)) = ports.iter().find(|(i, _)| **i == Interaction::Pressed) {
             if let Ok((_, mut g, _, _, _)) = graphs.get_mut(p.viewport) {
-                g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color));
+                g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color, p.group));
             }
         }
     }
@@ -921,13 +933,13 @@ fn ngv_connect(
         let target = ports
             .iter()
             .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
-            .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color));
+            .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color, p.group));
         let cur = cursor(&windows);
         for (vp, mut g, rcp, vcn, children) in &mut graphs {
-            let Some((snode, spin, s_out, scol)) = g.pending_connect.take() else { continue };
+            let Some((snode, spin, s_out, scol, sgroup)) = g.pending_connect.take() else { continue };
             // 1) Released over a compatible port → make the connection.
-            if let Some((tvp, tnode, tpin, t_out, tcol)) = &target {
-                if *tvp == vp && *t_out != s_out && *tcol == scol && *tnode != snode {
+            if let Some((tvp, tnode, tpin, t_out, _, tgroup)) = &target {
+                if *tvp == vp && *t_out != s_out && *tgroup == sgroup && *tnode != snode {
                     let (from_node, from_pin, to_node, to_pin) = if s_out {
                         (snode, spin, *tnode, tpin.clone())
                     } else {
@@ -964,9 +976,9 @@ fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &I
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
         // A port is connectable in the current context: always when no cable is
         // being dragged, else only if it's a compatible drop target (opposite
-        // direction, matching colour, a different node).
+        // direction, same compat group, a different node).
         let connectable = match &pending {
-            Some((snode, _, s_out, scol)) => port.is_output != *s_out && port.color == *scol && port.node_id != *snode,
+            Some((snode, _, s_out, _, sgroup)) => port.is_output != *s_out && port.group == *sgroup && port.node_id != *snode,
             None => true,
         };
         // Tint the label background (sized to the text) only when hovering a port
@@ -979,9 +991,9 @@ fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &I
             }
         }
         let (visible, size) = match &pending {
-            Some((snode, spin, s_out, scol)) => {
+            Some((snode, spin, s_out, _, sgroup)) => {
                 let is_source = port.node_id == *snode && &port.pin == spin && port.is_output == *s_out;
-                let valid = port.is_output != *s_out && port.color == *scol && port.node_id != *snode;
+                let valid = port.is_output != *s_out && port.group == *sgroup && port.node_id != *snode;
                 if is_source {
                     (true, 13.0)
                 } else if valid {
@@ -1280,7 +1292,7 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
     }
     let map = port_map(&ports);
     for (w, mat) in &wires {
-        let (Some(&(p0, wire_col)), Some(&(p3, _))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
+        let (Some(&(p0, wire_col)), Some(&(p3, target_col))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
             continue;
         };
         let (Ok(vgt), Ok(vcn)) = (transforms.get(w.viewport), computeds.get(w.viewport)) else {
@@ -1291,11 +1303,13 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
         let a = p0 - top_left;
         let b = p3 - top_left;
         let (c1, c2) = control_points(a, b);
-        let lin = rgb(wire_col).to_linear(); // wire takes the output pin's colour
+        let lin = rgb(wire_col).to_linear(); // wire starts at the output pin's colour…
+        let lin_b = rgb(target_col).to_linear(); // …and fades to the input pin's
         if let Some(mut m) = materials.get_mut(&mat.0) {
             m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
             m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
             m.color = Vec4::new(lin.red, lin.green, lin.blue, 1.0);
+            m.color_b = Vec4::new(lin_b.red, lin_b.green, lin_b.blue, 1.0);
             m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
         }
     }

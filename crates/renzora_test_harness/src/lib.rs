@@ -104,6 +104,20 @@ pub fn headless_app() -> App {
     app
 }
 
+/// [`headless_app`] with a chance to add plugins first.
+///
+/// `headless_app` calls `finish()` before it returns, and Bevy refuses plugins
+/// after that — so a test that needs an engine plugin under test has to get in
+/// beforehand. `build` runs with the base plugins added and `finish()` still
+/// pending.
+pub fn headless_app_with(build: impl FnOnce(&mut App)) -> App {
+    let mut app = App::new();
+    app.add_plugins(headless_plugins(None));
+    build(&mut app);
+    app.finish();
+    app
+}
+
 /// [`headless_app`] with the asset root pointed somewhere specific.
 ///
 /// Bevy resolves the default asset root relative to the *current directory*,

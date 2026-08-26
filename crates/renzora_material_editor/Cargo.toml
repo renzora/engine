@@ -9,7 +9,9 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_splash = { path = "../renzora_splash" }
 renzora_ember = { path = "../renzora_ember" }
-renzora_shader = { path = "../renzora_shader" }
+# `editor`: the Problems-panel shader validator lives behind that feature; the
+# panel this crate hosts is what it feeds.
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
 renzora_undo = { path = "../renzora_undo" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

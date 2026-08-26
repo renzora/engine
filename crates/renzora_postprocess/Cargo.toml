@@ -28,7 +28,7 @@ renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
 # Used ONLY to validate a plugin's shader before handing it to wgpu. Without
 # this, a layout mismatch in third-party WGSL is an unrecoverable GPU panic
 # rather than an error message.
-naga = { version = "27", features = ["wgsl-in"] }
+naga = { version = "29", features = ["wgsl-in"] }
 
 [lints]
 workspace = true

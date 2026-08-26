@@ -4,7 +4,7 @@
 //! The editor syncs between this and `NodeGraphState`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ── Identifiers ─────────────────────────────────────────────────────────────
 
@@ -42,6 +42,20 @@ impl PinType {
             // Strings never reach WGSL; this only exists so exhaustiveness
             // holds at the type level.
             Self::String => "f32",
+        }
+    }
+
+    /// Vectorization rank for math-node latching: the widest connected wire
+    /// wins. Color ties with Vec4 — both lower to `vec4<f32>`. Non-numeric
+    /// types rank 0 and never latch anything (they cannot wire into a math
+    /// pin anyway; see [`PinType::compatible`]).
+    pub fn vec_rank(self) -> u8 {
+        match self {
+            Self::Float => 1,
+            Self::Vec2 => 2,
+            Self::Vec3 => 3,
+            Self::Vec4 | Self::Color => 4,
+            _ => 0,
         }
     }
 
@@ -99,6 +113,10 @@ impl PinType {
             (PinType::Vec4, PinType::Vec2) => format!("({e}).xy"),
             (PinType::Vec4, PinType::Vec3) => format!("({e}).xyz"),
 
+            // `param/bool` emits a real WGSL `bool`. The fallthrough below
+            // hands it to a float pin unchanged, and naga rejects it.
+            (PinType::Bool, PinType::Float) => format!("select(0.0, 1.0, {e})"),
+
             _ => expr.to_string(),
         }
     }
@@ -153,7 +171,9 @@ impl PinValue {
             // Guard against non-finite values reaching the shader — `{:.6}` on
             // inf/NaN emits `inf`/`NaN`, which is not valid WGSL and would fail
             // pipeline creation for the whole material.
-            Self::Float(v) => format!("{:.6}", if v.is_finite() { *v } else { 0.0 }),
+            // `f32(..)`, not a bare literal: naga will not concretize a builtin
+            // call whose every argument is abstract, for example an unwired `math/lerp`.
+            Self::Float(v) => format!("f32({:.6})", if v.is_finite() { *v } else { 0.0 }),
             Self::Vec2([x, y]) => format!("vec2<f32>({:.6}, {:.6})", x, y),
             Self::Vec3([x, y, z]) => format!("vec3<f32>({:.6}, {:.6}, {:.6})", x, y, z),
             Self::Vec4([x, y, z, w]) | Self::Color([x, y, z, w]) => {
@@ -554,5 +574,237 @@ impl MaterialFunction {
             .nodes
             .iter()
             .find(|n| n.node_type == "function/output_point")
+    }
+}
+
+// ── Math-node vectorization ─────────────────────────────────────────────────
+//
+// A math node's pins are not fixed at Float. Attaching a Vec4 wire to
+// `Add.a` latches the whole node — sibling input `b` and output `result`
+// adopt Vec4 — but the node never dictates types to its sources: a narrower
+// wire keeps its own type and `cast_expr` widens it at the destination pin,
+// and a Vec4 *consumer* wired to `result` does not widen the inputs. With no
+// connections a node stays Float, so existing graphs compile byte-identical.
+
+/// Does this pin take part in math-node vectorization?
+///
+/// Every pin of a `math/*` node is dynamic except `math/lerp`'s `t`: WGSL's
+/// `mix` accepts a scalar blend factor alongside vector operands, so `t`
+/// stays Float whatever rank the node adopts.
+pub fn is_dynamic_pin(node_type: &str, pin_name: &str) -> bool {
+    node_type.starts_with("math/") && !(node_type == "math/lerp" && pin_name == "t")
+}
+
+/// Static template lookup for a pin's declared type.
+pub fn static_pin_type(node_type: &str, pin_name: &str, dir: PinDir) -> Option<PinType> {
+    let def = super::nodes::node_def(node_type)?;
+    (def.pins)()
+        .into_iter()
+        .find(|p| p.name == pin_name && p.direction == dir)
+        .map(|p| p.pin_type)
+}
+
+/// Latched type of every `math/*` node in the graph, keyed by node id.
+///
+/// The node's rank is the widest [`PinType::vec_rank`] among its *connected*
+/// dynamic inputs. Rank propagates through chains of math nodes by recursion.
+/// A Vec4/Color tie goes to the earliest pin in template order (strictly
+/// greater replacement), and a connection cycle contributes Float so the walk
+/// always terminates.
+///
+/// The map is a pure function of nodes and connections — nothing is
+/// serialized; a load re-derives it. It is linear in graph size, so there is
+/// no revision cache: codegen computes it once per compile, the editor once
+/// per snapshot pass.
+pub fn resolve_math_ranks(graph: &MaterialGraph) -> HashMap<NodeId, PinType> {
+    let mut ranks = HashMap::new();
+    let mut visiting = HashSet::new();
+    for node in &graph.nodes {
+        if node.node_type.starts_with("math/") {
+            resolve_node_rank(graph, node.id, &mut ranks, &mut visiting);
+        }
+    }
+    ranks
+}
+
+fn resolve_node_rank(
+    graph: &MaterialGraph,
+    id: NodeId,
+    ranks: &mut HashMap<NodeId, PinType>,
+    visiting: &mut HashSet<NodeId>,
+) -> PinType {
+    if let Some(&t) = ranks.get(&id) {
+        return t;
+    }
+    // A cycle offers no widest wire; the revisited node reads as Float so the
+    // recursion bottoms out instead of spinning.
+    if !visiting.insert(id) {
+        return PinType::Float;
+    }
+    let mut best = PinType::Float;
+    if let Some(node) = graph.get_node(id) {
+        if let Some(def) = super::nodes::node_def(&node.node_type) {
+            for pin in (def.pins)() {
+                if pin.direction != PinDir::Input || !is_dynamic_pin(&node.node_type, &pin.name) {
+                    continue;
+                }
+                let Some(conn) = graph.connection_to(id, &pin.name) else {
+                    continue;
+                };
+                let st = source_pin_type(graph, conn, ranks, visiting);
+                if st.vec_rank() > best.vec_rank() {
+                    best = st;
+                }
+            }
+        }
+    }
+    visiting.remove(&id);
+    ranks.insert(id, best);
+    best
+}
+
+/// Resolved type of the pin feeding `conn`: the source math node's own
+/// latched rank when the wire comes from one, the static type otherwise.
+fn source_pin_type(
+    graph: &MaterialGraph,
+    conn: &Connection,
+    ranks: &mut HashMap<NodeId, PinType>,
+    visiting: &mut HashSet<NodeId>,
+) -> PinType {
+    let Some(src) = graph.get_node(conn.from_node) else {
+        return PinType::Float;
+    };
+    if is_dynamic_pin(&src.node_type, &conn.from_pin) {
+        return resolve_node_rank(graph, src.id, ranks, visiting);
+    }
+    static_pin_type(&src.node_type, &conn.from_pin, PinDir::Output).unwrap_or(PinType::Float)
+}
+
+/// The pin type the graph behaves as: the latched rank for a dynamic math
+/// pin, the declared template type for everything else. `ranks` comes from
+/// [`resolve_math_ranks`]; a node missing from it (unconnected) reads Float.
+pub fn resolved_pin_type(
+    ranks: &HashMap<NodeId, PinType>,
+    node: &MaterialNode,
+    pin_name: &str,
+    dir: PinDir,
+) -> Option<PinType> {
+    let declared = static_pin_type(&node.node_type, pin_name, dir)?;
+    if is_dynamic_pin(&node.node_type, pin_name) {
+        return ranks.get(&node.id).copied().or(Some(PinType::Float));
+    }
+    Some(declared)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn graph_with(nodes: &[&str]) -> (MaterialGraph, Vec<NodeId>) {
+        let mut g = MaterialGraph::new("t", MaterialDomain::Surface);
+        let ids = nodes.iter().map(|t| g.add_node(t, [0.0, 0.0])).collect();
+        (g, ids)
+    }
+
+    fn rank(g: &MaterialGraph, id: NodeId) -> PinType {
+        resolve_math_ranks(g).get(&id).copied().unwrap_or(PinType::Float)
+    }
+
+    /// Resolved type of one pin through the full pipeline.
+    fn pin_ty(g: &MaterialGraph, id: NodeId, pin: &str, dir: PinDir) -> PinType {
+        let ranks = resolve_math_ranks(g);
+        resolved_pin_type(&ranks, g.get_node(id).unwrap(), pin, dir).unwrap()
+    }
+
+    #[test]
+    fn unconnected_math_node_stays_float() {
+        let (g, ids) = graph_with(&["math/add"]);
+        assert_eq!(pin_ty(&g, ids[0], "a", PinDir::Input), PinType::Float);
+        assert_eq!(pin_ty(&g, ids[0], "b", PinDir::Input), PinType::Float);
+        assert_eq!(pin_ty(&g, ids[0], "result", PinDir::Output), PinType::Float);
+    }
+
+    #[test]
+    fn vec4_wire_latches_sibling_and_output() {
+        let (mut g, ids) = graph_with(&["math/add", "param/vec4"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        assert_eq!(pin_ty(&g, ids[0], "a", PinDir::Input), PinType::Vec4);
+        assert_eq!(pin_ty(&g, ids[0], "b", PinDir::Input), PinType::Vec4);
+        assert_eq!(pin_ty(&g, ids[0], "result", PinDir::Output), PinType::Vec4);
+    }
+
+    #[test]
+    fn downstream_consumer_does_not_latch() {
+        // A Vec4 sink on `result` must not widen the inputs — latching flows
+        // upstream-to-downstream only.
+        let (mut g, ids) = graph_with(&["math/add"]);
+        let output = g.output_node().unwrap().id;
+        g.connect(ids[0], "result", output, "base_color");
+        assert_eq!(rank(&g, ids[0]), PinType::Float);
+    }
+
+    #[test]
+    fn widest_wire_wins_and_detach_recomputes() {
+        let (mut g, ids) = graph_with(&["math/add", "param/vec2", "param/vec4"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        g.connect(ids[2], "value", ids[0], "b");
+        assert_eq!(rank(&g, ids[0]), PinType::Vec4);
+        g.disconnect(ids[0], "b");
+        assert_eq!(rank(&g, ids[0]), PinType::Vec2);
+        g.disconnect(ids[0], "a");
+        assert_eq!(rank(&g, ids[0]), PinType::Float);
+    }
+
+    #[test]
+    fn scalar_wire_never_latches() {
+        let (mut g, ids) = graph_with(&["math/multiply", "param/float"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        assert_eq!(rank(&g, ids[0]), PinType::Float);
+    }
+
+    #[test]
+    fn rank_propagates_through_math_chains() {
+        let (mut g, ids) = graph_with(&["math/add", "math/multiply", "param/vec3"]);
+        g.connect(ids[2], "value", ids[0], "a");
+        g.connect(ids[0], "result", ids[1], "a");
+        assert_eq!(rank(&g, ids[0]), PinType::Vec3);
+        assert_eq!(rank(&g, ids[1]), PinType::Vec3);
+        assert_eq!(pin_ty(&g, ids[1], "result", PinDir::Output), PinType::Vec3);
+    }
+
+    #[test]
+    fn connection_cycle_terminates_as_float() {
+        let (mut g, ids) = graph_with(&["math/add", "math/add"]);
+        g.connect(ids[0], "result", ids[1], "a");
+        g.connect(ids[1], "result", ids[0], "a");
+        assert_eq!(rank(&g, ids[0]), PinType::Float);
+        assert_eq!(rank(&g, ids[1]), PinType::Float);
+    }
+
+    #[test]
+    fn lerp_t_stays_float_when_node_latches() {
+        let (mut g, ids) = graph_with(&["math/lerp", "param/vec4"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        assert_eq!(pin_ty(&g, ids[0], "result", PinDir::Output), PinType::Vec4);
+        assert_eq!(pin_ty(&g, ids[0], "t", PinDir::Input), PinType::Float);
+    }
+
+    #[test]
+    fn vec4_color_tie_goes_to_first_pin() {
+        // Both rank 4; strictly-greater replacement keeps the earliest pin's
+        // type, so the latch is deterministic.
+        let (mut g, ids) = graph_with(&["math/add", "param/color", "param/vec4"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        g.connect(ids[2], "value", ids[0], "b");
+        assert_eq!(rank(&g, ids[0]), PinType::Color);
+    }
+
+    #[test]
+    fn saved_graph_re_derives_identical_ranks() {
+        let (mut g, ids) = graph_with(&["math/add", "param/vec3"]);
+        g.connect(ids[1], "value", ids[0], "a");
+        let json = serde_json::to_string(&g).unwrap();
+        let loaded: MaterialGraph = serde_json::from_str(&json).unwrap();
+        assert_eq!(resolve_math_ranks(&g), resolve_math_ranks(&loaded));
     }
 }

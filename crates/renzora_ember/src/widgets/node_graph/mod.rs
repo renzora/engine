@@ -107,7 +107,7 @@ pub(crate) fn apply_node_graph_style(
     }
 }
 
-/// GPU-painted bezier cable: control points + color + stroke params.
+/// GPU-painted bezier cable: control points + endpoint colors + stroke params.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub(crate) struct CableMaterial {
     #[uniform(0)]
@@ -116,6 +116,11 @@ pub(crate) struct CableMaterial {
     cd: Vec4,
     #[uniform(0)]
     color: Vec4,
+    /// Colour at the cable's far end. Differs from `color` when the two pins
+    /// have different types (a Vec2 feeding a Color input): the cable runs a
+    /// gradient source→target so a type coercion is visible on the wire.
+    #[uniform(0)]
+    color_b: Vec4,
     #[uniform(0)]
     params: Vec4,
 }
@@ -123,10 +128,12 @@ pub(crate) struct CableMaterial {
 impl Default for CableMaterial {
     fn default() -> Self {
         let c = rgb(accent()).to_linear();
+        let v = Vec4::new(c.red, c.green, c.blue, 1.0);
         Self {
             ab: Vec4::ZERO,
             cd: Vec4::ZERO,
-            color: Vec4::new(c.red, c.green, c.blue, 1.0),
+            color: v,
+            color_b: v,
             params: Vec4::new(WIRE_W, 1.0, 0.0, 0.0),
         }
     }
@@ -742,6 +749,7 @@ pub(crate) fn update_endpoints(
             m.ab = Vec4::new(p0.x, p0.y, p1.x, p1.y);
             m.cd = Vec4::new(p2.x, p2.y, p3.x, p3.y);
             m.color = Vec4::new(accent.red, accent.green, accent.blue, 1.0);
+            m.color_b = m.color;
             // Stroke width / feather in physical px (constant logical thickness).
             m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
         }
