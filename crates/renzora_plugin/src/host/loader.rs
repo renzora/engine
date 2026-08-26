@@ -106,7 +106,17 @@ pub struct PluginSlot {
     /// So a reload leaks one library image. A few MB per reload across a dev
     /// session is a fair price for never unmapping code that something might
     /// still call, and a restart reclaims all of it.
-    _libraries: Vec<Library>,
+    ///
+    /// `ManuallyDrop`, and not merely "we never call `remove`": [`LoadedPlugins`]
+    /// is an ECS resource, so a plain `Vec<Library>` is dropped when the World
+    /// is — which is every clean shutdown. That ran `FreeLibrary` on every
+    /// plugin image at process teardown and exited the game runtime with an
+    /// access violation (0xC0000005). The editor never saw it because
+    /// `kill_on_app_exit` calls `std::process::exit` before the World unwinds,
+    /// so it happened to skip the drop; the runtime unwinds properly and paid
+    /// for it. "Never dropped" has to include the last moment of the process,
+    /// which is the one moment a `Vec` field does not give you for free.
+    _libraries: Vec<std::mem::ManuallyDrop<Library>>,
 }
 
 /// Every plugin path the loader has seen, indexed by slot.
@@ -396,9 +406,12 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
             let s = &mut loaded.0[slot];
             s.loaded_at = generation;
             s.images += 1;
-            // The one path that takes ownership rather than leaking in place —
-            // and it only moves the handle somewhere that also never drops it.
-            s._libraries.push(std::mem::ManuallyDrop::into_inner(library));
+            // Moved, still wrapped: `into_inner` here used to hand a bare
+            // `Library` to a `Vec` inside an ECS resource, which drops with the
+            // World and put `FreeLibrary` back on the shutdown path (see
+            // `_libraries`). Keeping the `ManuallyDrop` is what makes "never
+            // dropped" true at process exit as well as during the run.
+            s._libraries.push(library);
             LoadOutcome::Loaded
         }
         sys::InitResult::VersionTooOld => LoadOutcome::VersionTooOld,
