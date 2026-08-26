@@ -288,8 +288,16 @@ mod ground_hit_tests {
     /// would be an infinity — which then multiplies into a NaN position.
     #[test]
     fn a_ray_parallel_to_the_ground_misses_rather_than_going_infinite() {
-        for dir in [Vec3::X, Vec3::Z, Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 1e-9, 0.0)] {
-            assert!(ground_hit(Vec3::new(0.0, 5.0, 0.0), dir).is_none(), "{dir:?}");
+        for dir in [
+            Vec3::X,
+            Vec3::Z,
+            Vec3::new(1.0, 0.0, 1.0),
+            Vec3::new(1.0, 1e-9, 0.0),
+        ] {
+            assert!(
+                ground_hit(Vec3::new(0.0, 5.0, 0.0), dir).is_none(),
+                "{dir:?}"
+            );
         }
     }
 
@@ -300,7 +308,10 @@ mod ground_hit_tests {
     fn an_absurdly_distant_hit_is_rejected() {
         // Grazing angle: 100 units up, dropping 0.001 per unit travelled.
         let far = ground_hit(Vec3::new(0.0, 100.0, 0.0), Vec3::new(1.0, -0.001, 0.0));
-        assert!(far.is_none(), "expected the 100km hit to be rejected, got {far:?}");
+        assert!(
+            far.is_none(),
+            "expected the 100km hit to be rejected, got {far:?}"
+        );
     }
 
     #[test]
@@ -320,7 +331,11 @@ mod ground_hit_tests {
     #[test]
     fn a_hit_is_never_non_finite() {
         for origin in [Vec3::new(0.0, 1.0, 0.0), Vec3::new(-500.0, 900.0, 250.0)] {
-            for dir in [Vec3::NEG_Y, Vec3::new(0.5, -0.5, 0.5), Vec3::new(-1.0, -2.0, 3.0)] {
+            for dir in [
+                Vec3::NEG_Y,
+                Vec3::new(0.5, -0.5, 0.5),
+                Vec3::new(-1.0, -2.0, 3.0),
+            ] {
                 if let Some(hit) = ground_hit(origin, dir) {
                     assert!(hit.is_finite(), "{origin:?} {dir:?} -> {hit:?}");
                 }
@@ -347,7 +362,7 @@ pub enum EntityAction {
 pub fn dispatch_entity_action(world: &World, action: EntityAction) {
     if let Some(kb) = world.get_resource::<KeyBindings>() {
         match action {
-            EntityAction::Focus => kb.dispatch(EditorAction::FocusSelected),
+            EntityAction::Focus => kb.dispatch(EditorAction::FrameSelected),
             EntityAction::Duplicate => kb.dispatch(EditorAction::Duplicate),
             EntityAction::Delete => kb.dispatch(EditorAction::Delete),
             EntityAction::Deselect => kb.dispatch(EditorAction::Deselect),

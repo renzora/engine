@@ -50,7 +50,9 @@ Movement keys are active **only while you hold the right mouse button** to fly. 
 | `W` `A` `S` `D` | Fly forward / left / back / right (hold right-click) |
 | `E` / `Q` | Fly up / down (hold right-click) |
 | `Left Shift` | Fly faster (hold) |
-| `F` | Focus selected |
+| `.` (numpad) | Frame selected — fit the selected object into view (its bounding box, not just its origin) |
+| `Shift + Middle-click` | Pan (slide the view sideways) |
+| `Shift + Right-click` | Place the 3D cursor at the world point under the mouse |
 | `Home` | Reset camera |
 | `A` | Frame all |
 | `End` | Move camera to cursor |

@@ -144,7 +144,7 @@ impl Default for CameraSettings {
             move_speed: 10.0,
             look_sensitivity: 0.3,
             orbit_sensitivity: 0.5,
-            pan_sensitivity: 1.0,
+            pan_sensitivity: 0.3,
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
@@ -176,6 +176,13 @@ struct CameraVelocityState {
 #[derive(Resource, Default)]
 pub struct PivotLock(pub bool);
 
+/// The editor 3D cursor — defined in the `renzora` contract crate so every
+/// spawn path (viewport shapes dropdown, hierarchy "Add Entity", shape
+/// library panel) reads the same resource. Placement lives here in
+/// `renzora_camera`; see `place_3d_cursor` (Shift+RMB) and
+/// `render_3d_cursor` (Gizmos::sphere).
+pub use renzora::core::ThreeDCursor;
+
 #[derive(Default)]
 pub struct CameraPlugin;
 
@@ -190,6 +197,8 @@ impl Plugin for CameraPlugin {
             .init_resource::<PivotLock>()
             .init_resource::<OrbitMirror>()
             .init_resource::<EditorViewportFov>()
+            .init_resource::<ThreeDCursor>()
+            .register_type::<ThreeDCursor>()
             .add_systems(
                 Update,
                 toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
@@ -220,10 +229,24 @@ impl Plugin for CameraPlugin {
                     apply_per_slot_view_angle,
                     sync_viewport_settings,
                     handle_view_angle_keys,
-                    focus_selected,
+                    // Frame the selected entity (Blender's NumpadPeriod). Reads
+                    // world-space AABB and fits the camera distance to the
+                    // bounds. Runs after `handle_view_angle_keys` and before
+                    // `frame_all` so it composes correctly with other camera-
+                    // view actions in the same frame.
+                    frame_selected,
                     frame_all,
                     handle_camera_view_request,
                     camera_to_cursor,
+                    // Place 3D cursor runs BEFORE camera_controller so the cursor
+                    // resource is updated before any UI code in the same frame
+                    // reads it. The cursor placement only fires on Shift+RMB
+                    // just-pressed, so it does not interfere with plain RMB.
+                    place_3d_cursor,
+                    // Render the 3D cursor gizmo AFTER it's been updated. Runs
+                    // after `place_3d_cursor` and before `camera_controller`
+                    // so the visual reflects the same frame's placement.
+                    render_3d_cursor,
                     camera_controller,
                     apply_nav_overlay,
                     update_camera_projection,
@@ -518,16 +541,23 @@ fn handle_view_angle_keys(
     }
 }
 
-/// Focus the camera on the currently selected entity (F key).
-fn focus_selected(
+/// Frame the camera on the selected entity — focus on the entity's bounding-box
+/// center and zoom to fit its bounds, with a small margin. Blender's equivalent
+/// is `NumpadPeriod` (`.` on the numpad). Per user request this does NOT engage
+/// `pivot_lock`: the previous `FocusSelected` left users unable to pan until
+/// they pressed L to release the lock, which felt like a bug. This version just
+/// frames the entity; the user can immediately pan/orbit/zoom afterwards.
+fn frame_selected(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     selection: Res<EditorSelection>,
-    mut orbit: ResMut<OrbitCameraState>,
-    mut pivot_lock: ResMut<PivotLock>,
     transforms: Query<&Transform, Without<EditorCamera>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: Query<&Children>,
+    editor_fov: Option<Res<EditorViewportFov>>,
+    mut orbit: ResMut<OrbitCameraState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
@@ -542,13 +572,82 @@ fn focus_selected(
     if mouse_button.pressed(MouseButton::Right) {
         return;
     }
+    if !keybindings.just_pressed(EditorAction::FrameSelected, &keyboard) {
+        return;
+    }
 
-    if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
-        if let Some(entity) = selection.get() {
-            if let Ok(transform) = transforms.get(entity) {
-                orbit.focus_on(transform.translation);
-                pivot_lock.0 = true;
+    let Some(entity) = selection.get() else {
+        return;
+    };
+
+    // Walk the entity + children to gather world-space AABB extents. Mirrors
+    // `compute_gizmo_pivot` in `renzora_gizmo`: 8-corner transform of each
+    // Mesh3d's local AABB, then expand min/max.
+    if let Some((min, max)) = collect_entity_world_aabb(entity, &aabbs, &children) {
+        let center = (min + max) * 0.5;
+        let max_extent = (max - min).max_element();
+        // Fit `max_extent / 2` in a perspective frustum with vertical FOV fov_rad,
+        // plus 1.2x margin. Default 45° matches `EditorViewportFov::default`
+        // and the resolution when no scene camera has been selected yet.
+        let fov_rad = editor_fov
+            .map(|f| f.0)
+            .unwrap_or(std::f32::consts::FRAC_PI_4);
+        let margin = 1.2;
+        let distance = ((max_extent * 0.5) / (fov_rad * 0.5).tan()).max(0.1) * margin;
+        orbit.focus = center;
+        orbit.distance = distance;
+        // NB: do NOT touch `pivot_lock` — see doc comment above.
+    } else if let Ok(transform) = transforms.get(entity) {
+        // No Mesh3d anywhere in the subtree. Fall back to the entity's origin
+        // and keep the current distance (the user can zoom manually).
+        orbit.focus = transform.translation;
+    }
+}
+
+/// Walk an entity + its children, transforming each `Mesh3d`'s local AABB into
+/// world space via its `GlobalTransform` and unioning the corners. Mirrors
+/// the structure of `compute_gizmo_pivot` / `collect_pivot_aabb` in the gizmo
+/// crate; reimplemented here so `frame_selected` doesn't need a cross-crate
+/// dependency on `renzora_gizmo`.
+fn collect_entity_world_aabb(
+    entity: Entity,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: &Query<&Children>,
+) -> Option<(Vec3, Vec3)> {
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+    let mut found = false;
+    collect_entity_world_aabb_inner(entity, aabbs, children, &mut min, &mut max, &mut found);
+    found.then_some((min, max))
+}
+
+fn collect_entity_world_aabb_inner(
+    entity: Entity,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: &Query<&Children>,
+    min: &mut Vec3,
+    max: &mut Vec3,
+    found: &mut bool,
+) {
+    if let Ok((Some(aabb), gt)) = aabbs.get(entity) {
+        *found = true;
+        let center = Vec3::from(aabb.center);
+        let half = Vec3::from(aabb.half_extents);
+        // 8-corner transform; cheaper than building an affine matrix and runs
+        // the same code Bevy uses for AABB-vs-frustum tests.
+        for sx in [-1.0_f32, 1.0] {
+            for sy in [-1.0_f32, 1.0] {
+                for sz in [-1.0_f32, 1.0] {
+                    let corner = gt.transform_point(center + half * Vec3::new(sx, sy, sz));
+                    *min = min.min(corner);
+                    *max = max.max(corner);
+                }
             }
+        }
+    }
+    if let Ok(kids) = children.get(entity) {
+        for child in kids.iter() {
+            collect_entity_world_aabb_inner(child, aabbs, children, min, max, found);
         }
     }
 }
@@ -760,6 +859,179 @@ fn camera_to_cursor(
     orbit.yaw = yaw;
     orbit.pitch = pitch;
     pivot_lock.0 = true;
+}
+
+/// Place the editor's 3D cursor (`ThreeDCursor` resource) at the point under
+/// the mouse cursor. Blender convention: Shift+RMB. The camera does NOT
+/// look-drag during this gesture (the `nav_drag_mode` routing returns `None`
+/// for Shift+RMB, leaving this system as the only effect of that combo).
+///
+/// Currently the cursor is set by intersecting the mouse ray with the y=0
+/// ground plane — the same convention `camera_to_cursor` uses for the End
+/// key. A future PR can extend this to ray-cast against scene meshes via
+/// Bevy's picking backend; the resource write-point stays the same.
+fn place_3d_cursor(
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Res<InputFocusState>,
+    viewport: Option<Res<ViewportState>>,
+    window_q: Query<&Window, With<PrimaryWindow>>,
+    camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut cursor: ResMut<ThreeDCursor>,
+) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if input_focus.ui_wants_keyboard {
+        return;
+    }
+    if !mouse_button.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    if !shift_held {
+        return;
+    }
+
+    let Some(viewport) = viewport else { return };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Some(mouse_pos) = window.cursor_position() else {
+        return;
+    };
+    let vp_min = viewport.screen_position;
+    let vp_max = vp_min + viewport.screen_size;
+    if mouse_pos.x < vp_min.x
+        || mouse_pos.y < vp_min.y
+        || mouse_pos.x > vp_max.x
+        || mouse_pos.y > vp_max.y
+    {
+        return;
+    }
+    let Some((camera, cam_xform)) = camera_q.iter().next() else {
+        return;
+    };
+    let viewport_pos = Vec2::new(
+        (mouse_pos.x - vp_min.x) / viewport.screen_size.x * viewport.current_size.x as f32,
+        (mouse_pos.y - vp_min.y) / viewport.screen_size.y * viewport.current_size.y as f32,
+    );
+    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else {
+        return;
+    };
+    let dir = ray.direction.as_vec3();
+    if dir.y.abs() <= 1e-6 {
+        return;
+    }
+    let t = -ray.origin.y / dir.y;
+    if t <= 0.0 || t > 10_000.0 {
+        return;
+    }
+    let target = ray.origin + dir * t;
+    cursor.0 = target;
+}
+
+/// Render the 3D cursor as a small wireframe sphere at the cursor's world
+/// position. Without this the cursor is invisible — `place_3d_cursor` writes
+/// its position to a resource, but no system draws anything for the user to
+/// see. Wireframe (rather than solid) so it never occludes scene content
+/// and reads as a marker, not as a real object.
+fn render_3d_cursor(cursor: Res<ThreeDCursor>, mut gizmos: Gizmos) {
+    // Distinct red-orange tint, close to Blender's selection red, so the
+    // cursor reads as an editor overlay and doesn't blend with the scene.
+    let color = Color::srgb(0.95, 0.45, 0.20);
+    // Radius is small (~15 cm in default world units) so it reads as a
+    // marker rather than a real object. `Isometry3d::from_translation` places
+    // the sphere at the cursor's world position; Bevy 0.19's Gizmos::sphere
+    // draws a column of three axis-aligned wireframe circles (X/Y/Z), which
+    // is the standard "3D marker" silhouette.
+    gizmos.sphere(Isometry3d::from_translation(cursor.0), 0.15, color);
+}
+
+/// What the `camera_controller` should do for this frame's drag input, given
+/// the pressed mouse buttons and modifier state. Centralized so the routing
+/// decision can be unit-tested without spinning up a full Bevy world.
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+enum NavDragMode {
+    /// Plain MMB or Alt+Left: rotate the camera around the pivot.
+    Orbit,
+    /// Shift+MMB: pan the camera + pivot along the view plane.
+    /// (Shift+RMB no longer routes here — it places the 3D cursor.)
+    Pan,
+    /// Plain RMB: rotate yaw/pitch while preserving world-space pivot.
+    Look,
+    /// No navigation input pressed.
+    None,
+}
+
+/// Pick the navigation mode for this frame. The order of these checks is
+/// part of the spec:
+///   1. Shift+MMB → Pan.
+///   2. Plain RMB → Look. (Shift+RMB is reserved for the Place 3D Cursor
+///      operator; the camera must not look-drag while the cursor is being
+///      placed, so Shift+RMB returns `None` here.)
+///   3. Plain MMB or Alt+Left → Orbit.
+///   4. Otherwise → None.
+fn nav_drag_mode(
+    right_pressed: bool,
+    middle_pressed: bool,
+    alt_held: bool,
+    shift_held: bool,
+    left_pressed: bool,
+) -> NavDragMode {
+    if shift_held && middle_pressed {
+        return NavDragMode::Pan;
+    }
+    if right_pressed && !shift_held {
+        return NavDragMode::Look;
+    }
+    if middle_pressed || (left_pressed && alt_held) {
+        return NavDragMode::Orbit;
+    }
+    NavDragMode::None
+}
+
+/// Apply one frame's accumulated mouse motion as a pan delta to `orbit.focus`.
+/// Both Shift+RMB and Shift+MMB route through here; the difference between
+/// the two is just which mouse button arrived, not the math. This keeps
+/// the two bindings mathematically identical so the pan speed and direction
+/// stay consistent across mouse-button preferences.
+///
+/// Pan direction is **natural-grab** (mouse direction = content direction):
+/// mouse-left → focus moves right (camera goes left, content slides right);
+/// mouse-up → focus moves down (camera goes down, content slides up).
+/// This matches the spec text "lower my height" semantics. See the priority
+/// knowledge rule in `AGENTS.md` for why the cross-product order is
+/// `view_dir × right_dir` (not `right_dir × view_dir`) under Y-up.
+fn apply_pan(
+    orbit: &mut OrbitCameraState,
+    mouse_motion: &mut MessageReader<MouseMotion>,
+    pan_sensitivity: f32,
+    slow_mult: f32,
+) {
+    // Slider value of 1.0 ≈ the previous hardcoded 0.03 rate. The 0.01
+    // multiplier matches `look_speed` / `orbit_speed` so all three sliders
+    // feel comparable on the same numerical scale.
+    // The 0.004 multiplier + slider default 2.5 means the slider midpoint
+    // (2.5) gives the same pan speed the old default 1.0 with the old 0.01
+    // multiplier did; the new max (5.0) is twice that, and 0 stops the pan
+    // entirely. Default 2.5 with `CameraSettingsState::default()` below.
+    let pan_speed = pan_sensitivity * 0.004 * slow_mult * orbit.distance.max(0.5);
+    let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
+    let view_dir = Vec3::new(
+        orbit.pitch.cos() * orbit.yaw.sin(),
+        orbit.pitch.sin(),
+        orbit.pitch.cos() * orbit.yaw.cos(),
+    );
+    // Cross-product order: `view_dir × right_dir` produces `+Y` at default view
+    // (Renzora's Y-up convention). The previous `right_dir × view_dir` order
+    // is the Z-up form, which produces `-Y` here and inverts the Y pan direction.
+    let up_dir = view_dir.cross(right_dir).normalize();
+    for ev in mouse_motion.read() {
+        orbit.focus -= right_dir * ev.delta.x * pan_speed;
+        orbit.focus += up_dir * ev.delta.y * pan_speed;
+    }
 }
 
 fn camera_controller(
@@ -974,16 +1246,20 @@ fn camera_controller(
     if !tool_active {
         for ev in scroll_events.read() {
             if pivot_lock.0 {
-                // Dolly: move the camera along the view ray by changing
-                // distance, leaving `focus` anchored.
-                orbit.distance = (orbit.distance - ev.y * zoom_speed).max(0.1);
-            } else {
+                // Pivot locked: dolly toward/away from the pivot by sliding
+                // `focus` along the view forward axis. The orbit distance
+                // is preserved, so the camera position moves with focus.
                 let forward = Vec3::new(
                     orbit.pitch.cos() * orbit.yaw.sin(),
                     orbit.pitch.sin(),
                     orbit.pitch.cos() * orbit.yaw.cos(),
                 );
                 orbit.focus -= forward * ev.y * zoom_speed;
+            } else {
+                // Default: distance-based zoom (Blender behavior). Pivot
+                // stays anchored at `orbit.focus`; only `orbit.distance`
+                // changes. This is the user-visible "wheel zoom" feel.
+                orbit.distance = (orbit.distance - ev.y * zoom_speed).max(0.1);
             }
             scroll_changed = true;
         }
@@ -1003,38 +1279,40 @@ fn camera_controller(
         return;
     }
 
-    // === Right-click: look around (or Shift+Right to pan) ===
+    // === Drag routing: pick the mode from pressed buttons + modifiers ===
     // WASD fly is handled above via the smoothed-velocity block so motion
     // eases in/out independently of the look/pan state machine.
-    if right_pressed {
-        let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
-        if shift_held {
-            // Shift+Right drag = pan the camera (slide focus in view plane).
-            // Suppressed when pivot is locked so orbit stays centered.
+    let drag_mode = nav_drag_mode(
+        right_pressed,
+        middle_pressed,
+        alt_held,
+        shift_held,
+        left_pressed,
+    );
+    match drag_mode {
+        NavDragMode::Pan => {
+            // Pan is suppressed when pivot is locked so the orbit stays
+            // centered (mirrors the original Shift+Right guard).
             if pivot_lock.0 {
                 mouse_motion.clear();
             } else {
-                let pan_speed = 0.003 * orbit.distance.max(0.5);
-                let view_dir = Vec3::new(
-                    orbit.pitch.cos() * orbit.yaw.sin(),
-                    orbit.pitch.sin(),
-                    orbit.pitch.cos() * orbit.yaw.cos(),
+                apply_pan(
+                    &mut orbit,
+                    &mut mouse_motion,
+                    settings.pan_sensitivity,
+                    slow_mult,
                 );
-                let up_dir = right_dir.cross(view_dir).normalize();
-                for ev in mouse_motion.read() {
-                    orbit.focus -= right_dir * ev.delta.x * pan_speed;
-                    orbit.focus += up_dir * ev.delta.y * pan_speed;
-                }
             }
-        } else {
-            // Mouse look (pivot-preserved).
+        }
+        NavDragMode::Look => {
+            // Mouse look (pivot-preserved): rotate yaw/pitch, then recompute
+            // the pivot so the camera world position doesn't translate.
             let cam_pos = orbit.calculate_position();
             for ev in mouse_motion.read() {
                 orbit.yaw -= ev.delta.x * look_speed;
                 orbit.pitch += ev.delta.y * look_speed * invert_y;
                 orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
             }
-            // Keep camera in same position, recalculate focus.
             let new_dir = Vec3::new(
                 orbit.pitch.cos() * orbit.yaw.sin(),
                 orbit.pitch.sin(),
@@ -1042,16 +1320,16 @@ fn camera_controller(
             );
             orbit.focus = cam_pos - new_dir * orbit.distance;
         }
-    }
-    // === Middle-click or Alt+Left: orbit ===
-    else if middle_pressed || (left_pressed && alt_held) {
-        for ev in mouse_motion.read() {
-            orbit.yaw -= ev.delta.x * orbit_speed;
-            orbit.pitch += ev.delta.y * orbit_speed * invert_y;
-            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+        NavDragMode::Orbit => {
+            for ev in mouse_motion.read() {
+                orbit.yaw -= ev.delta.x * orbit_speed;
+                orbit.pitch += ev.delta.y * orbit_speed * invert_y;
+                orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
+            }
         }
-    } else {
-        mouse_motion.clear();
+        NavDragMode::None => {
+            mouse_motion.clear();
+        }
     }
 
     // Apply orbit to transform
@@ -1100,7 +1378,13 @@ fn apply_nav_overlay(
     }
 
     if has_pan && !pivot_lock.0 {
-        let pan_speed = 0.003 * orbit.distance.max(0.5);
+        // `apply_pan`'s 0.01 multiplier means slider value of 1.0 ≈ a strong
+        // pan; default 0.3 from `CameraSettings::default()` gives a gentle
+        // feel that matches Look/Orbit at the same numeric slider position.
+        // Mirrors `apply_pan`'s 0.004 multiplier — slider midpoint 2.5 gives
+        // the previous default speed, slider max 5.0 doubles it, slider 0
+        // stops the pan.
+        let pan_speed = settings.pan_sensitivity * 0.004 * orbit.distance.max(0.5);
         let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
         let up_dir = Vec3::new(
             -orbit.pitch.sin() * orbit.yaw.sin(),
@@ -1308,7 +1592,13 @@ fn update_camera_projection(
         .map(|v| v.screen_size.x / v.screen_size.y)
         .unwrap_or(16.0 / 9.0);
 
-    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
+    apply_projection(
+        &mut projection,
+        orbit.projection_mode,
+        orbit.distance,
+        aspect,
+        fov.0,
+    );
 }
 
 // ── Multi-viewport plumbing ─────────────────────────────────────────────────
@@ -1349,14 +1639,20 @@ fn relocate_editor_camera_marker(
 /// decides which one the single-camera tool stack drives.
 fn relocate_editor_2d_marker(
     viewports: Res<renzora::core::viewport_types::Viewports>,
-    cameras: Query<(Entity, &renzora::core::ViewportCamera2d, Has<renzora::core::EditorCamera2d>)>,
+    cameras: Query<(
+        Entity,
+        &renzora::core::ViewportCamera2d,
+        Has<renzora::core::EditorCamera2d>,
+    )>,
     mut commands: Commands,
 ) {
     let focused = viewports.focused;
     for (entity, vc, has_marker) in cameras.iter() {
         let want = vc.0 == focused;
         if want && !has_marker {
-            commands.entity(entity).insert(renzora::core::EditorCamera2d);
+            commands
+                .entity(entity)
+                .insert(renzora::core::EditorCamera2d);
         } else if !want && has_marker {
             commands
                 .entity(entity)
@@ -1565,9 +1861,20 @@ mod tests {
 
     #[test]
     fn positive_pitch_lifts_the_camera_above_the_focus() {
-        let base = OrbitCameraState { distance: 10.0, yaw: 0.0, pitch: 0.0, ..default() };
-        let raised = OrbitCameraState { pitch: 0.9, ..base.clone() };
-        let lowered = OrbitCameraState { pitch: -0.9, ..base.clone() };
+        let base = OrbitCameraState {
+            distance: 10.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            ..default()
+        };
+        let raised = OrbitCameraState {
+            pitch: 0.9,
+            ..base.clone()
+        };
+        let lowered = OrbitCameraState {
+            pitch: -0.9,
+            ..base.clone()
+        };
         assert!(raised.calculate_position().y > base.calculate_position().y);
         assert!(lowered.calculate_position().y < base.calculate_position().y);
     }
@@ -1576,11 +1883,22 @@ mod tests {
     /// its height alone.
     #[test]
     fn yaw_swings_the_camera_horizontally_only() {
-        let a = OrbitCameraState { distance: 6.0, yaw: 0.0, pitch: 0.3, ..default() };
-        let b = OrbitCameraState { yaw: 1.4, ..a.clone() };
+        let a = OrbitCameraState {
+            distance: 6.0,
+            yaw: 0.0,
+            pitch: 0.3,
+            ..default()
+        };
+        let b = OrbitCameraState {
+            yaw: 1.4,
+            ..a.clone()
+        };
         let (pa, pb) = (a.calculate_position(), b.calculate_position());
         assert!(close(pa.y, pb.y), "yaw changed the camera's height");
-        assert!(pa.xz().distance(pb.xz()) > 0.1, "yaw did not move the camera");
+        assert!(
+            pa.xz().distance(pb.xz()) > 0.1,
+            "yaw did not move the camera"
+        );
     }
 
     #[test]
@@ -1605,7 +1923,10 @@ mod tests {
 
     #[test]
     fn zooming_in_shortens_the_distance_and_out_lengthens_it() {
-        let mut orbit = OrbitCameraState { distance: 10.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            distance: 10.0,
+            ..default()
+        };
         orbit.zoom(3.0);
         assert!(close(orbit.distance, 7.0));
         orbit.zoom(-2.0);
@@ -1617,9 +1938,16 @@ mod tests {
     /// NaN. The floor is what stops a fast scroll doing that.
     #[test]
     fn zoom_never_reaches_the_focus_point() {
-        let mut orbit = OrbitCameraState { distance: 1.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            distance: 1.0,
+            ..default()
+        };
         orbit.zoom(1000.0);
-        assert!(orbit.distance >= 0.1, "distance collapsed to {}", orbit.distance);
+        assert!(
+            orbit.distance >= 0.1,
+            "distance collapsed to {}",
+            orbit.distance
+        );
         assert!(orbit.calculate_transform().rotation.is_finite());
     }
 
@@ -1627,7 +1955,10 @@ mod tests {
     /// vector is parallel to the Y-up reference and `looking_at` degenerates.
     #[test]
     fn orbiting_cannot_pitch_past_the_poles() {
-        let mut orbit = OrbitCameraState { pitch: 0.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            pitch: 0.0,
+            ..default()
+        };
         orbit.orbit(0.0, 100.0);
         assert!(orbit.pitch <= 1.5);
         assert!(orbit.pitch < std::f32::consts::FRAC_PI_2);
@@ -1641,7 +1972,10 @@ mod tests {
     /// round keeps spinning instead of hitting a wall.
     #[test]
     fn yaw_accumulates_without_a_limit() {
-        let mut orbit = OrbitCameraState { yaw: 0.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            yaw: 0.0,
+            ..default()
+        };
         for _ in 0..10 {
             orbit.orbit(1.0, 0.0);
         }
@@ -1650,7 +1984,10 @@ mod tests {
 
     #[test]
     fn focusing_moves_the_pivot_and_keeps_the_distance() {
-        let mut orbit = OrbitCameraState { distance: 5.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            distance: 5.0,
+            ..default()
+        };
         orbit.focus_on(Vec3::new(9.0, 1.0, -4.0));
         assert_eq!(orbit.focus, Vec3::new(9.0, 1.0, -4.0));
         assert!(close(orbit.distance, 5.0));
@@ -1675,10 +2012,17 @@ mod tests {
             };
             let transform = source.calculate_transform();
 
-            let mut restored = OrbitCameraState { distance: 8.0, ..default() };
+            let mut restored = OrbitCameraState {
+                distance: 8.0,
+                ..default()
+            };
             restored.set_from_view(transform.translation, transform.rotation);
 
-            assert!(close(restored.pitch, pitch), "pitch {pitch} -> {}", restored.pitch);
+            assert!(
+                close(restored.pitch, pitch),
+                "pitch {pitch} -> {}",
+                restored.pitch
+            );
             assert!(
                 close(restored.yaw.sin(), yaw.sin()) && close(restored.yaw.cos(), yaw.cos()),
                 "yaw {yaw} -> {}",
@@ -1698,11 +2042,18 @@ mod tests {
     /// the old focus happened to be.
     #[test]
     fn set_from_view_places_the_focus_ahead_of_the_camera() {
-        let mut orbit = OrbitCameraState { distance: 4.0, ..default() };
+        let mut orbit = OrbitCameraState {
+            distance: 4.0,
+            ..default()
+        };
         let at = Vec3::new(0.0, 0.0, 10.0);
         orbit.set_from_view(at, Quat::IDENTITY); // facing -Z
 
-        assert!(close(orbit.focus.z, 6.0), "focus landed at {:?}", orbit.focus);
+        assert!(
+            close(orbit.focus.z, 6.0),
+            "focus landed at {:?}",
+            orbit.focus
+        );
         assert!(close(orbit.calculate_position().distance(orbit.focus), 4.0));
     }
 
@@ -1710,11 +2061,17 @@ mod tests {
     /// input must still produce a level view rather than a tilted horizon.
     #[test]
     fn set_from_view_discards_roll() {
-        let mut rolled = OrbitCameraState { distance: 4.0, ..default() };
+        let mut rolled = OrbitCameraState {
+            distance: 4.0,
+            ..default()
+        };
         let roll = Quat::from_rotation_z(0.9);
         rolled.set_from_view(Vec3::ZERO, roll);
 
-        let mut level = OrbitCameraState { distance: 4.0, ..default() };
+        let mut level = OrbitCameraState {
+            distance: 4.0,
+            ..default()
+        };
         level.set_from_view(Vec3::ZERO, Quat::IDENTITY);
 
         assert!(close(rolled.yaw, level.yaw));
@@ -1725,7 +2082,11 @@ mod tests {
     /// it would poison the orbit for the rest of the session.
     #[test]
     fn set_from_view_ignores_a_degenerate_rotation() {
-        let mut orbit = OrbitCameraState { yaw: 0.5, pitch: 0.25, ..default() };
+        let mut orbit = OrbitCameraState {
+            yaw: 0.5,
+            pitch: 0.25,
+            ..default()
+        };
         orbit.set_from_view(Vec3::ONE, Quat::from_xyzw(0.0, 0.0, 0.0, 0.0));
         assert!(close(orbit.yaw, 0.5));
         assert!(close(orbit.pitch, 0.25));
@@ -1733,8 +2094,14 @@ mod tests {
 
     #[test]
     fn set_from_view_clamps_a_straight_down_view_to_the_pitch_limit() {
-        let mut orbit = OrbitCameraState { distance: 4.0, ..default() };
-        orbit.set_from_view(Vec3::ZERO, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+        let mut orbit = OrbitCameraState {
+            distance: 4.0,
+            ..default()
+        };
+        orbit.set_from_view(
+            Vec3::ZERO,
+            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+        );
         assert!(orbit.pitch <= 1.5 && orbit.pitch >= -1.5);
         assert!(orbit.calculate_transform().rotation.is_finite());
     }
@@ -1743,15 +2110,27 @@ mod tests {
 
     #[test]
     fn toggling_the_projection_twice_returns_to_the_start() {
-        assert_eq!(ProjectionMode::Perspective.toggle(), ProjectionMode::Orthographic);
-        assert_eq!(ProjectionMode::Orthographic.toggle(), ProjectionMode::Perspective);
-        assert_eq!(ProjectionMode::default().toggle().toggle(), ProjectionMode::default());
+        assert_eq!(
+            ProjectionMode::Perspective.toggle(),
+            ProjectionMode::Orthographic
+        );
+        assert_eq!(
+            ProjectionMode::Orthographic.toggle(),
+            ProjectionMode::Perspective
+        );
+        assert_eq!(
+            ProjectionMode::default().toggle().toggle(),
+            ProjectionMode::default()
+        );
     }
 
     #[test]
     fn defaults_are_a_usable_starting_view() {
         let orbit = OrbitCameraState::default();
-        assert!(orbit.distance > 0.1, "the default view must not start inside its focus");
+        assert!(
+            orbit.distance > 0.1,
+            "the default view must not start inside its focus"
+        );
         assert!(orbit.pitch.abs() <= 1.5);
         assert_eq!(orbit.projection_mode, ProjectionMode::Perspective);
 
@@ -1796,7 +2175,11 @@ mod tests {
     fn the_default_camera_wins_over_the_others() {
         let mut world = fov_world();
         world.spawn((renzora::SceneCamera, perspective(0.5)));
-        world.spawn((renzora::SceneCamera, renzora::DefaultCamera, perspective(1.3)));
+        world.spawn((
+            renzora::SceneCamera,
+            renzora::DefaultCamera,
+            perspective(1.3),
+        ));
         world.spawn((renzora::SceneCamera, perspective(0.9)));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();
         assert!(close(world.resource::<EditorViewportFov>().0, 1.3));
@@ -1813,5 +2196,112 @@ mod tests {
         ));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();
         assert!(close(world.resource::<EditorViewportFov>().0, FRAC_PI_4));
+    }
+
+    // ── navigation drag routing ──────────────────────────────────────────────
+    //
+    // The bug this PR fixes is that holding Shift had no effect on MMB drag —
+    // the camera_controller's MMB branch ignored `shift_held` and fell
+    // straight through to the orbit path. After the fix, both Shift+RMB and
+    // Shift+MMB route to pan. The routing logic is centralized in
+    // `nav_drag_mode` so these tests can pin the priority order without
+    // spinning up a Bevy world.
+
+    /// Plain MMB (no Shift, no Alt): orbit mode, the default
+    /// "look around the pivot" Blender-style interaction.
+    #[test]
+    fn plain_mmb_routes_to_orbit() {
+        assert_eq!(
+            nav_drag_mode(false, true, false, false, false),
+            NavDragMode::Orbit
+        );
+    }
+
+    /// Plain RMB (no Shift): look mode (pivot-preserved, the existing
+    /// "look around" behavior that keeps the camera world-position fixed
+    /// by recalculating the focus each frame).
+    #[test]
+    fn plain_rmb_routes_to_look() {
+        assert_eq!(
+            nav_drag_mode(true, false, false, false, false),
+            NavDragMode::Look
+        );
+    }
+
+    /// Alt+Left (no Shift): orbit mode (preserved from the existing handler,
+    /// which used to share the else-if branch with plain MMB).
+    #[test]
+    fn plain_alt_left_routes_to_orbit() {
+        assert_eq!(
+            nav_drag_mode(false, false, true, false, true),
+            NavDragMode::Orbit
+        );
+    }
+
+    /// Shift+MMB: pan mode. Without this routing the bug is that Shift has
+    /// no effect on MMB drag — the camera_controller falls through to
+    /// orbit (this is the user-reported bug fixed by this PR).
+    #[test]
+    fn shift_mmb_routes_to_pan() {
+        assert_eq!(
+            nav_drag_mode(false, true, false, true, false),
+            NavDragMode::Pan
+        );
+    }
+
+    /// Shift+RMB: returns `None`. The camera must not look-drag here — that
+    /// modifier+button combination is reserved for the Place 3D Cursor
+    /// operator (Blender convention; see bug #14 in known-bugs.md).
+    #[test]
+    fn shift_rmb_routes_to_none() {
+        assert_eq!(
+            nav_drag_mode(true, false, false, true, false),
+            NavDragMode::None
+        );
+    }
+
+    /// Shift + Alt + Left: still orbit. The Shift modifier only switches
+    /// RMB and MMB to pan; the Alt+Left orbit path is unconditional because
+    /// the user's intent (Alt held) was orbit to begin with. This priority
+    /// matches the spec clause "Shift modifier switches the routing of
+    /// RMB and MMB" without hijacking other modifier combinations.
+    #[test]
+    fn shift_with_alt_left_still_orbits() {
+        assert_eq!(
+            nav_drag_mode(false, false, true, true, true),
+            NavDragMode::Orbit
+        );
+    }
+
+    /// Both RMB and MMB held with Shift: pan. The right button takes
+    /// priority in the helper so a physically unusual double-press becomes
+    /// a deterministic pan instead of dropping into orbit.
+    #[test]
+    fn shift_with_both_buttons_routes_to_pan() {
+        assert_eq!(
+            nav_drag_mode(true, true, false, true, false),
+            NavDragMode::Pan
+        );
+    }
+
+    /// No button pressed: returns `None`. The camera_controller will clear
+    /// the mouse_motion buffer so stale deltas cannot leak into the next
+    /// frame's orbit-rotation.
+    #[test]
+    fn no_button_routes_to_none() {
+        assert_eq!(
+            nav_drag_mode(false, false, false, false, false),
+            NavDragMode::None
+        );
+    }
+
+    /// Shift held alone, no mouse button: still `None`. Shift is meaningful
+    /// only as a modifier for a drag input, never on its own.
+    #[test]
+    fn shift_alone_routes_to_none() {
+        assert_eq!(
+            nav_drag_mode(false, false, false, true, false),
+            NavDragMode::None
+        );
     }
 }

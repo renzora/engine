@@ -18,7 +18,7 @@ pub enum EditorAction {
     CameraMoveUp,
     CameraMoveDown,
     CameraMoveFaster,
-    FocusSelected,
+    FrameSelected,
 
     // Tool modes
     ToolSelect,
@@ -126,7 +126,7 @@ impl EditorAction {
             EditorAction::CameraMoveUp => "Move Up",
             EditorAction::CameraMoveDown => "Move Down",
             EditorAction::CameraMoveFaster => "Move Faster (Hold)",
-            EditorAction::FocusSelected => "Focus Selected",
+            EditorAction::FrameSelected => "Frame Selected",
             EditorAction::ToolSelect => "Select Mode",
             EditorAction::GizmoTranslate => "Translate Mode",
             EditorAction::GizmoRotate => "Rotate Mode",
@@ -212,7 +212,7 @@ impl EditorAction {
             | EditorAction::CameraMoveUp
             | EditorAction::CameraMoveDown
             | EditorAction::CameraMoveFaster
-            | EditorAction::FocusSelected
+            | EditorAction::FrameSelected
             | EditorAction::ResetCamera
             | EditorAction::FrameAll
             | EditorAction::CameraToCursor
@@ -307,7 +307,7 @@ impl EditorAction {
             EditorAction::CameraMoveUp,
             EditorAction::CameraMoveDown,
             EditorAction::CameraMoveFaster,
-            EditorAction::FocusSelected,
+            EditorAction::FrameSelected,
             EditorAction::ToolSelect,
             EditorAction::GizmoTranslate,
             EditorAction::GizmoRotate,
@@ -484,7 +484,10 @@ impl Default for KeyBindings {
             EditorAction::CameraMoveFaster,
             KeyBinding::new(KeyCode::ShiftLeft),
         );
-        bindings.insert(EditorAction::FocusSelected, KeyBinding::new(KeyCode::KeyF));
+        bindings.insert(
+        EditorAction::FrameSelected,
+        KeyBinding::new(KeyCode::NumpadDecimal),
+    );
 
         // Tool defaults
         bindings.insert(EditorAction::ToolSelect, KeyBinding::new(KeyCode::KeyQ));

@@ -18,6 +18,7 @@ pub use components::*;
 pub use entity_id::*;
 pub use sprite_anim::*;
 pub use streaming::*;
+pub use viewport_types::*;
 
 use bevy::input::gamepad::{GamepadAxis, GamepadButton};
 use bevy::prelude::*;
