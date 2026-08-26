@@ -58,8 +58,8 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
         let sd = seg_dist(p, prev, cur);
         if sd < d {
             d = sd;
-            // Interpolate within the segment: the closest point sits partway
-            // between prev_t and t in proportion to how the distances fall off.
+            // Refine within the segment: take the closest point as its
+            // midpoint. At this polyline density the error is sub-pixel.
             best_t = (prev_t + t) * 0.5;
         }
         prev = cur;

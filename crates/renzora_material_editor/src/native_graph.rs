@@ -929,9 +929,17 @@ fn mat_graph_sync(world: &mut World) {
                         pin_type(to_node, &to_pin, PinDir::Input),
                     ) {
                         (Some(from_ty), Some(to_ty)) if !PinType::compatible(from_ty, to_ty) => {
-                            st.compile_errors = vec![format!(
-                                "Connection refused: {from_ty:?} → {to_ty:?} pins are incompatible ({from_pin} → {to_pin})"
-                            )];
+                            // Not a compile error — those belong to codegen,
+                            // and one sitting in compile_errors freezes the
+                            // preview until the next recompile. The Console
+                            // panel is where the editor's other material
+                            // feedback already goes.
+                            renzora::console_log::console_warn(
+                                "Material",
+                                format!(
+                                    "Connection refused: {from_ty:?} → {to_ty:?} pins are incompatible ({from_pin} → {to_pin})"
+                                ),
+                            );
                         }
                         _ => {
                             st.graph.connect(from_node, &from_pin, to_node, &to_pin);
