@@ -177,6 +177,22 @@ impl Plugin for MaterialResolverPlugin {
         // Problems-panel validation: re-composes every graph material's WGSL
         // against all of bevy_pbr's modules and naga-validates it on the main
         // thread. Editor-only — a shipped game has no Problems panel.
+        //
+        // Gated TWICE, because neither gate alone is enough:
+        //
+        //   * The `editor` feature keeps `validate.rs` and its `naga_oil`
+        //     dependency out of a build that resolves only runtime crates.
+        //     That is a binary-size win, and it is ALL it is: `xtask` builds
+        //     with one `cargo build --workspace`, so cargo unifies features
+        //     across both executables and `renzora_material_editor`'s opt-in
+        //     turns this feature on for the runtime binary too. Confirm with
+        //     `cargo tree -p renzora_app -p renzora_editor_app -i
+        //     renzora_shader -e features` — `editor` is active there, and
+        //     absent from `-p renzora_app` alone.
+        //   * So correctness rides on `EditorSession`, decided at runtime from
+        //     whether the editor bundle is present. Same signal the rest of
+        //     the engine branches on, and the only one a shipped game cannot
+        //     accidentally satisfy.
         #[cfg(feature = "editor")]
         app
             // `PreUpdate`: the validator arrives via `Commands`, and a material
@@ -186,10 +202,26 @@ impl Plugin for MaterialResolverPlugin {
             // stream in while the asset set is actually changing.
             .add_systems(
                 PreUpdate,
-                ensure_shader_validator.run_if(resource_changed::<Assets<Shader>>),
+                ensure_shader_validator
+                    .run_if(resource_changed::<Assets<Shader>>)
+                    .run_if(in_editor_session),
             )
-            .add_systems(Update, report_material_problems.after(resolve_material_refs));
+            .add_systems(
+                Update,
+                report_material_problems
+                    .after(resolve_material_refs)
+                    .run_if(in_editor_session),
+            );
     }
+}
+
+/// Whether this process is an editor session rather than a shipped game.
+///
+/// Absent resource reads as "game": `EditorSession` is inserted during runtime
+/// setup, so a system scheduled before it lands must not assume editor.
+#[cfg(feature = "editor")]
+fn in_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
+    session.is_some_and(|s| s.is_editor())
 }
 
 /// Compile the WGSL each graph material binds and record what the compiler says.

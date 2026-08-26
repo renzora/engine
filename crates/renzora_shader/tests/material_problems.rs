@@ -36,6 +36,15 @@ struct Fixture {
 
 impl Fixture {
     fn new(test_name: &str) -> Self {
+        Self::with_session(test_name, true)
+    }
+
+    /// A fixture that is not an editor — what a shipped game looks like.
+    fn game(test_name: &str) -> Self {
+        Self::with_session(test_name, false)
+    }
+
+    fn with_session(test_name: &str, is_editor: bool) -> Self {
         let dir = std::env::temp_dir().join(format!(
             "renzora_material_problems_{}_{}",
             std::process::id(),
@@ -57,6 +66,10 @@ impl Fixture {
             path: dir.clone(),
             config: Default::default(),
         });
+        // The Problems-panel validator only runs in an editor session, so a
+        // fixture that asserts on its output has to be one. `renzora_runtime`
+        // inserts this in a real app; a headless test has no runtime setup.
+        app.insert_resource(renzora::EditorSession(is_editor));
 
         Self {
             app,
@@ -193,6 +206,26 @@ fn a_healthy_material_reports_nothing() {
     assert!(
         f.problems().is_empty(),
         "a material that compiles must report nothing, got {:?}",
+        f.problems()
+    );
+}
+
+/// A shipped game must not run the validator, whatever the `editor` feature
+/// says. `xtask` builds both executables with one `cargo build --workspace`,
+/// so cargo unifies `renzora_shader/editor` on from `renzora_material_editor`
+/// and the runtime binary is compiled with it too — the feature cannot be the
+/// gate. `EditorSession` is, and this is the test that says so: same broken
+/// material as the test below, same asserts, one resource different.
+#[test]
+fn a_game_session_never_validates() {
+    let mut f = Fixture::game("game_session");
+    f.write(BROKEN);
+    f.spawn_user();
+    f.pump();
+
+    assert!(
+        f.problems().is_empty(),
+        "a game reported material problems it has no panel for: {:?}",
         f.problems()
     );
 }
