@@ -779,7 +779,7 @@ impl Default for CameraSettingsState {
             move_speed: 10.0,
             look_sensitivity: 0.3,
             orbit_sensitivity: 0.5,
-            pan_sensitivity: 1.0,
+            pan_sensitivity: 0.1,
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
