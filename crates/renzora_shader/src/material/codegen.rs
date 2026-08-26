@@ -3479,9 +3479,7 @@ fn build_pbr_shader(
     // on a tint.
     if is_connected("attenuation_color") {
         let e = resolved.get("attenuation_color").unwrap();
-        shader.push_str(&format!(
-            "    pbr_input.material.attenuation_color = vec4<f32>({e}, 1.0);\n"
-        ));
+        mutations.push((feeder("attenuation_color"), format!("    pbr_input.material.attenuation_color = vec4<f32>({e}, 1.0);")));
     }
 
     // ── Clearcoat (car paint, lacquer) ────────────────────────────────
