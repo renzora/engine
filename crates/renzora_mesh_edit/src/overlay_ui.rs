@@ -592,16 +592,12 @@ pub fn cleanup_overlay_when_not_editing(
     mut commands: Commands,
     mut overlay: ResMut<EditOverlayEntities>,
     viewport_settings: Res<ViewportSettings>,
-    mut dot_q: Query<&mut Visibility, With<EditVertexDot>>,
-    mut marquee_q: Query<&mut Visibility, With<EditMarqueeRect>>,
+    mut vis_q: Query<&mut Visibility, Or<(With<EditVertexDot>, With<EditMarqueeRect>)>>,
 ) {
     if viewport_settings.viewport_mode == ViewportMode::Edit {
         return;
     }
-    for mut vis in &mut dot_q {
-        *vis = Visibility::Hidden;
-    }
-    for mut vis in &mut marquee_q {
+    for mut vis in &mut vis_q {
         *vis = Visibility::Hidden;
     }
     let stale: Vec<Entity> = overlay.face_overlays.drain(..).collect();
