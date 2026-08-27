@@ -72,6 +72,7 @@ mis-pair.
 | Click | Select element under cursor |
 | Shift+Click | Add / remove from selection |
 | Alt+Click (edge mode) | Select the whole edge loop |
+| Click-drag on empty space | Marquee drag-select — drag a rectangle on empty space; elements inside it are selected on release (Shift promotes the rect to additive toggle) |
 | `A` | Select all / deselect all |
 
 ### Mesh-edit overlay (Settings → Viewport → Mesh Edit)
