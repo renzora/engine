@@ -512,12 +512,6 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     clean_artifacts(&out, plat)?;
     clean_artifacts(&plugins, plat)?;
 
-    // ── The shared libraries ─────────────────────────────────────────────────
-    // Staged FIRST: neither executable can start without them, so if this fails
-    // it should fail before dist/ looks complete. See the module doc for why
-    // there are two and why `std` is the surprising one.
-    stage_shared_libs(&src, &out, plat)?;
-
     // ── The two executables ──────────────────────────────────────────────────
     // `renzora`        the runtime / shipped game — the ONLY binary an export
     //                  copies. Contains no editor crate.
@@ -571,6 +565,13 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
             eprintln!("[xtask] WARN: tools/openxr/openxr_loader.dll missing — VR won't initialize");
         }
     }
+
+    // ── The shared libraries ─────────────────────────────────────────────────
+    // AFTER the executables, because which ones to stage is read from their
+    // import tables — there is nothing to read before they are copied. Getting
+    // this order wrong stages no dylibs at all and produces a dist/ that cannot
+    // start, which is exactly the failure this approach exists to prevent.
+    stage_shared_libs(&src, &out, plat)?;
 
     // ── Distribution plugin cdylibs → plugins/ ───────────────────────────────
     let mut count = 0;
@@ -672,23 +673,43 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
 /// anything a reader can act on. Failing here, with a path, is the only place
 /// that mistake is cheap to diagnose.
 fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result<()> {
-    // Take the HASHED `bevy_dylib-<metadata>` out of `deps/`, not the friendly
-    // un-hashed copy cargo also drops in `target/dist/`. The executables' import
-    // tables name the hashed file, so staging the short one produces a dist/
-    // that looks complete and cannot start — Windows fails the process before
-    // `main` with no output and no exit code at all. That is the
-    // `bevy_dylib-<metadata>` trap the two `.cargo/config.toml` files describe,
-    // and it is easy to walk into precisely because the short name is right
-    // there and looks like the obvious file to copy.
-    for stem in ["bevy_dylib", "renzora_dylib"] {
-        let lib = find_lib(&src.join("deps"), plat, stem)?;
-        copy(&src.join("deps").join(&lib), &out.join(&lib))?;
+    // WHICH dylibs to stage is read from the executables' own import tables, not
+    // by searching `deps/` for a likely-looking name.
+    //
+    // `deps/` routinely holds several `-C metadata` variants of one crate: a
+    // `cargo test -p <package>` resolves features differently from a
+    // `--workspace` build and leaves a second `bevy_dylib` behind. Taking "the
+    // first one `read_dir` yields" then stages a dylib the binary does not
+    // import, producing a dist/ that looks complete and dies before `main` with
+    // a Windows dialog naming a hashed file nobody can place:
+    //
+    //     bevy_dylib-be9a16d285af241b.dll was not found
+    //
+    // An import table cannot drift from the binary carrying it, so it is the
+    // only source that is right by construction. Same lesson as the SDK artifact
+    // list, in a different place.
+    //
+    // Both executables are scanned: they are built from one `--workspace`
+    // invocation and so agree today, but staging what each one actually asks for
+    // costs nothing and cannot be wrong.
+    let deps = src.join("deps");
+    let mut wanted = std::collections::BTreeSet::new();
+    for exe in ["renzora", "renzora-editor"] {
+        let path = out.join(format!("{exe}{}", plat.exe_suffix));
+        if path.is_file() {
+            wanted.extend(imported_libs(&path, plat));
+        }
+    }
+    for name in &wanted {
+        let from = deps.join(name);
+        if from.is_file() {
+            copy(&from, &out.join(name))?;
+        }
     }
 
-    // `std-<hash>` is discovered the same way, but from a different place: the
-    // hash covers the toolchain, so it moves whenever `rust-toolchain.toml`
-    // does. `--print target-libdir` resolves to the sysroot's per-target lib
-    // dir, which is where a dylib std lives — nothing in `target/` holds a copy.
+    // `std-<hash>` is named by the same import tables, but lives somewhere else:
+    // the hash covers the toolchain, and nothing in `target/` holds a copy.
+    // `--print target-libdir` resolves to the sysroot's per-target lib dir.
     let libdir = Command::new("rustc")
         .args(["--print", "target-libdir"])
         .output()
@@ -698,52 +719,76 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
         .ok_or_else(|| {
             std::io::Error::other("`rustc --print target-libdir` failed — is rustc on PATH?")
         })?;
+    for name in &wanted {
+        let from = libdir.join(name);
+        if from.is_file() {
+            copy(&from, &out.join(name))?;
+        }
+    }
 
-    let std_lib = find_lib(&libdir, plat, "std")?;
-    copy(&libdir.join(&std_lib), &out.join(&std_lib))
+    // Every name the binaries asked for has to have been found somewhere. A miss
+    // is fatal rather than a warning, because the alternative is a dist/ that
+    // starts no process and prints no error — the OS loader refuses it before
+    // `main`, naming only a hashed filename.
+    if let Some(missing) = wanted.iter().find(|n| !out.join(n).is_file()) {
+        return Err(std::io::Error::other(format!(
+            "{missing} is imported by the engine binaries but was found in neither \
+             {} nor {}",
+            deps.display(),
+            libdir.display()
+        )));
+    }
+    Ok(())
 }
 
-/// Find the shared library for crate `stem` in `dir`, hashed or not.
+/// The Rust shared libraries an executable imports, by exact filename.
 ///
-/// Cargo names these two ways and the difference is not cosmetic — it is the
-/// filename the importing binary is compiled to look for:
+/// Read by scanning for the literal names rather than by walking the PE/ELF
+/// import directory: the names are null-terminated strings in the binary, xtask
+/// carries no dependencies to parse object files with, and a false positive
+/// would have to be a string that is already the filename we would copy.
 ///
-///   * `bevy_dylib-<hash>.dll` — a registry dependency, so cargo disambiguates
-///     it with the build-configuration hash.
-///   * `renzora_dylib.dll` — a workspace member's own dylib target, which cargo
-///     leaves bare.
-///
-/// So both forms are accepted, and the hashed one is matched strictly (a `-`
-/// then hex only) rather than as a loose prefix, so `renzora_dylib` cannot
-/// accidentally match some future `renzora_dylib_foo`.
-///
-/// Finding nothing is fatal for the reason in [`stage_shared_libs`]: the
-/// resulting `dist/` starts no process and reports no error, so the failure has
-/// to be raised here or not at all.
-fn find_lib(dir: &Path, plat: &Platform, stem: &str) -> std::io::Result<String> {
-    let stem = format!("{}{stem}", plat.lib_prefix);
-    let suffix = format!(".{}", plat.ext);
-    let bare = format!("{stem}{suffix}");
-    std::fs::read_dir(dir)?
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .find(|n| {
-            *n == bare
-                || n.strip_prefix(&stem)
-                    .and_then(|rest| rest.strip_suffix(&suffix))
-                    .and_then(|h| h.strip_prefix('-'))
-                    .is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()))
-        })
-        .ok_or_else(|| {
-            std::io::Error::other(format!(
-                "no {bare} or {stem}-<hash>{suffix} in {} — a `dynamic_linking` build \
-                 cannot start without it",
-                dir.display()
-            ))
-        })
+/// Restricted to the three stems that are ours to stage. System libraries
+/// (`KERNEL32`, `VCRUNTIME140`) are the platform's business, and the `windows`
+/// crate's import libraries are the SDK's.
+fn imported_libs(exe: &Path, plat: &Platform) -> Vec<String> {
+    let Ok(bytes) = std::fs::read(exe) else {
+        return Vec::new();
+    };
+    let mut out = std::collections::BTreeSet::new();
+    for stem in ["bevy_dylib", "renzora_dylib", "std"] {
+        let prefix = format!("{}{stem}", plat.lib_prefix);
+        let suffix = format!(".{}", plat.ext);
+        let pat = prefix.as_bytes();
+        let mut i = 0;
+        while let Some(at) = find_bytes(&bytes[i..], pat) {
+            let start = i + at;
+            // A filename is short; cap the scan so a stray match cannot run away.
+            let end = (start + 96).min(bytes.len());
+            if let Some(name) = std::str::from_utf8(&bytes[start..end])
+                .ok()
+                .and_then(|s| s.split('\0').next())
+                .filter(|s| s.ends_with(&suffix))
+                // `std` must not match `std_detect` or similar: after the stem
+                // there is either the extension or `-<hash>`.
+                .filter(|s| {
+                    let rest = &s[prefix.len()..s.len() - suffix.len()];
+                    rest.is_empty()
+                        || (rest.starts_with('-')
+                            && rest[1..].chars().all(|c| c.is_ascii_hexdigit()))
+                })
+            {
+                out.insert(name.to_string());
+            }
+            i = start + pat.len();
+        }
+    }
+    out.into_iter().collect()
 }
 
-
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
 
 /// Launch the staged editor. cwd = repo root so the editor resolves project
 /// assets the same way a plain `cargo run` does; plugins resolve via the loader's
