@@ -194,7 +194,7 @@ package_desktop() {
         # build-all.sh — so it rides beside it in the zip, which is also where
         # the editor looks for it.
         ( cd "$dir" && zip -qry "$asset" "$(basename "$appimage")" \
-            $( [ -f "$dir/sdk.tar.xz" ] && echo "sdk.tar.xz" ) )
+            $( [ -f "$dir/sdk.tar.zst" ] && echo "sdk.tar.zst" ) )
     else
         ( cd "$dir" && zip -qry "$asset" . )
     fi
@@ -204,12 +204,25 @@ package_desktop() {
 # ── Compress the plugin SDK in place ─────────────────────────────────────────
 # `cargo renzora` and `build-all.sh` stage the SDK EXTRACTED, because in a dev
 # tree it is hardlinked to `target/` and costs neither disk nor time. Shipping it
-# that way would put ~3.6 GB of loose `.rlib` files into the engine zip.
+# that way would put ~1.9 GB of loose crate metadata into the engine zip.
 #
-# So it is compressed to a single `sdk.tar.xz` (~555 MB) and the extracted tree
-# removed. The editor unpacks it the first time someone installs a plugin —
-# until then it is one idle file, and a user who never writes a plugin never
-# pays the extraction or the disk.
+# So it is compressed to a single `sdk.tar.zst` (~444 MB) and the extracted tree
+# removed. The editor unpacks it on demand — Rust scripts and native plugins
+# both need it, so that is part of setting the engine up rather than an optional
+# extra.
+#
+# ── zstd, not xz ─────────────────────────────────────────────────────────────
+# xz is smaller (341 MB), and while the SDK was plugin-only that was the right
+# trade. It stopped being right once scripting needed it too: the unpack cost is
+# now paid by every user, and the download's is paid once. Measured on the real
+# tree, zstd -19 costs +103 MB and turns a 29.8 s unpack into ~2 s — and because
+# its decoder streams, it also removes the ~1.9 GB temporary tarball the xz path
+# had to write and read back. `crates/renzora_plugin_build/src/unpack.rs` records
+# the full numbers, including why switching to C liblzma is NOT a speed-up.
+#
+# -19 rather than a lower level: measured 444 MB against 520 MB at -10, for 0.5 s
+# more decode. --long=27 widens the match window past zstd's default 8 MB, which
+# matters on a tree this repetitive.
 #
 # Bundling rather than downloading on demand is deliberate. It removes an entire
 # subsystem — hosting, a URL, progress, resume, checksums, offline handling — and
@@ -222,13 +235,14 @@ compress_sdk() {
     local dir="$1"
     [ -d "$dir/sdk" ] || return 0
     echo "   compressing sdk/ …"
-    # -T0 uses every core; xz is the slowest part of packaging otherwise.
-    ( cd "$dir" && tar -cf - sdk | xz -6 -T0 > sdk.tar.xz ) || {
+    # -T0 uses every core. Compression is the slowest part of packaging, and it
+    # only ever runs here — the decoder is single-threaded and does not care.
+    ( cd "$dir" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f ) || {
         echo "ERROR: failed to compress $dir/sdk" >&2
         return 1
     }
     rm -rf "$dir/sdk"
-    echo "   sdk.tar.xz $(du -h "$dir/sdk.tar.xz" | cut -f1)"
+    echo "   sdk.tar.zst $(du -h "$dir/sdk.tar.zst" | cut -f1)"
 }
 
 # ── Package the web bundle ───────────────────────────────────────────────────

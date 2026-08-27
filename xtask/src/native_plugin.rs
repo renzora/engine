@@ -33,7 +33,7 @@
 //! `sdk/manifest.json`, which [`crate::sdk`] wrote a moment earlier. Both this
 //! and `renzora_plugin_build` (which the editor uses) derive their command line
 //! from that one file rather than each holding their own copy of the rules —
-//! `--extern bevy` must be the facade *rlib*, `--extern renzora` must be the
+//! `--extern bevy` must be the facade crate, `--extern renzora` must be the
 //! *dylib*, and a missing `-L native=` path fails at link with a message naming
 //! a `.lib` file and nothing that explains why.
 
@@ -108,6 +108,9 @@ struct Sdk {
     stamp: String,
     extern_bevy: PathBuf,
     extern_renzora: PathBuf,
+    /// The shared ember image, absent only for an SDK staged before panels were
+    /// reachable from a plugin.
+    extern_ember: Option<PathBuf>,
     dependency: Vec<PathBuf>,
     native: Vec<PathBuf>,
 }
@@ -118,13 +121,27 @@ impl Sdk {
         let rustc = json_string(flat, "rustc")?;
         let bevy = json_string(flat, "bevy")?;
         let renzora = json_string(flat, "renzora")?;
-        let bevy_name = Path::new(&bevy).file_name()?.to_str()?.to_string();
+        // Must agree with `renzora_plugin_build::Sdk::stamp` exactly — the
+        // editor rebuilds anything whose stamp does not match what IT computes,
+        // so a build staged here under a different rule would be rebuilt on
+        // first launch. `build_id` is the content hash of the linked images;
+        // the filename form is the pre-`build_id` fallback.
+        let stamp = match json_string(flat, "build_id") {
+            Some(id) if !id.is_empty() => format!("{id}+rustc-{rustc}"),
+            _ => {
+                let bevy_name = Path::new(&bevy).file_name()?.to_str()?.to_string();
+                format!("{bevy_name}+rustc-{rustc}")
+            }
+        };
         Some(Sdk {
             lib_ext: json_string(flat, "lib_ext")?,
             triple: json_string(flat, "triple")?,
-            stamp: format!("{bevy_name}+rustc-{rustc}"),
+            stamp,
             extern_bevy: root.join(&bevy),
             extern_renzora: root.join(&renzora),
+            extern_ember: json_string(flat, "renzora_ember")
+                .filter(|s| !s.is_empty())
+                .map(|s| root.join(s)),
             dependency: json_string_array(flat, "dependency")
                 .iter()
                 .map(|d| root.join(d))
@@ -165,43 +182,41 @@ fn build_one(src_dir: &Path, sdk: &Sdk, dist_root: &Path) -> bool {
         return true;
     }
 
+    // The command line comes from `renzora_native_build`, which the editor also
+    // uses — that is the whole reason the crate exists. This used to be a second
+    // copy of the same flags, and a change to either drifted from the other
+    // without anything looking wrong on its own.
+    let crate_name = name.replace('-', "_");
+    let src = out_dir.join("src").join("lib.rs");
+    let target = renzora_native_build::Target {
+        triple: &sdk.triple,
+        crate_name: &crate_name,
+        extern_bevy: &sdk.extern_bevy,
+        extern_renzora: &sdk.extern_renzora,
+        extern_ember: sdk.extern_ember.as_deref(),
+        dependency: &sdk.dependency,
+        native: &sdk.native,
+        plugin_dir: &out_dir,
+        build_dir: &build,
+        src: &src,
+        out: &lib,
+    };
+    // Assembling the arguments can itself run a cargo build for the plugin's
+    // third-party dependencies, so it happens before the line announcing rustc.
+    let args = match renzora_native_build::rustc::args(&target) {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("[xtask] {name}: {e}");
+            return false;
+        }
+    };
+
     println!("[xtask] rustc --crate-type dylib ({name})");
     let mut cmd = Command::new("rustc");
-    cmd
-        // Bevy's derives resolve their own crate paths through `BevyManifest`,
-        // which reads `$CARGO_MANIFEST_DIR/Cargo.toml`. Nothing runs cargo here,
-        // so without these a `#[derive(Component)]` or `bsn!` fails as a bare
-        // "proc macro panicked" naming the macro rather than the missing var.
-        .env("CARGO_MANIFEST_DIR", &out_dir)
-        .env("CARGO_PKG_NAME", name.replace('-', "_"))
-        .args(["--edition", "2021", "--crate-type", "dylib"])
-        // Without this, rustc names the crate after the FILE — every plugin
-        // becomes `lib`, and every log line it emits is tagged `INFO lib:`,
-        // indistinguishable from every other plugin's.
-        .args(["--crate-name", &name.replace('-', "_")])
-        .args(["-C", "prefer-dynamic"])
-        // A bare `rustc` defaults to `opt-level=0`, so without this every plugin
-        // built here runs unoptimised. 2 matches `[profile.dist]` — the same
-        // level the engine it calls into was built at — and measured 224 KB ->
-        // 109 KB on a small script with no change in build time.
-        .args(["-C", "opt-level=2"]);
-
-    // `.cargo/config.toml` pins this for cargo builds; a bare rustc would fall
-    // back to MSVC `link.exe`, which fails on the exported-symbol count.
-    if sdk.triple.contains("windows-msvc") {
-        cmd.args(["-C", "linker=rust-lld"]);
+    for (key, value) in renzora_native_build::rustc::env_vars(&target) {
+        cmd.env(key, value);
     }
-
-    cmd.arg("--extern").arg(format!("bevy={}", sdk.extern_bevy.display()));
-    cmd.arg("--extern").arg(format!("renzora={}", sdk.extern_renzora.display()));
-    for d in &sdk.dependency {
-        cmd.arg("-L").arg(format!("dependency={}", d.display()));
-    }
-    for n in &sdk.native {
-        cmd.arg("-L").arg(format!("native={}", n.display()));
-    }
-    cmd.arg("-o").arg(&lib).arg(out_dir.join("src").join("lib.rs"));
-
+    cmd.args(&args);
     let ok = cmd.status().map(|s| s.success()).unwrap_or(false);
     if !ok {
         eprintln!("[xtask] {name}: failed to compile");
@@ -222,32 +237,78 @@ fn mirror_source(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst.join("src"))?;
     let manifest = src.join("Cargo.toml");
     if manifest.is_file() {
-        crate::copy(&manifest, &dst.join("Cargo.toml"))?;
+        copy_if_changed(&manifest, &dst.join("Cargo.toml"))?;
     }
-    let from = src.join("src");
-    // One level. A plugin with submodules is a fair thing to want and this is
-    // where to grow support for it; today `lib.rs` is the whole contract.
-    for e in std::fs::read_dir(&from)?.flatten() {
+    copy_tree(&src.join("src"), &dst.join("src"))
+}
+
+/// Copy a source tree, recursively.
+///
+/// Recursive because a plugin big enough to be worth shipping has submodules,
+/// and the one-level version failed in a way nobody would connect to staging: a
+/// `src/ui/mod.rs` the author can see in their editor is simply absent from the
+/// staged copy, and rustc reports `file not found for module` against a path
+/// that plainly exists.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(from)?.flatten() {
         let p = e.path();
-        if p.is_file() {
-            crate::copy(&p, &dst.join("src").join(e.file_name()))?;
+        let dst = to.join(e.file_name());
+        if p.is_dir() {
+            copy_tree(&p, &dst)?;
+        } else if p.is_file() {
+            copy_if_changed(&p, &dst)?;
         }
     }
     Ok(())
 }
 
+/// Copy `src` over `dst` only when the contents differ.
+///
+/// `fs::copy` does not preserve modification time, and this runs *before* the
+/// staleness check — so an unconditional copy re-stamped every staged source
+/// file with the current time on every `cargo renzora`, leaving the source
+/// newer than the library beside it. That looked harmless here (the check
+/// compares the *repo* source against the built library, so xtask correctly
+/// skipped the compile) and then cost a second per plugin somewhere else
+/// entirely: the editor's loader runs the same mtime test against the STAGED
+/// directory, found every plugin stale, and rebuilt all of them at startup —
+/// after every single build, forever.
+///
+/// Comparing bytes rather than mtimes because the files are a few KB and the
+/// question being asked is genuinely "did this change", not "was it touched".
+fn copy_if_changed(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if let (Ok(a), Ok(b)) = (std::fs::read(src), std::fs::read(dst)) {
+        if a == b {
+            return Ok(());
+        }
+    }
+    crate::copy(src, dst)
+}
+
 /// Whether anything under `dir/src` is newer than `target`.
+///
+/// Recursive, to match [`copy_tree`]: a change in `src/ui/panel.rs` has to
+/// trigger a rebuild, and the one-level version silently did not — the plugin
+/// staged with the new source and kept the old library.
 fn newer_than(dir: &Path, target: &Path) -> bool {
     let Ok(built) = std::fs::metadata(target).and_then(|m| m.modified()) else {
         return true;
     };
-    let Ok(entries) = std::fs::read_dir(dir.join("src")) else {
-        return false;
-    };
-    entries.flatten().any(|e| {
-        e.metadata()
-            .and_then(|m| m.modified())
-            .map(|t| t > built)
-            .unwrap_or(true)
-    })
+    fn any_newer(dir: &Path, built: std::time::SystemTime) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                return any_newer(&p, built);
+            }
+            e.metadata()
+                .and_then(|m| m.modified())
+                .map(|t| t > built)
+                .unwrap_or(true)
+        })
+    }
+    any_newer(&dir.join("src"), built)
 }

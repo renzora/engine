@@ -184,17 +184,22 @@ copy_shared_libs() {
     # NOTE: `renzora_postprocess` is no longer here — its framework folded
     # into `renzora` (module `renzora::postprocess`), so it ships inside
     # renzora.{dll,so,dylib} and emits no dylib of its own.
-    # NOTE: as of the static-Bevy split, none of these files are produced any
-    # more. `renzora` is `crate-type = ["rlib"]`, `renzora_editor` likewise, and
-    # `bevy/dynamic_linking` is no longer in `renzora_app`'s default features —
-    # so there is no bevy_dylib, no renzora.dll, and no editor bundle cdylib. The
-    # removable editor is a removable *executable* now (`renzora-editor`, staged
-    # in build_desktop). The loop is kept only so a stale dylib left in a warm
-    # cargo cache from before the change still lands beside the exe rather than
-    # being swept into plugins/ below.
+    # NOTE: the "static-Bevy split removed all of these" note that used to sit
+    # here has been out of date since native plugins landed. `dynamic_linking` is
+    # back in `renzora_app`'s default features, so a desktop build produces
+    # `bevy_dylib` (handled above), `renzora_dylib` and `renzora_ember_dylib`
+    # again — and the executables IMPORT them. Missing one does not degrade
+    # gracefully: the OS loader refuses the binary before `main`, with a dialog
+    # naming a filename and nothing else.
+    #
+    # `librenzora.$EXT` / `librenzora_editor.$EXT` stay in the list only so a
+    # stale dylib left in a warm cargo cache from before that change lands beside
+    # the exe rather than being swept into plugins/ below.
     for f in \
-        "$SRC/librenzora.$EXT"         "$SRC/renzora.$EXT" \
-        "$SRC/librenzora_editor.$EXT"  "$SRC/renzora_editor.$EXT"; do
+        "$SRC/librenzora_dylib.$EXT"        "$SRC/renzora_dylib.$EXT" \
+        "$SRC/librenzora_ember_dylib.$EXT"  "$SRC/renzora_ember_dylib.$EXT" \
+        "$SRC/librenzora.$EXT"              "$SRC/renzora.$EXT" \
+        "$SRC/librenzora_editor.$EXT"       "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -206,6 +211,12 @@ copy_shared_libs() {
         [ -f "$f" ] || continue
         local base=$(basename "$f")
         [[ "$base" == *bevy_dylib* ]] && continue
+        # The two shared engine images, staged beside the exe just above. Swept
+        # into plugins/ they would be ~37 MB of duplicate dead weight AND get
+        # `dlopen`'d by the C-ABI loader looking for an entry point they do not
+        # export.
+        [[ "$base" == *renzora_dylib* ]] && continue
+        [[ "$base" == *renzora_ember_dylib* ]] && continue
         [[ "$base" == *libstd-* ]] && continue
         [[ "$base" == *renzora_macros* ]] && continue
         [[ "$base" == librenzora."$EXT" ]] && continue
@@ -269,6 +280,21 @@ build_plugins() {
     for dir in plugins/*/; do
         [ -f "$dir/Cargo.toml" ] || continue
         name=$(basename "$dir")
+        # NATIVE plugins are skipped here, and running cargo on one would be
+        # actively harmful rather than merely wrong. `crate-type = ["dylib"]`
+        # means it links the real Bevy — and `plugins/` is outside the engine
+        # workspace, so cargo would resolve it a FRESH Bevy from crates.io. That
+        # is a ten-minute build per plugin whose output has different `TypeId`s
+        # from the engine: it loads, runs, and corrupts the World.
+        #
+        # The only sound way to build one is against the artifacts the engine was
+        # actually built from, which is what the staged SDK holds and what
+        # `xtask/src/native_plugin.rs` does. The quoted `"dylib"` is matched
+        # rather than the bare word because `"cdylib"` also ends in `dylib`.
+        if grep -q 'crate-type.*"dylib"' "$dir/Cargo.toml"; then
+            echo "    skipping '$name' (native plugin — built against the SDK, not by cargo)"
+            continue
+        fi
         log=$(mktemp)
         if ( cd "$dir" && cargo build --profile dist "${TARGET_FLAG[@]}" ) > "$log" 2>&1; then
             built=$((built + 1))
@@ -531,7 +557,53 @@ build_desktop() {
     esac
 
     copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN"
+    stage_sdk "$FEATURE" "$RUST_TARGET" "$PLATFORM" "$OUT"
     return 0
+}
+
+# ── The plugin SDK ───────────────────────────────────────────────────────────
+# Usage: stage_sdk <feature> <rust-target|native> <platform-name> <out-dir>
+#
+# Editor lane only, and only for a build that produced one. `cargo renzora` has
+# always staged this for the host; this is the cross-compiling equivalent, and
+# without it **every published release shipped without an SDK**. That failed
+# silently in the worst way: `package-release.sh` compresses `$dir/sdk` only if
+# it exists, so the archive step found nothing, produced nothing, and said
+# nothing — and the editor then had no way to compile a Rust script or a native
+# plugin, on any platform built here.
+#
+# Delegated to `xtask` rather than reimplemented in bash for the same reason
+# `build_plugins` does not try to build native plugins: the file list has to come
+# from cargo's own `--message-format=json` output, because `deps/` holds several
+# `-C metadata` variants of one crate and picking by name yields a set that looks
+# complete and then fails to compile. That logic lives in `xtask/src/sdk.rs` and
+# must not be duplicated.
+#
+# The flags are not optional decoration. The container builds every platform from
+# one checkout, so the SDK must be cut from THIS lane's artifacts:
+#   --target-dir  the editor lane's own target dir
+#   --target      the cross triple, absent for a native build
+# Getting either wrong stages a different platform's SDK, which compiles plugins
+# that cannot load.
+#
+# Best-effort: a platform whose SDK cannot be staged still ships a working editor,
+# minus the ability to compile scripts and plugins. Named loudly, because silence
+# is exactly how this went unnoticed before.
+stage_sdk() {
+    local FEATURE="$1" RUST_TARGET="$2" PLATFORM="$3" OUT="$4"
+    [ "$FEATURE" = "editor" ] || return 0
+
+    local FLAGS=(--target-dir "target/$FEATURE" --out "$OUT")
+    if [ "$RUST_TARGET" != "native" ]; then
+        FLAGS+=(--target "$RUST_TARGET")
+    fi
+
+    echo "=== Staging plugin SDK for $PLATFORM ==="
+    if ! cargo run --quiet --manifest-path xtask/Cargo.toml -- sdk "${FLAGS[@]}"; then
+        echo "WARN: could not stage the plugin SDK for $PLATFORM — the editor will"
+        echo "      ship without the ability to compile Rust scripts or native plugins"
+        return 0
+    fi
 }
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────

@@ -157,13 +157,31 @@ fn main() -> ExitCode {
         // Regenerate ONLY the plugin SDK, without rebuilding or restaging
         // anything else. Every staged build already refreshes it (see
         // `build_and_stage`); this is for when that is all you want to redo.
-        "sdk" => match sdk::build(&repo, &plat, &repo.join("dist").join(plat.dir)) {
-            Ok(out) => {
-                println!("[xtask] staged {}", out.display());
-                ExitCode::SUCCESS
+        // Optional flags exist for `docker/build-all.sh`, which stages every
+        // platform from one checkout and therefore cannot use any of the
+        // defaults: `--target-dir target/editor`, `--target <triple>` for a cross
+        // build, and `--out` because the container's layout is its own.
+        //
+        // Without these the container had no way to stage an SDK at all, so
+        // every published release shipped without one — the archive step in
+        // `package-release.sh` found no `sdk/` and silently produced nothing.
+        "sdk" => {
+            let argv: Vec<String> = std::env::args().skip(2).collect();
+            let from = sdk::From {
+                target_dir: flag_value(&argv, "--target-dir"),
+                target: flag_value(&argv, "--target"),
+            };
+            let out_dir = flag_value(&argv, "--out")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| repo.join("dist").join(plat.dir));
+            match sdk::build_from(&repo, &plat, &out_dir, &from) {
+                Ok(out) => {
+                    println!("[xtask] staged {}", out.display());
+                    ExitCode::SUCCESS
+                }
+                Err(code) => code,
             }
-            Err(code) => code,
-        },
+        }
         // Profiling build + stage + launch — same as `run` but compiles the
         // `profiling` feature in, which re-adds Bevy's Tracy instrumentation
         // (per-system + render-node CPU zones, GPU-pass zones, frame marks). Use
@@ -353,9 +371,9 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
     match stage(repo, plat) {
         Ok(out) => {
             // The plugin SDK, beside the binaries it was cut from. An SDK only
-            // works against its own engine build — every `.rlib` filename hashes
-            // the build configuration — so regenerating it here is what stops a
-            // stale one from ever sitting next to a fresh editor. It hardlinks,
+            // works against its own engine build — every metadata filename
+            // hashes the build configuration — so regenerating it here is what
+            // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
             sdk::build(repo, plat, &out)?;
             // After the SDK, because they link against it. A native plugin in
@@ -520,7 +538,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     //                  process, so the pair ships together either way.
     let bin_name = format!("renzora{}", plat.exe_suffix);
     let host_bin = out.join(&bin_name);
-    copy(&src.join(&bin_name), &host_bin)?;
+    link_or_copy(&src.join(&bin_name), &host_bin)?;
     #[cfg(unix)]
     make_executable(&host_bin)?;
 
@@ -534,7 +552,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
         .join(&updater_name);
     if updater_src.exists() {
         let updater_bin = out.join(&updater_name);
-        copy(&updater_src, &updater_bin)?;
+        link_or_copy(&updater_src, &updater_bin)?;
         #[cfg(unix)]
         make_executable(&updater_bin)?;
     }
@@ -543,7 +561,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     let editor_src = src.join(&editor_name);
     if editor_src.exists() {
         let editor_bin = out.join(&editor_name);
-        copy(&editor_src, &editor_bin)?;
+        link_or_copy(&editor_src, &editor_bin)?;
         #[cfg(unix)]
         make_executable(&editor_bin)?;
     } else {
@@ -560,7 +578,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     if plat.ext == "dll" {
         let loader = repo.join("tools/openxr/openxr_loader.dll");
         if loader.exists() {
-            copy(&loader, &out.join("openxr_loader.dll"))?;
+            link_or_copy(&loader, &out.join("openxr_loader.dll"))?;
         } else {
             eprintln!("[xtask] WARN: tools/openxr/openxr_loader.dll missing — VR won't initialize");
         }
@@ -584,7 +602,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
         if !name.ends_with(&format!(".{}", plat.ext)) || is_not_a_plugin(&name, plat) {
             continue;
         }
-        copy(&path, &plugins.join(&name))?;
+        link_or_copy(&path, &plugins.join(&name))?;
         count += 1;
     }
 
@@ -616,7 +634,7 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
                     println!("[xtask] skipping orphaned plugin artifact {name} (no plugins/{stem}/)");
                     continue;
                 }
-                copy(&path, &plugins.join(&name))?;
+                link_or_copy(&path, &plugins.join(&name))?;
                 count += 1;
             }
         }
@@ -648,6 +666,11 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
         // `INIT_SYMBOL` it does not export — harmless, but it would also ship a
         // second ~30 MB copy of a library already sitting one directory up.
         || name.contains("renzora_dylib")
+        // The shared ember image, for the same reason. Its own entry rather than
+        // a looser pattern: `contains("renzora_dylib")` does not match
+        // `renzora_ember_dylib`, and widening it to `_dylib` would start
+        // swallowing names a plugin author is entitled to choose.
+        || name.contains("renzora_ember_dylib")
         || name.starts_with("std-")
         || name.starts_with("libstd-")
         // PROC-MACRO CRATES. These compile to a dylib for *rustc* to load, not for
@@ -703,7 +726,7 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     for name in &wanted {
         let from = deps.join(name);
         if from.is_file() {
-            copy(&from, &out.join(name))?;
+            link_or_copy(&from, &out.join(name))?;
         }
     }
 
@@ -722,7 +745,9 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     for name in &wanted {
         let from = libdir.join(name);
         if from.is_file() {
-            copy(&from, &out.join(name))?;
+            // The one source that is routinely on another volume — the rustup
+            // sysroot. `link_or_copy` falls back for it without special-casing.
+            link_or_copy(&from, &out.join(name))?;
         }
     }
 
@@ -756,7 +781,7 @@ fn imported_libs(exe: &Path, plat: &Platform) -> Vec<String> {
         return Vec::new();
     };
     let mut out = std::collections::BTreeSet::new();
-    for stem in ["bevy_dylib", "renzora_dylib", "std"] {
+    for stem in ["bevy_dylib", "renzora_dylib", "renzora_ember_dylib", "std"] {
         let prefix = format!("{}{stem}", plat.lib_prefix);
         let suffix = format!(".{}", plat.ext);
         let pat = prefix.as_bytes();
@@ -856,6 +881,15 @@ fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// The value after `flag` in `argv`, as `--flag value`.
+///
+/// Only the separated form, not `--flag=value`: these are passed by
+/// `docker/build-all.sh`, which writes them separated, and accepting a second
+/// spelling would be untested surface.
+fn flag_value(argv: &[String], flag: &str) -> Option<String> {
+    argv.iter().position(|a| a == flag).and_then(|i| argv.get(i + 1)).cloned()
+}
+
 /// Copy, naming the destination on failure.
 ///
 /// `std::io::Error` from `fs::copy` carries no path, so a locked file surfaced as
@@ -870,6 +904,45 @@ pub(crate) fn copy(src: &Path, dst: &Path) -> std::io::Result<()> {
             format!("{} -> {}: {e}", src.display(), dst.display()),
         )
     })
+}
+
+/// Hardlink `src` into `dst`, copying only if that fails.
+///
+/// Staging is a *view* of `target/dist/`, not a second set of the bytes.
+/// `target/` and `dist/` are normally the same volume, so a link is instant and
+/// consumes no additional disk — which is what lets the SDK stage ~1050 files on
+/// every build, and what keeps `dist/<platform>/` from being a 389 MB duplicate
+/// of files that already exist a directory away. (Measured: before this,
+/// `renzora-editor.exe` at 155 MB, `bevy_dylib` at 124 MB and every plugin cdylib
+/// were each stored twice.)
+///
+/// Deleting `target/` later does not break the staged tree — a hardlink is not a
+/// reference to a file but one of its names, so the data survives while any name
+/// remains.
+///
+/// # Why this is safe for the staged binaries and not merely for the SDK
+///
+/// A hardlink is only wrong if something rewrites the staged file **in place**,
+/// which would reach back through the link and corrupt `target/`. Exactly one
+/// step does that — UPX, in `docker/build-all.sh` — and it cannot collide here:
+/// it runs only in the container, only on the three executables, and against a
+/// tree that script staged itself with `cp`. Nothing on the native path modifies
+/// a staged artifact after it lands; a rebuild replaces it, and
+/// `clean_artifacts` + the `remove_file` below relink it from scratch.
+///
+/// The fallback matters for the cases where linking cannot work: `dist/` on a
+/// different drive (or `std-<hash>.dll`, which comes from the rustup sysroot and
+/// may be on another volume), or a filesystem without hardlinks. Those pay the
+/// copy, which is what the code did before and is merely slow rather than wrong.
+pub(crate) fn link_or_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
+    // A leftover from a previous stage would make `hard_link` fail with
+    // AlreadyExists and silently fall through to a copy, so clear it first. This
+    // is also what refreshes the link when a rebuild gave `src` a new inode.
+    let _ = std::fs::remove_file(dst);
+    match std::fs::hard_link(src, dst) {
+        Ok(()) => Ok(()),
+        Err(_) => copy(src, dst),
+    }
 }
 
 /// Remove only exe + shared-lib artifacts from a dir (keep everything else).
