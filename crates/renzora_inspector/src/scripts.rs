@@ -297,6 +297,7 @@ fn refresh_script_index(
     mut index: ResMut<ScriptIndex>,
     project: Option<Res<renzora::core::CurrentProject>>,
     time: Res<Time>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     // Bind the poll result in its own statement before touching `index.task`
     // again: folding this into `if let Some(..) = index.task.as_mut().and_then(..)`
@@ -338,7 +339,11 @@ fn refresh_script_index(
     // `renzora_runtime::init_io_task_pool_with_large_stack` — the headroom a
     // deep recursive directory walk wants.
     let root = project.path.clone();
-    index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root) }));
+    // Asked of the engine rather than hardcoded, so a new language backend shows
+    // up in the picker without this file being edited. Owned because it crosses
+    // into the task.
+    let exts = script_extensions(engine.as_deref());
+    index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root, &exts) }));
 }
 
 /// Content hash of a scan result — see [`ScriptIndex::hash`].
@@ -875,14 +880,32 @@ fn build_add_bar(
 /// `(display-relative-path, absolute-path)` pairs sorted by display path.
 ///
 /// Runs on the IO task pool, never the main thread — see [`ScriptIndex`].
-fn scan_scripts_at(root: &std::path::Path) -> Vec<(String, PathBuf)> {
+/// The extensions the editor treats as scripts.
+///
+/// From the registered backends when the engine exists, so adding a language is
+/// a backend registration and nothing else. The fallback is only for the moment
+/// before the engine is created — without it the picker would be empty on the
+/// first frame and the drop zone would reject everything.
+fn script_extensions(engine: Option<&renzora_scripting::ScriptEngine>) -> Vec<String> {
+    match engine {
+        Some(e) => e.script_extensions().into_iter().map(str::to_string).collect(),
+        None => ["lua", "blueprint", "bp"].iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+fn scan_scripts_at(root: &std::path::Path, exts: &[String]) -> Vec<(String, PathBuf)> {
     let mut out = Vec::new();
-    scan_scripts_inner(root, root, &mut out);
+    scan_scripts_inner(root, root, exts, &mut out);
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
 }
 
-fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, PathBuf)>) {
+fn scan_scripts_inner(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    exts: &[String],
+    out: &mut Vec<(String, PathBuf)>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -900,10 +923,12 @@ fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut V
             if matches!(name, "target" | "node_modules" | ".git") {
                 continue;
             }
-            scan_scripts_inner(&path, root, out);
+            scan_scripts_inner(&path, root, exts, out);
         } else {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext, "lua") {
+            // Was `matches!(ext, "lua")` — which meant the picker only ever
+            // listed Lua, even though the drop zone accepted three extensions.
+            if exts.iter().any(|e| e == ext) {
                 let display = path
                     .strip_prefix(root)
                     .unwrap_or(&path)
@@ -928,6 +953,7 @@ fn add_script_drop(
     project: Option<Res<renzora::core::CurrentProject>>,
     zones: Query<(&bevy::ui::RelativeCursorPosition, &AddScriptDropZone)>,
     cmds: Option<Res<EditorCommands>>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
         return;
@@ -935,7 +961,9 @@ fn add_script_drop(
     let (Some(payload), Some(cmds)) = (payload, cmds) else {
         return;
     };
-    if !payload.is_detached || !payload.matches_extensions(&["lua", "blueprint", "bp"]) {
+    let exts = script_extensions(engine.as_deref());
+    let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
+    if !payload.is_detached || !payload.matches_extensions(&exts) {
         return;
     }
     for (rcp, zone) in &zones {
@@ -960,13 +988,17 @@ fn add_script_drop(
 fn add_script_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<AddScriptDropZone>>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
+    // Must agree with `add_script_drop` exactly: a zone that highlights but
+    // refuses the drop, or accepts a drop it never highlighted, is worse than one
+    // that consistently says no.
+    let exts = script_extensions(engine.as_deref());
+    let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
     for (rcp, mut bc) in &mut zones {
-        let active = payload.as_ref().is_some_and(|p| {
-            p.is_detached
-                && rcp.cursor_over
-                && p.matches_extensions(&["lua", "blueprint", "bp"])
-        });
+        let active = payload
+            .as_ref()
+            .is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(&exts));
         let want = BorderColor::all(if active {
             Color::srgb_u8(120, 140, 200)
         } else {
