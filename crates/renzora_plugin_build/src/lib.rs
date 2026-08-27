@@ -243,7 +243,20 @@ impl Sdk {
             // them. Without this it links its own copies and stops sharing the
             // `World` the whole design exists to share.
             .arg("-C")
-            .arg("prefer-dynamic");
+            .arg("prefer-dynamic")
+            // A bare `rustc` defaults to `opt-level=0`. Nothing was setting this,
+            // so every plugin and script built here ran UNOPTIMISED — which for a
+            // script called once per frame per entity is the expensive half. The
+            // size is only the visible one.
+            //
+            // 2 rather than 3: measured on a small script, 224 KB -> 109 KB with
+            // no change in build time, where 3 gained nothing (110 KB) and `s`/`z`
+            // were worse (122 KB). It also matches the engine's own
+            // `[profile.dist]`, so a plugin is built the way the code it calls
+            // into was. `debuginfo` and `strip` are left alone: measured as no
+            // change, because rustc outside cargo already emits neither.
+            .arg("-C")
+            .arg("opt-level=2");
 
         // rust-lld, matching `.cargo/config.toml`. That file configures *cargo*,
         // so a bare rustc silently falls back to MSVC `link.exe`, which fails

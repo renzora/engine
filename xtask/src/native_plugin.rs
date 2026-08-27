@@ -179,7 +179,12 @@ fn build_one(src_dir: &Path, sdk: &Sdk, dist_root: &Path) -> bool {
         // becomes `lib`, and every log line it emits is tagged `INFO lib:`,
         // indistinguishable from every other plugin's.
         .args(["--crate-name", &name.replace('-', "_")])
-        .args(["-C", "prefer-dynamic"]);
+        .args(["-C", "prefer-dynamic"])
+        // A bare `rustc` defaults to `opt-level=0`, so without this every plugin
+        // built here runs unoptimised. 2 matches `[profile.dist]` — the same
+        // level the engine it calls into was built at — and measured 224 KB ->
+        // 109 KB on a small script with no change in build time.
+        .args(["-C", "opt-level=2"]);
 
     // `.cargo/config.toml` pins this for cargo builds; a bare rustc would fall
     // back to MSVC `link.exe`, which fails on the exported-symbol count.
