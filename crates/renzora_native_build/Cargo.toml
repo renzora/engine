@@ -1,0 +1,44 @@
+# The native-plugin build core, shared by the two things that compile one.
+#
+# ── Why this crate exists ────────────────────────────────────────────────────
+#
+# A native plugin is compiled in two places: `renzora_plugin_build` (the editor,
+# for a plugin a user installed) and `xtask` (a source checkout, for the repo's
+# own plugins). Both have to produce the SAME `rustc` command line — the same
+# `-C prefer-dynamic`, the same three `--extern`s, the same `-L` paths — and for
+# a long time both held their own copy of it. A change to one silently drifted
+# from the other, and the symptom would be a plugin that builds for a developer
+# and not for a user, or the reverse.
+#
+# ── Why it carries no dependencies ───────────────────────────────────────────
+#
+# The obvious fix was to have `xtask` depend on `renzora_plugin_build` directly.
+# That works — cargo reads a workspace root for `[lints] workspace = true`
+# inheritance but does NOT validate its sibling members, so an outside crate can
+# path-depend on a member of a BROKEN workspace and still build (measured). The
+# "xtask must compile even when `sync.rs` has left the engine workspace
+# unloadable" property survives it.
+#
+# It fails on the other constraint. `renzora_plugin_build` pulls `serde`,
+# `serde_json`, `tar` and `lzma-rs` — the last two purely to unpack
+# `sdk.tar.zst`, which xtask has no business doing — against xtask's stated goal
+# of staying a tiny, instant-compiling helper with zero dependencies.
+#
+# So the shared half lives here with no dependencies of its own, and xtask picks
+# up one path dependency that pulls nothing. `renzora_plugin_build` wraps this
+# with the parts that genuinely need serde and tar.
+[package]
+name = "renzora_native_build"
+version = "0.1.0"
+edition = "2021"
+description = "Shared core for compiling native plugins: rustc command line, third-party dependencies, JSON."
+
+[lib]
+crate-type = ["rlib"]
+
+# Deliberately empty, and it must stay that way — see the header. `xtask`
+# depends on this crate precisely because it adds nothing to xtask's build.
+[dependencies]
+
+[lints]
+workspace = true

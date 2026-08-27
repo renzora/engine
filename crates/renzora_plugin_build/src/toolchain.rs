@@ -10,11 +10,11 @@
 //! compiled where they are installed, so the compiler has to come from
 //! somewhere. That is a missing-tool problem, and it announces itself.
 //!
-//! The other is that a machine may have the *wrong* Rust. `.rlib` metadata is
+//! The other is that a machine may have the *wrong* Rust. Crate metadata is
 //! versioned and rustc refuses to read another version's, so a 1.93 compiler
 //! against a 1.95 SDK stops at `error[E0514]: found crate 'bevy' compiled by an
 //! incompatible version of rustc`. That message is accurate but arrives after
-//! the user has downloaded ~555 MB and pressed Install. Resolving a *pinned*
+//! the user has downloaded ~444 MB and pressed Install. Resolving a *pinned*
 //! toolchain by absolute path makes the mismatch unreachable rather than
 //! diagnosable.
 //!

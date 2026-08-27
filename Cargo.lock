@@ -7720,6 +7720,7 @@ dependencies = [
  "getrandom 0.4.3",
  "log",
  "renzora_editor",
+ "renzora_native_plugin",
  "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
@@ -7759,6 +7760,14 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "uuid",
+]
+
+[[package]]
+name = "renzora_ember_dylib"
+version = "0.1.0"
+dependencies = [
+ "renzora_dylib",
+ "renzora_ember",
 ]
 
 [[package]]
@@ -8241,6 +8250,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_native_build"
+version = "0.1.0"
+
+[[package]]
 name = "renzora_native_plugin"
 version = "0.1.0"
 dependencies = [
@@ -8427,10 +8440,11 @@ dependencies = [
 name = "renzora_plugin_build"
 version = "0.1.0"
 dependencies = [
- "lzma-rs",
+ "renzora_native_build",
  "serde",
  "serde_json",
  "tar",
+ "zstd",
 ]
 
 [[package]]
@@ -8577,6 +8591,7 @@ dependencies = [
  "renzora_dof",
  "renzora_dylib",
  "renzora_ember",
+ "renzora_ember_dylib",
  "renzora_engine",
  "renzora_environment_map",
  "renzora_forward_decal",

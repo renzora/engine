@@ -28,8 +28,9 @@
 //! 2. **`--extern bevy` pointed at the dylib.** The mirror image, and it fails
 //!    loudly rather than quietly — `bevy_dylib` re-exports `bevy_internal`, so
 //!    `bevy::prelude` does not resolve. `bevy` must be the facade *rlib*, which
-//!    declares `extern crate bevy_dylib` itself. The two are asymmetric because
-//!    only one of them has a facade.
+//!    declares `extern crate bevy_dylib` itself — and the one crate the SDK
+//!    stages whole rather than as metadata, for reasons `xtask::sdk` explains.
+//!    The two are asymmetric because only one of them has a facade.
 //!
 //! 3. **A missing `-L native=` path.** Produces `LNK1181: cannot open input
 //!    file 'windows.0.52.0.lib'`, which names a file but nothing that says where
@@ -50,6 +51,16 @@ pub mod unpack;
 pub use toolchain::Toolchain;
 pub use unpack::SdkState;
 
+use renzora_native_build as native_build;
+/// Re-exported so a caller holding an [`Sdk`] can reach the dependency machinery
+/// without also depending on the core crate. The logic lives there because
+/// `xtask` builds the repo's own plugins the same way and must not drift.
+pub use renzora_native_build::deps;
+/// Re-exported for the same reason as [`deps`]: everything that looks for an
+/// SDK has to agree on where the install root is, and inside a Linux AppImage
+/// that is NOT the executable's parent.
+pub use renzora_native_build::install;
+
 /// What the SDK's `manifest.json` records, written by `cargo renzora sdk`.
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
@@ -59,7 +70,14 @@ pub struct Manifest {
     pub rustc: String,
     /// Shared-library extension, no dot.
     pub lib_ext: String,
-    /// `--extern <name>=<sdk-relative path>` for the two crates a plugin may use.
+    /// Content hash of the images a plugin binds to — see [`Sdk::stamp`].
+    ///
+    /// Optional so an SDK cut before this field existed still loads; that one
+    /// falls back to the old filename-based stamp, which is weaker but not
+    /// wrong for the case it can see.
+    #[serde(default)]
+    pub build_id: Option<String>,
+    /// `--extern <name>=<sdk-relative path>` for the crates a plugin may use.
     pub r#extern: Externs,
     pub link_search: LinkSearch,
 }
@@ -68,6 +86,13 @@ pub struct Manifest {
 pub struct Externs {
     pub bevy: String,
     pub renzora: String,
+    /// The UI framework, as the shared `renzora_ember_dylib` image.
+    ///
+    /// Optional for the same reason as [`Manifest::build_id`]: an SDK staged
+    /// before panels were reachable from a plugin has no entry, and a plugin
+    /// that does not draw UI still builds against it.
+    #[serde(default)]
+    pub renzora_ember: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,8 +111,23 @@ pub struct Sdk {
 
 #[derive(Debug)]
 pub enum Error {
-    /// No SDK staged. The caller should offer to download it.
+    /// No SDK at all — neither an extracted tree nor the shipped archive.
+    ///
+    /// A source checkout that has not run `cargo renzora`, or a build that
+    /// shipped without one. Nothing the engine can do about it by itself.
     Missing(PathBuf),
+    /// The SDK shipped with this build but has not been unpacked yet.
+    ///
+    /// Distinct from [`Error::Missing`] because it is the opposite situation and
+    /// the opposite remedy: everything needed is already on disk, one
+    /// decompression away. Reporting it as "missing" — which is what happened
+    /// before this variant existed — sends someone looking for a download that
+    /// does not exist, while `sdk.tar.zst` sits beside the executable they just
+    /// launched.
+    ///
+    /// Carries the archive and its size so a caller can say how much work
+    /// unpacking is, and act on it without going looking for the file again.
+    Packed { archive: PathBuf, bytes: u64 },
     /// The SDK is present but unreadable or malformed.
     Manifest(String),
     /// The pinned compiler is not available.
@@ -106,6 +146,12 @@ pub enum Error {
     /// rustc ran and rejected the plugin. Carries its stderr verbatim: it is
     /// written for the plugin author, and rewriting it would only lose detail.
     Compile(String),
+    /// The plugin's third-party dependencies could not be resolved or built.
+    ///
+    /// Separate from [`Error::Compile`] because the plugin's own source is fine
+    /// and the remedy is in its `Cargo.toml` — including the case this is most
+    /// worth naming, a dependency that drags Bevy back in. See [`crate::deps`].
+    Deps(String),
     Io(std::io::Error),
 }
 
@@ -113,6 +159,13 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Missing(p) => write!(f, "no plugin SDK at {}", p.display()),
+            Error::Packed { bytes, .. } => write!(
+                f,
+                "the plugin SDK has not been unpacked yet ({} MB compressed). It \
+                 ships with the engine and is needed to compile Rust scripts and \
+                 native plugins",
+                bytes / 1_048_576
+            ),
             Error::Manifest(e) => write!(f, "unreadable SDK manifest: {e}"),
             // Prefer the state's own wording, which is written for a dialog and
             // says what will be downloaded and where. The `needs`/`found` form
@@ -128,6 +181,7 @@ impl std::fmt::Display for Error {
             },
             Error::NoRustc(e) => write!(f, "could not run rustc: {e}"),
             Error::Compile(e) => write!(f, "{e}"),
+            Error::Deps(e) => write!(f, "{e}"),
             Error::Io(e) => write!(f, "{e}"),
         }
     }
@@ -147,6 +201,15 @@ impl Sdk {
         let root = root.into();
         let path = root.join("manifest.json");
         if !path.is_file() {
+            // Before reporting "missing", look for the archive a release ships.
+            // `root` is `<exe dir>/sdk`, so the archive is its sibling. The two
+            // states need different words: one is a build without an SDK, the
+            // other is an SDK one decompression away, and calling the second
+            // "missing" sent people looking for a download that does not exist.
+            let exe_dir = root.parent().unwrap_or(&root);
+            if let unpack::SdkState::Packed { archive, bytes } = unpack::sdk_state(exe_dir) {
+                return Err(Error::Packed { archive, bytes });
+            }
             return Err(Error::Missing(root));
         }
         let text = std::fs::read_to_string(&path)?;
@@ -174,7 +237,7 @@ impl Sdk {
     /// Worth checking before compiling rather than after: a mismatch is refused
     /// at the metadata layer with `error[E0514]: found crate 'bevy' compiled by
     /// an incompatible version of rustc`, which is accurate but arrives once the
-    /// user has already downloaded ~555 MB and pressed Install.
+    /// user has already downloaded ~444 MB and pressed Install.
     pub fn check_toolchain(&self) -> Result<(), Error> {
         match self.toolchain() {
             Toolchain::Ready(_) => Ok(()),
@@ -189,11 +252,26 @@ impl Sdk {
     /// A token identifying what a plugin built against this SDK is bound to.
     ///
     /// Stored beside a built plugin and compared on load; a mismatch means
-    /// rebuild. It is the `bevy_dylib` artifact filename plus the rustc version,
-    /// because both are already exactly the things that must not drift — cargo
-    /// hashes the whole build configuration into that filename, so nothing here
-    /// has to decide what "compatible" means or keep a hash function in step.
+    /// rebuild.
+    ///
+    /// It is the manifest's `build_id` — a content hash of the images a plugin
+    /// links, computed once when the SDK was staged. It has to be content-based:
+    /// the previous stamp was the `bevy` rlib filename plus the rustc version,
+    /// and cargo derives that filename from the build *configuration*, never
+    /// from source. Editing `crates/renzora` therefore left every filename
+    /// identical, so no installed plugin rebuilt and each kept loading against a
+    /// contract crate whose layouts had moved — silently, because Rust mangles
+    /// symbols from a crate's stable id rather than its contents, so the imports
+    /// still resolved.
+    ///
+    /// The old form is the fallback for an SDK staged before `build_id` existed.
+    /// It catches a rustc or Bevy change and misses a contract-crate one, which
+    /// is exactly the gap this replaced — but a stamp that only sometimes
+    /// notices still beats refusing to load anything.
     pub fn stamp(&self) -> String {
+        if let Some(id) = &self.manifest.build_id {
+            return format!("{id}+rustc-{}", self.manifest.rustc);
+        }
         let bevy = Path::new(&self.manifest.r#extern.bevy)
             .file_name()
             .and_then(|n| n.to_str())
@@ -220,67 +298,41 @@ impl Sdk {
         let src = dir.join("src").join("lib.rs");
         let manifest = ensure_cargo_manifest(dir)?;
 
-        let mut cmd = Command::new(rustc);
-        // Bevy's derives resolve their own paths through `BevyManifest`, which
-        // reads `$CARGO_MANIFEST_DIR/Cargo.toml` to decide whether to emit
-        // `bevy::…` or `bevy_ecs::…`. Running rustc directly means no cargo set
-        // this, and the failure is a bare `error: proc macro panicked` naming
-        // the macro rather than the missing variable — reached by anything using
-        // `#[derive(Component)]` or `bsn!`, which is most plugins.
+        // The command line itself lives in `renzora_native_build`, because
+        // `xtask` has to produce a byte-identical one when it builds the repo's
+        // own plugins. Everything below is just resolving this SDK's manifest
+        // into the absolute paths that shared code takes.
         let name = crate_name(dir);
-        cmd.env("CARGO_MANIFEST_DIR", &manifest)
-            .env("CARGO_PKG_NAME", &name)
-            // Without this rustc names the crate after the FILE, so every plugin
-            // is called `lib` and every log line it emits is tagged `INFO lib:`,
-            // indistinguishable from every other plugin's.
-            .arg("--crate-name")
-            .arg(&name);
-        cmd.arg("--edition")
-            .arg("2021")
-            .arg("--crate-type")
-            .arg("dylib")
-            // The plugin must IMPORT Bevy and the contract crate, not embed
-            // them. Without this it links its own copies and stops sharing the
-            // `World` the whole design exists to share.
-            .arg("-C")
-            .arg("prefer-dynamic")
-            // A bare `rustc` defaults to `opt-level=0`. Nothing was setting this,
-            // so every plugin and script built here ran UNOPTIMISED — which for a
-            // script called once per frame per entity is the expensive half. The
-            // size is only the visible one.
-            //
-            // 2 rather than 3: measured on a small script, 224 KB -> 109 KB with
-            // no change in build time, where 3 gained nothing (110 KB) and `s`/`z`
-            // were worse (122 KB). It also matches the engine's own
-            // `[profile.dist]`, so a plugin is built the way the code it calls
-            // into was. `debuginfo` and `strip` are left alone: measured as no
-            // change, because rustc outside cargo already emits neither.
-            .arg("-C")
-            .arg("opt-level=2");
+        let bevy = self.root.join(&self.manifest.r#extern.bevy);
+        let renzora = self.root.join(&self.manifest.r#extern.renzora);
+        let ember = self.manifest.r#extern.renzora_ember.as_ref().map(|e| self.root.join(e));
+        let dependency: Vec<PathBuf> =
+            self.manifest.link_search.dependency.iter().map(|d| self.root.join(d)).collect();
+        let native: Vec<PathBuf> =
+            self.manifest.link_search.native.iter().map(|n| self.root.join(n)).collect();
 
-        // rust-lld, matching `.cargo/config.toml`. That file configures *cargo*,
-        // so a bare rustc silently falls back to MSVC `link.exe`, which fails
-        // this link on the exported-symbol count.
-        if self.manifest.triple.contains("windows-msvc") {
-            cmd.arg("-C").arg("linker=rust-lld");
-        }
+        let target = native_build::Target {
+            triple: &self.manifest.triple,
+            crate_name: &name,
+            extern_bevy: &bevy,
+            extern_renzora: &renzora,
+            extern_ember: ember.as_deref(),
+            dependency: &dependency,
+            native: &native,
+            plugin_dir: &manifest,
+            // The plugin's own `build/` directory, which is where the
+            // third-party dependency crate is synthesized.
+            build_dir: out.parent().unwrap_or(dir),
+            src: &src,
+            out,
+        };
+        let args = native_build::rustc::args(&target).map_err(Error::Deps)?;
 
-        for (name, rel) in [
-            ("bevy", &self.manifest.r#extern.bevy),
-            ("renzora", &self.manifest.r#extern.renzora),
-        ] {
-            cmd.arg("--extern")
-                .arg(format!("{name}={}", self.root.join(rel).display()));
+        let mut cmd = Command::new(rustc);
+        for (key, value) in native_build::rustc::env_vars(&target) {
+            cmd.env(key, value);
         }
-        for d in &self.manifest.link_search.dependency {
-            cmd.arg("-L")
-                .arg(format!("dependency={}", self.root.join(d).display()));
-        }
-        for n in &self.manifest.link_search.native {
-            cmd.arg("-L")
-                .arg(format!("native={}", self.root.join(n).display()));
-        }
-        cmd.arg("-o").arg(out).arg(&src);
+        cmd.args(&args);
 
         let output = cmd.output().map_err(|e| Error::NoRustc(e.to_string()))?;
         if !output.status.success() {
