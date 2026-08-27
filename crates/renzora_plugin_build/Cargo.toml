@@ -14,6 +14,12 @@ description = "Compile a native plugin from source against a staged Renzora SDK.
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Unpacking the shipped `sdk.tar.xz`. Both are pure Rust on purpose: the
+# alternative for xz is `xz2`, which builds liblzma from C and would put a
+# system toolchain in the way of a crate whose whole job is to exist before the
+# user has one. `lzma-rs` is already in the workspace lockfile.
+tar = "0.4"
+lzma-rs = "0.3"
 
 [lints]
 workspace = true

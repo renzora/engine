@@ -46,7 +46,9 @@ use std::process::Command;
 use serde::Deserialize;
 
 pub mod toolchain;
+pub mod unpack;
 pub use toolchain::Toolchain;
+pub use unpack::SdkState;
 
 /// What the SDK's `manifest.json` records, written by `cargo renzora sdk`.
 #[derive(Debug, Deserialize)]
