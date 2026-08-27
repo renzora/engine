@@ -57,11 +57,16 @@ impl Plugin for InspectorPanelPlugin {
     /// is the one hook that satisfies both constraints.
     fn finish(&self, app: &mut App) {
         plugin_panels::register_plugin_panels(app);
+        // Same hook, same reason: `register_settings_section` needs `&mut App`,
+        // and the list it renders is only complete once every loader's `build`
+        // has run.
+        plugin_manager::register(app);
     }
 }
 
 renzora::add!(InspectorPanelPlugin, Editor);
 
 pub mod plugin_fields;
+pub mod plugin_manager;
 pub mod plugin_panels;
 pub mod plugin_resources;

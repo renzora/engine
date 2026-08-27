@@ -312,6 +312,12 @@ Things to know:
 
 The empty `[workspace]` table is not optional if your plugin lives inside a checkout of the engine. Cargo's `exclude` key stops a directory being a workspace *member*, but it does not stop it resolving against the workspace — the plugin would still inherit the workspace's lockfile and feature unification, which quietly undoes the isolation the whole mechanism depends on. `[workspace]` makes the plugin its own workspace root.
 
+## Turning it off
+
+**Settings → Editor → Plugins** has a switch for every plugin the engine found, standalone ones included. Disabling takes effect at the next launch — see [Native Plugins](native-plugins.md#turning-plugins-on-and-off) for why, and for where the list is stored.
+
+A disabled plugin is skipped before the file is opened, so none of its initializers run. It also stays disabled when its source is rebuilt: the hot-reload watcher below checks the same list, so saving a change to a plugin you turned off does not quietly bring it back.
+
 ## Hot reload
 
 **Edit a `.rs` or `.wgsl` file under `plugins/` and save. The change is live in about a second, without restarting the editor.**

@@ -167,11 +167,14 @@ impl Plugin for DebuggerPlugin {
             Update,
             update_system_timing.run_if(in_state(SplashState::Editor)),
         );
-        // The entity-inventory pass iterates *every* ScriptComponent in the
-        // scene each frame (272k on a stress city, since one is auto-inserted on
-        // every named entity). That's a full-scene scan for a readout nobody may
-        // be looking at — gate it on the Scripting panel being the active tab and
-        // throttle to 4 Hz while it is. Hidden → zero cost.
+        // The entity-inventory pass iterates *every* ScriptComponent in the scene
+        // each frame. That was once a full-scene scan (272k on a stress city,
+        // back when one was auto-inserted on every named entity); the component
+        // is now present only where a script actually is, so it is bounded by the
+        // scripted entities instead. The gate stays regardless — it is still a
+        // per-frame walk for a readout nobody may be looking at, so it runs only
+        // while the Scripting panel is the active tab, throttled to 4 Hz.
+        // Hidden → zero cost.
         app.add_systems(
             Update,
             update_scripting_diag_state

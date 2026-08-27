@@ -28,6 +28,19 @@ use bevy::prelude::*;
 #[cfg(feature = "dynamic_linking")]
 extern crate renzora_dylib;
 
+// The same, for the UI framework. Linked for its side effect only: its presence
+// is what makes rustc resolve `renzora_ember` to one dylib, so a native plugin
+// drawing a panel shares the editor's theme palette, stylesheet, UI font scale
+// and viewport-toolbar lists instead of getting a private set that fails
+// silently. See `crates/renzora_ember_dylib/src/lib.rs`.
+//
+// Gated on `ui` as well because that is what makes `renzora_ember` present at
+// all; the `dynamic_linking` feature pulls the dependency, and this line is what
+// keeps a hand-built combination without `ui` compiling rather than failing to
+// resolve the crate.
+#[cfg(all(feature = "dynamic_linking", feature = "ui"))]
+extern crate renzora_ember_dylib;
+
 pub use renzora;
 
 // Re-exported for the binaries: `src/main.rs` reaches the crash hook and the

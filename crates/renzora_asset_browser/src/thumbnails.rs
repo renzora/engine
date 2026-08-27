@@ -501,14 +501,19 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
             if name.starts_with('.') {
                 continue;
             }
-            match e.file_type() {
-                Ok(ft) if ft.is_dir() => {
-                    if depth < FOLDER_SCAN_DEPTH {
-                        subdirs.push(e.path());
-                    }
+            // An `if` nested in a `match` arm here, which clippy asks to collapse
+            // into the arm's guard — but that would change what happens to a
+            // directory at maximum depth: it would stop matching the first arm
+            // and fall through to the thumbnail test, so a folder named
+            // `textures.png` would be queued as an image. An if/else says the
+            // same thing with no fallthrough to get wrong.
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                if depth < FOLDER_SCAN_DEPTH {
+                    subdirs.push(e.path());
                 }
-                Ok(_) if supports_thumbnail(&name) => images.push(e.path()),
-                _ => {}
+            } else if supports_thumbnail(&name) {
+                images.push(e.path());
             }
         }
         images.sort();

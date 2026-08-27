@@ -43,6 +43,20 @@ xr = ["dep:renzora_xr"]
 # export has no shared images for a native plugin to link against.
 dynamic_linking = [
     "dep:renzora_dylib",
+    # The UI half of the same idea. A native plugin that draws a panel links
+    # `renzora_ember`, and ember keeps the theme palette, the stylesheet, the UI
+    # font scale and the viewport-toolbar lists in process-global statics — so a
+    # privately linked copy gives the plugin its own theme and its own toolbar
+    # nobody reads. See `crates/renzora_ember_dylib/src/lib.rs`.
+    #
+    # Pulled here rather than from `ui` (which is what makes `renzora_ember`
+    # optional) because cargo cannot express "this dep, only when two features
+    # are both on". That is harmless in practice: `dynamic_linking` is only ever
+    # enabled for a full editor/dev build, where `ui` is on via `default`. The
+    # `extern crate` in `src/lib.rs` still requires both, so a hand-built
+    # `--no-default-features --features runtime,dynamic_linking` compiles rather
+    # than failing to resolve.
+    "dep:renzora_ember_dylib",
     "renzora_native_plugin/dynamic_linking",
     "renzora_rust_script/dynamic_linking",
 ]
@@ -156,7 +170,12 @@ blueprint = ["scripting", "dep:renzora_blueprint", "renzora_scripting?/blueprint
 # Pulls `scripting`: ember's markup runtime binds `.html` fields to script
 # values, so game UI without the scripting layer wouldn't compile. Pulls `ui` for
 # the obvious reason — markup renders through bevy_ui.
-game_ui = ["ui", "scripting", "renzora_ember/game_ui"]
+#
+# Forwarded to the shared image as well as the rlib. Both edges are needed: they
+# are two dependency entries on the same crate, and enabling the feature on only
+# one would leave cargo resolving ember with a union that does not match what the
+# dylib was built from.
+game_ui = ["ui", "scripting", "renzora_ember/game_ui", "renzora_ember_dylib?/game_ui"]
 # The UI layer: `renzora_ember` (the widget/theme framework) and, through the
 # exporter, bevy_ui + bevy_text + bevy_ui_render + bevy_ui_widgets. Dropping it
 # takes the whole text-shaping stack (parley, swash, harfrust, fontique, skrifa,
@@ -243,6 +262,14 @@ renzora = { path = "../renzora", default-features = false }
 # silently: `t()` returns raw keys, logs and warnings land in buffers nobody
 # drains, asset reads find no loader. See `crates/renzora_dylib/src/lib.rs`.
 renzora_dylib = { path = "../renzora_dylib", optional = true }
+# And ember as one shared dylib, for the same reason one layer up: a native
+# plugin that registers a panel links ember, and ember's theme palette,
+# stylesheet, UI font scale and viewport-toolbar lists are process-global
+# statics. A privately linked copy leaves the plugin's panel painted in the
+# default palette while the editor around it is on the user's theme, and its
+# toolbar contributions pushed into a list nothing reads — silently, in both
+# cases. See `crates/renzora_ember_dylib/src/lib.rs`.
+renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false, optional = true }
 # `default-features = false`: the backends + blueprint + script_http are switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }

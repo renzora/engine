@@ -6,6 +6,8 @@ Almost every feature in Renzora is its own Bevy plugin; this page shows how to w
 
 A Renzora plugin is just a Bevy `Plugin` (anything that implements `bevy::app::Plugin`). You declare it once with `renzora::add!(...)` and the engine wires it in automatically — there is no central list of plugins to edit and no `app.add_plugins(...)` call to make by hand.
 
+> **There are now three kinds of plugin.** This page covers the two that existed first — the workspace plugin compiled into the binary, and the standalone C-ABI plugin. The third, a **[native plugin](native-plugins.md)**, is an ordinary Bevy plugin shipped as *source* and compiled on the machine that installs it: it gets full `&mut World`, can add [editor panels](panels.md), and needs no engine source edits. That is the one to reach for when extending the **editor**. A C-ABI plugin is still the only kind that ships inside a **game**.
+
 There are exactly two kinds of plugin, and the difference is purely how the crate is compiled and linked:
 
 | Kind | Crate type | Linked | Registers via | Ships in |

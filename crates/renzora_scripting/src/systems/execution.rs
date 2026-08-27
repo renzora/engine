@@ -384,12 +384,18 @@ pub fn run_scripts(world: &mut World) {
             Option<&Children>,
         )>();
         for (entity, sc, transform, name, parent, children) in query.iter(world) {
-            // Skip entities with nothing to run. A `ScriptComponent` is
-            // auto-inserted on *every* named entity, so most carry no enabled,
-            // pathed script — and the per-entity subtree walk + `take`/`insert`
-            // archetype churn below is pure waste for them (the inner loop would
-            // execute nothing anyway). This peek is the same `enabled && path`
-            // test the executor applies per entry.
+            // Skip entities with nothing to run: the per-entity subtree walk +
+            // `take`/`insert` archetype churn below is pure waste for them, since
+            // the inner loop would execute nothing anyway. This peek is the same
+            // `enabled && path` test the executor applies per entry.
+            //
+            // This once mattered enormously, because a `ScriptComponent` was
+            // auto-inserted on every named entity and the query therefore matched
+            // the whole scene. It no longer is — the component arrives only when
+            // a script is actually attached, and the inspector's always-visible
+            // Scripts drawer is UI over its absence. The guard stays because
+            // "attached but every entry disabled or unpathed" is still a normal
+            // state, and reaching it should still cost nothing.
             if !sc
                 .scripts
                 .iter()

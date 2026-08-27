@@ -149,6 +149,15 @@ field — **Base Color**, **Normal**, **Roughness**, **Metallic**, **Ambient
 Occlusion**, **Emissive** and **Displacement**. There's no heading over them;
 each row names its own channel.
 
+Only **Base Color** is shown to start with. Underneath it is a footer that
+counts the rest — *"6 more textures · 4 assigned"* — and clicking it unfolds
+them; clicking it again folds them back. Seven rows is most of the drawer's
+height, and on a material with one map bound six of them are empty, so the
+collapsed state keeps the parameters and the components below Material in
+reach. The footer tells you how many of the hidden channels actually have a
+texture, so a fully-authored material doesn't look bare while it's folded. The
+choice sticks until you change it again, for every object you select.
+
 **Drag an image onto a row** (or click the row to browse for one) and it is
 wired into the material graph for you: the sampler node is created, connected to
 the matching pin on the Surface Output node, and the material is recompiled and

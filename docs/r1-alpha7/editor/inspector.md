@@ -79,8 +79,8 @@ Different settings get different controls, picked automatically to match the val
 
 ## Adding and removing components
 
-- **Add** — click **Add Component** in the panel's top bar to open a list of everything you can add, grouped by category. Type to filter.
-- **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead.
+- **Add** — click **Add Component** in the panel's top bar to open a list of everything you can add, grouped by category. Type to filter. A few sections are *inherent* rather than addable and so never show up in this list — **Scripts** on every entity, **2D Lighting** on a 2D camera — because they're always present already.
+- **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead. Removing the last script also drops the underlying component, so an entity you never scripted carries nothing.
 - **Turn off** — flip the header toggle to disable a component without removing it.
 
 ## Material

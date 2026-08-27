@@ -80,6 +80,9 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
         is_editor,
         statics,
+        // Read here rather than inside the loader: that crate is published to
+        // crates.io and cannot take a path dependency on the contract crate.
+        disabled: renzora_runtime::renzora::load_disabled_plugins(),
     });
     // Installs any render passes those plugins registered. Separate plugin
     // because the work happens in `finish`, after every `build` has run and the

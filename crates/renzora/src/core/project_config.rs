@@ -320,6 +320,18 @@ struct EditorPrefFile {
     /// the `plugins/tracy` profiler bridge does exactly this). Generic host flag.
     #[serde(default)]
     dev_mode: bool,
+    /// Plugins the user has turned off, by [`renzora::PluginEntry::id`].
+    ///
+    /// Read by BOTH loaders before they open anything, which is why it lives
+    /// here rather than in a resource: they run while the `App` is still being
+    /// assembled, long before any settings resource exists. `load_dev_mode` set
+    /// the precedent — a plugin reading a preference straight off disk at
+    /// startup — and this is the same shape.
+    ///
+    /// Absent (the default) means every plugin is enabled, so an existing
+    /// `editor.toml` needs no migration.
+    #[serde(default)]
+    disabled_plugins: Vec<String>,
     /// Auto-save: periodically re-save the open scene. On by default.
     #[serde(default = "default_true")]
     autosave_enabled: bool,
@@ -447,6 +459,7 @@ impl Default for EditorPrefFile {
             status_show_rendering_mode: true,
             status_show_gpu_name: true,
             dev_mode: false,
+            disabled_plugins: Vec::new(),
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
@@ -945,6 +958,55 @@ pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.dev_mode = dev_mode;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Plugins the user has turned off, by id (a native plugin's directory name, or
+/// a C-ABI plugin's library stem with any `lib` prefix removed).
+///
+/// Read by both plugin loaders before they open anything. Empty by default, so
+/// an editor that has never been told otherwise loads everything it finds.
+pub fn load_disabled_plugins() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.disabled_plugins)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the disabled-plugin list (read-modify-write, so other prefs survive).
+///
+/// Sorted and de-duplicated on the way in. Not tidiness: this file is
+/// hand-editable and lives in a home directory that may be synced between
+/// machines, so a stable order is what stops a no-op toggle from showing up as a
+/// change.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_disabled_plugins(disabled: &[String]) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    let mut list: Vec<String> = disabled.to_vec();
+    list.sort();
+    list.dedup();
+    prefs.disabled_plugins = list;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

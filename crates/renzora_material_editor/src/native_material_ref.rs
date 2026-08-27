@@ -73,6 +73,7 @@ impl Plugin for NativeMaterialRef {
         app.init_resource::<MatCache>();
         app.init_resource::<MatPickerFilter>();
         app.init_resource::<MaterialIndex>();
+        app.init_resource::<TexSlotsExpanded>();
         app.register_native_inspector_ui("material_ref", material_native);
         app.add_systems(
             Update,
@@ -98,6 +99,7 @@ impl Plugin for NativeMaterialRef {
                 tex_slot_browse,
                 tex_slot_mute,
                 tex_slot_clear,
+                tex_slots_expand,
             )
                 .run_if(in_state(SplashState::Editor)),
         );
@@ -135,6 +137,20 @@ struct MatCache {
 struct MatPickerFilter {
     text: String,
 }
+
+/// Whether the drawer is showing every texture channel or just Base Color.
+///
+/// Seven channel rows are ~230 px of drawer, and on a material with one map
+/// bound six of them say "Drop texture" — enough to push the parameters and
+/// every component below Material off the bottom of the panel. Collapsed is the
+/// default: Base Color is the one channel almost every material has, and the
+/// rest are one click away.
+///
+/// A resource rather than per-drawer state because [`MatCache`] is already
+/// single-entity — only one Material drawer is ever built — and folding the flag
+/// into the rebuild signature is what makes the click take effect.
+#[derive(Resource, Default)]
+struct TexSlotsExpanded(bool);
 
 /// Cached list of the project's `.material` files, feeding the picker popup.
 ///
@@ -285,11 +301,12 @@ fn material_abs(w: &Rx, path: &str) -> Option<PathBuf> {
     w.get_resource::<CurrentProject>().map(|p| p.resolve_path(path))
 }
 
-fn sig_of(entity: Entity, path: &str, rev: u64) -> u64 {
+fn sig_of(entity: Entity, path: &str, rev: u64, expanded: bool) -> u64 {
     let mut h = DefaultHasher::new();
     entity.hash(&mut h);
     path.hash(&mut h);
     rev.hash(&mut h);
+    expanded.hash(&mut h);
     h.finish()
 }
 
@@ -371,7 +388,8 @@ fn rebuild_material(world: &mut World) {
     for (root, entity, old_sig) in roots {
         let path = material_path(&Rx::new(&*world), entity);
         let rev = world.get_resource::<MatCache>().map(|c| c.rev).unwrap_or(0);
-        let sig = sig_of(entity, &path, rev);
+        let expanded = world.get_resource::<TexSlotsExpanded>().is_some_and(|e| e.0);
+        let sig = sig_of(entity, &path, rev, expanded);
         if old_sig == Some(sig) {
             continue;
         }
@@ -392,7 +410,7 @@ fn rebuild_material(world: &mut World) {
             for ch in existing {
                 commands.entity(ch).despawn();
             }
-            build_body(&mut commands, &fonts, root, entity, &path, &params, &slots);
+            build_body(&mut commands, &fonts, root, entity, &path, &params, &slots, expanded);
         }
         queue.apply(world);
         if let Some(mut mr) = world.get_mut::<MatRoot>(root) {
@@ -446,6 +464,7 @@ fn slot_states(world: &World) -> Vec<SlotState> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_body(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -454,6 +473,7 @@ fn build_body(
     path: &str,
     params: &[MaterialParam],
     slots: &[SlotState],
+    expanded: bool,
 ) {
     let mut children: Vec<Entity> = Vec::new();
 
@@ -465,7 +485,12 @@ fn build_body(
     // No section header: each row already names its channel, so a heading plus a
     // sentence of instructions above six self-explanatory rows was two lines of
     // chrome saying what the rows say themselves.
-    for (i, state) in slots.iter().enumerate() {
+    //
+    // Collapsed, only the first channel is *built* — hiding the rest with
+    // `Display::None` would collide with `set_texture_rows`, which shows every
+    // row again when the material picker tray closes.
+    let shown = if expanded { slots.len() } else { slots.len().min(1) };
+    for (i, state) in slots.iter().take(shown).enumerate() {
         let row = texture_slot_row(commands, fonts, entity, state);
         if i == 0 {
             // The only spacing the block needs, now that nothing announces it.
@@ -474,6 +499,9 @@ fn build_body(
             });
         }
         children.push(row);
+    }
+    if slots.len() > 1 {
+        children.push(tex_slots_toggle_row(commands, fonts, entity, slots, expanded));
     }
 
     // ── Overrides ──
@@ -851,6 +879,91 @@ struct TexSlotMuteBtn {
     entity: Entity,
     slot: &'static TextureSlot,
     muted: bool,
+}
+
+/// The footer under the channel rows that shows or hides everything past Base
+/// Color. Carries the inspected entity for the same reason the rows do: the
+/// picker tray hides this drawer's rows and must hide this drawer's footer with
+/// them, not another's.
+#[derive(Component)]
+struct TexSlotsToggle {
+    entity: Entity,
+}
+
+/// Footer row: a caret and a count, sitting where the hidden rows would start.
+///
+/// It names how many of the hidden channels actually have a texture, because
+/// collapsed the drawer is otherwise silent about them — "6 more textures"
+/// reads as six empty slots when three of them are bound.
+fn tex_slots_toggle_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    slots: &[SlotState],
+    expanded: bool,
+) -> Entity {
+    let hidden = &slots[1..];
+    let assigned = hidden.iter().filter(|s| s.texture.is_some()).count();
+    let label = if expanded {
+        "Show fewer textures".to_string()
+    } else if assigned > 0 {
+        format!("{} more textures · {} assigned", hidden.len(), assigned)
+    } else {
+        format!("{} more textures", hidden.len())
+    };
+
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(22.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            HoverTint::solid(Color::NONE, rgb(hover_bg()), rgb(hover_bg())),
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
+            TexSlotsToggle { entity },
+            Name::new("material-texture-slots-toggle"),
+        ))
+        .id();
+
+    let caret = icon_text(
+        commands,
+        &fonts.phosphor,
+        if expanded { "caret-up" } else { "caret-down" },
+        text_muted(),
+        11.0,
+    );
+    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    let text = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(row).add_children(&[caret, text]);
+    row
+}
+
+/// Flip [`TexSlotsExpanded`]. The rebuild signature reads it, so the click is
+/// the whole implementation — the drawer rebuilds with (or without) the rest of
+/// the channels on the next frame.
+fn tex_slots_expand(
+    q: Query<&Interaction, (Changed<Interaction>, With<TexSlotsToggle>)>,
+    mut expanded: ResMut<TexSlotsExpanded>,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        expanded.0 = !expanded.0;
+    }
 }
 
 /// One channel row: preview · label · texture name · clear.
@@ -2056,6 +2169,7 @@ fn mat_picker_toggle(
         Changed<Interaction>,
     >,
     tex_rows: Query<(Entity, &TexSlotZone)>,
+    tex_toggles: Query<(Entity, &TexSlotsToggle)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
@@ -2068,7 +2182,7 @@ fn mat_picker_toggle(
             node.display = if open { Display::Flex } else { Display::None };
         }
         set_caret(&mut texts, toggle.caret, open);
-        set_texture_rows(&mut nodes, &tex_rows, Some(toggle.entity), !open);
+        set_texture_rows(&mut nodes, &tex_rows, &tex_toggles, Some(toggle.entity), !open);
 
         // `HoverTint.base` too, not just the background: ember's `hover_tint`
         // writes `base` back the moment the pointer leaves, so painting only the
@@ -2086,12 +2200,19 @@ fn mat_picker_toggle(
 fn set_texture_rows(
     nodes: &mut Query<&mut Node>,
     tex_rows: &Query<(Entity, &TexSlotZone)>,
+    toggles: &Query<(Entity, &TexSlotsToggle)>,
     entity: Option<Entity>,
     visible: bool,
 ) {
     let want = if visible { Display::Flex } else { Display::None };
-    for (row, zone) in tex_rows {
-        if entity.is_some_and(|e| e != zone.entity) {
+    // The expand footer goes with the rows it belongs to — left behind, it sits
+    // under the open tray offering to reveal rows that aren't there.
+    let rows = tex_rows
+        .iter()
+        .map(|(row, zone)| (row, zone.entity))
+        .chain(toggles.iter().map(|(row, t)| (row, t.entity)));
+    for (row, owner) in rows {
+        if entity.is_some_and(|e| e != owner) {
             continue;
         }
         if let Ok(mut node) = nodes.get_mut(row) {

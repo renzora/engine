@@ -86,6 +86,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
             .init_resource::<ScriptReloadEvents>()
+            .init_resource::<ScriptsActive>()
             .init_resource::<crate::extension::ScriptExtensions>()
             .init_resource::<crate::get_handler::AssetProgressBridge>()
             .init_resource::<crate::get_handler::SceneLoadBridge>()
@@ -111,7 +112,12 @@ impl Plugin for ScriptingPlugin {
             // Pre-script systems (always run — input collection is cheap)
             .add_systems(
                 Update,
-                (update_script_input, update_script_timers).in_set(ScriptingSet::PreScript),
+                (
+                    update_scripts_active,
+                    update_script_input,
+                    update_script_timers,
+                )
+                    .in_set(ScriptingSet::PreScript),
             )
             // Script execution — only when scripts should run
             .add_systems(
@@ -221,23 +227,60 @@ fn handle_reset_script_states(
     }
 }
 
-/// Run condition: scripts should execute this frame.
+/// Whether scripts should execute this frame — computed once, read by many.
 ///
-/// In editor: when PlayModeState says scripts are running, OR when at least one
-/// script is being *previewed* (the inspector's per-script play button) — in which
-/// case `run_scripts` runs only the previewing scripts.
-/// In standalone runtime (no PlayModeState): always run.
-fn scripts_should_run(
+/// Four systems gate on this answer (three here, plus `renzora_rust_script`'s
+/// `dispatch`), and Bevy evaluates a run condition per system rather than
+/// sharing one result. Computing it inside each condition therefore ran the
+/// underlying scan four times a frame to reach the same conclusion, so it lives
+/// in a resource that [`update_scripts_active`] fills once in
+/// `ScriptingSet::PreScript` instead.
+#[derive(Resource, Default)]
+pub struct ScriptsActive(pub bool);
+
+/// Recompute [`ScriptsActive`] for this frame.
+///
+/// In the editor: true when `PlayModeState` says scripts are running, or when at
+/// least one script is being *previewed* (the inspector's per-script play
+/// button) — in which case `run_scripts` runs only the previewing scripts. In a
+/// standalone runtime there is no `PlayModeState`, so always.
+///
+/// The preview scan is the only branch that touches the query, and it is
+/// deliberately last: play mode running is answered from the resource alone, so
+/// the common in-play case never iterates anything. When play is stopped the
+/// scan visits one entity per *scripted* entity — `ScriptComponent` is absent
+/// until a script is actually attached (the inspector's always-visible Scripts
+/// drawer is UI over an absence; see `renzora_inspector::scripts`), so this
+/// stays proportional to the scripts in the scene rather than to its size.
+///
+/// `pub` because `ScriptingPlugin` is behind the runtime's strippable
+/// `scripting` feature while `RustScriptPlugin` is added unconditionally, so a
+/// lean export that ships no Lua still has to fill this resource for `.rs`
+/// scripts to be gated at all. That plugin re-adds this exact system when it
+/// finds itself running without a scripting host — sharing the function rather
+/// than copying the rule, which is how the two paths used to drift.
+pub fn update_scripts_active(
+    mut active: ResMut<ScriptsActive>,
     play_mode: Option<Res<renzora::PlayModeState>>,
     scripts: Query<&ScriptComponent>,
-) -> bool {
-    match play_mode {
+) {
+    let running = match play_mode {
         Some(pm) if pm.is_scripts_running() => true,
         Some(_) => scripts
             .iter()
             .any(|sc| sc.scripts.iter().any(|e| e.enabled && e.preview)),
         None => true, // standalone runtime — always run
+    };
+    // Write only on a real transition: `ResMut` sets the change tick on every
+    // `deref_mut`, and this runs every frame.
+    if active.0 != running {
+        active.0 = running;
     }
+}
+
+/// Run condition: scripts should execute this frame. See [`ScriptsActive`].
+pub fn scripts_should_run(active: Res<ScriptsActive>) -> bool {
+    active.0
 }
 
 /// Check all active scripts for file changes and reload if modified.
@@ -259,6 +302,34 @@ fn check_script_hot_reload(
     reload_events.reloaded.clear();
 
     for mut sc in scripts.iter_mut() {
+        // Read through `Mut`'s immutable `Deref` first and bail before ever
+        // touching `DerefMut`. Nothing is stale the overwhelming majority of the
+        // time, and `deref_mut` sets the component's change tick whether or not
+        // the write that follows changes anything — so the obvious
+        // `for entry in sc.scripts.iter_mut()` marked *every* `ScriptComponent`
+        // in the scene as `Changed` twice a second, forever.
+        //
+        // That is not a small waste. `renzora_hierarchy`'s `AssetBadgeChanges`
+        // watches `Changed<ScriptComponent>` to know when a script badge needs
+        // redrawing, so the storm set `HierarchyDirty` on a 0.5 s cadence and
+        // forced `update_hierarchy_cache` to run `build_entity_tree` — a
+        // full-world scan on an exclusive system — at 2 Hz forever, in a scene
+        // where nothing had changed. The cost is O(entities in the world), not
+        // O(scripts), so it hurt most exactly where it was least deserved.
+        //
+        // `needs_reload` takes `&self` and stays true until `reload` runs, so
+        // re-asking below for the rare stale entry is free of side effects.
+        let any_stale = sc.scripts.iter().any(|entry| {
+            entry.enabled
+                && entry
+                    .script_path
+                    .as_ref()
+                    .is_some_and(|path| engine.needs_reload(path))
+        });
+        if !any_stale {
+            continue;
+        }
+
         for entry in sc.scripts.iter_mut() {
             let Some(ref path) = entry.script_path else {
                 continue;

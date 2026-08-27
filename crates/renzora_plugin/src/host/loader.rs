@@ -152,9 +152,13 @@ impl LoadedPlugins {
 }
 
 /// Outcome for one candidate file, for logging and the editor's plugin panel.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LoadOutcome {
     Loaded,
+    /// Turned off in Settings → Editor → Plugins. The file was never opened —
+    /// see [`load_dir`] for why declining before `Library::new` matters rather
+    /// than merely being tidier.
+    Disabled,
     /// Not a C-ABI plugin — no init symbol. Expected for older dylib plugins.
     NotAPlugin,
     /// The plugin needs a newer host than this one.
@@ -186,6 +190,7 @@ pub fn load_dir(
     dir: &Path,
     is_editor: bool,
     linked: &[&str],
+    disabled: &[String],
 ) -> Vec<(PathBuf, LoadOutcome)> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -207,10 +212,63 @@ pub fn load_dir(
             info!("[plugin] ignoring {stem} in plugins/ — this build links {name} in");
             continue;
         }
-        let outcome = load_one(world, &path, is_editor);
+        // Skipped **before** `Library::new`, which is the whole point rather
+        // than an optimisation. Opening a plugin and then declining to use it
+        // means either dropping the handle — the `FreeLibrary` deadlock this
+        // loader has hit twice — or leaking an image and running the static
+        // initializers of a plugin the user explicitly turned off. Never opening
+        // it has neither problem.
+        //
+        // The name is checked rather than the file's symbols, so a disabled
+        // plugin is not even sniffed. That costs one thing: a disabled library
+        // that was never a plugin still gets a row in the report. Listing
+        // something the user can turn back on is the harmless direction to be
+        // wrong in.
+        let outcome = if disabled.iter().any(|d| d == name) {
+            info!("[plugin] {name} is disabled — Settings → Editor → Plugins");
+            LoadOutcome::Disabled
+        } else {
+            load_one(world, &path, is_editor)
+        };
+        // Recorded here rather than by the caller so every exit from this loop
+        // reaches the report — including the disabled one, which never produces
+        // anything for the caller to log.
+        if !matches!(outcome, LoadOutcome::NotAPlugin) {
+            world
+                .get_resource_or_insert_with(PluginLoadReport::default)
+                .record(name, &outcome);
+        }
         results.push((path, outcome));
     }
     results
+}
+
+/// What became of every C-ABI plugin file this process considered.
+///
+/// Exists so the editor's Settings → Editor → Plugins list is built from what the
+/// actually did rather than from a second `read_dir` with a second opinion about
+/// what a plugin is. "Is this file a plugin?" has a non-obvious answer here — it
+/// must export one specific symbol and must not be a proc-macro dylib — and a
+/// panel listing a different set from the one the engine loaded is worse than no
+/// panel at all.
+///
+/// Deliberately holds no `renzora` types. This crate is published to crates.io
+/// so a third-party plugin author can `cargo add renzora_plugin`, which rules
+/// out a path dependency on the contract crate — so the editor copies this into
+/// `renzora::PluginInventory` instead, and the two loaders meet there.
+#[derive(Resource, Default)]
+pub struct PluginLoadReport {
+    /// `(id, outcome)`, in the order the loader reached them. The id is the
+    /// library's file stem with any `lib` prefix stripped, which is the same
+    /// string the disable list is keyed on.
+    pub entries: Vec<(String, LoadOutcome)>,
+}
+
+impl PluginLoadReport {
+    fn record(&mut self, id: &str, outcome: &LoadOutcome) {
+        self.entries.retain(|(existing, _)| existing != id);
+        self.entries.push((id.to_string(), outcome.clone()));
+    }
 }
 
 /// True if the file is a Rust **proc-macro** dylib.
@@ -539,11 +597,18 @@ pub fn request_reload(world: &mut World, path: impl Into<PathBuf>) {
     }
 }
 
-/// Whether this binary is the editor, kept so a reload can apply the same scope
-/// filter the initial load did.
+/// What the initial load was configured with, kept so a reload applies the same
+/// filters rather than a looser set.
 #[derive(Resource)]
 pub struct PluginHostConfig {
     pub is_editor: bool,
+    /// Plugin ids the user turned off.
+    ///
+    /// Kept here for the *reload* path specifically. Without it, saving a
+    /// disabled plugin's source would rebuild it, the watcher would notice the
+    /// changed file, and it would load — turning "disabled" into "disabled until
+    /// you touch it", which is the worst of both.
+    pub disabled: Vec<String>,
 }
 
 fn apply_reload_requests(world: &mut World) {
@@ -551,12 +616,23 @@ fn apply_reload_requests(world: &mut World) {
         Some(mut q) if !q.0.is_empty() => std::mem::take(&mut q.0),
         _ => return,
     };
-    let is_editor = world
+    let (is_editor, disabled) = world
         .get_resource::<PluginHostConfig>()
-        .is_some_and(|c| c.is_editor);
+        .map(|c| (c.is_editor, c.disabled.clone()))
+        .unwrap_or((false, Vec::new()));
 
     for path in pending {
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        // A disabled plugin stays disabled when its file changes. Checked before
+        // `load_one` for the same reason the initial scan does it: declining
+        // after opening means either dropping a mapped image or leaking one,
+        // and this path is reached repeatedly while an author iterates.
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let id = stem.strip_prefix("lib").unwrap_or(&stem);
+        if disabled.iter().any(|d| d == id) {
+            debug!("[plugin] ignoring rebuilt {name} — disabled in Settings → Editor → Plugins");
+            continue;
+        }
         match load_one(world, &path, is_editor) {
             LoadOutcome::Loaded => {
                 let generation = world
@@ -585,6 +661,11 @@ fn apply_reload_requests(world: &mut World) {
             LoadOutcome::NotAPlugin => {
                 warn!("[plugin] reload of {name}: no `{}` export", sys::INIT_SYMBOL)
             }
+            // Unreachable: `load_one` never returns this, only `load_dir` does,
+            // and the hot-reload watcher goes straight to `load_one`. Matched
+            // rather than caught by a wildcard so a future outcome is a compile
+            // error here instead of a silently ignored case.
+            LoadOutcome::Disabled => {}
         }
     }
 }
@@ -730,6 +811,15 @@ pub struct RenzoraPluginHostPlugin {
     /// game can ship some plugins inside the binary and still read a `plugins/`
     /// folder for anything a player or a mod drops in.
     pub statics: Vec<StaticPlugin>,
+    /// Plugin ids the user has turned off — a library stem with any `lib`
+    /// prefix stripped, matching what Settings → Editor → Plugins persists.
+    ///
+    /// Passed **in** rather than read here, because the list lives in the
+    /// contract crate's editor preferences and this crate deliberately does not
+    /// depend on it: it is published to crates.io so a third-party plugin author
+    /// can `cargo add renzora_plugin`, and a path dependency would make that
+    /// impossible. The two binaries that construct this plugin do the reading.
+    pub disabled: Vec<String>,
 }
 
 impl Plugin for RenzoraPluginHostPlugin {
@@ -764,7 +854,10 @@ impl Plugin for RenzoraPluginHostPlugin {
         app.init_resource::<super::PluginServiceCalls>()
             .add_systems(Last, super::discard_unhandled_service_calls);
 
-        app.insert_resource(PluginHostConfig { is_editor: self.is_editor })
+        app.insert_resource(PluginHostConfig {
+            is_editor: self.is_editor,
+            disabled: self.disabled.clone(),
+        })
             .init_resource::<PluginReloadQueue>()
             .init_schedule(PluginReload)
             .add_systems(PluginReload, apply_reload_requests);
@@ -811,17 +904,23 @@ impl Plugin for RenzoraPluginHostPlugin {
                     sys::VERSION_MINOR
                 ),
                 LoadOutcome::Failed(why) => error!("[plugin] linked {id} failed: {why}"),
-                // Cannot happen: there is no file to fail the symbol sniff.
-                LoadOutcome::NotAPlugin => {}
+                // Neither can happen: there is no file to fail the symbol sniff,
+                // and a plugin compiled into the binary is not something the
+                // disable list can reach — it is in the executable either way.
+                LoadOutcome::NotAPlugin | LoadOutcome::Disabled => {}
             }
         }
 
         let linked: Vec<&str> = self.statics.iter().map(|p| p.id).collect();
-        for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor, &linked) {
+        for (path, outcome) in
+            load_dir(app.world_mut(), &dir, self.is_editor, &linked, &self.disabled)
+        {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             match outcome {
                 LoadOutcome::Loaded => info!("[plugin] loaded {name}"),
                 LoadOutcome::NotAPlugin => {}
+                // `load_dir` already said so, at the point it decided.
+                LoadOutcome::Disabled => {}
                 LoadOutcome::VersionTooOld => warn!(
                     "[plugin] {name} needs a newer renzora_plugin ABI than this build \
                      (host is {}.{})",
