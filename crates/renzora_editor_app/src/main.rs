@@ -15,12 +15,28 @@
 //! which binary you ship, not of which files you delete beside it.
 
 
+mod setup_ui;
+
 fn main() {
     // The editor always keeps a console: its log output is the primary
     // diagnostic channel, and on Windows the runtime binary is built
     // `windows_subsystem = "windows"` precisely so shipped games don't get one.
     renzora_runtime::renzora_engine::crash::install_panic_hook(true);
     renzora_runtime::attach_console();
+
+    // ── Setup, before Bevy ───────────────────────────────────────────────────
+    // A downloaded release arrives with the SDK still compressed and every native
+    // plugin still source-only, so the first launch after an install or update
+    // has real work to do. It has to happen HERE, before `App` assembly: that is
+    // when `NativePluginLoader` loads plugins, so unpacking any later would be
+    // too late for the very thing that needed it.
+    //
+    // Ordinary launches answer `needed() == false` after a couple of directory
+    // stats and fall straight through. See `renzora_native_plugin::prebuild`.
+    if renzora_native_plugin::prebuild::needed() {
+        setup_ui::run();
+        renzora_native_plugin::prebuild::restart();
+    }
 
     let mut app = renzora_runtime::init_app();
     renzora_runtime::add_default_rendering(&mut app, true);
@@ -40,6 +56,9 @@ fn main() {
     app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
         is_editor: true,
         statics: Vec::new(),
+        // Read here rather than inside the loader: that crate is published to
+        // crates.io and cannot take a path dependency on the contract crate.
+        disabled: renzora_runtime::renzora::load_disabled_plugins(),
     });
     // Render passes those plugins registered. Separate plugin because the work
     // happens in `finish`, after every `build` has run and the render sub-app

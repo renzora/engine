@@ -45,7 +45,7 @@
 //!
 //! # Why a stamp instead of trusting the file
 //!
-//! A plugin is bound to one engine build. Its `.rlib` metadata, its `TypeId`s
+//! A plugin is bound to one engine build. Its crate metadata, its `TypeId`s
 //! and its imports all come from artifacts whose filenames hash the build
 //! configuration, so a plugin built against a different engine is not "probably
 //! fine" — it is memory corruption with no diagnostic. There is no handshake to
@@ -72,8 +72,11 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod prebuild;
+
 use bevy::prelude::*;
 use libloading::{Library, Symbol};
+use renzora::{PluginKind, PluginState};
 use renzora_plugin_build::{Error as BuildError, Sdk};
 
 /// The one symbol a Rust plugin must export.
@@ -178,16 +181,46 @@ impl Plugin for NativePluginLoader {
         let sdk = Sdk::load(root.join("sdk")).ok();
         let expected = sdk.as_ref().map(Sdk::stamp);
 
+        // Read once, off disk, because this runs during `App` assembly — there
+        // is no settings resource yet, and there will not be one until long
+        // after every plugin has been installed.
+        let disabled = renzora::load_disabled_plugins();
+
         let mut libraries = Vec::new();
         for entry in read_dir_sorted(&dir) {
+            let name = name_of(&entry);
+            // Checked before anything else touches the directory, so a disabled
+            // plugin costs nothing at all: no rebuild when its stamp is stale,
+            // no `Library::new`, no static initializers. Turning a plugin off to
+            // find out whether it is the one breaking your editor should not
+            // leave it half-running.
+            if disabled.iter().any(|d| d == &name) {
+                if entry.join("src").join("lib.rs").is_file() {
+                    info!("[plugin] {name} is disabled — Settings → Editor → Plugins");
+                    record(app, &name, PluginState::Disabled);
+                }
+                continue;
+            }
             match load_one(&entry, sdk.as_ref(), expected.as_deref()) {
                 Ok(Some((plugin, lib))) => {
                     // Held for the life of the process. See the module doc.
                     libraries.push(std::mem::ManuallyDrop::new(lib));
                     app.add_plugins(Boxed(plugin));
+                    record(app, &name, PluginState::Loaded);
                 }
                 Ok(None) => {}
-                Err(e) => warn!("plugin '{}' not loaded: {e}", name_of(&entry)),
+                Err(e) => {
+                    // Both, and neither is redundant. `warn!` reaches stdout and
+                    // the Problems panel; the Console has no tracing layer and
+                    // shows only what is pushed to it, and a plugin that failed
+                    // to compile is exactly what its author is looking for.
+                    warn!("plugin '{name}' not loaded: {e}");
+                    renzora::core::console_log::console_error(
+                        "Plugin",
+                        format!("{name}\n{e}"),
+                    );
+                    record(app, &name, PluginState::Failed(e));
+                }
             }
         }
         app.insert_resource(LoadedNativePlugins { _libraries: libraries });
@@ -205,6 +238,16 @@ pub struct LoadedNativePlugins {
     _libraries: Vec<std::mem::ManuallyDrop<Library>>,
 }
 
+/// Note one plugin's fate for the Settings UI.
+///
+/// Reported from here rather than re-derived by the panel, because "is this
+/// directory a plugin, and did it load?" is this loader's question — a second
+/// implementation in the UI would list a different set the first time either
+/// side's rules changed.
+fn record(app: &mut App, name: &str, state: PluginState) {
+    renzora::record_plugin(app.world_mut(), name, PluginKind::Native, state);
+}
+
 /// A constructed plugin and the image it came from, which must outlive it.
 type Loaded = (Box<dyn Plugin>, Library);
 
@@ -212,6 +255,53 @@ type Loaded = (Box<dyn Plugin>, Library);
 ///
 /// `Ok(None)` means "nothing to load here" — a stray file, or a directory that
 /// is not a plugin. Only real failures are `Err`.
+/// Where a plugin's artefacts live, and whether they need rebuilding.
+struct Layout {
+    lib_path: PathBuf,
+    stamp_path: PathBuf,
+    needs_build: bool,
+}
+
+/// Decide whether a plugin must be compiled before it can be loaded.
+///
+/// Shared by [`load_one`] and [`prebuild`], which MUST agree: the pre-boot pass
+/// exists so that by the time the loader runs there is nothing left to build, and
+/// if the two predicates diverged the loader would compile during `App` assembly
+/// anyway — silently undoing the reason the pre-boot pass exists.
+///
+/// Rebuild when the stamp is absent, stale, or the artifact is missing.
+/// `expected` is None only when no SDK is installed, in which case there is
+/// nothing to rebuild against and an existing artifact is the best available.
+/// Two independent reasons to rebuild, and both are load-bearing.
+///
+/// The stamp catches "the engine moved" — a user's case, where the source has
+/// not changed at all but the artifacts it was built against have.
+///
+/// Source mtime catches "someone edited it", which the stamp cannot see because
+/// the SDK did not move. That is not a niche case: a plugin author working from a
+/// DOWNLOADED editor has no repository and no `xtask`. Editing
+/// `plugins/<name>/src/lib.rs` and restarting is their entire loop, and without
+/// this their edits would silently do nothing — the old library loads, behaves
+/// exactly as before, and nothing reports why.
+fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
+    let name = name_of(dir);
+    let build = dir.join("build");
+    let ext = sdk
+        .map(|s| s.manifest().lib_ext.clone())
+        .unwrap_or_else(default_lib_ext);
+    let lib_path = build.join(format!("{}.{ext}", name.replace('-', "_")));
+    let stamp_path = build.join("stamp.txt");
+    let current = std::fs::read_to_string(&stamp_path).ok();
+
+    let stale = match (expected, current.as_deref()) {
+        (Some(want), Some(have)) => want != have,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    let needs_build = stale || !lib_path.is_file() || source_newer_than(dir, &lib_path);
+    Layout { lib_path, stamp_path, needs_build }
+}
+
 fn load_one(
     dir: &Path,
     sdk: Option<&Sdk>,
@@ -228,33 +318,8 @@ fn load_one(
 
     let name = name_of(dir);
     let build = dir.join("build");
-    let ext = sdk
-        .map(|s| s.manifest().lib_ext.clone())
-        .unwrap_or_else(default_lib_ext);
-    let lib_path = build.join(format!("{}.{ext}", name.replace('-', "_")));
-    let stamp_path = build.join("stamp.txt");
-    let current = std::fs::read_to_string(&stamp_path).ok();
-
-    // Rebuild when the stamp is absent, stale, or the artifact is missing.
-    // `expected` is None only when no SDK is installed, in which case there is
-    // nothing to rebuild against and an existing artifact is the best available.
-    // Two independent reasons to rebuild, and both are load-bearing.
-    //
-    // The stamp catches "the engine moved" — a user's case, where the source has
-    // not changed at all but the artifacts it was built against have.
-    //
-    // Source mtime catches "someone edited it", which the stamp cannot see
-    // because the SDK did not move. That is not a niche case: a plugin author
-    // working from a DOWNLOADED editor has no repository and no `xtask`. Editing
-    // `plugins/<name>/src/lib.rs` and restarting is their entire loop, and
-    // without this their edits would silently do nothing — the old library
-    // loads, behaves exactly as before, and nothing reports why.
-    let stale = match (expected, current.as_deref()) {
-        (Some(want), Some(have)) => want != have,
-        (Some(_), None) => true,
-        (None, _) => false,
-    };
-    if stale || !lib_path.is_file() || source_newer_than(dir, &lib_path) {
+    let Layout { lib_path, stamp_path, needs_build } = layout(dir, sdk, expected);
+    if needs_build {
         let Some(sdk) = sdk else {
             // Two quite different situations, and conflating them produces a
             // message that is actively wrong. Someone who has just dropped a
@@ -294,7 +359,19 @@ fn load_one(
         Ok(f) => f,
         // Not a plugin. Skipped silently, matching the C-ABI loader: a library
         // that does not export the entry point is simply not ours.
-        Err(_) => return Ok(None),
+        //
+        // Leaked rather than dropped, even here. `Library::new` has already run
+        // the image's static initializers — a Rust dylib registers a panic hook
+        // and touches std's lazily-initialised globals on the way in — and
+        // unmapping it puts a `FreeLibrary` inside the loader lock on a
+        // half-warmed image. That is the exact shape of the deadlock
+        // `renzora_plugin`'s loader hit, and the "nothing registered anything
+        // yet, so it must be safe" reasoning is what made it look fine there
+        // too. One skipped library is a few hundred KB held until exit.
+        Err(_) => {
+            std::mem::forget(lib);
+            return Ok(None);
+        }
     };
 
     // A panic here would unwind across the library boundary, which is undefined.
@@ -306,30 +383,43 @@ fn load_one(
     Ok(Some((plugin, lib)))
 }
 
-/// Whether anything in `dir/src` is newer than the built library.
+/// Whether anything under `dir/src` is newer than the built library.
 ///
 /// A missing or unreadable library counts as stale — better to rebuild and find
 /// out why than to skip and load something unexplained.
+///
+/// Recursive: a plugin large enough to have a `src/ui/panel.rs` still has to
+/// rebuild when that file changes, and a one-level scan silently kept the old
+/// library instead.
 fn source_newer_than(dir: &Path, lib: &Path) -> bool {
     let Ok(built) = std::fs::metadata(lib).and_then(|m| m.modified()) else {
         return true;
     };
-    let Ok(entries) = std::fs::read_dir(dir.join("src")) else {
-        return false;
-    };
-    entries.flatten().any(|e| {
-        e.metadata()
-            .and_then(|m| m.modified())
-            .map(|t| t > built)
-            .unwrap_or(true)
-    })
+    fn any_newer(dir: &Path, built: std::time::SystemTime) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                return any_newer(&p, built);
+            }
+            e.metadata()
+                .and_then(|m| m.modified())
+                .map(|t| t > built)
+                .unwrap_or(true)
+        })
+    }
+    any_newer(&dir.join("src"), built)
 }
 
-/// The directory holding the running executable.
+/// The directory holding `sdk/` and `plugins/`.
+///
+/// NOT simply the executable's parent: inside a Linux AppImage that is a
+/// read-only temporary mount with none of this beside it. See
+/// [`renzora_plugin_build::install`].
 fn exe_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
+    renzora_plugin_build::install::root()
 }
 
 /// Entries of `dir`, in a stable order.

@@ -41,12 +41,13 @@
 //! each entity carrying it. So the limits are the plugin limits, not new ones —
 //! see `crates/renzora_native_plugin`.
 //!
-//! # What is not solved yet
+//! # Reloading
 //!
-//! **No hot reload.** Scripts compile when the project opens. Recompiling on save
-//! and swapping the function pointer is the obvious next step, and the mechanism
-//! is known — but every reload leaks the old image, because a schedule may still
-//! hold pointers into it.
+//! Saving a script rebuilds it, off the main thread, and swaps the function
+//! pointer — see [`watch`]. Every reload leaks the old image, because a schedule
+//! or a captured closure may still hold pointers into it; a restart reclaims it.
+//!
+//! # What is not solved yet
 //!
 //! **Nothing in a lean export.** A static build links no shared images, so a
 //! script library has nothing to bind to. The answer is to compile scripts INTO
@@ -68,7 +69,7 @@ use libloading::{Library, Symbol};
 use renzora::core::console_log::{console_error, console_success};
 use renzora::{CurrentProject, SplashState};
 use renzora_plugin_build::Sdk;
-use renzora_scripting::ScriptComponent;
+use renzora_scripting::{scripts_should_run, ScriptComponent};
 
 /// The symbol a script exports, written by [`renzora::script!`].
 pub const SCRIPT_SYMBOL: &[u8] = b"renzora_script_update\0";
@@ -110,7 +111,50 @@ impl Plugin for RustScriptPlugin {
             // running the moment it is dropped on an entity, in edit mode, which
             // is both surprising and destructive — a script that spawns or
             // despawns would do so while you are still arranging the scene.
-            .add_systems(Update, dispatch.run_if(scripts_should_run));
+            //
+            // Ordered after `ScriptingSet::PreScript` because that is where
+            // `ScriptsActive` — the resource the run condition reads — is filled
+            // for the frame. Unordered, this would see last frame's answer
+            // whenever the scheduler happened to run it first, so toggling a
+            // script's preview button would take effect a frame later here than
+            // in the Lua path for no reason anyone could see.
+            .add_systems(
+                Update,
+                dispatch
+                    .after(renzora_scripting::ScriptingSet::PreScript)
+                    .run_if(scripts_should_run),
+            );
+    }
+
+    /// Take ownership of `ScriptsActive` when nothing else has.
+    ///
+    /// `ScriptingPlugin` normally fills that resource once per frame, and the
+    /// run condition above reads it. But that plugin sits behind the runtime's
+    /// strippable `scripting` feature — a shipped game with no Lua drops the
+    /// whole host layer — while this plugin is added unconditionally by the
+    /// generated plugin list. In that build the run condition would ask for a
+    /// resource with no owner and panic on the first frame, which is the worst
+    /// possible place to find out: an exported game, not the editor.
+    ///
+    /// `.rs` scripts do not need the scripting host to run (they are dispatched
+    /// from here against `&mut World`), so the right answer is to keep gating
+    /// them rather than to silently stop. Adding `renzora_scripting`'s own
+    /// system re-uses the rule instead of restating it.
+    ///
+    /// In `finish` rather than `build` because it has to observe whether
+    /// `ScriptingPlugin` was added, and plugin build order is not something to
+    /// depend on — `finish` runs after every `build`.
+    fn finish(&self, app: &mut App) {
+        if app.is_plugin_added::<renzora_scripting::ScriptingPlugin>() {
+            return;
+        }
+        app.init_resource::<renzora_scripting::ScriptsActive>()
+            .configure_sets(Update, renzora_scripting::ScriptingSet::PreScript)
+            .add_systems(
+                Update,
+                renzora_scripting::update_scripts_active
+                    .in_set(renzora_scripting::ScriptingSet::PreScript),
+            );
     }
 }
 
@@ -199,6 +243,19 @@ fn compile_and_load(world: &mut World) {
 
     for src in sources {
         let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
+        // Claim this source's mtime for the watcher BEFORE building it. The
+        // watcher decides what to rebuild by comparing against `seen`, and it
+        // has never seen anything yet — so without this it noticed every script
+        // half a second later and built the whole directory a second time, on
+        // the task pool, while these builds were still finishing. Two rustc runs
+        // per script at project open, and a leaked image for each.
+        //
+        // Recorded even when the build below fails, matching the watcher's own
+        // rule: a script that does not compile stays quiet until it is edited
+        // again rather than re-reporting the same error every poll.
+        if let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) {
+            world.resource_mut::<watch::ScriptWatcher>().mark_seen(name.clone(), mtime);
+        }
         match build_to_path(&sdk, &project, &src).and_then(|p| load_library(&p)) {
             Ok((f, lib)) => {
                 world.resource_mut::<LoadedScripts>().insert(name.clone(), f, lib);
@@ -265,9 +322,21 @@ pub fn build_to_path(sdk: &Sdk, project: &Path, src: &Path) -> Result<PathBuf, S
 /// running the editor. Same trust model as a plugin.
 pub fn load_library(path: &Path) -> Result<(ScriptFn, Library), String> {
     let lib = unsafe { Library::new(path) }.map_err(|e| e.to_string())?;
-    let f: Symbol<ScriptFn> = unsafe { lib.get(SCRIPT_SYMBOL) }.map_err(|_| {
-        "exports no entry point — did you forget `renzora::script!(update);`?".to_string()
-    })?;
+    let f: Symbol<ScriptFn> = match unsafe { lib.get(SCRIPT_SYMBOL) } {
+        Ok(f) => f,
+        Err(_) => {
+            // Leaked rather than returned to be dropped. `Library::new` already
+            // ran the image's static initializers, and unmapping a warmed Rust
+            // dylib runs `FreeLibrary` inside the loader lock — the deadlock
+            // `renzora_plugin`'s loader hit. A script missing its entry point is
+            // an author typo, so this happens while someone iterates: exactly
+            // the situation where it would be hit repeatedly.
+            std::mem::forget(lib);
+            return Err(
+                "exports no entry point — did you forget `renzora::script!(update);`?".to_string(),
+            );
+        }
+    };
     let f = *f;
     Ok((f, lib))
 }
@@ -277,35 +346,28 @@ pub fn sdk_root() -> Option<PathBuf> {
     exe_dir()
 }
 
-/// Whether scripts should run this frame — the same rule the Lua path uses.
-///
-/// In the editor: when play mode says scripts are running, or when at least one
-/// script is being *previewed* (the inspector's per-script play button), in which
-/// case [`dispatch`] runs only the previewed ones so the rest of the scene stays
-/// static. In a standalone runtime there is no `PlayModeState`, so always.
-///
-/// Deliberately a copy of `renzora_scripting`'s condition rather than a call to
-/// it: that one is private, and the two must agree — a Rust script that ran in
-/// edit mode while the Lua script beside it did not would be a confusing bug to
-/// chase.
-fn scripts_should_run(
-    play_mode: Option<Res<renzora::PlayModeState>>,
-    scripts: Query<&ScriptComponent>,
-) -> bool {
-    match play_mode {
-        Some(pm) if pm.is_scripts_running() => true,
-        Some(_) => scripts
-            .iter()
-            .any(|sc| sc.scripts.iter().any(|e| e.enabled && e.preview)),
-        None => true,
-    }
-}
+// Whether scripts should run this frame is `renzora_scripting`'s
+// `scripts_should_run`, imported above rather than reimplemented here. This used
+// to be a hand-kept copy because the original was private, with a comment noting
+// that the two "must agree" — a Rust script that ran in edit mode while the Lua
+// script beside it did not would be a confusing bug to chase. It is now `pub`
+// and reads a resource computed once per frame, so the copy is gone and the two
+// paths cannot drift apart. `finish` below covers the one build where the
+// resource would otherwise have no owner.
 
 /// Call each entity's `.rs` scripts once per frame.
 ///
 /// Exclusive, because a script takes `&mut World` and nothing else may be
 /// borrowed while it runs — which is also why the pairs are collected first.
-pub fn dispatch(world: &mut World) {
+pub fn dispatch(
+    world: &mut World,
+    // Cached rather than `world.query::<…>()` per call. Building a `QueryState`
+    // walks every archetype in the world to work out which ones match, and this
+    // runs each frame of play mode in a scene with thousands of them — paid to
+    // rediscover an answer that changes only when an archetype is created.
+    // `Local` keeps one across frames and `iter` updates it incrementally.
+    mut q: Local<bevy::ecs::query::QueryState<(Entity, &'static ScriptComponent)>>,
+) {
     // Edit-mode preview: the run condition let us through because at least one
     // script has its inspector play button on, not because play mode started. Run
     // ONLY those, so the rest of the scene stays static — same rule as the Lua
@@ -315,7 +377,6 @@ pub fn dispatch(world: &mut World) {
         .map(|pm| !pm.is_scripts_running())
         .unwrap_or(false);
 
-    let mut q = world.query::<(Entity, &ScriptComponent)>();
     let calls: Vec<(Entity, String)> = q
         .iter(world)
         .flat_map(|(entity, sc)| {
@@ -364,6 +425,11 @@ pub fn dispatch(world: &mut World) {
     }
 }
 
+/// The directory holding `sdk/`, which is where scripts are compiled against.
+///
+/// NOT simply the executable's parent: inside a Linux AppImage that is a
+/// read-only temporary mount with no SDK beside it. See
+/// [`renzora_plugin_build::install`].
 fn exe_dir() -> Option<PathBuf> {
-    std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf))
+    renzora_plugin_build::install::root()
 }

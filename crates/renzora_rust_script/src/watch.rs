@@ -54,6 +54,18 @@ pub struct ScriptWatcher {
     timer: f32,
 }
 
+impl ScriptWatcher {
+    /// Record that `name` at `mtime` has already been dealt with.
+    ///
+    /// Called by the project-open build so the watcher does not immediately
+    /// rebuild everything it just compiled. Without it the first poll after a
+    /// project opens sees a directory full of files it has never heard of and
+    /// starts a second rustc for every one.
+    pub fn mark_seen(&mut self, name: String, mtime: SystemTime) {
+        self.seen.insert(name, mtime);
+    }
+}
+
 /// Notice changed or new `.rs` files and start building them.
 pub fn watch(
     mut watcher: ResMut<ScriptWatcher>,
