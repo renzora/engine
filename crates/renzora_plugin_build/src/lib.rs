@@ -45,6 +45,9 @@ use std::process::Command;
 
 use serde::Deserialize;
 
+pub mod toolchain;
+pub use toolchain::Toolchain;
+
 /// What the SDK's `manifest.json` records, written by `cargo renzora sdk`.
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
@@ -85,12 +88,17 @@ pub enum Error {
     Missing(PathBuf),
     /// The SDK is present but unreadable or malformed.
     Manifest(String),
-    /// The local rustc is not the one that built the SDK.
+    /// The pinned compiler is not available.
     ///
     /// Separate from [`Error::Compile`] on purpose: it is recoverable by
     /// installing a toolchain, and the caller can say so precisely instead of
-    /// relaying `E0514` from a build that never had a chance.
-    Toolchain { needs: String, found: String },
+    /// relaying `E0514` from a build that never had a chance. `state` carries
+    /// which kind of recovery — see [`Toolchain::needs`].
+    Toolchain {
+        needs: String,
+        found: String,
+        state: Toolchain,
+    },
     /// rustc could not be run at all.
     NoRustc(String),
     /// rustc ran and rejected the plugin. Carries its stderr verbatim: it is
@@ -104,11 +112,18 @@ impl std::fmt::Display for Error {
         match self {
             Error::Missing(p) => write!(f, "no plugin SDK at {}", p.display()),
             Error::Manifest(e) => write!(f, "unreadable SDK manifest: {e}"),
-            Error::Toolchain { needs, found } => write!(
-                f,
-                "this SDK was built with Rust {needs}, but `rustc` here is {found} — \
-                 install it with `rustup toolchain install {needs}`"
-            ),
+            // Prefer the state's own wording, which is written for a dialog and
+            // says what will be downloaded and where. The `needs`/`found` form
+            // is the fallback for logs, where the versions matter more than the
+            // remedy.
+            Error::Toolchain { needs, found, state } => match state.needs() {
+                Some(msg) => write!(f, "{msg}"),
+                None => write!(
+                    f,
+                    "this SDK was built with Rust {needs}, but `rustc` here is {found} — \
+                     install it with `rustup toolchain install {needs}`"
+                ),
+            },
             Error::NoRustc(e) => write!(f, "could not run rustc: {e}"),
             Error::Compile(e) => write!(f, "{e}"),
             Error::Io(e) => write!(f, "{e}"),
@@ -142,21 +157,30 @@ impl Sdk {
         &self.manifest
     }
 
-    /// Whether the local `rustc` is the one that built this SDK.
+    /// Locate the compiler this SDK was built with.
+    ///
+    /// The result is a *state*, not a yes/no, because the three answers need
+    /// different things from the caller: nothing, an install through an existing
+    /// rustup, or the user's agreement to put Rust on the machine at all. See
+    /// [`Toolchain`].
+    pub fn toolchain(&self) -> Toolchain {
+        toolchain::resolve(&self.manifest.rustc)
+    }
+
+    /// Whether the pinned compiler is present.
     ///
     /// Worth checking before compiling rather than after: a mismatch is refused
     /// at the metadata layer with `error[E0514]: found crate 'bevy' compiled by
     /// an incompatible version of rustc`, which is accurate but arrives once the
     /// user has already downloaded ~555 MB and pressed Install.
     pub fn check_toolchain(&self) -> Result<(), Error> {
-        let found = rustc_release().map_err(Error::NoRustc)?;
-        if found == self.manifest.rustc {
-            Ok(())
-        } else {
-            Err(Error::Toolchain {
+        match self.toolchain() {
+            Toolchain::Ready(_) => Ok(()),
+            other => Err(Error::Toolchain {
                 needs: self.manifest.rustc.clone(),
-                found,
-            })
+                found: rustc_release().unwrap_or_else(|_| "none".into()),
+                state: other,
+            }),
         }
     }
 
@@ -180,11 +204,21 @@ impl Sdk {
     /// `out`'s parent must exist. On success the library is written and the
     /// stamp is returned for the caller to record beside it.
     pub fn compile(&self, dir: &Path, out: &Path) -> Result<String, Error> {
-        self.check_toolchain()?;
+        // Resolved to an absolute path, not spawned as bare `rustc`. A clean
+        // machine has none; a developer's machine may have several, and the
+        // wrong one gets further before failing than no compiler at all.
+        let state = self.toolchain();
+        let Some(rustc) = state.rustc().cloned() else {
+            return Err(Error::Toolchain {
+                needs: self.manifest.rustc.clone(),
+                found: rustc_release().unwrap_or_else(|_| "none".into()),
+                state,
+            });
+        };
         let src = dir.join("src").join("lib.rs");
         let manifest = ensure_cargo_manifest(dir)?;
 
-        let mut cmd = Command::new("rustc");
+        let mut cmd = Command::new(rustc);
         // Bevy's derives resolve their own paths through `BevyManifest`, which
         // reads `$CARGO_MANIFEST_DIR/Cargo.toml` to decide whether to emit
         // `bevy::…` or `bevy_ecs::…`. Running rustc directly means no cargo set

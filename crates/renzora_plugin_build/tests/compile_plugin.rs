@@ -53,7 +53,7 @@ fn compiles_a_plugin_against_the_staged_sdk() {
     };
 
     let sdk = Sdk::load(&root).expect("load manifest");
-    if let Err(Error::Toolchain { needs, found }) = sdk.check_toolchain() {
+    if let Err(Error::Toolchain { needs, found, .. }) = sdk.check_toolchain() {
         eprintln!("SDK needs rustc {needs}, this is {found} — skipping");
         return;
     }
