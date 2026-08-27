@@ -8601,6 +8601,7 @@ dependencies = [
  "renzora_postprocess",
  "renzora_procedural_tree",
  "renzora_ragdoll",
+ "renzora_rust_script",
  "renzora_scripting",
  "renzora_shader",
  "renzora_skybox",
@@ -8620,6 +8621,17 @@ dependencies = [
  "renzora_xr",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "renzora_rust_script"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "libloading 0.8.9",
+ "renzora",
+ "renzora_plugin_build",
+ "renzora_scripting",
 ]
 
 [[package]]

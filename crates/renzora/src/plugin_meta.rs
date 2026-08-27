@@ -132,3 +132,54 @@ macro_rules! plugin {
         }
     };
 }
+
+/// Declare a **Rust script**: per-entity native code, compiled from the
+/// project's `scripts/` directory.
+///
+/// ```ignore
+/// use bevy::prelude::*;
+/// use renzora::ScriptCtx;
+///
+/// fn update(ctx: &mut ScriptCtx) {
+///     let dt = ctx.delta();
+///     if let Some(mut t) = ctx.get_mut::<Transform>() {
+///         t.rotate_y(dt);
+///     }
+/// }
+///
+/// renzora::script!(update);
+/// ```
+///
+/// Attach it by dropping the file into an entity's **Scripts** component, the
+/// same way a `.lua` script attaches — routing is by file extension.
+///
+/// [`ScriptCtx`](crate::ScriptCtx) is the script's own entity plus the world:
+/// `get`/`get_mut`/`insert` act on itself with no argument, and `ctx.world()`
+/// hands back the whole `&mut World`. Nothing is withheld — spawning
+/// hierarchies, building UI, querying everything, swapping assets are all one
+/// call away.
+///
+/// A script is a [native plugin](plugin!) with a per-entity convention on top,
+/// built by the same compiler against the same SDK. The limits are therefore the
+/// plugin limits: no hot unload, and nothing in a statically linked build.
+///
+/// Takes a path, so the function may be named anything and live anywhere in the
+/// file — `renzora::script!(behaviour::update)` is fine.
+#[macro_export]
+macro_rules! script {
+    ($f:path) => {
+        /// The one symbol the dispatcher looks up. See [`script!`].
+        ///
+        /// The context is built here rather than by the dispatcher so the
+        /// boundary stays one plain function pointer — nothing with a lifetime
+        /// crosses it.
+        #[unsafe(no_mangle)]
+        pub fn renzora_script_update(
+            world: &mut $crate::bevy::ecs::world::World,
+            entity: $crate::bevy::ecs::entity::Entity,
+        ) {
+            let mut ctx = $crate::ScriptCtx::new(world, entity);
+            $f(&mut ctx)
+        }
+    };
+}

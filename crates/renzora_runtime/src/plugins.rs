@@ -80,6 +80,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_procedural_tree::ProceduralTreePlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
+    app.add_plugins(renzora_rust_script::RustScriptPlugin::default());
     #[cfg(feature = "shader_graph")]
     app.add_plugins(renzora_shader::ShaderPlugin::default());
     #[cfg(feature = "shader_graph")]

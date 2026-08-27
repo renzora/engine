@@ -1,0 +1,35 @@
+[package]
+name = "renzora_rust_script"
+version = "0.1.0"
+edition = "2021"
+description = "Rust scripts — per-entity native code compiled from the project, with full World access."
+
+[features]
+# Same gate as the native-plugin loader, for the same reason: a script links the
+# shared images, so calling into one from a statically linked host would hand it
+# a different `World` type. Forwarded from `renzora_runtime`.
+#
+# It also pulls `renzora/editor`, which is what makes `RustScript` appear in the
+# inspector's Add Component list — that popup is driven by `InspectorRegistry`,
+# and `register_inspectable` lives behind the editor contract. Tying it to this
+# feature rather than a separate one is right because the two are never
+# independent: a build without the shared images cannot run a script at all, so
+# there is nothing to offer adding.
+dynamic_linking = ["renzora/editor"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# The same compiler driver the native-plugin loader uses. A script and a plugin
+# are built identically — the difference is only what the engine does with the
+# result.
+renzora_plugin_build = { path = "../renzora_plugin_build" }
+# For `ScriptComponent` and `ScriptBackend`. A Rust script is attached exactly
+# like a Lua one — same component, routed by file extension — so this crate has
+# to speak the scripting layer's vocabulary even though it bypasses its
+# execution model.
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+libloading = "0.8"
+
+[lints]
+workspace = true

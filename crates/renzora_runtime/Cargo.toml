@@ -41,7 +41,11 @@ xr = ["dep:renzora_xr"]
 # gating both on one switch is what makes that combination unreachable rather
 # than merely discouraged. It is also why the C-ABI mechanism stays: a lean
 # export has no shared images for a native plugin to link against.
-dynamic_linking = ["dep:renzora_dylib", "renzora_native_plugin/dynamic_linking"]
+dynamic_linking = [
+    "dep:renzora_dylib",
+    "renzora_native_plugin/dynamic_linking",
+    "renzora_rust_script/dynamic_linking",
+]
 # Throwaway PROFILING build. The binary (`renzora_app`) enables `bevy/trace` +
 # `bevy/trace_tracy` alongside this; that alone gives per-system + render-node CPU
 # zones and the Tracy layer/frame-mark, but Bevy only emits GPU-pass zones when a
@@ -317,6 +321,7 @@ renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 # it. If you hit that, delete the offending line below.
 renzora_native_plugin = { path = "../renzora_native_plugin" }
 renzora_net = { path = "../renzora_net" }
+renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──
 [lints]
