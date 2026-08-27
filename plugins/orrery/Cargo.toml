@@ -1,0 +1,28 @@
+# A native plugin showing what the mechanism is actually for.
+#
+# `hello-native` proves the boundary works and `native-grayscale` shows the
+# post-process framework is reachable — both things a C-ABI plugin can also do,
+# more cheaply. This one does things a C-ABI plugin cannot:
+#
+#   * builds a nested entity hierarchy with `bsn!`
+#   * creates mesh and material assets at run time
+#   * reads AND writes the editor's selection
+#   * draws gizmos with full query access to the world
+#
+# None of that fits through a `#[repr(C)]` descriptor and a function table.
+#
+# ⚠ Do NOT run `cargo build` here — see plugins/hello-native/Cargo.toml for why.
+[workspace]
+
+[package]
+name = "orrery"
+version = "0.1.0"
+edition = "2021"
+description = "Native plugin demo — a BSN-built orrery with selection-aware gizmos."
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }

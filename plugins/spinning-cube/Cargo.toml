@@ -1,0 +1,26 @@
+# A native plugin that puts something on screen, as the visible counterpart to
+# `hello-native` (which only proves things in the log).
+#
+# ⚠ Do NOT run `cargo build` here. The path dependency below is so rust-analyzer
+# can resolve `renzora::` while you author; cargo would use it to build a whole
+# SECOND Bevy from crates.io, and the plugin that came out would have different
+# `TypeId`s from the engine — it would load, run, and corrupt the World. Build
+# with `cargo renzora`, which compiles this against the artifacts the engine was
+# actually built from.
+[workspace]
+
+[package]
+name = "spinning_cube"
+version = "0.1.0"
+edition = "2021"
+description = "Native plugin demo — spawns a cube and spins it."
+
+[lib]
+# What makes `cargo renzora` treat this as a native plugin rather than a C-ABI
+# one. `dylib` is the Rust ABI (shares types with the host); `cdylib` is the C
+# ABI (shares nothing, links no Bevy).
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
