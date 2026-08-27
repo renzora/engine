@@ -178,6 +178,9 @@ package_desktop() {
     echo "── $platform ($dir)"
     restore_exec_bits "$dir"
 
+    package_runtime_template "$platform" "$dir"
+    compress_sdk "$dir"
+
     # The engine zip. On Linux the AppImage IS the distribution — it already
     # contains everything in the AppDir — so shipping both would double the
     # asset for no gain. The AppDir stays on disk either way because the runtime
@@ -187,13 +190,45 @@ package_desktop() {
     local appimage=""
     for f in "$dir"/*.AppImage; do [ -f "$f" ] && appimage="$f"; done
     if [ -n "$appimage" ]; then
-        ( cd "$(dirname "$appimage")" && zip -qry "$asset" "$(basename "$appimage")" )
+        # The SDK cannot go inside the AppImage — that is built upstream by
+        # build-all.sh — so it rides beside it in the zip, which is also where
+        # the editor looks for it.
+        ( cd "$dir" && zip -qry "$asset" "$(basename "$appimage")" \
+            $( [ -f "$dir/sdk.tar.xz" ] && echo "sdk.tar.xz" ) )
     else
         ( cd "$dir" && zip -qry "$asset" . )
     fi
     record "$asset" "$platform" engine
+}
 
-    package_runtime_template "$platform" "$dir"
+# ── Compress the plugin SDK in place ─────────────────────────────────────────
+# `cargo renzora` and `build-all.sh` stage the SDK EXTRACTED, because in a dev
+# tree it is hardlinked to `target/` and costs neither disk nor time. Shipping it
+# that way would put ~3.6 GB of loose `.rlib` files into the engine zip.
+#
+# So it is compressed to a single `sdk.tar.xz` (~555 MB) and the extracted tree
+# removed. The editor unpacks it the first time someone installs a plugin —
+# until then it is one idle file, and a user who never writes a plugin never
+# pays the extraction or the disk.
+#
+# Bundling rather than downloading on demand is deliberate. It removes an entire
+# subsystem — hosting, a URL, progress, resume, checksums, offline handling — and
+# makes a version mismatch structurally impossible: the SDK in the folder is by
+# construction the one that built the editor beside it.
+#
+# Runs AFTER `package_runtime_template`, which reads the same directory and must
+# not see the tree disappear underneath it.
+compress_sdk() {
+    local dir="$1"
+    [ -d "$dir/sdk" ] || return 0
+    echo "   compressing sdk/ …"
+    # -T0 uses every core; xz is the slowest part of packaging otherwise.
+    ( cd "$dir" && tar -cf - sdk | xz -6 -T0 > sdk.tar.xz ) || {
+        echo "ERROR: failed to compress $dir/sdk" >&2
+        return 1
+    }
+    rm -rf "$dir/sdk"
+    echo "   sdk.tar.xz $(du -h "$dir/sdk.tar.xz" | cut -f1)"
 }
 
 # ── Package the web bundle ───────────────────────────────────────────────────

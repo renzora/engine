@@ -416,6 +416,8 @@ jobs:
             echo "### Engine"
             echo "\`<platform>.zip\` — the editor and the game runtime together. Unzip and run \`renzora-editor\` (Linux: the \`.AppImage\`; macOS: \`Renzora Engine.app\`)."
             echo
+            echo "It also carries \`sdk.tar.xz\`, which the editor unpacks the first time you install a plugin — plugins ship as Rust source and are compiled on your machine, so they keep working when the engine updates instead of going stale. Leave it alone if you never install one; it is unpacked on demand, not at startup. Compiling a plugin also needs the Rust toolchain, which the editor offers to install at that point."
+            echo
             echo "### Export templates"
             echo "\`renzora-runtime-<platform>.zip\` — the game runtime for one platform, with no editor. You do not download these by hand: the editor fetches the ones it needs from **Export → Packaging → Runtime template**, which is how you export for a platform you are not running on."
             echo
