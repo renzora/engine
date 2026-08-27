@@ -334,8 +334,27 @@ mod tests {
             std::sync::OnceLock::new();
         let mutex = VALIDATOR.get_or_init(|| {
             let mut app = renzora_test_harness::headless_app();
-            // Pump until the library set stops growing (and is non-empty —
-            // frame one reports zero, which is "stable" too).
+            // Pump until every library the generated shaders import is present.
+            //
+            // "Stopped growing" alone is NOT enough, and trusting it is what made
+            // this fail in CI: the libraries stream in over several frames
+            // through the shared IO task pool, so a set that is merely PARTIAL
+            // holds still for three frames just as convincingly as a complete
+            // one. The old spot-check missed it because it asked for
+            // `pbr_functions`, which had arrived, while `pbr_fragment` had not —
+            // and every one of the 152 node types then failed with
+            // `required import 'bevy_pbr::pbr_fragment' not found`, which reads
+            // like 152 broken nodes rather than one unfinished load.
+            //
+            // So the loop waits on the thing that actually has to be true. The
+            // frame budget is only a backstop; stability is still required on top,
+            // to catch a library that arrives after the ones named here.
+            let required = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
+            let present = |app: &bevy::app::App, name: &str| {
+                importable_libraries(app.world().resource::<Assets<Shader>>())
+                    .keys()
+                    .any(|i| i.module_name().as_ref() == name)
+            };
             let mut last = 0usize;
             let mut stable = 0;
             for _ in 0..500 {
@@ -343,7 +362,7 @@ mod tests {
                 let n = importable_libraries(app.world().resource::<Assets<Shader>>()).len();
                 if n == last {
                     stable += 1;
-                    if n > 0 && stable >= 3 {
+                    if stable >= 3 && required.iter().all(|r| present(&app, r)) {
                         break;
                     }
                 } else {
@@ -351,11 +370,17 @@ mod tests {
                     last = n;
                 }
             }
-            let shaders = app.world().resource::<Assets<Shader>>();
+            let missing: Vec<&str> = required
+                .iter()
+                .copied()
+                .filter(|r| !present(&app, r))
+                .collect();
             assert!(
-                shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == "bevy_pbr::pbr_functions"),
-                "bevy_pbr's shader libraries are missing; the composer would resolve no imports"
+                missing.is_empty(),
+                "bevy_pbr's shader libraries did not finish loading in 500 frames \
+                 (missing: {missing:?}); every import would be reported unresolved"
             );
+            let shaders = app.world().resource::<Assets<Shader>>();
             std::sync::Mutex::new(ShaderValidator::new(shaders))
         });
         // A panicking test poisons the lock; the validator itself is intact.
