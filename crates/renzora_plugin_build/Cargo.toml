@@ -1,0 +1,19 @@
+[package]
+name = "renzora_plugin_build"
+version = "0.1.0"
+edition = "2021"
+description = "Compile a native plugin from source against a staged Renzora SDK."
+
+# Not a Bevy plugin and deliberately not one: no `renzora::add!` line, no
+# systems, no `App`. It is a function library the editor's install flow calls,
+# the same shape as `renzora_export`.
+#
+# Bevy is not a dependency either, which is the point — the whole crate is
+# "read a manifest, build an argv, run rustc, write a stamp". Keeping it free of
+# the engine means it can be exercised without booting one.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -1,0 +1,26 @@
+# The reference native plugin: a Bevy plugin shipped as source, compiled against
+# the staged SDK, loaded from `plugins/` at startup.
+#
+# ⚠ Do NOT run `cargo build` here. The path dependency below exists so
+# rust-analyzer can resolve `renzora::` while you author; cargo would use it to
+# build a whole SECOND Bevy from crates.io, and the plugin that came out would
+# have different `TypeId`s from the engine — it would load, run, and corrupt the
+# World. Build with `cargo renzora`, which compiles this against the artifacts
+# the engine was actually built from.
+[workspace]
+
+[package]
+name = "hello_native"
+version = "0.1.0"
+edition = "2021"
+description = "Reference native plugin — full &mut World from a source-shipped Bevy plugin."
+
+[lib]
+# This line, and only this line, is what makes `cargo renzora` treat the crate as
+# a native plugin rather than a C-ABI one. `dylib` is the Rust ABI (shares types
+# with the host); `cdylib` is the C ABI (shares nothing, links no Bevy).
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }

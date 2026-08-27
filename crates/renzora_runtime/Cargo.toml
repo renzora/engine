@@ -26,6 +26,22 @@ crash_dialog = ["renzora_engine/crash_dialog"]
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
 # pull the OpenXR stack unless explicitly asked.
 xr = ["dep:renzora_xr"]
+# Link the shared contract image. Forwarded from `renzora_app`'s
+# `dynamic_linking` (in ITS default set) and landing here rather than there
+# because both binaries depend on this crate and only one of them has a feature
+# table — see the root manifest.
+#
+# NOT in this crate's `default`: the lean exporter builds with
+# `--no-default-features --features runtime`, and a static single binary must not
+# import a dylib. Leaving it out here means "static" needs no extra step — the
+# feature simply never arrives.
+#
+# It also arms the native-plugin loader. Those link the shared images, so loading
+# one into a statically linked host is memory corruption with no diagnostic —
+# gating both on one switch is what makes that combination unreachable rather
+# than merely discouraged. It is also why the C-ABI mechanism stays: a lean
+# export has no shared images for a native plugin to link against.
+dynamic_linking = ["dep:renzora_dylib", "renzora_native_plugin/dynamic_linking"]
 # Throwaway PROFILING build. The binary (`renzora_app`) enables `bevy/trace` +
 # `bevy/trace_tracy` alongside this; that alone gives per-system + render-node CPU
 # zones and the Tracy layer/frame-mark, but Bevy only emits GPU-pass zones when a
@@ -215,6 +231,14 @@ wgpu = { version = "29", default-features = false }
 # `animation` features below forward to it. Normal builds keep them via `default`.
 renzora_engine = { path = "../renzora_engine", default-features = false }
 renzora = { path = "../renzora", default-features = false }
+# The same contract crate again, as one shared dylib. Nothing calls into it —
+# `renzora_dylib` re-exports `renzora` and is linked purely so the compiled code
+# lives in ONE image. Without it every plugin embeds a private copy of the four
+# process-global statics in the contract crate (the translation table, the
+# Problems and Console buffers, the asset loader), and each one then fails
+# silently: `t()` returns raw keys, logs and warnings land in buffers nobody
+# drains, asset reads find no loader. See `crates/renzora_dylib/src/lib.rs`.
+renzora_dylib = { path = "../renzora_dylib", optional = true }
 # `default-features = false`: the backends + blueprint + script_http are switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
@@ -291,6 +315,7 @@ renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_native_plugin = { path = "../renzora_native_plugin" }
 renzora_net = { path = "../renzora_net" }
 renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──

@@ -10,17 +10,37 @@
 //!      (`renzora`, the runtime/shipped game, and `renzora-editor`) plus every
 //!      distribution plugin cdylib. One invocation: the ~700 shared crates
 //!      compile once and are linked into both binaries.
-//!   2. Stage `dist/<platform>/`: the two executables + the OpenXR loader beside
-//!      each other, every plugin cdylib into `plugins/`.
+//!   2. Stage `dist/<platform>/`: the two executables + the shared libraries +
+//!      the OpenXR loader beside each other, every plugin cdylib into `plugins/`.
 //!   3. (`run` only) launch the staged editor.
 //!
-//! There are no shared `bevy_dylib` / `renzora` / Rust-`std` libraries to stage
-//! any more — Bevy is statically linked into both executables, so each is
-//! self-contained. That is also why the editor is a second *executable* rather
-//! than the removable `renzora_editor.dll` it used to be: a cdylib linking a
-//! static Bevy would carry its own copy of Bevy, and therefore its own `World`
-//! type, so nothing could cross the boundary. Shipping a game is now "copy
-//! `renzora`", not "copy everything except one dll".
+//! ## The shared libraries
+//!
+//! `renzora_app`'s default features include `dynamic_linking`, so Bevy lives in
+//! one `bevy_dylib` that both executables import rather than a private copy
+//! baked into each. Measured on Windows, that took the pair from 460 MB to
+//! 397 MB, and it takes relinking the whole of Bevy out of every build.
+//!
+//! It is also the prerequisite for a plugin ever holding `&mut World`: Rust
+//! derives a type's `TypeId` from how it was compiled, so two independently
+//! linked copies of Bevy disagree about what `Transform` is. One shared image
+//! means one answer.
+//!
+//! Two files therefore have to land beside the executables, and a missing one
+//! is not a clean error — the OS loader refuses the binary before `main`:
+//!
+//!   * `bevy_dylib.<ext>`, from `target/dist/`.
+//!   * `std-<hash>.<ext>`, from the rustc sysroot. This one is easy to forget
+//!     because nothing in the workspace asks for it: linking *any* dylib makes
+//!     rustc link std dynamically too, so it arrives as a side effect of
+//!     `dynamic_linking` rather than of `prefer-dynamic` (which this repo does
+//!     not set). The filename hashes the toolchain, so it must be re-staged
+//!     whenever `rust-toolchain.toml` moves.
+//!
+//! The editor is still a second *executable* rather than the removable
+//! `renzora_editor.dll` it used to be. That is unrelated to the above and has
+//! not changed: `renzora_viewport::external_runtime` spawns `renzora` as a child
+//! process for play mode, so both binaries must be staged together regardless.
 //!
 //! Why a staging step at all: a bare `cargo run` leaves the plugin cdylibs flat
 //! in `target/dist/` next to the exe, but the dynamic loader scans
@@ -34,16 +54,18 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 mod coverage;
+mod native_plugin;
+mod sdk;
 mod sync;
 mod wasm;
 
 /// Host-platform naming. Filled at compile time from `cfg!` because xtask is
 /// built for — and run on — the very platform it stages for.
-struct Platform {
+pub(crate) struct Platform {
     /// `dist/<dir>` — matches `build-all.sh`'s platform directory names.
     dir: &'static str,
     /// Shared-library extension, no dot (`dll` / `so` / `dylib`).
-    ext: &'static str,
+    pub(crate) ext: &'static str,
     /// `lib` on Unix, empty on Windows — the Cargo dylib filename prefix.
     lib_prefix: &'static str,
     /// `.exe` on Windows, empty elsewhere.
@@ -126,6 +148,16 @@ fn main() -> ExitCode {
         }
         // Build + stage only — produce the dist/ folder, don't launch.
         "dist" => match build_and_stage(&repo, &plat, &[]) {
+            Ok(out) => {
+                println!("[xtask] staged {}", out.display());
+                ExitCode::SUCCESS
+            }
+            Err(code) => code,
+        },
+        // Regenerate ONLY the plugin SDK, without rebuilding or restaging
+        // anything else. Every staged build already refreshes it (see
+        // `build_and_stage`); this is for when that is all you want to redo.
+        "sdk" => match sdk::build(&repo, &plat, &repo.join("dist").join(plat.dir)) {
             Ok(out) => {
                 println!("[xtask] staged {}", out.display());
                 ExitCode::SUCCESS
@@ -230,7 +262,7 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | xr | dist | wasm [--no-opt] | plugin <name> | profile | \
+                 (expected: run | xr | dist | sdk | wasm [--no-opt] | plugin <name> | profile | \
                  coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)
@@ -319,7 +351,22 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
         return Err(ExitCode::FAILURE);
     }
     match stage(repo, plat) {
-        Ok(out) => Ok(out),
+        Ok(out) => {
+            // The plugin SDK, beside the binaries it was cut from. An SDK only
+            // works against its own engine build — every `.rlib` filename hashes
+            // the build configuration — so regenerating it here is what stops a
+            // stale one from ever sitting next to a fresh editor. It hardlinks,
+            // so it costs neither disk nor noticeable time (see `sdk.rs`).
+            sdk::build(repo, plat, &out)?;
+            // After the SDK, because they link against it. A native plugin in
+            // `plugins/` is built exactly the way a user's installed one is —
+            // which is the point: an author working from source exercises the
+            // real path rather than a dev-only shortcut.
+            if !native_plugin::build_all(repo, &out) {
+                return Err(ExitCode::FAILURE);
+            }
+            Ok(out)
+        }
         Err(e) => {
             eprintln!("[xtask] staging failed: {e}");
             // On Windows this is almost always one thing, and the OS error says
@@ -428,6 +475,15 @@ fn build_source_plugins(repo: &Path) -> bool {
         if !dir.join("Cargo.toml").exists() {
             continue;
         }
+        // Native plugins share this directory but not this build path. They link
+        // Bevy, and `plugins/` sits outside the engine workspace — so cargo
+        // would resolve them a FRESH Bevy from crates.io, with different
+        // `TypeId`s, producing a plugin that builds cleanly and then corrupts
+        // the World. They are compiled against the staged SDK instead, after it
+        // exists. See `native_plugin.rs`.
+        if native_plugin::is_native(&dir) {
+            continue;
+        }
         println!("[xtask] cargo build --profile dist ({})", file_name(&dir));
         let ok = Command::new(cargo())
             .current_dir(&dir)
@@ -456,17 +512,18 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     clean_artifacts(&out, plat)?;
     clean_artifacts(&plugins, plat)?;
 
+    // ── The shared libraries ─────────────────────────────────────────────────
+    // Staged FIRST: neither executable can start without them, so if this fails
+    // it should fail before dist/ looks complete. See the module doc for why
+    // there are two and why `std` is the surprising one.
+    stage_shared_libs(&src, &out, plat)?;
+
     // ── The two executables ──────────────────────────────────────────────────
     // `renzora`        the runtime / shipped game — the ONLY binary an export
     //                  copies. Contains no editor crate.
     // `renzora-editor` the editor. A separate executable rather than a loadable
-    //                  bundle because Bevy is statically linked now: a cdylib
-    //                  linking static Bevy would carry its own copy of Bevy, and
-    //                  therefore its own `World` type.
-    //
-    // Both are self-contained — no sibling `bevy_dylib`/`renzora`/std dylibs to
-    // copy any more, which is why the shared-lib passes that used to live here
-    // are gone. "Remove the editor" is now "ship the other file".
+    //                  bundle because play mode spawns `renzora` as a child
+    //                  process, so the pair ships together either way.
     let bin_name = format!("renzora{}", plat.exe_suffix);
     let host_bin = out.join(&bin_name);
     copy(&src.join(&bin_name), &host_bin)?;
@@ -585,6 +642,11 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
     let e = plat.ext;
     let is = |stem: &str| name == format!("{p}{stem}.{e}");
     name.contains("bevy_dylib")
+        // The shared contract image, staged beside the exe. Sweeping it into
+        // `plugins/` would make the C-ABI loader `dlopen` it looking for an
+        // `INIT_SYMBOL` it does not export — harmless, but it would also ship a
+        // second ~30 MB copy of a library already sitting one directory up.
+        || name.contains("renzora_dylib")
         || name.starts_with("std-")
         || name.starts_with("libstd-")
         // PROC-MACRO CRATES. These compile to a dylib for *rustc* to load, not for
@@ -600,6 +662,85 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
         || is("renzora_editor_bundle") // pre-rename name, in case it lingers in cache
         || is("renzora_postprocess") // now an rlib shim; a stale dylib has no add!
         || is("renzora_preview") // wasm helper cdylib, not an engine plugin
+}
+
+/// Copy the shared libraries both executables import into `dist/<platform>/`.
+///
+/// Both are hard failures rather than warnings, because a missing one does not
+/// produce a clean error at runtime: the OS loader refuses the executable before
+/// `main` is reached, and the message names a hashed filename rather than
+/// anything a reader can act on. Failing here, with a path, is the only place
+/// that mistake is cheap to diagnose.
+fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result<()> {
+    // Take the HASHED `bevy_dylib-<metadata>` out of `deps/`, not the friendly
+    // un-hashed copy cargo also drops in `target/dist/`. The executables' import
+    // tables name the hashed file, so staging the short one produces a dist/
+    // that looks complete and cannot start — Windows fails the process before
+    // `main` with no output and no exit code at all. That is the
+    // `bevy_dylib-<metadata>` trap the two `.cargo/config.toml` files describe,
+    // and it is easy to walk into precisely because the short name is right
+    // there and looks like the obvious file to copy.
+    for stem in ["bevy_dylib", "renzora_dylib"] {
+        let lib = find_lib(&src.join("deps"), plat, stem)?;
+        copy(&src.join("deps").join(&lib), &out.join(&lib))?;
+    }
+
+    // `std-<hash>` is discovered the same way, but from a different place: the
+    // hash covers the toolchain, so it moves whenever `rust-toolchain.toml`
+    // does. `--print target-libdir` resolves to the sysroot's per-target lib
+    // dir, which is where a dylib std lives — nothing in `target/` holds a copy.
+    let libdir = Command::new("rustc")
+        .args(["--print", "target-libdir"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim().to_string()))
+        .ok_or_else(|| {
+            std::io::Error::other("`rustc --print target-libdir` failed — is rustc on PATH?")
+        })?;
+
+    let std_lib = find_lib(&libdir, plat, "std")?;
+    copy(&libdir.join(&std_lib), &out.join(&std_lib))
+}
+
+/// Find the shared library for crate `stem` in `dir`, hashed or not.
+///
+/// Cargo names these two ways and the difference is not cosmetic — it is the
+/// filename the importing binary is compiled to look for:
+///
+///   * `bevy_dylib-<hash>.dll` — a registry dependency, so cargo disambiguates
+///     it with the build-configuration hash.
+///   * `renzora_dylib.dll` — a workspace member's own dylib target, which cargo
+///     leaves bare.
+///
+/// So both forms are accepted, and the hashed one is matched strictly (a `-`
+/// then hex only) rather than as a loose prefix, so `renzora_dylib` cannot
+/// accidentally match some future `renzora_dylib_foo`.
+///
+/// Finding nothing is fatal for the reason in [`stage_shared_libs`]: the
+/// resulting `dist/` starts no process and reports no error, so the failure has
+/// to be raised here or not at all.
+fn find_lib(dir: &Path, plat: &Platform, stem: &str) -> std::io::Result<String> {
+    let stem = format!("{}{stem}", plat.lib_prefix);
+    let suffix = format!(".{}", plat.ext);
+    let bare = format!("{stem}{suffix}");
+    std::fs::read_dir(dir)?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .find(|n| {
+            *n == bare
+                || n.strip_prefix(&stem)
+                    .and_then(|rest| rest.strip_suffix(&suffix))
+                    .and_then(|h| h.strip_prefix('-'))
+                    .is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()))
+        })
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "no {bare} or {stem}-<hash>{suffix} in {} — a `dynamic_linking` build \
+                 cannot start without it",
+                dir.display()
+            ))
+        })
 }
 
 
@@ -677,7 +818,7 @@ fn file_name(p: &Path) -> String {
 /// process. (os error 32)" with nothing to act on. On Windows that error almost
 /// always means the editor is still running and holding `renzora.exe`, which is
 /// worth being told rather than guessing.
-fn copy(src: &Path, dst: &Path) -> std::io::Result<()> {
+pub(crate) fn copy(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::copy(src, dst).map(|_| ()).map_err(|e| {
         std::io::Error::new(
             e.kind(),

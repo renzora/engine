@@ -314,13 +314,21 @@ path = "src/main.rs"
 [features]
 # `dynamic_linking` is in the DEFAULT set so every ordinary build — the editor,
 # `cargo renzora`, `cargo check`, the `--workspace` dist builds, the dedicated
-# server — links the shared `bevy_dylib`/`renzora` dylib and keeps the one frozen
-# plugin ABI (`plugin_bevy_hash`). It is a *feature* rather than an inline dep
-# flag so the lean release exporter can drop it with `--no-default-features
-# --features runtime`, producing a fully static single binary (static Bevy +
-# static std, no dylibs) — see `crates/renzora_export` and `[profile.dist-lean]`.
-# Dropping it does NOT move the dev/editor ABI: the default build is unchanged.
-default = ["runtime", "xr"]
+# server — links ONE shared `bevy_dylib` instead of baking a private copy of
+# Bevy into each binary. Two separate things need that sharing:
+#
+#   * Link time. Both binaries are ~200-270 MB statically, and relinking the
+#     whole of Bevy dominates every single build.
+#   * Type identity. Rust derives a type's `TypeId` from how it was compiled, so
+#     two independently-linked copies of Bevy disagree about what `Transform`
+#     is. One shared dylib means one answer, which is the whole prerequisite for
+#     a plugin ever holding `&mut World`.
+#
+# It is a *feature* rather than an inline dep flag so the lean release exporter
+# can drop it with `--no-default-features --features runtime`, producing a fully
+# static single binary (static Bevy + static std, no dylibs) — see
+# `crates/renzora_export` and `[profile.dist-lean]`.
+default = ["runtime", "xr", "dynamic_linking"]
 # One binary, always runtime-shaped. The editor is no longer a compile-time
 # feature: it ships as the `renzora_editor` cdylib loaded at startup
 # from beside the exe (Operation Merge). Present → the binary is the editor;
@@ -328,12 +336,28 @@ default = ["runtime", "xr"]
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
 runtime = ["dep:renzora_runtime"]
-# Shared-`bevy_dylib` dynamic linking. ON by default (above); the lean exporter
+# Shared dynamic linking, for BOTH shared images: `bevy_dylib` (Bevy) and
+# `renzora_dylib` (the contract crate). ON by default (above); the lean exporter
 # turns it OFF for a static release binary. Mobile/wasm lanes never enable it
 # (they build via `--no-default-features --features <wasm|…>` or their own
-# crates), so `bevy_dylib` — a dylib-only crate that can't link into an iOS
-# staticlib / Android cdylib / wasm — correctly stays out of those builds.
-dynamic_linking = ["bevy/dynamic_linking"]
+# crates), so these dylib-only crates — which can't link into an iOS staticlib /
+# Android cdylib / wasm — correctly stay out of those builds.
+#
+# Two things about the contract half are not obvious.
+#
+# It is a SEPARATE crate rather than `renzora` growing a `dylib` crate-type,
+# because `renzora_dylib` depends ON `renzora` — so `renzora` cannot depend back
+# on it without a cycle. Pulling the dylib into the link graph is enough on its
+# own: rustc computes the dependency format per final artifact, so once the
+# shared image is present every intermediate crate resolves `renzora` to it
+# rather than embedding a second copy.
+#
+# And it is forwarded through `renzora_runtime` rather than depended on here,
+# for the same reason `xr` is: BOTH binaries need it, and only `renzora_app` has
+# a feature table. A dependency declared here would reach the runtime binary and
+# silently miss `renzora_editor_app` — which has no `[features]` at all, but does
+# depend on `renzora_runtime`.
+dynamic_linking = ["bevy/dynamic_linking", "renzora_runtime?/dynamic_linking"]
 # OpenXR/VR boot mode: launching with `--vr` renders the game into a headset
 # (see `renzora_runtime::add_xr_rendering` / `renzora_xr`). In `default` so
 # every desktop build can be a VR runtime; the wasm/mobile lanes never enable

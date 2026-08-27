@@ -268,11 +268,35 @@ fn crate_dirs(root: &Path) -> Vec<(String, PathBuf)> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.join("Cargo.toml").is_file())
+        .filter(|p| !is_native_plugin(p))
         .filter_map(|p| {
             let name = p.file_name()?.to_string_lossy().into_owned();
             Some((name, p))
         })
         .collect()
+}
+
+/// Whether `dir` is a NATIVE plugin rather than a C-ABI one.
+///
+/// Both kinds live in `plugins/`, and a native one is also a directory with a
+/// `Cargo.toml` — so without this check it would land here and be rebuilt with
+/// `cargo build`. That is precisely the wrong command for it: a native plugin
+/// links Bevy, `plugins/` is outside the engine workspace, and cargo would
+/// resolve it a FRESH Bevy from crates.io. The result builds cleanly, loads, and
+/// corrupts the World, because its `TypeId`s do not match the host's.
+///
+/// Native plugins are rebuilt against the staged SDK instead — by `xtask` in the
+/// dev tree, and by the editor's install flow on a user's machine. Neither is
+/// this watcher's business.
+///
+/// Matched on the quoted `"dylib"`: `"cdylib"` also ends in `dylib`, and a loose
+/// match would exclude every C-ABI plugin from hot reload.
+fn is_native_plugin(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|text| {
+        text.lines()
+            .filter(|l| l.trim_start().starts_with("crate-type"))
+            .any(|l| l.contains("\"dylib\""))
+    })
 }
 
 /// Which plugin crate owns a changed path — the first directory under the root.
@@ -284,8 +308,9 @@ fn owning_crate(root: &Path, path: &Path) -> Option<(String, PathBuf)> {
     let first = rel.components().next()?;
     let dir = root.join(first);
     // A directory with no manifest is not a crate — don't spawn cargo in it.
-    dir.join("Cargo.toml")
-        .is_file()
+    // Nor is a native plugin, which has one but must never be built with cargo
+    // (see `is_native_plugin`).
+    (dir.join("Cargo.toml").is_file() && !is_native_plugin(&dir))
         .then(|| (first.as_os_str().to_string_lossy().into_owned(), dir))
 }
 

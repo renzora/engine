@@ -7581,6 +7581,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_dylib"
+version = "0.1.0"
+dependencies = [
+ "renzora",
+]
+
+[[package]]
 name = "renzora_editor"
 version = "0.1.0"
 dependencies = [
@@ -8224,6 +8231,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_native_plugin"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "libloading 0.8.9",
+ "renzora",
+ "renzora_plugin_build",
+]
+
+[[package]]
 name = "renzora_navmesh"
 version = "0.1.0"
 dependencies = [
@@ -8397,6 +8414,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_plugin_build"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_plugin_derive"
 version = "0.1.0"
 dependencies = [
@@ -8538,6 +8563,7 @@ dependencies = [
  "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
+ "renzora_dylib",
  "renzora_ember",
  "renzora_engine",
  "renzora_environment_map",
@@ -8551,6 +8577,7 @@ dependencies = [
  "renzora_lighting",
  "renzora_lumen",
  "renzora_motion_blur",
+ "renzora_native_plugin",
  "renzora_navmesh",
  "renzora_net",
  "renzora_network",

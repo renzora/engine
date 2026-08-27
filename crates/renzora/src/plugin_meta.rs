@@ -80,3 +80,55 @@ macro_rules! add {
         };
     };
 }
+
+/// Declare a **native plugin**: a Bevy plugin shipped as Rust source and
+/// compiled on the machine that installs it.
+///
+/// The counterpart to [`add!`]. `add!` declares a crate compiled INTO the
+/// engine; this declares one installed into `<exe dir>/plugins/` and rebuilt
+/// whenever the engine moves under it. Both are ordinary Bevy plugins with full
+/// `&mut World` access — unlike a C-ABI plugin, which links no Bevy and reaches
+/// the engine through a fixed function table. All three are "plugins" to a user;
+/// the difference is only in how they are built and where they can run.
+///
+/// ```ignore
+/// use bevy::prelude::*;
+///
+/// pub struct SpinThing;
+/// impl Plugin for SpinThing {
+///     fn build(&self, app: &mut App) { app.add_systems(Update, spin); }
+/// }
+///
+/// renzora::plugin!(SpinThing);
+/// ```
+///
+/// Takes an expression, not just a type, so a plugin needing configuration can
+/// write `renzora::plugin!(SpinThing::new(4))` rather than contorting itself
+/// into a `Default` impl.
+///
+/// # Why this exists rather than the four lines it expands to
+///
+/// The loader finds a plugin by asking the OS for one symbol *by name*. Every
+/// way of writing that by hand fails identically — the library loads, the symbol
+/// is absent, and it is **skipped in silence**, because a library without the
+/// entry point is not an error, it is simply not a plugin:
+///
+/// * a typo in `renzora_native_plugin_ctor`
+/// * a missing `#[unsafe(no_mangle)]`, which leaves the symbol mangled with an
+///   unpredictable hash
+/// * a wrong return type, which is worse than silent: the loader calls it as
+///   `fn() -> Box<dyn Plugin>` regardless and reads whatever is in the return
+///   register as a boxed trait object
+///
+/// The macro fixes the name and the signature, so none of the three is reachable.
+#[macro_export]
+macro_rules! plugin {
+    ($plugin:expr) => {
+        /// The one symbol the loader looks up. Unmangled so it can be found by
+        /// string; see [`plugin!`] for why hand-writing this is a trap.
+        #[unsafe(no_mangle)]
+        pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
+            ::std::boxed::Box::new($plugin)
+        }
+    };
+}

@@ -15,6 +15,19 @@
 
 use bevy::prelude::*;
 
+// The shared contract image. Linked for its side effect ONLY — nothing here
+// calls into it, and `renzora` is still imported normally everywhere. Its
+// presence in the link graph is what makes rustc resolve `renzora`'s code to one
+// dylib rather than embedding a private copy in each binary and each plugin,
+// which is what keeps the contract crate's process-global statics (translations,
+// the Problems and Console buffers, the asset loader) singular. See
+// `crates/renzora_dylib/src/lib.rs` for why a second copy fails silently.
+//
+// It lives here rather than in either `main.rs` because both binaries depend on
+// this crate and only one of them has a feature table to gate on.
+#[cfg(feature = "dynamic_linking")]
+extern crate renzora_dylib;
+
 pub use renzora;
 
 // Re-exported for the binaries: `src/main.rs` reaches the crash hook and the
