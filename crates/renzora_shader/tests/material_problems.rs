@@ -134,6 +134,27 @@ impl Fixture {
         }
     }
 
+    /// Pump until `done` holds, giving up after a budget.
+    ///
+    /// Eight frames is enough for anything that lands in a resource — the
+    /// resolver writes `ContentProblems` directly, so it is there the moment the
+    /// compile finishes. It is NOT enough for anything that has to travel
+    /// through the tracing layer into the Console buffer, which is a frame or
+    /// more behind and depends on how quickly the shader libraries streamed in.
+    ///
+    /// On a developer's machine the difference never shows; on a contended CI
+    /// runner it did, as an assertion that the console had heard nothing. Waiting
+    /// on the condition rather than on a frame count removes the guess: the fast
+    /// case still costs one frame, and the slow case is allowed to be slow.
+    fn pump_until(&mut self, mut done: impl FnMut() -> bool) {
+        for _ in 0..240 {
+            self.app.update();
+            if done() {
+                return;
+            }
+        }
+    }
+
     /// How many times the resolver has compiled the material — the number that
     /// tells a settled material apart from one being rebuilt every frame.
     fn compile_count(&self) -> u64 {
@@ -269,18 +290,23 @@ fn a_broken_material_reaches_the_console() {
     let mut f = Fixture::new("console");
     f.write(BROKEN);
     f.spawn_user();
-    f.pump();
 
-    let entries = buffer.0.lock().unwrap();
-    assert!(
+    // The entry has to cross the tracing layer to reach the buffer, so this is
+    // the one assertion here that cannot rely on a fixed frame count. The guard
+    // is scoped inside the closure so the lock is released between frames — held
+    // across `app.update()` it would deadlock against the layer trying to append.
+    let reached_console = || {
+        let entries = buffer.0.lock().expect("console buffer");
         entries.iter().any(|e| {
             e.level == renzora::console_log::LogLevel::Error
                 && e.category == "Material"
                 && e.message.contains("t.material")
                 && e.message.contains("no_such_symbol")
-        }),
-        "no Material error in the console buffer"
-    );
+        })
+    };
+    f.pump_until(reached_console);
+
+    assert!(reached_console(), "no Material error in the console buffer");
 }
 
 /// The one the user asked for: a repaired material must stop being reported.
