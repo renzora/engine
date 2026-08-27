@@ -256,18 +256,31 @@ fn load_one(
     };
     if stale || !lib_path.is_file() || source_newer_than(dir, &lib_path) {
         let Some(sdk) = sdk else {
-            return Err(format!(
-                "built against a different engine build and no SDK is installed \
-                 to rebuild it ({})",
-                lib_path.display()
-            ));
+            // Two quite different situations, and conflating them produces a
+            // message that is actively wrong. Someone who has just dropped a
+            // plugin folder in by hand has never built it against anything —
+            // telling them it "was built for a different version" sends them
+            // looking for a version problem that does not exist.
+            return Err(if lib_path.is_file() {
+                "was built for a different version of Renzora. Rebuilding it \
+                 needs the plugin SDK, which is not installed — Settings → \
+                 Plugins."
+            } else {
+                "ships as source and has not been compiled yet. Building it \
+                 needs the plugin SDK, which is not installed — Settings → \
+                 Plugins."
+            }
+            .to_string());
         };
         std::fs::create_dir_all(&build).map_err(|e| e.to_string())?;
-        info!("rebuilding plugin '{name}' for this engine build");
+        info!("compiling plugin '{name}' for this engine build");
         let stamp = sdk.compile(dir, &lib_path).map_err(|e| match e {
             // rustc's own diagnostics, written for the plugin author. Passing
             // them through unedited is more useful than any summary.
             BuildError::Compile(out) => format!("failed to compile:\n{out}"),
+            // The toolchain states already phrase themselves for a person,
+            // naming the compiler and where it would land. Relaying that beats
+            // anything this layer could summarise.
             other => other.to_string(),
         })?;
         std::fs::write(&stamp_path, &stamp).map_err(|e| e.to_string())?;

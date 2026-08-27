@@ -80,6 +80,36 @@ fn spawn_scene() -> impl Scene {
 renzora::plugin!(P);
 "#;
 
+/// Someone drops a plugin folder into `plugins/` on a machine with no SDK.
+///
+/// Nothing can be built, which is fine — but what they are told has to be true.
+/// The first version of this said the plugin "was built against a different
+/// engine build", which sends a person looking for a version problem that does
+/// not exist: it was never built at all.
+#[test]
+fn an_uncompiled_plugin_without_an_sdk_says_so_accurately() {
+    let dir = std::env::temp_dir().join("renzora_no_sdk_plugin");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src").join("lib.rs"), PLUGIN).unwrap();
+
+    // A directory that is definitively not an SDK.
+    let missing = std::env::temp_dir().join("renzora_definitely_no_sdk");
+    let _ = std::fs::remove_dir_all(&missing);
+    let Err(err) = Sdk::load(&missing) else {
+        panic!("an absent SDK must not load");
+    };
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("no plugin SDK"),
+        "an absent SDK should say the SDK is absent, not something about \
+         versions: {msg}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn builds_a_source_plugin_and_rebuilds_it_when_stale() {
     let Some(root) = staged_root() else {
