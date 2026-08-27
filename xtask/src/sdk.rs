@@ -340,7 +340,8 @@ fn stage(
         }
     }
 
-    let native_dirs = stage_native(repo, &native)?;
+    let mut native_dirs = stage_native(repo, &native)?;
+    native_dirs.extend(stage_msvc(&native, triple)?);
 
     let manifest = manifest_json(plat, triple, &native_dirs, externs, n_rlib, n_proc, n_imp);
     std::fs::write(out.join("manifest.json"), manifest)?;
@@ -416,6 +417,126 @@ fn stage_native(repo: &Path, native: &Path) -> std::io::Result<Vec<String>> {
         staged.push(name);
     }
     Ok(staged)
+}
+
+/// The MSVC libraries a plugin link names but Rust does not supply.
+///
+/// `kernel32`, `user32`, `msvcrt` and friends come from Visual Studio and the
+/// Windows SDK. On a developer's machine rustc finds them by auto-detecting the
+/// Visual Studio install — which is why every plugin built here has linked
+/// without them being staged, and why that proves nothing about a machine
+/// without Visual Studio, where the link fails with
+/// `LNK1181: cannot open input file 'kernel32.lib'`.
+///
+/// Asking a user to install Build Tools to try a plugin is not reasonable, and
+/// it is not necessary: Microsoft permits redistributing these, which is what
+/// `xwin` exists for and what `docker/windows/Dockerfile` already relies on to
+/// cross-compile Windows binaries from Linux with no Visual Studio present. The
+/// same three `-L native=` paths work locally.
+///
+/// This is a curated list rather than the whole `um/x64` directory, which is
+/// hundreds of megabytes against these thirteen at ~10 MB. Curation is a little
+/// brittle — a plugin using an API nobody here has used yet needs another entry
+/// — but the failure is loud and names the missing file, so extending it is a
+/// one-line change with an obvious trigger.
+const MSVC_LIBS: &[&str] = &[
+    "kernel32", "user32", "shell32", "gdi32", "advapi32", "opengl32", "ntdll", "userenv",
+    "ws2_32", "dbghelp", "msvcrt", "vcruntime", "ucrt",
+];
+
+/// Copy [`MSVC_LIBS`] into the SDK, from wherever this machine keeps them.
+///
+/// Returns the manifest-relative directory, or nothing when the target does not
+/// need them — Linux and macOS have a system linker and libc already, so this is
+/// Windows-only.
+fn stage_msvc(native: &Path, triple: &str) -> std::io::Result<Option<String>> {
+    if !triple.contains("windows-msvc") {
+        return Ok(None);
+    }
+    let sources = msvc_lib_dirs();
+    if sources.is_empty() {
+        // Not fatal: a build here still links via rustc's own auto-detection.
+        // Only the *shipped* SDK needs these, and that is built where they are.
+        eprintln!(
+            "[xtask] sdk: no MSVC import libraries found — plugins will build on \
+             this machine but not on one without Visual Studio"
+        );
+        return Ok(None);
+    }
+
+    let dst = native.join("msvc");
+    std::fs::create_dir_all(&dst)?;
+    let mut found = 0usize;
+    for lib in MSVC_LIBS {
+        let name = format!("{lib}.lib");
+        if let Some(src) = sources.iter().map(|d| d.join(&name)).find(|p| p.is_file()) {
+            link_or_copy(&src, &dst.join(&name))?;
+            found += 1;
+        }
+    }
+    if found < MSVC_LIBS.len() {
+        eprintln!(
+            "[xtask] sdk: {found}/{} MSVC import libraries found",
+            MSVC_LIBS.len()
+        );
+    }
+    Ok(Some("msvc".to_string()))
+}
+
+/// Directories that may hold the MSVC + Windows SDK import libraries.
+///
+/// Two shapes. In the cross-compile container they are xwin's splat at fixed
+/// paths; on a Windows host they are under the Visual Studio and Windows Kits
+/// installs, whose version directories are globbed rather than pinned so a
+/// toolchain update does not silently stop finding them.
+fn msvc_lib_dirs() -> Vec<PathBuf> {
+    let xwin = [
+        "/xwin/crt/lib/x86_64",
+        "/xwin/sdk/lib/um/x86_64",
+        "/xwin/sdk/lib/ucrt/x86_64",
+    ];
+    let from_xwin: Vec<PathBuf> = xwin.iter().map(PathBuf::from).filter(|p| p.is_dir()).collect();
+    if !from_xwin.is_empty() {
+        return from_xwin;
+    }
+
+    let mut out = Vec::new();
+
+    // Windows Kits: <Lib>/<version>/{um,ucrt}/x64 — this is where `kernel32`,
+    // `user32` and `ucrt` live.
+    for ver in newest_first("C:/Program Files (x86)/Windows Kits/10/Lib") {
+        out.extend([ver.join("um/x64"), ver.join("ucrt/x64")]);
+    }
+
+    // Visual Studio: <root>/<year>/<edition>/VC/Tools/MSVC/<version>/lib/x64 —
+    // `msvcrt` and `vcruntime` live only here, and the EDITION level is easy to
+    // miss (2022/Community, not just 2022). Omitting it finds 11 of the 13 libs
+    // and fails on exactly the two that are not part of the Windows SDK.
+    for year in newest_first("C:/Program Files/Microsoft Visual Studio") {
+        for edition in newest_first(year.to_string_lossy().as_ref()) {
+            for ver in newest_first(edition.join("VC/Tools/MSVC").to_string_lossy().as_ref()) {
+                out.push(ver.join("lib/x64"));
+            }
+        }
+    }
+
+    out.retain(|p| p.is_dir());
+    out
+}
+
+/// Subdirectories of `root`, newest name first.
+///
+/// Versions sort lexically well enough here (`10.0.26100.0`, `14.44.35207`), and
+/// newest-first means a machine with several installs uses the one Visual Studio
+/// itself would pick.
+fn newest_first(root: &str) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    dirs.sort();
+    dirs.reverse();
+    dirs
 }
 
 /// The manifest a plugin build reads to reconstruct the `rustc` command line.
