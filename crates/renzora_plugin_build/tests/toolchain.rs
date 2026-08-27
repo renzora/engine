@@ -41,9 +41,21 @@ fn resolves_an_installed_toolchain_to_an_absolute_path() {
 
 #[test]
 fn a_version_that_is_not_installed_is_recoverable_not_fatal() {
-    // Old enough that nobody has it, well-formed enough that rustup will try.
-    let state = toolchain::resolve("1.0.0");
-    assert!(state.rustc().is_none(), "1.0.0 should not resolve");
+    // A version that has never been released, rather than merely an old one.
+    //
+    // This used to ask for `1.0.0` on the reasoning that nobody still has it
+    // installed. That is true and irrelevant: 1.0.0 is a REAL release, and
+    // `rustup which --toolchain <v> rustc` installs a missing toolchain on
+    // demand. On a developer's machine the download is slow enough to look like
+    // a hang; in a networked CI container it simply succeeded, `resolve`
+    // correctly returned `Ready`, and the test failed for being wrong rather
+    // than for finding a bug.
+    //
+    // `99.99.99` is well-formed, so rustup still tries — which is the point, the
+    // failure path being tested is "rustup ran and could not produce it" — but
+    // no such release exists to download, on any machine, ever.
+    let state = toolchain::resolve("99.99.99");
+    assert!(state.rustc().is_none(), "99.99.99 should not resolve");
 
     // The distinction that matters to a caller: this is something the user can
     // be *offered*, not an error to report. Both remaining states carry wording

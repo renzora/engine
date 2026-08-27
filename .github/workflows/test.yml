@@ -124,6 +124,23 @@ jobs:
           failed=""
           for manifest in plugins/*/Cargo.toml; do
             dir=$(dirname "$manifest")
+            # NATIVE plugins are skipped, and running cargo on one would be
+            # actively harmful rather than merely wrong. `crate-type = ["dylib"]`
+            # means it links the real Bevy, and `plugins/` is outside the engine
+            # workspace — so cargo resolves it a FRESH Bevy from crates.io, and a
+            # `renzora` without the `editor` feature, which is why this job began
+            # failing with `unresolved import renzora::EditorSelection` the moment
+            # native plugins landed. Even when it compiles, the result has
+            # different `TypeId`s from the engine and would corrupt the World.
+            #
+            # The only sound way to build one is against the staged SDK, which
+            # `xtask/src/native_plugin.rs` does and `docker/build-all.sh` mirrors
+            # with this same test. `"cdylib"` also ends in `dylib`, hence the
+            # quoted match.
+            if grep -q 'crate-type.*"dylib"' "$manifest"; then
+              echo "skipping $dir (native plugin — built against the SDK, not by cargo)"
+              continue
+            fi
             echo "::group::$dir"
             if ! (cd "$dir" && cargo test); then
               failed="$failed $dir"
