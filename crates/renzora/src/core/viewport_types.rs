@@ -284,6 +284,26 @@ impl Default for CameraOrbitSnapshot {
     }
 }
 
+/// The editor's 3D cursor — a world-space point the user places via Shift+RMB
+/// (the viewport's "Place 3D Cursor" action). Rendered as a small wireframe
+/// sphere, and used as the default spawn position for newly added shapes and
+/// entities so they appear where the user is working rather than at world
+/// origin. Defaults to `(0, 0, 0)` until the first Shift+RMB placement.
+///
+/// Lives in the contract crate because multiple crates both need to read it:
+/// the viewport's shapes dropdown (`shape_spawn_click`), the hierarchy's "Add
+/// Entity" menu (`add_entity`), and the shape library's spawn command all
+/// consult the same resource.
+#[derive(Resource, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(Resource)]
+pub struct ThreeDCursor(pub Vec3);
+
+impl Default for ThreeDCursor {
+    fn default() -> Self {
+        Self(Vec3::ZERO)
+    }
+}
+
 /// Cached clip-from-world matrix of the editor camera, plus camera world position.
 /// Updated every frame. Used by CPU-projected viewport overlays (grid, gizmos).
 #[derive(Resource, Debug, Clone)]
@@ -848,6 +868,14 @@ pub struct ViewportSettings {
     /// Overlays dropdown (2D view only).
     pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
+    /// Multiplier on the viewport-corner axis gizmo (the X/Y/Z arrow widget)
+    /// and the transform gizmo's translate arrows, rotate rings, and scale
+    /// cubes. `5.0` is the default and reads as "current size"; `0.0` shrinks
+    /// the gizmos to a minimum-usable 20% of their default footprint. Stored
+    /// as a raw 0..5 slider value (not the post-curve scale) so the slider
+    /// has a single number to bind to and the curve lives next to the
+    /// rendering code where it's easy to tweak.
+    pub gizmo_size: f32,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
     /// Toggle for in-viewport entity name labels (drawn with Bevy's stroke-font
@@ -940,6 +968,7 @@ impl Default for ViewportSettings {
             grid_color_2d: [255, 255, 255, 20],
             show_gizmos_2d: true,
             show_axis_gizmo: true,
+            gizmo_size: 5.0,
             show_scene_icons: true,
             show_labels: false,
             label_size: 1.0,
@@ -1037,6 +1066,11 @@ pub struct PersistedViewportSettings {
     #[serde(default = "default_true")]
     pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
+    /// Slider value 0..5 controlling the viewport-corner axis gizmo and the
+    /// transform gizmo's translate / rotate / scale size. Defaults to 5.0
+    /// ("current size"); missing in old configs → 5.0 via `default_gizmo_size`.
+    #[serde(default = "default_gizmo_size")]
+    pub gizmo_size: f32,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
     #[serde(default)]
@@ -1128,6 +1162,7 @@ impl PersistedViewportSettings {
             grid_color_2d: s.grid_color_2d,
             show_gizmos_2d: s.show_gizmos_2d,
             show_axis_gizmo: s.show_axis_gizmo,
+            gizmo_size: s.gizmo_size,
             show_scene_icons: s.show_scene_icons,
             show_labels: s.show_labels,
             label_size: s.label_size,
@@ -1201,6 +1236,7 @@ impl PersistedViewportSettings {
         s.grid_color_2d = self.grid_color_2d;
         s.show_gizmos_2d = self.show_gizmos_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
+        s.gizmo_size = self.gizmo_size;
         s.show_scene_icons = self.show_scene_icons;
         s.show_labels = self.show_labels;
         s.label_size = self.label_size;
@@ -1291,6 +1327,13 @@ fn default_gizmo_drag_opacity() -> f32 {
     0.25
 }
 
+/// Default gizmo size slider value: 5.0 = current (1.0×) size. Picked so a
+/// project that pre-dates the slider opens with the gizmos looking the same
+/// as they always did.
+fn default_gizmo_size() -> f32 {
+    5.0
+}
+
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
 /// The runtime ignores this section, and `renzora_export` strips it from
 /// shipped builds.
@@ -1343,6 +1386,9 @@ mod tests {
             grid_color_2d: [128, 200, 255, 60],
             show_gizmos_2d: false,
             show_axis_gizmo: false,
+            // Non-default (default is 5.0) so the round-trip exercises a value
+            // other than the literal default.
+            gizmo_size: 3.5,
             // Defaults to true, so false is the non-default this test wants.
             gizmo_pivot_bottom: false,
             show_scene_icons: false,
@@ -1417,6 +1463,7 @@ mod tests {
         assert_eq!(original.show_cursor_coords_2d, restored.show_cursor_coords_2d);
         assert_eq!(original.show_gizmos_2d, restored.show_gizmos_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
+        assert_eq!(original.gizmo_size, restored.gizmo_size);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
         assert_eq!(original.show_labels, restored.show_labels);
         assert_eq!(original.label_size, restored.label_size);
@@ -1539,6 +1586,7 @@ mod tests {
             show_grid = true
             show_subgrid = true
             show_axis_gizmo = true
+            gizmo_size = 3.5
             show_scene_icons = true
             collision_always = false
             orthographic = false

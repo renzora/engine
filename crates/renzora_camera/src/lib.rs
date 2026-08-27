@@ -144,7 +144,7 @@ impl Default for CameraSettings {
             move_speed: 10.0,
             look_sensitivity: 0.3,
             orbit_sensitivity: 0.5,
-            pan_sensitivity: 0.3,
+            pan_sensitivity: 0.1,
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
@@ -1010,13 +1010,19 @@ fn apply_pan(
     pan_sensitivity: f32,
     slow_mult: f32,
 ) {
-    // Slider value of 1.0 ≈ the previous hardcoded 0.03 rate. The 0.01
-    // multiplier matches `look_speed` / `orbit_speed` so all three sliders
-    // feel comparable on the same numerical scale.
-    // The 0.004 multiplier + slider default 2.5 means the slider midpoint
-    // (2.5) gives the same pan speed the old default 1.0 with the old 0.01
-    // multiplier did; the new max (5.0) is twice that, and 0 stops the pan
-    // entirely. Default 2.5 with `CameraSettingsState::default()` below.
+    // `pan_speed` is in world units per mouse-motion pixel per frame.
+    // The slider in Settings → Viewport → Camera binds directly to
+    // `pan_sensitivity` (range 0.1..=5.0, default 0.1 from
+    // `CameraSettings::default()` in this crate — note: distinct from
+    // `CameraSettingsState::default()` in renzora::core, which holds
+    // the user-facing default in renzora_settings and is what the
+    // slider actually binds to; `CameraSettings` here is the runtime
+    // resource that `sync_viewport_settings` copies the value into on
+    // every frame). The 0.004 multiplier is tuned so the default
+    // value gives a gentle pan; sliding to 5.0 gives a strong one;
+    // sliding to 0.1 gives the slowest the slider exposes. The slow
+    // multiplier (Shift-held = 0.5× speed) and distance floor (0.5)
+    // keep the pan stable when zoomed way in or out.
     let pan_speed = pan_sensitivity * 0.004 * slow_mult * orbit.distance.max(0.5);
     let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
     let view_dir = Vec3::new(
@@ -1378,12 +1384,15 @@ fn apply_nav_overlay(
     }
 
     if has_pan && !pivot_lock.0 {
-        // `apply_pan`'s 0.01 multiplier means slider value of 1.0 ≈ a strong
-        // pan; default 0.3 from `CameraSettings::default()` gives a gentle
-        // feel that matches Look/Orbit at the same numeric slider position.
-        // Mirrors `apply_pan`'s 0.004 multiplier — slider midpoint 2.5 gives
-        // the previous default speed, slider max 5.0 doubles it, slider 0
-        // stops the pan.
+        // Same multiplier / default as `apply_pan` (`pan_sensitivity *
+        // 0.004 * distance.max(0.5)`) — but this path doesn't apply a
+        // slow_mult because the input is discrete: an `Interaction::Pressed`
+        // event from the on-screen `NavButton::Pan` UI widget, written to
+        // `NavOverlayState` by `nav_drag` in renzora_viewport, then read
+        // here. There is no held modifier key during this path's
+        // continuous-drag window the way there is for `apply_pan`, so
+        // `slow_mult` has nothing to scale. Shift+MMB is a separate path
+        // that routes through `nav_drag_mode` → `apply_pan`, not here.
         let pan_speed = settings.pan_sensitivity * 0.004 * orbit.distance.max(0.5);
         let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
         let up_dir = Vec3::new(
