@@ -8,6 +8,49 @@ use renzora_shader::material::graph::{MaterialDomain, MaterialGraph, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
+/// Pump until Bevy's shader libraries have finished streaming in.
+///
+/// The validator composes a material against the libraries Bevy registers as
+/// ASSETS, and those arrive over several frames through the shared IO task pool.
+/// Until they are all present the composer resolves no imports, so every
+/// material — healthy or not — comes back covered in
+/// `required import 'bevy_pbr::pbr_fragment' not found`.
+///
+/// That is not a subtle failure, it is an inverted one: a test asserting "the
+/// healthy material must be clean" sees a healthy material reporting errors, and
+/// a test asserting "repairing clears the report" sees the report survive the
+/// repair. Both read as the Problems panel being broken.
+///
+/// It only shows up where the pool is contended, which is CI and not a
+/// developer's machine — four tests in this file failed that way across three
+/// runs, each having independently guessed at a frame count in `pump`.
+///
+/// So the wait lives in the fixture, once, on the condition that actually has to
+/// hold. Waiting on "the library count stopped growing" is NOT enough: a partial
+/// set holds still just as convincingly as a complete one, which is how the same
+/// bug survived a first fix in `validate.rs`.
+fn wait_for_shader_libraries(app: &mut App) {
+    // `pbr_fragment` specifically, not just any library: it is the one the
+    // generated surface shaders import and the one CI reported missing.
+    const REQUIRED: [&str; 2] = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
+    let present = |app: &App| {
+        let shaders = app.world().resource::<Assets<Shader>>();
+        REQUIRED.iter().all(|want| {
+            shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == *want)
+        })
+    };
+    for _ in 0..500 {
+        if present(app) {
+            return;
+        }
+        app.update();
+    }
+    panic!(
+        "Bevy's shader libraries did not finish loading in 500 frames; every \
+         material would be reported broken for unresolved imports"
+    );
+}
+
 /// A graph whose only node is a `custom/code` snippet driving `base_color`.
 ///
 /// `custom/code` is the one node that still lets a user write arbitrary WGSL,
@@ -70,6 +113,8 @@ impl Fixture {
         // fixture that asserts on its output has to be one. `renzora_runtime`
         // inserts this in a real app; a headless test has no runtime setup.
         app.insert_resource(renzora::EditorSession(is_editor));
+
+        wait_for_shader_libraries(&mut app);
 
         Self {
             app,
