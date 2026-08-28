@@ -272,11 +272,17 @@ jobs:
       # This lane builds through `cargo renzora dist` (xtask), so it gets the
       # `dist` profile — the fast-link one meant for local iteration — where
       # every container lane gets the size-optimised `release`. Rather than teach
-      # xtask a profile flag for one caller, override the two keys that differ;
-      # cargo's CARGO_PROFILE_<name>_<key> env vars outrank the manifest. Keep
-      # these in step with `[profile.release]` in the root Cargo.toml.
+      # xtask a profile flag for one caller, override the keys that differ;
+      # cargo's CARGO_PROFILE_<name>_<key> env vars outrank the manifest.
       CARGO_PROFILE_DIST_OPT_LEVEL: s
-      CARGO_PROFILE_DIST_LTO: thin
+      # LTO stays OFF on Windows, which is why this no longer matches
+      # `[profile.release]`. A PE export ordinal is 16 bits, so a DLL exports at
+      # most 65,535 symbols — a format limit no linker gets past — and measured on
+      # this workspace `bevy_dylib` exports 41,958 without LTO and 268,516 with
+      # thin LTO. The shared images made that reachable: `dynamic_linking` is a
+      # default feature and pulls `bevy_dylib`, which no build here linked before.
+      # `docker/build-all.sh` does the same for the container's Windows lane.
+      CARGO_PROFILE_DIST_LTO: false
     steps:
       - uses: actions/checkout@v4
         with:

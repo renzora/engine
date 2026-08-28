@@ -492,6 +492,38 @@ build_desktop() {
         SRC="target/$FEATURE/$RUST_TARGET/$PROFILE"
     fi
 
+    # ── Windows: no LTO, because `bevy_dylib` cannot be exported under it ─────
+    #
+    # A PE export ordinal is 16 bits, so a DLL can export at most 65,535 symbols.
+    # That is a limit of the file format, not of the linker, and no linker choice
+    # gets past it.
+    #
+    # `bevy_dylib` sits right on the wrong side of it once LTO is on. Measured on
+    # this workspace, the same crate exports:
+    #
+    #     lto = false   41,958   links
+    #     lto = "thin"  268,516  rust-lld: too many exported symbols
+    #
+    # Thin LTO inflates the exported set roughly sixfold, because it has to keep
+    # cross-module symbols visible that a non-LTO build can keep internal.
+    #
+    # This never came up before the shared images landed: `dynamic_linking` is in
+    # the root manifest's default set and pulls `bevy_dylib`, and until that
+    # feature existed no container build linked the crate at all — the previous
+    # release build does not mention `bevy_dylib` once.
+    #
+    # Turning LTO off here rather than in `[profile.release]` keeps the size win
+    # on Linux and macOS, where the export table has no such ceiling. It costs
+    # binary size on Windows, and much less than the manifest's numbers suggest:
+    # those were measured on a STATICALLY linked `renzora.exe`, before Bevy moved
+    # into a shared image and took most of the code with it.
+    if [[ "$RUST_TARGET" == *windows-msvc* ]]; then
+        local PROFILE_KEY
+        PROFILE_KEY=$(echo "$PROFILE" | tr '[:lower:]' '[:upper:]')
+        export "CARGO_PROFILE_${PROFILE_KEY}_LTO=false"
+        echo "    windows: LTO off (PE exports are 16-bit; bevy_dylib needs it)"
+    fi
+
     # Editor: build the whole workspace WITHOUT `--no-default-features`.
     # `--no-default-features` propagates to every workspace member, which
     # would suppress the `default = ["dlopen"]` on cdylib distribution
