@@ -106,14 +106,31 @@ RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
       clang-19 \
       lld-19 \
       llvm-19-dev && \
-    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100 && \
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 && \
-    update-alternatives --install /usr/bin/clang-cl clang-cl /usr/bin/clang-cl-19 100 && \
-    update-alternatives --install /usr/bin/lld-link lld-link /usr/bin/lld-link-19 100 && \
-    update-alternatives --install /usr/bin/llvm-lib llvm-lib /usr/bin/llvm-lib-19 100 && \
-    update-alternatives --install /usr/bin/llvm-rc llvm-rc /usr/bin/llvm-rc-19 100 && \
-    ln -sf /usr/bin/ld64.lld-19 /usr/local/bin/ld64.lld && \
-    ln -sf /usr/bin/ld.lld-19 /usr/local/bin/ld.lld && \
+    # Everything below points into LLVM's own install prefix rather than at
+    # `/usr/bin/<tool>-19`. Those versioned symlinks are created by the packaging
+    # for SOME tools and not others, and which ones depends on the package set —
+    # `clang-cl-19` in particular does not exist under `--no-install-recommends`,
+    # which is what broke this layer the first time it ran for real:
+    #
+    #     update-alternatives: error: alternative path /usr/bin/clang-cl-19
+    #                                 doesn't exist
+    #
+    # `/usr/lib/llvm-19/bin/` is where LLVM installs every tool unconditionally,
+    # so it does not depend on which convenience symlinks a given release ships.
+    #
+    # The `ls` is deliberate and stays: this layer is only exercised on a cache
+    # miss, so when it does break it tends to be a long time later and for a
+    # reason nobody can guess. Printing the inventory means the log answers "what
+    # is actually in there" without another round trip.
+    ls -1 /usr/lib/llvm-19/bin/ && \
+    update-alternatives --install /usr/bin/clang clang /usr/lib/llvm-19/bin/clang 100 && \
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/lib/llvm-19/bin/clang++ 100 && \
+    update-alternatives --install /usr/bin/clang-cl clang-cl /usr/lib/llvm-19/bin/clang-cl 100 && \
+    update-alternatives --install /usr/bin/lld-link lld-link /usr/lib/llvm-19/bin/lld-link 100 && \
+    update-alternatives --install /usr/bin/llvm-lib llvm-lib /usr/lib/llvm-19/bin/llvm-lib 100 && \
+    update-alternatives --install /usr/bin/llvm-rc llvm-rc /usr/lib/llvm-19/bin/llvm-rc 100 && \
+    ln -sf /usr/lib/llvm-19/bin/ld64.lld /usr/local/bin/ld64.lld && \
+    ln -sf /usr/lib/llvm-19/bin/ld.lld /usr/local/bin/ld.lld && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Shared build env (sourced by bash before every RUN, and by build-all.sh) ──
