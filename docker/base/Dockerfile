@@ -80,10 +80,32 @@ RUN rustup target add \
 # cross-compile. This is the one heavyweight layer the cross toolchains share, so
 # it lives in the base to avoid building it three times (windows/macos/ios). It
 # changes only on an LLVM bump.
-RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
-    chmod +x /tmp/llvm.sh && \
-    /tmp/llvm.sh 19 && \
-    apt-get install -y --no-install-recommends llvm-19-dev && \
+#
+# ── Why the apt source is written out instead of running `llvm.sh` ───────────
+# This used to `wget https://apt.llvm.org/llvm.sh` and run it. That script is
+# fetched UNPINNED at build time, so the image depended on whatever upstream
+# happened to be serving that day — and upstream dropped Debian 12:
+#
+#     [error] Distribution 'debian' in version '12 (bookworm)' is not
+#             supported by this script.
+#
+# The image had not actually re-run that layer in a long time (every rebuild hit
+# the registry buildx cache), so the breakage sat invisible until an unrelated
+# edit above invalidated the cache and the layer executed for real.
+#
+# All the script does is add this apt source and install the packages, so doing
+# it directly removes the dependency on a moving remote script without changing
+# what lands in the image. The distro codename is now explicit, which is also
+# what has to change on a base-image bump.
+RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" \
+      > /etc/apt/sources.list.d/llvm.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      clang-19 \
+      lld-19 \
+      llvm-19-dev && \
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 && \
     update-alternatives --install /usr/bin/clang-cl clang-cl /usr/bin/clang-cl-19 100 && \
@@ -92,7 +114,6 @@ RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
     update-alternatives --install /usr/bin/llvm-rc llvm-rc /usr/bin/llvm-rc-19 100 && \
     ln -sf /usr/bin/ld64.lld-19 /usr/local/bin/ld64.lld && \
     ln -sf /usr/bin/ld.lld-19 /usr/local/bin/ld.lld && \
-    rm /tmp/llvm.sh && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Shared build env (sourced by bash before every RUN, and by build-all.sh) ──
