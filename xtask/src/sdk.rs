@@ -245,20 +245,24 @@ fn artifact_files(
         "--profile",
         &profile,
         "--workspace",
-        // The SAME exclusions the engine build uses, in `crate::build` and in
-        // `docker/build-all.sh`. Omitting them is not harmless: they are
-        // workspace members, so including them changes the unit graph and with
-        // it the feature resolution, and cargo then rebuilds rather than
-        // reporting the artifacts that already exist. This is meant to re-read a
-        // finished build, not repeat it.
+        // BYTE-FOR-BYTE the engine build's selection — same exclusions as
+        // `crate::build` and `docker/build-all.sh`, and deliberately no `--bin`
+        // filter.
+        //
+        // This step exists to re-READ a finished build, and any difference in
+        // package selection stops it doing that. Under resolver v2 features are
+        // unified over the SELECTED packages, so narrowing to
+        // `--bin renzora --bin renzora-editor` resolves a different feature set,
+        // re-fingerprints the graph, and cargo rebuilds it — observed pulling
+        // `wasm-bindgen`, `js-sys` and `web-sys` into a linux-x64 lane that had
+        // no business with them.
+        //
+        // Restricting the targets looked like it would save work. It cost a
+        // second compilation of the entire workspace.
         "--exclude",
         "renzora-android",
         "--exclude",
         "renzora-ios",
-        "--bin",
-        "renzora",
-        "--bin",
-        "renzora-editor",
         "--message-format=json-render-diagnostics",
     ]);
     // Must match the build being staged EXACTLY. A different `--target-dir` or a
