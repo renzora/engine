@@ -161,8 +161,51 @@ copy_shared_libs() {
     local OUT="$2"
     local EXT="$3"
     local HOST_BIN="$4"
+    local RUST_TARGET="${5:-native}"
 
     mkdir -p "$OUT/plugins"
+
+    # ── std, the toolchain's own shared runtime ──────────────────────────────
+    #
+    # A `copy_std` helper used to do this and was deleted when Bevy went static,
+    # on the reasoning that with nothing sharing a Bevy there was nothing left to
+    # share a std with either. That reasoning expired: `dynamic_linking` is back
+    # in the default features, so `-C prefer-dynamic` applies again and BOTH
+    # executables import `std-<hash>.$EXT`.
+    #
+    # Missing it does not degrade gracefully. The OS loader refuses the binary
+    # before `main` with a dialog naming the file and nothing else:
+    #
+    #     The code execution cannot proceed because std-<hash>.dll was not found
+    #
+    # Read out of the binary's own import strings, for the same reason
+    # `bevy_dylib` is below: the hash is derived from the toolchain, so globbing
+    # the sysroot or hardcoding a name ships the wrong one the moment the pin in
+    # `rust-toolchain.toml` moves. `--print target-libdir` is asked for the
+    # TARGET's sysroot, which for a cross build is not the host's.
+    local STD_WANT=""
+    [ -n "$HOST_BIN" ] && [ -f "$HOST_BIN" ] && \
+        STD_WANT=$(grep -aoE "(lib)?std-[0-9a-f]+\.$EXT" "$HOST_BIN" 2>/dev/null | head -1)
+    if [ -n "$STD_WANT" ]; then
+        local LIBDIR="" STD_SRC="" cand
+        if [ "$RUST_TARGET" = "native" ]; then
+            LIBDIR=$(rustc --print target-libdir 2>/dev/null || true)
+        else
+            LIBDIR=$(rustc --print target-libdir --target "$RUST_TARGET" 2>/dev/null || true)
+        fi
+        for cand in "$LIBDIR/$STD_WANT" "$SRC/deps/$STD_WANT" "$SRC/$STD_WANT"; do
+            [ -n "$cand" ] && [ -f "$cand" ] && { STD_SRC="$cand"; break; }
+        done
+        if [ -n "$STD_SRC" ]; then
+            cp "$STD_SRC" "$OUT/"
+            echo "    staged $STD_WANT"
+        else
+            # Loud, because the alternative is an artifact that looks complete and
+            # cannot start on any machine.
+            echo "WARN: $HOST_BIN imports $STD_WANT but it was not found (looked in ${LIBDIR:-<no libdir>})"
+            echo "      the shipped binary will refuse to launch"
+        fi
+    fi
 
     # bevy_dylib — copy the EXACT one the host binary imports, NOT just the
     # newest by mtime. deps/ accumulates one bevy_dylib-<hash> per feature
@@ -367,13 +410,13 @@ build_updater() {
     return 0
 }
 
-# NOTE: there was a `copy_std` helper here that shipped the toolchain's
-# `std-<hash>.{dll,so,dylib}` beside the binaries. It existed because the images
-# set `-C prefer-dynamic`, a leftover from the shared-`bevy_dylib` era. With Bevy
-# static there is nothing left to share a std with — the editor and the runtime
-# are separate processes, and a C-ABI plugin links no std of ours — so the flag
-# bought nothing and cost a *toolchain-versioned import under a hashed filename*
-# in every shipped binary. Both flag and helper are gone; std links statically.
+# NOTE: staging `std-<hash>.{dll,so,dylib}` lives in `copy_shared_libs` above.
+# It was deleted from here when Bevy went static, on the reasoning that nothing
+# was left to share a std with. `dynamic_linking` is back in the default features
+# and brings `-C prefer-dynamic` with it, so the executables import a hashed std
+# again and it has to ship. The cost that argument named — a toolchain-versioned
+# import under a hashed filename — is real and is simply the price of the shared
+# images.
 
 # ── Compress the staged executables with UPX ─────────────────────────────────
 # Usage: compress_binaries <platform-name> <exe-suffix>
@@ -556,7 +599,9 @@ build_desktop() {
             ;;
     esac
 
-    copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN"
+    # The triple matters: `std-<hash>` must come from the TARGET's sysroot, which
+    # for a cross build is not the host's.
+    copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN" "$RUST_TARGET"
     stage_sdk "$FEATURE" "$RUST_TARGET" "$PLATFORM" "$OUT"
     return 0
 }
