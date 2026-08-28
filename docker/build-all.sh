@@ -77,6 +77,13 @@ mkdir -p "$OUTPUT_DIR"
 # is its own cargo workspace with its own tuned `[profile.dist]`, and their
 # outputs are kilobytes — nothing to gain, a target-dir rename to lose.
 PROFILE="${RENZORA_PROFILE:-release}"
+# EXPORTED, not just set. `stage_sdk` shells out to xtask, which reads this same
+# variable to decide which profile to cut the SDK from — and defaults to `dist`
+# when it is unset. Leaving it unexported meant a `release` lane invoked an xtask
+# that rebuilt the ENTIRE workspace under `dist`, then staged an SDK describing a
+# compilation that no shipped binary came from. Slow was the visible half; the
+# mismatch was the real one.
+export RENZORA_PROFILE="$PROFILE"
 echo "=== engine profile: $PROFILE ==="
 
 # The native linux lane builds the container's own arch (full toolchain, mold,

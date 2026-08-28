@@ -245,6 +245,16 @@ fn artifact_files(
         "--profile",
         &profile,
         "--workspace",
+        // The SAME exclusions the engine build uses, in `crate::build` and in
+        // `docker/build-all.sh`. Omitting them is not harmless: they are
+        // workspace members, so including them changes the unit graph and with
+        // it the feature resolution, and cargo then rebuilds rather than
+        // reporting the artifacts that already exist. This is meant to re-read a
+        // finished build, not repeat it.
+        "--exclude",
+        "renzora-android",
+        "--exclude",
+        "renzora-ios",
         "--bin",
         "renzora",
         "--bin",
