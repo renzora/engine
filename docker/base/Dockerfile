@@ -123,6 +123,15 @@ RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
     # reason nobody can guess. Printing the inventory means the log answers "what
     # is actually in there" without another round trip.
     ls -1 /usr/lib/llvm-19/bin/ && \
+    # `clang-cl` is the one tool the packages do not lay down. Confirmed from the
+    # listing above: the prefix has clang, clang++, clang-cpp, lld, lld-link,
+    # llvm-lib, llvm-rc, ld.lld, ld64.lld — and no clang-cl.
+    #
+    # It is not a separate program. clang picks its driver from `argv[0]`, so
+    # `clang-cl` IS clang under another name, which is how upstream ships it and
+    # why making the link here is not a workaround. The MSVC cross-build needs it
+    # by that name (see docker/windows/Dockerfile).
+    ln -sf /usr/lib/llvm-19/bin/clang /usr/lib/llvm-19/bin/clang-cl && \
     update-alternatives --install /usr/bin/clang clang /usr/lib/llvm-19/bin/clang 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/lib/llvm-19/bin/clang++ 100 && \
     update-alternatives --install /usr/bin/clang-cl clang-cl /usr/lib/llvm-19/bin/clang-cl 100 && \
