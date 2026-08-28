@@ -516,6 +516,27 @@ winres = "0.1"
 # (`cargo build --profile release --workspace`), which is the point of making it
 # a named profile rather than a pile of env overrides.
 
+# ── Windows ships THIS profile, not `release` ────────────────────────────────
+#
+# Not a preference — a format limit. A PE export ordinal is 16 bits, so a DLL
+# exports at most 65,535 symbols, and `bevy_dylib` lands either side of that
+# depending only on the optimisation level. Measured on this workspace:
+#
+#     opt-level = 2      41,958   links
+#     opt-level = "s"   269,482   rust-lld: too many exported symbols
+#
+# `"s"` inlines far less, so generic instantiations that `2` folds into their
+# callers survive as separate functions, and a Rust `dylib` exports every one.
+#
+# A per-package override on `bevy_dylib` does NOT fix it: that crate is a thin
+# re-export of `bevy_internal`, so the symbols come from the ~40 upstream `bevy_*`
+# crates and the level that matters is theirs. Setting `package."*"` would reach
+# them but that is most of the code, i.e. the size win itself.
+#
+# So Windows trades binary size for the shared-image plugin system, which needs
+# `bevy_dylib` to exist at all. `docker/build-all.sh` and the `windows-arm64`
+# lane both select this profile by name through `RENZORA_PROFILE`; Linux and
+# macOS keep `release`, having no such ceiling.
 [profile.dist]
 inherits = "release"
 # Fast to link. `opt-level = 2` and NO LTO — restated explicitly rather than

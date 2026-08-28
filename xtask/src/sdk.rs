@@ -154,7 +154,7 @@ impl From {
         if let Some(triple) = &self.target {
             p = p.join(triple);
         }
-        p.join("dist")
+        p.join(crate::profile())
     }
 }
 
@@ -236,11 +236,14 @@ fn artifact_files(
     from: &From,
     externs: &mut Externs,
 ) -> Result<Vec<(PathBuf, bool)>, String> {
+    // Must be the profile the engine was actually built with, or this resolves a
+    // different set of artifacts and the SDK describes a build nobody has.
+    let profile = crate::profile();
     let mut cmd = Command::new("cargo");
     cmd.current_dir(repo).args([
         "build",
         "--profile",
-        "dist",
+        &profile,
         "--workspace",
         "--bin",
         "renzora",

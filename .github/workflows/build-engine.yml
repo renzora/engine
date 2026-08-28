@@ -227,6 +227,7 @@ jobs:
             -w /app/src \
             -e RENZORA_RELEASE_TAG="${{ needs.setup.outputs.tag }}" \
             -e RENZORA_BUILD_COMMIT="${{ github.sha }}" \
+            -e RENZORA_PROFILE="${{ matrix.platform == 'windows' && 'dist' || 'release' }}" \
             "${REGISTRY}/${{ matrix.platform }}:latest" \
             bash docker/build-all.sh dist ${{ matrix.platform }}
 
@@ -269,20 +270,23 @@ jobs:
       CARGO_INCREMENTAL: 0
       RENZORA_RELEASE_TAG: ${{ needs.setup.outputs.tag }}
       RENZORA_BUILD_COMMIT: ${{ github.sha }}
-      # This lane builds through `cargo renzora dist` (xtask), so it gets the
-      # `dist` profile — the fast-link one meant for local iteration — where
-      # every container lane gets the size-optimised `release`. Rather than teach
-      # xtask a profile flag for one caller, override the keys that differ;
-      # cargo's CARGO_PROFILE_<name>_<key> env vars outrank the manifest.
-      CARGO_PROFILE_DIST_OPT_LEVEL: s
-      # LTO stays OFF on Windows, which is why this no longer matches
-      # `[profile.release]`. A PE export ordinal is 16 bits, so a DLL exports at
-      # most 65,535 symbols — a format limit no linker gets past — and measured on
-      # this workspace `bevy_dylib` exports 41,958 without LTO and 268,516 with
-      # thin LTO. The shared images made that reachable: `dynamic_linking` is a
-      # default feature and pulls `bevy_dylib`, which no build here linked before.
-      # `docker/build-all.sh` does the same for the container's Windows lane.
-      CARGO_PROFILE_DIST_LTO: false
+      # Build the profile that ships, by NAME. This lane runs `cargo renzora`
+      # (xtask), which defaults to the fast-link `dist` profile a contributor
+      # iterates with; `RENZORA_PROFILE` is the same variable `docker/build-all.sh`
+      # already reads, so both entry points now name one profile instead of each
+      # holding an idea of what the shipping build is.
+      #
+      # It used to reconstruct `release` by overriding two keys on `dist`, with a
+      # comment asking whoever edits `[profile.release]` to keep them in step.
+      # Nothing enforced that, and the drift was invisible until it wasn't:
+      # `bevy_dylib` exceeds the PE 65,535-symbol export cap at `opt-level = "s"`
+      # (269,482 against 41,958 at `2`), and because no local build ever used that
+      # configuration it could only surface here, after a full cross-compile.
+      #
+      # `dist` rather than `release`, for that same cap — Windows cannot ship a
+      # size-optimised build while Bevy is a dylib. See `[profile.dist]` in the
+      # root Cargo.toml; the container's Windows lane selects it the same way.
+      RENZORA_PROFILE: dist
     steps:
       - uses: actions/checkout@v4
         with:

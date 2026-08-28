@@ -410,10 +410,11 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
 /// mobile crates (cdylib/staticlib targets that don't belong in a desktop
 /// build) and minus this helper itself.
 fn build(repo: &Path, features: &[&str]) -> bool {
+    let profile = profile();
     let mut args: Vec<String> = [
         "build",
         "--profile",
-        "dist",
+        &profile,
         "--workspace",
         "--exclude",
         "renzora-android",
@@ -519,7 +520,9 @@ fn build_source_plugins(repo: &Path) -> bool {
 /// Port of `build-all.sh`'s `copy_shared_libs`: arrange `target/dist/` into a
 /// clean, runnable `dist/<platform>/`.
 fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
-    let src = repo.join("target").join("dist");
+    // The profile name IS the target-dir subdirectory, so staging follows
+    // whatever `build` just produced rather than assuming `dist`.
+    let src = repo.join("target").join(profile());
     let out = repo.join("dist").join(plat.dir);
     let plugins = out.join("plugins");
     std::fs::create_dir_all(&plugins)?;
@@ -888,6 +891,36 @@ fn file_name(p: &Path) -> String {
 /// spelling would be untested surface.
 fn flag_value(argv: &[String], flag: &str) -> Option<String> {
     argv.iter().position(|a| a == flag).and_then(|i| argv.get(i + 1)).cloned()
+}
+
+/// Which cargo profile the ENGINE is built with.
+///
+/// `dist` by default — the fast-link profile a contributor iterates with, and
+/// the reason `[profile.dist]` exists at all.
+///
+/// `RENZORA_PROFILE=release` selects the size-optimised profile that actually
+/// ships. `docker/build-all.sh` already reads the same variable, so the two
+/// entry points now agree on one name rather than each holding its own idea of
+/// what "the shipping build" is.
+///
+/// # Why this exists
+///
+/// The `windows-arm64` lane used to approximate `release` by setting
+/// `CARGO_PROFILE_DIST_OPT_LEVEL` and `CARGO_PROFILE_DIST_LTO` on top of `dist`,
+/// with a comment asking whoever edits `[profile.release]` to keep them in step.
+/// Nothing enforced that, and the drift was invisible: a config that ships was
+/// never built anywhere else, so `bevy_dylib` exceeding the PE export cap at
+/// `opt-level = "s"` could only surface in CI, after a full cross-compile.
+///
+/// Naming the profile instead of reconstructing it removes that whole class —
+/// and makes the shipping build reproducible locally with one variable.
+///
+/// The profile name doubles as cargo's target-dir subdirectory, so this also
+/// moves where [`stage`] reads from. Plugin and updater builds deliberately do
+/// NOT use it: each is its own workspace with its own tuned `[profile.dist]`,
+/// exactly as `build-all.sh` documents.
+pub(crate) fn profile() -> String {
+    std::env::var("RENZORA_PROFILE").unwrap_or_else(|_| "dist".to_string())
 }
 
 /// Copy, naming the destination on failure.
