@@ -233,6 +233,16 @@ package_desktop() {
 # not see the tree disappear underneath it.
 compress_sdk() {
     local dir="$1"
+    # Already packed by the build lane (`pack_sdk` in docker/build-all.sh), which
+    # is where it should happen — the tree is ~1.9 GB and compressing it here
+    # means every artifact was uploaded and downloaded extracted first. This stays
+    # as the fallback for a lane that had no zstd, and for `windows-arm64`, which
+    # builds through xtask outside any container.
+    if [ -f "$dir/sdk.tar.zst" ]; then
+        rm -rf "$dir/sdk"
+        echo "   sdk.tar.zst $(du -h "$dir/sdk.tar.zst" | cut -f1) (packed by the build lane)"
+        return 0
+    fi
     [ -d "$dir/sdk" ] || return 0
     echo "   compressing sdk/ …"
     # -T0 uses every core. Compression is the slowest part of packaging, and it

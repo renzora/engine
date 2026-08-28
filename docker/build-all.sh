@@ -649,6 +649,44 @@ stage_sdk() {
         echo "      ship without the ability to compile Rust scripts or native plugins"
         return 0
     fi
+    pack_sdk "$OUT" "$PLATFORM"
+}
+
+# ── Compress the staged SDK, in the lane that produced it ────────────────────
+# Usage: pack_sdk <out-dir> <platform-name>
+#
+# The staged SDK is ~1.9 GB of loose crate metadata. Leaving it extracted makes
+# every artifact upload carry all of it as individual files — measured at a
+# 721 MB zip for one platform — and the packaging job then compresses the same
+# bytes again at the end. Doing it here means the tree is never transported in
+# that state, and `package-release.sh` finds the archive already made.
+#
+# Same settings as `package-release.sh`: `-19` for the ratio (444 MB against
+# 520 MB at `-10`, for 0.5 s more decode), `--long=27` to widen the match window
+# past zstd's default 8 MB on a tree this repetitive, `-T0` because compression
+# is the slow half and only ever runs here.
+#
+# Skipped without zstd rather than failed: a lane on an older image still
+# produces a correct artifact, just a fat one, and `package-release.sh`
+# compresses it later. That keeps this from being a hard dependency on an image
+# rebuild landing first.
+pack_sdk() {
+    local OUT="$1" PLATFORM="$2"
+    [ -d "$OUT/sdk" ] || return 0
+    if ! command -v zstd >/dev/null 2>&1; then
+        echo "    zstd not in this image — shipping sdk/ extracted (packaging will compress it)"
+        return 0
+    fi
+    echo "    compressing sdk/ for $PLATFORM …"
+    if ( cd "$OUT" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f ); then
+        rm -rf "$OUT/sdk"
+        echo "    sdk.tar.zst $(du -h "$OUT/sdk.tar.zst" | cut -f1)"
+    else
+        # Left extracted on purpose: a half-written archive beside a deleted tree
+        # would be worse than a large artifact.
+        rm -f "$OUT/sdk.tar.zst"
+        echo "WARN: could not compress the SDK for $PLATFORM — shipping it extracted"
+    fi
 }
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────

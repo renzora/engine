@@ -54,6 +54,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
     file \
+    # Compressing the staged plugin SDK into `sdk.tar.zst` inside the build lane,
+    # so the ~1.9 GB tree never travels as loose files. Without it the lane
+    # uploads an artifact several times larger and the packaging job compresses
+    # the same bytes again later.
+    zstd \
     wget \
     gnupg \
     lsb-release \

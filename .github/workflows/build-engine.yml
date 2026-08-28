@@ -314,6 +314,28 @@ jobs:
       - name: Build + stage
         run: cargo renzora dist
 
+      # Same reason `docker/build-all.sh` packs it in the container lanes: the
+      # staged SDK is ~1.9 GB of loose crate metadata, and uploading it extracted
+      # makes this artifact several times larger for no benefit. xtask needs the
+      # tree in place while it builds the native plugins, so packing happens after
+      # rather than instead.
+      #
+      # `bash` explicitly: this is a Windows runner, where the default shell is
+      # PowerShell. Skipped without zstd rather than failed — the artifact is then
+      # merely fat, and `package-release.sh` compresses it later.
+      - name: Pack the plugin SDK
+        shell: bash
+        run: |
+          out=dist/windows-arm64
+          [ -d "$out/sdk" ] || exit 0
+          if ! command -v zstd >/dev/null 2>&1; then
+            echo "zstd unavailable — shipping sdk/ extracted (packaging will compress it)"
+            exit 0
+          fi
+          ( cd "$out" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
+          rm -rf "$out/sdk"
+          ls -lh "$out/sdk.tar.zst"
+
       # Disk exhaustion is the likeliest failure on this runner, and cargo's
       # error for it is unhelpful; report free space either way so a failed run
       # says so directly instead of needing a second run to diagnose.
