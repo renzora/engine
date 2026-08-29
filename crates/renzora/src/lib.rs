@@ -130,6 +130,43 @@ pub use editor_contract::*;
 #[cfg(feature = "editor")]
 pub use renzora_macros::{post_process, Inspectable};
 
+/// The engine's `serde`, re-exported so a plugin derives against **this** copy.
+///
+/// A native plugin's own crates.io dependencies are resolved separately from the
+/// engine's, so a plugin that writes `serde = "1"` in its manifest gets a
+/// *different crate* from the one Bevy was compiled against. Deriving
+/// `Serialize` on any struct holding a Bevy type then fails, because `Vec3`
+/// implements the engine's `Serialize` and not the plugin's:
+///
+/// ```text
+/// error[E0277]: the trait bound `bevy::prelude::Vec3: serde::Deserialize<'de>`
+///               is not satisfied
+/// ```
+///
+/// That is the duplicate-crate hazard working as intended — a compile error
+/// rather than two incompatible types meeting at runtime — but serde is not a
+/// crate anyone should be duplicating: it is half of how Bevy's own types
+/// round-trip, so a plugin authoring a component needs the engine's copy the
+/// same way it needs the engine's `Transform`. Hence the same rule the rest of
+/// this crate follows: if two sides must agree on it, it lives here.
+///
+/// Use it instead of depending on `serde` directly, and point the derive at this
+/// path so the generated code resolves:
+///
+/// ```ignore
+/// use renzora::serde::{Deserialize, Serialize};
+///
+/// #[derive(Component, Reflect, Serialize, Deserialize)]
+/// #[serde(crate = "renzora::serde")]
+/// #[reflect(Component, Serialize, Deserialize)]
+/// pub struct MySettings { pub tint: Vec3 }
+/// ```
+///
+/// The `#[serde(crate = ...)]` line is what a re-exported serde requires: the
+/// derive emits absolute paths, and without it they point at a `serde` the
+/// plugin does not have.
+pub use serde;
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor

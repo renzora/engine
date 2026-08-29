@@ -222,6 +222,11 @@ fn build_one(src_dir: &Path, sdk: &Sdk, dist_root: &Path) -> bool {
         eprintln!("[xtask] {name}: failed to compile");
         return false;
     }
+    // Same prune the editor does after its own rustc, so a staged plugin and an
+    // installed one hold the same files. The staged tree is meant to be
+    // byte-for-byte the layout a user's install has, and shipping the PDB here
+    // but not there would make this path stop proving that.
+    renzora_native_build::rustc::prune_byproducts(&lib);
     if let Err(e) = std::fs::write(&stamp_file, &sdk.stamp) {
         eprintln!("[xtask] {name}: writing stamp: {e}");
         return false;

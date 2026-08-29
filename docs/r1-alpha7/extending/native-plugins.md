@@ -31,13 +31,19 @@ Renzora has two plugin mechanisms and they are not competing — they serve diff
 | Access | full `&mut World`, any Bevy API | a fixed function table |
 | Typical size | 100–500 KB | 20–100 KB |
 | Ships as | source, compiled on install | a prebuilt binary |
-| Runs in a shipped game | **no** | yes |
+| Runs in a shipped game | yes, at `Runtime` scope — copy-based exports only | yes, every export mode |
 | Runs on wasm / mobile | **no** | yes |
 | Needs the plugin SDK | yes | no |
 
-Rule of thumb: **a native plugin extends the editor; a C-ABI plugin ships inside the game.** If your plugin adds a panel, a tool, a validator, an importer or a viewport gizmo, it is native. If it is a post-process effect, a script language or anything the player's copy of the game needs at runtime, it is C-ABI.
+**A native plugin is not editor-only.** Declare it `Runtime` (see [Scope](#scope-editor-or-the-game-too)) and the export copies the built library beside the game, which works because a copy-based export carries the very `bevy_dylib` and `renzora_dylib` the plugin was compiled against.
 
-The reason is structural, not a missing feature. A native plugin links the shared `bevy_dylib` / `renzora_dylib` / `renzora_ember_dylib` images; a lean export is a fully static single binary with no shared images at all, and wasm and mobile have no dylibs to load. There is nothing for a native plugin to bind to there.
+Where a native plugin genuinely cannot go is narrower than "a game":
+
+- **A lean single-binary export.** It links Bevy statically and shares no image, so there is nothing for a plugin library to bind to; native plugins are skipped there entirely.
+- **wasm and mobile**, which have no dylibs to load at all.
+- **Another platform.** Staged libraries are host-shaped, so an export for a platform you are not sitting on ships no native plugins.
+
+Rule of thumb, then: **a native plugin is the right shape for anything that wants the real `World`** — a panel, a tool, a validator, an importer, a viewport gizmo, and equally a gameplay system in a copy-based game. Reach for C-ABI when the thing must survive every export mode: a post-process effect, a script language, an audio or network backend, or anything a lean, wasm or cross-compiled build still needs.
 
 ## Scope: editor, or the game too
 

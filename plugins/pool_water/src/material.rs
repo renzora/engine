@@ -69,11 +69,17 @@ pub struct PoolWaterMaterial {
 
 impl Material for PoolWaterMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://renzora_pool_water/pool_water.wgsl".into()
+        // The crate name is part of an `embedded://` path, and this crate is now
+// `pool_water` rather than `renzora_pool_water`. Getting this wrong is not a
+// compile error — the shader simply fails to resolve at runtime.
+"embedded://pool_water/pool_water.wgsl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_pool_water/pool_water.wgsl".into()
+        // The crate name is part of an `embedded://` path, and this crate is now
+// `pool_water` rather than `renzora_pool_water`. Getting this wrong is not a
+// compile error — the shader simply fails to resolve at runtime.
+"embedded://pool_water/pool_water.wgsl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

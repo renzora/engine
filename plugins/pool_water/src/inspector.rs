@@ -1,17 +1,24 @@
-//! Editor companion to [`renzora_pool_water`] — the Pool Water inspector.
+//! The Pool Water inspector.
 //!
-//! Split out for the reason given in `renzora_forward_decal_editor`: the
-//! inspector was behind `cfg(feature = "editor")` but its dependency on
-//! `renzora_editor_framework` was not optional, so the editor framework
-//! compiled into every shipped game. A feature could not have separated them
-//! either — cargo unifies features across a `--workspace` build.
+//! In the workspace this was a **separate crate**, `renzora_pool_water_editor`,
+//! because the inspector's dependency on `renzora_editor_framework` was not
+//! optional and would otherwise have compiled the whole editor framework into
+//! every shipped game — and a cargo feature could not have separated them, since
+//! features unify across a `--workspace` build.
+//!
+//! Neither problem exists here. `renzora_editor_framework` only *re-exports*
+//! `AppEditorExt` / `InspectorEntry` / `FieldDef` from the contract crate, so
+//! this imports them from `renzora` directly and links no framework at all. The
+//! two halves are one plugin again, and a game that loads it pays a single `Vec`
+//! push into a registry it never reads.
 
 use bevy::prelude::*;
-use renzora_editor_framework::AppEditorExt;
-use renzora_pool_water::PoolWater;
+use renzora::AppEditorExt;
 
-fn pool_water_inspector_entry() -> renzora_editor_framework::InspectorEntry {
-    use renzora_editor_framework::{FieldDef, FieldType, FieldValue, InspectorEntry};
+use crate::PoolWater;
+
+pub(crate) fn pool_water_inspector_entry() -> renzora::InspectorEntry {
+    use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "pool_water",
@@ -300,14 +307,8 @@ fn pool_water_inspector_entry() -> renzora_editor_framework::InspectorEntry {
     }
 }
 
-#[derive(Default)]
-pub struct PoolWaterEditorPlugin;
-
-impl Plugin for PoolWaterEditorPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] PoolWaterEditorPlugin");
-        app.register_inspector(pool_water_inspector_entry());
-    }
+/// Registered from the one plugin's `build`, unconditionally — see the note in
+/// `lib.rs` on why there is no `cfg(feature = "editor")` here.
+pub(crate) fn register(app: &mut App) {
+    app.register_inspector(pool_water_inspector_entry());
 }
-
-renzora::add!(PoolWaterEditorPlugin, Editor);

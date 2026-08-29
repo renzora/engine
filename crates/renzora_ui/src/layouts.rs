@@ -309,7 +309,6 @@ pub fn scene_layout() -> DockTree {
                         "timeline".into(),
                         "mixer".into(),
                         "shape_library".into(),
-                        "record".into(),
                     ],
                     active_tab: 0,
                 },

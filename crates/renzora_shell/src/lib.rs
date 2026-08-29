@@ -3264,8 +3264,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("camera_preview", "Camera Preview", "video-camera", "Scene"),
     // Audio
     ("mixer", "Mixer", "faders", "Audio"),
-    ("record", "Record", "record", "Audio"),
-    ("daw", "Record", "record", "Audio"),
     // Animation
     ("timeline", "Timeline", "film-strip", "Animation"),
     ("animation", "Animation", "play-circle", "Animation"),

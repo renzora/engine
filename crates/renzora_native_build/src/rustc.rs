@@ -141,3 +141,187 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     push!("-o", t.out.display(), t.src.display());
     Ok(a)
 }
+
+/// Delete the compile by-products that sit beside a built plugin and are not
+/// needed to load it.
+///
+/// `-o foo.dll` does not produce one file. On Windows MSVC the linker also emits
+/// an **import library** (`foo.dll.lib`) and, if anything asked for symbols, a
+/// **PDB** (`foo.pdb`) that is routinely larger than the plugin itself —
+/// measured on the vignette plugin, 492 KB of `.dll` arrived with 744 KB of
+/// `.pdb` and 16 KB of `.lib`, so nearly two thirds of what shipped could not be
+/// loaded by anything. macOS has the same shape with a `.dSYM` bundle.
+///
+/// None of it reaches the loader. An import library exists so another crate can
+/// *link against* this one at build time, and nothing links against a plugin —
+/// the host opens it by symbol name at runtime. So these are build residue that
+/// happened to be written into the install directory.
+///
+/// Done by deletion rather than by passing `-C strip`: the import library is the
+/// linker's doing and no `rustc` flag suppresses it, so a flag would solve half
+/// the problem and leave the other half looking deliberate. Deleting also stays
+/// correct if a future toolchain starts emitting something new — the rule here
+/// is "keep the loadable image", not "suppress today's known extras".
+///
+/// Best-effort throughout. A plugin that built is a plugin that works, and
+/// failing a build because a stray file could not be unlinked (a debugger
+/// holding the PDB open is the ordinary case) would trade a working install for
+/// a tidy directory.
+///
+/// **Keeping symbols for a crash.** A plugin that segfaults now has no PDB to
+/// symbolicate, which is the cost of this. Comment out the call while
+/// diagnosing one, rather than shipping the file to everyone who installs the
+/// plugin.
+/// # What is deliberately NOT removed
+///
+/// The crate-metadata section is not deleted either — see [`hollow_metadata`],
+/// which empties it in place for reasons that took a broken editor to establish.
+pub fn prune_byproducts(out: &Path) {
+    hollow_metadata(out);
+    let Some(dir) = out.parent() else {
+        return;
+    };
+    let Some(file) = out.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    // Every candidate is derived from the artifact's own name, so this can only
+    // ever touch siblings the compiler just wrote for THIS plugin — never
+    // `stamp.txt`, never another plugin, never the loadable image itself.
+    let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or(file);
+    for name in [
+        // Windows: `vignette.dll.lib` / `vignette.dll.exp` (linker names them
+        // after the full output) and `vignette.pdb` (after the stem).
+        format!("{file}.lib"),
+        format!("{file}.exp"),
+        format!("{stem}.lib"),
+        format!("{stem}.exp"),
+        format!("{stem}.pdb"),
+    ] {
+        let path = dir.join(&name);
+        if path != out && path.is_file() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    // macOS ships debug info as a *directory* beside the dylib.
+    let dsym = dir.join(format!("{file}.dSYM"));
+    if dsym.is_dir() {
+        let _ = std::fs::remove_dir_all(&dsym);
+    }
+}
+
+/// Empty the `.rustc` crate-metadata section out of a built PE plugin.
+///
+/// `--crate-type dylib` embeds the crate's full metadata so another Rust crate
+/// can `--extern` this library. Nothing does that to a plugin — the host opens it
+/// by symbol name at runtime — and it is the **largest thing in the file**: on
+/// the vignette plugin, 203 KB of metadata against 183 KB of actual code, 41% of
+/// a 492 KB library, which is more than every other saving here combined.
+///
+/// # Why it is emptied rather than removed
+///
+/// The obvious move, `llvm-objcopy --remove-section=.rustc`, produces a library
+/// that **does not load**: `LoadLibraryExW` fails with error 193,
+/// `ERROR_BAD_EXE_FORMAT`. objcopy drops the section's bytes and closes the gap
+/// in the *file*, but leaves every remaining section's `VirtualAddress` where it
+/// was, so the mapped layout acquires a hole:
+///
+/// ```text
+/// .pdata   ends at VA 0x4A000
+/// .reloc  starts at VA 0x7D000     <- 0x33000 mapping nothing
+/// ```
+///
+/// Windows requires the section table to tile the image contiguously and rejects
+/// that. Confirmed by patching the three fields that close it — `.reloc`'s
+/// `VirtualAddress`, the base-relocation directory RVA, and `SizeOfImage` — after
+/// which the identical 294,912 bytes load fine.
+///
+/// This function takes the other route, which is both simpler and general:
+/// **keep the section header, drop only its file bytes.** `SizeOfRawData` and
+/// `PointerToRawData` go to zero, which is exactly how an uninitialised (`.bss`)
+/// section is expressed in PE, so the loader maps that address range as zero-fill.
+/// Nothing moves in virtual address space, so `SizeOfImage`, every data directory
+/// and every other section's VA stay untouched — and it does not care where
+/// `.rustc` sits or how many sections follow it, where relocating `.reloc` only
+/// worked because it happened to be the single section after it.
+///
+/// It also leaves the image *safer* than deletion did: the `rust_metadata_*`
+/// export still points at a mapped, zero-filled page rather than outside the
+/// image entirely.
+///
+/// # Verify any change here by loading the result
+///
+/// Every static check passes on the broken variant — all exports present, both
+/// loader symbols resolvable, imports intact, `SizeOfImage` and all sixteen data
+/// directories byte-identical to a working build, section table self-consistent.
+/// `llvm-readobj` cannot see the fault. Only `LoadLibraryExW` can.
+///
+/// Best-effort and non-PE-safe: anything unrecognised leaves the file untouched.
+fn hollow_metadata(out: &Path) {
+    let Ok(mut b) = std::fs::read(out) else {
+        return;
+    };
+    let rd32 = |b: &[u8], o: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?))
+    };
+    let rd16 = |b: &[u8], o: usize| -> Option<u16> {
+        Some(u16::from_le_bytes(b.get(o..o + 2)?.try_into().ok()?))
+    };
+    // Not a PE at all (an ELF/Mach-O host, or a fixture) — nothing to do.
+    if b.first_chunk::<2>() != Some(b"MZ") {
+        return;
+    }
+    let Some(pe) = rd32(&b, 0x3C).map(|v| v as usize) else { return };
+    if b.get(pe..pe + 4) != Some(b"PE\0\0") {
+        return;
+    }
+    let opt = pe + 24;
+    let (Some(n_sec), Some(opt_size)) = (rd16(&b, pe + 6), rd16(&b, pe + 20)) else {
+        return;
+    };
+    // A signed image records its certificate by FILE OFFSET, so shrinking the
+    // file would invalidate it. Plugins are not signed; refuse rather than
+    // silently corrupt one that is.
+    if rd32(&b, opt + 112 + 4 * 8).is_none_or(|rva| rva != 0) {
+        return;
+    }
+    let sec = opt + opt_size as usize;
+    let hdr = |i: usize| sec + i * 40;
+    let Some(target) = (0..n_sec as usize).find(|&i| {
+        b.get(hdr(i)..hdr(i) + 8).is_some_and(|n| n.starts_with(b".rustc\0"))
+    }) else {
+        return;
+    };
+    let (Some(size), Some(ptr)) = (rd32(&b, hdr(target) + 16), rd32(&b, hdr(target) + 20)) else {
+        return;
+    };
+    let (size, ptr) = (size as usize, ptr as usize);
+    if size == 0 || ptr == 0 || ptr + size > b.len() {
+        return;
+    }
+    // Every section whose data sits after the hole slides down by exactly the
+    // amount removed. `PointerToRawData == 0` means "no file data", so those are
+    // left alone rather than wrapped around.
+    for i in 0..n_sec as usize {
+        let Some(p) = rd32(&b, hdr(i) + 20) else { return };
+        if p as usize > ptr {
+            b[hdr(i) + 20..hdr(i) + 24].copy_from_slice(&(p - size as u32).to_le_bytes());
+        }
+    }
+    // The section keeps its VirtualAddress and VirtualSize; only its presence in
+    // the file goes away.
+    b[hdr(target) + 16..hdr(target) + 20].copy_from_slice(&0u32.to_le_bytes());
+    b[hdr(target) + 20..hdr(target) + 24].copy_from_slice(&0u32.to_le_bytes());
+    b.drain(ptr..ptr + size);
+
+    // Written through a temp file and renamed, so a crash mid-write cannot leave
+    // a truncated library where a working one was.
+    let tmp = out.with_extension("hollow.tmp");
+    if std::fs::write(&tmp, &b).is_ok() {
+        if std::fs::rename(&tmp, out).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+

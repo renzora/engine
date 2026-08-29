@@ -7529,16 +7529,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_daw"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_audio",
- "renzora_ember",
-]
-
-[[package]]
 name = "renzora_debugger"
 version = "0.1.0"
 dependencies = [
@@ -7625,7 +7615,6 @@ dependencies = [
  "renzora_command_palette",
  "renzora_console",
  "renzora_context_menu",
- "renzora_daw",
  "renzora_debugger",
  "renzora_distance_fog",
  "renzora_distance_fog_editor",
@@ -7675,7 +7664,6 @@ dependencies = [
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
- "renzora_pool_water_editor",
  "renzora_procedural_tree_editor",
  "renzora_scene",
  "renzora_scripting",
@@ -8461,25 +8449,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_pool_water"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_pool_water_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_pool_water",
-]
-
-[[package]]
 name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
@@ -8617,7 +8586,6 @@ dependencies = [
  "renzora_oit",
  "renzora_parkour",
  "renzora_physics",
- "renzora_pool_water",
  "renzora_postprocess",
  "renzora_procedural_tree",
  "renzora_ragdoll",
@@ -8634,7 +8602,6 @@ dependencies = [
  "renzora_text3d",
  "renzora_tilemap",
  "renzora_tonemapping",
- "renzora_vignette",
  "renzora_volumetric_fog",
  "renzora_water",
  "renzora_wind",
@@ -9129,15 +9096,6 @@ dependencies = [
  "renzora_ui",
  "renzora_undo",
  "serde_json",
-]
-
-[[package]]
-name = "renzora_vignette"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
 ]
 
 [[package]]

@@ -1,3 +1,24 @@
+//! Pool water — refraction, caustics and a rippling height simulation, as a
+//! native plugin.
+//!
+//! In the workspace this was two crates, `renzora_pool_water` (Runtime) and
+//! `renzora_pool_water_editor` (Editor), split so a shipped game would not drag
+//! in the editor framework. Here they are one `Runtime` plugin: it loads in the
+//! editor *and* in a copy-based export, and the inspector registration costs a
+//! game one `Vec` push into a registry it never reads.
+//!
+//! Two things had to change coming across, and both are silent failures rather
+//! than compile errors if missed:
+//!
+//! * **`serde` comes from `renzora`.** A plugin's own crates.io dependencies are
+//!   resolved separately from the engine's, so a plain `serde = "1"` is a
+//!   different crate from the one Bevy derives against. Using the contract
+//!   crate's copy also means cargo never runs for this plugin at all.
+//! * **No `cfg(feature = "editor")`.** A native plugin is compiled by `rustc`
+//!   with no features set, so that gate is always false — the inspector would
+//!   vanish with nothing logged.
+
+pub mod inspector;
 pub mod material;
 pub mod simulation;
 
@@ -7,7 +28,7 @@ use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::pbr::MaterialPlugin;
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
+use renzora::serde::{Deserialize, Serialize};
 
 use material::{PoolWaterMaterial, PoolWaterUniforms};
 use simulation::WaterSim;
@@ -27,6 +48,7 @@ pub struct PoolWaterSurface(pub Entity);
 /// Attach to any mesh entity (e.g. a cube) to turn it into a pool.
 /// A water surface child entity is spawned automatically inside it.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 #[reflect(Component, Default)]
 pub struct PoolWater {
     /// How far below the top face the water sits (0 = flush with top, 0.1 = slightly below)
@@ -318,7 +340,7 @@ pub struct PoolWaterPlugin;
 
 impl Plugin for PoolWaterPlugin {
     fn build(&self, app: &mut App) {
-        info!("[runtime] PoolWaterPlugin");
+        info!("[pool_water] native plugin");
 
         embedded_asset!(app, "pool_water.wgsl");
 
@@ -333,7 +355,11 @@ impl Plugin for PoolWaterPlugin {
                     cleanup_pool_water,
                 ),
             );
+
+        inspector::register(app);
     }
 }
 
-renzora::add!(PoolWaterPlugin);
+// `Runtime`, explicitly. `plugin!` defaults to `Editor` where `add!` defaulted
+// to `Runtime`, so omitting this would quietly stop shipping the water to games.
+renzora::plugin!(PoolWaterPlugin, Runtime);

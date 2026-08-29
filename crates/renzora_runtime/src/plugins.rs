@@ -74,8 +74,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
-    #[cfg(feature = "pool_water")]
-    app.add_plugins(renzora_pool_water::PoolWaterPlugin::default());
     #[cfg(feature = "procedural_tree")]
     app.add_plugins(renzora_procedural_tree::ProceduralTreePlugin::default());
     #[cfg(feature = "ragdoll")]
@@ -106,8 +104,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "tilemap")]
     app.add_plugins(renzora_tilemap::TilemapPlugin::default());
     app.add_plugins(renzora_tonemapping::TonemappingPlugin::default());
-    #[cfg(feature = "vignette")]
-    app.add_plugins(renzora_vignette::VignettePlugin::default());
     #[cfg(feature = "volumetric_fog")]
     app.add_plugins(renzora_volumetric_fog::VolumetricFogPlugin::default());
     #[cfg(feature = "water")]

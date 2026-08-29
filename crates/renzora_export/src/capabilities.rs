@@ -448,32 +448,12 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "vignette",
-        section: "postfx",
-        label: "Vignette",
-        help: "Screen-edge darkening.",
-        bevy_features: &[],
-        runtime_features: &["vignette"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
         id: "forward_decal",
         section: "render_3d",
         label: "Forward decals",
         help: "Projected decals on forward-rendered surfaces.",
         bevy_features: &[],
         runtime_features: &["forward_decal"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "pool_water",
-        section: "render_3d",
-        label: "Pool water",
-        help: "The animated pool-water material.",
-        bevy_features: &[],
-        runtime_features: &["pool_water"],
         default_on: true,
         group: None,
     },
@@ -1035,7 +1015,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
             "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing",
             // 3D-only extras that build on bevy_pbr
             "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting", "text3d",
-            "forward_decal", "pool_water", "procedural_tree",
+            "forward_decal", "procedural_tree",
         ] {
             if !out.iter().any(|x| x == f) {
                 out.push(f.to_string());

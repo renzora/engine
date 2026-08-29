@@ -344,7 +344,7 @@ impl Sdk {
         };
         let args = native_build::rustc::args(&target).map_err(Error::Deps)?;
 
-        let mut cmd = Command::new(rustc);
+        let mut cmd = Command::new(&rustc);
         for (key, value) in native_build::rustc::env_vars(&target) {
             cmd.env(key, value);
         }
@@ -377,6 +377,10 @@ impl Sdk {
         if !status.success() {
             return Err(Error::Compile(collected));
         }
+        // Drop the import library and debug symbols the linker left beside the
+        // plugin. Nothing loads them, and on Windows they outweigh the plugin.
+        // After success only: a failed build's leftovers are worth reading.
+        native_build::rustc::prune_byproducts(out);
         Ok(self.stamp())
     }
 }
