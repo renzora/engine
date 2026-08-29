@@ -468,16 +468,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "spline",
-        section: "simulation",
-        label: "Splines",
-        help: "The spline subsystem.",
-        bevy_features: &[],
-        runtime_features: &["spline"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "navmesh",
         section: "simulation",
         label: "Navmesh pathfinding",
@@ -977,7 +967,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
         // particles (bevy_hanabi) references bevy_pbr in its asset path — drop it
         // too in 2D (a dedicated 2D-particle path can re-add it later).
         for f in [
-            "terrain", "water", "spline", "particles",
+            "terrain", "water", "particles",
             // former `sky` bundle
             "atmosphere", "environment_map", "skybox",
             // former `postfx` bundle

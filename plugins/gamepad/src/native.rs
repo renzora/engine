@@ -50,7 +50,10 @@ pub(crate) struct StickMaterial {
 
 impl UiMaterial for StickMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_gamepad/stick.wgsl".into()
+        // The crate name is part of an `embedded://` path and this crate is now
+        // `gamepad`, not `renzora_gamepad`. Not a compile error if wrong — the
+        // shader just fails to resolve at runtime.
+        "embedded://gamepad/stick.wgsl".into()
     }
 }
 
@@ -545,9 +548,17 @@ fn gamepad_snapshot(world: &Rx) -> KeyedSnapshot {
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_gamepad(app: &mut App) {
+    use renzora::core::RenzoraShellExt;
     use renzora::SplashState;
     bevy::asset::embedded_asset!(app, "stick.wgsl");
     app.add_plugins(UiMaterialPlugin::<StickMaterial>::default());
+    // The tab's title/icon/category used to come from the shell's static
+    // `PANEL_META` table. A plugin has to own its own entry: left in the shell,
+    // disabling this plugin would leave the panel listed in Add Panel with
+    // nothing behind it. `seed_panel_meta` uses `or_insert_with`, and a native
+    // plugin registers during the runtime phase — before the shell seeds — so
+    // this wins either way.
+    app.register_shell_panel(PANEL_ID, "Gamepad", "game-controller", "Input");
     // Build once; the reactive keyed list drives the controller rows from here on.
     app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands

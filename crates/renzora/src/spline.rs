@@ -1,13 +1,20 @@
-//! Spline primitive — control-point path with Catmull-Rom interpolation.
+//! `SplinePath` — a control-point path and its curve evaluation.
 //!
-//! A [`SplinePath`] is an authored set of world-local control points. The
-//! sampling methods produce a smooth curve through every control point using
-//! the centripetal Catmull-Rom formulation (chord-length parameterisation),
-//! which avoids cusps and self-intersections around sharp turns.
+//! The type and its maths are here; the `spline` **native plugin** keeps the
+//! systems. Same boundary reason as [`crate::clouds`] and [`crate::sun`]:
+//! `renzora_terrain_editor` builds a path with `SplinePath::with_points` and
+//! draws it by sampling the curve, and it is compiled into the editor binary
+//! while the plugin is loaded at runtime — a binary cannot name a type that
+//! lives in a plugin.
 //!
-//! Splines are stored on regular entities alongside a `Transform`, so the
-//! whole path can be translated/rotated/scaled as one unit. Other systems
-//! (brush, road mesh, water strip) read the component and sample.
+//! The evaluation moved with the struct rather than staying behind, because a
+//! path you cannot sample is not much of a path: the gizmo overlay that draws
+//! the smooth curve is in the editor, so splitting the data from the maths would
+//! have meant reimplementing centripetal Catmull-Rom on the other side of the
+//! boundary and hoping the two agreed.
+//!
+//! It is all pure `Vec3` arithmetic, which is exactly what belongs in a contract
+//! crate — no assets, no resources, nothing to keep in sync.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -87,7 +94,7 @@ impl SplinePath {
     }
 
     /// Sample `count` evenly-spaced points along the full curve (in param space).
-    /// For uniform arc-length spacing, use [`sample_by_arc_length`].
+    /// For uniform arc-length spacing, use [`SplinePath::sample_by_arc_length`].
     pub fn sample_uniform(&self, count: usize) -> Vec<Vec3> {
         if count == 0 || self.control_points.is_empty() {
             return Vec::new();
@@ -203,18 +210,9 @@ fn catmull_rom(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: f32) -> Vec3 {
     b1 * ((t2 - t) / (t2 - t1).max(1e-6)) + b2 * ((t - t1) / (t2 - t1).max(1e-6))
 }
 
-#[derive(Default)]
-pub struct SplinePlugin;
-
-impl Plugin for SplinePlugin {
-    fn build(&self, app: &mut App) {
-        info!("[runtime] SplinePlugin");
-        app.register_type::<SplinePath>();
-    }
-}
-
-renzora::add!(SplinePlugin);
-
+// Moved here with the maths. Left behind in the `spline` plugin these would
+// never run again — `plugins/` is outside the workspace, so no `cargo test -p`
+// reaches it and CI would not have noticed the coverage going away.
 #[cfg(test)]
 mod tests {
     use super::*;

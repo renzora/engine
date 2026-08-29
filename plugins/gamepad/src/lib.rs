@@ -50,4 +50,6 @@ fn hide_gamepad_entities(
     }
 }
 
-renzora::add!(GamepadPlugin, Editor);
+// `Editor` — a diagnostic panel, not something a game ships. Also `plugin!`'s
+// default, stated explicitly because it differs from `add!`'s.
+renzora::plugin!(GamepadPlugin, Editor);

@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "text3d", "forward_decal", "procedural_tree"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "text3d", "forward_decal", "procedural_tree"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -165,7 +165,6 @@ sprite_anim = ["dep:renzora_sprite_anim"]
 # `renzora_navmesh?/terrain`: enable navmesh's terrain-obstacle support only when
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
 terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
-spline = ["dep:renzora_spline"]
 water = ["dep:renzora_water"]
 audio = ["dep:renzora_audio", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
@@ -283,7 +282,6 @@ renzora_input = { path = "../renzora_input" }
 renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
-renzora_spline = { path = "../renzora_spline", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water", optional = true }
 renzora_animation = { path = "../renzora_animation", optional = true }

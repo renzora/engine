@@ -70,7 +70,6 @@ editor = [
     "dep:renzora_debugger",
     "dep:renzora_export",
     "dep:renzora_foliage_editor",
-    "dep:renzora_gamepad",
     "dep:renzora_hierarchy",
     "dep:renzora_history",
     "dep:renzora_hub",
@@ -155,7 +154,6 @@ renzora_context_menu       = { path = "../renzora_context_menu", optional = true
 renzora_debugger           = { path = "../renzora_debugger", optional = true }
 renzora_export             = { path = "../renzora_export", optional = true }
 renzora_foliage_editor     = { path = "../renzora_foliage_editor", optional = true }
-renzora_gamepad            = { path = "../renzora_gamepad", optional = true }
 renzora_hierarchy          = { path = "../renzora_hierarchy", optional = true }
 renzora_history            = { path = "../renzora_history", optional = true }
 renzora_hub                = { path = "../renzora_hub", optional = true }

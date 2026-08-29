@@ -59,6 +59,11 @@ pub use auto_exposure::*;
 pub mod sun;
 pub use sun::*;
 
+// `SplinePath` + its Catmull-Rom evaluation. `renzora_terrain_editor` builds and
+// draws paths while compiled into the binary; the systems are a plugin.
+pub mod spline;
+pub use spline::*;
+
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened

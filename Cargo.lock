@@ -7577,7 +7577,6 @@ dependencies = [
  "renzora_export",
  "renzora_foliage_editor",
  "renzora_forward_decal_editor",
- "renzora_gamepad",
  "renzora_gizmo",
  "renzora_grid",
  "renzora_hanabi",
@@ -7832,15 +7831,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_forward_decal",
-]
-
-[[package]]
-name = "renzora_gamepad"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_ember",
 ]
 
 [[package]]
@@ -8502,7 +8492,6 @@ dependencies = [
  "renzora_shader",
  "renzora_skybox",
  "renzora_solari",
- "renzora_spline",
  "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
@@ -8712,16 +8701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_spline"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "renzora_sprite_anim"
 version = "0.1.0"
 dependencies = [
@@ -8825,7 +8804,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_spline",
  "renzora_terrain",
  "renzora_undo",
  "rfd",
