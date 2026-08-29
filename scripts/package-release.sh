@@ -319,6 +319,67 @@ if [ ${#FOUND[@]} -eq 0 ]; then
     exit 1
 fi
 
+# ── engine-source.zip ────────────────────────────────────────────────────────
+# The engine source, published as one more release asset.
+#
+# A lean single-binary export RECOMPILES the engine, so it needs the source — and
+# a canonical editor download ships binaries only. Without this, lean builds are
+# a contributors-only feature and everyone else gets "run the editor from a
+# source checkout", which is not something a game developer can act on. The
+# editor fetches this into `~/.renzora/src/<version>/` exactly as it fetches a
+# runtime template into `~/.renzora/templates/<version>/<platform>/`.
+#
+# `git archive` rather than a `zip` of the working tree: it takes what is
+# COMMITTED at this tag, so a dirty tree on the packaging runner cannot leak
+# local edits into a published archive, and `.gitignore`d output (`target/`,
+# `dist/`, `node_modules/`) is excluded by construction rather than by a list
+# that would drift.
+#
+# Skipped rather than fatal when this is not a git checkout — the platform
+# assets are still valid, and lean builds simply keep needing a checkout.
+# Resolved from this script's own location rather than the working directory,
+# which the caller sets to wherever the artifacts are.
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "── engine source"
+    src_asset="$OUT_DIR/engine-source.zip"
+    # Trimmed to what a lean build actually compiles. Measured on r1-alpha7 the
+    # full tree is 52 MB zipped and this is 22.5 MB, and the difference is all
+    # things the compiler never reads:
+    #
+    #   templates/         20.4 MB  project scaffolding for `renzora new`
+    #   assets/previews/    6.6 MB  asset-browser thumbnails, editor-only
+    #   docs/               3.2 MB
+    #   tools/              2.1 MB  the updater — its own workspace, not built here
+    #   .github/            0.1 MB
+    #
+    # What deliberately STAYS, because cutting it would break the build or the
+    # binary it produces:
+    #   crates/ src/ Cargo.* build.rs rust-toolchain.toml .cargo/  the build itself
+    #   docker/            the Dockerfiles a cross build hashes for its image tag
+    #   plugins/           read by `stage_static_plugins` when linking plugins in
+    #   assets/particles|images|materials|ui   `include_str!`d into the binary
+    #   assets/shaders|fonts|themes            loaded by PATH at run time
+    #   languages/                             loaded from disk at run time
+    #
+    # Verify with `unzip -l` after changing this list: a missing compile input
+    # fails loudly, but a missing RUNTIME asset only shows up in the exported
+    # game, long after anyone would connect it to this line.
+    if git -C "$REPO_ROOT" archive --format=zip -o "$src_asset" HEAD -- . \
+        ':(exclude)templates' \
+        ':(exclude)docs' \
+        ':(exclude)tools' \
+        ':(exclude).github' \
+        ':(exclude)assets/previews'; then
+        record "$src_asset" all source
+    else
+        echo "WARN: git archive failed — publishing without the engine source"
+        rm -f "$src_asset"
+    fi
+else
+    echo "WARN: not a git checkout — publishing without the engine source"
+fi
+
 # ── manifest.json ────────────────────────────────────────────────────────────
 # The editor fetches this by its deterministic download URL, so it can resolve
 # and checksum a template with ONE unauthenticated request — no GitHub API call,
