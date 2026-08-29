@@ -179,6 +179,34 @@ pub fn build_from(
         })?,
     };
 
+    let out = dist_root.join("sdk");
+    let deps_mtime = deps_dir_mtime(&from.profile_dir(repo));
+
+    // Skip BEFORE the cargo run below, not just before staging. That invocation
+    // exists only to re-read a finished build, and on an already-built tree it
+    // still costs a full workspace fingerprint check — a second or so of the
+    // couple of seconds a no-op `cargo renzora` takes.
+    //
+    // Two conditions, because one of them alone is unsound:
+    //
+    // * the `deps/` directory's mtime, which moves when an artifact is added or
+    //   removed. A crate added to the workspace leaves every *existing* artifact
+    //   byte-for-byte identical, so per-file stats cannot see it — and an SDK
+    //   missing a crate fails later as `can't find crate`, pointing at the
+    //   plugin rather than at here.
+    // * the per-artifact stamp over the cached list, which catches a rewrite in
+    //   place, where the directory's own mtime does not move.
+    //
+    // Anything unreadable or absent falls through to the real enumeration.
+    if out.join("manifest.json").is_file() {
+        if let Some(cached) = cache_read(&out) {
+            if cached.deps_mtime == deps_mtime && input_stamp(&cached.artifacts) == cached.stamp {
+                println!("[xtask] sdk: unchanged, staging skipped");
+                return Ok(out);
+            }
+        }
+    }
+
     // A second cargo invocation, and a deliberate one. The normal build's output
     // is what a developer reads; `--message-format=json` would replace the
     // `Compiling …` progress with machine output. On an already-built tree this
@@ -207,7 +235,6 @@ pub fn build_from(
         }
     }
 
-    let out = dist_root.join("sdk");
     let profile_dir = from.profile_dir(repo);
 
     // Staging wipes `deps/`, `host-deps/` and `native/` and re-links ~1000 files
@@ -215,27 +242,86 @@ pub fn build_from(
     // is load-bearing (a crate dropped from the workspace must not linger as a
     // metadata file a later plugin build could still resolve), so this cannot be
     // made incremental file-by-file. It can be skipped wholesale, which is what
-    // the stamp below decides.
+    // the stamp decides.
     //
     // mtime + length per artifact, not content: anything the compiler rewrote
     // has a new mtime, and reading a gigabyte of rlibs to find out nothing moved
     // would cost more than the staging it is trying to avoid.
     let stamp = input_stamp(&artifacts);
-    let stamp_path = out.join(".stage-stamp");
-    let fresh = out.join("manifest.json").is_file()
-        && std::fs::read_to_string(&stamp_path).is_ok_and(|s| s.trim() == stamp);
-    if fresh {
+    if out.join("manifest.json").is_file() && cache_read(&out).is_some_and(|c| c.stamp == stamp) {
         println!("[xtask] sdk: unchanged, staging skipped");
     } else {
         stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
             eprintln!("[xtask] sdk staging failed: {e}");
             ExitCode::FAILURE
         })?;
-        // Written only after a staging that succeeded, so a failed or
-        // interrupted run leaves no stamp and the next one redoes the work.
-        let _ = std::fs::write(&stamp_path, &stamp);
     }
+    // Rewritten on every run that got this far, NOT only when staging happened.
+    // Reaching here means the enumeration agreed with what is on disk, so the
+    // `deps` key recorded now is the one the early return should compare against
+    // next time. Writing it only after a stage left the key stale whenever the
+    // stamp matched but the key did not — which disarmed the fast path
+    // permanently, so every later run paid the cargo enumeration to conclude
+    // nothing had changed.
+    //
+    // Still never written on a failed stage: that path returns above.
+    cache_write(&out, &deps_mtime, &stamp, &artifacts);
     Ok(out)
+}
+
+/// What the last successful staging was cut from, so the next run can tell
+/// whether to do any of it again.
+struct StageCache {
+    /// mtime of the build's `deps/` directory, which changes when an artifact is
+    /// added or removed but not when one is rewritten in place.
+    deps_mtime: String,
+    /// [`input_stamp`] over `artifacts`, which catches the rewrite case.
+    stamp: String,
+    artifacts: Vec<(PathBuf, bool)>,
+}
+
+/// The cache file: `deps` mtime, stamp, then one `0|1<TAB>path` line per
+/// artifact.
+fn cache_path(out: &Path) -> PathBuf {
+    out.join(".stage-cache")
+}
+
+fn cache_read(out: &Path) -> Option<StageCache> {
+    let text = std::fs::read_to_string(cache_path(out)).ok()?;
+    let mut lines = text.lines();
+    let deps_mtime = lines.next()?.to_string();
+    let stamp = lines.next()?.to_string();
+    let mut artifacts = Vec::new();
+    for line in lines {
+        let (flag, path) = line.split_once('\t')?;
+        artifacts.push((PathBuf::from(path), flag == "1"));
+    }
+    Some(StageCache { deps_mtime, stamp, artifacts })
+}
+
+fn cache_write(out: &Path, deps_mtime: &str, stamp: &str, artifacts: &[(PathBuf, bool)]) {
+    let mut text = format!("{deps_mtime}\n{stamp}\n");
+    for (path, proc_macro) in artifacts {
+        text.push_str(if *proc_macro { "1\t" } else { "0\t" });
+        text.push_str(&path.to_string_lossy());
+        text.push('\n');
+    }
+    let _ = std::fs::write(cache_path(out), text);
+}
+
+/// The `deps/` directory's own mtime, as a string (`""` when unreadable).
+///
+/// Used as the cheap half of the "did cargo produce anything new" test: a
+/// directory's mtime moves when an entry is added or removed, which is exactly
+/// the case per-file stats cannot see — a crate added to the workspace leaves
+/// every existing artifact untouched.
+fn deps_dir_mtime(profile_dir: &Path) -> String {
+    std::fs::metadata(profile_dir.join("deps"))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default()
 }
 
 /// Run the build and collect the `.rlib` / proc-macro / import-library paths it
