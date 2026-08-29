@@ -1,6 +1,6 @@
 # Visual Blueprints
 
-Wire up entity logic with a node graph instead of code — saved as a `.blueprint` file and interpreted directly by the engine at runtime.
+Wire up entity logic with a node graph instead of code — saved as a `.blueprint` file, compiled to Lua, and run through the script VM.
 
 ## What a blueprint is
 
@@ -8,19 +8,19 @@ A blueprint is a visual node graph stored as a `BlueprintGraph`. On disk it is a
 
 The system lives in the `renzora_blueprint` crate. Its `BlueprintPlugin` registers itself with `renzora::add!(BlueprintPlugin)` at runtime scope, so blueprints run in **both the editor (play mode) and exported games** — there is nothing extra to enable.
 
-Every frame that scripts are running, the interpreter (`interpreter::run_blueprints`) walks each entity that has a `BlueprintGraph`, starting from its event nodes, and emits engine actions — `ScriptAction`s, transform writes, and character commands — that the same physics/audio/UI/animation systems consume from Lua and Rhai scripts.
+**A blueprint compiles to Lua.** `compiler` walks the graph, dispatches to the per-node semantics in `nodes`, and emits Lua source that then runs through the script VM exactly as a hand-written script does. There is no live graph interpreter and no per-frame walking of the graph — compilation is the single execution path, mirroring how Unreal compiles Blueprints to bytecode.
 
-> Blueprints are **interpreted directly** — they are *not* compiled to Lua (or to any bytecode) before they run. The graph is walked live each tick. The old claim that "blueprints compile to the same internal representation as scripts with no performance difference" is wrong: they are a distinct, interpreted execution path.
+> This has one consequence that is easy to miss: **a blueprint needs the Lua backend present**. Remove `plugins/lua` and blueprints stop running along with `.lua` files, because there is nothing left to execute what they compile to.
 
 ### Blueprints vs. text scripts
 
-Blueprints and text scripts ([Lua](/docs/r1-alpha7/scripting/lua)) are **separate systems** that happen to share the same downstream action plumbing:
+Blueprints and text scripts ([Lua](/docs/r1-alpha7/scripting/lua)) are two front-ends onto one execution path:
 
-- A blueprint is **not** a 1:1 visual mirror of the scripting API. It exposes its own, smaller node palette (listed below). Anything outside that palette has to be done in Lua or Rhai.
+- A blueprint is **not** a 1:1 visual mirror of the scripting API. It exposes its own, smaller node palette (listed below). Anything outside that palette has to be written in Lua.
 - A single entity can carry **both** a `BlueprintGraph` component and a `ScriptComponent` — they run side by side and write to the same world.
-- Blueprint event nodes mirror only a subset of the script lifecycle hooks; there is no blueprint equivalent of, for example, `on_rpc` or `on_http`.
+- Blueprint event nodes mirror only a subset of the script lifecycle hooks; there is no blueprint equivalent of, for example, `on_rpc` or `on_http`. Blueprints do have collision, timer and message events that text scripts have no hook for.
 
-> **Editor-only "bake to Lua".** The editor can export a graph to a Lua file (`apply_blueprint_to_lua` → `scripts/bp_<name>.lua`) and attach it as a script. This is a one-way convenience for reading/extending the generated code — it is **not** how blueprints normally execute. The shipped runtime always interprets the `BlueprintGraph` directly.
+> **"Bake to Lua" in the editor** (`apply_blueprint_to_lua` → `scripts/bp_<name>.lua`) writes that compiled source out as a file and attaches it as an ordinary script. It is the same compiler the runtime uses, so the baked file is what was going to run anyway — the point is to read or extend it by hand, after which it is a normal script and no longer tracks the graph.
 
 ## The Blueprint Editor
 

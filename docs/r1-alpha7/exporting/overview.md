@@ -454,7 +454,7 @@ renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 
 The web build is **game-runtime only** — there is no WebAssembly editor. It runs on **WebGPU**, and several native-only subsystems compile to no-ops in the browser:
 
-- **Lua is not compiled** on `wasm32`; only **Rhai** (`.rhai`) scripts run. Author web-targeted logic in Rhai.
+- **Text scripting is unavailable** on `wasm32`. Language backends are C-ABI plugins loaded with `dlopen`, which the browser has no equivalent of, so no backend is adopted and `.lua` files do not run. Blueprints compile to Lua, so they do not run either. Web-targeted logic has to live in Rust today. (The `.rhai` backend that used to fill this gap has been removed.)
 - The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio — the bundled `plugins/audio` is native, because cpal cannot capture on the web. See [Audio backends](../extending/audio-backends.md).
 - Networking is a no-op stub (no native UDP), so multiplayer is unavailable on web.
 

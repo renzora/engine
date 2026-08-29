@@ -113,7 +113,7 @@ Each row's **eye** toggles whether the object is visible, and the **lock** preve
 
 Just left of the eye and lock you'll also see small **asset badges** when an object carries authored assets, so you can tell what's attached without opening the Inspector — and **click a badge to jump straight to that asset's editor**:
 
-- a **code** icon — the object has a script (a `.lua`/`.rhai` file or a registered script); clicking opens it in the **code editor**;
+- a **code** icon — the object has a script (a `.lua`/`.rs` file or a registered script); clicking opens it in the **code editor**;
 - a **blueprint** icon — it has a visual blueprint (a `.blueprint` attached to its Script component); clicking opens the **blueprint graph**;
 - a **palette** icon — it has a material assigned (a `MaterialRef`); clicking opens the **material graph**.
 

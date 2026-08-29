@@ -61,7 +61,7 @@ An AudioListener wins over the camera wherever it is. Untick **Active** to disab
 
 ## Playing sounds from a script
 
-You can also trigger sounds with code. The same functions work in Lua, Rhai, and visual Blueprints, so use whichever you prefer.
+You can also trigger sounds with code. The same functions work in Lua and in visual Blueprints, so use whichever you prefer.
 
 ```lua
 function on_ready()
@@ -90,7 +90,7 @@ The handful of functions you'll use most:
 
 > Music does not crossfade — starting a new track stops the old one right away (with an optional fade-in).
 
-Rhai can play audio too, but with simpler function signatures, and the keyboard-input functions shown above are Lua-only. For the full list of audio functions and the small Lua/Rhai differences, see the [Lua scripting guide](/docs/r1-alpha7/scripting/lua) and the [Scripting API](/docs/r1-alpha7/api/scripting).
+For the full list of audio functions, see the [Lua scripting guide](/docs/r1-alpha7/scripting/lua) and the [Scripting API](/docs/r1-alpha7/api/scripting).
 
 ## The mixer
 

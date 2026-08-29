@@ -120,12 +120,9 @@ renzora::lang::revision(); // monotonic; compare to a stored value
 
 ## Scripting
 
-Scripts get a `tr(key)` function in both backends:
+Scripts get a `tr(key)` function:
 
 ```lua
 set_text(label, tr("hud.score"))
 ```
 
-```rhai
-set_text(label, tr("hud.score"));
-```

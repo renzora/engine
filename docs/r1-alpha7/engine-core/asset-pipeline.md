@@ -703,9 +703,9 @@ Key `scene_io` entry points: `save_scene` / `save_current_scene`, `load_scene`, 
 
 | Extension | Backend |
 |---|---|
-| `.lua` | Lua (mlua 0.10) — **native only** |
-| `.rhai` | Rhai (1.21) — **all platforms**, including WASM |
-| `.js` / `.ts` | Tagged `AssetKind::Script` with a code icon, but **there is no JS/TS backend** — cosmetic recognition only |
+| `.lua` | Lua (mlua, Lua 5.4) — from `plugins/lua`, so **native only**: the web build cannot load a backend plugin |
+| `.rs` | Rust scripts — compiled to a native plugin per script, native only |
+| `.rhai` / `.js` / `.ts` | Tagged `AssetKind::Script` with a code icon, but **there is no backend** for any of them — cosmetic recognition only. (Rhai's backend was removed.) |
 
 ### Other authored formats
 

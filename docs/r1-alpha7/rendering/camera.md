@@ -187,11 +187,4 @@ function on_update()
 end
 ```
 
-```rhai
-// Rhai
-fn on_update() {
-    screen_shake(0.3, 0.2);
-}
-```
-
 > Functions like `set_camera_fov`, `set_camera_position`, `camera_look_at`, `camera_screen_to_world`, and `camera_world_to_screen` do **not** exist. A few camera verbs (`camera_follow`, `set_camera_target`, `zoom`) are defined in the internal `ScriptCommand` enum but have **no** Lua binding, so they are not callable from scripts today. See [Lua scripting](/docs/r1-alpha7/scripting/lua) for the full function surface.

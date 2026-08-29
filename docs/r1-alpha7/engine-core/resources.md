@@ -232,13 +232,13 @@ The big engine subsystems each expose their state as a resource you can read fro
 
 | Resource | Crate | What it holds |
 |---|---|---|
-| `ScriptEngine` | `renzora_scripting` | The active script backends (`Vec<Box<dyn ScriptBackend>>` — Lua + Rhai, dispatched by file extension) |
+| `ScriptEngine` | `renzora_scripting` | The active script backends (`Vec<Box<dyn ScriptBackend>>`, dispatched by file extension) |
 | `AssetRegistry` | `renzora_asset_registry` | A metadata-only index (path, `AssetKind`, size, mtime) of every file under the project; rebuilt on project open |
 | `NetworkStatus` | `renzora_network` | Connection state, `is_server`, `client_id`, and per-client info |
 | `EffectRouting` | `renzora` | `routes: Vec<(Entity, Vec<Entity>)>` mapping post-process settings sources onto target cameras |
 | `LumenDiagState` | `renzora` (`gi`) | Per-frame GI diagnostics snapshot |
 
-> `ScriptEngine` is a registry of backends, not a `rhai_engine`/`lua_state` pair — scripts dispatch to a backend by extension (`.lua` → Lua, `.rhai` → Rhai). And several `NetworkStatus` fields (`rtt_ms`, `jitter_ms`, `packet_loss`, `client_id`) are defined but not yet populated by the networking layer, so they currently read as zero/`None`.
+> `ScriptEngine` is a registry of backends, not a single `lua_state` — scripts dispatch to a backend by extension (`.lua` → Lua, `.rs` → Rust scripts), and a backend arrives from a plugin rather than being compiled in. And several `NetworkStatus` fields (`rtt_ms`, `jitter_ms`, `packet_loss`, `client_id`) are defined but not yet populated by the networking layer, so they currently read as zero/`None`.
 
 ### Browsing them: the Resources panel
 

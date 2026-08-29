@@ -300,4 +300,4 @@ renzora_ember::toolbar::register_viewport_tool_group("mytool-settings", |command
 
 This exists because `renzora_viewport` can't depend on the crates that want to mount things in it. Two narrower registries sit beside it in the same module: `register_viewport_tool_trailing` (widgets pinned to the strip's right-hand end) and `register_viewport_top_strip` (full-width bars under the strip).
 
-See **Script API Bindings** for exposing functions to Lua/Rhai, **[Post-Processing Effects](./post-processing.md)** for camera effects (which are [standalone plugins](./standalone-plugins.md) now, not distribution plugins), and **Custom Blueprint Nodes** / **Custom Material Nodes** for those subsystems — each has its own registration path layered on the same `add!` model described here.
+See **Script API Bindings** for exposing functions to scripts, **[Post-Processing Effects](./post-processing.md)** for camera effects (which are [standalone plugins](./standalone-plugins.md) now, not distribution plugins), and **Custom Blueprint Nodes** / **Custom Material Nodes** for those subsystems — each has its own registration path layered on the same `add!` model described here.

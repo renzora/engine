@@ -68,7 +68,7 @@ To make things *do* something — move, take damage, open a door — you attach 
 
 - **Blueprints** (`.blueprint`) — visual node graphs you wire together. Great if you'd rather not write code.
 - **Lua** (`.lua`) — a friendly text scripting language with the full Renzora API (native desktop and mobile).
-- **Rhai** (`.rhai`) — a lighter scripting language that also runs on the **Web** export.
+- **Rust** (`.rs`) — compiled per script and handed the whole world, for logic the scripting API cannot express.
 
 Just give an entity a **Name** in the editor and it's ready to hold scripts. See the [Scripting Overview](/docs/r1-alpha7/scripting/overview) to get started.
 

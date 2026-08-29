@@ -110,7 +110,7 @@ Categories are defined server-side. The current set (with the recommended max si
 | Themes | `themes` | 20 MB | zip, rar, json |
 | Fonts | `fonts` | 20 MB | zip, rar, ttf, otf, woff, woff2 |
 
-> Accepting an upload format is not the same as the engine loading it at runtime. Renzora loads `.glb`/`.gltf`, `.png`/`.jpg`/`.hdr`, `.lua`/`.rhai`, `.ron`, `.material`, `.particle`, and `.ogg`/`.mp3`/`.wav`/`.flac` directly; other model formats convert to GLB at import, and `.exr` is **not** a supported runtime texture. See [Browsing & Installing](./browsing) for the full runtime-format note.
+> Accepting an upload format is not the same as the engine loading it at runtime. Renzora loads `.glb`/`.gltf`, `.png`/`.jpg`/`.hdr`, `.lua`, `.ron`, `.material`, `.particle`, and `.ogg`/`.mp3`/`.wav`/`.flac` directly (`.rhai` is still an accepted *upload* format but no longer runs — its backend was removed); other model formats convert to GLB at import, and `.exr` is **not** a supported runtime texture. See [Browsing & Installing](./browsing) for the full runtime-format note.
 
 ## Pricing
 

@@ -113,7 +113,7 @@ the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha7/ex
 
 ## Script properties
 
-Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rhai` file from the Asset Browser onto the **Drop to add script** target, or click the **+** button on the target's right edge to pick one from a scrolling list of your project's scripts.
+Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rs` file from the Asset Browser onto the **Drop to add script** target, or click the **+** button on the target's right edge to pick one from a scrolling list of your project's scripts.
 
 Each attached script gets its own **collapsible section** — a header with a caret, a **file icon**, the script's file name, an **enable toggle**, and a per-script **trash** button — so an entity carrying several scripts stays tidy. Click a header to fold that script's variables away; the fold state is remembered while you work.
 
@@ -134,7 +134,7 @@ end
 
 Each entry just needs a `value` (which sets both the default and the field type) and, optionally, a `hint` for a helpful tooltip. Numbers become draggable fields, `true`/`false` becomes a toggle, text becomes a text box, and so on.
 
-`props()` works in **both** Lua and Rhai. Whatever you set in the Inspector is saved per-object and feeds straight back into the running script.
+Whatever you set in the Inspector is saved per-object and feeds straight back into the running script.
 
 See [Scripting Overview](/docs/r1-alpha7/scripting/overview) to get started writing scripts, and the [Scripting API](/docs/r1-alpha7/api/scripting) for the full list of functions you can call.
 

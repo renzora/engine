@@ -6,18 +6,6 @@ Renzora exposes input to scripts in two layers. The quickest is a set of **read-
 
 > The context globals are inputs, not state you own. Assigning to `position_x` or `input_x` does nothing — only variables declared in `props()` are read back. To move an entity, call a transform function such as `translate(x, y, z)` (see [Lua](/docs/r1-alpha7/scripting/lua#moving-and-transforming)).
 
-## Lua and Rhai differences
-
-Both backends receive the same read-only input globals each frame, but the query *functions* differ:
-
-| Capability | Lua (`.lua`) | Rhai (`.rhai`) |
-|---|---|---|
-| Input context globals (`input_x`, `mouse_*`, `gamepad_*`) | Yes | Yes |
-| `is_key_pressed` family | `is_key_pressed("KeyW")` | `is_key_pressed(_keys_pressed, "KeyW")` (must pass the key map) |
-| Action map (`input_button_*`, `input_axis_1d/2d`) | Yes | **No** |
-
-For movement that should work everywhere, prefer the `input_x` / `input_y` and `gamepad_*` globals — they already combine keyboard and gamepad.
-
 ## Movement axes
 
 `input_x` and `input_y` are a normalized movement vector built from **WASD and the arrow keys**:
@@ -34,18 +22,11 @@ function on_update()
 end
 ```
 
-```rhai
-fn on_update() {
-    let speed = 5.0;
-    translate(input_x * speed * delta, 0.0, input_y * speed * delta);
-}
-```
-
-> These two globals are wired to WASD/arrows directly, independent of the action map. For a stick-aware, rebindable version use the `"move"` action (`input_axis_2d("move")`, Lua only) described below.
+> These two globals are wired to WASD/arrows directly, independent of the action map. For a stick-aware, rebindable version use the `"move"` action (`input_axis_2d("move")`) described below.
 
 ## Mouse
 
-All of these are read-only globals, present in both backends.
+All of these are read-only globals.
 
 | Global | Type | Description |
 |---|---|---|
@@ -128,24 +109,6 @@ function on_update()
 end
 ```
 
-In Rhai the scope receives `gamepad_count` and a `gamepads` array (one map per pad, ordered by id, each with an `id` field plus the axis values and `buttons` / `just_pressed` maps). The query functions take the array as the first argument, like the `is_key_*` family:
-
-```rhai
-fn on_update() {
-    let x = gamepad_axis(gamepads, 0, "left_x");
-    translate(x * 5.0 * delta, 0.0, 0.0);
-
-    if gamepad_connected(gamepads, 1) && gamepad_button(gamepads, 1, "south") {
-        print("player 2 jumped");
-    }
-
-    // Or iterate the pads directly:
-    for pad in gamepads {
-        if pad.buttons.start { print(`pad ${pad.id} paused`); }
-    }
-}
-```
-
 > Named **actions** (below) are deliberately not per-pad: every connected gamepad drives the same action map, so menus and single-player gameplay respond to whichever controller the player picks up. For split-screen input, read pads directly with the functions above.
 
 ## Raw keyboard
@@ -166,24 +129,11 @@ function on_update()
 end
 ```
 
-| Function (Lua) | Description |
+| Function | Description |
 |---|---|
 | `is_key_pressed(key)` | True while the key is held |
 | `is_key_just_pressed(key)` | True only on the frame the key goes down |
 | `is_key_just_released(key)` | True only on the frame the key goes up |
-
-In Rhai the same three functions exist but take the live key table as the first argument, because Rhai has no implicit globals lookup:
-
-```rhai
-fn on_update() {
-    if is_key_pressed(_keys_pressed, "KeyW") {
-        translate(0.0, 0.0, 5.0 * delta);
-    }
-    if is_key_just_pressed(_keys_just_pressed, "Space") {
-        apply_impulse(0.0, 8.0, 0.0);
-    }
-}
-```
 
 > At runtime `is_key_pressed` can match **any** physical key by its Bevy debug name. The action-map bindings below resolve a fixed set of names (letters, digits, `Space`, `Enter`, `Escape`, `Tab`, `Backspace`, `Shift`/`Control`/`Alt` `Left`/`Right`, the four arrows, and `F1`–`F12`).
 
@@ -311,10 +261,8 @@ function on_update()
 end
 ```
 
-The Rhai equivalent must use the read-only globals (`input_x`/`input_y`, `gamepad_*`) and the map-passing `is_key_pressed(_keys_pressed, "...")` form, since the action-map and grounded-read functions are Lua-only.
-
 ## Related
 
-- [Lua](/docs/r1-alpha7/scripting/lua) — the full-surface, native-only backend
+- [Lua](/docs/r1-alpha7/scripting/lua) — the scripting backend
 - [Physics](/docs/r1-alpha7/scripting/physics) — forces, impulses, and `PhysicsReadState`
 - [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts attach and dispatch by extension

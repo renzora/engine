@@ -315,22 +315,16 @@ Some domain crates inject extra functions into the Lua VM when their plugin is a
 | `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
 | `renzora_animation` | `set_anim_param`, `set_anim_bool`, `set_anim_trigger`, `get_animation_length` |
 
-## Lua vs Rhai
+## Lua and the other backends
 
-You can mix `.lua` and `.rhai` scripts in one project; the backend is picked per file by extension. Lua and Rhai are **not** interchangeable — Rhai is a subset (~45 of Lua's ~70 functions, and only the `props`, `on_ready`, and `on_update` hooks). Rhai has no input, networking, HTTP, `action()`, component reflection, or child-transform functions. Choose Lua for full-featured native games; choose Rhai when you need scripts on the web build.
+The backend is picked per file by **extension**, so a project can hold more than one language at once. Today that means `.lua` and `.rs`:
 
-The languages also differ in syntax:
+- **`.lua`** — this page. The full scripting surface, interpreted, hot-reloaded on save.
+- **`.rs`** — a [Rust script](/docs/r1-alpha7/scripting/rust-scripts), compiled into a native plugin and handed `&mut World` once per frame per entity. No command vocabulary, because the reason to write Rust is the access no vocabulary can stand in for.
 
-| Feature | Lua | Rhai |
-|---------|-----|------|
-| Local variable | `local x = 5` | `let x = 5` |
-| Map / table | `{ key = value }` | `#{ key: value }` |
-| Nil / empty | `nil` | `()` |
-| String concat | `..` | `+` |
-| Not equal | `~=` | `!=` |
-| Array index | 1-based | 0-based |
-| Block end | `end` | `}` |
-| Logical ops | `and` / `or` / `not` | `&&` / `\|\|` / `!` |
+Lua comes from `plugins/lua`, a standalone C-ABI plugin. Which languages a project can use is decided by which backend plugins are present, not by how the engine was compiled — see [Script Backends](/docs/r1-alpha7/extending/script-backends) to add one.
+
+> **The `.rhai` backend has been removed.** If you have Rhai scripts, port them to Lua; the function names are nearly all the same, and [the syntax table](/docs/r1-alpha7/api/scripting#porting-from-rhai) covers the rest.
 
 ## What's next
 

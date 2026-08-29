@@ -85,7 +85,7 @@ See [State Replication](replication) for the details and current limitations.
 
 ## Scripting API
 
-Networking is exposed to **Lua only**. Rhai has no networking functions (it is a strict subset and omits `rpc`/`net_*`), so write multiplayer logic in `.lua` scripts.
+Networking is exposed to scripts on **native platforms only** — write multiplayer logic in `.lua` scripts.
 
 ### Status globals
 

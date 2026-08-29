@@ -84,7 +84,7 @@ The web target (`wasm32-unknown-unknown`) is built game-runtime-only, then post-
 2. `wasm-bindgen` (v0.2.108) generates the JS glue: `renzora-runtime.js` + `renzora-runtime_bg.wasm` (`--target web`).
 3. `wasm-opt` (from `binaryen`) shrinks the module with `-Oz` and the feature flags the runtime needs (`bulk-memory`, `sign-ext`, `reference-types`, `multivalue`, …).
 
-> The web build is **runtime-only** — there is no WebAssembly editor (the binary has no compile-time `editor` feature, and the editor bundle is a desktop-only dlopen target). On `wasm32`, Lua is not compiled (only Rhai runs), and audio/DAW/mixer/networking compile to no-op stubs.
+> The web build is **runtime-only** — there is no WebAssembly editor (the binary has no compile-time `editor` feature, and the editor bundle is a desktop-only dlopen target). On `wasm32` there is no `dlopen`, so no language-backend plugin is loaded and text scripting does not run; audio/DAW/mixer/networking compile to no-op stubs.
 
 ## Building with `renzora build`
 

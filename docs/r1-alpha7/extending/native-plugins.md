@@ -158,7 +158,7 @@ The list lives in `~/.renzora/editor.toml` under `disabled_plugins`, keyed by a 
 Three crates, and they are enough for almost anything:
 
 - **`bevy`** — all of it. Queries, assets, schedules, render, UI, gizmos, `bsn!`.
-- **`renzora`** — the contract crate. Every type that crosses a boundary in this engine lives here on purpose, so a plugin shares them rather than mirroring them: `EditorSelection`, `PlayModeState`, `SplashState`, `CurrentProject`, `lang::t()`, the Console buffer, the post-process framework, the shell registries.
+- **`renzora`** — the contract crate. Every type that crosses a boundary in this engine lives here on purpose, so a plugin shares them rather than mirroring them: `EditorSelection`, `PlayModeState`, `SplashState`, `CurrentProject`, `lang::t()`, the Console buffer, the post-process framework, the shell registries. See **[Editor Features from Code](editor-api.md)** for what each of those registries does.
 - **`renzora_ember`** — the editor's UI framework. See **[Editor Panels from a Plugin](panels.md)**.
 
 Anything else in the workspace is not reachable. If your plugin needs a type from another `renzora_*` crate, that type belongs in `renzora` — that is the rule the engine's own crates follow.
@@ -204,13 +204,14 @@ Two things to know. Dependencies must be written **one per line** (`foo = { vers
 - **No undo integration yet.** A plugin can mutate the World freely but cannot push onto the editor's undo stack — that lives outside the contract crate.
 - **A plugin can crash the editor.** A panic while constructing or during load is caught; a segfault is not. Installing a plugin runs its code, and the source is on disk to read.
 
-## Examples
+## Where to look for examples
 
-Reference plugins ship in `plugins/`, in increasing order of what they prove:
+**No native plugin ships in the repository.** The ones that used to sit in `plugins/` were scaffolding for bringing the mechanism up and were removed once it worked; `plugins/` now holds only [C-ABI plugins](standalone-plugins.md), which are a different mechanism with a different loader.
 
-| | |
-|---|---|
-| `hello-native` | the boundary works — one exclusive-`&mut World` system, one `t()` call |
-| `spinning-cube` | ordinary Bevy: a mesh, a material, a transform rotated each frame |
-| `native-grayscale` | a post-process effect registered from a plugin |
-| `orrery` | a `bsn!` hierarchy, run-time assets, and reading `EditorSelection` to draw gizmos |
+That leaves the engine's own crates as the reference, and they are a good one: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it — the systems, the resources, the `&mut World` access, the contract-crate calls — is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
+
+- `crates/renzora_lumen` and `crates/renzora_cloth` are small, self-contained feature plugins.
+- The built-in panels are the model for [panel code](panels.md); `crates/renzora_ember/src/widgets/gallery.rs` is the shortest complete example of building a large ember tree from one `build` function.
+- `crates/renzora_rust_script` is the same loading mechanism used a second way, if you want to see the host side.
+
+Start from the skeleton at the top of this page rather than from a copied example — it is four lines plus a `Cargo.toml`, and `renzora add <name>` scaffolds it.

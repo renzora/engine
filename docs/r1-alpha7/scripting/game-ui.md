@@ -242,7 +242,7 @@ function on_ui(name, args, entity)
 end
 ```
 
-> UI scripting (`action()`, `set_on`/`get_on`, and `on_ui`) is **Lua-only** — write your UI logic in `.lua`. Rhai scripts can still feed values into `{{ }}` bindings, but they can't call the UI verbs.
+> UI scripting (`action()`, `set_on`/`get_on`, and `on_ui`) runs through the script VM — write your UI logic in `.lua`.
 
 ## See also
 

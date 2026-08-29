@@ -148,7 +148,7 @@ Renzora renders on Android through **wgpu's Vulkan backend**. The manifest decla
 
 ## Scripting on Android
 
-Android is a **native** target, so **both** scripting backends are available — `.lua` (mlua / Lua 5.4) and `.rhai` (Rhai). This is unlike the web export, where Lua is dropped and only Rhai runs. Remember that Rhai is a **subset** of the Lua surface (only the `props`, `on_ready`, and `on_update` hooks, ~45 of the ~70 globals). See the [Scripting API](../api/scripting) for the full list.
+Android is a **native** target, so it loads plugins and the full scripting surface is available: `.lua` (mlua / Lua 5.4) and blueprints, which compile to Lua. This is unlike the web export, where nothing can be `dlopen`'d and text scripting does not run at all. See the [Scripting API](../api/scripting) for the full list.
 
 ## Input
 

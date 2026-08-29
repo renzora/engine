@@ -49,7 +49,7 @@ fn spawn_crate(mut commands: Commands) {
 
 On the **server**, the moment an entity gains `Networked`, the `auto_replicate_networked` system inserts Lightyear's `Replicate::to_clients(All)` and (unless interpolation is disabled) `InterpolationTarget::to_clients(All)`. A separate system assigns it a `NetworkId`. `Transform` then replicates because it is registered in the protocol.
 
-> There is no Lua/Rhai function to mark an entity `Networked`. Replication is configured in the scene/Inspector or in engine code; scripts handle the *events* (RPCs) and gate server logic with `net_is_server()`.
+> There is no script function to mark an entity `Networked`. Replication is configured in the scene/Inspector or in engine code; scripts handle the *events* (RPCs) and gate server logic with `net_is_server()`.
 
 ## Tuning replication with `NetworkTransform`
 
@@ -121,9 +121,9 @@ Under the hood, `rpc(name, args)` becomes a `net_rpc` `ScriptAction`, is seriali
 
 > ⚠️ **The origin peer id is lost through relay.** When the server relays a client's RPC to the other clients, the event arrives with `from = server`, and the engine maps the server/raw peer to `0`. So relayed clients always see `from = 0`. Only the **server itself** sees the true sender id in `on_rpc`. Don't use `from` for client-to-client identification.
 
-RPCs (and all networking) are **Lua-only**. Rhai is a subset backend with no networking functions, and the `on_rpc` / `on_player_joined` / `on_player_left` hooks fire only in Lua scripts.
+RPCs (and all networking) are native-only: the `on_rpc` / `on_player_joined` / `on_player_left` hooks never fire on a web build.
 
-### Network status and lifecycle (Lua)
+### Network status and lifecycle
 
 | Function / hook | Notes |
 |---|---|

@@ -111,7 +111,7 @@ To disconnect, call `action("net_disconnect")`.
 
 ## Server-side scripting
 
-Networking is exposed only to **Lua** scripts (native platforms). The Rhai backend has no networking surface at all. The full list of bare globals:
+Networking is exposed to scripts on native platforms only. The full list of bare globals:
 
 | Function | Returns / effect |
 |---|---|

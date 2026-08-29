@@ -91,14 +91,14 @@ Physics script helpers don't poke Avian directly — they push `ScriptAction`/`S
 
 ### Forces and velocity
 
-| Function | Lua | Rhai | Effect |
-|---|---|---|---|
-| `apply_force(x, y, z)` | yes | yes | Applies a force for the current frame (cleared every frame — call it each `on_update` for a sustained push). |
-| `apply_impulse(x, y, z)` | yes | yes | Sets the body's linear velocity to this value (a simplified impulse in the current Avian backend). |
-| `set_velocity(x, y, z)` | yes | yes | Directly sets the linear velocity. |
-| `set_linear_velocity(x, y, z)` | yes | — | Lua alias for `set_velocity` (registered by the physics extension). |
-| `set_gravity_scale(scale)` | yes | — | Adjusts this body's gravity scale at runtime. |
-| `move_controller(x, y, z)` | yes | — | Kinematic collide-and-slide move (see below). |
+| Function | Effect |
+|---|---|
+| `apply_force(x, y, z)` | Applies a force for the current frame (cleared every frame — call it each `on_update` for a sustained push). |
+| `apply_impulse(x, y, z)` | Sets the body's linear velocity to this value (a simplified impulse in the current Avian backend). |
+| `set_velocity(x, y, z)` | Directly sets the linear velocity. |
+| `set_linear_velocity(x, y, z)` | Alias for `set_velocity` (registered by the physics extension). |
+| `set_gravity_scale(scale)` | Adjusts this body's gravity scale at runtime. |
+| `move_controller(x, y, z)` | Kinematic collide-and-slide move (see below). |
 
 ```lua
 -- thruster.lua (Dynamic rigid body)
@@ -114,15 +114,6 @@ function on_update()
     end
 end
 ```
-
-```rhai
-// thruster.rhai — apply_force / apply_impulse / set_velocity also work in Rhai
-fn on_update() {
-    set_velocity(input_x * 5.0, 0.0, input_y * 5.0);
-}
-```
-
-> `apply_force`, `apply_impulse`, and `set_velocity` are available in **both** Lua and Rhai. `move_controller`, `set_linear_velocity`, and `set_gravity_scale` are **Lua-only** (the physics crate registers extra functions only on the Lua backend).
 
 > **2D bodies:** `apply_force`, `apply_impulse`, and `set_velocity` route to the entity's own backend automatically — on an Avian 2D body they apply the X/Y of the vector and ignore Z, so the same script works on a sprite. `move_controller` is 3D-only for now; drive 2D characters with `set_velocity` (lock rotation on the body so collisions don't spin it).
 
@@ -166,11 +157,9 @@ The slide accepts an optional `max_slope` (degrees, default `55`) when called as
 action("kinematic_slide", { x = dx, y = dy, z = dz, max_slope = 45.0 })
 ```
 
-> `action()` and `move_controller` are Lua-only. In Rhai, move a kinematic body with `set_velocity` / `set_position` / `translate` instead.
-
 ### Reading physics state
 
-Per-entity physics is mirrored into a reflect-readable `PhysicsReadState` component, refreshed every frame. Read it with `get("PhysicsReadState.<field>")` — this works in **both** Lua and Rhai.
+Per-entity physics is mirrored into a reflect-readable `PhysicsReadState` component, refreshed every frame. Read it with `get("PhysicsReadState.<field>")`.
 
 | Read | Type | Meaning |
 |---|---|---|
@@ -179,14 +168,14 @@ Per-entity physics is mirrored into a reflect-readable `PhysicsReadState` compon
 | `get("PhysicsReadState.speed")` | float | Magnitude of `velocity`. |
 | `get("PhysicsReadState.ground_normal")` | vec3 | Contact normal of the last ground hit (`0,1,0` when airborne). |
 
-For touch/overlap, the `is_colliding` context global is `true` whenever the entity has any active collision this frame (available in Lua and Rhai):
+For touch/overlap, the `is_colliding` context global is `true` whenever the entity has any active collision this frame:
 
-```rhai
-fn on_update() {
-    if is_colliding {
-        print_log("touching something");
-    }
-}
+```lua
+function on_update()
+    if is_colliding then
+        print_log("touching something")
+    end
+end
 ```
 
 > `grounded` and `ground_normal` are written by the kinematic slide, so they're meaningful for entities you drive with `move_controller`.
@@ -199,17 +188,7 @@ These appear in older docs or the internal `ScriptCommand` enum but have **no na
 - `raycast`, `raycast_down` — there is no raycast text function (raycasting exists only internally).
 - `apply_impulse_to`, `find_entity_by_name` — no such helpers.
 - `collisions_entered`, `collisions_exited`, `active_collisions` — these counters don't exist; use the `is_colliding` global.
-- `on_collision` — there is **no collision lifecycle hook** in Lua or Rhai. Collision *events* (`on_collision_enter` / `on_collision_exit`) exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes.
-
-## Lua vs Rhai summary
-
-| Capability | Lua | Rhai |
-|---|---|---|
-| `apply_force` / `apply_impulse` / `set_velocity` | yes | yes |
-| `set_linear_velocity` / `set_gravity_scale` | yes | — |
-| `move_controller` / `kinematic_slide` action | yes | — |
-| `get("PhysicsReadState.*")` reads | yes | yes |
-| `is_colliding` global | yes | yes |
+- `on_collision` — there is **no collision lifecycle hook** for text scripts. Collision *events* (`on_collision_enter` / `on_collision_exit`) exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes.
 
 ## Related
 
