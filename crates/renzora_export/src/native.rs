@@ -18,7 +18,7 @@ use renzora_ember::reactive::{react, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, icon_menu_button, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, icon_menu_button, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, toggle_switch, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode, PluginLinkMode};
@@ -1173,7 +1173,20 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
     }
 
     let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.plugins"), accent());
-    let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
+    // A wrapping grid of thumbnail cards, matching Settings → Plugins. This was
+    // a zebra-striped list of checkboxes: seventy identical rows in which the
+    // only way to tell one plugin from another was to read it. The artwork does
+    // that work, and the two panels now answer "which plugins?" the same way.
+    let list = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(8.0),
+            row_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
     commands.entity(body).add_child(list);
     // Filled by a command that can read the world (the plugin list is stable
     // after the scan).
@@ -1187,11 +1200,54 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
                 let note = c.spawn((Text::new(renzora::lang::t("export.plugins.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
                 c.entity(list).add_child(note);
             }
-            for (idx, (id, scope)) in plugins.into_iter().enumerate() {
-                let row = c.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(row_stripe(idx)))).id();
-                let cb = checkbox(&mut c, true);
+            for (id, scope) in plugins.into_iter() {
+                let card = c
+                    .spawn((
+                        Node {
+                            // Same grow-from-a-basis shape as the settings grid:
+                            // the cards share whatever the row has left, so the
+                            // panel fills at any width rather than only at exact
+                            // multiples of a fixed card.
+                            flex_basis: Val::Px(150.0),
+                            flex_grow: 1.0,
+                            min_width: Val::Px(0.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(6.0),
+                            padding: UiRect::all(Val::Px(9.0)),
+                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            ..default()
+                        },
+                        BackgroundColor(rgb(card_bg())),
+                    ))
+                    .id();
+
+                let thumb = renzora_ember::widgets::file_image_tile(
+                    &mut c,
+                    &fonts,
+                    renzora::core::plugin_thumbnail_path(&id).unwrap_or_default(),
+                    "puzzle-piece",
+                    text_muted(),
+                    10.0,
+                );
+
+                // A switch, not a checkbox: this is "ship it / don't", which is
+                // an on-off state rather than an item ticked off a list, and it
+                // matches the switch the Settings panel uses for the same
+                // decision about the same plugins.
+                let head = c
+                    .spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .id();
+                let sw = toggle_switch(&mut c, true);
+                // Bevy 0.19 defaults `FocusPolicy` to `Pass`, so a switch that
+                // does not block hands its press to everything behind it.
+                c.entity(sw).insert(FocusPolicy::Block);
                 let id2 = id.clone();
-                bind_2way(&mut c, cb, move |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.selected_plugins.contains(&id2)), {
+                bind_2way(&mut c, sw, move |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.selected_plugins.contains(&id2)), {
                     let id3 = id.clone();
                     move |w, v: &bool| {
                         if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
@@ -1199,9 +1255,23 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
                         }
                     }
                 });
-                let t = c.spawn((Text::new(format!("{id} ({scope})")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())))).id();
-                c.entity(row).add_children(&[cb, t]);
-                c.entity(list).add_child(row);
+                let name = c
+                    .spawn((
+                        Text::new(id.clone()),
+                        ui_font(&fonts.ui, 12.0),
+                        TextColor(rgb(text_primary())),
+                        bevy::text::TextLayout::no_wrap(),
+                        Node { overflow: Overflow::clip(), ..default() },
+                    ))
+                    .id();
+                c.entity(head).add_children(&[sw, name]);
+
+                let scope_t = c
+                    .spawn((Text::new(scope), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted()))))
+                    .id();
+
+                c.entity(card).add_children(&[thumb, head, scope_t]);
+                c.entity(list).add_child(card);
             }
         }
         queue.apply(world);

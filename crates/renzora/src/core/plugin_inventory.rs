@@ -173,3 +173,23 @@ pub fn plugin_id_from_path(path: &std::path::Path) -> String {
     let stem = path.file_stem().unwrap_or_default().to_string_lossy();
     stem.strip_prefix("lib").unwrap_or(&stem).to_string()
 }
+
+/// Where a plugin's store artwork lives: `<exe>/plugins/<id>/thumbnail.jpg`.
+///
+/// Here rather than in either panel because two of them need it — Settings →
+/// Plugins and the exporter's plugin picker — and a thumbnail that showed up in
+/// one place and not the other would look like a broken image rather than a
+/// disagreement about the path.
+///
+/// Only a **native** plugin has somewhere to put one. A C-ABI plugin stages as a
+/// loose library file with no directory beside it, so this resolves to a path
+/// that does not exist and the caller draws its placeholder. That is the honest
+/// outcome, not a gap to paper over: the file genuinely has nowhere to live yet.
+///
+/// `None` when the executable's own directory cannot be determined, which is the
+/// same condition under which no plugins would have loaded either.
+pub fn plugin_thumbnail_path(id: &str) -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    Some(dir.join("plugins").join(id).join("thumbnail.jpg"))
+}

@@ -83,6 +83,7 @@ mod pagination;
 // Data display.
 mod avatar;
 mod chip;
+mod file_image;
 mod folder_picker;
 mod grid;
 mod image;
@@ -195,6 +196,7 @@ pub use pagination::*;
 
 pub use avatar::*;
 pub use chip::*;
+pub use file_image::*;
 pub use folder_picker::*;
 pub use grid::*;
 pub use image::*;
@@ -258,6 +260,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::WheelGesture>();
         app.init_resource::<drag_value::DragValueConfig>();
         app.init_resource::<drag_value::AnyDragValueEditing>();
+        app.init_resource::<file_image::FileImages>();
         app.init_resource::<markdown::MarkdownImages>();
         app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
@@ -443,6 +446,13 @@ impl Plugin for WidgetsPlugin {
         app.add_systems(
             Update,
             (markdown::markdown_link_click, markdown::markdown_images_sync),
+        );
+        // On-disk thumbnails: ask for whatever is on screen, then register what
+        // finished decoding. `request` before `poll` so a tile spawned this frame
+        // is in flight by the next one.
+        app.add_systems(
+            Update,
+            (file_image::request_file_images, file_image::poll_file_images).chain(),
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);

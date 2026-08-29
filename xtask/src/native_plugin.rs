@@ -273,15 +273,28 @@ fn build_one(src_dir: &Path, sdk: &Sdk, dist_root: &Path) -> bool {
     true
 }
 
-/// Copy `Cargo.toml` and `src/` into the staged plugin directory.
+/// Copy `Cargo.toml`, `src/` and `thumbnail.jpg` into the staged plugin
+/// directory.
 ///
 /// `build/` is left alone — it holds the previous artefact and stamp, which is
 /// what makes the "nothing changed" path skip the compile.
+///
+/// The thumbnail is staged because it is read at *runtime*, not build time:
+/// Settings → Plugins and the exporter's plugin picker both load
+/// `<exe>/plugins/<id>/thumbnail.jpg`. Leave it out and the artwork shows in a
+/// source checkout — where the repo copy happens to be where the panel looks —
+/// and silently turns into a placeholder in every real install. Compare
+/// `include_bytes!` assets, which must go UNDER `src/` for the opposite reason:
+/// those are read by rustc, which only ever sees the staged tree.
 fn mirror_source(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst.join("src"))?;
     let manifest = src.join("Cargo.toml");
     if manifest.is_file() {
         copy_if_changed(&manifest, &dst.join("Cargo.toml"))?;
+    }
+    let thumb = src.join("thumbnail.jpg");
+    if thumb.is_file() {
+        copy_if_changed(&thumb, &dst.join("thumbnail.jpg"))?;
     }
     copy_tree(&src.join("src"), &dst.join("src"))
 }

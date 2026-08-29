@@ -2333,6 +2333,20 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         ))
         .id();
 
+    // Artwork first, so the grid reads as a shelf of things rather than a list
+    // of switches. A plugin without a `thumbnail.jpg` gets its kind's glyph on
+    // the same tinted square, which keeps every card the same shape — a card
+    // that collapsed to text when art was missing would make the grid ragged,
+    // and most plugins do not ship art.
+    let thumb = renzora_ember::widgets::file_image_tile(
+        commands,
+        fonts,
+        renzora::core::plugin_thumbnail_path(&card.id).unwrap_or_default(),
+        "puzzle-piece",
+        placeholder(),
+        10.0,
+    );
+
     // Header: switch, then name. The switch leads because it is the only thing
     // on the card you can act on.
     let head = commands
@@ -2390,7 +2404,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         ))
         .id();
 
-    commands.entity(root).add_children(&[head, kind, status]);
+    commands.entity(root).add_children(&[thumb, head, kind, status]);
     root
 }
 
