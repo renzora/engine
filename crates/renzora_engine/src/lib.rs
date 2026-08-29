@@ -17,6 +17,7 @@ pub mod debug_log;
 pub mod graphics_quality;
 #[cfg(feature = "render_3d")]
 pub mod mesh_lod;
+pub mod named_entities;
 pub mod plugin_scene_bridge;
 pub mod procedural_meshes;
 pub mod scene_io;
@@ -550,7 +551,12 @@ impl Plugin for RuntimePlugin {
                     scene_io::sync_play_mode_camera,
                     scene_io::enforce_single_active_camera,
                 ),
-            );
+            )
+            // `Last`, so everything that spawns this frame has had its commands
+            // applied before the guard looks. It is two-strike anyway, but
+            // running at the end of the frame keeps the suspect set from
+            // churning against systems that spawn in `Update`.
+            .add_systems(Last, named_entities::reject_unnamed_entities);
 
             // 3D mesh + glTF model rehydration — only with the `render_3d` pipeline
             // (a 2D game has no 3D primitives or glTF models). Loading glTF is
