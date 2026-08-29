@@ -187,7 +187,27 @@ That is all.
 
 **A dependency that itself depends on Bevy is refused**, with a message naming it. The graph is resolved before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. If you need such a crate, use a [C-ABI plugin](standalone-plugins.md) — it shares no types with the engine and may depend on anything.
 
-**A duplicate crate is harmless.** If you depend on `serde` and the engine already links its own, you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and `renzora_ember` are shared images and not ordinary dependencies. And if such a type ever tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
+**A duplicate crate is usually harmless.** Depend on something the engine also links and you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and `renzora_ember` are shared images and not ordinary dependencies. And if such a type tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
+
+**`serde` is the exception, and it will bite you.** Write `serde = "1"` in your manifest and derive `Serialize` on a component holding any Bevy type, and it does not compile:
+
+```
+error[E0277]: the trait bound `bevy::prelude::Vec3: serde::Deserialize<'de>`
+              is not satisfied
+```
+
+`Vec3` implements the *engine's* `Serialize`, not the copy cargo just resolved for you. Use the contract crate's re-export instead, and point the derive at it:
+
+```rust
+use renzora::serde::{Deserialize, Serialize};
+
+#[derive(Component, Reflect, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct MySettings { pub tint: Vec3 }
+```
+
+The `#[serde(crate = ...)]` line is required: the derive emits absolute paths, and without it they point at a `serde` your plugin does not have. A plugin whose only third-party need was serde then declares **no** dependencies at all, so cargo is never invoked for it and the build stays offline and about a second long.
 
 Two things to know. Dependencies must be written **one per line** (`foo = { version = "1" }`); the `[dependencies.foo]` sub-table form is refused rather than silently ignored. And this is the one part of plugin building that needs a **network** — the SDK is otherwise entirely offline. A plugin that declares no third-party crates never invokes cargo at all and keeps the offline, one-second build.
 
