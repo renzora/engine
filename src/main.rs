@@ -13,6 +13,11 @@
     windows_subsystem = "windows"
 )]
 
+// The first-run setup window — unpacking the SDK and building native plugins
+// before the editor exists. Editor sessions only; see the call site.
+#[cfg(not(target_arch = "wasm32"))]
+mod setup_ui;
+
 use bevy::prelude::*;
 
 // ── App setup helpers ────────────────────────────────────────────────────
@@ -136,16 +141,46 @@ fn main() {
     // launches this exact flag on a child process. Ignored for server/host.
     let vr_mode =
         !host_mode && !server_mode && std::env::args().any(|a| a == "--vr");
-    // Always false: this binary is the runtime. The editor is a separate
-    // executable now (see `load_global_plugins`). Kept as a variable rather than
-    // inlined because `is_editor` is threaded through `add_default_rendering` /
-    // `add_engine_plugins`, which are shared with the editor binary.
-    let is_editor = false;
+    // Is this the editor? Decided by whether `renzora_editor.<dll|so|dylib>`
+    // sits beside the executable — one binary, and the presence of one file is
+    // the whole difference between shipping the editor and shipping the game.
+    //
+    // Answered HERE, before anything is assembled, because `is_editor` is
+    // threaded through `add_default_rendering` and `add_engine_plugins` and
+    // changes what they add. It is a single `is_file`; the image itself is not
+    // loaded until after the engine foundation exists.
+    //
+    // A server or host launch is never an editor session, even with the image
+    // present — the editor spawns those as child processes for Play.
+    let is_editor = !server_mode
+        && !host_mode
+        && !vr_mode
+        && !std::env::args().any(|a| a == "--no-editor")
+        && renzora_runtime::editor_image::present();
     let _ = (server_mode, host_mode, vr_mode);
 
     // Install the panic hook now that we know the session kind — it picks the
     // crash-file location + dialog from `is_editor` (it can't read the World).
     renzora_runtime::renzora_engine::crash::install_panic_hook(is_editor);
+
+    // ── First-run setup, before Bevy ─────────────────────────────────────────
+    // A downloaded release arrives with the SDK still compressed and every
+    // native plugin still source-only, so the first launch after an install or
+    // an update has real work to do. It has to happen HERE, before `App`
+    // assembly: that is when `NativePluginLoader` loads plugins, so unpacking
+    // any later would be too late for the very thing that needed it.
+    //
+    // Not gated on `is_editor`, deliberately. A game exported WITH MODDING ships
+    // the SDK and accepts source plugins, so it has the same work to do and the
+    // same reason to say so — a first launch that silently compiles for a minute
+    // looks like a hang. A game exported without modding has no SDK at all, so
+    // `needed()` answers false after a couple of directory stats and no window
+    // ever appears. The condition is "is there work", not "who am I".
+    #[cfg(not(target_arch = "wasm32"))]
+    if renzora_runtime::renzora_native_plugin::prebuild::needed() {
+        setup_ui::run();
+        renzora_runtime::renzora_native_plugin::prebuild::restart();
+    }
 
     // Windows release is `windows_subsystem = "windows"` (no console). Editor
     // sessions grab one so their log output is visible; a shipped game stays
@@ -213,9 +248,14 @@ fn main() {
         ));
     }
 
-    // Editor bundle (editor sessions) + community plugins, after the engine
-    // foundation. The `--project <path>` dev shortcut moved into the splash
-    // plugin (it lives in the bundle now).
+    // The editor image, if this is an editor session. AFTER the engine
+    // foundation, so the editor layers on top of the runtime plugins rather than
+    // racing them — the ordering the static call site used to guarantee.
+    if is_editor {
+        renzora_runtime::editor_image::install(&mut app);
+    }
+
+    // C-ABI plugins from `<exe-dir>/plugins/`, after both.
     load_global_plugins(&mut app, is_editor);
 
     app.run();

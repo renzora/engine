@@ -356,5 +356,13 @@ renzora_net = { path = "../renzora_net" }
 renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──
+
+# Loading the editor image beside the executable — see `src/editor_image.rs`.
+# Target-scoped because wasm has no dynamic linking at all: there the editor is
+# compiled into its own bundle and installed by a direct call, so pulling
+# libloading in would be a dependency that cannot work on that target.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libloading = "0.8"
+
 [lints]
 workspace = true

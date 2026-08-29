@@ -23,9 +23,30 @@ build = "build.rs"
 # resolves `renzora` without the `editor` feature, which changes its metadata
 # hash and forces a recompile of 86 shared packages — the "two full builds"
 # everyone is trying to avoid.
+#
+# ── wasm only, now that the editor is a loadable image ──────────────────────
+#
+# On native there is ONE binary: `renzora` looks for `renzora_editor.<dll|so|
+# dylib>` beside itself and is the editor when it finds one. This executable has
+# nothing left to do there.
+#
+# It cannot merely be left building either. `renzora_editor` is now `["rlib",
+# "dylib"]`, and a binary linking the rlib while the dylib exists gives rustc two
+# formats to choose between for every shared crate:
+#
+#     error: cannot satisfy dependencies so `thiserror` only shows up once
+#
+# — twenty of those, naming the dependency closure rather than the cause.
+#
+# wasm has no dynamic linking at all, so the editor there stays a second
+# `.wasm` bundle built from this package. `required-features` is what keeps it
+# out of a `--workspace` build without removing it from the workspace, which
+# would also put it out of reach of the `-p renzora_editor_app` the wasm lane
+# uses.
 [[bin]]
 name = "renzora-editor"
 path = "src/main.rs"
+required-features = ["wasm"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -66,6 +87,13 @@ bevy = { workspace = true, features = ["webgpu", "debug"] }
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
+[features]
+# Gates the `[[bin]]` above, so a native `--workspace` build does not produce a
+# second executable that is both redundant and unlinkable. Empty on purpose: it
+# selects a target rather than turning any code on. The wasm lane passes it
+# explicitly (`cargo build -p renzora_editor_app --features wasm`).
+wasm = []
 
 [build-dependencies]
 winres = "0.1"

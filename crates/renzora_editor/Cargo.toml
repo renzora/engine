@@ -22,7 +22,23 @@ edition = "2021"
 # the dual-mode crates' Runtime/EditorAndRuntime plugins are installed by the
 # host, never by the bundle.
 [lib]
-crate-type = ["rlib"]
+# `dylib` as well as `rlib`, and the dylib is what ships.
+#
+# The whole editor is one loadable image beside the executable: present, the
+# binary is the editor; absent, the same binary is the game. That is what
+# `renzora_editor.dll` buys — "remove the editor" becomes deleting one file
+# rather than shipping a different executable.
+#
+# It is sound again because Bevy is a shared image once more. This was an
+# `rlib`-only crate for exactly as long as Bevy was statically linked, when a
+# loadable editor would have carried its own copy of Bevy and therefore its own
+# `World` type. `bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib` and
+# `renzora_runtime_dylib` now put every type this crosses the boundary with in
+# one place.
+#
+# `rlib` stays for wasm, which has no dynamic linking at all and keeps building
+# the editor into a second `.wasm` bundle.
+crate-type = ["rlib", "dylib"]
 
 [features]
 default = ["editor"]
@@ -120,6 +136,7 @@ editor = [
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false }
+
 
 # ── Editor-only crates (the `dep:` entries flipped on by `editor`) ───────────
 renzora_undo               = { path = "../renzora_undo", optional = true }
@@ -257,5 +274,35 @@ renzora_parkour_editor = { path = "../renzora_parkour/editor" }
 renzora_update = { path = "../renzora_update" }
 renzora_wind_editor = { path = "../renzora_wind/editor" }
 # ── end generated ──
+
+# ── The shared images, for their side effect only ────────────────────────────
+#
+# This crate calls nothing in either. Their presence in ITS link graph is what
+# makes `renzora` and `renzora_ember` resolve to the one shared image rather than
+# being embedded here a second time — the rule every `*_dylib` already follows,
+# and one this crate needs for the same reason now that it is a loadable image
+# rather than an rlib the executable swallowed.
+#
+# Without them the editor gets a PRIVATE copy of the contract crate's
+# process-global statics, and every one of them fails silently. The translation
+# table is the visible one: the runtime loads the language packs into the shared
+# image's copy while the editor reads its own empty one, so the whole UI renders
+# raw keys —
+#
+#     menu.file    menu.edit    common.settings
+#
+# — and nothing is logged, because a missing translation is not an error. Ember's
+# theme palette, stylesheet and viewport-toolbar lists fail the same way one
+# layer up.
+#
+# Target-scoped rather than feature-gated: this is not a choice. On native the
+# editor is always a loadable image and always needs them; on wasm there is no
+# dynamic linking at all, the editor is compiled into its own bundle, and a
+# `dylib` dependency could not be satisfied. A feature would have to be turned on
+# by someone, and the only crate that depends on this one is now wasm-only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+renzora_dylib = { path = "../renzora_dylib" }
+renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false }
+
 [lints]
 workspace = true

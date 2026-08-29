@@ -7631,7 +7631,9 @@ dependencies = [
  "renzora_distance_fog_editor",
  "renzora_dof",
  "renzora_dof_editor",
+ "renzora_dylib",
  "renzora_editor_framework",
+ "renzora_ember_dylib",
  "renzora_ember_editor",
  "renzora_engine",
  "renzora_engine_editor",
@@ -8579,6 +8581,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "image",
+ "libloading 0.8.9",
  "renzora",
  "renzora_animation",
  "renzora_antialiasing",

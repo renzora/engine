@@ -358,15 +358,30 @@ profiling build that re-adds `trace_tracy`.
   plugins. The lean pattern is `renzora_<name>` (runtime, in the binary) +
   `renzora_<name>/editor/` (`renzora_<name>_editor`, linked only by the editor
   bundle).
-- **The editor is a separate executable**, not a loadable bundle. `renzora`
-  (package `renzora_app`) is the runtime / shipped game; `renzora-editor`
-  (package `renzora_editor_app`) is the editor, which statically links
-  `renzora_editor` as an `rlib`. It stopped being a `dlopen`'d `cdylib` when Bevy
-  went static — a cdylib linking static Bevy would carry a *second* copy of Bevy,
-  and therefore a second `World` type. "Remove the editor" is now "ship only the
-  other file". Both must be staged **together**: external-runtime play mode
-  spawns `<exe_dir>/renzora[.exe]` as a child process
-  (`renzora_viewport::external_runtime`).
+- **One binary; the editor is a loadable image.** `renzora` (package
+  `renzora_app`) is the runtime *and* the editor: it looks for
+  `renzora_editor.<dll|so|dylib>` beside itself at startup and installs it if it
+  is there. Present → the binary is the editor; absent → the same binary is the
+  shipped game, so "remove the editor" is deleting one file. See
+  `renzora_runtime::editor_image`.
+
+  It was a second executable for exactly as long as Bevy was statically linked,
+  when a loadable editor would have carried its own copy of Bevy and therefore
+  its own `World` type. `dynamic_linking` is back on by default, so that
+  constraint is gone.
+
+  **A loadable image must have every shared image in its link graph** —
+  `renzora_editor` depends on `renzora_dylib` and `renzora_ember_dylib` for their
+  side effect only. Without them it embeds a private copy of the contract crate,
+  gets its own translation table, Console buffer and theme palette, and every one
+  of them fails **silently**: the whole UI renders raw keys (`menu.file`,
+  `common.settings`) with nothing logged, because a missing translation is not an
+  error. Crates that hold no process-global state may be duplicated freely — a
+  `TypeId` comes from a crate's stable id, not from which artifact swallowed it.
+
+  `renzora_editor_app` survives for **wasm only** (`required-features = ["wasm"]`),
+  which has no dynamic linking and builds the editor into a second `.wasm`
+  bundle.
 - **Building also builds the runtime** by design — an editor build always
   produces the runtime too. Don't propose editor-only scoping of a build.
 

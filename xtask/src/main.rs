@@ -574,13 +574,20 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
         make_executable(&updater_bin)?;
     }
 
-    let editor_name = format!("renzora-editor{}", plat.exe_suffix);
+    // ── The editor image ─────────────────────────────────────────────────────
+    // One binary, and the presence of this file is what makes it the editor.
+    // `renzora` looks for it beside itself at startup; without it the same
+    // executable is the shipped game, which is why an export simply does not
+    // stage it rather than shipping a different binary.
+    //
+    // A `dylib`, not a second `.exe`. That was possible again the moment Bevy
+    // became a shared image: the editor takes `&mut App` across the boundary,
+    // which is sound only while both sides link one `bevy_dylib`, one
+    // `renzora_dylib`, one `renzora_ember_dylib` and one `renzora_runtime_dylib`.
+    let editor_name = format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext);
     let editor_src = src.join(&editor_name);
     if editor_src.exists() {
-        let editor_bin = out.join(&editor_name);
-        link_or_copy(&editor_src, &editor_bin)?;
-        #[cfg(unix)]
-        make_executable(&editor_bin)?;
+        link_or_copy(&editor_src, &out.join(&editor_name))?;
     } else {
         eprintln!(
             "[xtask] WARN: {} missing — staged a runtime-only tree (build with `cargo dist`)",
@@ -734,8 +741,17 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     // costs nothing and cannot be wrong.
     let deps = src.join("deps");
     let mut wanted = std::collections::BTreeSet::new();
-    for exe in ["renzora", "renzora-editor"] {
-        let path = out.join(format!("{exe}{}", plat.exe_suffix));
+    // The executable and the editor image both import shared libraries, and the
+    // image imports more of them than the exe does — it is the editor, so it
+    // pulls the UI toolkit and every editor crate's dependencies. Asking both is
+    // what keeps a staged tree complete now that the editor is a library rather
+    // than a second executable that was scanned here.
+    let host_binaries = [
+        format!("renzora{}", plat.exe_suffix),
+        format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext),
+    ];
+    for name in &host_binaries {
+        let path = out.join(name);
         if path.is_file() {
             wanted.extend(imported_libs(&path, plat));
         }
@@ -798,6 +814,9 @@ fn imported_libs(exe: &Path, plat: &Platform) -> Vec<String> {
         return Vec::new();
     };
     let mut out = std::collections::BTreeSet::new();
+    // Every shared image, plus the Rust std the binary imports. A stem missing
+    // from this list is not staged, and the binary then fails to start with
+    // Windows' "code execution cannot proceed" dialog naming it.
     for stem in ["bevy_dylib", "renzora_dylib", "renzora_ember_dylib", "std"] {
         let prefix = format!("{}{stem}", plat.lib_prefix);
         let suffix = format!(".{}", plat.ext);
@@ -846,20 +865,17 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> ExitCode {
     let mut extra: Vec<String> = std::env::args().skip(2).collect();
 
-    // The editor, unless asked for a runtime-only mode.
+    // One binary. `renzora` is the editor when `renzora_editor.<dll|so|dylib>`
+    // sits beside it and the game when it does not, so there is no second
+    // executable to choose between any more — this used to pick between
+    // `renzora-editor` and `renzora`, from the years the editor was its own
+    // exe.
     //
-    // `renzora-editor` and `renzora` became separate executables when Bevy went
-    // static (see `stage`), and this launched `renzora` regardless — so
-    // `cargo renzora` silently started the game instead of the editor. The
-    // three flags below are the modes only the runtime binary understands: it
-    // reads them in `main` to boot headless, as a listen server, or into a
-    // headset. `renzora-editor` parses none of them, so forwarding one there
-    // would start an ordinary editor session and quietly ignore the request.
-    const RUNTIME_ONLY: [&str; 3] = ["--server", "--host", "--vr"];
-    let runtime_mode = extra.iter().any(|a| RUNTIME_ONLY.contains(&a.as_str()));
-    let stem = if runtime_mode { "renzora" } else { "renzora-editor" };
-
-    let bin = out.join(format!("{stem}{}", plat.exe_suffix));
+    // `--server`, `--host` and `--vr` still matter, but to the binary rather
+    // than to this: it reads them in `main` to boot headless, as a listen
+    // server, or into a headset, and each of those is never an editor session
+    // even with the image present. So they are simply forwarded.
+    let bin = out.join(format!("renzora{}", plat.exe_suffix));
     if !bin.exists() {
         eprintln!("[xtask] {} was not staged", bin.display());
         return ExitCode::FAILURE;
