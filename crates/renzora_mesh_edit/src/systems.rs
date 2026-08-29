@@ -32,9 +32,16 @@ pub fn enter_edit_mode(
     mut commands: Commands,
 ) {
     active_flag.0 = true;
-    let Some(target) = selection.get() else {
-        // No entity selected yet — let normal Scene-mode picking stay active
-        // so the user can click a mesh to edit.
+    // Nothing selected, or something selected that has no mesh — either way
+    // there is nothing to edit, so leave normal Scene-mode picking active and
+    // let the user click a mesh.
+    //
+    // The non-mesh half matters now that Tab enters Edit unconditionally
+    // (see `tools::toggle_edit_mode`). Without it, tabbing in with a light or an
+    // empty selected would disengage the gizmo and adopt that entity as the edit
+    // target, leaving a mode with no gizmo and nothing editable in it.
+    let target = selection.get().filter(|e| mesh_q.get(*e).is_ok());
+    let Some(target) = target else {
         if *active_tool == ActiveTool::None {
             *active_tool = ActiveTool::Select;
         }

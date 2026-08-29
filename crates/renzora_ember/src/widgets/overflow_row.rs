@@ -190,6 +190,47 @@ pub fn arrange_row_items(
 
 /// Light up the group a grip belongs to while it's hovered or being dragged, so
 /// it's obvious what the grip will pick up.
+/// Hide a group's grip when the group has nothing visible in it.
+///
+/// A holder is `[grip, group]`, and `arrange_row_items` tells callers to bind
+/// visibility on the *holder* so hiding a group takes its grip with it. That
+/// covers a group hidden as a whole — but not a group whose **contents** are
+/// hidden individually, which is how the viewport toolbar works: `ThreeDOnly` /
+/// `TwoDOnly` markers hide single widgets by viewport mode, so a 3D-only group
+/// viewed in 2D collapses to nothing while its holder is still, correctly,
+/// displayed. What is left on screen is a drag handle beside empty space.
+///
+/// Checked by measured size rather than by walking `Node::display`: a child can
+/// be hidden by its own display, by an ancestor's, or by having no content, and
+/// the laid-out width is the one signal that answers all three. It is also the
+/// signal that is actually wrong when this bug shows — the group really is zero
+/// pixels wide.
+///
+/// Runs after layout, so it reads the size computed for the frame that is about
+/// to be drawn.
+pub(crate) fn hide_empty_group_grips(
+    holders: Query<(&RowHolder, &Children)>,
+    sizes: Query<&ComputedNode>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (holder, kids) in &holders {
+        // The group is the holder's child that is not the grip.
+        let Some(group) = kids.iter().find(|e| *e != holder.grip) else {
+            continue;
+        };
+        let empty = sizes
+            .get(group)
+            .map(|n| n.size().x <= 0.5)
+            .unwrap_or(true);
+        if let Ok(mut node) = nodes.get_mut(holder.grip) {
+            let want = if empty { Display::None } else { Display::Flex };
+            if node.display != want {
+                node.display = want;
+            }
+        }
+    }
+}
+
 pub(crate) fn arrange_highlight(
     drag: Res<RowDrag>,
     holders: Query<(Entity, &RowHolder)>,

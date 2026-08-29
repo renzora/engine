@@ -894,25 +894,16 @@ pub(crate) fn caret_blink(
 }
 
 
-// ── System clipboard (native only; wasm no-ops like the code editor) ─────────
+// ── System clipboard ─────────────────────────────────────────────────────────
+// One definition, in `widgets::clipboard`, including the wasm no-ops.
 
-#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_get() -> Option<String> {
-    arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok())
-}
-#[cfg(target_arch = "wasm32")]
-fn clipboard_get() -> Option<String> {
-    None
+    super::clipboard::get_text()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_set(s: &str) {
-    if let Ok(mut cb) = arboard::Clipboard::new() {
-        let _ = cb.set_text(s.to_string());
-    }
+    super::clipboard::set_text(s);
 }
-#[cfg(target_arch = "wasm32")]
-fn clipboard_set(_s: &str) {}
 
 // ── Right-click context menu: Copy / Cut / Paste / Select all ────────────────
 

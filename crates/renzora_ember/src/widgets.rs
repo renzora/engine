@@ -83,6 +83,7 @@ mod pagination;
 // Data display.
 mod avatar;
 mod chip;
+pub mod clipboard;
 mod file_image;
 mod folder_picker;
 mod grid;
@@ -417,6 +418,11 @@ impl Plugin for WidgetsPlugin {
                     overflow_row::arrange_drag,
                     overflow_row::arrange_highlight,
                     overflow_row::arrange_apply_order,
+                    // Reads last frame's measured size, which is what makes it
+                    // safe to run here rather than after layout: hiding a grip
+                    // cannot change the width of the group beside it, so there
+                    // is nothing for the next frame to disagree with.
+                    overflow_row::hide_empty_group_grips,
                 ),
             ),
         );

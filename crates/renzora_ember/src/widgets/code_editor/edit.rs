@@ -822,26 +822,15 @@ pub(crate) fn clipboard_paste(ed: &mut CodeEditor) {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+// One definition, in `widgets::clipboard` — this pair used to be written out
+// here and again in `text_input`, identically, which is how the console ended up
+// with a Copy button that did nothing rather than a third copy.
 fn clipboard_set(s: &str) {
-    if let Ok(mut cb) = arboard::Clipboard::new() {
-        let _ = cb.set_text(s.to_string());
-    }
+    crate::widgets::clipboard::set_text(s);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_get() -> Option<String> {
-    arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok())
-}
-
-// The browser clipboard is async-only and gated behind a user gesture, so the
-// synchronous editor path just no-ops on wasm (copy/paste fall back to nothing).
-#[cfg(target_arch = "wasm32")]
-fn clipboard_set(_s: &str) {}
-
-#[cfg(target_arch = "wasm32")]
-fn clipboard_get() -> Option<String> {
-    None
+    crate::widgets::clipboard::get_text()
 }
 
 fn insert_text(ed: &mut CodeEditor, s: &str) {

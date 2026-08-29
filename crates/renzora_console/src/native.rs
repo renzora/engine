@@ -633,7 +633,34 @@ pub(crate) fn console_buttons(
         }
         match btn {
             ConsoleBtn::Clear => state.clear(),
-            ConsoleBtn::Copy => {}
+            // Copies what is on screen, not the whole buffer: the filters are
+            // how someone narrows a log down to the part worth pasting into an
+            // issue, and copying everything would discard that work.
+            //
+            // Formatted the way the panel reads, honouring the timestamp and
+            // frame toggles, so the paste matches what was being looked at. A
+            // collapsed repeat keeps its count — losing "x412" would turn a
+            // flood into what looks like a single line.
+            ConsoleBtn::Copy => {
+                let mut out = String::new();
+                for e in state.filtered_entries() {
+                    if state.show_timestamps {
+                        out.push_str(&format!("[{:.3}] ", e.timestamp));
+                    }
+                    if state.show_frame {
+                        out.push_str(&format!("[f{}] ", e.frame));
+                    }
+                    if !e.category.is_empty() {
+                        out.push_str(&format!("[{}] ", e.category));
+                    }
+                    out.push_str(&format!("{:?}: {}", e.level, e.message));
+                    if e.count > 1 {
+                        out.push_str(&format!(" (x{})", e.count));
+                    }
+                    out.push('\n');
+                }
+                renzora_ember::widgets::clipboard::set_text(&out);
+            }
             ConsoleBtn::Info => state.show_info = !state.show_info,
             ConsoleBtn::Success => state.show_success = !state.show_success,
             ConsoleBtn::Warn => state.show_warnings = !state.show_warnings,
