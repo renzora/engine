@@ -7857,9 +7857,11 @@ dependencies = [
  "renzora",
  "renzora_ember",
  "renzora_import",
+ "renzora_native_plugin",
  "renzora_net",
  "renzora_plugin",
  "renzora_rpak",
+ "renzora_rust_script",
  "rfd",
  "serde",
  "serde_json",
@@ -8647,6 +8649,7 @@ dependencies = [
  "renzora",
  "renzora_plugin_build",
  "renzora_scripting",
+ "renzora_static_scripts",
 ]
 
 [[package]]
@@ -8903,6 +8906,14 @@ name = "renzora_static_plugins"
 version = "0.1.0"
 dependencies = [
  "renzora_plugin",
+]
+
+[[package]]
+name = "renzora_static_scripts"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
 ]
 
 [[package]]

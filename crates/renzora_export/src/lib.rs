@@ -11,11 +11,15 @@ mod build;
 #[cfg(not(target_arch = "wasm32"))]
 mod capabilities;
 #[cfg(not(target_arch = "wasm32"))]
+mod docker;
+#[cfg(not(target_arch = "wasm32"))]
 mod download;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
 mod overlay;
+#[cfg(not(target_arch = "wasm32"))]
+mod presets;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;
 #[cfg(not(target_arch = "wasm32"))]
@@ -25,6 +29,8 @@ mod upx;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use overlay::ExportOverlayState;
+#[cfg(not(target_arch = "wasm32"))]
+pub use presets::ExportPreset;
 #[cfg(not(target_arch = "wasm32"))]
 pub use templates::{ExportTemplate, Platform, TemplateManager};
 

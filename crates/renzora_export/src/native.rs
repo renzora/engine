@@ -14,11 +14,11 @@ use renzora::core::WindowMode;
 use std::sync::atomic::Ordering;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{react};
+use renzora_ember::reactive::{react, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, icon_menu_button, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode, PluginLinkMode};
@@ -34,11 +34,14 @@ pub(crate) fn register(app: &mut App) {
         (
             manage_export_modal,
             rebuild_right_pane,
-            platform_click,
+            preset_click,
+            preset_dup_click,
+            preset_del_click,
             output_browse_click,
             icon_browse_click,
             icon_clear_click,
             download_click,
+            source_download_click,
             install_click,
             export_click,
             cancel_or_back_click,
@@ -58,7 +61,11 @@ struct RightPane {
     sig: Option<u8>,
 }
 #[derive(Component, Clone, Copy)]
-struct PlatformBtn(Platform);
+struct PresetBtn(usize);
+#[derive(Component)]
+struct PresetDupBtn;
+#[derive(Component)]
+struct PresetDelBtn;
 #[derive(Component)]
 struct OutputBrowseBtn;
 #[derive(Component)]
@@ -67,6 +74,8 @@ struct IconBrowseBtn;
 struct IconClearBtn;
 #[derive(Component)]
 struct DownloadBtn;
+#[derive(Component)]
+struct SourceDownloadBtn;
 #[derive(Component)]
 struct InstallBtn;
 #[derive(Component)]
@@ -85,9 +94,53 @@ struct SectionToggle(&'static str);
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
+/// Probe Docker once per selected platform.
+///
+/// Only for a cross-platform lean build, which is the only combination that
+/// needs a container: a lean build recompiles the engine, and cargo can only
+/// target the host. Probing spawns a process, so it is keyed on the platform and
+/// runs again only when that changes — never per frame.
+fn probe_docker(world: &mut World) {
+    let Some(state) = world.get_resource::<ExportOverlayState>() else { return };
+    let needed = state.packaging_mode == PackagingMode::LeanSingleBinary
+        && Platform::current() != Some(state.platform);
+    let platform = state.platform;
+    if !needed {
+        // Clear so re-selecting a cross platform re-probes: the user may have
+        // started Docker Desktop in between, and a stale "not running" would be
+        // a dead end with no way to retry.
+        if state.docker.is_some() {
+            if let Some(mut s) = world.get_resource_mut::<ExportOverlayState>() {
+                s.docker = None;
+                s.docker_probed_for = None;
+            }
+        }
+        return;
+    }
+    if state.docker_probed_for == Some(platform) {
+        return;
+    }
+    let status = crate::docker::probe();
+    if let Some(mut s) = world.get_resource_mut::<ExportOverlayState>() {
+        s.docker = Some(status);
+        s.docker_probed_for = Some(platform);
+    }
+}
+
 fn manage_export_modal(world: &mut World) {
     let visible = world.get_resource::<ExportOverlayState>().is_some_and(|s| s.visible);
     if visible {
+        // Presets belong to the open project, so this both fills an empty list
+        // on first open and swaps it when the user changes project without
+        // closing the editor. It no-ops once loaded for that path.
+        if let Some(root) =
+            world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
+        {
+            if let Some(mut state) = world.get_resource_mut::<ExportOverlayState>() {
+                state.load_presets(&root);
+            }
+        }
+        probe_docker(world);
         ensure_release_fetch(world);
         poll_release_fetch(world);
         poll_export_task(world);
@@ -233,6 +286,14 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
         .spawn((
             Node {
                 width: Val::Px(760.0),
+                // Explicit height, not just a cap. The dialog used to be propped
+                // open by a sidebar listing twelve platforms; the preset list
+                // replacing it starts EMPTY, so the modal collapsed to the height
+                // of whichever tab was showing and jumped every time you switched
+                // tab or added a preset. A fixed height keeps the tabs, the log
+                // view and the Export button in one place regardless of content —
+                // `max_height` keeps it on screen on a short display.
+                height: Val::Vh(78.0),
                 max_height: Val::Vh(86.0),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(20.0)),
@@ -281,13 +342,39 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     // The right column is NOT scrolled as a whole — the platform header and tab
     // bar inside it stay fixed; each tab caps and scrolls its own content (see
     // `finish_tab`). That keeps the top chrome put while a long list scrolls.
-    let right = commands.spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), min_width: Val::Px(0.0), ..default() }, RightPane { sig: None })).id();
-    commands.entity(cols).add_children(&[sidebar, right]);
+    let right = commands.spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), min_width: Val::Px(0.0), min_height: Val::Px(0.0), ..default() }, RightPane { sig: None })).id();
+    // Every setting in the right pane belongs to the selected preset, so with
+    // nothing selected there is nothing to configure. Showing the form anyway
+    // invited edits that had nowhere to be saved to — and offered an Export
+    // button for a configuration that does not exist.
+    bind_display(commands, right, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_some())
+    });
+
+    // What stands in its place: say what to do, rather than leaving the pane
+    // blank next to a sidebar that already says "press +".
+    let right_empty = commands
+        .spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(6.0), min_width: Val::Px(0.0), ..default() })
+        .id();
+    let ei = icon_text(commands, &fonts.phosphor, "package", text_muted(), 30.0);
+    let et = txt(commands, fonts, &renzora::lang::t("export.presets.none_selected"), 12.0, text_muted());
+    commands.entity(right_empty).add_children(&[ei, et]);
+    bind_display(commands, right_empty, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_none())
+    });
+
+    commands.entity(cols).add_children(&[sidebar, right, right_empty]);
     commands.entity(settings_view).add_child(cols);
 
     // Export button sits below the columns; the output fields (name, directory,
-    // icon) now live in the Output tab inside the right pane.
-    build_export_btn(commands, fonts, settings_view);
+    // icon) now live in the Output tab inside the right pane. Hidden with the
+    // form for the same reason — there is nothing to export without a preset.
+    let export_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    commands.entity(settings_view).add_child(export_row);
+    bind_display(commands, export_row, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_some())
+    });
+    build_export_btn(commands, fonts, export_row);
 
     // Log view — the live build terminal + progress bar + cancel. Shown while and
     // after an export runs.
@@ -298,16 +385,79 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     });
 }
 
-// ── Sidebar (platforms) ──────────────────────────────────────────────────────
+// ── Sidebar (presets) ────────────────────────────────────────────────────────
+//
+// This used to list every platform, with the settings for whichever was
+// selected held in memory and lost at the next launch. A preset is that
+// configuration given a name, so two shipping configurations for the same
+// platform can sit side by side — a demo build and a full one, say — and both
+// survive a restart. The platform is now a property OF a preset, chosen when it
+// is added, rather than a separate axis.
 
 fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands.spawn(Node { width: Val::Px(180.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
-    let head = section_label(commands, fonts, "desktop-tower", &renzora::lang::t("export.section.platform"));
-    commands.entity(col).add_child(head);
-    for &p in Platform::ALL {
-        let btn = platform_button(commands, fonts, p);
-        commands.entity(col).add_child(btn);
-    }
+
+    // Header: title on the left, add-menu on the right.
+    let head_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
+    let head = section_label(commands, fonts, "sliders-horizontal", &renzora::lang::t("export.section.presets"));
+    commands.entity(head).insert(Node { flex_grow: 1.0, ..default() });
+    // The platform picker lives here, which is the whole reason a bare "+" is
+    // enough: adding a preset IS choosing a platform, so there is no separate
+    // list to keep in step with the selection.
+    let names: Vec<&str> = Platform::ALL.iter().map(|p| p.display_name()).collect();
+    let add = icon_menu_button(
+        commands,
+        fonts,
+        "plus",
+        "desktop-tower",
+        &names,
+        |world, i| {
+            let Some(&platform) = Platform::ALL.get(i) else { return };
+            let Some(mut state) = world.get_resource_mut::<ExportOverlayState>() else { return };
+            // Keep the outgoing preset's edits before the new one replaces the
+            // working fields.
+            state.sync_active_preset();
+            let name = crate::presets::unique_name(platform.display_name(), &state.presets);
+            state.presets.push(crate::presets::ExportPreset::new(name, platform));
+            let last = state.presets.len() - 1;
+            // Not `select_preset`: that early-returns when the index is already
+            // active and would also re-sync the preset we just pushed.
+            state.active_preset = Some(last);
+            if let Some(p) = state.presets.get(last).cloned() {
+                p.apply(&mut state);
+            }
+            state.save_presets();
+        },
+    );
+    commands.entity(head_row).add_children(&[head, add]);
+    commands.entity(col).add_child(head_row);
+
+    // The list itself — keyed, so adding or removing one preset rebuilds that
+    // row rather than the whole sidebar (and never disturbs the rest).
+    let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
+    keyed_list(commands, list, preset_list_snapshot);
+    commands.entity(col).add_child(list);
+
+    // Empty state. A project with no presets shows nothing at all otherwise,
+    // and "the export dialog is blank" is a worse first impression than a line
+    // of text saying what to press.
+    let empty = txt(commands, fonts, &renzora::lang::t("export.presets.empty"), 11.0, text_muted());
+    commands.entity(empty).insert(Node { margin: UiRect::vertical(Val::Px(8.0)), ..default() });
+    bind_display(commands, empty, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| s.presets.is_empty())
+    });
+    commands.entity(col).add_child(empty);
+
+    // Duplicate / Remove act on the selection, so they are hidden when there
+    // isn't one rather than sitting there doing nothing.
+    let actions = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(4.0), margin: UiRect::top(Val::Px(6.0)), ..default() }).id();
+    let dup = small_button(commands, fonts, "copy", &renzora::lang::t("export.presets.duplicate"), PresetDupBtn);
+    let del = small_button(commands, fonts, "trash", &renzora::lang::t("export.presets.remove"), PresetDelBtn);
+    commands.entity(actions).add_children(&[dup, del]);
+    bind_display(commands, actions, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_some())
+    });
+    commands.entity(col).add_child(actions);
     // Release info status.
     let rel = txt(commands, fonts, "", 11.0, text_muted());
     commands.entity(rel).insert(Node { margin: UiRect::top(Val::Px(8.0)), ..default() });
@@ -335,25 +485,84 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     col
 }
 
-fn platform_button(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
+/// A snapshot with no rows — what the preset list shows before the overlay
+/// resource exists.
+fn empty_snapshot() -> KeyedSnapshot {
+    KeyedSnapshot { items: Vec::new(), build: Box::new(|c, _, _| c.spawn(Node::default()).id()) }
+}
+
+fn hasher() -> std::collections::hash_map::DefaultHasher {
+    std::collections::hash_map::DefaultHasher::new()
+}
+
+/// This frame's preset rows, keyed by index.
+///
+/// The hash carries everything a row draws — name, platform, and whether it is
+/// the selection — so renaming a preset or moving the selection rebuilds only
+/// the rows that actually changed.
+fn preset_list_snapshot(world: &Rx) -> KeyedSnapshot {
+    use std::hash::{Hash, Hasher};
+    let Some(state) = world.get_resource::<ExportOverlayState>() else {
+        return empty_snapshot();
+    };
+    let rows: Vec<(String, Platform, bool)> = state
+        .presets
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.name.clone(), p.platform, state.active_preset == Some(i)))
+        .collect();
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let mut k = hasher();
+            i.hash(&mut k);
+            let mut h = hasher();
+            row.hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (name, platform, selected) = &rows[i];
+            preset_row(c, f, i, name, *platform, *selected)
+        }),
+    }
+}
+
+/// One preset row: platform icon, name, and the template-status dot that used to
+/// sit on the platform button.
+///
+/// The dot still earns its place — a preset for a platform whose runtime
+/// template is not installed cannot export, and saying so here is what makes the
+/// Download button in the right pane make sense when you reach it.
+fn preset_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    index: usize,
+    name: &str,
+    p: Platform,
+    selected: bool,
+) -> Entity {
     let btn = commands
         .spawn((
             Node { width: Val::Percent(100.0), height: Val::Px(40.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::horizontal(Val::Px(10.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-            BackgroundColor(Color::NONE),
+            BackgroundColor(if selected { rgb(section_bg()) } else { Color::NONE }),
             BorderColor::all(rgb(border())),
             Interaction::default(),
-            PlatformBtn(p),
+            PresetBtn(index),
             cursor(),
         ))
         .id();
+    // Selection is baked into the row hash, so only hover needs to be live.
     bind_bg(commands, btn, move |w| {
-        let sel = w.get_resource::<ExportOverlayState>().is_some_and(|s| s.platform == p);
         let hov = matches!(w.get::<Interaction>(btn), Some(Interaction::Hovered));
-        if sel { rgb(section_bg()) } else if hov { ca(255, 255, 255, 10) } else { Color::NONE }
+        if selected { rgb(section_bg()) } else if hov { ca(255, 255, 255, 10) } else { Color::NONE }
     });
     let ic = icon_text(commands, &fonts.phosphor, platform_icon(p), text_primary(), 18.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
-    let nm = commands.spawn((Text::new(p.display_name().to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
+    let nm = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
     let dot = commands.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(text_muted())), FocusPolicy::Pass)).id();
     bind_bg(commands, dot, move |w| {
         let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p));
@@ -361,6 +570,38 @@ fn platform_button(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> 
         if installed { rgb(GREEN) } else if available { rgb(AMBER) } else { ca(130, 138, 160, 150) }
     });
     commands.entity(btn).add_children(&[ic, nm, dot]);
+    btn
+}
+
+/// A compact icon+label button for the sidebar's Duplicate / Remove pair.
+fn small_button<M: Component>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    marker: M,
+) -> Entity {
+    let btn = commands
+        .spawn((
+            Node { flex_grow: 1.0, height: Val::Px(26.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(rgb(border())),
+            Interaction::default(),
+            marker,
+            cursor(),
+        ))
+        .id();
+    bind_bg(commands, btn, move |w| {
+        if matches!(w.get::<Interaction>(btn), Some(Interaction::Hovered)) {
+            ca(255, 255, 255, 10)
+        } else {
+            Color::NONE
+        }
+    });
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 13.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let tx = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass, bevy::text::TextLayout::no_wrap())).id();
+    commands.entity(btn).add_children(&[ic, tx]);
     btn
 }
 
@@ -380,13 +621,24 @@ fn rebuild_right_pane(world: &mut World) {
         return;
     }
     let kids: Vec<Entity> = world.get::<Children>(pane).map(|c| c.iter().collect()).unwrap_or_default();
+    // Measured here rather than inside the tab builders, which have `Commands`
+    // and no way to reach a `Window`. Logical (not physical) pixels, because the
+    // `Val::Px` cap it feeds is logical too — using the raw resolution would
+    // over-size the cap by the DPI scale factor on a scaled display.
+    let window_height = world
+        .query_filtered::<&bevy::window::Window, With<bevy::window::PrimaryWindow>>()
+        .iter(world)
+        .next()
+        .map(|w| w.resolution.height() as f32 / w.resolution.scale_factor())
+        .unwrap_or(0.0);
+    let tab_max = tab_content_max(window_height);
     let mut queue = CommandQueue::default();
     {
         let mut commands = Commands::new(&mut queue, world);
         for k in kids {
             commands.entity(k).despawn();
         }
-        build_settings(&mut commands, &fonts, pane, platform);
+        build_settings(&mut commands, &fonts, pane, platform, tab_max);
     }
     queue.apply(world);
     if let Some(mut r) = world.get_mut::<RightPane>(pane) {
@@ -394,9 +646,21 @@ fn rebuild_right_pane(world: &mut World) {
     }
 }
 
-fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: Platform) {
+fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: Platform, tab_max: f32) {
     let desktop = matches!(p, Platform::WindowsX64 | Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64);
-    let host = Platform::current() == Some(p);
+    // Not "is this the host?" any more, but "can a lean binary be produced for
+    // this platform at all?" Everything downstream (the lean radio option,
+    // engine-feature stripping, linking plugins in) depends on a lean build
+    // existing, not on it being local.
+    //
+    // Two conditions, and the source one is easy to forget. A lean build
+    // RECOMPILES the engine, so it needs the engine source — which a canonical
+    // editor download does not have and cannot fetch (releases publish
+    // templates, not source). Offering the option there just moves the failure
+    // from "greyed out" to a runtime error after the asset scan. The copy-based
+    // modes are unaffected: they copy a prebuilt runtime template and are the
+    // normal path for anyone without a checkout.
+    let host = crate::docker::lean_supported(p) && lean_source_available();
 
     // Platform header — context above the category tabs.
     let hdr = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), margin: UiRect::bottom(Val::Px(6.0)), ..default() }).id();
@@ -409,21 +673,21 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
     // `tabs()` shows one at a time (the ember tab widget the editor uses
     // elsewhere). Within a panel, each group is an ember collapsible `section`
     // — the same widget the inspector/settings panels use for their categories.
+    // Four tabs, not six. Compression folded into Packaging and Options into
+    // Output, because both were a tab holding one idea: six tabs for what is
+    // really three decisions — what am I making, how is it built, what goes in —
+    // meant hunting for a setting rather than reading down a page.
     let panels = vec![
-        build_output_tab(commands, fonts),
-        build_packaging_tab(commands, fonts, p, desktop, host),
-        build_features_tab(commands, fonts, host),
-        build_plugins_tab(commands, fonts, host),
-        build_compression_tab(commands, fonts),
-        build_options_tab(commands, fonts, p, desktop),
+        build_output_tab(commands, fonts, p, desktop, tab_max),
+        build_packaging_tab(commands, fonts, p, desktop, host, tab_max),
+        build_features_tab(commands, fonts, host, tab_max),
+        build_plugins_tab(commands, fonts, host, tab_max),
     ];
     let tab_labels = [
         renzora::lang::t("export.tab.output"),
         renzora::lang::t("export.tab.packaging"),
         renzora::lang::t("export.tab.features"),
         renzora::lang::t("export.tab.plugins"),
-        renzora::lang::t("export.tab.compression"),
-        renzora::lang::t("export.tab.options"),
     ];
     let tab_refs: Vec<&str> = tab_labels.iter().map(|s| s.as_str()).collect();
     let strip = tabs(
@@ -454,25 +718,64 @@ fn tab_panel(commands: &mut Commands) -> Entity {
     commands.spawn(Node::default()).id()
 }
 
+/// Is there an engine source checkout for a lean build to recompile?
+///
+/// A few `is_file`/`is_dir` calls up a short path, and only on a right-pane
+/// rebuild (platform change), so it is not worth caching.
+fn lean_source_available() -> bool {
+    crate::build::resolve_engine_source().is_some()
+}
+
 /// Max height a single tab's content scrolls within. The platform header + tab
 /// bar live above the panels and stay fixed; only this inner content scrolls.
-const TAB_CONTENT_MAX: f32 = 380.0;
+///
+/// A `max_height` rather than a flex fill, and that is the load-bearing detail:
+/// `scroll_area` gives the viewport a DEFINITE height, which is what lets it
+/// clip and what makes the scrollbar appear (the bar is driven by the viewport's
+/// own overflow). Filling by flex instead was tried and does not work here —
+/// the panel is five flex levels below the dialog and never gets a definite
+/// height of its own, so `height: 100%` grew to the content (clipped by the
+/// dialog, no bar) and `flex_basis: 0` collapsed to nothing (blank tab).
+///
+/// Derived from the window rather than the old hardcoded 380px, because the
+/// dialog is now a fixed 78vh: a constant cap left a band of dead space between
+/// a short tab and the Export button. The subtraction is the dialog's fixed
+/// chrome — title, separator, platform header, tab bar, Export row, padding.
+fn tab_content_max(window_height: f32) -> f32 {
+    // The dialog's fixed chrome: title row, separator, platform header, tab bar,
+    // Export row, panel padding.
+    const CHROME: f32 = 230.0;
+    // No window to measure (headless, or before one exists): the constant this
+    // replaced, which is known to be safe on any display rather than merely
+    // likely. Also the floor, so a very short window cannot produce a cap so
+    // small the tab is unusable — it scrolls instead.
+    const FALLBACK: f32 = 380.0;
+    if window_height <= 0.0 {
+        return FALLBACK;
+    }
+    (window_height * MODAL_VH - CHROME).max(FALLBACK)
+}
+
+/// The dialog's height as a fraction of the window. Kept beside the `Val::Vh`
+/// in `spawn_modal` — the two have to agree or the tab cap is computed against a
+/// dialog of a different size.
+const MODAL_VH: f32 = 0.78;
 
 /// Finish a tab: stack its `sections` in a column and wrap that in one capped
 /// scroll viewport, so the content scrolls under the fixed header/tab bar
 /// (sizes to content when short, scrolls past `TAB_CONTENT_MAX`).
-fn finish_tab(commands: &mut Commands, panel: Entity, sections: &[Entity]) {
+fn finish_tab(commands: &mut Commands, panel: Entity, sections: &[Entity], tab_max: f32) {
     let content = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
         .id();
     commands.entity(content).add_children(sections);
-    let scroll = scroll_area(commands, content, TAB_CONTENT_MAX);
+    let scroll = scroll_area(commands, content, tab_max);
     commands.entity(panel).add_child(scroll);
 }
 
 // ── Output tab: binary name, export directory, icon ──────────────────────────
 
-fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     let (sec, body) = section(commands, fonts, "folder-open", &renzora::lang::t("export.section.output"), accent());
 
@@ -509,13 +812,18 @@ fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(icon_row).add_children(&[icon_lbl, icon_path, clear, icon_browse]);
 
     commands.entity(body).add_children(&[name_row, dir_row, icon_row]);
-    finish_tab(commands, panel, &[sec]);
+    // Window, logging and dedicated-server options follow the output fields:
+    // they all describe the artefact being produced, and splitting them across
+    // two tabs meant "what am I making?" was answered in two places.
+    let mut secs = vec![sec];
+    secs.extend(options_sections(commands, fonts, p, desktop));
+    finish_tab(commands, panel, &secs, tab_max);
     panel
 }
 
 // ── Packaging tab: packaging mode + runtime template status ──────────────────
 
-fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool, host: bool) -> Entity {
+fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     let mut secs = Vec::new();
 
@@ -554,11 +862,26 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
             let hint = txt(commands, fonts, &renzora::lang::t("export.packaging.lean_hint"), 11.0, text_muted());
             commands.entity(body).add_child(hint);
         }
+        // No source, no lean build — but that is a missing download rather than
+        // a permanent limitation, so offer the download instead of leaving the
+        // option greyed out with no way forward. A canonical editor ships
+        // binaries only; the source rides the release as its own asset.
+        if !lean_source_available() {
+            let why = txt(commands, fonts, &renzora::lang::t("export.packaging.needs_source"), 11.0, AMBER);
+            commands.entity(body).add_child(why);
+            let btn = small_button(commands, fonts, "download-simple", &renzora::lang::t("export.packaging.get_source"), SourceDownloadBtn);
+            commands.entity(btn).insert(Node { width: Val::Px(190.0), height: Val::Px(26.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), margin: UiRect::top(Val::Px(4.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() });
+            commands.entity(body).add_child(btn);
+        }
         secs.push(sec);
     }
 
     secs.push(build_runtime_status(commands, fonts, p));
-    finish_tab(commands, panel, &secs);
+    // Compression and mesh optimisation are packaging decisions — how the build
+    // is packed, not what it contains — so they sit here rather than behind a
+    // tab of their own.
+    secs.extend(compression_sections(commands, fonts));
+    finish_tab(commands, panel, &secs, tab_max);
     panel
 }
 
@@ -593,7 +916,7 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
 
 // ── Features tab: the lean engine-feature strip ──────────────────────────────
 
-fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -> Entity {
+fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     let (sec, body) = section(commands, fonts, "sliders-horizontal", &renzora::lang::t("export.section.engine_features"), accent());
     if host {
@@ -749,13 +1072,13 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
         let note = txt(commands, fonts, &renzora::lang::t("export.features.note_nonhost"), 11.0, text_muted());
         commands.entity(body).add_child(note);
     }
-    finish_tab(commands, panel, &[sec]);
+    finish_tab(commands, panel, &[sec], tab_max);
     panel
 }
 
 // ── Plugins tab ──────────────────────────────────────────────────────────────
 
-fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -> Entity {
+fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     let mut secs = Vec::new();
 
@@ -834,15 +1157,17 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) ->
         queue.apply(world);
     });
     secs.push(sec);
-    finish_tab(commands, panel, &secs);
+    finish_tab(commands, panel, &secs, tab_max);
     panel
 }
 
 // ── Compression tab: asset compression + mesh optimization ───────────────────
 
-fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let panel = tab_panel(commands);
-
+/// Compression + mesh-optimisation sections.
+///
+/// Returns sections rather than a tab: both are decisions about how the build is
+/// packed, so they live under Packaging rather than behind a tab of their own.
+fn compression_sections(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     // Asset compression level.
     let (csec, cbody) = section(commands, fonts, "file-archive", &renzora::lang::t("export.section.compression"), accent());
     let crow = labeled(commands, fonts, &renzora::lang::t("export.field.compression_level"));
@@ -881,14 +1206,16 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     commands.entity(levels).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
     bind_display(commands, levels, |w| w.resource::<ExportOverlayState>().mesh_generate_lods);
     commands.entity(mbody).add_child(levels);
-    finish_tab(commands, panel, &[csec, msec]);
-    panel
+    vec![csec, msec]
 }
 
 // ── Options tab: window + flags ──────────────────────────────────────────────
 
-fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool) -> Entity {
-    let panel = tab_panel(commands);
+/// Window / logging / server sections.
+///
+/// Returns sections rather than a tab: these describe the thing being produced —
+/// what window it opens, whether it logs — so they belong with Output.
+fn options_sections(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool) -> Vec<Entity> {
     let mut secs = Vec::new();
 
     // Window (desktop).
@@ -931,8 +1258,7 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
         commands.entity(obody).add_child(server);
     }
     secs.push(osec);
-    finish_tab(commands, panel, &secs);
-    panel
+    secs
 }
 
 // ── Progress / export button ─────────────────────────────────────────────────
@@ -1061,18 +1387,68 @@ fn can_export(w: &Rx) -> bool {
     installed && !s.output_dir.is_empty() && s.active_task.is_none() && matches!(s.progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_))
 }
 
-fn platform_click(q: Query<(&Interaction, &PlatformBtn), Changed<Interaction>>, mut state: Option<ResMut<ExportOverlayState>>) {
+fn preset_click(q: Query<(&Interaction, &PresetBtn), Changed<Interaction>>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
     for (i, b) in &q {
         if *i == Interaction::Pressed {
-            state.platform = b.0;
+            // Carries the outgoing preset's edits across and persists them.
+            state.select_preset(b.0);
         }
     }
+}
+
+fn preset_dup_click(q: Query<&Interaction, (With<PresetDupBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    // Duplicate what is on screen, not what was last saved — the edits made
+    // since selecting are the reason to duplicate rather than add.
+    state.sync_active_preset();
+    let Some(src) = state.active_preset.and_then(|i| state.presets.get(i)).cloned() else { return };
+    let mut copy = src;
+    copy.name = crate::presets::unique_name(&copy.name, &state.presets);
+    state.presets.push(copy);
+    state.active_preset = Some(state.presets.len() - 1);
+    state.save_presets();
+}
+
+fn preset_del_click(q: Query<&Interaction, (With<PresetDelBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(i) = state.active_preset else { return };
+    if i >= state.presets.len() {
+        return;
+    }
+    state.presets.remove(i);
+    // Select the neighbour that took its place, or the new last one if the
+    // removed preset was at the end. `None` when nothing is left, which the
+    // sidebar renders as the empty state.
+    state.active_preset = if state.presets.is_empty() {
+        None
+    } else {
+        Some(i.min(state.presets.len() - 1))
+    };
+    if let Some(p) = state.active_preset.and_then(|i| state.presets.get(i)).cloned() {
+        p.apply(state);
+    }
+    state.save_presets();
 }
 
 fn close_click(q: Query<&Interaction, (With<CloseBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
+        // Persist before hiding. Every field in the form writes to the flat
+        // working state rather than into the preset, so without this an edit
+        // made and then closed would look accepted and be gone at the next
+        // open — the exact failure the preset system exists to remove. The
+        // other paths that lose the working state (switch, add, duplicate,
+        // remove) already sync; closing was the one that did not.
+        state.sync_active_preset();
+        state.save_presets();
+
         // Closing mid-export cancels the build rather than leaving it running
         // detached. Reset to the settings view for next time.
         if let Some(task) = state.active_task.as_ref() {
@@ -1161,6 +1537,14 @@ fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Interaction>)>,
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
             if can_export(&Rx::new(&*w)) {
+                // Persist what is about to be built. An export is the moment a
+                // configuration is proven to be the one you wanted, and a build
+                // that takes minutes is exactly when the editor is most likely
+                // to be closed or to crash before the settings were saved.
+                if let Some(mut state) = w.get_resource_mut::<ExportOverlayState>() {
+                    state.sync_active_preset();
+                    state.save_presets();
+                }
                 let name = w.get_resource::<renzora::core::CurrentProject>().map(|p| p.config.name.clone()).unwrap_or_default();
                 run_export(w, &name);
             }
@@ -1184,6 +1568,38 @@ fn icon_browse_click(q: Query<&Interaction, (With<IconBrowseBtn>, Changed<Intera
             if let Some(f) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_icon")).add_filter(renzora::lang::t("export.filter.images"), &["png", "ico", "svg"]).pick_file() {
                 w.resource_mut::<ExportOverlayState>().icon_path = Some(f.to_string_lossy().to_string());
             }
+        });
+    }
+}
+
+/// Fetch the engine source so a canonical editor can do a lean build.
+///
+/// Reuses the template download task and its progress line, so the modal renders
+/// it with no extra plumbing. The lean radio option becomes selectable on the
+/// next right-pane rebuild, once `resolve_engine_source` can see the extracted
+/// tree.
+fn source_download_click(
+    q: Query<&Interaction, (With<SourceDownloadBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(|w: &mut World| {
+            let p = w.resource::<ExportOverlayState>().platform;
+            let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
+                let mut s = w.resource_mut::<ExportOverlayState>();
+                s.download_status = Some((
+                    p,
+                    DownloadProgress::Error(renzora::lang::t("export.status.no_release")),
+                ));
+                return;
+            };
+            let task = download::spawn_source_download(p, release);
+            let mut s = w.resource_mut::<ExportOverlayState>();
+            s.download_task = Some(task);
+            s.download_status = Some((
+                p,
+                DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting")),
+            ));
         });
     }
 }

@@ -15,7 +15,7 @@ use crate::download::{self, DownloadProgress, DownloadTask, ReleaseInfo};
 use crate::templates::{Platform, TemplateManager};
 
 /// Packaging mode for the exported build.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PackagingMode {
     /// Copy the dev runtime binary + its dylibs, write a sibling .rpak.
     SeparateFiles,
@@ -28,7 +28,7 @@ pub enum PackagingMode {
 }
 
 /// How the game's C-ABI plugins reach the exported build.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum PluginLinkMode {
     /// Copy each plugin's library into a `plugins/` folder beside the binary,
     /// where the host finds and loads it at startup. Works with every packaging
@@ -92,6 +92,26 @@ pub struct ExportOverlayState {
     pub build_compiled: u32,
     /// Whether the build reached "Finished" / Done (progress bar → full).
     pub build_finished: bool,
+    /// Saved export configurations for the open project, in list order.
+    ///
+    /// The settings below are the *working copy* — whichever preset is selected
+    /// has been applied into them, and edits land there rather than in the
+    /// preset. [`ExportOverlayState::sync_active_preset`] copies them back, and
+    /// is called before anything that would lose them (switching preset,
+    /// closing, exporting).
+    pub presets: Vec<crate::presets::ExportPreset>,
+    /// Index into `presets`, or `None` when the project has none yet.
+    pub active_preset: Option<usize>,
+    /// Project the loaded presets belong to, so opening a different project
+    /// reloads rather than showing the previous one's list.
+    pub(crate) presets_loaded_for: Option<std::path::PathBuf>,
+    /// Result of the last Docker probe, and the platform it was run for.
+    ///
+    /// Probing spawns a process, so it happens when the modal opens or the
+    /// selected platform changes — never per frame.
+    pub docker: Option<crate::docker::DockerStatus>,
+    pub(crate) docker_probed_for: Option<Platform>,
+
     pub platform: Platform,
     pub packaging_mode: PackagingMode,
     pub window_mode: WindowMode,
@@ -162,6 +182,11 @@ impl Default for ExportOverlayState {
     fn default() -> Self {
         Self {
             visible: false,
+            presets: Vec::new(),
+            active_preset: None,
+            presets_loaded_for: None,
+            docker: None,
+            docker_probed_for: None,
             view: ExportView::Settings,
             build_log: Vec::new(),
             build_compiled: 0,
@@ -198,6 +223,63 @@ impl Default for ExportOverlayState {
             release_fetch_error: None,
             download_task: None,
             download_status: None,
+        }
+    }
+}
+
+impl ExportOverlayState {
+    /// Load this project's presets, if they aren't loaded already.
+    ///
+    /// Selects the first preset and applies it, so opening the modal lands on a
+    /// working configuration rather than on whatever the last session left in
+    /// the fields. A project with no presets yet gets `active_preset: None`,
+    /// which the UI renders as an empty state inviting one to be added.
+    pub fn load_presets(&mut self, project_root: &std::path::Path) {
+        if self.presets_loaded_for.as_deref() == Some(project_root) {
+            return;
+        }
+        self.presets = crate::presets::load(project_root);
+        self.presets_loaded_for = Some(project_root.to_path_buf());
+        self.active_preset = if self.presets.is_empty() { None } else { Some(0) };
+        if let Some(p) = self.active_preset.and_then(|i| self.presets.get(i)).cloned() {
+            p.apply(self);
+        }
+    }
+
+    /// Copy the working settings back into the selected preset.
+    ///
+    /// Every edit in the modal writes to the flat fields rather than into the
+    /// preset — the widgets were built that way and rebinding all of them
+    /// through an index would be a large change for no gain — so this is what
+    /// makes an edit durable. Call it before anything that would otherwise lose
+    /// the edits: switching preset, closing the modal, starting an export.
+    pub fn sync_active_preset(&mut self) {
+        let Some(i) = self.active_preset else { return };
+        let Some(name) = self.presets.get(i).map(|p| p.name.clone()) else { return };
+        let updated = crate::presets::ExportPreset::capture(name, self);
+        self.presets[i] = updated;
+    }
+
+    /// Persist the presets for the open project. Best-effort: a failure is
+    /// logged rather than surfaced, because it must not block an export that is
+    /// otherwise fine.
+    pub fn save_presets(&self) {
+        let Some(root) = self.presets_loaded_for.as_deref() else { return };
+        if let Err(e) = crate::presets::save(root, &self.presets) {
+            warn!("could not save export presets: {e}");
+        }
+    }
+
+    /// Select a preset by index, keeping the outgoing one's edits.
+    pub fn select_preset(&mut self, index: usize) {
+        if self.active_preset == Some(index) || index >= self.presets.len() {
+            return;
+        }
+        self.sync_active_preset();
+        self.save_presets();
+        self.active_preset = Some(index);
+        if let Some(p) = self.presets.get(index).cloned() {
+            p.apply(self);
         }
     }
 }
@@ -1042,6 +1124,47 @@ fn export_worker(
             crate::apk_signer::sign_apk(&apk_path)
         })
     } else {
+        // Ship the project's compiled Rust scripts beside the game. Only for the
+        // copy-based modes and only for this machine's own platform: these are
+        // host-shaped libraries, and the template they sit beside carries the
+        // shared images they were compiled against. A lean export takes the other
+        // route entirely and compiles them into the binary.
+        if matches!(packaging_mode, PackagingMode::SeparateFiles | PackagingMode::SingleBinary)
+            && Platform::current() == Some(platform)
+        {
+            let tx_s = tx.clone();
+            let mut sp = |m: String| {
+                let _ = tx_s.send(ExportMsg::Progress(m));
+            };
+            let lib_ext = match platform {
+                Platform::WindowsX64 | Platform::WindowsArm64 => "dll",
+                Platform::MacOSX64 | Platform::MacOSArm64 => "dylib",
+                _ => "so",
+            };
+            // Best-effort: a game that ships without its scripts is still a
+            // playable game, and failing the whole export over one is a worse
+            // trade than saying so.
+            if let Err(e) =
+                crate::build::stage_prebuilt_scripts(&project.path, &output_dir, lib_ext, &mut sp)
+            {
+                let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
+            }
+            // Same trade for native plugins: a `Runtime`-scope one belongs in
+            // the game, and the library the editor built is the thing that
+            // ships. Read from the editor's own `plugins/`, not the project's —
+            // a native plugin extends the engine, not one game.
+            if let Some(editor_dir) = crate::build::editor_dir() {
+                if let Err(e) = crate::build::stage_runtime_native_plugins(
+                    &editor_dir,
+                    &output_dir,
+                    lib_ext,
+                    &mut sp,
+                ) {
+                    let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
+                }
+            }
+        }
+
         match packaging_mode {
             PackagingMode::SeparateFiles => {
                 let rpak_path = output_dir.join(format!("{}.rpak", binary_stem));
@@ -1066,20 +1189,38 @@ fn export_worker(
                 let mut progress = |m: String| {
                     let _ = tx_b.send(ExportMsg::Progress(m));
                 };
-                let built = crate::toolchain::ensure_rust(&runtime_dir, &mut progress)
+                // Everything here keys off where the EDITOR lives, not off
+                // `runtime_dir` — that is the target platform's template dir, and
+                // for a cross-platform export it is the download store with no
+                // engine source above it. A lean build ignores the template
+                // entirely; it recompiles the engine from source.
+                let editor_dir = crate::build::editor_dir()
+                    .unwrap_or_else(|| runtime_dir.clone());
+                // A local Rust toolchain is only needed for a SAME-OS build,
+                // which compiles natively. A different OS compiles in the
+                // platform's container, which carries the pinned toolchain
+                // itself — so provisioning one here would download and install a
+                // rustup that the build never invokes, on a machine whose owner
+                // installed Docker precisely so they would not need it.
+                let cross = Platform::current() != Some(platform);
+                let toolchain = if cross {
+                    Ok(None)
+                } else {
+                    crate::toolchain::ensure_rust(&editor_dir, &mut progress).map(Some)
+                };
+                let built = toolchain
                     .and_then(|toolchain| {
                         // A lean build recompiles the ENGINE (the project is just
                         // assets → rpak), so compile the engine source checkout the
-                        // editor was built from, found by walking up from its
-                        // runtime dir (e.g. `<engine>/dist/windows-x64/`).
-                        let engine_dir = crate::build::find_engine_source(&runtime_dir)
+                        // editor was built from, found by walking up from the
+                        // editor's own dir (e.g. `<engine>/dist/windows-x64/`).
+                        let engine_dir = crate::build::resolve_engine_source()
                             .ok_or_else(|| {
-                                format!(
-                                    "Could not find the engine source to compile \
-                                     (searched up from {}). A lean build recompiles \
-                                     the engine; run the editor from a source checkout.",
-                                    runtime_dir.display()
-                                )
+                                "No engine source to compile. A lean build recompiles \
+                                 the engine, so it needs either a source checkout the \
+                                 editor runs from, or the engine source downloaded for \
+                                 this version (Packaging → Download engine source)."
+                                    .to_string()
                             })?;
                         // Linking a plugin in means COMPILING it, so it needs the
                         // source that produced the library the UI listed. A
@@ -1118,8 +1259,9 @@ fn export_worker(
                         ));
                         crate::build::build_lean(
                             &engine_dir,
+                            &project.path,
                             platform,
-                            &toolchain,
+                            toolchain.as_ref(),
                             &mut progress,
                             &disabled_bevy_features,
                             &disabled_runtime_features,
@@ -1168,14 +1310,39 @@ fn export_worker(
                     if let Some(ext) = entry.path().extension() {
                         let ext = ext.to_string_lossy();
                         if ext == "dll" || ext == "so" || ext == "dylib" {
-                            // Copy SDK + bevy_dylib + std (not plugins/ or binaries)
-                            if name_str.starts_with("bevy_dylib")
-                                || name_str.starts_with("libbevy_dylib")
+                            // ── The shared images, plus the Rust std the binary
+                            // imports. Not plugins (they live in `plugins/`) and
+                            // not the executables.
+                            //
+                            // Matched on `_dylib` rather than by name, and that
+                            // is a repair as much as a simplification. The list
+                            // used to read `renzora.` / `librenzora.`, from when
+                            // the contract dylib was `renzora.dll`. It is
+                            // `renzora_dylib.dll` now, and `renzora_ember_dylib`
+                            // joined it — so the test matched NEITHER, and every
+                            // copy-based export since the rename shipped a game
+                            // that could not start:
+                            //
+                            //   The code execution cannot proceed because
+                            //   renzora_ember_dylib.dll was not found.
+                            //
+                            // The pattern covers all three today and any shared
+                            // image added later, so the next rename cannot
+                            // silently drop one the same way. `bevy_dylib` also
+                            // carries a `-<hash>` suffix, which is why this is a
+                            // substring test and not an equality one.
+                            //
+                            // `openxr_loader` rides along for the same reason
+                            // `package-release.sh` copies it into every runtime
+                            // template by name: the binary imports it, so a game
+                            // without it fails to start exactly as it does
+                            // without a `_dylib` — the next error in the same
+                            // dialog, found the same way.
+                            let shared = name_str.contains("_dylib")
                                 || name_str.starts_with("std-")
                                 || name_str.starts_with("libstd-")
-                                || name_str.starts_with("renzora.")
-                                || name_str.starts_with("librenzora.")
-                            {
+                                || name_str.starts_with("openxr_loader");
+                            if shared {
                                 let _ = std::fs::copy(entry.path(), output_dir.join(&name));
                             }
                         }
