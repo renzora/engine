@@ -169,6 +169,13 @@ fn sync_night_stars(
                 MeshMaterial3d(material_handle.clone()),
                 transform,
                 NightStarsDomeMarker,
+                // Same guard as the cloud deck: `reject_unnamed_entities`
+                // despawns any `Transform` entity with no `Name`, and enforces
+                // always in a shipped game. Without this the starfield is
+                // despawned and rebuilt every frame in an exported build.
+                // `HideInHierarchy` rather than a `Name` because this is chrome,
+                // and a name would serialise it into saved scenes.
+                renzora::core::HideInHierarchy,
                 bevy::light::NotShadowCaster,
                 bevy::light::NotShadowReceiver,
             ))

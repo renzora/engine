@@ -664,6 +664,18 @@ fn sync_clouds(
                 MeshMaterial3d(material_handle.clone()),
                 transform,
                 CloudDomeMarker,
+                // REQUIRED, not cosmetic. `reject_unnamed_entities` despawns
+                // anything with a `Transform` and no `Name`, and it enforces
+                // **always** in a shipped game (and in the editor's play mode) —
+                // so without this the dome was despawned and rebuilt every
+                // frame, which is what the flickering deck in an exported build
+                // actually was.
+                //
+                // `HideInHierarchy` rather than a `Name`: this is engine-drawn
+                // chrome, not scene content. Naming it would also serialise it
+                // into saved scenes, and a camera-centred dome rebuilt on every
+                // run has no business being in a scene file.
+                renzora::core::HideInHierarchy,
                 bevy::light::NotShadowCaster,
                 bevy::light::NotShadowReceiver,
             ))
