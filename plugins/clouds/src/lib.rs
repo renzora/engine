@@ -121,6 +121,45 @@ const DEFAULT_DOME_RADIUS: f32 = 4000.0;
 #[derive(Component)]
 struct CloudDomeMarker;
 
+/// Change-only diagnostics for the cloud dome's lifecycle.
+///
+/// The three explanations for a flickering deck each leave a different trace,
+/// and they are hard to tell apart by eye:
+///
+/// * **A respawn loop** — something despawns the dome and `sync_clouds` builds a
+///   new one next frame. Shows up as repeated `dome spawned` / `dome gone`.
+/// * **The wrong source or camera** — two `CloudsData` or two active `Camera3d`,
+///   picked from an unordered query, alternating frame to frame. Shows up as
+///   `source ->` / `camera ->` lines repeating between the same two ids.
+/// * **Re-centre lag** — the dome only follows the camera once it has moved more
+///   than a unit, so a continuously moving player camera leaves the deck
+///   trailing and snapping. Shows up as a high `recentres/s` with a large
+///   `max jump`, and is the one that would be invisible in an editor whose
+///   camera mostly sits still.
+///
+/// None of it fires on a steady scene, so this is safe to leave in while the
+/// question is open.
+#[derive(Default)]
+struct Diag {
+    source: Option<Option<Entity>>,
+    camera: Option<Option<Entity>>,
+    allowed: Option<bool>,
+    spawned: bool,
+    recentres: u32,
+    max_jump: f32,
+    next_report: f32,
+}
+
+impl Diag {
+    /// Log `what -> value` the first time it is seen and on every change after.
+    fn track<T: PartialEq + std::fmt::Debug>(slot: &mut Option<T>, what: &str, now: T) {
+        if slot.as_ref() != Some(&now) {
+            info!("[clouds] {what} -> {now:?}");
+            *slot = Some(now);
+        }
+    }
+}
+
 #[derive(Resource, Default)]
 struct CloudsState {
     entity: Option<Entity>,
@@ -133,6 +172,11 @@ struct CloudsState {
     /// nothing.
     last_cam_pos: Option<Vec3>,
     last_radius: f32,
+    /// Diagnostics for the "flickers in an exported game, fine in the editor"
+    /// report. Everything here logs on **change** only, plus one throttled
+    /// summary a second — a per-frame log line in this system would itself
+    /// stall frames and change what is being measured.
+    diag: Diag,
     /// Accumulated wind displacement in km, wrapped to the noise period.
     wind_offset: Vec3,
     /// Accumulated scroll of the warp field in km, wrapped to its own period.
@@ -284,8 +328,10 @@ fn sync_clouds(
     mut commands: Commands,
     time: Res<Time>,
     mut clouds_state: ResMut<CloudsState>,
-    clouds_query: Query<&CloudsData>,
-    camera_query: Query<(&GlobalTransform, &Camera, Option<&Projection>), With<Camera3d>>,
+    // `Entity` on both purely so the diagnostics can say *which* source and
+    // *which* camera were picked — an alternating id is the whole signal.
+    clouds_query: Query<(Entity, &CloudsData)>,
+    camera_query: Query<(Entity, &GlobalTransform, &Camera, Option<&Projection>), With<Camera3d>>,
     sun_query: Query<(
         &GlobalTransform,
         &DirectionalLight,
@@ -312,12 +358,23 @@ fn sync_clouds(
     // the `enabled` check, switching clouds off left the dome rendering.
     let active_clouds = clouds_query
         .iter()
-        .find(|c| c.enabled)
+        .find(|(_, c)| c.enabled)
         .filter(|_| clouds_allowed);
 
-    let Some(clouds_data) = active_clouds else {
+    // How many candidates exist at all — more than one is itself the bug in the
+    // "alternating source" case, and `find` would hide it.
+    let enabled_sources = clouds_query.iter().filter(|(_, c)| c.enabled).count();
+    Diag::track(&mut clouds_state.diag.allowed, "quality allows clouds", clouds_allowed);
+    Diag::track(
+        &mut clouds_state.diag.source,
+        if enabled_sources > 1 { "source (MULTIPLE enabled!)" } else { "source" },
+        active_clouds.map(|(e, _)| e),
+    );
+
+    let Some((_, clouds_data)) = active_clouds else {
         // No active clouds — despawn dome if it exists.
         if let Some(dome_entity) = clouds_state.entity.take() {
+            info!("[clouds] dome despawned (no enabled CloudsData, or quality gate)");
             commands.entity(dome_entity).despawn();
             clouds_state.material_handle = None;
             clouds_state.mesh_handle = None;
@@ -332,13 +389,23 @@ fn sync_clouds(
         return;
     };
 
-    let Some((camera_transform, _, projection)) = camera_query
+    let Some((camera_entity, camera_transform, _, projection)) = camera_query
         .iter()
-        .find(|(_, cam, _)| cam.is_active)
+        .find(|(_, _, cam, _)| cam.is_active)
         .or_else(|| camera_query.iter().next())
     else {
         return;
     };
+
+    // An id that alternates frame to frame means two active `Camera3d` and an
+    // unordered `find` — the dome would be re-centred on a different eye each
+    // frame, which reads exactly as flicker.
+    let active_cameras = camera_query.iter().filter(|(_, _, c, _)| c.is_active).count();
+    Diag::track(
+        &mut clouds_state.diag.camera,
+        if active_cameras > 1 { "camera (MULTIPLE active!)" } else { "camera" },
+        Some(camera_entity),
+    );
 
     // `GlobalTransform`, not `Transform`: a camera parented to a rig — which is
     // what a flying player camera usually is — has a local translation relative
@@ -550,6 +617,16 @@ fn sync_clouds(
                 .unwrap_or(true)
                 || (clouds_state.last_radius - radius).abs() > 1.0;
             if moved {
+                // How far the dome had drifted from the eye before it caught up.
+                // The threshold is 1 unit, so anything approaching that is the
+                // deck visibly trailing the camera and then snapping.
+                let jump = clouds_state
+                    .last_cam_pos
+                    .map(|p| p.distance(camera_pos))
+                    .unwrap_or(0.0);
+                clouds_state.diag.recentres += 1;
+                clouds_state.diag.max_jump = clouds_state.diag.max_jump.max(jump);
+
                 let transform =
                     Transform::from_translation(camera_pos).with_scale(Vec3::splat(radius));
                 commands.entity(dome_entity).insert(transform);
@@ -557,6 +634,10 @@ fn sync_clouds(
                 clouds_state.last_radius = radius;
             }
         } else {
+            // The dome we built is gone and we did not despawn it. Something
+            // else in the app removed it, and the block below will build another
+            // — that pair repeating every frame IS the flicker.
+            warn!("[clouds] dome entity vanished (despawned by something else) — respawning");
             clouds_state.entity = None;
             clouds_state.material_handle = None;
             clouds_state.mesh_handle = None;
@@ -588,11 +669,36 @@ fn sync_clouds(
             ))
             .id();
 
+        // First spawn is expected and says so once; any *later* one means the
+        // dome is being rebuilt, which should not happen on a steady scene.
+        if clouds_state.diag.spawned {
+            warn!("[clouds] dome RE-spawned (radius {radius:.0}) — this should not repeat");
+        } else {
+            info!("[clouds] dome spawned (radius {radius:.0}, camera {camera_entity})");
+            clouds_state.diag.spawned = true;
+        }
+
         clouds_state.entity = Some(dome_entity);
         clouds_state.mesh_handle = Some(mesh_handle);
         clouds_state.material_handle = Some(material_handle);
         clouds_state.last_cam_pos = Some(camera_pos);
         clouds_state.last_radius = radius;
+    }
+
+    // One throttled line a second, only while the dome is actually moving.
+    // `recentres` near the frame rate with a `max jump` close to the 1.0
+    // threshold is the re-centre-lag explanation; a low count is not.
+    let now = time.elapsed_secs();
+    if now >= clouds_state.diag.next_report {
+        if clouds_state.diag.recentres > 0 {
+            info!(
+                "[clouds] {} recentres/s, max jump {:.2} units (threshold 1.00)",
+                clouds_state.diag.recentres, clouds_state.diag.max_jump
+            );
+        }
+        clouds_state.diag.recentres = 0;
+        clouds_state.diag.max_jump = 0.0;
+        clouds_state.diag.next_report = now + 1.0;
     }
 }
 
