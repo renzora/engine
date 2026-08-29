@@ -54,6 +54,11 @@ pub use clouds::*;
 pub mod auto_exposure;
 pub use auto_exposure::*;
 
+// `Sun` (read by six crates, one of them now a plugin) and `NightStarsData`.
+// `renzora_lighting` re-exports `Sun`, so existing paths keep resolving.
+pub mod sun;
+pub use sun::*;
+
 // One world-global wind, shared by foliage, cloth, the ocean and the cloud
 // deck. Here rather than in `renzora_wind` for the usual reason: four crates
 // read `WindState` and must all see the same `TypeId`.

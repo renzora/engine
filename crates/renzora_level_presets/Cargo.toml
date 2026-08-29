@@ -34,7 +34,6 @@ renzora_dof = { path = "../renzora_dof" }
 # `App::add_plugins` panic (registered twice: once from the rlib link,
 # once when `dynamic_plugin_loader` dlopens the cdylib). Users add
 # Vignette via the inspector's "Add Component" overlay.
-renzora_night_stars = { path = "../renzora_night_stars" }
 renzora_terrain = { path = "../renzora_terrain" }
 
 [lints]

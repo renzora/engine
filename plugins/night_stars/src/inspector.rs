@@ -1,13 +1,10 @@
-//! Editor-only half of `renzora_night_stars` — the Night Stars inspector.
+//! The Night Stars inspector.
 //!
-//! `renzora_night_stars` compiles lean (no `editor` feature, no egui-phosphor).
-//! This crate holds the inspector (renzora editor contract + Phosphor icon),
-//! registered `renzora::add!(NightStarsEditorPlugin, Editor)` and linked only by
-//! the editor bundle.
+//! Was a separate `Editor`-scope crate so the lean runtime half carried no
+//! editor contract; as one `Runtime` native plugin it is a module again.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
-use renzora_night_stars::NightStarsData;
+use renzora::{AppEditorExt, InspectorEntry, NightStarsData};
 
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
@@ -45,15 +42,9 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
-/// Editor-scope companion to `renzora_night_stars::NightStarsPlugin`.
-#[derive(Default)]
-pub struct NightStarsEditorPlugin;
-
-impl Plugin for NightStarsEditorPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] NightStarsEditorPlugin");
-        app.register_inspector(inspector_entry());
-    }
+/// Registered unconditionally from the one plugin's `build` — a native plugin
+/// compiles with no cargo features, so a `cfg(feature = "editor")` gate would be
+/// permanently false and this section would vanish with nothing logged.
+pub(crate) fn register(app: &mut App) {
+    app.register_inspector(inspector_entry());
 }
-
-renzora::add!(NightStarsEditorPlugin, Editor);

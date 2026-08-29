@@ -64,8 +64,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_navmesh::NavMeshPlugin::default());
     app.add_plugins(renzora_net::NetPlugin::default());
     app.add_plugins(renzora_network::NetworkPlugin::default());
-    #[cfg(feature = "night_stars")]
-    app.add_plugins(renzora_night_stars::NightStarsPlugin::default());
     #[cfg(feature = "oit")]
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]

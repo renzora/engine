@@ -58,7 +58,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_motion_blur_editor::MotionBlurEditorPlugin::default());
     app.add_plugins(renzora_navmesh_editor::NavMeshEditorPlugin::default());
     app.add_plugins(renzora_network_editor::NetworkEditorPlugin::default());
-    app.add_plugins(renzora_night_stars_editor::NightStarsEditorPlugin::default());
     app.add_plugins(renzora_oit_editor::OitEditorPlugin::default());
     app.add_plugins(renzora_parkour_editor::ParkourEditorPlugin::default());
     app.add_plugins(renzora_particle_editor::ParticleEditorPlugin::default());

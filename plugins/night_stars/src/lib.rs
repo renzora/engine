@@ -1,53 +1,24 @@
-//! Renzora Night Stars — procedural starfield on a sky dome.
+//! Night Stars — a procedural starfield on a sky dome, as a native plugin.
+//!
+//! `NightStarsData` and `Sun` both live in the contract crate: `level_presets`
+//! constructs the former when building a night sky, and this plugin reads the
+//! latter to fade the field by sun elevation. Both are named by a binary and by
+//! this runtime-loaded library, so both need one definition.
+
+pub mod inspector;
 
 use bevy::pbr::Material;
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use serde::{Deserialize, Serialize};
+
+/// Re-exported so `renzora_night_stars::NightStarsData` still resolves.
+pub use renzora::NightStarsData;
 
 // ============================================================================
 // Data types
 // ============================================================================
 
-/// Night stars — procedural starfield rendered on a sky dome.
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct NightStarsData {
-    /// Star density (0 = very few, 1 = dense starfield)
-    pub density: f32,
-    /// Brightness multiplier (0..10)
-    pub brightness: f32,
-    /// Star angular size (0.2 = tiny dots, 5.0 = large blobs)
-    pub star_size: f32,
-    /// Twinkling animation speed (0 = static, 10 = fast)
-    pub twinkle_speed: f32,
-    /// Twinkling intensity (0 = no twinkle, 1 = strong)
-    pub twinkle_amount: f32,
-    /// Elevation angle at which stars fade in above the horizon (0..1)
-    pub horizon_fade: f32,
-    /// Star color tint (RGB)
-    pub color: (f32, f32, f32),
-    /// When disabled the sky dome is despawned (no draw cost) and
-    /// re-spawned on enable — same as removing the component, but lets
-    /// the inspector keep the settings around for a quick toggle.
-    pub enabled: bool,
-}
-
-impl Default for NightStarsData {
-    fn default() -> Self {
-        Self {
-            density: 0.55,
-            brightness: 1.5,
-            star_size: 1.2,
-            twinkle_speed: 1.0,
-            twinkle_amount: 0.35,
-            horizon_fade: 0.08,
-            color: (1.0, 0.97, 0.9),
-            enabled: true,
-        }
-    }
-}
 
 // ============================================================================
 // Star Material
@@ -68,7 +39,9 @@ pub struct NightStarsMaterial {
 
 impl Material for NightStarsMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("embedded://renzora_night_stars/night_stars.wgsl".into())
+        // Crate name is part of the path — `night_stars`, not
+        // `renzora_night_stars`. Wrong name resolves to nothing at runtime.
+        ShaderRef::Path("embedded://night_stars/night_stars.wgsl".into())
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -109,7 +82,8 @@ fn sync_night_stars(
     mut state: ResMut<NightStarsState>,
     stars_query: Query<&NightStarsData>,
     camera_query: Query<&Transform, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
-    sun_query: Query<&renzora_lighting::Sun>,
+    // `Sun` moved to the contract crate; a plugin cannot link renzora_lighting.
+    sun_query: Query<&renzora::Sun>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut star_materials: ResMut<Assets<NightStarsMaterial>>,
     has_data: Query<(), With<NightStarsData>>,
@@ -222,7 +196,11 @@ impl Plugin for NightStarsPlugin {
             .init_resource::<NightStarsState>()
             .add_plugins(MaterialPlugin::<NightStarsMaterial>::default())
             .add_systems(Update, sync_night_stars);
+
+        inspector::register(app);
     }
 }
 
-renzora::add!(NightStarsPlugin);
+// `Runtime`, explicitly: `plugin!` defaults to `Editor` where `add!` defaulted
+// to `Runtime`, so omitting it would stop shipping the starfield to games.
+renzora::plugin!(NightStarsPlugin, Runtime);

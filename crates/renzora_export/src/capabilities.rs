@@ -210,16 +210,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "night_stars",
-        section: "sky",
-        label: "Night stars",
-        help: "The star field for night skies.",
-        bevy_features: &[],
-        runtime_features: &["night_stars"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "localization",
         section: "systems",
         label: "Translation packs",
@@ -989,7 +979,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
         for f in [
             "terrain", "water", "spline", "particles",
             // former `sky` bundle
-            "atmosphere", "environment_map", "skybox", "night_stars",
+            "atmosphere", "environment_map", "skybox",
             // former `postfx` bundle
             "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
             "volumetric_fog", "lens_distortion", "oit", "antialiasing",

@@ -7614,8 +7614,6 @@ dependencies = [
  "renzora_navmesh_editor",
  "renzora_network",
  "renzora_network_editor",
- "renzora_night_stars",
- "renzora_night_stars_editor",
  "renzora_oit",
  "renzora_oit_editor",
  "renzora_parkour_editor",
@@ -8069,7 +8067,6 @@ dependencies = [
  "renzora_environment_map",
  "renzora_lighting",
  "renzora_motion_blur",
- "renzora_night_stars",
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
@@ -8270,25 +8267,6 @@ dependencies = [
  "renzora",
  "renzora_ember",
  "renzora_network",
-]
-
-[[package]]
-name = "renzora_night_stars"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_lighting",
- "serde",
-]
-
-[[package]]
-name = "renzora_night_stars_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_night_stars",
 ]
 
 [[package]]
@@ -8536,7 +8514,6 @@ dependencies = [
  "renzora_navmesh",
  "renzora_net",
  "renzora_network",
- "renzora_night_stars",
  "renzora_oit",
  "renzora_parkour",
  "renzora_physics",

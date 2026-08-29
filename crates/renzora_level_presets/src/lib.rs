@@ -1421,7 +1421,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     // `App::add_plugins` panic. Users can still add it via the
     // inspector's "Add Component" overlay; the inspector entry is
     // registered by the dlopen path.
-    let night_stars = renzora_night_stars::NightStarsData {
+    let night_stars = renzora::NightStarsData {
         enabled: false,
         ..default()
     };
