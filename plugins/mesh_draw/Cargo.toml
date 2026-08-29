@@ -1,0 +1,28 @@
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependency below exists so rust-analyzer can
+# resolve `renzora::` while you author; the real build is `cargo renzora`.
+[workspace]
+
+[package]
+name = "mesh_draw"
+version = "0.1.0"
+edition = "2021"
+description = "Draw boxes, planes and cylinders directly in the viewport."
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+
+# Nothing else. The undo core (`renzora::undo`) and the tool vocabulary
+# (`ActiveTool`, `EditorCommands`) both moved to the contract crate so an editing
+# tool could be a plugin — those two were the whole of what kept this in the
+# binary. No third-party dependencies either, so cargo is never invoked and the
+# build is offline.

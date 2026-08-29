@@ -51,7 +51,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_level_presets::LevelPresetsPlugin::default());
     app.add_plugins(renzora_lighting_editor::LightingEditorPlugin::default());
     app.add_plugins(renzora_material_editor::MaterialEditorPlugin::default());
-    app.add_plugins(renzora_mesh_draw::MeshDrawPlugin::default());
     app.add_plugins(renzora_mesh_edit::MeshEditPlugin::default());
     app.add_plugins(renzora_mixer::MixerPlugin::default());
     app.add_plugins(renzora_motion_blur_editor::MotionBlurEditorPlugin::default());

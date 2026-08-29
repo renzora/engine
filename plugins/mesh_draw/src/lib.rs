@@ -21,7 +21,11 @@ use bevy::window::PrimaryWindow;
 use renzora::core::keybindings::KeyBinding;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora_editor_framework::{
+// All from the contract crate. `renzora_editor_framework` only re-exported
+// these, and the last two that genuinely lived there — `ActiveTool` and
+// `EditorCommands` — moved to sit beside the `ToolbarRegistry` that was already
+// here, which is what let this crate become a plugin at all.
+use renzora::{
     ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry, ToolEntry,
     ToolSection,
 };
@@ -463,9 +467,9 @@ fn handle_mouse_input(
                 let current_mode = state.tool_mode;
                 if let Some(cmds) = cmds {
                     cmds.push(move |world: &mut World| {
-                        renzora_undo::execute(
+                        renzora::undo::execute(
                             world,
-                            renzora_undo::UndoContext::Scene,
+                            renzora::undo::UndoContext::Scene,
                             Box::new(SpawnDrawnMeshCmd {
                                 recipe,
                                 entity: None,
@@ -680,7 +684,7 @@ struct SpawnDrawnMeshCmd {
     entity: Option<Entity>,
 }
 
-impl renzora_undo::UndoCommand for SpawnDrawnMeshCmd {
+impl renzora::undo::UndoCommand for SpawnDrawnMeshCmd {
     fn label(&self) -> &str {
         "Draw Mesh"
     }
@@ -1057,4 +1061,6 @@ fn merge_meshes(assets: &Assets<Mesh>, sources: &[(Entity, Handle<Mesh>, Transfo
     mesh
 }
 
-renzora::add!(MeshDrawPlugin, Editor);
+// `Editor` — an authoring tool has no business in a shipped game. That is also
+// `plugin!`'s default, but stated explicitly because it differs from `add!`'s.
+renzora::plugin!(MeshDrawPlugin, Editor);

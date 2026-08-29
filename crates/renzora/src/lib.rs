@@ -66,6 +66,12 @@ pub use sun::*;
 // state and therefore has to be singular. See the module doc.
 pub mod net;
 
+// Undo/redo core. NOT glob re-exported: `execute` and `record` are names far too
+// generic for the crate root, so callers say `renzora::undo::execute`. An
+// editing tool is the obvious thing to ship as a plugin, and the one thing it
+// must do is make its edits undoable — see the module doc.
+pub mod undo;
+
 // One world-global wind, shared by foliage, cloth, the ocean and the cloud
 // deck. Here rather than in `renzora_wind` for the usual reason: four crates
 // read `WindState` and must all see the same `TypeId`.

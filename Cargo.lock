@@ -7593,7 +7593,6 @@ dependencies = [
  "renzora_lighting",
  "renzora_lighting_editor",
  "renzora_material_editor",
- "renzora_mesh_draw",
  "renzora_mesh_edit",
  "renzora_mixer",
  "renzora_motion_blur",
@@ -8129,16 +8128,6 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
-]
-
-[[package]]
-name = "renzora_mesh_draw"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_undo",
 ]
 
 [[package]]

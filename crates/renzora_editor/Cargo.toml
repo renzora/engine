@@ -78,7 +78,6 @@ editor = [
     "dep:renzora_inspector",
     "dep:renzora_level_presets",
     "dep:renzora_material_editor",
-    "dep:renzora_mesh_draw",
     "dep:renzora_mesh_edit",
     "dep:renzora_mixer",
     "dep:renzora_network_editor",
@@ -164,7 +163,6 @@ renzora_import_ui          = { path = "../renzora_import_ui", optional = true }
 renzora_inspector          = { path = "../renzora_inspector", optional = true }
 renzora_level_presets      = { path = "../renzora_level_presets", optional = true }
 renzora_material_editor    = { path = "../renzora_material_editor", optional = true }
-renzora_mesh_draw          = { path = "../renzora_mesh_draw", optional = true }
 renzora_mesh_edit          = { path = "../renzora_mesh_edit", optional = true }
 renzora_mixer              = { path = "../renzora_mixer", optional = true }
 renzora_network_editor     = { path = "../renzora_network_editor", optional = true }

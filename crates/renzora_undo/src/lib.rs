@@ -8,7 +8,6 @@
 //! Shortcuts Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z operate on `UndoStacks::active`.
 
 use std::any::Any;
-use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
@@ -16,149 +15,20 @@ use renzora_editor_framework::{EditorLocked, EditorSelection, FieldValue, Inspec
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[derive(Default)]
-pub enum UndoContext {
-    #[default]
-    Scene,
-    MaterialGraph(String),
-    Blueprint(String),
-    Lifecycle,
-    Other(String),
-}
-
-
-/// A single undoable action. `execute` is called on initial push AND on redo.
-/// `undo` reverses the action. Both take `&mut self` so the command can
-/// refresh captured state (e.g. update an entity id after respawn).
-pub trait UndoCommand: Any + Send + Sync {
-    fn label(&self) -> &str {
-        "edit"
-    }
-    fn execute(&mut self, world: &mut World);
-    fn undo(&mut self, world: &mut World);
-    fn merge(&mut self, _other: &dyn UndoCommand) -> bool {
-        false
-    }
-}
-
-// ── Stacks ─────────────────────────────────────────────────────────────────
-
-#[derive(Resource, Default)]
-pub struct UndoStacks {
-    stacks: HashMap<UndoContext, ContextStack>,
-    pub active: UndoContext,
-}
-
-#[derive(Default)]
-struct ContextStack {
-    undo: VecDeque<Box<dyn UndoCommand>>,
-    redo: VecDeque<Box<dyn UndoCommand>>,
-    /// When set, the next `record` will NOT merge into the back entry — it
-    /// starts a fresh one instead. This is how a gesture boundary (a mouse
-    /// release, a text-field commit) stops a *later* edit of the same field from
-    /// folding into the earlier one. Reset to `false` on every push.
-    sealed_back: bool,
-}
-
-const MAX_DEPTH: usize = 500;
-
-impl UndoStacks {
-    pub fn clear(&mut self, context: &UndoContext) {
-        if let Some(s) = self.stacks.get_mut(context) {
-            s.undo.clear();
-            s.redo.clear();
-        }
-    }
-    pub fn clear_all(&mut self) {
-        self.stacks.clear();
-    }
-    pub fn can_undo(&self, context: &UndoContext) -> bool {
-        self.stacks
-            .get(context)
-            .is_some_and(|s| !s.undo.is_empty())
-    }
-    pub fn can_redo(&self, context: &UndoContext) -> bool {
-        self.stacks
-            .get(context)
-            .is_some_and(|s| !s.redo.is_empty())
-    }
-    /// Returns `(undo_labels, redo_labels)` for the given context.
-    /// `undo` is ordered front=oldest → back=most recent;
-    /// `redo` is ordered front=oldest-undone → back=next-to-redo.
-    pub fn labels(&self, context: &UndoContext) -> (Vec<String>, Vec<String>) {
-        self.stacks
-            .get(context)
-            .map(|s| {
-                (
-                    s.undo.iter().map(|c| c.label().to_string()).collect(),
-                    s.redo.iter().map(|c| c.label().to_string()).collect(),
-                )
-            })
-            .unwrap_or_default()
-    }
-}
-
-/// Execute `cmd` and push it onto the active (or supplied) stack.
+/// The trait, the context, the stacks and the four entry points live in the
+/// **contract crate** so a plugin can implement `UndoCommand` for its own edits
+/// and push them onto the history the editor shows.
 ///
-/// Prefer this over mutating the world directly — it's the single entry
-/// point that keeps the history in sync with the session.
-pub fn execute(world: &mut World, context: UndoContext, mut cmd: Box<dyn UndoCommand>) {
-    cmd.execute(world);
-    record(world, context, cmd);
-}
-
-/// Push `cmd` onto the stack WITHOUT executing it. Use when the mutation
-/// has already happened via code that can't easily be expressed as a single
-/// command (e.g. complex reparent with sibling index preservation).
-pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>) {
-    let is_scene = matches!(context, UndoContext::Scene);
-    world.resource_scope(|_w, mut stacks: Mut<UndoStacks>| {
-        let stack = stacks.stacks.entry(context).or_default();
-        // A sealed back entry is a committed gesture — never merge into it.
-        if !stack.sealed_back {
-            if let Some(back) = stack.undo.back_mut() {
-                if back.merge(cmd.as_ref()) {
-                    stack.redo.clear();
-                    return;
-                }
-            }
-        }
-        stack.undo.push_back(cmd);
-        stack.sealed_back = false;
-        stack.redo.clear();
-        while stack.undo.len() > MAX_DEPTH {
-            stack.undo.pop_front();
-        }
-    });
-    if is_scene {
-        mark_active_scene_tab_modified(world);
-    }
-}
-
-/// Seal the back entry of `context` so the next `record` starts a fresh undo
-/// step instead of merging. Call this at a gesture boundary — mouse release,
-/// text-field commit — so two separate edits of the same field (e.g. scrub a
-/// value, release, scrub it again) become two undo steps rather than one.
-/// A no-op if the stack is empty or already sealed.
-pub fn seal(world: &mut World, context: &UndoContext) {
-    if let Some(mut stacks) = world.get_resource_mut::<UndoStacks>() {
-        if let Some(stack) = stacks.stacks.get_mut(context) {
-            stack.sealed_back = true;
-        }
-    }
-}
-
-/// The context Ctrl+Z currently targets. Panels that record edits for "the
-/// thing the user is looking at" (the inspector, most tools) should push into
-/// this rather than hard-coding `Scene`, so their edits land on the focused
-/// document's stack. `route_undo_context` keeps it in sync with the UI.
-pub fn active_context(world: &World) -> UndoContext {
-    world
-        .get_resource::<UndoStacks>()
-        .map(|s| s.active.clone())
-        .unwrap_or_default()
-}
+/// They had to move together: a plugin holding a private copy of the trait and
+/// the `UndoStacks` resource would push onto a stack Ctrl+Z never reads, which
+/// is worse than not recording — the edit looks undoable and silently is not.
+///
+/// What stayed here is everything with a dependency: the concrete commands, the
+/// shortcut wiring, and the document-tab bookkeeping. Re-exported so every
+/// existing `renzora_undo::execute` path still resolves.
+pub use renzora::undo::{
+    active_context, execute, record, seal, UndoCommand, UndoContext, UndoStacks,
+};
 
 /// Flip the active document tab's `is_modified` flag so the Save button
 /// enables. The save handlers in `renzora_scene` clear it back to false.
@@ -203,7 +73,10 @@ impl Plugin for UndoPlugin {
             .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain())
             // Seal after all recording systems (which run in Update) so the
             // gesture that just ended can't merge with the next one.
-            .add_systems(PostUpdate, seal_gesture);
+            .add_systems(PostUpdate, seal_gesture)
+            // Turn the flag a `Scene` record leaves into the document tab's
+            // modified state — including one a plugin left, which is the point.
+            .add_systems(PostUpdate, drain_scene_edited);
 
         // Register undo/redo as late-bound hooks so the editor framework's
         // title bar / menu handlers can invoke them without taking a
@@ -321,19 +194,13 @@ fn shortcut_input(
 /// concerns.
 pub fn undo_once(world: &mut World) {
     let active = world.resource::<UndoStacks>().active.clone();
-    let cmd = world
-        .resource_mut::<UndoStacks>()
-        .stacks
-        .get_mut(&active)
-        .and_then(|s| s.undo.pop_back());
+    let cmd = world.resource_mut::<UndoStacks>().pop_undo(&active);
     let Some(mut cmd) = cmd else {
         world.write_message(UndoExhausted);
         return;
     };
     cmd.undo(world);
-    if let Some(s) = world.resource_mut::<UndoStacks>().stacks.get_mut(&active) {
-        s.redo.push_back(cmd);
-    }
+    world.resource_mut::<UndoStacks>().push_redo(active.clone(), cmd);
     if matches!(active, UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
@@ -342,22 +209,37 @@ pub fn undo_once(world: &mut World) {
 /// Redo the most recently undone action on the active stack.
 pub fn redo_once(world: &mut World) {
     let active = world.resource::<UndoStacks>().active.clone();
-    let cmd = world
-        .resource_mut::<UndoStacks>()
-        .stacks
-        .get_mut(&active)
-        .and_then(|s| s.redo.pop_back());
+    let cmd = world.resource_mut::<UndoStacks>().pop_redo(&active);
     let Some(mut cmd) = cmd else {
         world.write_message(UndoExhausted);
         return;
     };
     cmd.execute(world);
-    if let Some(s) = world.resource_mut::<UndoStacks>().stacks.get_mut(&active) {
-        s.undo.push_back(cmd);
-    }
+    world.resource_mut::<UndoStacks>().push_undo(active.clone(), cmd);
     if matches!(active, UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
+}
+
+/// Drain the flag [`renzora::undo::record`] sets on a `Scene` edit into the
+/// active document tab.
+///
+/// The contract crate cannot reach `renzora_ui::DocumentTabState`, and a plugin
+/// recording an edit should not have to know a document tab exists — so `record`
+/// leaves a bool and this runs one frame later to act on it. The only visible
+/// difference from doing it inline is that the Save button enables on the next
+/// frame rather than the same one.
+fn drain_scene_edited(world: &mut World) {
+    let dirty = world
+        .get_resource::<UndoStacks>()
+        .is_some_and(|s| s.scene_edited);
+    if !dirty {
+        return;
+    }
+    if let Some(mut stacks) = world.get_resource_mut::<UndoStacks>() {
+        stacks.scene_edited = false;
+    }
+    mark_active_scene_tab_modified(world);
 }
 
 fn handle_undo(world: &mut World) {
