@@ -257,13 +257,17 @@ impl Plugin for NativePluginLoader {
                 continue;
             }
             match load_one(&entry, sdk.as_ref(), expected.as_deref(), in_editor) {
-                Ok(Some((plugin, lib))) => {
+                Ok(Outcome::Skipped(why)) => {
+                    info!("[plugin] {name} {why}");
+                    record(app, &name, PluginState::Skipped(why));
+                }
+                Ok(Outcome::Loaded((plugin, lib))) => {
                     // Held for the life of the process. See the module doc.
                     libraries.push(std::mem::ManuallyDrop::new(lib));
                     app.add_plugins(Boxed(plugin));
                     record(app, &name, PluginState::Loaded);
                 }
-                Ok(None) => {}
+                Ok(Outcome::NotAPlugin) => {}
                 Err(e) => {
                     // Both, and neither is redundant. `warn!` reaches stdout and
                     // the Problems panel; the Console has no tracing layer and
@@ -306,9 +310,25 @@ fn record(app: &mut App, name: &str, state: PluginState) {
 /// A constructed plugin and the image it came from, which must outlive it.
 type Loaded = (Box<dyn Plugin>, Library);
 
+/// What [`load_one`] found in a directory.
+///
+/// `Skipped` exists so a plugin the loader declined is REPORTED rather than
+/// treated as absent. It is the difference between "my plugin does not load and
+/// nothing says why" and one line naming it — which is the only feedback
+/// available in a shipped game, where there is no Settings panel to look at.
+enum Outcome {
+    /// Loaded and ready to install.
+    Loaded(Loaded),
+    /// Not a plugin at all: a stray file, or a directory that is not one.
+    NotAPlugin,
+    /// A plugin, declined for a reason worth saying out loud.
+    Skipped(String),
+}
+
 /// Prepare and load one `plugins/<name>/` directory.
 ///
-/// `Ok(None)` means "nothing to load here" — a stray file, or a directory that
+/// `Ok(Outcome::NotAPlugin)` means "nothing to load here" — a stray file, or a
+/// directory that
 /// is not a plugin. Only real failures are `Err`.
 /// Where a plugin's artefacts live, and whether they need rebuilding.
 struct Layout {
@@ -364,9 +384,9 @@ fn load_one(
     // Whether this process is the editor. Decides which scopes are admitted —
     // see the scope check below.
     in_editor: bool,
-) -> Result<Option<Loaded>, String> {
+) -> Result<Outcome, String> {
     if !dir.is_dir() {
-        return Ok(None);
+        return Ok(Outcome::NotAPlugin);
     }
     let name = name_of(dir);
     let build = dir.join("build");
@@ -383,7 +403,7 @@ fn load_one(
     if !dir.join("src").join("lib.rs").is_file() {
         if !lib_path.is_file() {
             // Neither source nor library: a stray directory, not a plugin.
-            return Ok(None);
+            return Ok(Outcome::NotAPlugin);
         }
         // Nothing to build FROM, so never mind what `layout` concluded — its
         // staleness test compares source mtimes that do not exist.
@@ -441,7 +461,7 @@ fn load_one(
         // too. One skipped library is a few hundred KB held until exit.
         Err(_) => {
             std::mem::forget(lib);
-            return Ok(None);
+            return Ok(Outcome::NotAPlugin);
         }
     };
 
@@ -462,7 +482,15 @@ fn load_one(
     // binaries come out of one `--workspace` build).
     if !in_editor && scope == renzora::NativePluginScope::Editor {
         std::mem::forget(lib);
-        return Ok(None);
+        // Reported, not silent. A plugin sitting in a game's `plugins/` and
+        // doing nothing, with nothing said about it, is indistinguishable from a
+        // loader that is broken — and a shipped game has no Settings panel to
+        // check, so this line is the only feedback there is.
+        return Ok(Outcome::Skipped(
+            "is editor-only and does not load in a game. Declare \
+             `renzora::plugin!(.., Runtime)` to ship it with one."
+                .to_string(),
+        ));
     }
 
     // A panic here would unwind across the library boundary, which is undefined.
@@ -471,7 +499,7 @@ fn load_one(
     // this layer can help with that.
     let plugin = std::panic::catch_unwind(std::panic::AssertUnwindSafe(*ctor))
         .map_err(|_| "panicked while constructing".to_string())?;
-    Ok(Some((plugin, lib)))
+    Ok(Outcome::Loaded((plugin, lib)))
 }
 
 /// Whether anything under `dir/src` is newer than the built library.
