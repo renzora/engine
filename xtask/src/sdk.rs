@@ -209,10 +209,32 @@ pub fn build_from(
 
     let out = dist_root.join("sdk");
     let profile_dir = from.profile_dir(repo);
-    stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
-        eprintln!("[xtask] sdk staging failed: {e}");
-        ExitCode::FAILURE
-    })?;
+
+    // Staging wipes `deps/`, `host-deps/` and `native/` and re-links ~1000 files
+    // — every run, whether or not the compiler produced anything new. The wipe
+    // is load-bearing (a crate dropped from the workspace must not linger as a
+    // metadata file a later plugin build could still resolve), so this cannot be
+    // made incremental file-by-file. It can be skipped wholesale, which is what
+    // the stamp below decides.
+    //
+    // mtime + length per artifact, not content: anything the compiler rewrote
+    // has a new mtime, and reading a gigabyte of rlibs to find out nothing moved
+    // would cost more than the staging it is trying to avoid.
+    let stamp = input_stamp(&artifacts);
+    let stamp_path = out.join(".stage-stamp");
+    let fresh = out.join("manifest.json").is_file()
+        && std::fs::read_to_string(&stamp_path).is_ok_and(|s| s.trim() == stamp);
+    if fresh {
+        println!("[xtask] sdk: unchanged, staging skipped");
+    } else {
+        stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
+            eprintln!("[xtask] sdk staging failed: {e}");
+            ExitCode::FAILURE
+        })?;
+        // Written only after a staging that succeeded, so a failed or
+        // interrupted run leaves no stamp and the next one redoes the work.
+        let _ = std::fs::write(&stamp_path, &stamp);
+    }
     Ok(out)
 }
 
@@ -834,6 +856,53 @@ fn manifest_json(
 /// The dependency filenames go in too, cheaply: a dep whose metadata hash moved
 /// (a version bump, a feature change) is a real incompatibility that the three
 /// extern artifacts might not reflect.
+/// A hash of what staging would copy: every artifact's name, length and mtime.
+///
+/// Distinct from [`build_id`], which is computed from the staged *output* and
+/// identifies the SDK to a plugin. This one is computed from the *inputs* and
+/// answers a narrower question — "would staging produce the same tree it
+/// produced last time?" — cheaply enough to be worth asking on every run.
+///
+/// Length as well as mtime because a rebuild that lands on the same timestamp
+/// (a fast machine, a coarse filesystem clock) usually changes the size, and
+/// name because an artifact appearing or disappearing has to count as a change
+/// even when every surviving file is untouched.
+fn input_stamp(artifacts: &[(PathBuf, bool)]) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = OFFSET;
+    let mut eat = |bytes: &[u8]| {
+        for b in bytes {
+            h ^= *b as u64;
+            h = h.wrapping_mul(PRIME);
+        }
+    };
+
+    // Sorted, so directory iteration order on someone else's machine cannot
+    // produce a different stamp for an identical build.
+    let mut rows: Vec<String> = Vec::with_capacity(artifacts.len());
+    for (path, _) in artifacts {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let meta = std::fs::metadata(path).ok();
+        let len = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        // Seconds since the epoch. A file whose mtime cannot be read hashes as
+        // 0, which differs from any real timestamp and so forces a restage.
+        let secs = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        rows.push(format!("{name}:{len}:{secs}"));
+    }
+    rows.sort();
+    for r in &rows {
+        eat(r.as_bytes());
+    }
+    format!("{h:016x}")
+}
+
 fn build_id(out: &Path, externs: &Externs) -> String {
     // FNV-1a, 64-bit. Hand-rolled because xtask carries no dependencies on
     // purpose, and nothing here needs collision resistance against an adversary

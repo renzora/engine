@@ -517,6 +517,17 @@ fn build_source_plugins(repo: &Path) -> bool {
         if native_plugin::is_native(&dir) {
             continue;
         }
+        // Skip the ones nothing has touched. Cargo would reach the same
+        // conclusion, but only after spawning a process, parsing a manifest and
+        // fingerprinting a dependency graph — and this loop does that ~66 times
+        // on a build where the answer is "no" every time. A `stat` per source
+        // file gets there first.
+        let stamp = plugin_stamp(repo, &dir);
+        if let Some((stamp, path)) = &stamp {
+            if std::fs::read_to_string(path).is_ok_and(|s| s.trim() == stamp) {
+                continue;
+            }
+        }
         println!("[xtask] cargo build --profile dist ({})", file_name(&dir));
         let ok = Command::new(cargo())
             .current_dir(&dir)
@@ -527,8 +538,118 @@ fn build_source_plugins(repo: &Path) -> bool {
         if !ok {
             return false;
         }
+        // Recorded only after a build that succeeded, so a failure is retried.
+        if let Some((stamp, path)) = &stamp {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, stamp);
+        }
     }
     true
+}
+
+/// What this plugin was last built from, and where that is recorded.
+///
+/// `None` when the inputs cannot be read, which skips the whole mechanism and
+/// always builds — the safe direction. Skipping a build that was needed leaves a
+/// plugin compiled against an older ABI: one that passes the version handshake
+/// and is then called with a signature it was not compiled for. Running a build
+/// that was not needed costs a second.
+///
+/// # Why a stamp rather than comparing against the built library
+///
+/// That was the obvious approach and it does not work. Cargo, asked to build a
+/// plugin it considers current, prints `Finished` and **does not touch the
+/// artifact** — so the library keeps an old mtime while a source file it did not
+/// need to recompile (a comment in `renzora_plugin`, say) is newer. Compared
+/// against the artifact, every plugin then reads as permanently stale and the
+/// skip never fires. A stamp records the inputs as they were at the last
+/// *successful* build, which is the question actually being asked.
+///
+/// The **path dependencies are part of the stamp**, and are the reason this is
+/// not just the plugin's own `src/`. Every C-ABI plugin path-depends on
+/// `renzora_plugin`, which *is* the ABI: edit that and every plugin must
+/// rebuild even though nothing in its own directory moved.
+fn plugin_stamp(repo: &Path, dir: &Path) -> Option<(String, PathBuf)> {
+    let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
+    let pkg = manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("name = "))
+        .and_then(|l| l.split('"').nth(1).map(|s| s.replace('-', "_")))
+        .unwrap_or_else(|| file_name(dir).replace('-', "_"));
+
+    // The library has to exist as well as the stamp matching: a wiped
+    // `plugins/target/` leaves the stamp behind, and skipping then would stage
+    // nothing and quietly ship a build with the plugin missing.
+    let plat = platform();
+    let artifact = repo
+        .join("plugins")
+        .join("target")
+        .join(profile())
+        .join(format!("{}{}.{}", plat.lib_prefix, pkg, plat.ext));
+    if !artifact.is_file() {
+        return None;
+    }
+
+    let mut rows = Vec::new();
+    collect_rows(dir, dir, &mut rows)?;
+    for line in manifest.lines() {
+        let Some(rest) = line.split_once("path = ").map(|(_, r)| r) else {
+            continue;
+        };
+        let rel = rest.split('"').nth(1)?;
+        let dep = dir.join(rel);
+        collect_rows(&dep, &dep, &mut rows)?;
+    }
+    rows.sort();
+
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = OFFSET;
+    for r in &rows {
+        for b in r.as_bytes() {
+            h ^= *b as u64;
+            h = h.wrapping_mul(PRIME);
+        }
+    }
+
+    let path = repo
+        .join("plugins")
+        .join("target")
+        .join(".xtask-stamps")
+        .join(format!("{pkg}.stamp"));
+    Some((format!("{h:016x}"), path))
+}
+
+/// `relative path:len:mtime` for every file under `dir`, skipping build outputs.
+///
+/// `None` on any unreadable directory, which the caller turns into "build it" —
+/// a stamp computed from a partial listing would match again next time and make
+/// the skip permanent.
+fn collect_rows(root: &Path, dir: &Path, out: &mut Vec<String>) -> Option<()> {
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            // Outputs, not inputs — and `target/` holds the very artifact this
+            // is deciding about.
+            if matches!(e.file_name().to_str(), Some("target") | Some("build")) {
+                continue;
+            }
+            collect_rows(root, &p, out)?;
+        } else {
+            let meta = e.metadata().ok()?;
+            let secs = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy();
+            out.push(format!("{rel}:{}:{secs}", meta.len()));
+        }
+    }
+    Some(())
 }
 
 /// Port of `build-all.sh`'s `copy_shared_libs`: arrange `target/dist/` into a
