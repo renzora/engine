@@ -35,12 +35,8 @@ const RED: (u8, u8, u8) = (224, 80, 80);
 const GOLD: (u8, u8, u8) = (238, 184, 82);
 const CARD_W: f32 = 200.0;
 const THUMB_H: f32 = 142.0;
-/// How many top-popular assets rotate through the home hero slider.
-const FEATURED_CAP: usize = 6;
 /// How many cards a home category shelf shows before "See all".
 const SECTION_CAP: usize = 6;
-/// Fixed hero height — wide/tall enough to read as a storefront banner.
-const HERO_H: f32 = 200.0;
 
 const SORTS: [(&str, &str); 5] = [
     ("popular", "Most Downloaded"),
@@ -118,12 +114,10 @@ struct HomeSection {
     assets: Vec<AssetSummary>,
 }
 
-/// A background home-data result. The featured slider and every category shelf
-/// each fetch on their own worker thread and post back over one shared channel,
-/// so `poll_store` drains them all through a single receiver.
+/// A background home-data result. Every category shelf fetches on its own worker
+/// thread and posts back over one shared channel, so `poll_store` drains them all
+/// through a single receiver.
 enum HomeMsg {
-    /// Top-popular assets for the hero slider.
-    Featured(Result<Vec<AssetSummary>, String>),
     /// A category shelf: `(slug, display name, assets)`.
     Section(String, String, Result<Vec<AssetSummary>, String>),
 }
@@ -154,16 +148,11 @@ struct HubStoreData {
     /// Query signature of the request currently in flight, so its response lands
     /// in the right cache slot even if the user navigated on since.
     pending_sig: Option<u64>,
-    /// Top-popular assets shown in the home hero slider (≤ [`FEATURED_CAP`]).
-    featured: Vec<AssetSummary>,
-    /// Which featured slide is currently on show.
-    featured_index: usize,
     /// Per-category home shelves in category order (empty ones are dropped).
     sections: Vec<HomeSection>,
-    /// Guard so the home data (featured + shelves) is fetched exactly once.
+    /// Guard so the home shelves are fetched exactly once.
     home_loaded: bool,
-    /// Bumped whenever the featured set/shelves change or the slide advances, so
-    /// the home keyed lists rebuild (the hero rebuilds on every bump).
+    /// Bumped whenever the shelves change, so the home keyed list rebuilds.
     home_version: u64,
     /// Single receiver for all home-data worker threads (see [`HomeMsg`]).
     home_rx: Option<Receiver<HomeMsg>>,
@@ -190,8 +179,6 @@ impl Default for HubStoreData {
             dirty: false,
             cache: std::collections::HashMap::new(),
             pending_sig: None,
-            featured: Vec::new(),
-            featured_index: 0,
             sections: Vec::new(),
             home_loaded: false,
             home_version: 0,
@@ -216,23 +203,12 @@ impl HubStoreData {
     fn total_pages(&self) -> u32 {
         ((self.total as f32) / (self.per_page.max(1) as f32)).ceil() as u32
     }
-    /// Home mode (featured slider + category shelves) versus flat browse
+    /// Home mode (category shelves) versus flat browse
     /// (grid + pager). Home shows only when nothing narrows the view: no search
     /// text and no specific category ("All"). A search or a chosen category —
     /// including a shelf's "See all" — flips to browse.
     fn is_home(&self) -> bool {
         self.search.is_empty() && self.category.is_none()
-    }
-}
-
-/// Drives the hero's ~6s auto-advance. Manual arrows still work; this just keeps
-/// the banner rotating so it reads as alive.
-#[derive(Resource)]
-struct HomeCarousel(Timer);
-
-impl Default for HomeCarousel {
-    fn default() -> Self {
-        Self(Timer::from_seconds(9.0, TimerMode::Repeating))
     }
 }
 
@@ -257,7 +233,6 @@ impl Plugin for NativeHubStore {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubStoreData>();
         app.init_resource::<ThemePreview>();
-        app.init_resource::<HomeCarousel>();
         // The shell's static panel table no longer carries the Marketplace
         // entries — they moved here with the plugin, so an install without it
         // shows no Marketplace category instead of panels that open empty.
@@ -280,8 +255,6 @@ impl Plugin for NativeHubStore {
                 store_category_click,
                 store_page_click,
                 store_see_all_click,
-                (store_hero_arrow_click, store_hero_dot_click),
-                store_home_autoadvance,
                 store_install_click,
                 store_preview_click,
                 store_signin_click,
@@ -328,15 +301,6 @@ struct StoreUploadBtn;
 struct StopPreviewBtn;
 #[derive(Component)]
 struct PreviewInstallBtn;
-/// Hero slider "‹" (previous slide).
-#[derive(Component)]
-struct HeroPrevBtn;
-/// Hero slider "›" (next slide).
-#[derive(Component)]
-struct HeroNextBtn;
-/// A hero slider dot — carries the slide index it jumps to on click.
-#[derive(Component)]
-struct HeroDotBtn(usize);
 /// A home shelf's header / "See all" — carries the category slug to browse.
 #[derive(Component)]
 struct StoreSeeAllBtn(String);
@@ -359,10 +323,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-
-    // Featured hero slider — pinned above the toolbar so the search sits right
-    // under the slideshow. Home mode only (hidden while browsing).
-    let hero = build_hero_slot(commands);
 
     // Toolbar: a large, prominent search bar (the primary way to shop the store)
     // + search button + sort dropdown + total.
@@ -433,7 +393,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(right).add_children(&[home, browse]);
 
     commands.entity(split).add_children(&[sidebar, right]);
-    commands.entity(root).add_children(&[hero, toolbar, status, banner, split]);
+    commands.entity(root).add_children(&[toolbar, status, banner, split]);
     root
 }
 
@@ -831,23 +791,10 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
 
 // ── Home (storefront) ──────────────────────────────────────────────────────────
 
-/// The featured hero slider, pinned at the top of the panel (above the search
-/// toolbar) so the search bar reads as sitting *under the slideshow*. A
-/// fixed-height frame whose single child (the current slide) is rebuilt by a
-/// keyed list when `home_version` bumps (arrow / auto-advance). Shown only in
-/// home mode.
-fn build_hero_slot(commands: &mut Commands) -> Entity {
-    let wrap = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_shrink: 0.0, ..default() })
-        .id();
-    let hero = commands
-        .spawn(Node { width: Val::Percent(100.0), height: Val::Px(HERO_H), flex_shrink: 0.0, ..default() })
-        .id();
-    keyed_list(commands, hero, hero_snapshot);
-    commands.entity(wrap).add_child(hero);
-    bind_display(commands, wrap, |w| w.resource::<HubStoreData>().is_home());
-    wrap
-}
+// A featured hero slider sat above the toolbar: a fixed-height banner rotating
+// through the top-popular assets on a timer, with arrows and dots. It is gone —
+// the search bar is the top of the panel now, and the category shelves below are
+// what the storefront leads with.
 
 /// The storefront "home" body: a scrollable column of per-category shelves
 /// (the hero now lives at the panel top — see [`build_hero_slot`]). Toggled
@@ -869,239 +816,6 @@ fn build_home(commands: &mut Commands) -> Entity {
     let scroll = renzora_ember::widgets::scroll_view(commands, col);
     bind_display(commands, scroll, |w| w.resource::<HubStoreData>().is_home());
     scroll
-}
-
-/// One-row keyed snapshot of the hero: the current featured slide, or a subtle
-/// placeholder while the featured set loads. The content hash folds in the slide
-/// index + `home_version` so advancing rebuilds it.
-fn hero_snapshot(world: &Rx) -> KeyedSnapshot {
-    let d = world.resource::<HubStoreData>();
-    if d.featured.is_empty() {
-        return hero_placeholder_snapshot();
-    }
-    let idx = d.featured_index.min(d.featured.len() - 1);
-    let asset = d.featured[idx].clone();
-    let total = d.featured.len();
-    let ver = d.home_version;
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&asset.slug, idx, total, ver).hash(&mut h);
-    KeyedSnapshot {
-        items: vec![(1, h.finish())],
-        build: Box::new(move |c, f, _| build_hero(c, f, &asset, idx, total)),
-    }
-}
-
-/// A muted "loading" hero shown until the featured set arrives. Same key as the
-/// real hero (`1`) with a distinct hash, so it's replaced in place once loaded.
-fn hero_placeholder_snapshot() -> KeyedSnapshot {
-    KeyedSnapshot {
-        items: vec![(1, u64::MAX)],
-        build: Box::new(|c, f, _| {
-            let frame = c
-                .spawn((
-                    Node { width: Val::Percent(100.0), height: Val::Percent(100.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(12.0)), ..default() },
-                    BackgroundColor(rgb(hover_bg())),
-                ))
-                .id();
-            let t = c.spawn((Text::new("Loading featured assets..."), ui_font(&f.ui, 12.0), TextColor(rgb(text_muted())))).id();
-            c.entity(frame).add_child(t);
-            frame
-        }),
-    }
-}
-
-/// Build one hero slide: a full-bleed thumbnail with a bottom scrim carrying the
-/// name / creator / price, prev/next arrows, and dot indicators. The body is the
-/// click target that opens the item-detail overlay — like a store card, passive
-/// children are `FocusPolicy::Pass` while the arrows `Block` their own clicks.
-fn build_hero(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, index: usize, total: usize) -> Entity {
-    let chue = category_hue(&a.category);
-    let hero = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), position_type: PositionType::Relative, flex_direction: FlexDirection::Row, overflow: Overflow::clip(), border_radius: BorderRadius::all(Val::Px(12.0)), ..default() },
-            BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
-            crate::item_overlay::StoreCardBtn(a.clone()),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("store-hero"),
-        ))
-        .id();
-
-    // ── Left: the artwork (fixed ~44%) ──
-    let img_box = commands
-        .spawn((Node { width: Val::Percent(44.0), height: Val::Percent(100.0), position_type: PositionType::Relative, align_items: AlignItems::Center, justify_content: JustifyContent::Center, overflow: Overflow::clip(), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(hover_bg())), FocusPolicy::Pass))
-        .id();
-    if let Some(url) = a.thumbnail_url.clone() {
-        // Ambient cover backdrop: a BLURRED, darkened copy STRETCHED to fill the
-        // whole box (`NodeImageMode::Stretch` ignores aspect ratio), so any
-        // thumbnail fills edge-to-edge as a soft gradient with no grey letterbox
-        // bars. Skipped for 3D models/animations (transparent renders).
-        if !is_3d_thumb(&a.category) {
-            let bg = commands
-                .spawn((
-                    ImageNode { color: Color::srgb(0.30, 0.30, 0.33), image_mode: NodeImageMode::Stretch, ..default() },
-                    FocusPolicy::Pass,
-                    Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() },
-                ))
-                .id();
-            let burl = url.clone();
-            bind_with(commands, bg, move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get_blurred(&burl)), apply_thumb);
-            commands.entity(img_box).add_child(bg);
-        }
-        // Foreground: the full artwork, over the backdrop.
-        let img = commands
-            .spawn((ImageNode::default(), FocusPolicy::Pass, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() }))
-            .id();
-        bind_with(commands, img, move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get(&url)), apply_thumb);
-        commands.entity(img_box).add_child(img);
-    }
-    commands.entity(hero).add_child(img_box);
-
-    // ── Right: details fill the rest ── (a faint category-hue wash for color)
-    let info = commands
-        .spawn((Node { flex_grow: 1.0, height: Val::Percent(100.0), min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: Val::Px(6.0), padding: UiRect { left: Val::Px(22.0), right: Val::Px(46.0), top: Val::Px(16.0), bottom: Val::Px(16.0) }, overflow: Overflow::clip(), ..default() }, BackgroundColor(tint(chue, 13)), FocusPolicy::Pass))
-        .id();
-    let cat_chip = commands
-        .spawn((Node { align_self: AlignSelf::FlexStart, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(tint(chue, 40)), FocusPolicy::Pass))
-        .id();
-    let cc_ic = icon_text(commands, &fonts.phosphor, category_icon(&a.category), chue, 10.0);
-    commands.entity(cc_ic).insert(FocusPolicy::Pass);
-    let cc_t = commands.spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), FocusPolicy::Pass)).id();
-    commands.entity(cat_chip).add_children(&[cc_ic, cc_t]);
-    let name = commands
-        .spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 22.0), TextColor(rgb((245, 245, 248))), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
-        .id();
-    let mut info_kids = vec![cat_chip, name];
-    if !a.creator_name.is_empty() {
-        let by = commands
-            .spawn((Text::new(format!("by {}", a.creator_name)), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass))
-            .id();
-        info_kids.push(by);
-    }
-    if !a.description.trim().is_empty() {
-        let mut d: String = a.description.chars().take(150).collect();
-        if a.description.chars().count() > 150 {
-            d.push('…');
-        }
-        let desc = commands
-            .spawn((Text::new(d), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())), FocusPolicy::Pass, Node { max_width: Val::Percent(100.0), ..default() }))
-            .id();
-        info_kids.push(desc);
-    }
-    // View + downloads.
-    let actions = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), margin: UiRect::top(Val::Px(4.0)), ..default() }, FocusPolicy::Pass))
-        .id();
-    let view = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(13.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() }, BackgroundColor(rgba([GOLD.0, GOLD.1, GOLD.2, 240])), FocusPolicy::Pass))
-        .id();
-    let view_ic = icon_text(commands, &fonts.phosphor, "eye", (40, 30, 8), 12.0);
-    commands.entity(view_ic).insert(FocusPolicy::Pass);
-    let view_t = commands.spawn((Text::new("View"), ui_font(&fonts.ui, 11.0), TextColor(rgb((40, 30, 8))), FocusPolicy::Pass)).id();
-    commands.entity(view).add_children(&[view_ic, view_t]);
-    // Price pill, right next to View.
-    let price = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(9.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() }, BackgroundColor(if a.price_credits == 0 { rgba([GREEN.0, GREEN.1, GREEN.2, 235]) } else { tint(GOLD, 36) }), FocusPolicy::Pass))
-        .id();
-    if a.price_credits == 0 {
-        let t = commands.spawn((Text::new("Free"), ui_font(&fonts.ui, 10.5), TextColor(rgb((255, 255, 255))), FocusPolicy::Pass)).id();
-        commands.entity(price).add_child(t);
-    } else {
-        let ic = icon_text(commands, &fonts.phosphor, "coins", GOLD, 11.0);
-        commands.entity(ic).insert(FocusPolicy::Pass);
-        let t = commands.spawn((Text::new(format!("{} credits", a.price_credits)), ui_font(&fonts.ui, 10.5), TextColor(rgb(GOLD)), FocusPolicy::Pass)).id();
-        commands.entity(price).add_children(&[ic, t]);
-    }
-    let dl_ic = icon_text(commands, &fonts.phosphor, "download-simple", text_muted(), 11.0);
-    commands.entity(dl_ic).insert(FocusPolicy::Pass);
-    let dl_t = commands
-        .spawn((Text::new(format!("{} downloads", fmt_count(a.downloads))), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), FocusPolicy::Pass))
-        .id();
-    commands.entity(actions).add_children(&[view, price, dl_ic, dl_t]);
-    info_kids.push(actions);
-    commands.entity(info).add_children(&info_kids);
-    commands.entity(hero).add_child(info);
-
-    // Prev/next arrows + dots only make sense with more than one slide.
-    if total > 1 {
-        let prev = hero_arrow(commands, fonts, "caret-left", true, HeroPrevBtn);
-        let next = hero_arrow(commands, fonts, "caret-right", false, HeroNextBtn);
-        commands.entity(hero).add_children(&[prev, next]);
-
-        // Dots pinned to the top-right corner of the hero, in a subtle pill so
-        // they stay legible over either the artwork or the info panel.
-        let dots = commands
-            .spawn((Node { position_type: PositionType::Absolute, top: Val::Px(8.0), right: Val::Px(8.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() }, FocusPolicy::Pass))
-            .id();
-        let dots_pill = commands
-            .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(1.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() }, BackgroundColor(rgba([0, 0, 0, 110])), FocusPolicy::Pass))
-            .id();
-        for i in 0..total {
-            let on = i == index;
-            let d = if on { 7.0 } else { 5.0 };
-            // Each dot is a padded, `Block`ing hit-target so clicking it jumps to
-            // that slide instead of falling through to the hero (which would open
-            // the item overlay). The padding makes the tiny dot easy to hit.
-            let cell = commands
-                .spawn((
-                    Node { padding: UiRect::all(Val::Px(4.0)), align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() },
-                    Interaction::default(),
-                    HeroDotBtn(i),
-                    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-                ))
-                .id();
-            let dot = commands
-                .spawn((Node { width: Val::Px(d), height: Val::Px(d), border_radius: BorderRadius::all(Val::Px(d / 2.0)), ..default() }, BackgroundColor(if on { rgba([GOLD.0, GOLD.1, GOLD.2, 255]) } else { rgba([255, 255, 255, 130]) }), FocusPolicy::Pass))
-                .id();
-            commands.entity(cell).add_child(dot);
-            commands.entity(dots_pill).add_child(cell);
-        }
-        commands.entity(dots).add_child(dots_pill);
-        commands.entity(hero).add_child(dots);
-    }
-
-    hero
-}
-
-/// A circular hero navigation arrow pinned to the left or right edge, centered
-/// vertically. `Block`s its own click (default focus policy) so it navigates
-/// rather than opening the overlay.
-fn hero_arrow<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, left: bool, marker: M) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(50.0),
-                // Pull up by half the height to sit on the vertical centerline.
-                margin: UiRect::top(Val::Px(-16.0)),
-                left: if left { Val::Px(8.0) } else { Val::Auto },
-                right: if left { Val::Auto } else { Val::Px(8.0) },
-                width: Val::Px(32.0),
-                height: Val::Px(32.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(16.0)),
-                ..default()
-            },
-            BackgroundColor(rgba([0, 0, 0, 150])),
-            Interaction::default(),
-            marker,
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("store-hero-arrow"),
-        ))
-        .id();
-    bind_bg(commands, btn, move |w| {
-        if matches!(w.get::<Interaction>(btn), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
-            rgba([0, 0, 0, 205])
-        } else {
-            rgba([0, 0, 0, 150])
-        }
-    });
-    let ic = icon_text(commands, &fonts.phosphor, icon, (235, 235, 240), 16.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    commands.entity(btn).add_child(ic);
-    btn
 }
 
 /// Keyed snapshot of the home shelves: one row per non-empty category section,
@@ -1349,14 +1063,6 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
         }
         for m in got {
             match m {
-                HomeMsg::Featured(Ok(mut assets)) => {
-                    assets.truncate(FEATURED_CAP);
-                    data.featured = assets;
-                    if data.featured_index >= data.featured.len() {
-                        data.featured_index = 0;
-                    }
-                    data.home_version += 1;
-                }
                 HomeMsg::Section(slug, name, Ok(mut assets)) => {
                     assets.truncate(SECTION_CAP);
                     // Skip empty shelves — an empty category shouldn't take up a row.
@@ -1370,8 +1076,8 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
                         data.home_version += 1;
                     }
                 }
-                // A failed home fetch just leaves that slider/shelf absent.
-                HomeMsg::Featured(Err(_)) | HomeMsg::Section(_, _, Err(_)) => {}
+                // A failed home fetch just leaves that shelf absent.
+                HomeMsg::Section(_, _, Err(_)) => {}
             }
         }
     }
@@ -1386,11 +1092,11 @@ fn store_init(mut data: ResMut<HubStoreData>) {
     fetch_assets(&mut data);
 }
 
-/// Fetch the storefront home once: the featured slider (top-popular, category
-/// agnostic) plus one popular-sorted shelf per category. Waits for the category
-/// list (kicked in [`store_init`]) to arrive first, since the shelves are keyed
-/// off it. Every query runs on its own worker thread and streams back over one
-/// shared channel drained in [`poll_store`], so the UI fills in as results land.
+/// Fetch the storefront home once: one popular-sorted shelf per category. Waits
+/// for the category list (kicked in [`store_init`]) to arrive first, since the
+/// shelves are keyed off it. Every query runs on its own worker thread and
+/// streams back over one shared channel drained in [`poll_store`], so the UI
+/// fills in as results land.
 #[cfg(not(target_arch = "wasm32"))]
 fn store_home_init(mut data: ResMut<HubStoreData>) {
     // The shelves need categories; wait for the async category fetch to land.
@@ -1401,14 +1107,6 @@ fn store_home_init(mut data: ResMut<HubStoreData>) {
     let (tx, rx) = unbounded();
     data.home_rx = Some(rx);
 
-    // Featured = top popular, no category filter.
-    {
-        let tx = tx.clone();
-        std::thread::spawn(move || {
-            let r = crate::auth::marketplace::list_assets(None, None, Some("popular"), 1, None, None);
-            let _ = tx.send(HomeMsg::Featured(r.map(|resp| resp.assets)));
-        });
-    }
     // One shelf per category, each on its own thread.
     for (slug, name) in data.categories.clone() {
         let tx = tx.clone();
@@ -1524,67 +1222,6 @@ fn store_see_all_click(q: Query<(&Interaction, &StoreSeeAllBtn), Changed<Interac
         }
         select_category(&mut data, Some(btn.0.clone()));
         break;
-    }
-}
-
-/// Hero ‹ / › → advance the featured slide (wrapping) and bump `home_version`
-/// so the slider rebuilds on the new slide.
-#[allow(clippy::type_complexity)]
-fn store_hero_arrow_click(
-    prev: Query<&Interaction, (With<HeroPrevBtn>, Changed<Interaction>)>,
-    next: Query<&Interaction, (With<HeroNextBtn>, Changed<Interaction>)>,
-    mut data: ResMut<HubStoreData>,
-    mut carousel: ResMut<HomeCarousel>,
-) {
-    let n = data.featured.len();
-    if n == 0 {
-        return;
-    }
-    let mut moved = false;
-    if prev.iter().any(|i| *i == Interaction::Pressed) {
-        data.featured_index = (data.featured_index + n - 1) % n;
-        moved = true;
-    }
-    if next.iter().any(|i| *i == Interaction::Pressed) {
-        data.featured_index = (data.featured_index + 1) % n;
-        moved = true;
-    }
-    if moved {
-        data.home_version += 1;
-        // Manual navigation restarts the auto-advance countdown.
-        carousel.0.reset();
-    }
-}
-
-/// Hero dot → jump straight to that slide (and restart the auto-advance timer).
-fn store_hero_dot_click(
-    q: Query<(&Interaction, &HeroDotBtn), Changed<Interaction>>,
-    mut data: ResMut<HubStoreData>,
-    mut carousel: ResMut<HomeCarousel>,
-) {
-    for (interaction, dot) in &q {
-        if *interaction == Interaction::Pressed
-            && dot.0 < data.featured.len()
-            && data.featured_index != dot.0
-        {
-            data.featured_index = dot.0;
-            data.home_version += 1;
-            carousel.0.reset();
-            break;
-        }
-    }
-}
-
-/// Advance the hero every ~6s while home is visible and more than one slide
-/// exists. Purely a nicety on top of the manual arrows.
-fn store_home_autoadvance(time: Res<Time>, mut carousel: ResMut<HomeCarousel>, mut data: ResMut<HubStoreData>) {
-    let n = data.featured.len();
-    if n < 2 || !data.is_home() {
-        return;
-    }
-    if carousel.0.tick(time.delta()).just_finished() {
-        data.featured_index = (data.featured_index + 1) % n;
-        data.home_version += 1;
     }
 }
 
@@ -1731,12 +1368,11 @@ fn store_preview_install_click(
 }
 
 fn request_store_thumbs(data: Res<HubStoreData>, mut thumbs: ResMut<HubThumbs>) {
-    // The browse grid, the hero slider, and every home shelf all draw thumbnails,
-    // so all three sets need requesting — not just the grid.
+    // The browse grid and every home shelf both draw thumbnails, so both sets
+    // need requesting — not just the grid.
     let assets = data
         .assets
         .iter()
-        .chain(data.featured.iter())
         .chain(data.sections.iter().flat_map(|s| s.assets.iter()));
     for a in assets {
         if let Some(url) = &a.thumbnail_url {
