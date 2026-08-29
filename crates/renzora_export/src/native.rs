@@ -317,7 +317,10 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     let panel = commands
         .spawn((
             Node {
-                width: Val::Px(760.0),
+                // Wider than the 760 it started at: the plugin picker is a grid
+                // of thumbnail cards now, and four columns of artwork plus the
+                // 180px preset sidebar does not fit in 760.
+                width: Val::Px(980.0),
                 // Explicit height, not just a cap. The dialog used to be propped
                 // open by a sidebar listing twelve platforms; the preset list
                 // replacing it starts EMPTY, so the modal collapsed to the height
@@ -1258,17 +1261,25 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
                 let card = c
                     .spawn((
                         Node {
-                            // Same grow-from-a-basis shape as the settings grid:
-                            // the cards share whatever the row has left, so the
-                            // panel fills at any width rather than only at exact
-                            // multiples of a fixed card.
-                            flex_basis: Val::Px(150.0),
+                            // Four columns, expressed as a percentage basis
+                            // rather than a pixel one. 22% × 4 = 88%, and the
+                            // three 8px gaps between them fit in the remaining
+                            // 12% at any realistic panel width — so four wrap
+                            // onto a row and a fifth cannot, whatever the dialog
+                            // is resized to. `flex_grow` then shares the leftover
+                            // space so the row still fills edge to edge. A pixel
+                            // basis would give four columns at exactly one width.
+                            flex_basis: Val::Percent(22.0),
                             flex_grow: 1.0,
                             min_width: Val::Px(0.0),
                             flex_direction: FlexDirection::Column,
                             row_gap: Val::Px(6.0),
                             padding: UiRect::all(Val::Px(9.0)),
                             border_radius: BorderRadius::all(Val::Px(6.0)),
+                            // The card is the clipping boundary for a long plugin
+                            // name. Without it `chromatic_aberration` ran out
+                            // past the card's edge and over its neighbour.
+                            overflow: Overflow::clip(),
                             ..default()
                         },
                         BackgroundColor(rgb(card_bg())),
@@ -1284,18 +1295,54 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
                     10.0,
                 );
 
+                // The name gets the card's full width on its own line. It used to
+                // share a row with the switch, which left a narrow column for a
+                // name like `chromatic_aberration` and pushed it off the card.
+                // `width: 100%` matters as much as `no_wrap` here: a no-wrap text
+                // node sizes itself to its content, so clipping it needs a width
+                // to clip against.
+                let name = c
+                    .spawn((
+                        Text::new(id.clone()),
+                        ui_font(&fonts.ui, 11.5),
+                        TextColor(rgb(text_primary())),
+                        bevy::text::TextLayout::no_wrap(),
+                        Node {
+                            width: Val::Percent(100.0),
+                            min_width: Val::Px(0.0),
+                            overflow: Overflow::clip(),
+                            ..default()
+                        },
+                    ))
+                    .id();
+
+                // Footer: scope on the left, the switch pinned right. The switch
+                // is a fixed 28px, so putting it at the end of a row the name no
+                // longer competes for keeps every card's control in the same
+                // place — a column of switches you can run your eye down.
+                let foot = c
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    })
+                    .id();
+                let scope_t = c
+                    .spawn((
+                        Text::new(scope),
+                        ui_font(&fonts.ui, 9.0),
+                        TextColor(rgb(text_muted())),
+                        bevy::text::TextLayout::no_wrap(),
+                        Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+                    ))
+                    .id();
+
                 // A switch, not a checkbox: this is "ship it / don't", which is
                 // an on-off state rather than an item ticked off a list, and it
                 // matches the switch the Settings panel uses for the same
                 // decision about the same plugins.
-                let head = c
-                    .spawn(Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(8.0),
-                        ..default()
-                    })
-                    .id();
                 let sw = toggle_switch(&mut c, true);
                 // Bevy 0.19 defaults `FocusPolicy` to `Pass`, so a switch that
                 // does not block hands its press to everything behind it.
@@ -1309,22 +1356,9 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
                         }
                     }
                 });
-                let name = c
-                    .spawn((
-                        Text::new(id.clone()),
-                        ui_font(&fonts.ui, 12.0),
-                        TextColor(rgb(text_primary())),
-                        bevy::text::TextLayout::no_wrap(),
-                        Node { overflow: Overflow::clip(), ..default() },
-                    ))
-                    .id();
-                c.entity(head).add_children(&[sw, name]);
+                c.entity(foot).add_children(&[scope_t, sw]);
 
-                let scope_t = c
-                    .spawn((Text::new(scope), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted()))))
-                    .id();
-
-                c.entity(card).add_children(&[thumb, head, scope_t]);
+                c.entity(card).add_children(&[thumb, name, foot]);
                 c.entity(list).add_child(card);
             }
         }

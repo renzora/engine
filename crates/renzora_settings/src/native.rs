@@ -2326,6 +2326,11 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
                 row_gap: Val::Px(6.0),
                 padding: UiRect::all(Val::Px(10.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
+                // The card is the clipping boundary. A `Failed` status is the
+                // first line of rustc output, which is arbitrarily long, and a
+                // long plugin id is nearly as bad — either would otherwise run
+                // out over the neighbouring card.
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
@@ -2347,13 +2352,17 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         10.0,
     );
 
-    // Header: switch, then name. The switch leads because it is the only thing
-    // on the card you can act on.
-    let head = commands
+    // The name gets its own full-width line, and the switch moves to a footer
+    // beside the kind. They shared a row while this was a text card; once the
+    // artwork went in above them, the switch left too narrow a column for a name
+    // like `chromatic_aberration`, which ran off the card. Pinning the switch to
+    // the end of the footer also puts every card's control in the same place.
+    let foot = commands
         .spawn(Node {
+            width: Val::Percent(100.0),
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
-            column_gap: Val::Px(8.0),
+            column_gap: Val::Px(6.0),
             ..default()
         })
         .id();
@@ -2380,31 +2389,47 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         FocusPolicy::Block,
     ));
 
+    // `width: 100%` as well as `no_wrap`: a no-wrap text node sizes itself to its
+    // content, so there is nothing for `clip` to clip against without one.
     let name = commands
         .spawn((
             Text::new(card.id.clone()),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+            Node {
+                width: Val::Percent(100.0),
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
         ))
         .id();
-    commands.entity(head).add_children(&[sw, name]);
 
     let kind = commands
         .spawn((
             Text::new(card.kind.clone()),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();
+    commands.entity(foot).add_children(&[kind, sw]);
     let status = commands
         .spawn((
             Text::new(card.status.clone()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(if card.problem { warn_amber() } else { text_muted() })),
+            // One line: a compile failure's first rustc line is long enough to
+            // stretch the card several rows tall and make the grid ragged. The
+            // whole message is in the Console, which is where it belongs.
+            bevy::text::TextLayout::no_wrap(),
+            Node { width: Val::Percent(100.0), min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();
 
-    commands.entity(root).add_children(&[thumb, head, kind, status]);
+    commands.entity(root).add_children(&[thumb, name, status, foot]);
     root
 }
 
