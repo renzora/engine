@@ -23,7 +23,7 @@ use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{dropdown, text_input, tint, EmberTextInput};
+use renzora_ember::widgets::{dropdown, text_input, EmberTextInput};
 use renzora::SplashState;
 use renzora_theme::ThemeManager;
 
@@ -33,8 +33,11 @@ const GREEN: (u8, u8, u8) = (52, 180, 96);
 const RED: (u8, u8, u8) = (224, 80, 80);
 /// Warm gold for the credit price — reads as "store currency".
 const GOLD: (u8, u8, u8) = (238, 184, 82);
-const CARD_W: f32 = 200.0;
-const THUMB_H: f32 = 142.0;
+const CARD_W: f32 = 168.0;
+/// Corner rounding on the square icon. Matches the proportion a store icon is
+/// usually drawn with (~13% of the side), so artwork that already has its own
+/// rounded corners lines up instead of showing a sliver of card behind it.
+const ICON_RADIUS: f32 = 18.0;
 /// How many cards a home category shelf shows before "See all".
 const SECTION_CAP: usize = 6;
 
@@ -657,7 +660,10 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
             // panel width (no ragged right-edge gap); capped so a sparse last row
             // doesn't balloon. align_items:FlexStart on the grid keeps heights
             // content-sized.
-            Node { flex_grow: 1.0, flex_basis: Val::Px(CARD_W), min_width: Val::Px(CARD_W), max_width: Val::Px(CARD_W * 1.4), flex_direction: FlexDirection::Column, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(10.0)), overflow: Overflow::clip(), ..default() },
+            // Padded, so the icon reads as an *icon* sitting on the card rather
+            // than a banner bleeding to its edges — which is the difference
+            // between a store tile and the old landscape card.
+            Node { flex_grow: 1.0, flex_basis: Val::Px(CARD_W), min_width: Val::Px(CARD_W), max_width: Val::Px(CARD_W * 1.35), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), padding: UiRect::all(Val::Px(10.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(14.0)), ..default() },
             BackgroundColor(base),
             BorderColor::all(rgba([255, 255, 255, 12])),
             Interaction::default(),
@@ -690,9 +696,26 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
         },
     );
 
-    // ── Thumbnail (relative so badges can overlay it) ──
+    // ── Icon: a 1:1 square, like an app store ──
+    //
+    // `aspect_ratio` rather than a fixed height, because the card flex-grows to
+    // fill the row — a pixel height would stretch the box wider than tall at any
+    // width but one, and put the letterboxing straight back.
     let thumb = commands
-        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(THUMB_H), position_type: PositionType::Relative, align_items: AlignItems::Center, justify_content: JustifyContent::Center, overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb(hover_bg())), FocusPolicy::Pass))
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                aspect_ratio: Some(1.0),
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)),
+                ..default()
+            },
+            BackgroundColor(rgb(hover_bg())),
+            FocusPolicy::Pass,
+        ))
         .id();
     // Only show a category glyph when there's NO thumbnail — otherwise it bled
     // through transparent (3D-render) thumbnails as a cube floating over the art.
@@ -724,9 +747,10 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
         bind_with(commands, img, move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get(&url)), apply_thumb);
         commands.entity(thumb).add_child(img);
     }
-    // Price badge (top-right).
-    let badge = price_badge(commands, fonts, a.price_credits);
-    commands.entity(thumb).add_child(badge);
+    // The price used to be a badge floating on the top-right of the artwork. It
+    // is a GET pill at the foot of the card now — the square icons are drawn to
+    // be looked at, and a badge sat on top of them.
+    //
     // Live-preview control for themes (top-left) — a labeled "Preview" pill, an
     // engine-only feature. A clear, wide `Block` target so clicking it previews
     // the theme in place and can't be mistaken for a card tap (which would open
@@ -751,41 +775,38 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
         commands.entity(thumb).add_child(preview);
     }
 
-    // ── Info ──
+    // ── Info: name, then one muted subtitle line, then the GET pill ──
+    //
+    // The old card stacked name, "by creator", a coloured category chip and a
+    // download count — four rows of chrome under a picture. A store tile gets one
+    // line of context, so the category and the download count share it and the
+    // creator is left to the detail overlay. The category keeps its hue: it was
+    // the only colour in the grid, and the icons do not all provide their own.
     let info = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::all(Val::Px(9.0)), ..default() }, FocusPolicy::Pass))
+        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, FocusPolicy::Pass))
         .id();
     let name = commands
         .spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
         .id();
-    commands.entity(info).add_child(name);
-    if !a.creator_name.is_empty() {
-        let by = commands
-            .spawn((Text::new(format!("by {}", a.creator_name)), ui_font(&fonts.ui, 9.5), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
-            .id();
-        commands.entity(info).add_child(by);
-    }
-    // Meta row: category chip on the left, download count on the right.
-    let meta = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(3.0)), ..default() }, FocusPolicy::Pass))
-        .id();
-    // Colored per-category chip — the main splash of color in the grid.
-    let chue = category_hue(&a.category);
-    let cat_chip = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() }, BackgroundColor(tint(chue, 34)), FocusPolicy::Pass))
-        .id();
-    let tag_ic = icon_text(commands, &fonts.phosphor, category_icon(&a.category), chue, 8.5);
-    commands.entity(tag_ic).insert(FocusPolicy::Pass);
-    let cat_t = commands.spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.0), TextColor(rgb(chue)), FocusPolicy::Pass)).id();
-    commands.entity(cat_chip).add_children(&[tag_ic, cat_t]);
-    let spacer = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
-    let dl_ic = icon_text(commands, &fonts.phosphor, "download-simple", placeholder(), 9.5);
-    commands.entity(dl_ic).insert(FocusPolicy::Pass);
-    let dl_t = commands.spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.0), TextColor(rgb(placeholder())), FocusPolicy::Pass)).id();
-    commands.entity(meta).add_children(&[cat_chip, spacer, dl_ic, dl_t]);
-    commands.entity(info).add_child(meta);
 
-    commands.entity(card).add_children(&[thumb, info]);
+    let chue = category_hue(&a.category);
+    let sub = commands
+        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let cat_t = commands
+        .spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
+        .id();
+    let dot = commands
+        .spawn((Text::new("·"), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), FocusPolicy::Pass))
+        .id();
+    let dl_t = commands
+        .spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
+        .id();
+    commands.entity(sub).add_children(&[cat_t, dot, dl_t]);
+    commands.entity(info).add_children(&[name, sub]);
+
+    let get = get_pill(commands, fonts, a);
+    commands.entity(card).add_children(&[thumb, info, get]);
     card
 }
 
@@ -885,26 +906,63 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     col
 }
 
-/// The price pill overlaid on a card thumbnail: a green "Free", or a gold
-/// coins + credit count.
-fn price_badge(commands: &mut Commands, fonts: &EmberFonts, price: i64) -> Entity {
-    let badge = commands
+/// The store tile's action: **GET** when free, the credit price when not.
+///
+/// `Block`ing and carrying [`StoreInstallBtn`], so pressing it goes straight to
+/// install or purchase rather than opening the detail overlay the rest of the
+/// card opens. That is the App Store's defining affordance and the reason the
+/// price stopped being a passive badge — a price you can press is a button, and
+/// one you cannot is decoration sitting on the artwork.
+///
+/// Full width, so a row of tiles has its actions on one line regardless of how
+/// long each name is.
+fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> Entity {
+    let free = a.price_credits == 0;
+    let base = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 235]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 240]) };
+    let hot = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 255]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 255]) };
+    let fg = if free { (255, 255, 255) } else { (40, 30, 8) };
+
+    let pill = commands
         .spawn((
-            Node { position_type: PositionType::Absolute, top: Val::Px(8.0), right: Val::Px(8.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(7.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
-            BackgroundColor(if price == 0 { rgba([GREEN.0, GREEN.1, GREEN.2, 235]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 240]) }),
-            FocusPolicy::Pass,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(26.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(4.0),
+                border_radius: BorderRadius::all(Val::Px(13.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(base),
+            Interaction::default(),
+            StoreInstallBtn(a.clone()),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
-    if price == 0 {
-        let t = commands.spawn((Text::new("Free"), ui_font(&fonts.ui, 10.0), TextColor(rgb((255, 255, 255))), FocusPolicy::Pass)).id();
-        commands.entity(badge).add_child(t);
+    bind_bg(commands, pill, move |w| {
+        if matches!(w.get::<Interaction>(pill), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+            hot
+        } else {
+            base
+        }
+    });
+
+    if free {
+        let t = commands
+            .spawn((Text::new("GET"), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+            .id();
+        commands.entity(pill).add_child(t);
     } else {
-        let ic = icon_text(commands, &fonts.phosphor, "coins", (40, 30, 8), 10.0);
+        let ic = icon_text(commands, &fonts.phosphor, "coins", fg, 10.5);
         commands.entity(ic).insert(FocusPolicy::Pass);
-        let t = commands.spawn((Text::new(format!("{price} credits")), ui_font(&fonts.ui, 10.5), TextColor(rgb((40, 30, 8))), FocusPolicy::Pass)).id();
-        commands.entity(badge).add_children(&[ic, t]);
+        let t = commands
+            .spawn((Text::new(format!("{}", a.price_credits)), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+            .id();
+        commands.entity(pill).add_children(&[ic, t]);
     }
-    badge
+    pill
 }
 
 /// A distinct accent color per marketplace category — brings color to the

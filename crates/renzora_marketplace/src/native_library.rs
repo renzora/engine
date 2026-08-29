@@ -293,7 +293,9 @@ fn asset_row(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, inst
     // the thumbnail downloads.
     let thumb = commands
         .spawn((
-            Node { width: Val::Px(44.0), height: Val::Px(44.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), overflow: Overflow::clip(), flex_shrink: 0.0, ..default() },
+            // 6px ≈ the same ~12% of the side the store tile's icon uses, so a
+            // library row and a store tile round their artwork alike.
+            Node { width: Val::Px(44.0), height: Val::Px(44.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(6.0)), overflow: Overflow::clip(), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(hover_bg())),
         ))
         .id();
