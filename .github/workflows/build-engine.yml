@@ -26,22 +26,37 @@ name: Build Engine
 # and what the export downloader asks GitHub for. One source, three consumers.
 #
 # ── Arch coverage ────────────────────────────────────────────────────────────
-#   linux    x86_64 + aarch64  (one container cross-builds both)
-#   macos    x86_64 + aarch64  (osxcross builds both slices)
-#   windows  x86_64            (container, via xwin)
-#            aarch64           (NOT the container — a separate native job, below)
-#   wasm     wasm32            (runtime + editor bundles)
+#   linux    x86_64 + aarch64  native, one runner each  (`desktop` job)
+#   macos    x86_64 + aarch64  native, one runner each  (`desktop` job)
+#   windows  x86_64 + aarch64  native, one runner each  (`desktop` job)
+#   wasm     wasm32            container                (`build` job)
 #
-# Windows arm64 is the one target the Docker toolchain cannot produce. The only
-# MSVC pieces Microsoft lets you redistribute (so xwin can bake them into a public
-# image) are the CRT + SDK, which leaves clang as the C compiler — and clang can't
-# stand in for MSVC on ARM64 (it emits MSVC NEON intrinsics as undefined externals
-# that no redistributable lib provides). See docker/windows/Dockerfile. So that
-# slice is built natively on a `windows-11-arm` runner with the real MSVC
-# toolchain, in the `windows-arm64` job below. It has no build cache and takes
-# hours, which makes it the long pole on every publishing run — the publish job
-# therefore treats it as best-effort and ships without it rather than waiting on
-# a failure.
+# ── Why every desktop slice is native ────────────────────────────────────────
+# Because an editor cannot be cross-built. It ships a plugin SDK so the machine
+# it runs on can compile native plugins and Rust scripts, and an SDK's
+# proc-macro dylibs are artifacts of whatever ran the compiler — build it in the
+# Linux container and the Windows user gets Linux `.so` proc macros, which their
+# `rustc` cannot load: `can't find crate for bevy_derive`, and with it every name
+# behind `bevy::prelude`. Nor can it be patched afterwards, since each `.rmeta`
+# records the hash of what it was compiled against. `docker/build-all.sh` staged
+# such an SDK for months before anyone ran a cross-built editor's script tier.
+#
+# So the container now stages runtimes only, and the desktop lanes here build
+# the published editors on their own operating systems. Each `cargo renzora dist`
+# tree yields BOTH release assets — the engine zip, and the export template
+# `package-release.sh` cuts from the same directory by excluding
+# `renzora-editor` — so nothing is built twice.
+#
+# Windows arm64 could never have ridden the container anyway: the only MSVC
+# pieces Microsoft lets you redistribute (so xwin can bake them into a public
+# image) are the CRT + SDK, leaving clang as the C compiler, and clang cannot
+# stand in for MSVC on ARM64 (it emits MSVC NEON intrinsics as undefined
+# externals no redistributable lib provides). See docker/windows/Dockerfile.
+#
+# None of these lanes has a build cache and each takes hours, which makes them
+# the long pole on every publishing run — so `publish` treats them as
+# best-effort and ships whichever slices arrived rather than waiting on a
+# failure.
 
 on:
   schedule:
@@ -84,10 +99,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      desktop: ${{ steps.plan.outputs.desktop }}
+      containers: ${{ steps.plan.outputs.containers }}
       publish: ${{ steps.plan.outputs.publish }}
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
-      windows_arm64: ${{ steps.plan.outputs.windows_arm64 }}
       skip: ${{ steps.plan.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
@@ -153,26 +169,53 @@ jobs:
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
 
-          # ── The matrix ───────────────────────────────────────────────────
-          linux='{"platform":"linux","arches":"x64+arm64"}'
-          windows='{"platform":"windows","arches":"x64"}'
-          macos='{"platform":"macos","arches":"x64+arm64"}'
+          # ── The two matrices ─────────────────────────────────────────────
+          # Desktop platforms build NATIVELY, one runner each; the containers
+          # keep only what has no native runner.
+          #
+          # This is not a preference. An editor ships a plugin SDK, and an SDK
+          # cannot be cross-built: its proc-macro dylibs are artifacts of the
+          # machine that ran the compiler, so a Linux container produces Linux
+          # ones whatever `--target` says. Handing those to a Windows user gives
+          # `can't find crate for bevy_derive` and, behind it, every name in
+          # `bevy::prelude`. `docker/build-all.sh` therefore stages no editor at
+          # all, which leaves the published editors to these lanes.
+          #
+          # Desktop containers are gone rather than kept for the runtimes,
+          # because a native tree already yields both release assets — the
+          # engine zip, and the export template that `package-release.sh` cuts
+          # from the same directory by excluding `renzora-editor`. Keeping them
+          # would compile every runtime twice to produce one artifact.
           wasm='{"platform":"wasm","arches":"wasm32"}'
           case "$platform" in
-            all)     inc="$linux,$windows,$macos,$wasm" ;;
-            linux)   inc="$linux" ;;
-            windows) inc="$windows" ;;
-            macos)   inc="$macos" ;;
-            wasm)    inc="$wasm" ;;
+            all|wasm) inc="$wasm" ;;
+            *)        inc="" ;;
           esac
           echo "matrix={\"include\":[$inc]}" >> "$GITHUB_OUTPUT"
+          # An empty include runs zero jobs and reports `skipped`, which the
+          # publish gate has to tell apart from a real failure.
+          [ -n "$inc" ] && echo "containers=true" >> "$GITHUB_OUTPUT" \
+                        || echo "containers=false" >> "$GITHUB_OUTPUT"
 
-          # windows-arm64 rides along with any run that includes Windows.
-          if [ "$platform" = "all" ] || [ "$platform" = "windows" ]; then
-            echo "windows_arm64=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "windows_arm64=false" >> "$GITHUB_OUTPUT"
-          fi
+          # `dist_dir` is the directory xtask stages into, and the name
+          # `package-release.sh` matches on. `runner` pins an image rather than
+          # a floating `-latest` where the label has recently moved: macos-latest
+          # became macOS 26 (arm64) in mid-2026, so Intel has to be asked for by
+          # name — `macos-26-intel`, which is GA and supported to Aug 2027.
+          lx64='{"dist_dir":"linux-x64","runner":"ubuntu-latest"}'
+          larm='{"dist_dir":"linux-arm64","runner":"ubuntu-24.04-arm"}'
+          wx64='{"dist_dir":"windows-x64","runner":"windows-latest"}'
+          warm='{"dist_dir":"windows-arm64","runner":"windows-11-arm"}'
+          mx64='{"dist_dir":"macos-x64","runner":"macos-26-intel"}'
+          marm='{"dist_dir":"macos-arm64","runner":"macos-latest"}'
+          case "$platform" in
+            all)     dinc="$lx64,$larm,$wx64,$warm,$mx64,$marm" ;;
+            linux)   dinc="$lx64,$larm" ;;
+            windows) dinc="$wx64,$warm" ;;
+            macos)   dinc="$mx64,$marm" ;;
+            wasm)    dinc="" ;;
+          esac
+          echo "desktop={\"include\":[$dinc]}" >> "$GITHUB_OUTPUT"
 
           echo "### Build Engine" >> "$GITHUB_STEP_SUMMARY"
           echo "- version: \`$version\`" >> "$GITHUB_STEP_SUMMARY"
@@ -182,7 +225,10 @@ jobs:
 
   build:
     needs: setup
-    if: needs.setup.outputs.skip != 'true'
+    # Gated on `containers`, not on the matrix being empty: an empty `include`
+    # is a matrix-expansion error, not zero jobs. Every desktop-only run leaves
+    # nothing for a container to build, which is now the common case.
+    if: needs.setup.outputs.skip != 'true' && needs.setup.outputs.containers == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -220,6 +266,16 @@ jobs:
       # `renzora::version` when the contract crate compiles, so a published
       # binary knows its own tag and doesn't have to guess which release matches
       # it. Empty on a non-publishing run, which `version.rs` reads as "dev".
+      #
+      # RENZORA_PROFILE names the shipping profile and nothing more. It used to
+      # read `platform == 'windows' && 'dist' || 'release'`, because Windows
+      # cannot link `bevy_dylib` at `opt-level = "s"` (the PE export table is
+      # 16-bit). That put a property of the TARGET in the caller, so it held only
+      # for callers that knew — and `renzora build windows`, which runs this same
+      # script from the CLI, did not: it took the `release` default and failed to
+      # link. `build_one` in docker/build-all.sh now forces `dist` for a
+      # windows-* platform itself, so every caller gets it and this line stays
+      # one value.
       - name: Build ${{ matrix.platform }} (${{ matrix.arches }})
         run: |
           docker run --rm \
@@ -227,7 +283,7 @@ jobs:
             -w /app/src \
             -e RENZORA_RELEASE_TAG="${{ needs.setup.outputs.tag }}" \
             -e RENZORA_BUILD_COMMIT="${{ github.sha }}" \
-            -e RENZORA_PROFILE="${{ matrix.platform == 'windows' && 'dist' || 'release' }}" \
+            -e RENZORA_PROFILE="release" \
             "${REGISTRY}/${{ matrix.platform }}:latest" \
             bash docker/build-all.sh dist ${{ matrix.platform }}
 
@@ -245,24 +301,42 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ── Windows ARM64 — native, no container ────────────────────────────────────
-  # The header explains why this can't ride the Docker matrix. `windows-11-arm`
-  # is a GitHub-hosted arm64 runner (free for public repos, which this is) with
-  # the real MSVC ARM64 toolchain, so the build is native: no cross-compile, no
-  # clang-standing-in-for-MSVC intrinsics hunt, and the host target IS
-  # aarch64-pc-windows-msvc so nothing needs `rustup target add`.
+  # ── Desktop — native, one runner per platform, no container ──────────────────
+  # These lanes build the published EDITORS, and they are native because an
+  # editor cannot be cross-built. It carries a plugin SDK so the machine it runs
+  # on can compile native plugins and Rust scripts, and an SDK's proc-macro
+  # dylibs are artifacts of whatever ran the compiler — cross-compiling in the
+  # Linux container yields Linux ones no matter what `--target` says. The user
+  # then gets `can't find crate for bevy_derive` and every name behind
+  # `bevy::prelude` with it. So `docker/build-all.sh` stages no editor, and the
+  # editors are built here instead, each on its own operating system.
   #
-  # It runs `cargo renzora dist` — the same xtask a contributor uses locally,
-  # which compiles the workspace on the `dist` profile and stages
-  # dist/windows-arm64/ with the layout the loader expects. That is the native
-  # mirror of what build-all.sh does inside the containers, so the artifact is
-  # shaped identically to the other desktop slices.
-  windows-arm64:
+  # Every lane runs `cargo renzora dist` — the same xtask a contributor uses
+  # locally — which compiles the workspace on the `dist` profile and stages
+  # `dist/<platform>/` with the layout the loader expects. One tree yields BOTH
+  # release assets: `package-release.sh` zips it whole as the engine, and cuts
+  # the export template from the same directory by excluding `renzora-editor`.
+  # That is why the desktop containers were retired rather than kept for the
+  # runtimes — they would compile every runtime a second time to produce an
+  # artifact this already contains.
+  #
+  # `windows-11-arm`, `macos-26-intel` and `ubuntu-24.04-arm` are GitHub-hosted
+  # and free on a public repository, which this is. `macos-26-intel` is named
+  # explicitly because `macos-latest` moved to macOS 26 on Apple Silicon in mid
+  # 2026, so Intel is no longer reachable through a floating label.
+  desktop:
     needs: setup
-    if: needs.setup.outputs.skip != 'true' && needs.setup.outputs.windows_arm64 == 'true'
-    runs-on: windows-11-arm
-    # A cold full-workspace bevy build on this runner is measured in hours, well
-    # past the 360-minute job default it would otherwise silently inherit.
+    # Same reason the container job checks a flag rather than the matrix: a
+    # wasm-only run leaves this empty, and an empty `include` fails expansion.
+    if: needs.setup.outputs.skip != 'true' && needs.setup.outputs.desktop != '{"include":[]}'
+    strategy:
+      # One platform failing must not cancel five hours of work on the other
+      # five. `publish` takes whichever slices arrived.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.desktop) }}
+    runs-on: ${{ matrix.runner }}
+    # A cold full-workspace bevy build on these runners is measured in hours,
+    # well past the 360-minute job default it would otherwise silently inherit.
     timeout-minutes: 350
     env:
       # No cache is restored here, so incremental artifacts are pure disk cost —
@@ -270,11 +344,11 @@ jobs:
       CARGO_INCREMENTAL: 0
       RENZORA_RELEASE_TAG: ${{ needs.setup.outputs.tag }}
       RENZORA_BUILD_COMMIT: ${{ github.sha }}
-      # Build the profile that ships, by NAME. This lane runs `cargo renzora`
+      # Build the profile that ships, by NAME. These lanes run `cargo renzora`
       # (xtask), which defaults to the fast-link `dist` profile a contributor
-      # iterates with; `RENZORA_PROFILE` is the same variable `docker/build-all.sh`
-      # already reads, so both entry points now name one profile instead of each
-      # holding an idea of what the shipping build is.
+      # iterates with; `RENZORA_PROFILE` is the same variable
+      # `docker/build-all.sh` reads, so both entry points name one profile
+      # instead of each holding an idea of what the shipping build is.
       #
       # It used to reconstruct `release` by overriding two keys on `dist`, with a
       # comment asking whoever edits `[profile.release]` to keep them in step.
@@ -285,16 +359,50 @@ jobs:
       #
       # `dist` rather than `release`, for that same cap — Windows cannot ship a
       # size-optimised build while Bevy is a dylib. See `[profile.dist]` in the
-      # root Cargo.toml; the container's Windows lane selects it the same way.
+      # root Cargo.toml.
       RENZORA_PROFILE: dist
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
+      # The container image installs these for the Linux lanes; a hosted Ubuntu
+      # runner has none of them. The list mirrors docker/base/Dockerfile — alsa
+      # and udev are linked at build, the X11/Wayland/Vulkan/xkbcommon headers
+      # are there so the build stays honest about what it compiles against.
+      # zstd packs the SDK further down.
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev libasound2-dev \
+            libudev-dev libvulkan-dev libssl-dev zstd
+
+      # appimagetool turns the AppDir that `--bundle` builds into a `.AppImage`.
+      # Optional to the bundler — the AppDir alone already satisfies
+      # `TemplateManager::scan` and `package-release.sh` — but the published
+      # Linux asset has always been an AppImage, so install it here rather than
+      # let the release quietly change shape.
+      - name: appimagetool
+        if: runner.os == 'Linux'
+        run: |
+          arch=$(uname -m)
+          url="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$arch.AppImage"
+          curl -fsSL "$url" -o appimagetool
+          sudo install -m 0755 appimagetool /usr/local/bin/appimagetool
+          rm -f appimagetool
+          # A hosted runner has no FUSE, which an AppImage needs to mount itself.
+          # `--appimage-extract-and-run` is the documented way round it.
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+
       # The arm64 Windows image is leaner than windows-latest and doesn't
-      # preinstall Rust. Guarded so this becomes a no-op if the image gains it.
+      # preinstall Rust. Guarded so this is a no-op on every other runner, all of
+      # which ship rustup — which is also why the installer URL can name aarch64
+      # unconditionally: nothing else ever reaches it.
       - name: Install rustup
+        if: runner.os == 'Windows'
         run: |
           if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
             Invoke-WebRequest -Uri https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe -OutFile rustup-init.exe
@@ -305,28 +413,43 @@ jobs:
       # rust-toolchain.toml pins the channel; `rustup show` is what installs it
       # up front rather than mid-build, where the download would be buried in
       # cargo's output and its failure mode much less obvious.
+      #
+      # `shell: bash` from here down. It is available on all three runner
+      # operating systems, and one script per step beats three dialects of the
+      # same three lines.
       - name: Install pinned toolchain
+        shell: bash
         run: |
           rustup show
           cargo --version
           rustc --version --verbose
 
+      # `--bundle` wraps the staged tree the way it ships — AppImage on Linux,
+      # `.app` on macOS, a no-op on Windows. Not the default, because wrapping
+      # moves the binary out from under `cargo renzora`'s launch step and makes
+      # every local build pay for mksquashfs. It matters here because
+      # `TemplateManager::scan` and `package-release.sh` both read the Linux and
+      # macOS runtime from *inside* the bundle, so a flat tree is invisible to
+      # them. See `xtask/src/bundle.rs`.
       - name: Build + stage
-        run: cargo renzora dist
+        shell: bash
+        run: cargo renzora dist --bundle
 
-      # Same reason `docker/build-all.sh` packs it in the container lanes: the
-      # staged SDK is ~1.9 GB of loose crate metadata, and uploading it extracted
-      # makes this artifact several times larger for no benefit. xtask needs the
-      # tree in place while it builds the native plugins, so packing happens after
-      # rather than instead.
+      # Packed here because this is now the only kind of lane that has an SDK to
+      # pack: the container lanes stage no editor and therefore no SDK, since an
+      # SDK's proc macros are artifacts of the machine that compiled them and a
+      # Linux container can only produce Linux ones. The staged tree is ~1.9 GB
+      # of loose crate metadata, and uploading it extracted makes this artifact
+      # several times larger for no benefit. xtask needs the tree in place while
+      # it builds the native plugins, so packing happens after rather than
+      # instead.
       #
-      # `bash` explicitly: this is a Windows runner, where the default shell is
-      # PowerShell. Skipped without zstd rather than failed — the artifact is then
-      # merely fat, and `package-release.sh` compresses it later.
+      # Skipped without zstd rather than failed — the artifact is then merely
+      # fat, and `package-release.sh` compresses it later.
       - name: Pack the plugin SDK
         shell: bash
         run: |
-          out=dist/windows-arm64
+          out=dist/${{ matrix.dist_dir }}
           [ -d "$out/sdk" ] || exit 0
           if ! command -v zstd >/dev/null 2>&1; then
             echo "zstd unavailable — shipping sdk/ extracted (packaging will compress it)"
@@ -336,33 +459,39 @@ jobs:
           rm -rf "$out/sdk"
           ls -lh "$out/sdk.tar.zst"
 
-      # Disk exhaustion is the likeliest failure on this runner, and cargo's
+      # Disk exhaustion is the likeliest failure on these runners, and cargo's
       # error for it is unhelpful; report free space either way so a failed run
       # says so directly instead of needing a second run to diagnose.
       - name: Report disk usage
         if: always()
-        run: Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
+        shell: bash
+        run: df -h
 
-      # `dist/` (not `dist/windows-arm64/`) so the artifact has the same
-      # <artifact>/<platform>/… shape as every container lane — which is what
+      # `dist/` (not `dist/<platform>/`) so the artifact has the same
+      # <artifact>/<platform>/… shape as the container lane — which is what
       # `package-release.sh` walks.
-      - name: Upload windows-arm64 build
+      - name: Upload ${{ matrix.dist_dir }} build
         uses: actions/upload-artifact@v4
         with:
-          name: renzora-windows-arm64
+          name: renzora-${{ matrix.dist_dir }}
           path: dist/
           if-no-files-found: error
           retention-days: 7
 
   # ── Publish ─────────────────────────────────────────────────────────────────
-  # `if: always()` plus an explicit result check on `build`, because
-  # `windows-arm64` is best-effort: it is the only job measured in hours and the
-  # only one with no build cache, so a release waits for it but does not depend
-  # on it. Whatever slices arrived get published; the rest are simply absent from
-  # `manifest.json`, which the editor reads as "no template for that platform".
+  # `if: always()` because the desktop lanes are best-effort: each is measured in
+  # hours and none has a build cache, so a release waits for them but does not
+  # depend on them. Whatever slices arrived get published; the rest are simply
+  # absent from `manifest.json`, which the editor reads as "no template for that
+  # platform".
+  #
+  # `build` is checked with `!= 'failure'` rather than `== 'success'`, because it
+  # now reports `skipped` whenever the run has no container platform to build —
+  # every narrowed desktop run, since only wasm goes through a container. A
+  # skipped container job is a normal outcome; a failed one is not.
   publish:
-    needs: [setup, build, windows-arm64]
-    if: always() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result == 'success'
+    needs: [setup, build, desktop]
+    if: always() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -374,15 +503,23 @@ jobs:
         with:
           path: artifacts
 
-      # The container lanes already packed their own output (`compress_binaries`
-      # in build-all.sh, which has to run there so macOS is packed BEFORE it is
-      # signed). `windows-arm64` is the exception: it is built natively by xtask,
-      # which does no packing — deliberately, since xtask is also the local dev
-      # path and nobody wants to iterate on a packed binary.
+      # Every desktop slice now arrives unpacked. They are built by xtask, which
+      # does no packing — deliberately, since xtask is also the local dev path
+      # and nobody wants to iterate on a packed binary. (The container lane packs
+      # its own output via `compress_binaries`, which has to happen there so
+      # macOS is packed BEFORE it is signed; that only applies to the platforms
+      # it still builds.)
       #
       # So this catches whatever arrived unpacked. `upx -t` succeeds only on an
       # already-packed file, which makes the pass idempotent and safe to run over
-      # every artifact rather than special-casing one lane.
+      # every artifact rather than special-casing a lane.
+      #
+      # macOS is pruned, and has to be. Packing rewrites the executable, which
+      # invalidates the ad-hoc signature `fixup_macos` applied — and arm64 macOS
+      # refuses to launch a binary whose signature does not match, so a packed
+      # slice would be smaller and dead. The container got this order right by
+      # packing before signing; a native lane signs during staging, so the only
+      # correct choice left here is not to pack. macOS ships uncompressed.
       - name: Compress any unpacked executables
         run: |
           set -euo pipefail
@@ -400,8 +537,9 @@ jobs:
             else
               echo "WARN: upx declined $f — shipping it uncompressed"
             fi
-          done < <(find artifacts \( -name 'renzora' -o -name 'renzora.exe' \
-                                     -o -name 'renzora-editor' -o -name 'renzora-editor.exe' \) -type f -print0)
+          done < <(find artifacts -path '*macos*' -prune -o \
+                     \( -name 'renzora' -o -name 'renzora.exe' \
+                        -o -name 'renzora-editor' -o -name 'renzora-editor.exe' \) -type f -print0)
 
       - name: Package release assets
         run: |

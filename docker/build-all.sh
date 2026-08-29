@@ -10,6 +10,23 @@
 # The dedicated server is not a separate target — it's the runtime launched
 # with `--server`.
 #
+# ── What this script produces: runtimes, not desktop editors ─────────────────
+# The output of a desktop lane is a RUNTIME — the game binary that
+# `renzora_export` uses as that platform's export template. The editor binary is
+# compiled and then not staged, because an editor carries a plugin SDK and an
+# SDK cannot be cross-built: its proc-macro dylibs are artifacts of the machine
+# running the compiler, so a Linux container can only ever produce Linux ones.
+# See the long note in `build_desktop`.
+#
+# So the three ways to build divide cleanly:
+#
+#   cargo renzora     your own platform, complete, editor and SDK included
+#   this script       runtimes / export templates, every platform, no editor
+#   CI native lanes   the published editors, one runner per platform
+#
+# The wasm lane is the exception that proves it: a wasm editor has no SDK and
+# compiles no Rust at runtime, so it is still built here.
+#
 # ── Per-platform toolchain images ────────────────────────────────────────────
 # The toolchain is split into one image per platform (base + linux
 # / windows / macos / ios / android / wasm).
@@ -77,12 +94,12 @@ mkdir -p "$OUTPUT_DIR"
 # is its own cargo workspace with its own tuned `[profile.dist]`, and their
 # outputs are kilobytes — nothing to gain, a target-dir rename to lose.
 PROFILE="${RENZORA_PROFILE:-release}"
-# EXPORTED, not just set. `stage_sdk` shells out to xtask, which reads this same
-# variable to decide which profile to cut the SDK from — and defaults to `dist`
-# when it is unset. Leaving it unexported meant a `release` lane invoked an xtask
-# that rebuilt the ENTIRE workspace under `dist`, then staged an SDK describing a
-# compilation that no shipped binary came from. Slow was the visible half; the
-# mismatch was the real one.
+# Exported so anything this script shells out to selects the same profile by
+# name instead of falling back to its own default. That mattered acutely while
+# the SDK was staged here — an unexported value had a `release` lane invoke an
+# xtask that rebuilt the entire workspace under `dist` and then described a
+# compilation no shipped binary came from — and it is kept because agreeing on
+# one profile is cheap and disagreeing is expensive.
 export RENZORA_PROFILE="$PROFILE"
 echo "=== engine profile: $PROFILE ==="
 
@@ -568,23 +585,44 @@ build_desktop() {
     mkdir -p "$OUT"
 
     # ── The binaries ─────────────────────────────────────────────────────────
-    # There are TWO executables and the editor lane must stage BOTH:
+    # The workspace has two executables:
     #
     #   renzora         the runtime / shipped game (package `renzora_app`)
     #   renzora-editor  the editor              (package `renzora_editor_app`)
     #
-    # This used to copy `renzora` alone and call it the editor, which was right
-    # only while the editor was a `dlopen`'d cdylib bundle sitting beside one
-    # dual-purpose exe. Static Bevy ended that: a cdylib bundle would link its
-    # own copy of Bevy, hence its own `World` type, so the editor became a
-    # separate binary — and this script never learned. The result was that every
-    # desktop artefact shipped the RUNTIME under the name `renzora` and no editor
-    # at all, while `cargo build --workspace` had happily compiled one.
+    # This script stages the RUNTIME only. It never ships an editor.
     #
-    # They also have to ship together, not just both exist: external-runtime play
-    # mode launches `<exe_dir>/renzora[.exe]` as a child process
-    # (`renzora_viewport::external_runtime`), so an editor staged on its own
-    # cannot start a game.
+    # `renzora-editor` is compiled here (the lane builds `--workspace`) and then
+    # deliberately left behind, because a container cannot produce a *usable*
+    # editor for anything but its own Linux architecture, and it should not
+    # produce a half-usable one for everything else.
+    #
+    # The reason is the plugin SDK. An editor compiles native plugins and Rust
+    # scripts on the machine it runs on, so it ships the metadata and the
+    # proc-macro dylibs `rustc` needs. Proc macros run *inside* the compiler, so
+    # they are built for the host — and cross-compiling here means that host is
+    # Linux. Ship that to a Windows or macOS user and their `rustc` cannot load
+    # half of it: `can't find crate for bevy_derive`, and with it every name
+    # behind `bevy::prelude`. Nor can the mismatch be patched afterwards; each
+    # `.rmeta` records the hash of what it was compiled against, so the metadata
+    # and the proc macros have to come out of one build on one machine whose own
+    # platform is the platform being built for.
+    #
+    # That is not fixable in a cross-compiler, so the job moved instead:
+    #
+    #   cargo renzora     your own platform, complete, with a working SDK
+    #   this script       runtime templates, any platform, no editor
+    #   CI native lanes   editors, one runner per platform
+    #
+    # Nothing is lost. A game needs no SDK — it ships plugins already compiled —
+    # so cross-built runtimes are correct, which is exactly what the export
+    # templates in `renzora_export` are. And the editor for the machine you are
+    # sitting at never wanted a container in the first place.
+    #
+    # The bundle wrappers below already expect this: `AppRun` and the `.app`'s
+    # CFBundleExecutable both fall back to `renzora` when no editor binary is
+    # present, so an AppImage/.app still forms and `TemplateManager::scan` still
+    # finds the runtime inside it.
     local SUF=""
     [ "$EXT" = "dll" ] && SUF=".exe"
 
@@ -592,11 +630,6 @@ build_desktop() {
     case "$FEATURE" in
         editor)
             stage_bin "$SRC/renzora$SUF" "$OUT/renzora$SUF" || true
-            # Warn rather than fail: the tree is still a usable game build, and a
-            # silent omission here is exactly how the artefacts went editor-less
-            # unnoticed. Loud beats absent.
-            stage_bin "$SRC/renzora-editor$SUF" "$OUT/renzora-editor$SUF" \
-                || echo "WARN: renzora-editor$SUF missing from $SRC — staged a runtime-only tree"
             HOST_BIN="$OUT/renzora$SUF"
             ;;
         runtime)
@@ -609,92 +642,14 @@ build_desktop() {
     # The triple matters: `std-<hash>` must come from the TARGET's sysroot, which
     # for a cross build is not the host's.
     copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN" "$RUST_TARGET"
-    stage_sdk "$FEATURE" "$RUST_TARGET" "$PLATFORM" "$OUT"
     return 0
 }
 
-# ── The plugin SDK ───────────────────────────────────────────────────────────
-# Usage: stage_sdk <feature> <rust-target|native> <platform-name> <out-dir>
-#
-# Editor lane only, and only for a build that produced one. `cargo renzora` has
-# always staged this for the host; this is the cross-compiling equivalent, and
-# without it **every published release shipped without an SDK**. That failed
-# silently in the worst way: `package-release.sh` compresses `$dir/sdk` only if
-# it exists, so the archive step found nothing, produced nothing, and said
-# nothing — and the editor then had no way to compile a Rust script or a native
-# plugin, on any platform built here.
-#
-# Delegated to `xtask` rather than reimplemented in bash for the same reason
-# `build_plugins` does not try to build native plugins: the file list has to come
-# from cargo's own `--message-format=json` output, because `deps/` holds several
-# `-C metadata` variants of one crate and picking by name yields a set that looks
-# complete and then fails to compile. That logic lives in `xtask/src/sdk.rs` and
-# must not be duplicated.
-#
-# The flags are not optional decoration. The container builds every platform from
-# one checkout, so the SDK must be cut from THIS lane's artifacts:
-#   --target-dir  the editor lane's own target dir
-#   --target      the cross triple, absent for a native build
-# Getting either wrong stages a different platform's SDK, which compiles plugins
-# that cannot load.
-#
-# Best-effort: a platform whose SDK cannot be staged still ships a working editor,
-# minus the ability to compile scripts and plugins. Named loudly, because silence
-# is exactly how this went unnoticed before.
-stage_sdk() {
-    local FEATURE="$1" RUST_TARGET="$2" PLATFORM="$3" OUT="$4"
-    [ "$FEATURE" = "editor" ] || return 0
-
-    local FLAGS=(--target-dir "target/$FEATURE" --out "$OUT")
-    if [ "$RUST_TARGET" != "native" ]; then
-        FLAGS+=(--target "$RUST_TARGET")
-    fi
-
-    echo "=== Staging plugin SDK for $PLATFORM ==="
-    if ! cargo run --quiet --manifest-path xtask/Cargo.toml -- sdk "${FLAGS[@]}"; then
-        echo "WARN: could not stage the plugin SDK for $PLATFORM — the editor will"
-        echo "      ship without the ability to compile Rust scripts or native plugins"
-        return 0
-    fi
-    pack_sdk "$OUT" "$PLATFORM"
-}
-
-# ── Compress the staged SDK, in the lane that produced it ────────────────────
-# Usage: pack_sdk <out-dir> <platform-name>
-#
-# The staged SDK is ~1.9 GB of loose crate metadata. Leaving it extracted makes
-# every artifact upload carry all of it as individual files — measured at a
-# 721 MB zip for one platform — and the packaging job then compresses the same
-# bytes again at the end. Doing it here means the tree is never transported in
-# that state, and `package-release.sh` finds the archive already made.
-#
-# Same settings as `package-release.sh`: `-19` for the ratio (444 MB against
-# 520 MB at `-10`, for 0.5 s more decode), `--long=27` to widen the match window
-# past zstd's default 8 MB on a tree this repetitive, `-T0` because compression
-# is the slow half and only ever runs here.
-#
-# Skipped without zstd rather than failed: a lane on an older image still
-# produces a correct artifact, just a fat one, and `package-release.sh`
-# compresses it later. That keeps this from being a hard dependency on an image
-# rebuild landing first.
-pack_sdk() {
-    local OUT="$1" PLATFORM="$2"
-    [ -d "$OUT/sdk" ] || return 0
-    if ! command -v zstd >/dev/null 2>&1; then
-        echo "    zstd not in this image — shipping sdk/ extracted (packaging will compress it)"
-        return 0
-    fi
-    echo "    compressing sdk/ for $PLATFORM …"
-    if ( cd "$OUT" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f ); then
-        rm -rf "$OUT/sdk"
-        echo "    sdk.tar.zst $(du -h "$OUT/sdk.tar.zst" | cut -f1)"
-    else
-        # Left extracted on purpose: a half-written archive beside a deleted tree
-        # would be worse than a large artifact.
-        rm -f "$OUT/sdk.tar.zst"
-        echo "WARN: could not compress the SDK for $PLATFORM — shipping it extracted"
-    fi
-}
+# The plugin SDK is deliberately absent from this script. It used to be staged
+# and packed here, which is how cross-built editors came to ship an SDK whose
+# proc macros were for the wrong operating system. Staging it belongs where it
+# can be correct: `cargo renzora` for the machine you are on, and the native
+# per-platform CI lanes for everything published. See `build_desktop`.
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────
 # The C-ABI plugins are built here rather than in a lane of their own because
@@ -704,6 +659,38 @@ pack_sdk() {
 # with everything else.
 build_one() {
     local PLATFORM="$1" FEATURE="$2"
+
+    # ── Windows cannot ship `release`, whoever asked for it ──────────────────
+    #
+    # A PE export ordinal is 16 bits, so a DLL exports at most 65,535 symbols —
+    # a property of the file format that no linker flag gets past. `bevy_dylib`
+    # lands either side of it on optimisation level alone:
+    #
+    #     opt-level = 2      41,958   links
+    #     opt-level = "s"   269,482   rust-lld: too many exported symbols
+    #
+    # `"s"` inlines far less, so generic instantiations that `2` folds into
+    # their callers survive as separate functions, and a Rust `dylib` exports
+    # every one. `[profile.release]` is the size-optimised one, so a Windows
+    # lane built with it does not link at all.
+    #
+    # This is decided HERE, next to the platform, rather than by each caller
+    # passing `RENZORA_PROFILE=dist`. The CI workflow did pass it and was fine;
+    # `renzora build windows` does not, fell through to the `release` default,
+    # and hit the cap — a constraint of the target reached the script only by
+    # every entry point happening to remember it. `local -x` scopes the
+    # override to this call, so a multi-platform run still builds Linux and
+    # macOS at `release`, which have no such ceiling.
+    case "$PLATFORM" in
+        windows-*)
+            if [ "$PROFILE" != "dist" ]; then
+                echo "    windows: profile $PROFILE -> dist (PE exports are 16-bit; bevy_dylib needs it)"
+            fi
+            local PROFILE="dist"
+            local -x RENZORA_PROFILE="dist"
+            ;;
+    esac
+
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1

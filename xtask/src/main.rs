@@ -53,6 +53,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod bundle;
 mod coverage;
 mod native_plugin;
 mod sdk;
@@ -147,8 +148,21 @@ fn main() -> ExitCode {
             launch(&repo, &out, &plat, false)
         }
         // Build + stage only — produce the dist/ folder, don't launch.
+        //
+        // `--bundle` additionally wraps the result in the shape that ships: an
+        // AppImage on Linux, a `.app` on macOS, nothing on Windows (where a flat
+        // folder already is the shipping layout). Opt-in because wrapping moves
+        // the binary out from under the launch step and makes every local build
+        // pay for `mksquashfs`; the CI desktop lanes ask for it, a contributor
+        // iterating does not. See `bundle.rs` for why it has to exist at all.
         "dist" => match build_and_stage(&repo, &plat, &[]) {
             Ok(out) => {
+                if std::env::args().any(|a| a == "--bundle") {
+                    if let Err(e) = bundle::wrap(&repo, &out, &plat) {
+                        eprintln!("[xtask] error: could not bundle {}: {e}", out.display());
+                        return ExitCode::FAILURE;
+                    }
+                }
                 println!("[xtask] staged {}", out.display());
                 ExitCode::SUCCESS
             }
