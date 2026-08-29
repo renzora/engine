@@ -58,6 +58,11 @@ pub struct ExportPreset {
     pub icon_path: Option<String>,
     #[serde(default)]
     pub include_server: bool,
+    /// Ship the plugin SDK so the game can be modded. Defaults to ON, including
+    /// for a preset written before this existed — a preset saved when there was
+    /// no choice was saved under the behaviour that shipped it.
+    #[serde(default = "default_true")]
+    pub enable_modding: bool,
     #[serde(default)]
     pub binary_name: String,
     #[serde(default)]
@@ -101,6 +106,9 @@ fn default_simplify_ratio() -> f32 {
 fn default_lod_levels() -> u32 {
     3
 }
+fn default_true() -> bool {
+    true
+}
 
 impl ExportPreset {
     /// A new preset for `platform`, with everything else left at its default.
@@ -117,6 +125,7 @@ impl ExportPreset {
             upx_compress: false,
             icon_path: None,
             include_server: false,
+            enable_modding: true,
             binary_name: String::new(),
             output_dir: String::new(),
             mesh_simplify: false,
@@ -144,6 +153,7 @@ impl ExportPreset {
             upx_compress: state.upx_compress,
             icon_path: state.icon_path.clone(),
             include_server: state.include_server,
+            enable_modding: state.enable_modding,
             binary_name: state.binary_name.clone(),
             output_dir: state.output_dir.clone(),
             mesh_simplify: state.mesh_simplify,
@@ -179,6 +189,7 @@ impl ExportPreset {
         state.upx_compress = self.upx_compress;
         state.icon_path = self.icon_path.clone();
         state.include_server = self.include_server;
+        state.enable_modding = self.enable_modding;
         state.binary_name = self.binary_name.clone();
         state.output_dir = self.output_dir.clone();
         state.mesh_simplify = self.mesh_simplify;

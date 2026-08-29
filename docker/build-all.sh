@@ -983,7 +983,14 @@ build_wasm() {
     # the in-viewport path needs no subprocess, and the Window/VR targets that
     # would need one are hidden on wasm.
     echo "=== Building WASM Editor ==="
+    # `--features wasm` gates the binary target itself. On native the editor is a
+    # loadable image beside one executable, so this package's `[[bin]]` would be
+    # a redundant second exe — and an unlinkable one, since `renzora_editor` is
+    # now both rlib and dylib and a binary linking the rlib gives rustc two
+    # formats to choose between. wasm has no dynamic linking, so the editor there
+    # stays a separate bundle and asks for the target explicitly.
     cargo build --profile "$PROFILE" -p renzora_editor_app --bin renzora-editor \
+        --features wasm \
         --target wasm32-unknown-unknown --target-dir target/wasm-editor || return 1
     local EDITOR_WASM
     EDITOR_WASM=$(find "target/wasm-editor/wasm32-unknown-unknown/$PROFILE" -name "renzora-editor.wasm" 2>/dev/null | head -1)

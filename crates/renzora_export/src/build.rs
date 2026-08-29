@@ -1022,6 +1022,87 @@ fn stage_static_plugins(
 ///
 /// Returns whether anything was generated, so the caller only adds the feature
 /// when there is something to link.
+/// Ship the plugin SDK so the exported game can compile plugins of its own.
+///
+/// This is what "enable modding" buys. Without it a game loads only the
+/// prebuilt libraries the export staged; with it, a player can drop a native
+/// plugin's SOURCE into `plugins/` and the game builds it on next launch,
+/// exactly as the editor does — same compiler driver, same SDK, same loading.
+///
+/// Copied rather than repacked. A release ships `sdk.tar.zst` and unpacks it on
+/// first run, deleting the archive, so an editor that has been started once has
+/// only the extracted tree — and repacking 1.5 GB at `zstd -19` would add
+/// minutes to every export to save space in a directory the player never
+/// downloads over a network. Whichever form is present is what ships: the
+/// archive if the editor has not unpacked it yet, the tree otherwise, and the
+/// game's own first-run step handles the archive case.
+///
+/// Host platform only. An SDK is only correct on the platform it was built for —
+/// its proc-macro dylibs belong to whatever ran the compiler — so shipping this
+/// editor's SDK inside a game for another OS would hand a player a compiler that
+/// cannot run. That is the same rule that makes a cross-built editor unable to
+/// compile scripts.
+pub fn stage_modding_sdk(
+    editor_dir: &Path,
+    output_dir: &Path,
+    progress: &mut dyn FnMut(String),
+) -> Result<bool, String> {
+    // Somewhere to put a mod, even when the game shipped no plugins of its own.
+    // An empty directory is the instruction: a player who opens the folder can
+    // see where a plugin goes, where otherwise they would have to know to create
+    // it — and a game with modding enabled and no `plugins/` anywhere looks like
+    // modding was not enabled at all.
+    let plugins = output_dir.join("plugins");
+    std::fs::create_dir_all(&plugins)
+        .map_err(|e| format!("create {}: {e}", plugins.display()))?;
+
+    // The archive first: smaller, and the game unpacks it on first launch behind
+    // the same progress window the editor uses.
+    let archive = editor_dir.join("sdk.tar.zst");
+    if archive.is_file() {
+        std::fs::copy(&archive, output_dir.join("sdk.tar.zst"))
+            .map_err(|e| format!("copy sdk.tar.zst: {e}"))?;
+        progress("Shipped the plugin SDK (compressed) for modding".to_string());
+        return Ok(true);
+    }
+
+    let sdk = editor_dir.join("sdk");
+    if !sdk.join("manifest.json").is_file() {
+        progress(
+            "WARN: modding is on but this editor has no plugin SDK — the game will ship \
+             without one and can load only prebuilt plugins."
+                .to_string(),
+        );
+        return Ok(false);
+    }
+
+    progress("Copying the plugin SDK for modding (this is ~1.5 GB)…".to_string());
+    let copied = copy_dir(&sdk, &output_dir.join("sdk"))?;
+    progress(format!("Shipped the plugin SDK for modding ({copied} files)"));
+    Ok(true)
+}
+
+/// Recursive copy, returning how many files landed.
+fn copy_dir(from: &Path, to: &Path) -> Result<usize, String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("create {}: {e}", to.display()))?;
+    let mut count = 0;
+    let entries =
+        std::fs::read_dir(from).map_err(|e| format!("read {}: {e}", from.display()))?;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        let Some(name) = src.file_name() else { continue };
+        let dst = to.join(name);
+        if src.is_dir() {
+            count += copy_dir(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)
+                .map_err(|e| format!("copy {} → {}: {e}", src.display(), dst.display()))?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 /// Ship the `Runtime`-scope native plugins the editor already built, beside a
 /// copy-based export.
 ///

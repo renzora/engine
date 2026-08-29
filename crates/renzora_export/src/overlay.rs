@@ -128,6 +128,14 @@ pub struct ExportOverlayState {
     pub upx_compress: bool,
     pub icon_path: Option<String>,
     pub include_server: bool,
+    /// Ship the plugin SDK so players can add native plugins and Rust scripts to
+    /// the exported game.
+    ///
+    /// On by default. A moddable game is the norm for this engine — the plugin
+    /// system is the same one the editor uses — and the cost of getting the
+    /// default wrong points one way: a game shipped without it cannot be modded
+    /// at all, while a game shipped with it is merely larger.
+    pub enable_modding: bool,
     /// Optional override for the exported binary's filename (without extension).
     /// Empty = use the project name.
     pub binary_name: String,
@@ -201,6 +209,7 @@ impl Default for ExportOverlayState {
             upx_compress: false,
             icon_path: None,
             include_server: false,
+            enable_modding: true,
             binary_name: String::new(),
             mesh_simplify: false,
             mesh_simplify_ratio: 0.5,
@@ -752,6 +761,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let window_height = export_state.window_height;
     let console_logging = export_state.console_logging;
     let include_server = export_state.include_server;
+    let enable_modding = export_state.enable_modding;
     let icon_path = if export_state
         .icon_path
         .as_deref()
@@ -860,6 +870,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             icon_path,
             binary_name_override,
             include_server,
+            enable_modding,
             mesh_simplify,
             mesh_simplify_ratio,
             mesh_quantize,
@@ -895,6 +906,8 @@ fn export_worker(
     icon_path: Option<String>,
     binary_name_override: Option<String>,
     include_server: bool,
+    // Ship the plugin SDK so the game can compile plugins a player adds.
+    enable_modding: bool,
     mesh_simplify: bool,
     mesh_simplify_ratio: f32,
     mesh_quantize: bool,
@@ -1161,6 +1174,17 @@ fn export_worker(
                     &mut sp,
                 ) {
                     let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
+                }
+                // The SDK, when the game is meant to be moddable. That is what
+                // turns "loads the plugins we shipped" into "compiles the ones a
+                // player writes", and it is the only piece a player needs that
+                // the game cannot do without.
+                if enable_modding {
+                    if let Err(e) =
+                        crate::build::stage_modding_sdk(&editor_dir, &output_dir, &mut sp)
+                    {
+                        let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
+                    }
                 }
             }
         }

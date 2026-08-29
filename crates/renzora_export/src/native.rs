@@ -858,6 +858,12 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
             },
         );
         commands.entity(body).add_child(radios);
+        // Which mode to actually ship. Said here rather than left implicit,
+        // because the two copy-based modes are the fast ones and therefore the
+        // ones a person reaches for by habit — while what they produce is the
+        // editor's own runtime and its dylibs, not a build made for this game.
+        let guidance = txt(commands, fonts, &renzora::lang::t("export.packaging.guidance"), 11.0, text_muted());
+        commands.entity(body).add_child(guidance);
         if host {
             let hint = txt(commands, fonts, &renzora::lang::t("export.packaging.lean_hint"), 11.0, text_muted());
             commands.entity(body).add_child(hint);
@@ -877,6 +883,7 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
     }
 
     secs.push(build_runtime_status(commands, fonts, p));
+    secs.push(build_modding_section(commands, fonts));
     // Compression and mesh optimisation are packaging decisions — how the build
     // is packed, not what it contains — so they sit here rather than behind a
     // tab of their own.
@@ -887,6 +894,49 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
 
 /// Runtime-template status section (installed line + Download/Install buttons +
 /// download progress). Returns the section root for the caller to place.
+/// Whether the exported game ships the plugin SDK, and can therefore compile
+/// plugins a player adds.
+///
+/// On by default. A moddable game is the norm for this engine — the plugin
+/// system is the same one the editor uses — and the cost of a wrong default
+/// points one way: shipped without it a game cannot be modded at all, shipped
+/// with it a game is merely larger.
+fn build_modding_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.modding"), accent());
+
+    let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+    let cb = checkbox(commands, true);
+    bind_2way(
+        commands,
+        cb,
+        |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.enable_modding),
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                s.enable_modding = *v;
+            }
+        },
+    );
+    let label = txt(commands, fonts, &renzora::lang::t("export.modding.enable"), 12.5, text_primary());
+    commands.entity(row).add_children(&[cb, label]);
+    commands.entity(body).add_child(row);
+
+    let hint = txt(commands, fonts, &renzora::lang::t("export.modding.hint"), 11.0, text_muted());
+    commands.entity(body).add_child(hint);
+
+    // A lean build links Bevy statically and shares no image, so there is
+    // nothing for a plugin library to bind to — the SDK would ship and be
+    // unusable. Said rather than silently ignored, since the checkbox is on by
+    // default and a user picking lean would otherwise expect it to apply.
+    let note = txt(commands, fonts, &renzora::lang::t("export.modding.lean_note"), 11.0, AMBER);
+    bind_display(commands, note, |w| {
+        w.get_resource::<ExportOverlayState>()
+            .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
+    });
+    commands.entity(body).add_child(note);
+
+    sec
+}
+
 fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
     let (sec, body) = section(commands, fonts, "download-simple", &renzora::lang::t("export.section.runtime_template"), accent());
     // Installed / not status line.
