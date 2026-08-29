@@ -154,8 +154,9 @@ pub fn menu_submenu_styled(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            // Above the 9000 of the menu root it belongs to.
-            GlobalZIndex(9100),
+            // Above the 9700 of the menu root it belongs to, and still below the
+            // crash overlay (9800). Moves with it — see the note on `screen_menu`.
+            GlobalZIndex(9750),
             OverlaySurface,
             // Spawn-time (not via an `Added` pass) for the same reason the menu
             // root does it: a menu torn down the same frame would leave the

@@ -168,7 +168,21 @@ fn screen_menu_anchored(commands: &mut Commands, x: f32, top: Val, bottom: Val) 
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            GlobalZIndex(9000),
+            // ── Above every modal, below the overlays that must cover a menu ──
+            //
+            // This was 9000, which put it UNDER the whole modal band (9200–9600:
+            // import, export, terrain settings, auth, the command palette…). A
+            // menu opened from inside any of them rendered behind it — invisible,
+            // while still eating the click that dismissed it. Nothing hit it for
+            // a long time only because no modal had opened a menu.
+            //
+            // 9700 clears the top of that band and stays under the three things
+            // that genuinely outrank a menu: the crash overlay (9800), the hub
+            // lightbox (9900) and tooltips (10_000). A menu is transient and
+            // dismisses on an outside click, so "always visible above the surface
+            // that spawned it" is the rule — it is the one surface the user is
+            // actively pointing at.
+            GlobalZIndex(9700),
             ScreenMenu,
             OverlaySurface,
             // Block pass-through directly at spawn — inserting it later (via an
