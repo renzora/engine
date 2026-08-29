@@ -26,6 +26,15 @@ default = []
 # feature set — an always-on module would fail that build. Enabled by
 # `renzora_ember`, which is itself dropped in exactly that configuration.
 text_mesh = []
+# The infinite ground grid's components (`renzora::grid`). The renderer stays in
+# `renzora_grid` — only the vocabulary is here, so a native plugin can put a
+# ground plane under its own preview without linking a crate it cannot reach.
+# Gated like `text_mesh` so a lean build that draws no grid compiles none of it.
+grid = []
+# `AudioLink` (`renzora::audio`) — the engine side of the audio boundary, so any
+# plugin can play a sound. The backend is still a `dlopen`'d audio plugin and the
+# mixer/timeline/emitters are still `renzora_audio`; only the link is here.
+audio = []
 # Compile the project's Rust scripts INTO the binary instead of loading each as
 # a dylib. Changes only what `script!` emits: without it the entry point is
 # `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is
@@ -86,7 +95,10 @@ serde = { version = "1", features = ["derive"] }
 # nothing else — no bevy, no libloading — and `renzora_plugin` does not depend on
 # this crate, so there is no cycle. The actual client stays behind the C-ABI
 # boundary in `plugins/http`; see `src/net.rs` for why the queue has to be here.
-renzora_plugin = { path = "../renzora_plugin", default-features = false, features = ["net"] }
+# `audio` is the same arrangement one subsystem over: the play/stop request
+# vocabulary for `src/audio.rs`, with the actual backend behind the C-ABI
+# boundary in an audio plugin. Both features are `["std"]` and nothing else.
+renzora_plugin = { path = "../renzora_plugin", default-features = false, features = ["net", "audio"] }
 # `Request::json` / `Response::json`. Came across with `net`; every caller was
 # already hand-rolling the same encode/decode a line later.
 serde_json = "1"

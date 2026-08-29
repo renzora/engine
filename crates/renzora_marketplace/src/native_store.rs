@@ -10,6 +10,7 @@
 //! channels.
 
 use bevy::prelude::*;
+use renzora::core::RenzoraShellExt;
 use bevy::ui::widget::NodeImageMode;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};

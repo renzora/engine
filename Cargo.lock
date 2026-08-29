@@ -7517,6 +7517,7 @@ dependencies = [
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lighting_editor",
+ "renzora_marketplace",
  "renzora_material_editor",
  "renzora_mesh_edit",
  "renzora_mixer",
@@ -8001,6 +8002,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "renzora_marketplace"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "crossbeam-channel",
+ "dirs 6.0.0",
+ "image",
+ "renzora",
+ "renzora_audio",
+ "renzora_ember",
+ "renzora_grid",
+ "renzora_shader",
+ "renzora_theme",
+ "rfd",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+ "zip",
 ]
 
 [[package]]

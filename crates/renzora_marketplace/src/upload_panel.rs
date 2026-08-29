@@ -23,6 +23,7 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
+use renzora::core::RenzoraShellExt;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
@@ -299,6 +300,26 @@ struct SuccessLinkBtn;
 // ── Build ───────────────────────────────────────────────────────────────────────
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // The panel has two stages and shows exactly one. Both are built up front
+    // and swapped by `bind_display`, which is how every other conditional
+    // surface here works — the alternative, rebuilding the subtree when creator
+    // status lands, would throw away in-progress form state on a background
+    // refresh.
+    //
+    // This is the "Become a Creator" panel, folded in. Keeping them apart meant
+    // the uploader's only useful message to a non-creator was to go and open the
+    // other panel, which is a worse version of just showing them the wizard.
+    let outer = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .id();
+
+    let wizard = crate::onboarding::build(commands, fonts);
+    bind_display(commands, wizard, |w| !crate::onboarding::can_publish(w));
+
     let root = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -310,6 +331,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
+    bind_display(commands, root, crate::onboarding::can_publish);
 
     // Header.
     let title = commands
@@ -354,7 +376,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     for s in steps {
         commands.entity(root).add_child(s);
     }
-    root
+    commands.entity(outer).add_children(&[wizard, root]);
+    outer
 }
 
 /// The 6-dot / 5-bar progress rail, each segment colored by the current step.

@@ -1,0 +1,60 @@
+[package]
+name = "renzora_marketplace"
+version = "0.1.0"
+edition = "2021"
+description = "The Renzora account: browse and buy assets, manage your library and wallet, and publish your own."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# bevy_ui-native panel content + Send+Sync channels for async result polling.
+renzora_ember = { path = "../renzora_ember" }
+
+# ── Why this is a workspace crate and not a plugin ───────────────────────────
+# It was assembled as a native plugin first, and the four dependencies below are
+# why it is not one. A native plugin is compiled by a bare `rustc` and handed
+# only `bevy`, `renzora` and `renzora_ember`; reaching these would have meant
+# moving four subsystems' boundaries into the contract crate, and two of them
+# (Kira, the shader compiler) cannot go there without breaking the rule that
+# `renzora` depends on bevy + serialization and nothing else.
+#
+# The honest reading is that a storefront which previews engine content — plays
+# the audio, compiles the shader, applies the theme, lights the model — is
+# engine-integrated by nature, and the four deps below are that integration
+# rather than an accident of layering.
+
+# Live theme preview: apply a downloaded theme into the editor's ThemeManager so
+# the palette updates before you buy, then restore on "Stop preview".
+renzora_theme = { path = "../renzora_theme" }
+# The infinite ground grid for the model preview's studio backdrop. Only the
+# `InfiniteGrid`/`InfiniteGridSettings` types; the render plugin is already
+# registered by the editor's own GridPlugin.
+renzora_shader = { path = "../renzora_shader" }
+# The shader compiler + `CodeShaderMaterial` for the material/shader item
+# preview: compile a downloaded shader, extract its `@param`s, render it on a
+# primitive. `ShaderPlugin` (registry + cache + pipeline) is already in the build.
+renzora_grid = { path = "../renzora_grid" }
+crossbeam-channel = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Where the session token is cached between launches.
+dirs = "6"
+# Native file pickers: the uploader's main file, cover, screenshots and audio
+# previews, and the install destination folder.
+rfd = "0.15"
+# Thumbnail, cover and avatar decoding for the shared image caches.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Unpacking a downloaded asset archive into the project.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Parsing a downloaded theme `.toml`, and writing the installed-plugin metadata
+# sidecar (`<crate>.plugin.toml`).
+toml = "0.8"
+# Native audio preview for the item overlay: the engine's Kira manager plays the
+# downloaded clip, and we name Kira's own handle/data types to drive it.
+# renzora_audio does NOT depend on this crate, so it stays acyclic.
+renzora_audio = { path = "../renzora_audio", features = ["decode"] }
+
+[lints]
+workspace = true

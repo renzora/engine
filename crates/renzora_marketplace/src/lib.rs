@@ -107,6 +107,9 @@ impl Plugin for MarketplacePlugin {
         app.add_plugins(native_store::NativeHubStore);
         app.add_plugins(native_library::NativeHubLibrary);
         app.add_plugins(upload_panel::UploaderPanel);
+        // Creator onboarding: state and systems only. Its UI is Publish's first
+        // stage, not a panel of its own — see `onboarding::register`.
+        onboarding::register(app);
         wallet::register(app);
 
         // Offscreen previews for catalogue items: a 3D turntable for models and
@@ -139,7 +142,8 @@ fn sign_out_cleanup(
     *was_signed_in = signed_in;
 }
 
-// `Editor`, which is also `plugin!`'s default — spelled out because the scope of
-// a plugin is worth reading off its last line. Nothing here runs in a shipped
-// game: a game does not sign in, browse a catalogue, or publish.
-renzora::plugin!(MarketplacePlugin, Editor);
+// `add!`, not `plugin!` — this is an in-workspace crate the build generator
+// links statically, not a native plugin. `add!` defaults to `Runtime`, so the
+// scope has to be spelled out: nothing here runs in a shipped game, because a
+// game does not sign in, browse a catalogue, or publish.
+renzora::add!(MarketplacePlugin, Editor);

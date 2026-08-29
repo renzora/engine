@@ -24,23 +24,9 @@ pub fn api_base() -> &'static str {
     }
 }
 
-/// Simple percent-encoding for query parameters.
-pub(crate) fn urlencoded(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            b' ' => out.push('+'),
-            _ => {
-                out.push('%');
-                out.push_str(&format!("{b:02X}"));
-            }
-        }
-    }
-    out
-}
+// `urlencoded` lived here for the search endpoints the deleted panels used
+// (forum, users, feed). Every remaining caller builds its query through the
+// marketplace list endpoint, which takes its parameters pre-encoded.
 
 /// Send a request and read the reply as JSON.
 ///
@@ -133,18 +119,9 @@ pub(crate) fn require_token(session: &super::session::AuthSession) -> Result<&st
 }
 
 
-/// POST one file as multipart/form-data (field name + filename + bytes).
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn post_multipart<T: serde::de::DeserializeOwned>(
-    url: &str,
-    field: &str,
-    filename: &str,
-    content_type: &str,
-    bytes: &[u8],
-    token: &str,
-) -> Result<T, String> {
-    multipart("POST", url, field, filename, content_type, bytes, token)
-}
+// `post_multipart` went with the feed's image uploads. The remaining single-file
+// uploads (avatar, banner) are all PUT, and the uploader's multi-field form uses
+// `post_multipart_form` below; `multipart` still backs both.
 
 /// PUT one file as multipart/form-data (avatar/banner uploads use PUT).
 #[cfg(not(target_arch = "wasm32"))]

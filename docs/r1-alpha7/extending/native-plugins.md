@@ -169,6 +169,36 @@ Three crates, and they are enough for almost anything:
 
 Anything else in the workspace is not reachable. If your plugin needs a type from another `renzora_*` crate, that type belongs in `renzora` — that is the rule the engine's own crates follow.
 
+### What "belongs in `renzora`" actually means
+
+The **vocabulary** moves; the **implementation** stays. That distinction is what
+keeps the contract crate from swallowing the engine, and it is worth internalising
+before proposing a move.
+
+`renzora::net` is the model. The `Request`/`Response` types and the submission
+queue are in the contract crate, so anything can *ask* for an HTTP call — but no
+socket is opened there. The client lives behind the C-ABI boundary in
+`plugins/http`. Same shape, one subsystem over: `renzora::audio` holds `AudioLink`
+and the play/stop request types, while Kira stays in an audio backend plugin and
+the mixer, emitters and timeline stay in `renzora_audio`. `renzora::grid` holds
+the two grid components; the render pipeline stays in `renzora_grid`.
+
+So the test for a candidate is:
+
+- **Does a second consumer exist, or does a plugin genuinely need it?** A contract
+  is a public API you cannot cheaply change — the C-ABI major version is already
+  at 4 because two releases got an append wrong. Do not design one speculatively.
+- **Can it move without bringing dependencies?** The contract crate's dep list is
+  `bevy` + serialization + the plugin ABI crate, deliberately, so that adding a
+  feature crate can never introduce a cycle. If the move would drag Kira or a
+  shader compiler in, you are moving an implementation and should stop.
+- **Is it feature-gated?** Domain modules here (`text_mesh`, `grid`, `audio`) sit
+  behind a cargo feature so a lean export compiles only what it uses.
+
+If the answer to the second question is no but a plugin still needs the capability,
+the shape you want is usually a **request type in the contract plus a system in the
+owning crate that services it** — the plugin posts, the subsystem performs.
+
 ### Crates from crates.io
 
 Add them to your plugin's `Cargo.toml` like any Rust project:

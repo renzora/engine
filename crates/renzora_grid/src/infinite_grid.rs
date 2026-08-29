@@ -7,9 +7,9 @@ use bevy::app::prelude::*;
 use bevy::asset::{embedded_asset, load_embedded_asset, AssetServer, Handle};
 use bevy::camera::{
     prelude::*,
-    visibility::{self, NoFrustumCulling, RenderLayers, VisibilityClass},
+    visibility::RenderLayers,
 };
-use bevy::color::{Color, ColorToComponents};
+use bevy::color::ColorToComponents;
 use bevy::core_pipeline::{
     core_3d::{Transparent3d, TransparentSortingInfo3d},
     FullscreenShader,
@@ -23,7 +23,6 @@ use bevy::ecs::{
     },
 };
 use bevy::math::{Mat3, Vec3, Vec4};
-use bevy::reflect::{std_traits::ReflectDefault, Reflect};
 use bevy::render::{
     camera::ExtractedCamera,
     prelude::*,
@@ -39,12 +38,12 @@ use bevy::render::{
         SpecializedRenderPipeline, SpecializedRenderPipelines, TextureFormat,
     },
     renderer::{RenderDevice, RenderQueue},
-    sync_world::{RenderEntity, SyncToRenderWorld},
+    sync_world::RenderEntity,
     view::{ExtractedView, RenderVisibleEntities, ViewUniform, ViewUniformOffset, ViewUniforms},
     Extract, Render, RenderApp, RenderSystems,
 };
 use bevy::shader::Shader;
-use bevy::transform::components::{GlobalTransform, Transform};
+use bevy::transform::components::GlobalTransform;
 
 /// The plugin required to make the infinite grid work
 pub struct InfiniteGridPlugin;
@@ -86,60 +85,13 @@ impl Plugin for InfiniteGridPlugin {
     }
 }
 
-/// The component used to represent an infinite grid.
-///
-/// This is intended for use as a ground plane in editor-like tools.
-#[derive(Component, Default, Reflect, Copy, Clone)]
-#[reflect(Component, Default)]
-#[require(
-    InfiniteGridSettings,
-    Transform,
-    Visibility,
-    VisibilityClass,
-    NoFrustumCulling,
-    SyncToRenderWorld
-)]
-#[component(on_add = visibility::add_visibility_class::<InfiniteGrid>)]
-pub struct InfiniteGrid;
-
-/// Component to configure the infinite grid
-///
-/// This component can be applied directly on the grid entity or on a camera that can see the grid
-#[derive(Component, Copy, Clone, Reflect)]
-#[reflect(Component, Default)]
-pub struct InfiniteGridSettings {
-    /// The color of the X axis
-    pub x_axis_color: Color,
-    /// The color of the Z axis
-    pub z_axis_color: Color,
-    /// The color of the minor lines of the grid
-    pub minor_line_color: Color,
-    /// The color of the major lines of the grid. Every 10th line is considered major
-    pub major_line_color: Color,
-    /// How far the grid will be visible relative to the camera
-    pub fadeout_distance: f32,
-    /// How quickly the grid will fadeout
-    pub dot_fadeout_strength: f32,
-    /// The scale of the distance between the lines. A smaller value increases the distance between
-    /// the lines
-    pub scale: f32,
-}
-
-impl Default for InfiniteGridSettings {
-    fn default() -> Self {
-        Self {
-            // These colors are copied from bevy_feathers but we don't need to depend on it just
-            // for that
-            x_axis_color: Color::oklcha(0.5232, 0.1404, 13.84, 1.0),
-            z_axis_color: Color::oklcha(0.4847, 0.1249, 253.08, 1.0),
-            minor_line_color: Color::srgb(0.2, 0.2, 0.2),
-            major_line_color: Color::srgb(0.25, 0.25, 0.25),
-            fadeout_distance: 100.,
-            dot_fadeout_strength: 0.25,
-            scale: 1.0,
-        }
-    }
-}
+// `InfiniteGrid` and `InfiniteGridSettings` are defined in the contract crate,
+// not here. They are plain data — a marker and a struct of `Color`s and `f32`s —
+// and a native plugin can only reach `bevy`, `renzora` and `renzora_ember`, so
+// leaving them here meant no plugin could put a ground plane under its own
+// preview. This crate keeps what actually needs the render graph: the pipeline,
+// the uniform, the draw command and the phase item below.
+pub use renzora::grid::{InfiniteGrid, InfiniteGridSettings};
 
 #[derive(Debug, ShaderType)]
 struct InfiniteGridUniform {

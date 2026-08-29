@@ -6,7 +6,9 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# `grid` for `InfiniteGrid`/`InfiniteGridSettings` — this crate renders them but
+# does not define them, so a plugin can spawn a grid without linking this crate.
+renzora = { path = "../renzora", default-features = false, features = ["editor", "grid"] }
 
 [lints]
 workspace = true

@@ -11,13 +11,11 @@
 
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use renzora::core::RenzoraShellExt;
 use renzora::SplashState;
 use crate::auth::billing::OnboardStatus;
 use crate::auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::tracked::keyed_list_tokened;
 use renzora_ember::reactive::Rx;
@@ -31,7 +29,9 @@ use renzora_ember::widgets::{
 use crate::toasts::{ToastQueue, Tone};
 use crate::util::{self, hash64, session_clone};
 
-pub(crate) const PANEL_ID: &str = "social_onboarding";
+// No PANEL_ID: the wizard is a stage inside Publish, not a panel. Its old id
+// was `social_onboarding`; a saved layout still naming it resolves to nothing,
+// which is the correct outcome — the panel is gone.
 
 /// Emerald-teal — growth, "go". The creator area's identity hue.
 const HUE_ONBOARD: (u8, u8, u8) = (64, 196, 150);
@@ -114,6 +114,29 @@ impl OnboardingPanel {
     fn all_set(&self) -> bool {
         self.status.policy_accepted && self.status.stripe_onboarded
     }
+
+    /// Whether the Publish panel should show the upload form rather than this
+    /// wizard.
+    ///
+    /// Deliberately looser than [`Self::all_set`]: "Skip for now" on the payout
+    /// step is a supported choice, and someone who took it can still publish —
+    /// just not anything paid. Gating the form on a Stripe account would strand
+    /// them on a wizard they had already finished with.
+    pub(crate) fn can_publish(&self) -> bool {
+        self.status.policy_accepted && (self.status.stripe_onboarded || self.skipped_connect)
+    }
+}
+
+/// Read [`OnboardingPanel::can_publish`] reactively, for `bind_display`.
+///
+/// Takes `&Rx` rather than `&World` so the read is *tracked*: the Publish panel
+/// swaps stages on its own when a status poll lands, with nothing to invalidate
+/// by hand.
+///
+/// `false` when the resource is missing, which is the safe direction — it shows
+/// the wizard rather than an upload form the server would reject.
+pub(crate) fn can_publish(w: &Rx) -> bool {
+    w.get_resource::<OnboardingPanel>().is_some_and(|p| p.can_publish())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -134,13 +157,25 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
+/// Systems and state only — this is no longer a panel of its own.
+///
+/// "Become a Creator" and "Publish" were two panels, and the split never made
+/// sense: the first thing the uploader had to tell a non-creator was to go and
+/// open the other one. The wizard is now the Publish panel's first stage, so
+/// [`build`] is called from `upload_panel::build` behind a `bind_display` gate
+/// rather than registered as content here.
+///
+/// `auto_load` used to be gated on this panel being active; it now watches the
+/// Publish panel, which is where the wizard is shown.
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<OnboardingPanel>();
-    app.register_shell_panel(PANEL_ID, "Become a Creator", "seal-check", "Community");
-    app.register_panel_content(PANEL_ID, true, build);
     app.add_systems(
         Update,
-        (poll_results, auto_load.run_if(panel_active(PANEL_ID)), clicks)
+        (
+            poll_results,
+            auto_load.run_if(panel_active(crate::upload_panel::PANEL_ID)),
+            clicks,
+        )
             .run_if(in_state(SplashState::Editor)),
     );
 }
@@ -294,7 +329,8 @@ fn clicks(
 
 // ── Build ──────────────────────────────────────────────────────────────────
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The creator wizard, spawned as Publish's first stage.
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let hue = HUE_ONBOARD;
     let root = commands
         .spawn(Node {

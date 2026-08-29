@@ -309,4 +309,7 @@ pub fn try_restore_session() -> AuthSession {
     AuthSession::default()
 }
 
-renzora::add!(AuthPlugin, Editor);
+// No `add!` here. This was `renzora_auth`'s own declaration, and leaving it
+// would register `AuthPlugin` twice — once from the generated list and once from
+// `MarketplacePlugin::build`, which adds it explicitly so the session exists
+// before any panel that needs it. Bevy rejects the same plugin added twice.

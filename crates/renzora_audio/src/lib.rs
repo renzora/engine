@@ -19,16 +19,25 @@
 // regardless of platform, so they stay outside the cfg gate.
 pub mod fx_bridge;
 
-/// The engine side of the audio boundary — the one place that knows the backend
-/// is a plugin.
-pub mod link;
-
 /// A PCM decoder for waveform drawing. Behind the `decode` feature — see the
 /// module doc for why the runtime deliberately does not have one.
 #[cfg(feature = "decode")]
 pub mod decode;
 
-pub use link::{AudioLink, CaptureId, SoundId, VoiceId};
+/// The engine side of the audio boundary lives in the contract crate now
+/// (`renzora::audio`), re-exported here so `renzora_audio::AudioLink` keeps
+/// resolving.
+///
+/// It moved because playing a sound is something any plugin should be able to
+/// do, and a native plugin reaches only `bevy`, `renzora` and `renzora_ember`.
+/// The move cost nothing: `link.rs` had zero references to the rest of this
+/// crate — it was already a self-contained boundary — and the request
+/// vocabulary it speaks was always in `renzora_plugin::audio`, which the
+/// contract crate already depended on for the HTTP `net` types.
+///
+/// What stayed here is everything that is a *policy* rather than a boundary:
+/// the mixer, emitters, the timeline and its scheduler, autoplay, and decoding.
+pub use renzora::audio::{self as link, AudioLink, CaptureId, SoundId, VoiceId};
 
 /// The request vocabulary, re-exported.
 ///

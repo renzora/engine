@@ -12,7 +12,9 @@ decode = ["dep:symphonia"]
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `audio` for `AudioLink` and the handle types — this crate drives the boundary
+# but no longer defines it, so a plugin can play a sound without linking here.
+renzora = { path = "../renzora", default-features = false, features = ["audio"] }
 serde = { version = "1", features = ["derive"] }
 # The audio boundary. `host` for the resource the plugin loader fills in when a
 # backend registers; `audio` for the request/reply vocabulary both sides compile.

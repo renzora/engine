@@ -4,6 +4,9 @@
 //! results arrive over a crossbeam channel polled each frame.
 
 use bevy::prelude::*;
+// `register_shell_panel` — this crate declares its own panel metadata now that
+// the shell's static table no longer lists the Marketplace entries.
+use renzora::core::RenzoraShellExt;
 use crossbeam_channel::{unbounded, Receiver};
 
 use crate::auth::marketplace::AssetSummary;
@@ -31,7 +34,7 @@ enum LibraryResult {
 }
 
 #[derive(Resource)]
-struct HubLibraryData {
+pub(crate) struct HubLibraryData {
     assets: Vec<AssetSummary>,
     filter: String,
     loading: bool,

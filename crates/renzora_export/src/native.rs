@@ -629,7 +629,7 @@ fn rebuild_right_pane(world: &mut World) {
         .query_filtered::<&bevy::window::Window, With<bevy::window::PrimaryWindow>>()
         .iter(world)
         .next()
-        .map(|w| w.resolution.height() as f32 / w.resolution.scale_factor())
+        .map(|w| w.resolution.height() / w.resolution.scale_factor())
         .unwrap_or(0.0);
     let tab_max = tab_content_max(window_height);
     let mut queue = CommandQueue::default();

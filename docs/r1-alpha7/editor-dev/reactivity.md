@@ -376,9 +376,8 @@ binding closure — so no reaction currently mixes the two. `Rx::untracked` on t
 whole closure is the correct answer if one ever does.
 
 Worth re-checking whenever a binding is added to
-`renzora_viewport::native_nav` (atomics behind `NavState`),
-`renzora_social::panels::{feed,teams}` (`Instant` cooldowns), since those are
-the files where the two kinds of read live closest together.
+`renzora_viewport::native_nav` (atomics behind `NavState`), since that is where
+the two kinds of read live closest together.
 
 ## What this cannot do
 

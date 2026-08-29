@@ -254,7 +254,10 @@ fn rebuild_palette(world: &mut World) {
         let st = world.resource::<CommandPaletteState>();
         (st.tab, st.query.clone())
     };
-    let mut generation = 0;
+    // Always 0 now. It used to be bumped by the remote tabs so a landed search
+    // re-signatured the list; the local tabs rebuild from the query alone. Kept
+    // in the signature so the rebuild key keeps its shape.
+    let generation = 0;
     let items = match tab {
         PaletteTab::Commands | PaletteTab::Settings => {
             let toolbar = world.resource::<ToolbarRegistry>().clone();

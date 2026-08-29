@@ -74,6 +74,22 @@ pub use spline::*;
 #[cfg(feature = "text_mesh")]
 pub mod text_mesh;
 
+// The infinite ground grid's two components. The renderer stays in
+// `renzora_grid`; only the vocabulary is here, so a plugin can put a ground
+// plane under its own preview. Costs no dependencies — `Color`s and `f32`s.
+// NOT glob re-exported: `InfiniteGrid` is specific enough to say in full.
+#[cfg(feature = "grid")]
+pub mod grid;
+
+// `AudioLink` — the engine side of the audio boundary, and the handle types it
+// allocates. The backend is still a plugin and the mixer/timeline/emitters are
+// still `renzora_audio`; only the link is here, so any plugin can play a sound.
+// The request vocabulary it speaks lives in `renzora_plugin::audio`, which this
+// crate already depended on for `net`. NOT glob re-exported — `SoundId` and
+// `VoiceId` are too generic for the crate root.
+#[cfg(feature = "audio")]
+pub mod audio;
+
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened
