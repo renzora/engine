@@ -27,7 +27,6 @@ members = [
     "crates/bevy_gaussian_splatting",
     "crates/bevy_hanabi",
     "crates/bevy_hui",
-    "crates/bevy_procedural_tree",
     "crates/bevy_silk",
     "crates/vleue_navigator",
     # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.32

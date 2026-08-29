@@ -64,6 +64,16 @@ pub use sun::*;
 pub mod spline;
 pub use spline::*;
 
+// Coverage→SDF glyph packing and the `SdfTextMaterial`. NOT glob re-exported —
+// `build_text_mesh` and `SPREAD` are too generic for the crate root, so callers
+// say `renzora::text_mesh::build_text_mesh`. Shared between `renzora_ember`'s
+// world-space UI emitter and the `text3d` plugin, which is exactly why it has to
+// be one definition. Feature-gated because it is the only part of this crate
+// that needs `bevy::text`, which a UI-stripped lean export does not build. See
+// the module doc.
+#[cfg(feature = "text_mesh")]
+pub mod text_mesh;
+
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened

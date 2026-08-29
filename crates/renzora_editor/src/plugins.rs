@@ -59,7 +59,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_parkour_editor::ParkourEditorPlugin::default());
     app.add_plugins(renzora_particle_editor::ParticleEditorPlugin::default());
     app.add_plugins(renzora_physics_editor::PhysicsEditorPlugin::default());
-    app.add_plugins(renzora_procedural_tree_editor::ProceduralTreeEditorPlugin::default());
     app.add_plugins(renzora_scene::ScenePlugin::default());
     app.add_plugins(renzora_scripting_editor::ScriptingEditorPlugin::default());
     app.add_plugins(renzora_settings::SettingsPlugin::default());

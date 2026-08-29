@@ -68,8 +68,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
-    #[cfg(feature = "procedural_tree")]
-    app.add_plugins(renzora_procedural_tree::ProceduralTreePlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
     app.add_plugins(renzora_rust_script::RustScriptPlugin::default());
@@ -91,8 +89,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::foliage::FoliagePlugin::default());
-    #[cfg(feature = "text3d")]
-    app.add_plugins(renzora_text3d::Text3dPlugin::default());
     #[cfg(feature = "tilemap")]
     app.add_plugins(renzora_tilemap::TilemapPlugin::default());
     app.add_plugins(renzora_tonemapping::TonemappingPlugin::default());

@@ -6,9 +6,14 @@ pub mod meshgen;
 
 use bevy::{ecs::{lifecycle::HookContext, world::DeferredWorld}, prelude::*};
 use fastrand::Rng;
-use serde::{Deserialize, Serialize};
+// The engine's serde, not a private one. A native plugin that resolved its own
+// copy from crates.io would get a `Serialize` that is a DIFFERENT trait from the
+// one `Vec3` and friends implement in the shared images, and the derives below
+// would fail to satisfy their bounds. Hence the `#[serde(crate = ...)]` on every
+// derive in this module tree — the derive macro emits paths to `renzora::serde`.
+use renzora::serde::{Deserialize, Serialize};
 
-use crate::meshgen::generate_tree_meshes;
+use self::meshgen::generate_tree_meshes;
 
 pub use enums::{LeafBillboard, TreeType};
 pub use settings::TreeMeshSettings;
@@ -37,6 +42,7 @@ impl Plugin for TreeProceduralGenerationPlugin {
 
 
 #[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 #[reflect(Component, Default, Serialize, Deserialize)]
 #[component(on_add = new_tree_component_added)]
 pub struct Tree {
@@ -81,8 +87,10 @@ struct TreeDefaultMaterials {
 }
 
 // Default leaf textures (ambientCG LeafSet005, CC0 — see textures/SOURCE.txt),
-// embedded so the default leaf material works without loose asset files (this
-// ships as a dlopen plugin, so there's no reliable asset path at runtime).
+// embedded so the default leaf material works without loose asset files. They
+// live under `src/` rather than beside the manifest because the native-plugin
+// stager mirrors only `Cargo.toml` and `src/` into the build directory — a
+// texture at the plugin root would compile here and fail there.
 const LEAF_COLOR_PNG: &[u8] = include_bytes!("../textures/deciduous_leaf_color.png");
 const LEAF_NORMAL_PNG: &[u8] = include_bytes!("../textures/deciduous_leaf_normal.png");
 const LEAF_ROUGHNESS_PNG: &[u8] = include_bytes!("../textures/deciduous_leaf_roughness.png");

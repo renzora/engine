@@ -3,9 +3,9 @@
 */
 
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
+use renzora::serde::{Deserialize, Serialize};
 
-use crate::enums::{LeafBillboard, TreeType};
+use super::enums::{LeafBillboard, TreeType};
 
 // Fork note: upstream gated an extra `InspectorOptions` derive behind the
 // `inspector` feature (bevy-inspector-egui). renzora has no egui, so the
@@ -17,6 +17,7 @@ use crate::enums::{LeafBillboard, TreeType};
 // We keep `Resource` (it gives us `Component` for free, so this stays usable as
 // both a resource and a per-entity component) and still reflect both.
 #[derive(Resource, Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 #[reflect(Resource, Component, Default, Serialize, Deserialize)]
 pub struct TreeMeshSettings {
     pub tree_type: TreeType,
@@ -42,6 +43,7 @@ impl Default for TreeMeshSettings {
  * This can be used i.e. for trees that generally have branches that point in a specific direction (i.e. up:Aspen or down:Willow).
  */
 #[derive(Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 pub struct BranchForce {
     /// in which direction should all branches be pointed based on their radius (larger radius = smaller influence of this force)
     /// value will be normalized internally; no need to do it beforehand
@@ -69,6 +71,7 @@ impl Default for BranchForce {
  * amount of recursion for branches (0 = only trunk, no branches)
  */
 #[derive(Reflect, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 #[repr(u8)]
 pub enum BranchRecursionLevel {
     Zero = 0,
@@ -106,6 +109,7 @@ impl From<BranchRecursionLevel> for f32 {
 
 
 #[derive(Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 pub struct BranchParams {
     /// amount of recursion for branches (0 = only trunk, no branches)
     pub levels: BranchRecursionLevel,
@@ -179,6 +183,7 @@ impl Default for BranchParams {
  * Control how they look like and how they are positioned relative to the last level of branches (or on the trunk if levels = 0).
  */
 #[derive(Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 pub struct LeafParams {
     /// single or double/perpendicular
     pub leaf_billboard: LeafBillboard,

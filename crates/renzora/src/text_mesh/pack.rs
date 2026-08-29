@@ -1,7 +1,7 @@
 //! Pack a set of coverage glyphs into one SDF strip texture.
 //!
 //! Given the px rects of some already-rasterized glyphs in Bevy's coverage font
-//! atlas, convert each to a signed distance field ([`crate::sdf`]) and pack the
+//! atlas, convert each to a signed distance field ([`super::sdf`]) and pack the
 //! unique ones side-by-side into a single linear-filtered R8 strip. Returns the
 //! strip plus a per-glyph UV/size lookup. Callers then emit their own quads in
 //! their own coordinate space — 3D text centres on the origin in world units; the
@@ -14,7 +14,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::sdf::{coverage_to_sdf, SPREAD};
+use super::sdf::{coverage_to_sdf, SPREAD};
 
 /// One glyph's placement in the packed strip: normalized UV rect + padded px
 /// size (the quad covers the padded region so the SDF's outside ramp is visible).

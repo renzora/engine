@@ -140,8 +140,8 @@ Two directories hold nearly all of it, and the split is the plugin table above:
 
 | Directory | Contents |
 |-----------|----------|
-| `crates/` | **119** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_mod_outline`, `bevy_silk`, `bevy_oxr`, `vleue_navigator`). Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
-| `plugins/` | **67** C-ABI cdylibs — most of them post-process effects, plus `lua`, `http` and `tracy` — and **9** native plugins (`ai_chat`, `auto_exposure`, `clouds`, `gamepad`, `mesh_draw`, `night_stars`, `pool_water`, `spline`, `vignette`). |
+| `crates/` | **116** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_mod_outline`, `bevy_silk`, `bevy_oxr`, `vleue_navigator`). Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
+| `plugins/` | **66** C-ABI cdylibs — most of them post-process effects, plus `lua`, `http` and `tracy` — and **11** native plugins (`ai_chat`, `auto_exposure`, `clouds`, `gamepad`, `mesh_draw`, `night_stars`, `pool_water`, `procedural_tree`, `spline`, `text3d`, `vignette`). |
 
 Those counts move every release; treat them as a sense of scale, not an
 inventory. The direction of travel is out of `crates/` and into `plugins/`: an

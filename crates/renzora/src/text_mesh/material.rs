@@ -21,7 +21,11 @@ pub struct SdfTextMaterial {
 
 impl Material for SdfTextMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("embedded://renzora_text_mesh/sdf_text.wgsl".into())
+        // The crate name is part of an `embedded://` path, and so is the path
+        // under `src/` — this moved from `renzora_text_mesh/src/` into
+        // `renzora/src/text_mesh/`, so both halves changed. Nothing checks this
+        // at compile time; a stale path here is a missing shader at runtime.
+        ShaderRef::Path("embedded://renzora/text_mesh/sdf_text.wgsl".into())
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -31,11 +35,14 @@ impl Material for SdfTextMaterial {
 
 /// Register [`SdfTextMaterial`] + its embedded shader exactly once per `App`.
 ///
-/// Both `renzora_text3d` and the world-space UI emitter call this from their own
-/// `build()`. The guard makes any call after the first a no-op, so adding both
-/// doesn't double-register the `MaterialPlugin` (which would panic). Because this
-/// lives in a shared rlib, `SdfTextMaterial` has one stable `TypeId` across the
-/// binary and the plugin cdylib, so `is_plugin_added` genuinely dedupes them.
+/// Both the `text3d` plugin and the world-space UI emitter call this from their
+/// own `build()`. The guard makes any call after the first a no-op, so adding
+/// both doesn't double-register the `MaterialPlugin` (which would panic).
+///
+/// That dedupe only works because `SdfTextMaterial` is one type. It lives in the
+/// contract crate, which the plugin reaches through the shared `renzora` image
+/// rather than by compiling its own — so `is_plugin_added` is comparing the same
+/// `TypeId` on both sides. See the module doc.
 pub fn ensure_sdf_material(app: &mut App) {
     if app.is_plugin_added::<MaterialPlugin<SdfTextMaterial>>() {
         return;

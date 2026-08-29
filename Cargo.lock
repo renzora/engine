@@ -1835,15 +1835,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_procedural_tree"
-version = "0.3.0"
-dependencies = [
- "bevy",
- "fastrand",
- "serde",
-]
-
-[[package]]
 name = "bevy_ptr"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5283,38 +5274,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lyon_geom"
-version = "1.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4336502e29e32af93cf2dad2214ed6003c17ceb5bd499df77b1de663b9042b92"
-dependencies = [
- "arrayvec",
- "euclid",
- "num-traits",
-]
-
-[[package]]
-name = "lyon_path"
-version = "1.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c463f9c428b7fc5ec885dcd39ce4aa61e29111d0e33483f6f98c74e89d8621e"
-dependencies = [
- "lyon_geom",
- "num-traits",
-]
-
-[[package]]
-name = "lyon_tessellation"
-version = "1.0.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e43b7e44161571868f5c931d12583592c223c5583eef86b08aa02b7048a3552"
-dependencies = [
- "float_next_after",
- "lyon_path",
- "num-traits",
-]
-
-[[package]]
 name = "lz4_flex"
 version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7606,7 +7565,6 @@ dependencies = [
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
- "renzora_procedural_tree_editor",
  "renzora_scene",
  "renzora_scripting",
  "renzora_scripting_editor",
@@ -7687,7 +7645,6 @@ dependencies = [
  "renzora",
  "renzora_net",
  "renzora_scripting",
- "renzora_text_mesh",
  "serde",
  "tempfile",
  "toml 0.8.23",
@@ -8384,24 +8341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_procedural_tree"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_procedural_tree",
- "renzora",
-]
-
-[[package]]
-name = "renzora_procedural_tree_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_procedural_tree",
- "renzora",
-]
-
-[[package]]
 name = "renzora_ragdoll"
 version = "0.1.0"
 dependencies = [
@@ -8485,7 +8424,6 @@ dependencies = [
  "renzora_parkour",
  "renzora_physics",
  "renzora_postprocess",
- "renzora_procedural_tree",
  "renzora_ragdoll",
  "renzora_rust_script",
  "renzora_scripting",
@@ -8496,7 +8434,6 @@ dependencies = [
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
- "renzora_text3d",
  "renzora_tilemap",
  "renzora_tonemapping",
  "renzora_volumetric_fog",
@@ -8821,25 +8758,6 @@ dependencies = [
 
 [[package]]
 name = "renzora_test_harness"
-version = "0.1.0"
-dependencies = [
- "bevy",
-]
-
-[[package]]
-name = "renzora_text3d"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "lyon_tessellation",
- "renzora",
- "renzora_macros",
- "renzora_text_mesh",
- "ttf-parser",
-]
-
-[[package]]
-name = "renzora_text_mesh"
 version = "0.1.0"
 dependencies = [
  "bevy",

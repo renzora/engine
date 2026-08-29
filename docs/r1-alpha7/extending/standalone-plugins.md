@@ -1347,12 +1347,13 @@ The engine ships several, each under `plugins/`:
 | `wobble` | pulling in a third-party crate (`noise`) |
 | `widgets` | every panel widget, and nothing else |
 | `ripple` | a [custom material](#custom-materials) and a [texture](#textures) regenerated each frame |
-| `text3d` | [text fields](#text-fields), generated [geometry](#geometry), and a mesh pool |
 | `hair` | [reading a mesh](#reading-geometry-already-in-the-world) and rewriting one each frame |
 
 Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
 
-`text3d` and `hair` are the exceptions at ~430 and ~710 lines, and they are the two to read if you are porting something real rather than starting fresh. Both were engine crates that linked Bevy directly, and what the boundary cost them is mostly two things: `Assets<T>`, worked around with a mesh pool, and `RemovedComponents`, worked around with a liveness sweep each frame. `crates/renzora_text3d` is still there to compare against, since its flat mode did not port. `renzora_hair` ported completely and its crate is gone.
+`hair` is the exception at ~710 lines, and it is the one to read if you are porting something real rather than starting fresh. It was an engine crate that linked Bevy directly, and what the boundary cost it is mostly two things: `Assets<T>`, worked around with a mesh pool, and `RemovedComponents`, worked around with a liveness sweep each frame. It ported completely and its crate is gone.
+
+There used to be a `text3d` here too, and its fate is the more instructive story. Mesh mode ported; **flat mode did not**, because it needs a real Bevy `Material` and a runtime-sized SDF atlas, and a function table can carry neither. So the engine shipped two incomplete halves — a C-ABI plugin with mesh mode and a fixed entity cap, and a statically linked crate with both modes — until [native plugins](native-plugins.md) made the choice unnecessary. It is one plugin now, with both modes and no cap. When a port keeps running into the boundary rather than around it, that is the signal to reach for a native plugin instead.
 
 Alongside them sit the **post-process effects** — every screen-space effect the engine ships except the handful wired into the render graph itself (bloom, SSAO, motion blur, the tonemapper). Each is a struct, a `Default`, one `add_post_process` line and a `.wgsl` file, which makes them the best set to read before writing your own: pick the one closest to what you want and follow its shape. `plugins/crt` is the one to open first — its module doc is where the reasoning about padding and `enabled` flags lives.
 
@@ -1523,7 +1524,9 @@ Then `With<Camera3d>` compiles and matches. This works for any host component re
 reflection. **Filter-only** — never use such a mirror as query *data*, because a mirror of a
 non-plain-data host component hands you a pointer into the engine's heap.
 
-The engine still ships `crates/renzora_pool_water` and `crates/renzora_text3d`, but the reason
-is narrower than "rendering integration": the first displaces vertices in a *vertex* shader,
-and a plugin material supplies a fragment only; the second rasterizes glyphs into an SDF atlas
-sized at runtime, and plugin image creation is init-only.
+`pool_water` and `text3d` were the two the C-ABI boundary could not hold, for reasons narrower
+than "rendering integration": the first displaces vertices in a *vertex* shader, and a plugin
+material supplies a fragment only; the second rasterizes glyphs into an SDF atlas sized at
+runtime, and plugin image creation is init-only. Both are [native plugins](native-plugins.md)
+now, which is the right answer to that shape of limit — a native plugin links the real Bevy, so
+neither constraint applies to it.

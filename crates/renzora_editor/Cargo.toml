@@ -118,7 +118,6 @@ editor = [
     "dep:renzora_lens_distortion_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
-    "dep:renzora_procedural_tree_editor",
     "dep:renzora_forward_decal_editor",
     "renzora_network/editor",
     "dep:renzora_water_editor",
@@ -226,10 +225,8 @@ renzora_oit             = { path = "../renzora_oit" }
 renzora_oit_editor      = { path = "../renzora_oit/editor", optional = true }
 renzora_skybox          = { path = "../renzora_skybox" }
 renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
-# Procedural tree: runtime generation ships as the `renzora_procedural_tree`
-# cdylib (dlopen'd from plugins/, so no dep here); only the editor companion
-# (Add-Entity preset + inspector) links into the editor bundle.
-renzora_procedural_tree_editor = { path = "../renzora_procedural_tree/editor", optional = true }
+# Procedural tree is a NATIVE plugin (`plugins/procedural_tree/`) — generator,
+# runtime glue and editor integration all live there, so neither half is linked.
 renzora_forward_decal_editor = { path = "../renzora_forward_decal/editor", optional = true }
 renzora_network         = { path = "../renzora_network" }
 renzora_animation       = { path = "../renzora_animation" }

@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "text3d", "forward_decal", "procedural_tree"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -150,9 +150,7 @@ ragdoll = ["dep:renzora_ragdoll"]
 # this instead.
 parkour = ["dep:renzora_parkour"]
 light2d = ["dep:renzora_light2d"]
-text3d = ["dep:renzora_text3d"]
 forward_decal = ["dep:renzora_forward_decal"]
-procedural_tree = ["dep:renzora_procedural_tree"]
 navmesh = ["dep:renzora_navmesh"]
 particles = ["dep:renzora_hanabi"]
 # 2D tilemap runtime (chunked quad-mesh renderer). Content is 2D, so a pure-3D
@@ -227,9 +225,7 @@ renzora_gaussian_splatting = { path = "../renzora_gaussian_splatting", optional 
 renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }
 renzora_light2d = { path = "../renzora_light2d", optional = true }
-renzora_text3d = { path = "../renzora_text3d", optional = true }
 renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
-renzora_procedural_tree = { path = "../renzora_procedural_tree", optional = true }
 
 bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from

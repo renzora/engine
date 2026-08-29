@@ -75,7 +75,6 @@ const VENDORED: &[&str] = &[
     "bevy_hanabi",
     "bevy_hui",
     "bevy_mod_outline",
-    "bevy_procedural_tree",
     "bevy_silk",
     "vleue_navigator",
     "polyanya",

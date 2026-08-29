@@ -3,7 +3,7 @@
 */
 
 use bevy::reflect::Reflect;
-use serde::{Deserialize, Serialize};
+use renzora::serde::{Deserialize, Serialize};
 
 // #[derive(Reflect, Clone, Copy, Debug, PartialEq)]
 // pub enum BarkType {
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 // }
 
 #[derive(Reflect, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 pub enum LeafBillboard {
   Single,
   Double,
@@ -28,6 +29,7 @@ pub enum LeafBillboard {
 // }
 
 #[derive(Reflect, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "renzora::serde")]
 pub enum TreeType {
   Deciduous,
   Evergreen,

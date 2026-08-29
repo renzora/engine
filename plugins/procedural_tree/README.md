@@ -1,14 +1,19 @@
-# bevy_procedural_tree (vendored + forked)
+# procedural_tree (vendored + forked generator)
 
-Procedurally generated 3D trees for Bevy. **Vendored** into the renzora workspace
-from the upstream crate by **Affinator**:
+Procedurally generated 3D trees for Bevy. The generator under `src/tree/` is
+**vendored** from the upstream `bevy_procedural_tree` crate by **Affinator**:
 
 - Upstream: <https://github.com/Affinator/bevy_procedural_tree>
 - Itself a Rust port of **ez-tree** by dgreenheck: <https://github.com/dgreenheck/ez-tree>
 - License: MIT OR Apache-2.0 (see `LICENSE_MIT` / `LICENSE_APACHE`)
 
-It is consumed by the `renzora_procedural_tree` distribution plugin (runtime) and
-`renzora_procedural_tree_editor` (Add-Entity preset + inspector).
+It used to be its own workspace crate, consumed by a `renzora_procedural_tree`
+plugin and a `renzora_procedural_tree_editor` companion. All three collapsed into
+this one native plugin: a native plugin is handed only `bevy`, `renzora` and
+`renzora_ember`, so a Bevy-dependent workspace crate is unreachable from it and
+cargo is forbidden from resolving one (a second Bevy would mean different
+`TypeId`s from the engine). Vendoring inward was the way to keep it. See
+`src/lib.rs` for the full reasoning.
 
 ## Fork changes vs upstream 0.3.0
 

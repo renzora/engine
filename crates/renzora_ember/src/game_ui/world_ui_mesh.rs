@@ -38,7 +38,7 @@ use bevy::text::{
 };
 use bevy::ui::{BackgroundColor, ComputedNode, UiGlobalTransform};
 
-use renzora_text_mesh::{build_text_mesh, SdfTextMaterial, WORLD_UNITS_PER_PX};
+use renzora::text_mesh::{build_text_mesh, SdfTextMaterial, WORLD_UNITS_PER_PX};
 
 use super::components::UiCanvas;
 use super::world_panel::{canvas_resolution, canvas_size, WorldUiPanelLive, WorldUiPanelOwner};
@@ -58,7 +58,7 @@ pub(crate) struct WorldUiMeshBuilt(u64);
 pub(crate) fn register(app: &mut App) {
     // Register the shared SDF material + shader (idempotent — text3d may also call
     // it; the guard dedupes since both link the same rlib type).
-    renzora_text_mesh::ensure_sdf_material(app);
+    renzora::text_mesh::ensure_sdf_material(app);
     app.add_systems(Update, emit_world_ui_meshes);
 }
 

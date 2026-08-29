@@ -5,7 +5,7 @@
 //! in that atlas. We drive that pipeline for the *layout*, then hand the glyph
 //! rects to [`pack_sdf_strip`] (coverage → SDF, packed into one strip) and emit
 //! one padded quad per glyph that samples it. The
-//! [`SdfTextMaterial`](crate::material::SdfTextMaterial) shader keeps the edges
+//! [`SdfTextMaterial`](super::material::SdfTextMaterial) shader keeps the edges
 //! crisp at any magnification.
 //!
 //! A plain function (no ECS) so the mesh-based world-space UI could reuse it; in
@@ -21,7 +21,7 @@ use bevy::text::{
     TextPipeline,
 };
 
-use crate::pack::{glyph_key, pack_sdf_strip};
+use super::pack::{glyph_key, pack_sdf_strip};
 
 /// World units per glyph pixel. A `size` of 100 with this factor makes cap
 /// height ≈ 1 m — a readable default the entity's `Transform` then tunes.

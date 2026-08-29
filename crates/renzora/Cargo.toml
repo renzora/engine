@@ -14,6 +14,18 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+# The SDF glyph-mesh machinery (`renzora::text_mesh`): coverage→SDF conversion,
+# strip packing, and the `SdfTextMaterial` shared by `renzora_ember`'s
+# world-space UI emitter and the `text3d` native plugin. It is here rather than
+# in its own crate because a native plugin can only reach `bevy`, `renzora` and
+# `renzora_ember`, and two copies of `SdfTextMaterial` would be two `TypeId`s
+# and two `MaterialPlugin` registrations.
+#
+# Gated because it is the ONLY thing in this crate that touches `bevy::text`,
+# and a lean export with the UI capability off strips `bevy_text` from Bevy's
+# feature set — an always-on module would fail that build. Enabled by
+# `renzora_ember`, which is itself dropped in exactly that configuration.
+text_mesh = []
 # Compile the project's Rust scripts INTO the binary instead of loading each as
 # a dylib. Changes only what `script!` emits: without it the entry point is
 # `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is

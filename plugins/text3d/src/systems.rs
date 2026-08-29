@@ -6,7 +6,7 @@ use bevy::text::{Font, FontAtlasSet, FontCx, FontSource, LayoutCx, RemSize, Scal
 
 use crate::outline::build_outline_mesh;
 use crate::Text3d;
-use renzora_text_mesh::{build_text_mesh, SdfTextMaterial};
+use renzora::text_mesh::{build_text_mesh, SdfTextMaterial};
 
 /// Marks a `Text3d` whose font hasn't finished loading yet, so the rebuild
 /// system keeps retrying every frame until the glyphs are available. `Changed`

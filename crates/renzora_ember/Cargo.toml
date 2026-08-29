@@ -25,7 +25,12 @@ bevy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 # HideInHierarchy + core types.
-renzora = { path = "../renzora", default-features = false }
+# `text_mesh` for the world-space UI mesh emitter's glyph geometry. It is a
+# feature rather than always-on because it is the only thing in the contract
+# crate that touches `bevy::text`, and a lean export with the UI capability off
+# strips `bevy_text` from the Bevy feature set entirely — ember is dropped in
+# that configuration too, so nothing turns this on and nothing breaks.
+renzora = { path = "../renzora", default-features = false, features = ["text_mesh"] }
 # Markup runtime (folded in from the former renzora_hui crate): the vendored
 # bevy_hui parser, the game-UI canvas primitives, and the scripting bridge.
 # Both are used only by the `markup` module → gated behind `game_ui`.
@@ -42,9 +47,10 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false, o
 # thread → per-frame poll), same as renzora_hub's thumbnail cache.
 crossbeam-channel = "0.5"
 # Shared SDF glyph machinery (coverage→SDF, strip packing, the SDF text material)
-# — the mesh-mode world-space UI emitter reuses it for crisp text, the same rlib
-# renzora_text3d links (ember can't link that cdylib, but an rlib is fine).
-renzora_text_mesh = { path = "../renzora_text_mesh" }
+# now lives in the contract crate as `renzora::text_mesh` — the `text3d` native
+# plugin needs the same `SdfTextMaterial` type, and a plugin can only reach
+# `bevy`/`renzora`/`renzora_ember`. No dependency line needed; ember already
+# links `renzora`.
 
 # System clipboard for the code editor's cut/copy/paste. Native-only: arboard
 # has no wasm backend (the browser clipboard is async + gesture-gated), so the

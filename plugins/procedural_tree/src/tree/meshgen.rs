@@ -6,8 +6,8 @@ use bevy::mesh::PrimitiveTopology;
 use bevy::{asset::RenderAssetUsages, prelude::*};
 use fastrand::Rng;
 
-use crate::{enums::TreeType, settings::TreeMeshSettings};
-use crate::errors::IndicesOverflowError;
+use super::{enums::TreeType, settings::TreeMeshSettings};
+use super::errors::IndicesOverflowError;
 
 #[derive(Debug, Clone)]
 struct BranchGenState {
@@ -524,8 +524,8 @@ fn generate_leaf(
     let leaf_size_half = leaf_size / 2.0;
 
     let rotations: &[f32] = match settings.leaves.leaf_billboard {
-        crate::enums::LeafBillboard::Single => &[0.0],
-        crate::enums::LeafBillboard::Double => &[0.0, f32::consts::FRAC_PI_2],
+        super::enums::LeafBillboard::Single => &[0.0],
+        super::enums::LeafBillboard::Double => &[0.0, f32::consts::FRAC_PI_2],
     };
 
     for rotation in rotations.iter() {
