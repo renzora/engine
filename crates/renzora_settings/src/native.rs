@@ -1502,6 +1502,67 @@ fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 0, &tr("common.mode"), dd);
+
+    // Graphics quality for the SHIPPED GAME, and the same caveat as VSync below:
+    // the identically-named row in Settings → Viewport → Performance writes
+    // `ViewportSettings`, which is the editor's own viewport and is stripped from
+    // an export. `[rendering] graphics_quality` is the one the runtime resolves
+    // onto the play camera, and it had no control at all — so it sat on its
+    // `Medium` default however the editor was configured.
+    let gq_opts = [tr("common.low"), tr("common.medium"), tr("common.high")];
+    let gq_refs: Vec<&str> = gq_opts.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &gq_refs,
+        1,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.rendering.graphics_quality)
+            .unwrap_or_default()
+        {
+            GraphicsQuality::Low => 0,
+            GraphicsQuality::Medium => 1,
+            GraphicsQuality::High => 2,
+        },
+        |w, &i| {
+            let q = match i {
+                0 => GraphicsQuality::Low,
+                2 => GraphicsQuality::High,
+                _ => GraphicsQuality::Medium,
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering.graphics_quality = q;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.game_graphics_quality"), dd);
+
+    // 3D render scale for the shipped game. Runtime-only by design — the editor
+    // uses per-camera `CameraRenderResolution` — which is precisely why it needs
+    // a control here: nothing in the editor would ever set it as a side effect.
+    let dv = ctl_drag(
+        commands,
+        fonts,
+        1.0,
+        0.25,
+        2.0,
+        0.05,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| c.config.rendering.render_scale)
+                .unwrap_or(1.0)
+        },
+        |w, &v| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering.render_scale = v.clamp(0.25, 2.0);
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.render_scale"), dv);
+
     note_row(commands, fonts, body, &tr("settings.hint.restart_rendering"));
 
     // Window.
@@ -1569,6 +1630,30 @@ fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 3, &tr("common.mode"), dd);
+    // VSync for the SHIPPED GAME. There is a second control with this name in
+    // Settings → Viewport → Performance, and it governs the editor's own
+    // viewport — `[editor.viewport] vsync` — which is why this one has to exist
+    // separately rather than being folded into it. Without it the game field was
+    // reachable only by hand-editing `project.toml`: it defaults to `true`, so an
+    // export came out locked to the monitor's refresh while the editor, whose
+    // vsync the user *had* turned off, ran uncapped. The two readings disagreeing
+    // looked like a frame limiter in the runtime.
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| c.config.window.vsync)
+                .unwrap_or(true)
+        },
+        |w, &v| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.window.vsync = v;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 4, &tr("settings.row.game_vsync"), t);
 
     // Render Resolution. Shares the "window" key so it sits directly under the
     // Window section: both carry a width/height pair, and the only thing that

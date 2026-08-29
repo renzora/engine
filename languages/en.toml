@@ -1884,6 +1884,13 @@ version = "1.0"
 "settings.row.label_color" = "Label Color"
 "settings.row.max_distance" = "Max Distance"
 "settings.row.vsync" = "VSync"
+# The three below are the SHIPPED GAME's settings, and are deliberately labelled
+# apart from their editor namesakes above: `settings.row.vsync` governs the
+# editor's own viewport, this one governs the exported build. Naming both "VSync"
+# is what made an export look frame-limited when the editor was uncapped.
+"settings.row.game_vsync" = "VSync (game)"
+"settings.row.game_graphics_quality" = "Graphics Quality (game)"
+"settings.row.render_scale" = "Render Scale (game)"
 "settings.row.graphics_quality" = "Graphics Quality"
 "settings.hint.integrated_gpu" = "Integrated GPU detected — if the viewport feels slow, try Settings → Viewport → Graphics Quality → Low."
 "settings.row.look_sensitivity" = "Look Sensitivity"
