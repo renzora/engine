@@ -65,8 +65,8 @@ Full documentation — getting started, scripting, UI, plugins, exporting, and m
 | Format | Type |
 |--------|------|
 | `.glb` / `.gltf` / `.fbx` / `.obj` / `.stl` / `.ply` | 3D models |
-| `.ron` | Scene files |
-| `.lua` | Scripts |
+| `.bsn` / `.ron` | Scene files (`.ron` is the legacy format) |
+| `.lua` / `.rs` | Scripts |
 | `.blueprint` | Visual script graphs |
 | `.material` | Material graphs |
 | `.particle` | Particle effects |
