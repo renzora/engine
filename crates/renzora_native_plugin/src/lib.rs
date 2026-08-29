@@ -86,6 +86,52 @@ use renzora_plugin_build::{Error as BuildError, Sdk};
 /// NUL so it can go straight to `Library::get`.
 pub const CTOR_SYMBOL: &[u8] = b"renzora_native_plugin_ctor\0";
 
+/// Where a plugin says it may load, written by `renzora::plugin!`.
+///
+/// Optional. A plugin built before scopes existed does not export it, and its
+/// absence reads as [`NativePluginScope::Editor`] — the behaviour those plugins
+/// were written for, and the safe direction to guess: an editor plugin missing
+/// from a game is an absence, a runtime plugin that should not have shipped is
+/// in the player's hands.
+pub const SCOPE_SYMBOL: &[u8] = b"renzora_native_plugin_scope\0";
+
+/// The signature of [`SCOPE_SYMBOL`]. A byte, not an enum: this crosses a
+/// `dlopen` boundary, where a `#[repr(Rust)]` enum has no guaranteed layout.
+type ScopeFn = extern "C" fn() -> u8;
+
+/// Read a built plugin library's declared scope, without keeping it loaded.
+///
+/// For the exporter, which has to decide whether a plugin belongs in a shipped
+/// game before copying it. The alternative — parsing the source for a
+/// `plugin!(.., Runtime)` — would answer a question about the *source* when what
+/// ships is the *library*, and the two can disagree if one was not rebuilt.
+///
+/// Returns `None` when the file is not a native plugin at all (no constructor),
+/// so a caller can tell "not ours" from "ours, and editor-only".
+///
+/// The image is deliberately leaked rather than dropped, for the reason the
+/// loader documents at length: `Library::new` has already run the image's static
+/// initializers, and unmapping a warmed Rust dylib runs `FreeLibrary` inside the
+/// loader lock. In the editor this is usually a second handle on an image
+/// already mapped, so the cost is a refcount.
+pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
+    // SAFETY: loading native code, which runs its static initializers. Same
+    // exposure the loader accepts, and here the library is one the editor
+    // produced from source in this very project.
+    let lib = unsafe { Library::new(lib_path) }.ok()?;
+    if unsafe { lib.get::<Ctor>(CTOR_SYMBOL) }.is_err() {
+        std::mem::forget(lib);
+        return None;
+    }
+    let scope = match unsafe { lib.get::<ScopeFn>(SCOPE_SYMBOL) } {
+        Ok(f) => renzora::NativePluginScope::from_byte(f()),
+        // Built before scopes existed — editor-only, same as the loader assumes.
+        Err(_) => renzora::NativePluginScope::Editor,
+    };
+    std::mem::forget(lib);
+    Some(scope)
+}
+
 /// The signature of [`CTOR_SYMBOL`].
 ///
 /// A plain Rust `fn` returning a trait object, with no `extern "C"` and no
@@ -186,6 +232,15 @@ impl Plugin for NativePluginLoader {
         // after every plugin has been installed.
         let disabled = renzora::load_disabled_plugins();
 
+        // Which scopes this process admits. `EditorSession` is inserted by the
+        // editor binary during assembly; a shipped game has none, which is the
+        // engine's standard way to tell the two apart (a cargo feature cannot —
+        // both binaries come out of one `--workspace` build).
+        let in_editor = app
+            .world()
+            .get_resource::<renzora::core::EditorSession>()
+            .is_some_and(|s| s.0);
+
         let mut libraries = Vec::new();
         for entry in read_dir_sorted(&dir) {
             let name = name_of(&entry);
@@ -201,7 +256,7 @@ impl Plugin for NativePluginLoader {
                 }
                 continue;
             }
-            match load_one(&entry, sdk.as_ref(), expected.as_deref()) {
+            match load_one(&entry, sdk.as_ref(), expected.as_deref(), in_editor) {
                 Ok(Some((plugin, lib))) => {
                     // Held for the life of the process. See the module doc.
                     libraries.push(std::mem::ManuallyDrop::new(lib));
@@ -306,19 +361,35 @@ fn load_one(
     dir: &Path,
     sdk: Option<&Sdk>,
     expected: Option<&str>,
+    // Whether this process is the editor. Decides which scopes are admitted —
+    // see the scope check below.
+    in_editor: bool,
 ) -> Result<Option<Loaded>, String> {
     if !dir.is_dir() {
         return Ok(None);
     }
-    // `src/lib.rs` is what makes a directory a plugin; `Sdk::compile` derives
-    // the rest of the layout from the directory itself.
-    if !dir.join("src").join("lib.rs").is_file() {
-        return Ok(None);
-    }
-
     let name = name_of(dir);
     let build = dir.join("build");
-    let Layout { lib_path, stamp_path, needs_build } = layout(dir, sdk, expected);
+    let Layout { lib_path, stamp_path, mut needs_build } = layout(dir, sdk, expected);
+
+    // `src/lib.rs` is what makes a directory a plugin *on a machine that can
+    // build one* — `Sdk::compile` derives the rest of the layout from it.
+    //
+    // A shipped game has no source and no SDK: the export staged the library the
+    // editor had already built. So a directory holding a built library and
+    // nothing else is a plugin too, and one that can only be loaded. Requiring
+    // the source here would mean shipping a plugin author's code inside every
+    // game that uses it, to satisfy a marker file nothing would then read.
+    if !dir.join("src").join("lib.rs").is_file() {
+        if !lib_path.is_file() {
+            // Neither source nor library: a stray directory, not a plugin.
+            return Ok(None);
+        }
+        // Nothing to build FROM, so never mind what `layout` concluded — its
+        // staleness test compares source mtimes that do not exist.
+        needs_build = false;
+    }
+
     if needs_build {
         let Some(sdk) = sdk else {
             // Two quite different situations, and conflating them produces a
@@ -373,6 +444,26 @@ fn load_one(
             return Ok(None);
         }
     };
+
+    // ── Scope: does this plugin belong in the process that just loaded it? ───
+    //
+    // Read before the constructor is called, because calling it is what builds
+    // the plugin and there is no way to un-add one afterwards.
+    //
+    // A missing symbol is `Editor`, which is what every native plugin was before
+    // scopes existed — so an old plugin keeps its old behaviour instead of
+    // appearing in a game it was never written for.
+    let scope = match unsafe { lib.get::<ScopeFn>(SCOPE_SYMBOL) } {
+        Ok(f) => renzora::NativePluginScope::from_byte(f()),
+        Err(_) => renzora::NativePluginScope::Editor,
+    };
+    // `EditorSession` absent means this is the shipped game — the same check the
+    // rest of the engine uses, because a cargo feature cannot answer it (both
+    // binaries come out of one `--workspace` build).
+    if !in_editor && scope == renzora::NativePluginScope::Editor {
+        std::mem::forget(lib);
+        return Ok(None);
+    }
 
     // A panic here would unwind across the library boundary, which is undefined.
     // Catching it turns a broken plugin into one that fails to load rather than
