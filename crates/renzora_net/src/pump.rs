@@ -15,7 +15,7 @@ use renzora_plugin::net::{decode_events, BackendInfo, Caps, Event};
 use renzora_plugin::sys::{self, NetOp, NetStatus};
 use renzora_plugin::wire::{Reader, Writer};
 
-use crate::api::shared;
+use renzora::net::shared;
 
 /// The backend, and everything needed to call it.
 #[derive(Resource, Default)]
@@ -237,7 +237,7 @@ pub(crate) fn pump(mut link: ResMut<NetLink>) {
         // its own in-flight requests in `adopt_backend`.
         let orphaned = shared().take_queued();
         if !orphaned.is_empty() {
-            shared().fail_all(crate::api::NO_BACKEND);
+            shared().fail_all(renzora::net::NO_BACKEND);
         }
         let _ = shared().take_cancels();
         return;

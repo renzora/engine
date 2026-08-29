@@ -7190,8 +7190,10 @@ dependencies = [
  "bevy",
  "naga",
  "renzora_macros",
+ "renzora_plugin",
  "ron 0.8.1",
  "serde",
+ "serde_json",
  "toml 0.8.23",
 ]
 

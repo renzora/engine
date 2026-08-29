@@ -1,6 +1,28 @@
 //! What the rest of the engine calls: a request builder, a blocking [`fetch`],
 //! and a streaming one.
 //!
+//! ## Why this lives in the contract crate
+//!
+//! Not for the reason most things here do. The engine deliberately contains no
+//! HTTP client — `ureq`, `rustls`, `ring`, `webpki` and the platform certificate
+//! verifiers are twenty packages that a 2D mobile game making no requests should
+//! never compile — so the socket is opened behind the C-ABI plugin boundary by
+//! `plugins/http`, and that stays true. Only the *vocabulary* is here.
+//!
+//! What forces it into this crate specifically is [`shared`]: a `OnceLock`
+//! holding the submission queue, the waiter table and the "is a backend loaded"
+//! flag. It is **process-global state**, in exactly the sense that the
+//! translation table and the theme palette are, and it fails the same way — a
+//! caller that linked a private copy would get its own empty queue with no
+//! backend attached, so `is_available()` would answer false and every request
+//! would fail, with nothing logged. The engine's own crates are linked once and
+//! never noticed; a native plugin linking its own copy would.
+//!
+//! So the split is: **this module owns the queue, `renzora_net` owns the driver
+//! that connects it to a backend.** The driver-facing operations below
+//! ([`Shared::take_queued`], [`Shared::deliver`], [`Shared::fail_all`] …) are
+//! public for that one consumer, not for callers.
+//!
 //! ## Why blocking, when the boundary underneath is not
 //!
 //! Every network call in this engine already runs on a thread somebody spawned
@@ -12,7 +34,7 @@
 //!
 //! So this keeps that shape. [`fetch`] blocks *its own thread* while the frame
 //! carries on: it queues the request, parks on a channel, and the per-frame pump
-//! ([`crate::pump`]) hands the answer back. What changed underneath is only who
+//! (`renzora_net`'s frame pump) hands the answer back. What changed underneath is only who
 //! opens the socket.
 //!
 //! **It must therefore not be called from a system.** A system runs inside the
@@ -54,7 +76,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Both ends are in this crate, so it is a shared constant rather than string
 /// matching across a boundary. It never reaches a caller: [`fetch`] and
 /// [`Stream`] both turn it back into [`Error::NoBackend`].
-pub(crate) const NO_BACKEND: &str = "\u{0}renzora-net:no-backend";
+pub const NO_BACKEND: &str = "\u{0}renzora-net:no-backend";
 
 /// Why a request did not produce a response.
 ///
@@ -385,7 +407,7 @@ impl Drop for Stream {
 // ── The queue between callers and the pump ───────────────────────────────────
 
 /// A request waiting to be handed to the backend.
-pub(crate) struct Submission {
+pub struct Submission {
     pub request: renzora_plugin::net::Request,
     pub body: Vec<u8>,
 }
@@ -397,7 +419,7 @@ pub(crate) struct Submission {
 /// alternative is handing a channel to each of the dozen background threads the
 /// editor spawns, down call stacks that exist only to pass it along. There is
 /// one engine per process and one backend, so a global is what this actually is.
-pub(crate) struct Shared {
+pub struct Shared {
     queue: Mutex<Vec<Submission>>,
     /// Where to deliver each in-flight request's events.
     waiters: Mutex<HashMap<u64, Sender<Event>>>,
@@ -411,7 +433,7 @@ pub(crate) struct Shared {
     available: AtomicBool,
 }
 
-pub(crate) fn shared() -> &'static Shared {
+pub fn shared() -> &'static Shared {
     static SHARED: OnceLock<Shared> = OnceLock::new();
     SHARED.get_or_init(|| Shared {
         queue: Mutex::new(Vec::new()),
@@ -456,14 +478,14 @@ impl Shared {
     }
 
     /// Take everything queued since the last frame. Called by the pump.
-    pub(crate) fn take_queued(&self) -> Vec<Submission> {
+    pub fn take_queued(&self) -> Vec<Submission> {
         self.queue
             .lock()
             .map(|mut q| std::mem::take(&mut *q))
             .unwrap_or_default()
     }
 
-    pub(crate) fn take_cancels(&self) -> Vec<u64> {
+    pub fn take_cancels(&self) -> Vec<u64> {
         self.cancels
             .lock()
             .map(|mut c| std::mem::take(&mut *c))
@@ -475,7 +497,7 @@ impl Shared {
     /// A tag with no waiter is dropped, which is the right handling of a
     /// response whose caller gave up: the [`Stream`] was dropped, or the panel
     /// it belonged to closed.
-    pub(crate) fn deliver(&self, event: Event) {
+    pub fn deliver(&self, event: Event) {
         let Ok(mut waiters) = self.waiters.lock() else {
             return;
         };
@@ -496,7 +518,7 @@ impl Shared {
     /// Used when the backend goes away — a plugin unloaded or hot-reloaded
     /// mid-transfer. Without this, every parked thread would wait out its full
     /// timeout for an answer that can no longer come from anywhere.
-    pub(crate) fn fail_all(&self, reason: &str) {
+    pub fn fail_all(&self, reason: &str) {
         if let Ok(mut queue) = self.queue.lock() {
             queue.clear();
         }
@@ -529,11 +551,11 @@ impl Shared {
     }
 
     /// Called once per frame by the pump. What [`wait_for`] watches.
-    pub(crate) fn tick(&self) {
+    pub fn tick(&self) {
         self.ticks.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn set_available(&self, available: bool) {
+    pub fn set_available(&self, available: bool) {
         self.available.store(available, Ordering::Relaxed);
     }
 }

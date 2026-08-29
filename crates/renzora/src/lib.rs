@@ -59,6 +59,13 @@ pub use auto_exposure::*;
 pub mod sun;
 pub use sun::*;
 
+// HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
+// and `Response` are names generic enough to collide, so callers say
+// `renzora::net::Request`. The engine ships no HTTP client — the socket is opened
+// by `plugins/http` behind the C-ABI boundary — but the queue is process-global
+// state and therefore has to be singular. See the module doc.
+pub mod net;
+
 // One world-global wind, shared by foliage, cloth, the ocean and the cloud
 // deck. Here rather than in `renzora_wind` for the usual reason: four crates
 // read `WindState` and must all see the same `TypeId`.
