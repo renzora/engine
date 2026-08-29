@@ -2306,18 +2306,21 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     let root = commands
         .spawn((
             Node {
-                // Grow-to-fill rather than a fixed width. A fixed 210 px card
-                // wrapped correctly and then left a ragged empty column — at the
-                // settings body's width three cards need 654 px and 623 px were
-                // available, so the third dropped to the next row and ~200 px sat
-                // unused beside every pair.
+                // Four columns, and a percentage basis is what pins it there.
+                // 22% × 4 = 88%, leaving 12% for the three 8px gaps at any
+                // realistic panel width — so four fit on a row and a fifth
+                // cannot, whatever the settings pane is resized to.
                 //
-                // `flex_basis` is what the wrap decision uses, so it sets the
-                // minimum card width; `flex_grow` then shares the leftover space
-                // among however many landed on that row. The result fills the
-                // panel at any width instead of only at the ones that happen to
-                // be exact multiples.
-                flex_basis: Val::Px(170.0),
+                // A pixel basis was the previous attempt and is why this comment
+                // exists: `flex_basis` is what the wrap decision measures, so a
+                // fixed 170 px gives four columns only at the widths that happen
+                // to divide that way, and three-and-a-gap everywhere else. The
+                // ragged empty column it replaced (a fixed 210 px card) was the
+                // same problem one step earlier.
+                //
+                // `flex_grow` still shares the leftover space, so a row fills the
+                // panel rather than leaving the remainder at its right edge.
+                flex_basis: Val::Percent(22.0),
                 flex_grow: 1.0,
                 // Without this a long plugin name pushes the card wider than its
                 // share and the row wraps one card early.
