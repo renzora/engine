@@ -82,6 +82,14 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
 
     let (overlay, content) = overlay_sized(&mut commands, &fonts, "Install Asset", 560.0, 460.0, true);
 
+    // Above the item overlay, which is what opened this. `overlay_sized` hands
+    // out `GlobalZIndex(8000)` — fine for a modal raised from a panel, but the
+    // item overlay deliberately sits at 9600 to clear the docked panels, so the
+    // default put the install dialog 1600 BEHIND the thing that launched it: the
+    // backdrop dimmed, and the card itself was hidden. Between the item overlay
+    // and the lightbox at 9900, which stays topmost.
+    commands.entity(overlay).insert(GlobalZIndex(9700));
+
     let price = if asset.price_credits == 0 {
         "Free".to_string()
     } else {
