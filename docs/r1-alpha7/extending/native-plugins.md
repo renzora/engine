@@ -217,6 +217,23 @@ Two things to know. Dependencies must be written **one per line** (`foo = { vers
 
 **But do give scene content a `Name`.** The hierarchy panel queries `(Entity, &Name)` — no name, no row, nothing to click, no selection and no gizmo. And the scene serializer only writes named entities, so an unnamed mesh is gone after a reload.
 
+**An unnamed entity with a `Transform` is despawned in a shipped game.** `reject_unnamed_entities` treats "has a `Transform`, has no `Name`" as the definition of scene content that lost track of itself, and despawns it. It enforces **always** in an exported game — `EditorSession` is absent, which is how the engine knows it is a game — but in the editor only during play mode.
+
+That asymmetry is what makes this expensive to find: a plugin that spawns a helper mesh works perfectly while you author, and the same plugin flickers in the export, because the guard despawns the helper and your system rebuilds it every frame.
+
+If the thing you spawned is **chrome** rather than scene content — a camera-centred dome, a debug volume, a generated helper that is rebuilt from scratch each run — mark it and it is left alone:
+
+```rust
+commands.spawn((
+    Mesh3d(mesh),
+    MeshMaterial3d(material),
+    transform,
+    renzora::HideInHierarchy,   // ← or the guard will despawn this in a game
+));
+```
+
+Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too, but names are what `save_scene` serialises, so a transient helper would be written into every saved scene. `Persistent` is the other sanctioned opt-out, for entities on a global scene that *should* appear in the hierarchy.
+
 **`bsn!` parses component arguments as literal values.** `Mesh3d(mesh.clone())` fails with "Unexpected input after function name". Clone into a named binding first.
 
 **The editor contract is glob-re-exported at the crate root.** Write `renzora::EditorSelection`, never `renzora::editor_contract::EditorSelection`.
