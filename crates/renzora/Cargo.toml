@@ -14,6 +14,16 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+# Compile the project's Rust scripts INTO the binary instead of loading each as
+# a dylib. Changes only what `script!` emits: without it the entry point is
+# `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is
+# dropped so many scripts can be linked into one binary without fifty definitions
+# of `renzora_script_update` colliding.
+#
+# Set by the lean exporter on its throwaway workspace copy, never in the dev
+# tree. Cargo compiles `renzora` once per build and unifies features across it,
+# which is exactly what makes one flag here apply to every script in the build.
+static_scripts = []
 # Enables the editor CONTRACT (Operation Merge fold): the thin, boundary-
 # crossing editor types — `EditorSelection`, the inspector/spawn/toolbar/
 # shortcut registries, `AppEditorExt`, the field macros, `Inspectable`/

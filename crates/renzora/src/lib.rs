@@ -71,6 +71,9 @@ pub mod version;
 // generates the dependency edge that links it and the list that installs it.
 // The macro itself only type-checks — see the module docs.
 mod plugin_meta;
+/// Where a native plugin may load — see [`plugin!`]. Re-exported because both
+/// the macro's expansion and the loader that reads the symbol name it.
+pub use plugin_meta::NativePluginScope;
 /// What a Rust script is handed — see [`script_ctx::ScriptCtx`].
 pub mod script_ctx;
 pub use script_ctx::ScriptCtx;
