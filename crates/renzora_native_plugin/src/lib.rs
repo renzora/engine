@@ -114,6 +114,56 @@ type ScopeFn = extern "C" fn() -> u8;
 /// initializers, and unmapping a warmed Rust dylib runs `FreeLibrary` inside the
 /// loader lock. In the editor this is usually a second handle on an image
 /// already mapped, so the cost is a refcount.
+/// One native plugin that has been built and can be loaded or shipped.
+pub struct InstalledNativePlugin {
+    /// The directory name, which is the id everything else keys on — the
+    /// Settings disable list, the export selection, the thumbnail path.
+    pub id: String,
+    /// Read from the built library, not the source. See [`installed`].
+    pub scope: renzora::NativePluginScope,
+    pub lib: PathBuf,
+}
+
+/// Every built native plugin under `plugins_dir`, with its scope.
+///
+/// Two callers need this list and were deriving it independently: the exporter,
+/// to decide what to ship, and its plugin picker, to show what there is to
+/// choose from. The directory layout — `<dir>/build/<name with - as _>.<ext>` —
+/// was written out inline in the first of those, which is exactly the kind of
+/// duplication that lets a picker offer a plugin the build then cannot find.
+///
+/// **Scope comes from the library, never the source.** A `plugin!(.., Runtime)`
+/// in `src/lib.rs` says what the source *would* build to; what ships is the
+/// artefact, and the two disagree whenever one was edited without rebuilding.
+///
+/// A directory with no built library is skipped: it is a plugin that has not
+/// been compiled yet, and there is nothing to read a scope from or copy.
+pub fn installed(plugins_dir: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin> {
+    let Ok(entries) = std::fs::read_dir(plugins_dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let Some(id) = dir.file_name().and_then(|n| n.to_str()).map(str::to_string) else {
+            continue;
+        };
+        let lib = dir.join("build").join(format!("{}.{lib_ext}", id.replace('-', "_")));
+        if !lib.is_file() {
+            continue;
+        }
+        let Some(scope) = read_scope(&lib) else {
+            continue;
+        };
+        out.push(InstalledNativePlugin { id, scope, lib });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
 pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
     // SAFETY: loading native code, which runs its static initializers. Same
     // exposure the loader accepts, and here the library is one the editor

@@ -1129,12 +1129,13 @@ pub fn stage_runtime_native_plugins(
     editor_dir: &Path,
     output_dir: &Path,
     lib_ext: &str,
+    // What the exporter's plugin picker has ticked. `None` means the picker
+    // never ran, in which case every eligible plugin ships — the behaviour
+    // before it listed native plugins at all.
+    selected: Option<&std::collections::HashSet<String>>,
     progress: &mut dyn FnMut(String),
 ) -> Result<usize, String> {
     let src_root = editor_dir.join("plugins");
-    let Ok(entries) = std::fs::read_dir(&src_root) else {
-        return Ok(0);
-    };
 
     // A plugin switched off in Settings → Editor → Plugins must not ship. It is
     // off because the user turned it off, and an export is the last moment that
@@ -1144,39 +1145,27 @@ pub fn stage_runtime_native_plugins(
 
     let mut shipped: Vec<String> = Vec::new();
     let mut skipped_editor: Vec<String> = Vec::new();
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
-        }
-        let name = match dir.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
+    for plugin in renzora_native_plugin::installed(&src_root, lib_ext) {
+        let name = plugin.id;
         if disabled.iter().any(|d| d == &name) {
             continue;
         }
-        // The loader's own layout: `<dir>/build/<name with - as _>.<ext>`.
-        let lib = dir.join("build").join(format!("{}.{lib_ext}", name.replace('-', "_")));
-        if !lib.is_file() {
+        // Unticked in the picker. Distinct from `disabled` above: that is "not
+        // in my editor", this is "not in this build".
+        if selected.is_some_and(|s| !s.contains(&name)) {
             continue;
         }
-        match renzora_native_plugin::read_scope(&lib) {
-            Some(renzora::NativePluginScope::Runtime) => {}
-            // Editor-only, or not a native plugin at all. Neither belongs in a
-            // game, and only the first is worth mentioning.
-            Some(_) => {
-                skipped_editor.push(name);
-                continue;
-            }
-            None => continue,
+        if plugin.scope != renzora::NativePluginScope::Runtime {
+            // Editor-only: belongs in no game, and worth saying so.
+            skipped_editor.push(name);
+            continue;
         }
 
         let dest = output_dir.join("plugins").join(&name).join("build");
         std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
         let dest_lib = dest.join(format!("{}.{lib_ext}", name.replace('-', "_")));
-        std::fs::copy(&lib, &dest_lib)
-            .map_err(|e| format!("copy {} → {}: {e}", lib.display(), dest_lib.display()))?;
+        std::fs::copy(&plugin.lib, &dest_lib)
+            .map_err(|e| format!("copy {} → {}: {e}", plugin.lib.display(), dest_lib.display()))?;
         shipped.push(name);
     }
 

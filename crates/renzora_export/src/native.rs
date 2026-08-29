@@ -178,7 +178,39 @@ fn scan_plugins(world: &mut World) {
         }
     }
     let dir = world.resource::<TemplateManager>().plugins_dir_for(platform);
-    let plugins = renzora_plugin::host::loader::scan_plugins(world, &dir);
+    let mut plugins = renzora_plugin::host::loader::scan_plugins(world, &dir);
+
+    // Native plugins too, which the C-ABI scan above cannot see: it looks for
+    // library FILES exporting `renzora_plugin_init`, and a native plugin is a
+    // directory holding a `build/` — so the picker listed only half of what an
+    // export ships, and the half it hid was the half users actually install.
+    //
+    // They come from the EDITOR's `plugins/`, not the platform template's. A
+    // native plugin links the real Bevy and is compiled against this editor's
+    // shared images; the library that ships is the one the editor built, which
+    // is also why only a host, copy-based export can take them.
+    //
+    // Editor-scope ones are left out entirely rather than shown and refused.
+    // They can never ship, so offering a switch for one would be a control whose
+    // only setting is off.
+    if let Some(editor_dir) = crate::build::editor_dir() {
+        let lib_ext = match platform {
+            Platform::WindowsX64 | Platform::WindowsArm64 => "dll",
+            Platform::MacOSX64 | Platform::MacOSArm64 => "dylib",
+            _ => "so",
+        };
+        for p in renzora_native_plugin::installed(&editor_dir.join("plugins"), lib_ext) {
+            if p.scope != renzora::NativePluginScope::Runtime {
+                continue;
+            }
+            plugins.push(renzora_plugin::host::loader::PluginInfo {
+                id: p.id,
+                path: p.lib,
+                scope: renzora_plugin::sys::PluginScope::Runtime,
+            });
+        }
+        plugins.sort_by(|a, b| a.id.cmp(&b.id));
+    }
 
     // Pre-select only the plugins a scene actually references, so the export
     // ships just the effects it uses instead of all 50+. A plugin id is the dll
@@ -1188,6 +1220,28 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
         })
         .id();
     commands.entity(body).add_child(list);
+
+    // Said only when it applies, like the Plugin Linking warning above it. The
+    // native plugins in this list are real choices in a host copy-based export
+    // and silently ignored in any other, so the list would otherwise be quietly
+    // lying in exactly the configurations where it matters most.
+    let native_note = txt(
+        commands,
+        fonts,
+        &renzora::lang::t("export.plugins.native_host_only"),
+        11.0,
+        AMBER,
+    );
+    bind_display(commands, native_note, |w| {
+        w.get_resource::<ExportOverlayState>().is_some_and(|s| {
+            !matches!(
+                s.packaging_mode,
+                PackagingMode::SeparateFiles | PackagingMode::SingleBinary
+            ) || Platform::current() != Some(s.platform)
+        })
+    });
+    commands.entity(body).add_child(native_note);
+
     // Filled by a command that can read the world (the plugin list is stable
     // after the scan).
     commands.queue(move |world: &mut World| {

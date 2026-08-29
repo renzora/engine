@@ -1167,10 +1167,18 @@ fn export_worker(
             // ships. Read from the editor's own `plugins/`, not the project's —
             // a native plugin extends the engine, not one game.
             if let Some(editor_dir) = crate::build::editor_dir() {
+                // The picker lists native plugins alongside C-ABI ones now, so
+                // the same tick-list decides both. Ids are unique across the two
+                // kinds — they all come from one `plugins/` namespace — so a set
+                // of every selected id filters the native staging correctly
+                // without having to know which kind each id was.
+                let native_selection: std::collections::HashSet<String> =
+                    selected_plugins.iter().map(|p| p.id.clone()).collect();
                 if let Err(e) = crate::build::stage_runtime_native_plugins(
                     &editor_dir,
                     &output_dir,
                     lib_ext,
+                    Some(&native_selection),
                     &mut sp,
                 ) {
                     let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
