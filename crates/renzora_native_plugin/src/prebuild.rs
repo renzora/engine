@@ -48,6 +48,14 @@ pub enum Progress {
     Unpacking { done: u64, total: u64 },
     /// Compiling plugin `name`, number `index` of `total`.
     Building { name: String, index: usize, total: usize },
+    /// One line the compiler wrote, as it wrote it.
+    ///
+    /// Carries no fraction — the bar stays where [`Building`](Self::Building)
+    /// put it and only the caption changes. rustc says nothing until it
+    /// finishes, so for a plugin with no third-party dependencies these arrive
+    /// only when something is wrong; for one with dependencies they are cargo's
+    /// `Compiling …` lines and cover most of the wait.
+    Compiling { name: String, line: String },
     /// A step failed. Setup continues — this is a report, not a stop.
     Failed(String),
 }
@@ -62,6 +70,9 @@ impl std::fmt::Display for Progress {
             Progress::Building { name, index, total } => {
                 write!(f, "Building plugins… [{index}/{total}] {name}")
             }
+            // One line, whatever the compiler produced. Trimmed because rustc
+            // indents continuation lines heavily and a caption is one line wide.
+            Progress::Compiling { name, line } => write!(f, "{name}: {}", line.trim()),
             Progress::Failed(e) => write!(f, "{e}"),
         }
     }
@@ -191,7 +202,9 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
             report(Progress::Failed(format!("{name}: {e}")));
             continue;
         }
-        match sdk.compile(plugin, &l.lib_path) {
+        match sdk.compile_with(plugin, &l.lib_path, &mut |line| {
+            report(Progress::Compiling { name: name.clone(), line: line.to_string() });
+        }) {
             Ok(stamp) => match std::fs::write(&l.stamp_path, &stamp) {
                 Ok(()) => built += 1,
                 Err(e) => report(Progress::Failed(format!("{name}: writing stamp: {e}"))),

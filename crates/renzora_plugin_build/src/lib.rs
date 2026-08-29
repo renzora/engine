@@ -284,6 +284,22 @@ impl Sdk {
     /// `out`'s parent must exist. On success the library is written and the
     /// stamp is returned for the caller to record beside it.
     pub fn compile(&self, dir: &Path, out: &Path) -> Result<String, Error> {
+        self.compile_with(dir, out, &mut |_| {})
+    }
+
+    /// [`compile`](Self::compile), reporting each line the compiler writes as it
+    /// writes it.
+    ///
+    /// For a caller with somewhere to show progress — the first-run window,
+    /// which would otherwise hold a motionless bar for the length of the build.
+    /// The lines are rustc's diagnostics and, for a plugin with third-party
+    /// dependencies, cargo's `Compiling …` output.
+    pub fn compile_with(
+        &self,
+        dir: &Path,
+        out: &Path,
+        on_line: &mut dyn FnMut(&str),
+    ) -> Result<String, Error> {
         // Resolved to an absolute path, not spawned as bare `rustc`. A clean
         // machine has none; a developer's machine may have several, and the
         // wrong one gets further before failing than no compiler at all.
@@ -334,11 +350,32 @@ impl Sdk {
         }
         cmd.args(&args);
 
-        let output = cmd.output().map_err(|e| Error::NoRustc(e.to_string()))?;
-        if !output.status.success() {
-            return Err(Error::Compile(
-                String::from_utf8_lossy(&output.stderr).into_owned(),
-            ));
+        // Streamed rather than collected with `output()`, so a caller can show
+        // what the compiler is saying while it says it. The first-run window
+        // otherwise sits on a motionless bar for the whole build with nothing to
+        // read — and a plugin that is going to fail says so on this stream.
+        //
+        // stderr only: rustc's diagnostics and cargo's `Compiling …` progress
+        // both go there, and its stdout carries nothing a person wants.
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::null());
+        let mut child = cmd.spawn().map_err(|e| Error::NoRustc(e.to_string()))?;
+
+        let mut collected = String::new();
+        if let Some(stderr) = child.stderr.take() {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                on_line(&line);
+                // Kept as well as reported, because the error a failure returns
+                // is the whole diagnostic — a caller showing one line at a time
+                // is not a substitute for the full text in the Console.
+                collected.push_str(&line);
+                collected.push('\n');
+            }
+        }
+        let status = child.wait().map_err(|e| Error::NoRustc(e.to_string()))?;
+        if !status.success() {
+            return Err(Error::Compile(collected));
         }
         Ok(self.stamp())
     }

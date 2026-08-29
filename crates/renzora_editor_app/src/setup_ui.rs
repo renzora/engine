@@ -112,6 +112,12 @@ fn spawn_ui(mut commands: Commands) {
                     TextFont::from_font_size(13.0),
                     TextColor(Color::srgb(0.62, 0.62, 0.68)),
                     StatusText,
+                    // One line, always. Compiler output is arbitrarily long and
+                    // arbitrarily wide; wrapping it would grow this caption to
+                    // several lines and shove the progress bar down the window
+                    // as the text changed.
+                    bevy::text::TextLayout::no_wrap(),
+                    Node { width: px(420), overflow: Overflow::clip(), ..default() },
                 ),
                 // The track. The fill is a child so its width can be a
                 // percentage of it rather than of the window.
@@ -156,12 +162,25 @@ fn tick(
         }
         // Unpacking has a real ratio; compiling does not (rustc reports nothing
         // until it is done), so plugin steps advance by whole plugins.
+        //
+        // A failure has no fraction, so it leaves the bar where it is — but it
+        // must NOT return from this system. It used to, and the `finished` check
+        // below is what restarts the editor: one plugin that failed to compile
+        // therefore left the setup window on screen forever, with the editor
+        // never starting. A plugin the user is still writing is the single most
+        // likely thing to fail here, so "does not compile" has to mean "is
+        // skipped", never "nothing runs".
         let frac = match p {
-            Progress::Unpacking { done, total } => *done as f32 / (*total).max(1) as f32,
-            Progress::Building { index, total, .. } => *index as f32 / (*total).max(1) as f32,
-            Progress::Failed(_) => return,
+            Progress::Unpacking { done, total } => Some(*done as f32 / (*total).max(1) as f32),
+            Progress::Building { index, total, .. } => {
+                Some(*index as f32 / (*total).max(1) as f32)
+            }
+            // A compiler line reports what is happening, not how far along it
+            // is — the bar stays where `Building` put it and only the caption
+            // moves. Same reasoning as `Failed`: no fraction is not zero.
+            Progress::Compiling { .. } | Progress::Failed(_) => None,
         };
-        if let Ok(mut node) = fill.single_mut() {
+        if let (Some(frac), Ok(mut node)) = (frac, fill.single_mut()) {
             node.width = percent(frac.clamp(0.0, 1.0) * 100.0);
         }
     }
