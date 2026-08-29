@@ -762,6 +762,10 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
                 BackgroundColor(rgba([0, 0, 0, 165])),
                 Interaction::default(),
                 StorePreviewBtn(a.clone()),
+                // The comment above says this blocks; nothing was making it. On
+                // 0.19's `Pass` default the press carried on to the card behind,
+                // so previewing a theme opened the detail overlay as well.
+                FocusPolicy::Block,
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 renzora_ember::widgets::HoverTooltip::new("Preview this theme live".to_string()),
             ))
@@ -938,6 +942,12 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> En
             BackgroundColor(base),
             Interaction::default(),
             StoreInstallBtn(a.clone()),
+            // REQUIRED, not belt-and-braces. Bevy 0.19 made `Node` require
+            // `FocusPolicy` and defaults it to `Pass`, so `ui_focus_system` marks
+            // every node under the cursor as pressed and only stops at a `Block`.
+            // Without this the pill downloads AND the press carries on to the
+            // card's `StoreCardBtn` behind it, opening the detail overlay too.
+            FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
@@ -950,10 +960,12 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> En
     });
 
     if free {
+        let ic = icon_text(commands, &fonts.phosphor, "download-simple", fg, 10.5);
+        commands.entity(ic).insert(FocusPolicy::Pass);
         let t = commands
-            .spawn((Text::new("GET"), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+            .spawn((Text::new("Download"), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
             .id();
-        commands.entity(pill).add_child(t);
+        commands.entity(pill).add_children(&[ic, t]);
     } else {
         let ic = icon_text(commands, &fonts.phosphor, "coins", fg, 10.5);
         commands.entity(ic).insert(FocusPolicy::Pass);
