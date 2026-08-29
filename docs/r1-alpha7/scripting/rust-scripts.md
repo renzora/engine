@@ -73,12 +73,30 @@ A Rust script is a [native plugin](../extending/native-plugins.md) with a per-en
 
 - The **plugin SDK** must be installed (**Settings → Plugins**). Without it, nothing compiles and the Console says so once.
 - The pinned `rustc` must be present. The editor names the version and offers to install it.
+- The editor must have been **built on the platform you are running it on**. An editor cross-built for another operating system carries an SDK whose proc macros are for the machine that compiled it, and no Rust script will compile against it. The tell is `can't find crate for bevy_derive`, followed by every name in `bevy::prelude` reported missing at once — a script that looks broken but is not. See [The SDK cannot be cross-built](../extending/native-plugins.md#the-sdk-cannot-be-cross-built).
 
 Build artifacts land in `<project>/.renzora/scripts/`. They are derived — nothing there needs to be looked at or committed.
 
+## In an exported game
+
+Scripts run in exports. How they get there depends on the packaging mode, and neither route asks anything of the player — no SDK, no Rust toolchain, nothing to install.
+
+| Packaging | How the script gets in | Compiled by |
+|---|---|---|
+| Separate files / Single binary | shipped as a library beside the game | the editor, at export |
+| Lean single binary | compiled into the executable | the export build |
+
+**Copy-based** exports carry the same `bevy_dylib` and `renzora_dylib` the editor compiled your script against, so it loads exactly as it does in the editor. The export copies the library the editor already built — a script that has never compiled has nothing to ship, and the export says so rather than omitting it quietly.
+
+**Lean** exports link Bevy statically and share no image, so there is no library for a script to bind to. Instead each `scripts/*.rs` becomes a module of the binary and its entry point goes into a table the dispatcher reads. Everything after that is identical: one function per entity per frame, keyed by file name, inside the same panic guard. A script behaves the same in the editor and in an export, or an export could not be tested by playing it.
+
+Every `.rs` in the project is compiled in, not only the ones a scene currently references — a scene can be loaded at runtime and a script attached at runtime, so any "which are used" analysis would eventually be wrong in the direction that breaks a game silently. An unused script costs bytes, never frame time: the dispatcher only ever looks up names a live entity asked for.
+
+Scripts may live anywhere in the project, not only in `scripts/`. Where two folders hold the same file name, each is reachable by its full project-relative path but not by the bare name, which is ambiguous — the export names any that apply.
+
 ## Limits
 
-- **Nothing runs in a lean export.** A static single binary links no shared images, so a script library has nothing to bind to. Compiling scripts *into* the export is the answer, and the exporter is shaped for it, but it is not done.
+- **A cross-platform copy-based export ships no scripts.** The libraries it would ship are host-shaped — a `.dll` is no use to a Linux player — and compiling for another OS needs an SDK for that target. Export *lean* for another platform instead, which compiles the scripts into the binary and has no such limit.
 - **No props.** A Lua script declares tunables in a table the backend parses. The Rust equivalent would read attributes off the source; until then, a script's tunables are ordinary components on the entity, which the inspector already edits.
 - **No REPL.** Evaluating a Rust expression would mean invoking the compiler and mapping a library per expression.
 - **One file.** A script is a single `.rs`; a plugin is the answer when you need modules.

@@ -39,6 +39,27 @@ Rule of thumb: **a native plugin extends the editor; a C-ABI plugin ships inside
 
 The reason is structural, not a missing feature. A native plugin links the shared `bevy_dylib` / `renzora_dylib` / `renzora_ember_dylib` images; a lean export is a fully static single binary with no shared images at all, and wasm and mobile have no dylibs to load. There is nothing for a native plugin to bind to there.
 
+## Scope: editor, or the game too
+
+A native plugin says where it may load, the same way an in-workspace plugin does:
+
+```rust
+renzora::plugin!(MyTool);            // Editor only — the default
+renzora::plugin!(MySystems, Runtime); // Also loaded by a shipped game
+```
+
+`Runtime` works for the reason the editor's own loading works: a game exported by the copy-based modes ships the very `bevy_dylib` and `renzora_dylib` the plugin was compiled against, so the `World` on both sides of the boundary is one type. The export copies the library the editor already built, so the player needs no SDK and no Rust toolchain — only the game.
+
+Only the library ships, not `src/`. The loader treats a directory holding a built library and nothing else as a plugin it can load but not rebuild, which is exactly a shipped game's situation — so a plugin author's source does not end up inside every game that uses their plugin.
+
+The scope is read from the **built library**, not from the source. A `plugin!(.., Runtime)` in `src/lib.rs` describes what the source would build to; what ships is the library, and the two disagree whenever one was edited without rebuilding. An editor-only plugin is named in the export log rather than quietly left out, since "my plugin is missing from the build" is otherwise indistinguishable from a bug.
+
+The exception is a **lean single-binary** export. That links Bevy statically and shares no image, so there is nothing for a plugin library to bind to. A `Runtime` native plugin is skipped there, exactly as a Rust script is — which is why scripts are compiled *into* a lean binary rather than loaded (see [Rust Scripts](../scripting/rust-scripts.md)).
+
+`Editor` is the default deliberately. It is what every native plugin written before scopes existed was, so those keep behaving as they did; and it is the safe way to guess, because an editor plugin missing from a game is an absence, while a runtime plugin that should not have shipped is in the player's hands. A plugin built before this existed exports no scope symbol at all, and the loader reads that as `Editor` for the same reason.
+
+A plugin is exclusively one or the other. A feature that needs editor tooling on top of runtime behaviour ships two plugins — the same rule `add!` follows.
+
 ## Layout
 
 Both kinds live in `plugins/`. A native plugin is a **directory**; a C-ABI plugin is a loose library file. The two loaders never collide.
@@ -79,6 +100,36 @@ This is safe because `rustc` will not link a crate's code from thin air. Under `
 Without it, an already-built plugin still loads. What is lost is the ability to build or rebuild one.
 
 The SDK is pinned to one exact `rustc` — Rust's crate metadata format is versioned and the compiler refuses another version's. The editor checks this before compiling and tells you which toolchain to install, rather than letting you find out from `error[E0514]`.
+
+### The SDK cannot be cross-built
+
+An SDK for a platform is only correct when it was built **on** that platform. This is a property of how Rust compiles, not a gap in the tooling, and it is the one thing to know before you distribute an editor you built for somebody else's operating system.
+
+The reason is proc-macro dylibs. A proc macro runs *inside* `rustc`, so it is compiled for the machine running the compiler rather than for the machine the code is aimed at. Cross-compile the engine for Windows from a Linux box and cargo does exactly what it should: it emits Windows metadata for every ordinary crate, and Linux `.so` proc macros, because Linux is where the compiler ran. Ship that pair to a Windows user and their `rustc` cannot load half of it.
+
+What they see is a wall of errors that looks like the script is wrong. It is not. The first line is the only real one:
+
+```
+error[E0463]: can't find crate for `bevy_derive` which `bevy_app` depends on
+```
+
+`bevy_derive` is a proc macro, so it is missing; `bevy_app` therefore will not load; `bevy` will not load either — and everything behind `bevy::prelude` disappears at once. `cannot find macro info`, `cannot find derive macro Component`, `cannot find type Transform`, and so on for every name the script used.
+
+You cannot repair such an SDK by dropping in proc macros from a real Windows build. Each `.rmeta` records the exact hash of the dependencies it was compiled against, so `rustc` rejects a proc macro that did not come out of the same compilation. Two of them are the engine's own — `renzora_macros` and `renzora_plugin_derive` — so a fork's macros differ from anyone else's and no shared or downloaded set could stand in. The metadata and the proc macros have to come from one build, on one machine, whose own platform is the platform being built for.
+
+Rather than ship an editor that fails this way, the build system does not produce one. Each of the three ways to build has a job it can actually do:
+
+| | Builds | Editor + SDK |
+|---|---|---|
+| `cargo renzora` | the platform you are sitting on | yes, and correct by construction |
+| Docker (`renzora build <platform>`) | runtimes / export templates, any platform | no — never staged |
+| CI native lanes | one runner per platform | yes, one per platform |
+
+So a container's desktop lane now stages the game runtime and stops. The editor binary is still compiled — it comes along with `--workspace` — and then deliberately left behind. macOS from Linux was always affected exactly as Windows was; there is nothing Windows-specific here beyond it being the case people hit first.
+
+**This costs the export path nothing**, which matters if you maintain a fork. A game needs no SDK — it ships plugins that were already compiled — so cross-built runtimes are correct, and those runtimes *are* the export templates `renzora_export` looks for. Building your own templates for platforms you do not own is exactly what Docker is for, and it works. Of the three plugin mechanisms only this one is affected at all: C-ABI plugins link no Bevy and need no SDK, and Lua is interpreted.
+
+**What you cannot do is hand someone an editor for an operating system you do not have.** For that, use a hosted runner — free on a public repository, and no container involved: the lane runs `cargo renzora dist` natively, exactly as you would locally. `windows-arm64` in `.github/workflows/build-engine.yml` is the working template, and a fork inherits it with the repository.
 
 ### Staleness and rebuilds
 
