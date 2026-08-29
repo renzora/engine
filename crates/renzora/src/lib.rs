@@ -48,6 +48,12 @@ pub use world_environment::*;
 pub mod clouds;
 pub use clouds::*;
 
+// Auto-exposure settings. Same boundary reason as `clouds`: `level_presets`
+// inserts and queries it, and `renzora_debugger` reads it for the live EV
+// readout — both compiled into the binary, while the metering is a plugin.
+pub mod auto_exposure;
+pub use auto_exposure::*;
+
 // One world-global wind, shared by foliage, cloth, the ocean and the cloud
 // deck. Here rather than in `renzora_wind` for the usual reason: four crates
 // read `WindState` and must all see the same `TypeId`.

@@ -7357,25 +7357,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_auto_exposure"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_macros",
- "serde",
-]
-
-[[package]]
-name = "renzora_auto_exposure_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_auto_exposure",
-]
-
-[[package]]
 name = "renzora_autosave"
 version = "0.1.0"
 dependencies = [
@@ -7517,7 +7498,6 @@ dependencies = [
  "bevy",
  "memory-stats",
  "renzora",
- "renzora_auto_exposure",
  "renzora_ember",
  "renzora_macros",
  "renzora_scripting",
@@ -7584,8 +7564,6 @@ dependencies = [
  "renzora_atmosphere",
  "renzora_atmosphere_editor",
  "renzora_auth",
- "renzora_auto_exposure",
- "renzora_auto_exposure_editor",
  "renzora_autosave",
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
@@ -8084,7 +8062,6 @@ dependencies = [
  "renzora",
  "renzora_antialiasing",
  "renzora_atmosphere",
- "renzora_auto_exposure",
  "renzora_bloom_effect",
  "renzora_distance_fog",
  "renzora_dof",
@@ -8535,7 +8512,6 @@ dependencies = [
  "renzora_antialiasing",
  "renzora_atmosphere",
  "renzora_audio",
- "renzora_auto_exposure",
  "renzora_bloom_effect",
  "renzora_blueprint",
  "renzora_cloth",

@@ -26,8 +26,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_atmosphere::AtmospherePlugin::default());
     #[cfg(feature = "audio")]
     app.add_plugins(renzora_audio::AudioPlugin::default());
-    #[cfg(feature = "auto_exposure")]
-    app.add_plugins(renzora_auto_exposure::AutoExposurePlugin::default());
     #[cfg(feature = "bloom")]
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin::default());
     #[cfg(feature = "blueprint")]

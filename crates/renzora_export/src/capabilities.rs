@@ -335,16 +335,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: Some("postfx"),
     },
     Capability {
-        id: "auto_exposure",
-        section: "postfx",
-        label: "Auto exposure",
-        help: "Adaptive eye-adjustment exposure.",
-        bevy_features: &[],
-        runtime_features: &["auto_exposure"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
         id: "oit",
         section: "postfx",
         label: "Order-independent transparency",
@@ -1002,7 +992,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
             "atmosphere", "environment_map", "skybox", "night_stars",
             // former `postfx` bundle
             "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
-            "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing",
+            "volumetric_fog", "lens_distortion", "oit", "antialiasing",
             // 3D-only extras that build on bevy_pbr
             "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting", "text3d",
             "forward_decal", "procedural_tree",

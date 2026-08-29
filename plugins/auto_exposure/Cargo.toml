@@ -1,0 +1,26 @@
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependency below exists so rust-analyzer can
+# resolve `renzora::` while you author; the real build is `cargo renzora`.
+[workspace]
+
+[package]
+name = "auto_exposure"
+version = "0.1.0"
+edition = "2021"
+description = "Auto exposure — histogram metering with a keep-dark compensation curve."
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+
+# No `serde`: `AutoExposureSettings` moved to the contract crate, which is where
+# its derives live now. Nothing else here is third-party, so cargo is never
+# invoked for this plugin and the build stays offline.

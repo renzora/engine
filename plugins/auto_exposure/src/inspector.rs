@@ -1,14 +1,12 @@
-//! Editor-only half of `renzora_auto_exposure` — the Auto Exposure inspector.
+//! The Auto Exposure inspector.
 //!
-//! `renzora_auto_exposure` compiles lean (no `editor` feature, no
-//! egui-phosphor). This crate holds the inspector (renzora editor contract +
-//! Phosphor icon), registered `renzora::add!(AutoExposureEditorPlugin, Editor)`
-//! and linked only by the editor bundle.
+//! Was a separate `Editor`-scope crate so the lean runtime half carried no
+//! editor contract; as one `Runtime` native plugin it is a module again, loading
+//! in the editor and in a copy-based export alike.
 
 use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
-use renzora_auto_exposure::AutoExposureSettings;
+use renzora::{AppEditorExt, AutoExposureSettings, InspectorEntry};
 
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
@@ -53,15 +51,9 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
-/// Editor-scope companion to `renzora_auto_exposure::AutoExposurePlugin`.
-#[derive(Default)]
-pub struct AutoExposureEditorPlugin;
-
-impl Plugin for AutoExposureEditorPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] AutoExposureEditorPlugin");
-        app.register_inspector(inspector_entry());
-    }
+/// Registered unconditionally from the one plugin's `build` — a native plugin
+/// compiles with no cargo features, so a `cfg(feature = "editor")` gate would be
+/// permanently false and this section would vanish with nothing logged.
+pub(crate) fn register(app: &mut App) {
+    app.register_inspector(inspector_entry());
 }
-
-renzora::add!(AutoExposureEditorPlugin, Editor);

@@ -23,7 +23,6 @@ renzora_atmosphere = { path = "../renzora_atmosphere" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }
 renzora_volumetric_fog = { path = "../renzora_volumetric_fog" }
 renzora_environment_map = { path = "../renzora_environment_map" }
-renzora_auto_exposure = { path = "../renzora_auto_exposure" }
 renzora_tonemapping = { path = "../renzora_tonemapping" }
 renzora_ssao = { path = "../renzora_ssao" }
 renzora_ssr = { path = "../renzora_ssr" }
