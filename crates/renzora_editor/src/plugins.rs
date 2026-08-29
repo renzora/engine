@@ -16,7 +16,6 @@ use renzora::bevy::app::App;
 /// Install every Editor-scope plugin. Entries are ordered by the
 /// `priority` given to `add!` (lower first, default 0), then by path.
 pub(crate) fn add_editor_plugins(app: &mut App) {
-    app.add_plugins(renzora_ai_chat::AiChatPlugin::default());
     app.add_plugins(renzora_animation_editor::AnimationEditorPlugin::default());
     app.add_plugins(renzora_antialiasing_editor::AntiAliasingEditorPlugin::default());
     app.add_plugins(renzora_asset_browser::AssetBrowserPlugin::default());

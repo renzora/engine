@@ -99,7 +99,6 @@ editor = [
     # (`SystemCall::diagnostics`, ABI MINOR 4.8) rather than linking Bevy, so the
     # editor no longer compiles `tracy-client`'s C sources to ship a profiler
     # most builds never arm. Delete the dll and the feature is gone.
-    "dep:renzora_ai_chat",
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.
@@ -181,7 +180,6 @@ renzora_sprite_anim_editor = { path = "../renzora_sprite_anim/editor", optional 
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial           = { path = "../renzora_tutorial", optional = true }
-renzora_ai_chat            = { path = "../renzora_ai_chat", optional = true }
 renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
 # ── Dual-mode crates touched by the `editor` cascade above ───────────────────

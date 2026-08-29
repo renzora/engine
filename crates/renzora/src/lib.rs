@@ -192,6 +192,18 @@ pub use renzora_macros::{post_process, Inspectable};
 /// plugin does not have.
 pub use serde;
 
+/// The engine's `serde_json`, re-exported for the same reason as [`serde`].
+///
+/// Beyond the duplicate-crate hazard, this is what makes `Response::json::<T>()`
+/// usable from a plugin at all: that bound is `T: serde::de::DeserializeOwned`
+/// against *this* crate's serde, so a `T` derived against a privately resolved
+/// one does not satisfy it.
+///
+/// It also means a plugin whose only third-party needs were serde and
+/// serde_json declares **no** dependencies, so cargo is never invoked for it and
+/// the build stays offline and about a second long.
+pub use serde_json;
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor

@@ -251,7 +251,12 @@ enum StreamEvent {
 /// `~/.config/renzora/ai_chat.json` (APPDATA on Windows). Note the API key
 /// is stored in plain text, like most local dev tooling — the file lives in
 /// the user's own config directory.
-#[derive(Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+// Derived against the engine's serde, reached through the contract crate. A
+// plugin's own `serde = "1"` would be a different crate, and this plugin then
+// declares no third-party dependencies at all — so cargo is never invoked and
+// the build stays offline.
+#[derive(Clone, PartialEq, Default, renzora::serde::Serialize, renzora::serde::Deserialize)]
+#[serde(crate = "renzora::serde")]
 struct AiChatConfig {
     preset: usize,
     base_url: String,
@@ -294,7 +299,7 @@ fn config_path() -> Option<std::path::PathBuf> {
 }
 
 fn load_config() -> Option<AiChatConfig> {
-    serde_json::from_str(&std::fs::read_to_string(config_path()?).ok()?).ok()
+    renzora::serde_json::from_str(&std::fs::read_to_string(config_path()?).ok()?).ok()
 }
 
 fn save_config(cfg: &AiChatConfig) {
@@ -302,7 +307,7 @@ fn save_config(cfg: &AiChatConfig) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Ok(json) = serde_json::to_string_pretty(cfg) {
+    if let Ok(json) = renzora::serde_json::to_string_pretty(cfg) {
         let _ = std::fs::write(path, json);
     }
 }
@@ -993,7 +998,7 @@ fn drain_models(mut chat: ResMut<AiChat>) {
 
 fn fetch_models(preset: &Preset, url: &str, key: &str) -> Result<Vec<String>, String> {
     let endpoint = format!("{url}{}", preset.models_path);
-    let req = authorize(renzora_net::Request::get(&endpoint), preset.protocol, key);
+    let req = authorize(renzora::net::Request::get(&endpoint), preset.protocol, key);
     let res = req
         .send()
         .map_err(|e| format!("Can't reach {endpoint}: {e}"))?;
@@ -1005,8 +1010,8 @@ fn fetch_models(preset: &Preset, url: &str, key: &str) -> Result<Vec<String>, St
             api_error_message(&body)
         ));
     }
-    let value: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("Bad JSON from {endpoint}: {e}"))?;
+    let value: renzora::serde_json::Value =
+        renzora::serde_json::from_str(&body).map_err(|e| format!("Bad JSON from {endpoint}: {e}"))?;
     let list = match preset.protocol {
         Protocol::Ollama => value["models"]
             .as_array()
@@ -1309,13 +1314,13 @@ shell); its real content is not visible to a plain fetch.]",
     let (model, key, history) = (job.model, job.api_key, job.history);
     let url = job.base_url;
 
-    let messages: Vec<serde_json::Value> = history
+    let messages: Vec<renzora::serde_json::Value> = history
         .iter()
-        .map(|(role, content)| serde_json::json!({ "role": role, "content": content }))
+        .map(|(role, content)| renzora::serde_json::json!({ "role": role, "content": content }))
         .collect();
     let endpoint = format!("{url}{}", preset.chat_path);
     let payload = match preset.protocol {
-        Protocol::Ollama => serde_json::json!({
+        Protocol::Ollama => renzora::serde_json::json!({
             "model": model,
             "stream": true,
             // System prompt rides as the first message; raise Ollama's
@@ -1324,14 +1329,14 @@ shell); its real content is not visible to a plain fetch.]",
             "messages": with_system(messages),
             "options": { "num_ctx": 16384 },
         }),
-        Protocol::OpenAi => serde_json::json!({
+        Protocol::OpenAi => renzora::serde_json::json!({
             "model": model,
             "stream": true,
             "messages": with_system(messages),
         }),
         // The Messages API requires max_tokens and takes the system prompt
         // as a top-level field, not a message role.
-        Protocol::Anthropic => serde_json::json!({
+        Protocol::Anthropic => renzora::serde_json::json!({
             "model": model,
             "max_tokens": 8192,
             "stream": true,
@@ -1341,7 +1346,7 @@ shell); its real content is not visible to a plain fetch.]",
     };
 
     let req = authorize(
-        renzora_net::Request::post(&endpoint)
+        renzora::net::Request::post(&endpoint)
             .body("application/json", payload.to_string())
             // A model can think for a long time before its first token, and the
             // default would cut a slow local Ollama off mid-answer.
@@ -1413,7 +1418,7 @@ shell); its real content is not visible to a plain fetch.]",
                 finished = true;
                 break;
             }
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(json_part) else {
+            let Ok(value) = renzora::serde_json::from_str::<renzora::serde_json::Value>(json_part) else {
                 continue;
             };
             if let Some(err) = value["error"].as_str() {
@@ -1462,10 +1467,10 @@ shell); its real content is not visible to a plain fetch.]",
 
 /// Prepend the system prompt as the first chat message (Ollama / OpenAI
 /// style; Anthropic takes it as a top-level field instead).
-fn with_system(mut messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+fn with_system(mut messages: Vec<renzora::serde_json::Value>) -> Vec<renzora::serde_json::Value> {
     messages.insert(
         0,
-        serde_json::json!({ "role": "system", "content": SYSTEM_PROMPT }),
+        renzora::serde_json::json!({ "role": "system", "content": SYSTEM_PROMPT }),
     );
     messages
 }
@@ -1495,7 +1500,7 @@ const DOCS_CHAR_BUDGET: usize = 9000;
 
 /// Fetch a URL's raw body (HTML).
 fn fetch_raw(url: &str) -> Result<String, String> {
-    let res = renzora_net::Request::get(url)
+    let res = renzora::net::Request::get(url)
         .header("User-Agent", "renzora-ai-chat/0.1")
         // A crawled page feeds a context budget of a few thousand characters,
         // so there is no reason to accept a body orders of magnitude larger.
@@ -1713,7 +1718,7 @@ fn resolve_docs_root(path: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     if let Ok(manifest) = std::fs::read_to_string(p.join("_versions.json")) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&manifest) {
+        if let Ok(v) = renzora::serde_json::from_str::<renzora::serde_json::Value>(&manifest) {
             let current = v["versions"]
                 .as_array()
                 .and_then(|a| {
@@ -1878,10 +1883,10 @@ const LF: char = '\n';
 /// Attach the protocol's auth headers. Anthropic uses `x-api-key` + a
 /// pinned `anthropic-version`; everything else is a Bearer token.
 fn authorize(
-    req: renzora_net::Request,
+    req: renzora::net::Request,
     protocol: Protocol,
     key: &str,
-) -> renzora_net::Request {
+) -> renzora::net::Request {
     match protocol {
         Protocol::Anthropic => req
             .header("x-api-key", key)
@@ -1895,7 +1900,7 @@ fn authorize(
 /// Ollama uses `{"error": "..."}`; OpenAI-compatible servers use
 /// `{"error": {"message": "..."}}`. Falls back to the (truncated) raw body.
 fn api_error_message(body: &str) -> String {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+    if let Ok(v) = renzora::serde_json::from_str::<renzora::serde_json::Value>(body) {
         if let Some(msg) = v["error"].as_str() {
             return msg.to_string();
         }
@@ -1911,7 +1916,10 @@ fn api_error_message(body: &str) -> String {
     }
 }
 
-renzora::add!(AiChatPlugin, Editor);
+// `Editor` — this is an editor panel and has no business in a shipped game.
+// That is also `plugin!`'s default, but stated explicitly: the default differs
+// from `add!`'s, and a scope that reads as an accident is worth spelling out.
+renzora::plugin!(AiChatPlugin, Editor);
 
 #[cfg(test)]
 mod tests {
@@ -1962,8 +1970,8 @@ mod tests {
         // when the manual moved to alpha6.
         let manifest = std::fs::read_to_string(std::path::Path::new(docs).join("_versions.json"))
             .expect("_versions.json readable");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&manifest).expect("_versions.json parses");
+        let parsed: renzora::serde_json::Value =
+            renzora::serde_json::from_str(&manifest).expect("_versions.json parses");
         let current = parsed["versions"]
             .as_array()
             .and_then(|vs| {
