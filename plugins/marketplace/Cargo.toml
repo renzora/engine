@@ -1,0 +1,53 @@
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependencies below exist so rust-analyzer can
+# resolve `renzora::` / `renzora_ember::` while you author; the real build is
+# `cargo renzora`.
+[workspace]
+
+[package]
+name = "marketplace"
+version = "0.1.0"
+edition = "2021"
+description = "The Renzora account: browse and buy assets, manage your library and wallet, and publish your own."
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+renzora_ember = { path = "../../crates/renzora_ember" }
+
+# Everything below is plain Rust with no Bevy in its dependency graph, so the
+# native-plugin dep resolver builds it with cargo into private rlibs and hands
+# them to this plugin's `rustc` as extra `--extern`s. A private copy costs
+# nothing here: none of them holds process-global state the engine also owns.
+#
+# `serde` is a private copy ON PURPOSE, which is worth a word because other
+# plugins here use `renzora::serde` instead. The rule is about what gets derived:
+# name the engine's copy when a derive must satisfy a bound that Bevy's own types
+# (`Vec3`, `Color`) already implement, because a second `Serialize` is a
+# different trait and the impls would not match. Nothing here is in that
+# position — every derive is on an HTTP DTO of strings and numbers — so the
+# ordinary dependency is correct, and a mistake would be a compile error rather
+# than anything subtle.
+serde = { version = "1", features = ["derive"] }
+crossbeam-channel = "0.5"
+serde_json = "1"
+# Where the session token is cached between launches.
+dirs = "6"
+# Native file pickers: the uploader's main file, cover, screenshots and audio
+# previews, and the install destination folder.
+rfd = "0.15"
+# Thumbnail, cover and avatar decoding for the shared image caches.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Unpacking a downloaded asset archive into the project.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Parsing a downloaded theme `.toml`, and writing the installed-plugin metadata
+# sidecar (`<crate>.plugin.toml`).
+toml = "0.8"

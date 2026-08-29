@@ -14,8 +14,8 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver};
 
-use renzora_auth::marketplace::AssetSummary;
-use renzora_auth::session::AuthSession;
+use crate::auth::marketplace::AssetSummary;
+use crate::auth::session::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, folder_new_button, folder_picker, overlay_sized, FolderPick};
@@ -242,7 +242,7 @@ fn spawn_install(
 /// public preview proxy for free assets) and install into `dest`.
 #[cfg(not(target_arch = "wasm32"))]
 fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path) -> Result<String, String> {
-    use renzora_auth::marketplace as mk;
+    use crate::auth::marketplace as mk;
     let (bytes, filename, url) = if let Some(s) = session.filter(|s| s.is_signed_in()) {
         let dl = mk::download_asset(s, &asset.id)?;
         let bytes = mk::download_file(&dl.download_url)?;

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::api_base;
+use super::client::api_base;
 
 // ── Request types ──
 
@@ -59,7 +59,7 @@ fn post_json<T: serde::de::DeserializeOwned>(
     url: &str,
     body: &impl Serialize,
 ) -> Result<T, String> {
-    renzora_net::Request::post(url)
+    renzora::net::Request::post(url)
         .json(body)
         .send()
         .map_err(|e| format!("Request failed: {e}"))?
@@ -136,7 +136,7 @@ impl std::fmt::Display for RefreshFailure {
 /// status code is the entire signal here and that helper folds it into a string.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn refresh_token_checked(refresh_token: &str) -> Result<AuthResponse, RefreshFailure> {
-    let response = renzora_net::Request::post(&format!("{}/api/auth/refresh", api_base()))
+    let response = renzora::net::Request::post(&format!("{}/api/auth/refresh", api_base()))
         .json(&RefreshRequest {
             refresh_token: refresh_token.to_string(),
         })

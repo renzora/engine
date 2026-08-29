@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver};
 
-use renzora_auth::marketplace::AssetSummary;
-use renzora_auth::session::AuthSession;
+use crate::auth::marketplace::AssetSummary;
+use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
@@ -87,6 +87,7 @@ pub struct NativeHubLibrary;
 impl Plugin for NativeHubLibrary {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubLibraryData>();
+        app.register_shell_panel("hub_library", "Library", "books", "Marketplace");
         app.register_panel_content("hub_library", true, build)
             .systems(
             Update,
@@ -472,7 +473,7 @@ fn fetch_my_assets(data: &mut HubLibraryData, session: &AuthSession) {
     data.rx = Some(rx);
     data.loading = true;
     std::thread::spawn(move || {
-        let result = renzora_auth::marketplace::get_my_assets(&session).map(|r| r.assets);
+        let result = crate::auth::marketplace::get_my_assets(&session).map(|r| r.assets);
         let _ = tx.send(LibraryResult::Assets(result));
     });
 }
@@ -511,8 +512,8 @@ fn install_asset(data: &mut HubLibraryData, session: &AuthSession, asset: &Asset
     data.rx = Some(rx);
     std::thread::spawn(move || {
         let result = (|| {
-            let dl = renzora_auth::marketplace::download_asset(&session, &asset_id)?;
-            let bytes = renzora_auth::marketplace::download_file(&dl.download_url)?;
+            let dl = crate::auth::marketplace::download_asset(&session, &asset_id)?;
+            let bytes = crate::auth::marketplace::download_file(&dl.download_url)?;
             install::install_asset_with_filename(&project_path, &category, &asset_name, &dl.download_url, &dl.download_filename, &bytes)?;
             Ok(format!("Installed \"{asset_name}\""))
         })();

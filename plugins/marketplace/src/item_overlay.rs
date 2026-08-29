@@ -22,10 +22,10 @@ use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
-use renzora_auth::marketplace::{
+use crate::auth::marketplace::{
     AssetComment, AssetRating, AssetSummary, CommentsResponse, MediaItem,
 };
-use renzora_auth::session::AuthSession;
+use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
@@ -1803,7 +1803,7 @@ fn fetch_comments(state: &mut ItemOverlay, asset_id: &str) {
     state.comments_loading = true;
     let asset_id = asset_id.to_string();
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::get_comments(&asset_id));
+        let _ = tx.send(crate::auth::marketplace::get_comments(&asset_id));
     });
 }
 
@@ -1814,7 +1814,7 @@ fn fetch_rating(state: &mut ItemOverlay, asset_id: &str) {
     let asset_id = asset_id.to_string();
     let session = state.session.as_ref().map(clone_session);
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::get_rating(&asset_id, session.as_ref()));
+        let _ = tx.send(crate::auth::marketplace::get_rating(&asset_id, session.as_ref()));
     });
 }
 
@@ -1826,7 +1826,7 @@ fn spawn_post_comment(
     tx: crossbeam_channel::Sender<Result<AssetComment, String>>,
 ) {
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::post_comment(&session, &asset_id, &content));
+        let _ = tx.send(crate::auth::marketplace::post_comment(&session, &asset_id, &content));
     });
 }
 
@@ -1838,7 +1838,7 @@ fn spawn_post_rating(
     tx: crossbeam_channel::Sender<Result<AssetRating, String>>,
 ) {
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::post_rating(&session, &asset_id, rating));
+        let _ = tx.send(crate::auth::marketplace::post_rating(&session, &asset_id, rating));
     });
 }
 
@@ -1848,7 +1848,7 @@ fn fetch_media(state: &mut ItemOverlay, asset_id: &str) {
     state.media_rx = Some(rx);
     let asset_id = asset_id.to_string();
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::get_media(&asset_id));
+        let _ = tx.send(crate::auth::marketplace::get_media(&asset_id));
     });
 }
 
@@ -1930,7 +1930,7 @@ fn spawn_audio_download(audio: &mut AudioPlayback, url: &str) {
     audio.loading = true;
     let url = url.to_string();
     std::thread::spawn(move || {
-        let _ = tx.send(renzora_auth::marketplace::download_file(&url));
+        let _ = tx.send(crate::auth::marketplace::download_file(&url));
     });
 }
 

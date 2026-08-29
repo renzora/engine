@@ -8,8 +8,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::client::{api_base, get_json, post_json, require_token};
-use crate::session::AuthSession;
+use super::client::{api_base, get_json, post_json, require_token};
+use super::session::AuthSession;
 
 /// 1 credit = $0.10 USD.
 pub const CREDIT_USD_CENTS: i64 = 10;

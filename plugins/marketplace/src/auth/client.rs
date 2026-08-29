@@ -50,7 +50,7 @@ pub(crate) fn urlencoded(s: &str) -> String {
 /// reason, which is what this code did before it moved onto `renzora_net`.
 #[cfg(not(target_arch = "wasm32"))]
 fn send_json<T: serde::de::DeserializeOwned>(
-    request: renzora_net::Request,
+    request: renzora::net::Request,
 ) -> Result<T, String> {
     request
         .send()
@@ -68,8 +68,8 @@ fn send_json<T: serde::de::DeserializeOwned>(
 pub(crate) fn get_json_raw(
     url: &str,
     token: Option<&str>,
-) -> Result<renzora_net::Response, String> {
-    renzora_net::Request::get(url)
+) -> Result<renzora::net::Response, String> {
+    renzora::net::Request::get(url)
         .maybe_bearer(token)
         .send()
         .map_err(|e| format!("Request failed: {e}"))
@@ -81,8 +81,8 @@ pub(crate) fn post_json_raw(
     url: &str,
     body: &impl serde::Serialize,
     token: Option<&str>,
-) -> Result<renzora_net::Response, String> {
-    renzora_net::Request::post(url)
+) -> Result<renzora::net::Response, String> {
+    renzora::net::Request::post(url)
         .json(body)
         .maybe_bearer(token)
         .send()
@@ -95,7 +95,7 @@ pub(crate) fn get_json<T: serde::de::DeserializeOwned>(
     url: &str,
     token: Option<&str>,
 ) -> Result<T, String> {
-    send_json(renzora_net::Request::get(url).maybe_bearer(token))
+    send_json(renzora::net::Request::get(url).maybe_bearer(token))
 }
 
 /// POST a JSON body, optionally authenticated.
@@ -105,7 +105,7 @@ pub(crate) fn post_json<T: serde::de::DeserializeOwned>(
     body: &impl serde::Serialize,
     token: Option<&str>,
 ) -> Result<T, String> {
-    send_json(renzora_net::Request::post(url).json(body).maybe_bearer(token))
+    send_json(renzora::net::Request::post(url).json(body).maybe_bearer(token))
 }
 
 /// PUT a JSON body, optionally authenticated.
@@ -115,7 +115,7 @@ pub(crate) fn put_json<T: serde::de::DeserializeOwned>(
     body: &impl serde::Serialize,
     token: Option<&str>,
 ) -> Result<T, String> {
-    send_json(renzora_net::Request::put(url).json(body).maybe_bearer(token))
+    send_json(renzora::net::Request::put(url).json(body).maybe_bearer(token))
 }
 
 /// DELETE an endpoint, optionally authenticated.
@@ -124,11 +124,11 @@ pub(crate) fn delete_json<T: serde::de::DeserializeOwned>(
     url: &str,
     token: Option<&str>,
 ) -> Result<T, String> {
-    send_json(renzora_net::Request::delete(url).maybe_bearer(token))
+    send_json(renzora::net::Request::delete(url).maybe_bearer(token))
 }
 
 /// Extract the bearer token from a session, or fail like existing callers do.
-pub(crate) fn require_token(session: &crate::session::AuthSession) -> Result<&str, String> {
+pub(crate) fn require_token(session: &super::session::AuthSession) -> Result<&str, String> {
     session.access_token.as_deref().ok_or_else(|| "Not signed in".to_string())
 }
 
@@ -181,8 +181,8 @@ fn multipart<T: serde::de::DeserializeOwned>(
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
     let request = match method {
-        "PUT" => renzora_net::Request::put(url),
-        _ => renzora_net::Request::post(url),
+        "PUT" => renzora::net::Request::put(url),
+        _ => renzora::net::Request::post(url),
     };
     request
         .bearer(token)
@@ -243,7 +243,7 @@ pub(crate) fn post_multipart_form<T: serde::de::DeserializeOwned>(
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
-    renzora_net::Request::post(url)
+    renzora::net::Request::post(url)
         .bearer(token)
         .body(&format!("multipart/form-data; boundary={boundary}"), body)
         .send()

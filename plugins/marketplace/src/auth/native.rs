@@ -13,7 +13,7 @@ use renzora_ember::widgets::{
     bind_text_input, password_input, text_input, EmberForm, EmberTextInput, OverlaySurface,
 };
 
-use crate::{api, spawn_auth_request, AuthResult, AuthSession, AuthState, AuthView};
+use super::{api, spawn_auth_request, AuthResult, AuthSession, AuthState, AuthView};
 
 const GREEN: (u8, u8, u8) = (34, 197, 94);
 const RED: (u8, u8, u8) = (239, 68, 68);
@@ -54,7 +54,7 @@ fn native_auth_poll(world: &mut World) {
     let mut session = world.remove_resource::<AuthSession>();
     let mut signed = false;
     if let (Some(a), Some(s)) = (&mut auth, &mut session) {
-        crate::poll_auth_result(a, s);
+        super::poll_auth_result(a, s);
         if a.just_signed_in {
             a.just_signed_in = false;
             signed = true;

@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::session::AuthSession;
+use super::session::AuthSession;
 
 /// Base URL for the Renzora API.
 const API_BASE: &str = "https://renzora.com";
@@ -91,7 +91,7 @@ pub fn list_assets(
         url.push_str(&format!("&max_price={p}"));
     }
 
-    let response = crate::client::get_json_raw(&url, None)?;
+    let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -100,7 +100,7 @@ pub fn list_assets(
 pub fn get_asset(slug: &str) -> Result<AssetDetail, String> {
     let url = format!("{API_BASE}/api/marketplace/detail/{slug}");
 
-    let response = crate::client::get_json_raw(&url, None)?;
+    let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -112,7 +112,7 @@ pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadR
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/download");
 
-    let response = crate::client::get_json_raw(&url, Some(token))?;
+    let response = super::client::get_json_raw(&url, Some(token))?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -130,7 +130,7 @@ pub fn preview_file_url(asset_id: &str) -> String {
 pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
     // 256 MB, enforced by the backend as the bytes arrive rather than after —
     // this is an asset file whose size the marketplace chose, not us.
-    let response = renzora_net::Request::get(url)
+    let response = renzora::net::Request::get(url)
         .max_bytes(256 * 1024 * 1024)
         .send()
         .map_err(|e| format!("Download failed: {e}"))?;
@@ -161,7 +161,7 @@ pub struct MediaItem {
 pub fn get_media(asset_id: &str) -> Result<Vec<MediaItem>, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/media");
 
-    let mut items: Vec<MediaItem> = crate::client::get_json_raw(&url, None)?
+    let mut items: Vec<MediaItem> = super::client::get_json_raw(&url, None)?
         .json()
         .map_err(|e| e.to_string())?;
     items.sort_by_key(|m| m.sort_order);
@@ -192,7 +192,7 @@ pub struct AssetFileInfo {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_asset_files(asset_id: &str) -> Result<Vec<AssetFileInfo>, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/asset-files");
-    let response = crate::client::get_json_raw(&url, None)?;
+    let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -201,7 +201,7 @@ pub fn get_asset_files(asset_id: &str) -> Result<Vec<AssetFileInfo>, String> {
 pub fn list_categories() -> Result<Vec<Category>, String> {
     let url = format!("{API_BASE}/api/marketplace/categories");
 
-    let response = crate::client::get_json_raw(&url, None)?;
+    let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -212,7 +212,7 @@ pub fn purchase_asset(session: &AuthSession, asset_id: &str) -> Result<PurchaseR
 
     let url = format!("{API_BASE}/api/credits/purchase");
     let body = serde_json::json!({ "asset_id": asset_id });
-        let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+        let response = super::client::post_json_raw(&url, &body, Some(token))?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -223,7 +223,7 @@ pub fn get_my_assets(session: &AuthSession) -> Result<MarketplaceListResponse, S
 
     let url = format!("{API_BASE}/api/marketplace/purchased");
 
-    let response = crate::client::get_json_raw(&url, Some(token))?;
+    let response = super::client::get_json_raw(&url, Some(token))?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -234,7 +234,7 @@ pub fn get_credit_balance(session: &AuthSession) -> Result<CreditBalanceResponse
 
     let url = format!("{API_BASE}/api/credits/balance");
 
-    let response = crate::client::get_json_raw(&url, Some(token))?;
+    let response = super::client::get_json_raw(&url, Some(token))?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -288,7 +288,7 @@ pub struct AssetRating {
 pub fn get_comments(asset_id: &str) -> Result<CommentsResponse, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
 
-    let response = crate::client::get_json_raw(&url, None)?;
+    let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -303,7 +303,7 @@ pub fn post_comment(
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
     let body = serde_json::json!({ "content": content });
-        let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+        let response = super::client::post_json_raw(&url, &body, Some(token))?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -315,7 +315,7 @@ pub fn post_comment(
 pub fn get_rating(asset_id: &str, _session: Option<&AuthSession>) -> Result<AssetRating, String> {
     let empty = AssetRating { average: 0.0, count: 0, user_rating: None };
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
-    let Ok(response) = renzora_net::Request::get(&url).send() else { return Ok(empty) };
+    let Ok(response) = renzora::net::Request::get(&url).send() else { return Ok(empty) };
     let Ok(v) = response.json::<serde_json::Value>() else { return Ok(empty) };
     let average = v.get("rating_avg").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
     let count = v.get("rating_count").and_then(|x| x.as_i64()).unwrap_or(0);
@@ -338,7 +338,7 @@ pub fn post_rating(session: &AuthSession, asset_id: &str, rating: i32) -> Result
     // status as a successful request — that is what lets every other call site
     // here read the server's own `{"error": …}` — so the status is ours to
     // interpret.
-    let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+    let response = super::client::post_json_raw(&url, &body, Some(token))?;
     if !response.is_ok() {
         return Err(response
             .json::<serde_json::Value>()

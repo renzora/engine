@@ -14,8 +14,8 @@ use bevy::ui::widget::NodeImageMode;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};
 
-use renzora_auth::marketplace::{AssetSummary, MarketplaceListResponse};
-use renzora_auth::session::AuthSession;
+use crate::auth::marketplace::{AssetSummary, MarketplaceListResponse};
+use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
@@ -257,6 +257,10 @@ impl Plugin for NativeHubStore {
         app.init_resource::<HubStoreData>();
         app.init_resource::<ThemePreview>();
         app.init_resource::<HomeCarousel>();
+        // The shell's static panel table no longer carries the Marketplace
+        // entries — they moved here with the plugin, so an install without it
+        // shows no Marketplace category instead of panels that open empty.
+        app.register_shell_panel("hub_store", "Marketplace", "storefront", "Marketplace");
         app.register_panel_content("hub_store", false, build);
         crate::install_overlay::register(app);
         crate::item_overlay::register(app);
@@ -1400,7 +1404,7 @@ fn store_home_init(mut data: ResMut<HubStoreData>) {
     {
         let tx = tx.clone();
         std::thread::spawn(move || {
-            let r = renzora_auth::marketplace::list_assets(None, None, Some("popular"), 1, None, None);
+            let r = crate::auth::marketplace::list_assets(None, None, Some("popular"), 1, None, None);
             let _ = tx.send(HomeMsg::Featured(r.map(|resp| resp.assets)));
         });
     }
@@ -1408,7 +1412,7 @@ fn store_home_init(mut data: ResMut<HubStoreData>) {
     for (slug, name) in data.categories.clone() {
         let tx = tx.clone();
         std::thread::spawn(move || {
-            let r = renzora_auth::marketplace::list_assets(None, Some(&slug), Some("popular"), 1, None, None);
+            let r = crate::auth::marketplace::list_assets(None, Some(&slug), Some("popular"), 1, None, None);
             let _ = tx.send(HomeMsg::Section(slug, name, r.map(|resp| resp.assets)));
         });
     }
@@ -1748,8 +1752,8 @@ fn start_preview_download(preview: &mut ThemePreview, asset: AssetSummary) {
     preview.error = None;
     std::thread::spawn(move || {
         let result = (|| {
-            let url = renzora_auth::marketplace::preview_file_url(&asset.id);
-            let bytes = renzora_auth::marketplace::download_file(&url)?;
+            let url = crate::auth::marketplace::preview_file_url(&asset.id);
+            let bytes = crate::auth::marketplace::download_file(&url)?;
             let text = String::from_utf8(bytes).map_err(|e| format!("Theme file isn't valid UTF-8: {e}"))?;
             let theme: renzora_theme::Theme =
                 toml::from_str(&text).map_err(|e| format!("Couldn't parse theme: {e}"))?;
@@ -1787,7 +1791,7 @@ fn fetch_assets(data: &mut HubStoreData) {
     data.pending_sig = Some(sig);
     data.loading = true;
     std::thread::spawn(move || {
-        let result = renzora_auth::marketplace::list_assets(
+        let result = crate::auth::marketplace::list_assets(
             query.as_deref(),
             category.as_deref(),
             Some(&sort),
@@ -1804,7 +1808,7 @@ fn fetch_categories(data: &mut HubStoreData) {
     let (tx, rx) = unbounded();
     data.cat_rx = Some(rx);
     std::thread::spawn(move || {
-        let result = renzora_auth::marketplace::list_categories()
+        let result = crate::auth::marketplace::list_categories()
             .map(|cats| cats.into_iter().map(|c| (c.slug, c.name)).collect());
         let _ = tx.send(result);
     });

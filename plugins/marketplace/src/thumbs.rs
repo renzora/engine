@@ -75,7 +75,7 @@ fn start_download(url: String, tx: Sender<Result<Downloaded, String>>) {
             // The 10 MiB cap is enforced by the backend as the body arrives,
             // not after: this URL came from a server, and a limit applied once
             // the bytes are already in memory protects nothing.
-            let response = renzora_net::Request::get(&url)
+            let response = renzora::net::Request::get(&url)
                 .max_bytes(10 * 1024 * 1024)
                 .send()
                 .map_err(|_| url.clone())?;

@@ -28,7 +28,7 @@ use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora::SplashState;
-use renzora_auth::marketplace::AssetSummary;
+use crate::auth::marketplace::AssetSummary;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
@@ -213,9 +213,9 @@ pub(crate) fn open_material_preview(world: &mut World, asset: &AssetSummary) {
         // The shader is (almost always) the asset's single file, so the public
         // `preview-file` proxy serves it directly for free assets; a paid asset
         // 401s → status Failed → the overlay falls back to the gallery.
-        let url = renzora_auth::marketplace::preview_file_url(&asset.id);
+        let url = crate::auth::marketplace::preview_file_url(&asset.id);
         std::thread::spawn(move || {
-            let _ = tx.send(renzora_auth::marketplace::download_file(&url));
+            let _ = tx.send(crate::auth::marketplace::download_file(&url));
         });
     }
     #[cfg(target_arch = "wasm32")]

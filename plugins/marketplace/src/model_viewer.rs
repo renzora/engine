@@ -46,7 +46,7 @@ use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora::SplashState;
-use renzora_auth::marketplace::AssetSummary;
+use crate::auth::marketplace::AssetSummary;
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
 /// This viewer's private render layer. Allocated in the contract crate
@@ -226,7 +226,7 @@ pub(crate) fn open_model_preview(world: &mut World, asset: &AssetSummary) {
         preview.active = true;
         let id = asset.id.clone();
         std::thread::spawn(move || {
-            let result = renzora_auth::marketplace::get_asset_files(&id)
+            let result = crate::auth::marketplace::get_asset_files(&id)
                 .and_then(|files| {
                     files
                         .into_iter()
@@ -240,7 +240,7 @@ pub(crate) fn open_model_preview(world: &mut World, asset: &AssetSummary) {
                     f.download_url
                         .ok_or_else(|| "no download URL (paid, not owned)".to_string())
                 })
-                .and_then(|url| renzora_auth::marketplace::download_file(&url));
+                .and_then(|url| crate::auth::marketplace::download_file(&url));
             let _ = tx.send(result);
         });
     }

@@ -26,11 +26,11 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
-use renzora_auth::marketplace::Category;
-use renzora_auth::publish::{
+use crate::auth::marketplace::Category;
+use crate::auth::publish::{
     self, ContentType, MediaUpload, PublishMeta, UploadFile, UploadedItem,
 };
-use renzora_auth::session::AuthSession;
+use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
@@ -243,6 +243,9 @@ pub(crate) struct UploaderPanel;
 impl Plugin for UploaderPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Uploader>();
+        // "Publish" covers both halves of selling now: this panel shows creator
+        // onboarding until you are approved, then the upload form. See `build`.
+        app.register_shell_panel(PANEL_ID, "Publish", "upload-simple", "Marketplace");
         app.register_panel_content(PANEL_ID, true, build)
             .systems(
             Update,
@@ -1444,7 +1447,7 @@ fn uploader_poll(mut state: ResMut<Uploader>) {
             state.submitting = false;
             match res {
                 Ok(item) => {
-                    let base = renzora_auth::client::api_base();
+                    let base = crate::auth::client::api_base();
                     let path = if state.is_asset() { "marketplace/asset" } else { "games" };
                     state.success = Some(format!("{} published!", state.content_type.map(|c| c.label()).unwrap_or("Item")));
                     state.success_url = Some(format!("{base}/{path}/{}", item.slug));
@@ -1480,7 +1483,7 @@ fn select_content_type(state: &mut Uploader, ct: ContentType) {
     state.cats_rx = Some(rx);
     std::thread::spawn(move || {
         let res = match ct {
-            ContentType::Asset => renzora_auth::marketplace::list_categories(),
+            ContentType::Asset => crate::auth::marketplace::list_categories(),
             ContentType::Game => publish::list_game_categories(),
         };
         let _ = tx.send(res);

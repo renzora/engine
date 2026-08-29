@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{AuthResponse, UserProfile};
+use super::api::{AuthResponse, UserProfile};
 
 /// Bevy resource holding the current authentication session.
 #[derive(Resource, Default)]

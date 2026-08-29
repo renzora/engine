@@ -11,10 +11,40 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::client::{
+use super::client::{
     api_base, delete_json, get_json, post_json, put_json, put_multipart, require_token,
 };
-use crate::session::AuthSession;
+use super::session::AuthSession;
+
+// ── Who am I ─────────────────────────────────────────────────────────────────
+
+/// The signed-in account, from `GET /api/user/me`.
+///
+/// This lived in the `social` module, which is gone, and it arrived here
+/// trimmed: the server still returns `message_privacy`, `online_status_visible`
+/// and `profile_visibility`, but those govern who may message you and who may
+/// see your profile — questions an account that exists to buy and sell assets
+/// does not ask. Unlisted fields are simply ignored when deserializing, so
+/// dropping them needs nothing from the backend.
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct MeResponse {
+    pub id: String,
+    pub username: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub credit_balance: i64,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_me(session: &AuthSession) -> Result<MeResponse, String> {
+    let token = require_token(session)?;
+    get_json(&format!("{}/api/user/me", api_base()), Some(token))
+}
 
 // ── Profile edit ─────────────────────────────────────────────────────────────
 

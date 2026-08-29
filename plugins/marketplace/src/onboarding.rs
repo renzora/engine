@@ -13,8 +13,8 @@ use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use renzora::core::RenzoraShellExt;
 use renzora::SplashState;
-use renzora_auth::billing::OnboardStatus;
-use renzora_auth::AuthSession;
+use crate::auth::billing::OnboardStatus;
+use crate::auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -198,7 +198,7 @@ fn auto_load(mut panel: ResMut<OnboardingPanel>, session: Res<AuthSession>) {
         let tx = panel.tx.clone();
         let s = session_clone(&session);
         spawn_thread(move || {
-            let _ = tx.send(OnboardResult::Status(renzora_auth::billing::onboard_status(&s)));
+            let _ = tx.send(OnboardResult::Status(crate::auth::billing::onboard_status(&s)));
         });
     }
 }
@@ -209,7 +209,7 @@ fn reload_status(panel: &mut OnboardingPanel, session: &AuthSession) {
     let tx = panel.tx.clone();
     let s = session_clone(session);
     spawn_thread(move || {
-        let _ = tx.send(OnboardResult::Status(renzora_auth::billing::onboard_status(&s)));
+        let _ = tx.send(OnboardResult::Status(crate::auth::billing::onboard_status(&s)));
     });
 }
 
@@ -260,7 +260,7 @@ fn clicks(
             let tx = panel.tx.clone();
             let s = session_clone(&session);
             spawn_thread(move || {
-                let r = renzora_auth::billing::accept_policy(&s).map(|_| ());
+                let r = crate::auth::billing::accept_policy(&s).map(|_| ());
                 let _ = tx.send(OnboardResult::PolicyAccepted(r));
             });
         }
@@ -270,7 +270,7 @@ fn clicks(
         let tx = panel.tx.clone();
         let s = session_clone(&session);
         spawn_thread(move || {
-            let _ = tx.send(OnboardResult::ConnectUrl(renzora_auth::billing::start_connect_onboarding(&s)));
+            let _ = tx.send(OnboardResult::ConnectUrl(crate::auth::billing::start_connect_onboarding(&s)));
         });
     }
 

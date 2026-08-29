@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::client::{api_base, post_json, post_multipart_form, require_token, FilePart};
-use crate::session::AuthSession;
+use super::client::{api_base, post_json, post_multipart_form, require_token, FilePart};
+use super::session::AuthSession;
 
 /// Which store an upload targets. The web wizard picks this in step 1; it selects
 /// the categories endpoint, the upload endpoint, and the `/media` field names.
@@ -81,8 +81,8 @@ pub struct TagOption {
 /// (`{id,name,slug,description,icon}`), just a different endpoint — the web
 /// wizard swaps the URL on the content type in step 2.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn list_game_categories() -> Result<Vec<crate::marketplace::Category>, String> {
-    crate::client::get_json(&format!("{}/api/games/categories", api_base()), None)
+pub fn list_game_categories() -> Result<Vec<super::marketplace::Category>, String> {
+    super::client::get_json(&format!("{}/api/games/categories", api_base()), None)
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ pub fn list_game_categories() -> Result<Vec<crate::marketplace::Category>, Strin
 #[cfg(not(target_arch = "wasm32"))]
 pub fn search_tags(query: &str) -> Result<Vec<TagOption>, String> {
     let url = format!("{}/api/marketplace/tags?q={}", api_base(), urlencoded(query));
-    crate::client::get_json(&url, None)
+    super::client::get_json(&url, None)
 }
 
 /// Submit a brand-new tag for review, returning it so the wizard can add the

@@ -11,8 +11,8 @@ use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use renzora::core::RenzoraShellExt;
 use renzora::SplashState;
-use renzora_auth::billing::{DonateResponse, DonationLeader, CREDIT_USD_CENTS};
-use renzora_auth::AuthSession;
+use crate::auth::billing::{DonateResponse, DonationLeader, CREDIT_USD_CENTS};
+use crate::auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -207,12 +207,12 @@ fn refresh_public(panel: &mut WalletPanel) {
     let tx = panel.tx.clone();
     spawn_thread(move || {
         let _ = tx.send(WalletResult::Total(
-            renzora_auth::billing::donation_total().map(|t| t.total),
+            crate::auth::billing::donation_total().map(|t| t.total),
         ));
     });
     let tx = panel.tx.clone();
     spawn_thread(move || {
-        let _ = tx.send(WalletResult::Leaderboard(renzora_auth::billing::donation_leaderboard()));
+        let _ = tx.send(WalletResult::Leaderboard(crate::auth::billing::donation_leaderboard()));
     });
 }
 
@@ -226,7 +226,7 @@ fn start_topup(session: &AuthSession, toasts: &mut ToastQueue, tx: &Sender<Walle
     let tx = tx.clone();
     let s = session_clone(session);
     spawn_thread(move || {
-        let _ = tx.send(WalletResult::Checkout(renzora_auth::billing::topup_checkout_url(&s, amount)));
+        let _ = tx.send(WalletResult::Checkout(crate::auth::billing::topup_checkout_url(&s, amount)));
     });
 }
 
@@ -333,7 +333,7 @@ fn donate_clicks(
     let tx = panel.tx.clone();
     let s = session_clone(&session);
     spawn_thread(move || {
-        let r = renzora_auth::billing::donate(&s, amount, message.as_deref(), anonymous);
+        let r = crate::auth::billing::donate(&s, amount, message.as_deref(), anonymous);
         let _ = tx.send(WalletResult::Donated(r));
     });
 }

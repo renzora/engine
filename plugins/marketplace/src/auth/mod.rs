@@ -1,22 +1,21 @@
-//! Authentication UI and API client for Renzora Editor.
+//! The renzora.com account: session, sign-in UI, and the API client.
 //!
-//! Provides sign-in, register, and forgot-password modals that communicate
-//! with the renzora.com API. Tokens are persisted to disk for auto-login.
+//! Sign-in, register and forgot-password modals talking to the renzora.com API,
+//! with tokens persisted to disk for auto-login.
+//!
+//! This was the `renzora_auth` crate, and it mirrored every feature the site
+//! had. The `docs`, `feed`, `forum`, `messages`, `social` and `teams` modules
+//! went with the social removal — what is left is exactly what an account needs
+//! to buy and sell assets.
 
 pub mod account;
 pub mod api;
 pub mod billing;
 pub mod client;
-pub mod docs;
-pub mod feed;
-pub mod forum;
 pub mod marketplace;
-pub mod messages;
 pub mod publish;
 mod native;
 pub mod session;
-pub mod social;
-pub mod teams;
 
 use bevy::prelude::*;
 
@@ -236,7 +235,7 @@ fn start_session_refresh(
     };
     // Nothing to hand a request to yet. The HTTP plugin loads during the first
     // frames, so this is the ordinary case for a frame or two.
-    if !renzora_net::is_available() {
+    if !renzora::net::is_available() {
         refresh.waited += 1;
         if refresh.waited > REFRESH_WAIT_FRAMES {
             warn!("[auth] no network backend — keeping the saved session unverified");

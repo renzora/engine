@@ -1,7 +1,7 @@
 //! Shared helpers for the social panels.
 
 use bevy::prelude::*;
-use renzora_auth::AuthSession;
+use crate::auth::AuthSession;
 use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb, rgba, text_muted, text_primary};

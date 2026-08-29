@@ -12,11 +12,11 @@ use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use renzora::core::AuthSignOutRequest;
 use renzora::SplashState;
-use renzora_auth::account::{
+use crate::auth::account::{
     self, AppGrant, CommunicationPrefs, ProfileUpdate, SocialConnection, SOCIAL_PLATFORMS,
 };
-use renzora_auth::social::MeResponse;
-use renzora_auth::AuthSession;
+use crate::auth::account::MeResponse;
+use crate::auth::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::tracked::keyed_list_tokened;
@@ -173,7 +173,7 @@ fn auto_load(mut acc: ResMut<AccountSettings>, session: Res<AuthSession>) {
         let tx = acc.tx.clone();
         let s = session_clone(&session);
         spawn_thread(move || {
-            let _ = tx.send(AccountResult::Me(renzora_auth::social::get_me(&s)));
+            let _ = tx.send(AccountResult::Me(account::get_me(&s)));
             let _ = tx.send(AccountResult::Connections(account::list_connections(&s)));
             let _ = tx.send(AccountResult::Comm(account::get_communication(&s)));
             let _ = tx.send(AccountResult::Grants(account::list_app_grants(&s)));
