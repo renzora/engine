@@ -20,7 +20,6 @@ renzora_lighting = { path = "../renzora_lighting" }
 # (forward renderer, no DeferredPrepass).
 renzora_bloom_effect = { path = "../renzora_bloom_effect" }
 renzora_atmosphere = { path = "../renzora_atmosphere" }
-renzora_clouds = { path = "../renzora_clouds" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }
 renzora_volumetric_fog = { path = "../renzora_volumetric_fog" }
 renzora_environment_map = { path = "../renzora_environment_map" }

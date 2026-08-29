@@ -123,7 +123,6 @@ editor = [
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
     "dep:renzora_night_stars_editor",
-    "dep:renzora_clouds_editor",
     "dep:renzora_procedural_tree_editor",
     "dep:renzora_forward_decal_editor",
     "renzora_network/editor",
@@ -239,8 +238,6 @@ renzora_skybox          = { path = "../renzora_skybox" }
 renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
 renzora_night_stars     = { path = "../renzora_night_stars" }
 renzora_night_stars_editor = { path = "../renzora_night_stars/editor", optional = true }
-renzora_clouds          = { path = "../renzora_clouds" }
-renzora_clouds_editor   = { path = "../renzora_clouds/editor", optional = true }
 # Procedural tree: runtime generation ships as the `renzora_procedural_tree`
 # cdylib (dlopen'd from plugins/, so no dep here); only the editor companion
 # (Add-Entity preset + inspector) links into the editor bundle.

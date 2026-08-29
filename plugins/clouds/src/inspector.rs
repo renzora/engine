@@ -1,13 +1,16 @@
-//! Editor-only half of `renzora_clouds` — the Clouds inspector.
+//! The Clouds inspector.
 //!
-//! `renzora_clouds` compiles lean (no `editor` feature, no egui-phosphor). This
-//! crate holds the inspector (renzora editor contract + Phosphor icon),
-//! registered `renzora::add!(CloudsEditorPlugin, Editor)` and linked only by the
-//! editor bundle.
+//! This was a separate `Editor`-scope crate so the lean runtime half carried no
+//! editor contract. As one native plugin it is a module again: `Runtime` scope
+//! loads in the editor *and* a copy-based export, and a game pays a single `Vec`
+//! push into a registry it never reads.
+//!
+//! It already imported the contract types from `renzora` rather than from
+//! `renzora_editor_framework`, so nothing here had to change but the path to
+//! `CloudsData` — which now lives in the contract crate too.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
-use renzora_clouds::CloudsData;
+use renzora::{AppEditorExt, CloudsData, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 /// One scalar slider. The volumetric model has enough knobs that spelling every
 /// getter and setter out by hand would triple the length of this file for no
@@ -169,15 +172,9 @@ fn inspector_entry() -> InspectorEntry {
     }
 }
 
-/// Editor-scope companion to `renzora_clouds::CloudsPlugin`.
-#[derive(Default)]
-pub struct CloudsEditorPlugin;
-
-impl Plugin for CloudsEditorPlugin {
-    fn build(&self, app: &mut App) {
-        info!("[editor] CloudsEditorPlugin");
-        app.register_inspector(inspector_entry());
-    }
+/// Registered from the one plugin's `build`, unconditionally — a native plugin
+/// is compiled with no cargo features, so a `cfg(feature = "editor")` gate would
+/// be permanently false and the section would vanish with nothing logged.
+pub(crate) fn register(app: &mut App) {
+    app.register_inspector(inspector_entry());
 }
-
-renzora::add!(CloudsEditorPlugin, Editor);

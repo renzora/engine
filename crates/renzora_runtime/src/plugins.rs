@@ -34,8 +34,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_blueprint::BlueprintPlugin::default());
     #[cfg(feature = "cloth")]
     app.add_plugins(renzora_cloth::ClothPlugin::default());
-    #[cfg(feature = "clouds")]
-    app.add_plugins(renzora_clouds::CloudsPlugin::default());
     #[cfg(feature = "distance_fog")]
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin::default());
     #[cfg(feature = "dof")]

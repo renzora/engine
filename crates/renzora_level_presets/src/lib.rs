@@ -1456,7 +1456,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // ── Atmosphere / sky ─────────────────────────────────────
             (
                 renzora_atmosphere::AtmosphereComponentSettings::default(),
-                renzora_clouds::CloudsData::default(),
+                renzora::CloudsData::default(),
                 night_stars,
             ),
             // ── Screen-space reflections (still a WorldEnvironment effect) ──

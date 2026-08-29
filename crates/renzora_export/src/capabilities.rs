@@ -210,16 +210,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "clouds",
-        section: "sky",
-        label: "Clouds",
-        help: "Volumetric cloud rendering.",
-        bevy_features: &[],
-        runtime_features: &["clouds"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "night_stars",
         section: "sky",
         label: "Night stars",
@@ -1009,7 +999,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
         for f in [
             "terrain", "water", "spline", "particles",
             // former `sky` bundle
-            "atmosphere", "environment_map", "skybox", "clouds", "night_stars",
+            "atmosphere", "environment_map", "skybox", "night_stars",
             // former `postfx` bundle
             "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
             "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing",

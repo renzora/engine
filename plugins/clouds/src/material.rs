@@ -71,7 +71,10 @@ pub struct CloudMaterial {
 
 impl Material for CloudMaterial {
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("embedded://renzora_clouds/clouds.wgsl".into())
+        // The crate name is part of an `embedded://` path and this crate is now
+        // `clouds`, not `renzora_clouds`. Wrong name is not a compile error —
+        // the shader just fails to resolve at runtime.
+        ShaderRef::Path("embedded://clouds/clouds.wgsl".into())
     }
 
     /// The raymarch accumulates *premultiplied* radiance: each step adds

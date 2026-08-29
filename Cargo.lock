@@ -7468,24 +7468,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_clouds"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_clouds_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_clouds",
-]
-
-[[package]]
 name = "renzora_code_editor"
 version = "0.1.0"
 dependencies = [
@@ -7609,8 +7591,6 @@ dependencies = [
  "renzora_bloom_effect_editor",
  "renzora_blueprint_editor",
  "renzora_camera",
- "renzora_clouds",
- "renzora_clouds_editor",
  "renzora_code_editor",
  "renzora_command_palette",
  "renzora_console",
@@ -8106,7 +8086,6 @@ dependencies = [
  "renzora_atmosphere",
  "renzora_auto_exposure",
  "renzora_bloom_effect",
- "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
  "renzora_ember",
@@ -8560,7 +8539,6 @@ dependencies = [
  "renzora_bloom_effect",
  "renzora_blueprint",
  "renzora_cloth",
- "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
  "renzora_dylib",
