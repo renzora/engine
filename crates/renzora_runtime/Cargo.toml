@@ -60,6 +60,11 @@ dynamic_linking = [
     "renzora_native_plugin/dynamic_linking",
     "renzora_rust_script/dynamic_linking",
 ]
+# The static counterpart: Rust scripts compiled into the binary rather than
+# loaded as dylibs. Set only by the lean exporter — see `static_scripts` in the
+# root manifest. Forwarded, because the crate that consumes the generated table
+# is `renzora_rust_script`.
+static_scripts = ["renzora_rust_script/static_scripts"]
 # Throwaway PROFILING build. The binary (`renzora_app`) enables `bevy/trace` +
 # `bevy/trace_tracy` alongside this; that alone gives per-system + render-node CPU
 # zones and the Tracy layer/frame-mark, but Bevy only emits GPU-pass zones when a

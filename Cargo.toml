@@ -371,6 +371,28 @@ xr = ["renzora_runtime?/xr"]
 # extra — the checked-in crate returns an empty list — so turning it on by hand
 # is harmless and pointless. See `renzora_plugin::static_link`.
 static_plugins = ["dep:renzora_static_plugins"]
+# Compile the project's `.rs` scripts INTO the binary instead of loading each as
+# a dylib. Set only by the lean exporter, in the same throwaway workspace copy,
+# where it also fills in the otherwise-empty `renzora_static_scripts` crate.
+#
+# This is what makes Rust scripts work in an exported game at all. A lean binary
+# links Bevy statically, so there is no shared image for a script dylib to bind
+# to and `RustScriptPlugin` refuses to register a backend — an exported game
+# reports `No backend for Some("rs")`. Compiling the source in removes the
+# boundary instead of trying to make it safe.
+#
+# Forwarded only — the crate that needs the generated table is
+# `renzora_rust_script`.
+#
+# `renzora/static_scripts` is NOT named here or anywhere in the dev tree. It is
+# enabled solely by the manifest the exporter GENERATES for
+# `renzora_static_scripts` inside `target/export-src/`. That distinction is
+# load-bearing: cargo unifies features across a build and every build here is
+# `--workspace`, so naming it in a checked-in manifest would compile `renzora`
+# with the feature for the whole dev tree — dropping `#[no_mangle]` from
+# `script!` and leaving every script dylib the editor builds with no findable
+# entry point.
+static_scripts = ["renzora_runtime?/static_scripts"]
 # Throwaway PROFILING build — re-adds Bevy's Tracy instrumentation for a full
 # flame graph + per-system Statistics in Tracy. `bevy/trace` turns on the
 # per-system and render-node CPU spans (bevy_ecs gates system zones behind it, so
@@ -534,9 +556,13 @@ winres = "0.1"
 # them but that is most of the code, i.e. the size win itself.
 #
 # So Windows trades binary size for the shared-image plugin system, which needs
-# `bevy_dylib` to exist at all. `docker/build-all.sh` and the `windows-arm64`
-# lane both select this profile by name through `RENZORA_PROFILE`; Linux and
-# macOS keep `release`, having no such ceiling.
+# `bevy_dylib` to exist at all. `build_one` in `docker/build-all.sh` FORCES this
+# profile for any `windows-*` platform rather than trusting its caller to ask for
+# it — the constraint belongs to the target, and a caller that did not know
+# (`renzora build windows`, from the CLI) silently took the `release` default and
+# failed to link. The `windows-arm64` lane, which runs `cargo renzora` instead of
+# that script, still names it via `RENZORA_PROFILE`. Linux and macOS keep
+# `release`, having no such ceiling.
 [profile.dist]
 inherits = "release"
 # Fast to link. `opt-level = 2` and NO LTO — restated explicitly rather than

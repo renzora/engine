@@ -88,6 +88,31 @@ pub struct RustScriptPlugin;
 
 impl Plugin for RustScriptPlugin {
     fn build(&self, app: &mut App) {
+        // ── Compiled-in scripts: no compiler, no libraries, no watching ──────
+        //
+        // The whole first half of this plugin exists to turn `.rs` files into
+        // dylibs and load them. A statically linked build has them already —
+        // `renzora_static_scripts::scripts()` is a table the lean exporter
+        // generated and the linker resolved — so all that is left is to publish
+        // the table and dispatch from it.
+        //
+        // Deliberately checked BEFORE `dynamic_linking`: an export has neither
+        // the shared images nor a Rust toolchain, and would otherwise take the
+        // early return below and report `No backend for Some("rs")`.
+        #[cfg(feature = "static_scripts")]
+        {
+            app.init_resource::<LoadedScripts>()
+                .add_systems(PreUpdate, (register_backend, load_static_scripts))
+                .add_systems(
+                    Update,
+                    dispatch
+                        .run_if(scripts_should_run)
+                        .after(renzora_scripting::ScriptingSet::PreScript),
+                );
+            return;
+        }
+
+        #[cfg(not(feature = "static_scripts"))]
         if !cfg!(feature = "dynamic_linking") {
             debug!("rust scripts unavailable: this build links no shared engine image");
             return;
@@ -102,7 +127,12 @@ impl Plugin for RustScriptPlugin {
             // Claims `.rs` with the engine. Not done in `build` because the
             // engine is a resource another plugin creates, and plugin build
             // order is not something to depend on.
-            .add_systems(PreUpdate, register_backend)
+            // Shipped scripts load here rather than on `SplashState::Editor`,
+            // because an exported game never enters that state — and because it
+            // has nothing to compile: the libraries were built by the editor at
+            // export time and travel beside the executable. In the editor the
+            // manifest is absent and this is a single failed file read.
+            .add_systems(PreUpdate, (register_backend, load_prebuilt_scripts))
             // Compiling is separate from dispatching so one script failing to
             // build leaves the others running, and so the compile can later move
             // off the main thread without touching the dispatcher.
@@ -178,6 +208,31 @@ fn register_backend(
     *done = true;
 }
 
+/// Publish the compiled-in script table into [`LoadedScripts`].
+///
+/// Runs once. There is nothing to compile, nothing to load and nothing that can
+/// fail — the entry points were resolved by the linker, so if the binary started
+/// they are valid. That is the whole difference from `compile_and_load`: the
+/// same map, filled from an array instead of from `dlopen`.
+///
+/// Keyed by file name to match what `dispatch` resolves against, which is also
+/// what the exporter keyed the table on.
+#[cfg(feature = "static_scripts")]
+fn load_static_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    *done = true;
+    let table = renzora_static_scripts::scripts();
+    if table.is_empty() {
+        return;
+    }
+    for (name, f) in &table {
+        loaded.entries.insert((*name).to_string(), *f);
+    }
+    info!("[rust-script] {} script(s) compiled into this build", table.len());
+}
+
 /// Every script image loaded this session, and each one's entry point.
 ///
 /// `ManuallyDrop` because a resource is dropped with the World on every clean
@@ -213,18 +268,9 @@ fn compile_and_load(world: &mut World) {
     let Some(project) = world.get_resource::<CurrentProject>().map(|p| p.path.clone()) else {
         return;
     };
-    let scripts_dir = project.join("scripts");
-    if !scripts_dir.is_dir() {
-        return;
-    }
-
-    let sources: Vec<PathBuf> = std::fs::read_dir(&scripts_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("rs"))
-        .collect();
+    // The whole project, not `scripts/` alone — see `collect_project_scripts`
+    // for why, and for what keeps a non-script `.rs` out of the set.
+    let sources: Vec<PathBuf> = collect_project_scripts(&project);
     if sources.is_empty() {
         return;
     }
@@ -320,6 +366,153 @@ pub fn build_to_path(sdk: &Sdk, project: &Path, src: &Path) -> Result<PathBuf, S
 ///
 /// SAFETY: code compiled from the project's own source, put there by the person
 /// running the editor. Same trust model as a plugin.
+/// Every Rust script in a project: any `.rs` under it, at any depth, that
+/// declares itself one.
+///
+/// Shared by the editor's compiler and the exporter, deliberately. They used to
+/// disagree — the editor read `<project>/scripts/` flat while the exporter walked
+/// the whole tree — and a script in a subfolder would then be compiled into a
+/// lean export having never once run in the editor. One definition removes the
+/// class of bug rather than the instance.
+///
+/// **Anywhere, not just `scripts/`.** A script is attached by path and nothing
+/// requires that path to live in one directory; a project may keep scripts beside
+/// the scenes that use them.
+///
+/// **Declared, not merely `.rs`.** The marker is `renzora::script!`, which every
+/// script must call to export an entry point at all.
+///
+/// Not for native plugins — those live in `<editor>/plugins/`, never inside a
+/// project. The reason is the lean export: it compiles every file this returns
+/// *into the game binary*, so one `.rs` that is not a script — a helper module, a
+/// vendored snippet, anything a user happens to keep — fails the entire export
+/// build rather than being skipped. A copy-based export degrades more gently
+/// (that file simply has no library) but still reports a script that was never
+/// one. Requiring the declaration keeps both failures off files their author
+/// never called a script.
+///
+/// Build output is skipped: `.renzora/` holds this compiler's own staged copies,
+/// so scanning it would compile everything a second time under another path.
+pub fn collect_project_scripts(project: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        const SKIP: &[&str] =
+            &["target", ".git", ".renzora", "node_modules", "dist", ".svn", ".hg"];
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if path.is_dir() {
+                if !SKIP.contains(&name) && !name.starts_with('.') {
+                    walk(&path, out);
+                }
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
+                && declares_script(&path)
+            {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(project, &mut out);
+    // Sorted so callers that index by position (the lean exporter's generated
+    // module names) are stable across runs.
+    out.sort();
+    out
+}
+
+/// Does this file call `renzora::script!`?
+///
+/// A substring test, not a parse. It can be fooled by the macro's name appearing
+/// in a comment, which costs one confusing compile error in a file that was
+/// nearly a script anyway — against parsing every `.rs` in a project on every
+/// open. Both spellings are accepted because either compiles.
+fn declares_script(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    text.contains("renzora::script!") || text.contains("script!(")
+}
+
+/// The manifest a copy-based export ships beside the script libraries.
+///
+/// One line per key, `key<TAB>library-file`. Deliberately not JSON: the runtime
+/// needs no parser for two columns, and the exporter writes it with `format!`.
+/// A script is registered under more than one key (its project-relative path and,
+/// where unambiguous, its bare file name), so keys outnumber libraries and the
+/// same file appears on several lines.
+pub const PREBUILT_MANIFEST: &str = "scripts.index";
+
+/// Load the script libraries a copy-based export shipped.
+///
+/// This is the third way a `.rs` script can run, and the one that makes an
+/// exported game work without asking anything of the player:
+///
+/// | | compiled | loaded by |
+/// |---|---|---|
+/// | editor | on save, from source | `compile_and_load` |
+/// | copy-based export | at export time, by the editor | this |
+/// | lean export | into the binary | `load_static_scripts` |
+///
+/// No SDK and no Rust toolchain are involved — the editor did the compiling and
+/// the game ships the result. It works because a copy-based export carries the
+/// same `bevy_dylib` and `renzora_dylib` the script was compiled against, so
+/// there is one `World` type on both sides of the boundary. (A *lean* export
+/// links Bevy statically and shares no image, which is why it compiles scripts
+/// in rather than loading them.)
+///
+/// Runs once. Absent manifest means no scripts were shipped, which is the normal
+/// case for a project that has none.
+fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    *done = true;
+
+    let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf))
+    else {
+        return;
+    };
+    let dir = dir.join("scripts");
+    let Ok(index) = std::fs::read_to_string(dir.join(PREBUILT_MANIFEST)) else {
+        return;
+    };
+
+    // One `Library` per FILE, not per key: two keys naming the same library must
+    // share one image, or the second `dlopen` would map a second copy of a
+    // library holding its own statics.
+    let mut opened: HashMap<String, ScriptFn> = HashMap::new();
+    let mut count = 0usize;
+    for line in index.lines() {
+        let Some((key, file)) = line.split_once('\t') else { continue };
+        let (key, file) = (key.trim(), file.trim());
+        if key.is_empty() || file.is_empty() {
+            continue;
+        }
+        if let Some(f) = opened.get(file) {
+            loaded.entries.insert(key.to_string(), *f);
+            continue;
+        }
+        match load_library(&dir.join(file)) {
+            Ok((f, lib)) => {
+                opened.insert(file.to_string(), f);
+                loaded.insert(key.to_string(), f, lib);
+                count += 1;
+            }
+            Err(e) => {
+                // Loud, and not fatal: one unloadable script should not stop the
+                // others, and the game is still playable minus that behaviour.
+                error!("[rust-script] could not load shipped script {file}: {e}");
+                console_error("Script", format!("could not load {file}: {e}"));
+            }
+        }
+    }
+    if count > 0 {
+        info!("[rust-script] loaded {count} shipped script librar(ies)");
+    }
+}
+
 pub fn load_library(path: &Path) -> Result<(ScriptFn, Library), String> {
     let lib = unsafe { Library::new(path) }.map_err(|e| e.to_string())?;
     let f: Symbol<ScriptFn> = match unsafe { lib.get(SCRIPT_SYMBOL) } {
