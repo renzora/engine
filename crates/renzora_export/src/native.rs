@@ -1118,10 +1118,35 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, t
             }
             let id = cap.id;
             let child = cap.group.is_some();
-            // One padded, zebra-striped item per capability (checkbox + label + help).
-            // Children are indented and sit flush against the parent row rather
-            // than being striped, so the grouping is legible without a header.
-            let item = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect { left: Val::Px(if child { 24.0 } else { 6.0 }), right: Val::Px(6.0), top: Val::Px(5.0), bottom: Val::Px(5.0) }, border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(if child { Color::NONE } else { row_stripe(idx) }))).id();
+            // One row per capability: checkbox, label, and an info badge holding
+            // what used to be a paragraph of help under every line.
+            //
+            // One uniform faint fill, plus a hairline rule between rows —
+            // see `row_fill` for why the fill cannot simply be dropped.
+            // Children indent, take no rule and no fill, so a group still reads
+            // as belonging to the row above it.
+            let item = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect {
+                            left: Val::Px(if child { 24.0 } else { 6.0 }),
+                            right: Val::Px(6.0),
+                            top: Val::Px(5.0),
+                            bottom: Val::Px(5.0),
+                        },
+                        border: if child {
+                            UiRect::ZERO
+                        } else {
+                            UiRect::bottom(Val::Px(1.0))
+                        },
+                        ..default()
+                    },
+                    BackgroundColor(if child { Color::NONE } else { row_fill() }),
+                    BorderColor::all(ca(255, 255, 255, 14)),
+                ))
+                .id();
             // Fold: hide the row when its section is collapsed. Reactive rather
             // than a rebuild, so the checkboxes and scroll position survive.
             let sid = cap.section;
@@ -1147,9 +1172,26 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, t
             let cap_label = renzora::lang::t_or(&format!("export.cap.{id}.label"), cap.label);
             let cap_help = renzora::lang::t_or(&format!("export.cap.{id}.help"), cap.help);
             let t = txt(commands, fonts, &cap_label, 12.0, text_primary());
-            commands.entity(row).add_children(&[cb, t]);
-            let help = txt(commands, fonts, &cap_help, 10.0, text_muted());
-            commands.entity(item).add_children(&[row, help]);
+            // The help was a full paragraph printed under every capability —
+            // forty of them stacked, most of which the reader already knows.
+            // Behind a badge it is there when wanted and silent otherwise.
+            //
+            // Right-aligned via a spacer so the badges line up in a column
+            // instead of trailing each label at a different x.
+            let spacer = commands
+                .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+                .id();
+            let info = icon_text(commands, &fonts.phosphor, "info", text_muted(), 13.0);
+            commands.entity(info).insert((
+                // `hover_tooltip_system` reads `Interaction`, so the badge needs
+                // one. It stays on the default `Pass`: the badge owns no press,
+                // and hover is marked on every node under the cursor regardless.
+                Interaction::default(),
+                renzora_ember::widgets::HoverTooltip::new(cap_help),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Help),
+            ));
+            commands.entity(row).add_children(&[cb, t, spacer, info]);
+            commands.entity(item).add_child(row);
             commands.entity(list).add_child(item);
         }
         commands.entity(body).add_child(list);
@@ -1881,18 +1923,22 @@ fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
 }
 
-/// Zebra-stripe background for list rows — long lists (features, plugins) read
-/// as discrete rows.
+/// The faint fill every feature row carries.
 ///
-/// BOTH rows are tinted, which looks like a needless change and is not: an
-/// unchecked checkbox is a 1px border over `Color::NONE`, and against the bare
-/// panel that border is invisible. Odd rows carried a faint overlay and even
-/// rows nothing, so exactly half the feature list appeared to have no control at
-/// all — every other row looked like a label. The lighter of the two tints is
-/// what makes an empty checkbox legible; the difference between them is what
-/// still stripes the list.
-fn row_stripe(idx: usize) -> Color {
-    if idx % 2 == 1 { ca(255, 255, 255, 14) } else { ca(255, 255, 255, 6) }
+/// This is half of what `row_stripe` used to do. That function alternated two
+/// tints down the list, and the alternation is gone — it read as banding, and
+/// the job it was doing (telling one row from the next) only existed because
+/// every row was three lines tall. The help text is a tooltip now, a row is one
+/// line, and a hairline rule separates them far more quietly.
+///
+/// The tint itself has to stay, and the reason is not decorative: **an unchecked
+/// checkbox is a 1px border over `Color::NONE`, and against the bare panel that
+/// border is invisible.** The stripe was originally two tints rather than
+/// tint-and-nothing for exactly this — with even rows untinted, half the feature
+/// list appeared to have no control at all and every other row looked like a
+/// label. Drop this fill and that returns for the whole list.
+fn row_fill() -> Color {
+    ca(255, 255, 255, 8)
 }
 
 fn cursor() -> renzora_ember::cursor_icon::HoverCursor {
