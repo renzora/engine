@@ -61,7 +61,6 @@ editor = [
     "dep:renzora_shell",
     "dep:renzora_animation_editor",
     "dep:renzora_asset_browser",
-    "dep:renzora_auth",
     "dep:renzora_autosave",
     "dep:renzora_blueprint_editor",
     "dep:renzora_code_editor",
@@ -72,7 +71,6 @@ editor = [
     "dep:renzora_foliage_editor",
     "dep:renzora_hierarchy",
     "dep:renzora_history",
-    "dep:renzora_hub",
     "dep:renzora_import_ui",
     "dep:renzora_inspector",
     "dep:renzora_level_presets",
@@ -84,7 +82,6 @@ editor = [
     "dep:renzora_settings",
     "dep:renzora_shader_editor",
     "dep:renzora_shape_library",
-    "dep:renzora_social",
     "dep:renzora_system_monitor",
     "dep:renzora_terrain_editor",
     "dep:renzora_tilemap_editor",
@@ -144,7 +141,6 @@ renzora_console            = { path = "../renzora_console", optional = true }
 renzora_shell              = { path = "../renzora_shell", optional = true }
 renzora_animation_editor   = { path = "../renzora_animation_editor", optional = true }
 renzora_asset_browser      = { path = "../renzora_asset_browser", optional = true }
-renzora_auth               = { path = "../renzora_auth", optional = true }
 renzora_autosave           = { path = "../renzora_autosave", optional = true }
 renzora_blueprint_editor   = { path = "../renzora_blueprint_editor", optional = true }
 renzora_code_editor        = { path = "../renzora_code_editor", optional = true }
@@ -155,7 +151,6 @@ renzora_export             = { path = "../renzora_export", optional = true }
 renzora_foliage_editor     = { path = "../renzora_foliage_editor", optional = true }
 renzora_hierarchy          = { path = "../renzora_hierarchy", optional = true }
 renzora_history            = { path = "../renzora_history", optional = true }
-renzora_hub                = { path = "../renzora_hub", optional = true }
 renzora_import_ui          = { path = "../renzora_import_ui", optional = true }
 renzora_inspector          = { path = "../renzora_inspector", optional = true }
 renzora_level_presets      = { path = "../renzora_level_presets", optional = true }
@@ -167,7 +162,6 @@ renzora_particle_editor    = { path = "../renzora_particle_editor", optional = t
 renzora_settings           = { path = "../renzora_settings", optional = true }
 renzora_shader_editor      = { path = "../renzora_shader_editor", optional = true }
 renzora_shape_library      = { path = "../renzora_shape_library", optional = true }
-renzora_social             = { path = "../renzora_social", optional = true }
 renzora_system_monitor     = { path = "../renzora_system_monitor", optional = true }
 renzora_terrain_editor     = { path = "../renzora_terrain_editor", optional = true }
 renzora_tilemap_editor     = { path = "../renzora_tilemap/editor", optional = true }

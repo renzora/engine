@@ -20,7 +20,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_antialiasing_editor::AntiAliasingEditorPlugin::default());
     app.add_plugins(renzora_asset_browser::AssetBrowserPlugin::default());
     app.add_plugins(renzora_atmosphere_editor::AtmosphereEditorPlugin::default());
-    app.add_plugins(renzora_auth::AuthPlugin::default());
     app.add_plugins(renzora_autosave::AutoSavePlugin::default());
     app.add_plugins(renzora_bloom_effect_editor::BloomEditorPlugin::default());
     app.add_plugins(renzora_blueprint_editor::BlueprintEditorPlugin::default());
@@ -43,7 +42,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_grid::GridPlugin::default());
     app.add_plugins(renzora_hierarchy::HierarchyPanelPlugin::default());
     app.add_plugins(renzora_history::HistoryPanelPlugin::default());
-    app.add_plugins(renzora_hub::HubPlugin::default());
     app.add_plugins(renzora_import_ui::ImportPlugin::default());
     app.add_plugins(renzora_inspector::InspectorPanelPlugin::default());
     app.add_plugins(renzora_lens_distortion_editor::LensDistortionEditorPlugin::default());
@@ -66,7 +64,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin::default());
     app.add_plugins(renzora_shell::ShellPlugin::default());
     app.add_plugins(renzora_skybox_editor::SkyboxEditorPlugin::default());
-    app.add_plugins(renzora_social::SocialPlugin::default());
     app.add_plugins(renzora_splash::SplashPlugin::default());
     app.add_plugins(renzora_sprite_anim_editor::SpriteAnimEditorPlugin::default());
     app.add_plugins(renzora_ssao_editor::SsaoEditorPlugin::default());

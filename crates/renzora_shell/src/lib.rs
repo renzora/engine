@@ -3285,10 +3285,11 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Blueprint
     ("blueprint_graph", "Blueprint", "blueprint", "Blueprint"),
     ("blueprint_properties", "Blueprint Properties", "sliders-horizontal", "Blueprint"),
-    // Marketplace
-    ("hub_store", "Marketplace", "storefront", "Marketplace"),
-    ("hub_library", "Library", "books", "Marketplace"),
-    ("asset_uploader", "Publish", "upload-simple", "Marketplace"),
+    // The Marketplace panels (store, library, publish) and the wallet are NOT
+    // listed here. They belong to the `marketplace` plugin, which registers its
+    // own shell metadata the way any plugin does — so an install without it
+    // shows no Marketplace category at all, rather than three panels that open
+    // empty.
     // Network
     ("network_monitor", "Network", "broadcast", "Network"),
     ("network_entities", "Net Entities", "users-three", "Network"),
@@ -7707,18 +7708,8 @@ fn build_menu_items(
         TopMenuKind::Account => {
             if account.is_some() {
                 vec![
-                    // The notifications entry point. It used to be the top-bar
-                    // bell; that button is gone, and this is the only way in, so
-                    // the row opens the same dropdown `renzora_social` consumes
-                    // — anchored under the ☰ button rather than under a bell
-                    // that no longer exists.
-                    menu_item(commands, fonts, "bell", &renzora::lang::t_or("menu.account.notifications", "Notifications"), |w| {
-                        if let Some(mut b) = w.get_resource_mut::<renzora::core::SocialBridge>() {
-                            if b.notify_button_enabled {
-                                b.notify_dropdown_request = Some((8.0, 38.0));
-                            }
-                        }
-                    }),
+                    // No Notifications row: notifications existed to announce
+                    // feed, message and friend activity, all of which is gone.
                     menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
                         if let Some(mut dock) = w.get_resource_mut::<Dock>() {
                             dock.tree.focus_or_add_panel("hub_library");

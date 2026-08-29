@@ -545,7 +545,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
         ("Debug".into(), layout_debug()),
-        ("Hub".into(), layout_hub()),
+        ("Marketplace".into(), layout_marketplace()),
     ]
 }
 
@@ -737,7 +737,7 @@ pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         DockTree::tabs(&["hierarchy", "scenes"]),
         DockTree::horizontal(
-            DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
+            DockTree::tabs(&["viewport", "code_editor"]),
             DockTree::leaf("inspector"),
             0.78,
         ),
@@ -745,31 +745,22 @@ pub fn scene_layout() -> DockTree {
     )
 }
 
-/// Hub workspace: the community home. A left friends column | the main content
-/// tabs (feed, messages, docs, marketplace, become a creator, publish) | a right
-/// column with the wallet over the asset library. Notifications live in the
-/// top-bar bell dropdown, teams in the Friends panel's Teams tab, and profiles in
-/// a shared overlay, so none of them are panels here anymore; the forum was
-/// replaced by the feed.
-fn layout_hub() -> DockTree {
+/// Marketplace workspace: browse and buy on the left, own and sell on the right.
+///
+/// This was the "Hub" — a community home with friends down one side and feed,
+/// messages and docs across the middle. All of that is gone: the account exists
+/// to publish and purchase assets and nothing else, so the workspace is two
+/// surfaces. The store is the wide one because browsing is what you do most;
+/// the library and wallet share the narrow column because they answer "what do I
+/// own" and "what can I spend", which you check rather than read.
+///
+/// `asset_uploader` carries both halves of selling now — becoming a creator and
+/// uploading — so there is no separate onboarding tab to place.
+fn layout_marketplace() -> DockTree {
     DockTree::horizontal(
-        // Left: friends.
-        DockTree::leaf("social_friends"),
-        DockTree::horizontal(
-            // Center: the big content surfaces, in reading order.
-            DockTree::tabs(&[
-                "social_feed",
-                "social_chat",
-                "social_learn",
-                "hub_store",
-                "social_onboarding",
-                "asset_uploader",
-            ]),
-            // Right: wallet over the asset library.
-            DockTree::tabs(&["social_wallet", "hub_library"]),
-            0.62,
-        ),
-        0.18,
+        DockTree::tabs(&["hub_store", "asset_uploader"]),
+        DockTree::tabs(&["hub_library", "social_wallet"]),
+        0.68,
     )
 }
 

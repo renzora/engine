@@ -44,12 +44,10 @@ struct PaletteTabBtn(PaletteTab);
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<PaletteHandlers>();
-    app.init_resource::<crate::PaletteRemote>();
     app.add_systems(
         Update,
         (
             manage_palette,
-            crate::remote_search,
             rebuild_palette,
             focus_palette_search,
             palette_keys,
@@ -269,23 +267,6 @@ fn rebuild_palette(world: &mut World) {
             filter_items(all, &query)
         }
         PaletteTab::Entities => crate::collect_entity_items(world, &query),
-        // Remote tabs render whatever the async search has cached; a hint row
-        // stands in while it loads (or before the query is long enough).
-        _ => {
-            let remote = world.resource::<crate::PaletteRemote>();
-            generation = remote.generation;
-            if remote.loading {
-                vec![hint_item("Searching…")]
-            } else if remote.results.is_empty() {
-                if query.trim().chars().count() < crate::min_query_len(tab) {
-                    vec![hint_item(&format!("Type to search {}…", tab.label().to_lowercase()))]
-                } else {
-                    Vec::new() // falls through to the shared "No matches" row
-                }
-            } else {
-                remote.results.iter().map(|h| h.item()).collect()
-            }
-        }
     };
 
     // Clamp selection + refresh handlers.
