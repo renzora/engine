@@ -41,3 +41,28 @@ pub mod rustc;
 
 pub use deps::Deps;
 pub use rustc::Target;
+
+/// Stop a child process opening a console window of its own.
+///
+/// Every compiler this crate and `renzora_plugin_build` spawn — `rustc`, `cargo`,
+/// `rustup` — is a console program, and on Windows a console program launched
+/// from a GUI process gets a **new console window**. During first-run setup that
+/// is a black terminal that appears next to the progress window, flickers as each
+/// plugin is compiled, and cannot usefully be closed: closing it kills the
+/// compile, and the next plugin opens another one.
+///
+/// The output is not lost by hiding the window — it is captured and reported
+/// through `Progress::Compiling`, which is where a user is actually looking.
+///
+/// No-op off Windows, where spawning a child opens nothing.
+pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW`, from `winbase.h`. Spelled out rather than pulled
+        /// from `windows-sys`: this crate deliberately has no dependencies.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}

@@ -345,6 +345,9 @@ impl Sdk {
         let args = native_build::rustc::args(&target).map_err(Error::Deps)?;
 
         let mut cmd = Command::new(&rustc);
+        // No console window for the compiler — its output is streamed to the
+        // caller below and shown in the setup window instead.
+        native_build::hide_console(&mut cmd);
         for (key, value) in native_build::rustc::env_vars(&target) {
             cmd.env(key, value);
         }
@@ -438,7 +441,7 @@ fn ensure_cargo_manifest(dir: &Path) -> Result<PathBuf, Error> {
 
 /// The local rustc's release string, e.g. `1.95.0`.
 fn rustc_release() -> Result<String, String> {
-    let out = Command::new("rustc")
+    let out = native_build::hide_console(&mut Command::new("rustc"))
         .arg("-vV")
         .output()
         .map_err(|e| e.to_string())?;

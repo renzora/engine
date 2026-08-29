@@ -219,14 +219,18 @@ fn write_manifest(dir: &Path, deps: &[(String, String)]) -> Result<(), String> {
 /// ~12 s against a Bevy-pulling manifest — so the refusal costs seconds rather
 /// than the half-hour a Bevy build would have taken before failing.
 fn reject_engine_crates(dir: &Path) -> Result<(), String> {
-    let out = Command::new("cargo")
+    let out = crate::hide_console(&mut Command::new("cargo"))
         .current_dir(dir)
         .args(["metadata", "--format-version", "1", "--quiet"])
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("could not run cargo: {e}"))?;
     if !out.status.success() {
-        return Err(format!("`cargo metadata` failed ({})", out.status));
+        return Err(format!(
+            "`cargo metadata` failed ({})\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut found: Vec<String> = Vec::new();
@@ -265,14 +269,24 @@ fn reject_engine_crates(dir: &Path) -> Result<(), String> {
 /// one crate, and picking by name produces a set that looks right and then fails
 /// to compile.
 fn compile(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
-    let out = Command::new("cargo")
+    // `stderr` is PIPED, not inherited: an inherited stderr is what forces a
+    // console to exist for the child, which is the window `hide_console` is
+    // suppressing. Cargo's progress lines go into the pipe and are dropped; its
+    // diagnostics still reach the caller through the non-zero exit below.
+    let out = crate::hide_console(&mut Command::new("cargo"))
         .current_dir(dir)
         .args(["build", "--release", "--message-format=json-render-diagnostics"])
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("could not run cargo: {e}"))?;
     if !out.status.success() {
-        return Err(format!("building the plugin's dependencies failed ({})", out.status));
+        // Carry cargo's own diagnostics: stderr is piped now (see above), so
+        // this is the only place they can reach the author.
+        return Err(format!(
+            "building the plugin's dependencies failed ({})\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut found = Vec::new();

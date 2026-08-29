@@ -77,7 +77,7 @@ pub fn resolve(version: &str) -> Toolchain {
 /// Returns `None` when rustup is absent or does not have that toolchain, which
 /// are handled differently by the caller and so are not distinguished here.
 fn rustup_which(version: &str) -> Option<PathBuf> {
-    let out = Command::new("rustup")
+    let out = renzora_native_build::hide_console(&mut Command::new("rustup"))
         .args(["which", "--toolchain", version, "rustc"])
         .output()
         .ok()?;
@@ -89,7 +89,7 @@ fn rustup_which(version: &str) -> Option<PathBuf> {
 }
 
 fn have_rustup() -> bool {
-    Command::new("rustup")
+    renzora_native_build::hide_console(&mut Command::new("rustup"))
         .arg("--version")
         .output()
         .is_ok_and(|o| o.status.success())
@@ -97,7 +97,10 @@ fn have_rustup() -> bool {
 
 /// The release string of whatever `rustc` is on `PATH`, if any.
 fn path_rustc_release() -> Option<String> {
-    let out = Command::new("rustc").arg("-vV").output().ok()?;
+    let out = renzora_native_build::hide_console(&mut Command::new("rustc"))
+        .arg("-vV")
+        .output()
+        .ok()?;
     String::from_utf8_lossy(&out.stdout)
         .lines()
         .find_map(|l| l.strip_prefix("release: "))
@@ -113,7 +116,7 @@ fn path_rustc_release() -> Option<String> {
 /// Deliberately NOT `--no-self-update`: leaving rustup's own maintenance alone is
 /// its owner's business, not ours.
 pub fn install_toolchain(version: &str) -> Result<(), String> {
-    let out = Command::new("rustup")
+    let out = renzora_native_build::hide_console(&mut Command::new("rustup"))
         .args(["toolchain", "install", version, "--profile", "minimal"])
         .output()
         .map_err(|e| format!("could not run rustup: {e}"))?;

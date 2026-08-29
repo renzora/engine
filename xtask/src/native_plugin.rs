@@ -73,6 +73,8 @@ pub fn build_all(repo: &Path, dist_root: &Path) -> bool {
     // one first.
     dirs.sort();
 
+    prune_orphans(&root, dist_root);
+
     for dir in dirs {
         if !is_native(&dir) {
             continue;
@@ -82,6 +84,43 @@ pub fn build_all(repo: &Path, dist_root: &Path) -> bool {
         }
     }
     true
+}
+
+/// Delete staged native plugins whose source directory is gone.
+///
+/// Staging only ever *added*, and a plugin that was deleted or moved out of
+/// `plugins/` therefore left its staged copy behind forever — source, manifest
+/// and all. The editor cannot tell that copy from a real plugin: it has a
+/// `src/lib.rs`, so `prebuild::needed()` says there is work to do, and the build
+/// fails because the source it references no longer exists.
+///
+/// That was not a cosmetic leak. `main` runs the setup window whenever
+/// `needed()` is true and restarts the process afterwards, so a staged orphan
+/// that cannot build put the editor in an endless loop of setup windows. The
+/// loader now remembers a failed build (see `renzora_native_plugin::layout`),
+/// which stops the loop; this stops it being entered at all.
+///
+/// Only directories are considered, and only ones holding a `Cargo.toml` — a
+/// staged plugin always has one, and refusing to recurse past that keeps this
+/// from ever looking at an unrelated directory a user put in `dist/`.
+fn prune_orphans(src_root: &Path, dist_root: &Path) {
+    let staged_root = dist_root.join("plugins");
+    let Ok(entries) = std::fs::read_dir(&staged_root) else {
+        return;
+    };
+    for staged in entries.flatten().map(|e| e.path()) {
+        if !staged.is_dir() || !staged.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let name = crate::file_name(&staged);
+        if src_root.join(&name).is_dir() {
+            continue;
+        }
+        match std::fs::remove_dir_all(&staged) {
+            Ok(()) => println!("[xtask] removed staged plugin '{name}' (no longer in plugins/)"),
+            Err(e) => eprintln!("[xtask] could not remove staged plugin '{name}': {e}"),
+        }
+    }
 }
 
 /// A `plugins/<name>/` holding a `dylib` crate.

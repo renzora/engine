@@ -55,7 +55,11 @@ pub enum Progress {
     /// finishes, so for a plugin with no third-party dependencies these arrive
     /// only when something is wrong; for one with dependencies they are cargo's
     /// `Compiling …` lines and cover most of the wait.
-    Compiling { name: String, line: String },
+    ///
+    /// Carries `index`/`total` as well as the name, because this REPLACES the
+    /// caption `Building` put up. Without them the counter vanishes the moment
+    /// the compiler says anything, which reads as the progress having been lost.
+    Compiling { name: String, index: usize, total: usize, line: String },
     /// A step failed. Setup continues — this is a report, not a stop.
     Failed(String),
 }
@@ -72,7 +76,10 @@ impl std::fmt::Display for Progress {
             }
             // One line, whatever the compiler produced. Trimmed because rustc
             // indents continuation lines heavily and a caption is one line wide.
-            Progress::Compiling { name, line } => write!(f, "{name}: {}", line.trim()),
+            // Keeps the counter so the caption never goes backwards.
+            Progress::Compiling { name, index, total, line } => {
+                write!(f, "[{index}/{total}] {name}: {}", line.trim())
+            }
             Progress::Failed(e) => write!(f, "{e}"),
         }
     }
@@ -203,15 +210,41 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
             continue;
         }
         match sdk.compile_with(plugin, &l.lib_path, &mut |line| {
-            report(Progress::Compiling { name: name.clone(), line: line.to_string() });
+            // Blank lines are separators in rustc/cargo output, not status. Left
+            // in, they render as a bare "name:" with nothing after it, which
+            // looks like the build stalled on an unnamed step.
+            if line.trim().is_empty() {
+                return;
+            }
+            report(Progress::Compiling {
+                name: name.clone(),
+                index: i + 1,
+                total,
+                line: line.to_string(),
+            });
         }) {
             Ok(stamp) => match std::fs::write(&l.stamp_path, &stamp) {
-                Ok(()) => built += 1,
+                Ok(()) => {
+                    built += 1;
+                    // Built: forget any earlier failure, so a later one is not
+                    // mistaken for it.
+                    let _ = std::fs::remove_file(&l.fail_path);
+                }
                 Err(e) => report(Progress::Failed(format!("{name}: writing stamp: {e}"))),
             },
             // Reported and skipped. The loader will say it again, in the place a
             // user is looking, once there is a Problems panel to say it in.
-            Err(e) => report(Progress::Failed(format!("{name} failed to build: {e}"))),
+            //
+            // The failure is also RECORDED, and that part is load-bearing: this
+            // pass is what `needed()` asks about, and `main` restarts the process
+            // after running it. Retrying a plugin that cannot compile therefore
+            // does not merely waste a compile — it asks the same question after
+            // the restart, gets the same answer, and reopens this window forever.
+            // See `layout` in the crate root.
+            Err(e) => {
+                let _ = std::fs::write(&l.fail_path, &expected);
+                report(Progress::Failed(format!("{name} failed to build: {e}")));
+            }
         }
     }
     built

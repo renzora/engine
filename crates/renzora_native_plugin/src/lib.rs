@@ -334,7 +334,13 @@ enum Outcome {
 struct Layout {
     lib_path: PathBuf,
     stamp_path: PathBuf,
+    /// Records a build that failed, so the same failure is not retried on every
+    /// launch forever. See [`layout`].
+    fail_path: PathBuf,
     needs_build: bool,
+    /// True when a build is wanted but a previous identical attempt failed.
+    /// The loader reports this instead of compiling again.
+    build_failed_before: bool,
 }
 
 /// Decide whether a plugin must be compiled before it can be loaded.
@@ -358,6 +364,25 @@ struct Layout {
 /// `plugins/<name>/src/lib.rs` and restarting is their entire loop, and without
 /// this their edits would silently do nothing — the old library loads, behaves
 /// exactly as before, and nothing reports why.
+///
+/// # Why a failed build is remembered
+///
+/// A plugin that does not compile used to put the editor in an infinite restart
+/// loop, and the mechanism is worth stating because nothing about it is obvious
+/// from either end. `prebuild::needed()` answers "is there work to do" from this
+/// predicate; `main` runs the setup window when it says yes and then restarts the
+/// process. A build that fails writes no artifact and no stamp, so the next
+/// launch asks the same question, gets the same answer, and shows the same
+/// window — forever, with two windows the user cannot close because each is
+/// respawned by the next iteration.
+///
+/// So a failure is recorded in `build/failed.txt`, and a build is not attempted
+/// again while that record still describes the current inputs. It invalidates
+/// itself the two ways that matter: the file holds the SDK stamp it failed
+/// against, so a moved engine retries, and it is compared by mtime against the
+/// source, so an edit retries. That is exactly the plugin author's loop — fix
+/// the code, relaunch, it builds — while a plugin nobody is editing stops
+/// costing a compile per launch.
 fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
     let name = name_of(dir);
     let build = dir.join("build");
@@ -366,6 +391,7 @@ fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
         .unwrap_or_else(default_lib_ext);
     let lib_path = build.join(format!("{}.{ext}", name.replace('-', "_")));
     let stamp_path = build.join("stamp.txt");
+    let fail_path = build.join("failed.txt");
     let current = std::fs::read_to_string(&stamp_path).ok();
 
     let stale = match (expected, current.as_deref()) {
@@ -373,8 +399,25 @@ fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
         (Some(_), None) => true,
         (None, _) => false,
     };
-    let needs_build = stale || !lib_path.is_file() || source_newer_than(dir, &lib_path);
-    Layout { lib_path, stamp_path, needs_build }
+    let wants_build = stale || !lib_path.is_file() || source_newer_than(dir, &lib_path);
+
+    // Does the recorded failure still describe what we would build right now?
+    let failed_against = std::fs::read_to_string(&fail_path).ok();
+    let build_failed_before = wants_build
+        && match (expected, failed_against.as_deref()) {
+            // Same SDK, and nothing edited since the attempt: it would fail
+            // identically, so don't spend the compile finding that out.
+            (Some(want), Some(have)) => want == have && !source_newer_than(dir, &fail_path),
+            _ => false,
+        };
+
+    Layout {
+        lib_path,
+        stamp_path,
+        fail_path,
+        needs_build: wants_build && !build_failed_before,
+        build_failed_before,
+    }
 }
 
 fn load_one(
@@ -390,7 +433,13 @@ fn load_one(
     }
     let name = name_of(dir);
     let build = dir.join("build");
-    let Layout { lib_path, stamp_path, mut needs_build } = layout(dir, sdk, expected);
+    let Layout {
+        lib_path,
+        stamp_path,
+        fail_path,
+        mut needs_build,
+        build_failed_before,
+    } = layout(dir, sdk, expected);
 
     // `src/lib.rs` is what makes a directory a plugin *on a machine that can
     // build one* — `Sdk::compile` derives the rest of the layout from it.
@@ -408,6 +457,17 @@ fn load_one(
         // Nothing to build FROM, so never mind what `layout` concluded — its
         // staleness test compares source mtimes that do not exist.
         needs_build = false;
+    }
+
+    // A build we already know fails. Report it — the author still needs telling
+    // that their plugin is not loaded — but do not compile it again: retrying on
+    // every launch is what put the editor in a restart loop. See `layout`.
+    if build_failed_before {
+        return Err(format!(
+            "failed to compile last time and has not changed since. Fix it and \
+             relaunch, or delete {} to force a retry.",
+            fail_path.display()
+        ));
     }
 
     if needs_build {
@@ -430,16 +490,27 @@ fn load_one(
         };
         std::fs::create_dir_all(&build).map_err(|e| e.to_string())?;
         info!("compiling plugin '{name}' for this engine build");
-        let stamp = sdk.compile(dir, &lib_path).map_err(|e| match e {
-            // rustc's own diagnostics, written for the plugin author. Passing
-            // them through unedited is more useful than any summary.
-            BuildError::Compile(out) => format!("failed to compile:\n{out}"),
-            // The toolchain states already phrase themselves for a person,
-            // naming the compiler and where it would land. Relaying that beats
-            // anything this layer could summarise.
-            other => other.to_string(),
+        let stamp = sdk.compile(dir, &lib_path).map_err(|e| {
+            // Record the failure before returning, against the SDK stamp it was
+            // attempted with. Without this the next launch retries identically —
+            // see `layout` for why that loops rather than merely wasting time.
+            if let Some(want) = expected {
+                let _ = std::fs::write(&fail_path, want);
+            }
+            match e {
+                // rustc's own diagnostics, written for the plugin author. Passing
+                // them through unedited is more useful than any summary.
+                BuildError::Compile(out) => format!("failed to compile:\n{out}"),
+                // The toolchain states already phrase themselves for a person,
+                // naming the compiler and where it would land. Relaying that beats
+                // anything this layer could summarise.
+                other => other.to_string(),
+            }
         })?;
         std::fs::write(&stamp_path, &stamp).map_err(|e| e.to_string())?;
+        // It built: drop any record of it having failed before, so a later
+        // genuine failure is not mistaken for this one.
+        let _ = std::fs::remove_file(&fail_path);
     }
 
     // SAFETY: loading arbitrary native code, which runs the image's static
@@ -573,4 +644,97 @@ fn default_lib_ext() -> String {
         "so"
     }
     .to_string()
+}
+
+/// Regression cover for the failed-build record in [`layout`].
+///
+/// The bug this pins: a plugin that would not compile made `needs_build` true
+/// forever. `prebuild::needed()` reads that, `main` runs the setup window when it
+/// says yes and then restarts the process — so a single broken plugin looped the
+/// editor through setup windows endlessly, none of which could be closed because
+/// the next iteration reopened them.
+///
+/// Only `layout` is exercised. It is the shared predicate both the pre-boot pass
+/// and the loader ask, so it is where the loop begins and ends.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A plugin directory with a source file, in a unique temp path.
+    fn plugin(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "renzora_layout_{tag}_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).expect("create plugin dir");
+        std::fs::write(dir.join("src").join("lib.rs"), "// source").expect("write source");
+        dir
+    }
+
+    /// Enough of a gap that the next write lands on a later mtime even on a
+    /// filesystem with coarse timestamps.
+    fn settle() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    fn record_failure(dir: &Path, stamp: &str) {
+        let build = dir.join("build");
+        std::fs::create_dir_all(&build).expect("create build dir");
+        std::fs::write(build.join("failed.txt"), stamp).expect("write failure record");
+    }
+
+    #[test]
+    fn fresh_plugin_wants_building() {
+        let dir = plugin("fresh");
+        let l = layout(&dir, None, Some("stamp-a"));
+        assert!(l.needs_build, "a plugin with no artifacts must build");
+        assert!(!l.build_failed_before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The loop, directly: same engine, untouched source, previous failure.
+    #[test]
+    fn known_failure_is_not_retried() {
+        let dir = plugin("known");
+        settle();
+        record_failure(&dir, "stamp-a");
+
+        let l = layout(&dir, None, Some("stamp-a"));
+        assert!(
+            !l.needs_build,
+            "retrying a build already known to fail is what looped the editor"
+        );
+        assert!(l.build_failed_before, "the loader needs this to report it instead");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The engine moved: the failure said nothing about *this* SDK.
+    #[test]
+    fn failure_record_expires_when_the_engine_moves() {
+        let dir = plugin("moved");
+        settle();
+        record_failure(&dir, "stamp-a");
+
+        let l = layout(&dir, None, Some("stamp-b"));
+        assert!(l.needs_build, "a new engine build must be retried");
+        assert!(!l.build_failed_before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The author fixed it. This is the loop that matters most — edit, relaunch,
+    /// build — and a failure record that outlived an edit would break it.
+    #[test]
+    fn failure_record_expires_when_the_source_is_edited() {
+        let dir = plugin("edited");
+        record_failure(&dir, "stamp-a");
+        settle();
+        std::fs::write(dir.join("src").join("lib.rs"), "// fixed").expect("edit source");
+
+        let l = layout(&dir, None, Some("stamp-a"));
+        assert!(l.needs_build, "an edit must be retried");
+        assert!(!l.build_failed_before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

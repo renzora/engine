@@ -72,7 +72,7 @@ pub fn run() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Renzora — first run".into(),
+                title: "Installing plugins".into(),
                 resolution: WindowResolution::new(520, 180),
                 resizable: false,
                 // Centred and alone: this is a modal moment, not a workspace.
