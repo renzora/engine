@@ -654,8 +654,32 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
                 // `lib` on Unix, empty on Windows — strip only when non-empty,
                 // so `libgit.so` and `git.dll` both resolve to `plugins/git`.
                 let stem = stem.strip_prefix(plat.lib_prefix).unwrap_or(stem);
-                if !src_root.join(stem).join("Cargo.toml").exists() {
+                let manifest = src_root.join(stem).join("Cargo.toml");
+                if !manifest.exists() {
                     println!("[xtask] skipping orphaned plugin artifact {name} (no plugins/{stem}/)");
+                    continue;
+                }
+                // A directory existing is not enough: a plugin CONVERTED from
+                // C-ABI to native keeps its name, so its stale cdylib in the
+                // shared `plugins/target/` passes the check above and gets staged
+                // beside the native plugin's directory. The two loaders are
+                // supposed to be unable to collide — one scans loose files, the
+                // other directories — and that holds for what the build
+                // *produces*, but not for what a previous build left lying
+                // around. `ai_chat` did exactly this: a loose `ai_chat.dll` and
+                // an `ai_chat/` directory, same id, one disable switch between
+                // them.
+                //
+                // So ask the manifest what the crate actually is now, and only
+                // stage the loose artifact when it is still a C-ABI plugin.
+                let is_cdylib = std::fs::read_to_string(&manifest)
+                    .map(|s| s.contains("cdylib"))
+                    .unwrap_or(false);
+                if !is_cdylib {
+                    println!(
+                        "[xtask] skipping stale C-ABI artifact {name} \
+                         (plugins/{stem}/ is a native plugin now)"
+                    );
                     continue;
                 }
                 link_or_copy(&path, &plugins.join(&name))?;
