@@ -860,13 +860,16 @@ fn register_ui_presets(app: &mut App) {
         spawn_fn: spawn_ui_canvas,
     });
 
-    // "New UI" scene starter — spawns a canvas and selects it so the next
-    // click already targets the right parent for new widgets.
+    // "New UI" scene starter — spawns a canvas and selects it, so the inspector
+    // opens on the template slot that is the next thing to fill.
     app.register_scene_starter(SceneStarter {
         id: "ui",
-        title: "New UI",
-        description: "An empty canvas, ready for widgets",
+        title: "New UI Canvas",
+        description: "A canvas to mount a UI template on",
         icon: "frame-corners",
+        // The one starter that still makes sense when the hierarchy is scoped
+        // to UI — it is the thing that scope is looking for.
+        produces: &["UiCanvas"],
         spawn_fn: |world: &mut World| {
             let canvas = spawn_ui_canvas(world);
             if let Some(selection) = world.get_resource::<renzora::EditorSelection>() {

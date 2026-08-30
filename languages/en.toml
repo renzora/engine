@@ -1429,6 +1429,8 @@ version = "1.0"
 "assets.open_in.scene" = "Open Scene"
 "assets.open_in.code_editor" = "Open in Code Editor"
 "assets.open_in.ui_editor" = "Open in UI Editor"
+"hierarchy.starter.title_scoped" = "No UI canvases here"
+"hierarchy.starter.subtitle_scoped" = "Add a canvas, then give it a UI template."
 "common.project" = "Project"
 
 # ─── hierarchy_console ───

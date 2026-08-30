@@ -48,6 +48,17 @@ pub struct SceneStarter {
     pub title: &'static str,
     pub description: &'static str,
     pub icon: &'static str,
+    /// Component type names this starter produces, for matching against a
+    /// scoped [`HierarchyFilter`](crate::core::HierarchyFilterScope).
+    ///
+    /// Empty means "a whole scene" — a camera, a sun, terrain — and such a
+    /// starter is offered only when the hierarchy is unfiltered. When the tree
+    /// is narrowed (the UI workspace shows only `UiCanvas`), an empty list is
+    /// the picker's signal that this starter would build something the user
+    /// cannot even see from where they are standing: offering "New
+    /// Environment" to someone laying out a menu is an answer to a question
+    /// they did not ask.
+    pub produces: &'static [&'static str],
     pub spawn_fn: fn(&mut World),
 }
 

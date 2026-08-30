@@ -1494,6 +1494,7 @@ fn register_lighting_presets(app: &mut App) {
         title: "New Environment",
         description: "Sun, atmosphere, fog, and a fresh terrain",
         icon: "tree-evergreen",
+        produces: &[],
         spawn_fn: |world: &mut World| {
             spawn_world_environment(world);
             renzora_terrain::mesh::spawn_terrain(world);

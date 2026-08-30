@@ -101,6 +101,7 @@ impl Plugin for HierarchyPanelPlugin {
             title: "Empty Scene",
             description: "Start with just a camera",
             icon: "film-slate",
+            produces: &[],
             spawn_fn: |world: &mut World| {
                 use renzora::core::SceneCamera;
                 world.spawn((
@@ -128,6 +129,7 @@ impl Plugin for HierarchyPanelPlugin {
             title: "2D Scene",
             description: "Start with a Camera 2D — sprites, UI, retro pixel art",
             icon: "image-square",
+            produces: &[],
             spawn_fn: |world: &mut World| {
                 use renzora::core::viewport_types::{ViewportSettings, ViewportView};
                 use renzora::core::{DefaultCamera, SceneCamera};
