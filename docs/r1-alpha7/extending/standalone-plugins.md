@@ -295,6 +295,8 @@ renzora_plugin::no_std_runtime!();
 
 `no_std_runtime!()` supplies the two lang items the standard library would have: a global allocator and a panic handler. The allocator is the **host process's own `malloc`/`free`**, which is deliberate — your plugin is loaded into a running engine that already has an initialised C runtime, so it shares one heap with everything else rather than carrying a second. That also keeps a buffer safe to free after it has crossed the boundary. The panic handler aborts, because there is nothing else it can do.
 
+It also emits no-op stubs for `rust_eh_personality` and `_Unwind_Resume`. The precompiled `core`/`alloc` in the sysroot are built with unwinding, and their objects can leave those symbols undefined in the cdylib even with `panic = "abort"` in the profile. That is harmless at link time but fatal at load time — `dlopen` resolves eagerly and the host does not (and must not) export them — so without the stubs, every `no_std` plugin failed to load with `undefined symbol: rust_eh_personality`. With `panic = "abort"` neither stub can ever actually run; they exist purely so the dynamic linker finds a definition.
+
 The macro expands to nothing when emitting those items would be wrong — under `std`, and under `static_link` where the host binary already provides both — so it is safe to leave in place whatever way the plugin ends up being linked.
 
 Everything else is unchanged: same `add!`, same exports (`renzora_plugin_init`, `renzora_plugin_scope`), same loader path. The engine cannot tell the difference.
