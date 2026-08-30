@@ -33,6 +33,30 @@ impl SpawnRegistry {
     }
 }
 
+/// Preset **categories** the Add Entity list is narrowed to, or `None` for all.
+///
+/// The companion to a scoped
+/// [`HierarchyFilter`](crate::core::HierarchyFilterScope) — a tree showing only
+/// UI canvases should not offer to spawn a point light, because the thing you
+/// spawned would not appear in the list you spawned it from. Categories rather
+/// than component names because that is what an `EntityPreset` already carries;
+/// matching is against the **English** category string, before localisation.
+///
+/// Read by the hierarchy's Add Entity overlay and its right-click quick-add,
+/// which share one entry builder, so setting this narrows both.
+#[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
+pub struct SpawnCategoryScope(pub Option<Vec<&'static str>>);
+
+impl SpawnCategoryScope {
+    /// Whether a preset in `category` should be offered.
+    pub fn allows(&self, category: &str) -> bool {
+        match &self.0 {
+            None => true,
+            Some(list) => list.iter().any(|c| *c == category),
+        }
+    }
+}
+
 // ── Scene starters ──────────────────────────────────────────────────────────
 
 /// A one-click template that fills an empty scene with a useful starting

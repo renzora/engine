@@ -45,14 +45,16 @@ pub(crate) struct SpawnRegistries<'w> {
     spawn: Option<Res<'w, SpawnRegistry>>,
     shape: Option<Res<'w, ShapeRegistry>>,
     inspector: Option<Res<'w, InspectorRegistry>>,
+    scope: Option<Res<'w, renzora::SpawnCategoryScope>>,
 }
 
 impl SpawnRegistries<'_> {
-    fn entries(&self) -> Vec<SearchEntry> {
+    pub(crate) fn entries(&self) -> Vec<SearchEntry> {
         spawn_entries(
             self.spawn.as_deref(),
             self.shape.as_deref(),
             self.inspector.as_deref(),
+            self.scope.as_deref(),
         )
     }
 }
@@ -69,6 +71,13 @@ pub(crate) fn hier_context_menu(
     selection: Option<Res<EditorSelection>>,
     rows: Query<(&Interaction, &HierRowClick)>,
     props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
+    ui: Query<
+        (),
+        Or<(
+            With<renzora_ember::game_ui::UiCanvas>,
+            With<renzora_ember::game_ui::UiWidget>,
+        )>,
+    >,
     list_area: Query<&RelativeCursorPosition, With<HierListArea>>,
     registries: SpawnRegistries,
     mut commands: Commands,
@@ -98,13 +107,21 @@ pub(crate) fn hier_context_menu(
     };
     let (is_cam, is_inst, has_color) = props.get(target).unwrap_or((false, false, false));
     let multi = selection.as_ref().is_some_and(|s| s.has_multi_selection());
+    // A UI canvas or widget. Its contents come from a `.html` and are rebuilt
+    // from that file, so the rows that restructure a *scene* subtree — add a
+    // child, unparent, instance a scene into it — either do nothing that
+    // survives or actively break the canvas. They are left out rather than
+    // shown-and-ignored.
+    let is_ui = ui.get(target).is_ok();
 
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
     let mut kids: Vec<Entity> = Vec::new();
 
-    kids.push(menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("hierarchy.context.add_child"), move |w| {
-        add_child(w, target)
-    }));
+    if !is_ui {
+        kids.push(menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("hierarchy.context.add_child"), move |w| {
+            add_child(w, target)
+        }));
+    }
     kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("hierarchy.context.rename"), move |w| {
         if let Some(mut r) = w.get_resource_mut::<super::rename::HierRename>() {
             r.0 = Some(target);
@@ -113,16 +130,18 @@ pub(crate) fn hier_context_menu(
     kids.push(menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("hierarchy.context.duplicate"), move |w| {
         duplicate(w, target)
     }));
-    kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", &renzora::lang::t("hierarchy.context.unparent"), move |w| {
-        w.entity_mut(target).remove::<ChildOf>();
-    }));
+    if !is_ui {
+        kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", &renzora::lang::t("hierarchy.context.unparent"), move |w| {
+            w.entity_mut(target).remove::<ChildOf>();
+        }));
+    }
     if multi {
         kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
     }
 
     // Make a new project asset (and, for scripts/blueprints, attach it here).
     kids.push(menu_sep(&mut commands));
-    kids.push(super::create_asset::create_submenu(&mut commands, &fonts, target));
+    kids.push(super::create_asset::create_submenu(&mut commands, &fonts, target, is_ui));
 
     // Label-color (entity color-coding) section.
     kids.push(menu_sep(&mut commands));
@@ -144,10 +163,12 @@ pub(crate) fn hier_context_menu(
         }));
     }
 
-    kids.push(menu_sep(&mut commands));
-    kids.push(menu_item(&mut commands, &fonts, "film-slate", &renzora::lang::t("hierarchy.context.instance_scene"), move |w| {
-        instance_scene(w, target)
-    }));
+    if !is_ui {
+        kids.push(menu_sep(&mut commands));
+        kids.push(menu_item(&mut commands, &fonts, "film-slate", &renzora::lang::t("hierarchy.context.instance_scene"), move |w| {
+            instance_scene(w, target)
+        }));
+    }
     if is_inst {
         kids.push(menu_item(&mut commands, &fonts, "link-break", &renzora::lang::t("hierarchy.context.unpack_scene_instance"), move |w| {
             w.entity_mut(target).remove::<renzora::SceneInstance>();

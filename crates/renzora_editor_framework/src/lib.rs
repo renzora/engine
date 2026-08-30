@@ -400,6 +400,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
+            .init_resource::<renzora::SpawnCategoryScope>()
             .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
             .init_resource::<AutoSelectFirstHierarchyEntity>()

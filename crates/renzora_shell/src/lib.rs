@@ -6530,22 +6530,34 @@ const UI_WORKSPACE: &str = "UI";
 /// `LayoutManager::active_name` — and nothing updates `LayoutManager` any more,
 /// so that feature has quietly not worked since the shell took over workspace
 /// switching.
+/// Also narrows what Add Entity offers, via [`renzora::SpawnCategoryScope`].
+/// A tree showing only UI canvases must not offer to spawn a point light: the
+/// thing you spawned would not appear in the list you spawned it from, which
+/// reads as the editor having swallowed it.
 fn sync_hierarchy_filter_to_workspace(
     layouts: Res<ShellLayouts>,
     filter: Option<ResMut<renzora_editor_framework::HierarchyFilter>>,
+    spawn_scope: Option<ResMut<renzora::SpawnCategoryScope>>,
 ) {
-    let Some(mut filter) = filter else { return };
     let is_ui = layouts
         .layouts
         .get(layouts.active)
         .is_some_and(|(name, _)| name == UI_WORKSPACE);
-    let desired = if is_ui {
-        renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"])
-    } else {
-        renzora_editor_framework::HierarchyFilter::All
-    };
-    if *filter != desired {
-        *filter = desired;
+    if let Some(mut filter) = filter {
+        let desired = if is_ui {
+            renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"])
+        } else {
+            renzora_editor_framework::HierarchyFilter::All
+        };
+        if *filter != desired {
+            *filter = desired;
+        }
+    }
+    if let Some(mut scope) = spawn_scope {
+        let desired = is_ui.then(|| vec!["ui"]);
+        if scope.0 != desired {
+            scope.0 = desired;
+        }
     }
 }
 

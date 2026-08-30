@@ -39,6 +39,11 @@ const PICKER_DEPTH: usize = 2;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CreateKind {
     Script,
+    /// A `.rs` script — `renzora_rust_script` compiles it to a native plugin and
+    /// calls it with `&mut World` once per frame per entity. Routing is by file
+    /// extension, so it attaches through the same `ScriptComponent` as Lua and
+    /// the two coexist on one entity.
+    RustScript,
     Blueprint,
     Material,
     Particle,
@@ -47,8 +52,9 @@ pub(crate) enum CreateKind {
 }
 
 impl CreateKind {
-    const ALL: [CreateKind; 6] = [
+    const ALL: [CreateKind; 7] = [
         CreateKind::Script,
+        CreateKind::RustScript,
         CreateKind::Blueprint,
         CreateKind::Material,
         CreateKind::Particle,
@@ -59,6 +65,7 @@ impl CreateKind {
     fn label(self) -> String {
         match self {
             CreateKind::Script => renzora::lang::t("assets.new.lua"),
+            CreateKind::RustScript => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             CreateKind::Blueprint => renzora::lang::t("assets.new.blueprint"),
             CreateKind::Material => renzora::lang::t("assets.new.material"),
             CreateKind::Particle => renzora::lang::t("assets.new.particle"),
@@ -67,10 +74,24 @@ impl CreateKind {
         }
     }
 
+    /// Worth offering on a UI entity.
+    ///
+    /// A canvas or a widget can carry scripts and can be given a template; a
+    /// material, a particle system, a blueprint or a nested scene are things you
+    /// attach to a *scene* entity, and offering them on a canvas is offering
+    /// something that will not do anything.
+    fn on_ui(self) -> bool {
+        matches!(
+            self,
+            CreateKind::Script | CreateKind::RustScript | CreateKind::Template
+        )
+    }
+
     /// Default file name (without extension) the name field starts with.
     fn stem(self) -> &'static str {
         match self {
             CreateKind::Script => "new_script",
+            CreateKind::RustScript => "new_script",
             CreateKind::Blueprint => "NewBlueprint",
             CreateKind::Material => "NewMaterial",
             CreateKind::Particle => "NewParticle",
@@ -82,6 +103,7 @@ impl CreateKind {
     fn ext(self) -> &'static str {
         match self {
             CreateKind::Script => "lua",
+            CreateKind::RustScript => "rs",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "material",
             CreateKind::Particle => "particle",
@@ -95,6 +117,21 @@ impl CreateKind {
     fn content(self) -> String {
         match self {
             CreateKind::Script => "-- New Lua script\n".to_string(),
+            // A complete, compiling script — not a stub. `renzora::script!` is
+            // what exports the entry point, and a `.rs` without it loads and
+            // then reports "exports no entry point", which is a poor first
+            // impression of a feature whose whole promise is that it compiles.
+            CreateKind::RustScript => concat!(
+                "use bevy::prelude::*;\n",
+                "use renzora::ScriptCtx;\n",
+                "\n",
+                "fn update(ctx: &mut ScriptCtx) {\n",
+                "    let _dt = ctx.delta();\n",
+                "}\n",
+                "\n",
+                "renzora::script!(update);\n",
+            )
+            .to_string(),
             // Not `{}`: a blueprint with no event node is a dead canvas, so new
             // files start with On Ready + On Update already placed. Owned by
             // the blueprint crate so both create paths write the same graph.
@@ -112,7 +149,7 @@ impl CreateKind {
     /// the marketplace installs into.
     fn default_dir(self) -> &'static str {
         match self {
-            CreateKind::Script => "scripts",
+            CreateKind::Script | CreateKind::RustScript => "scripts",
             CreateKind::Blueprint => "blueprints",
             CreateKind::Material => "materials",
             CreateKind::Particle => "particles",
@@ -124,6 +161,7 @@ impl CreateKind {
     fn icon(self) -> &'static str {
         match self {
             CreateKind::Script | CreateKind::Template => "code",
+            CreateKind::RustScript => "gear-six",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "palette",
             CreateKind::Particle => "sparkle",
@@ -134,6 +172,8 @@ impl CreateKind {
     fn color(self) -> (u8, u8, u8) {
         match self {
             CreateKind::Script => (120, 170, 255),
+            // Rust's orange, so the two script kinds are one glance apart.
+            CreateKind::RustScript => (222, 130, 80),
             CreateKind::Blueprint => (100, 180, 255),
             CreateKind::Material => (0, 200, 130),
             CreateKind::Particle => (230, 160, 90),
@@ -146,7 +186,10 @@ impl CreateKind {
     /// through `ScriptComponent`; the rest are project files with no direct
     /// entity attachment, so their overlay omits the attach row entirely.
     fn attachable(self) -> bool {
-        matches!(self, CreateKind::Script | CreateKind::Blueprint)
+        matches!(
+            self,
+            CreateKind::Script | CreateKind::RustScript | CreateKind::Blueprint
+        )
     }
 }
 
@@ -184,7 +227,14 @@ pub(crate) fn register(app: &mut App) {
 
 /// The "Attach" row for the entity context menu: one hover submenu listing every
 /// kind. Returns the row to push into the menu's children.
-pub(crate) fn create_submenu(commands: &mut Commands, fonts: &EmberFonts, target: Entity) -> Entity {
+/// `is_ui` narrows the list to what a canvas or widget can actually carry — see
+/// [`CreateKind::on_ui`].
+pub(crate) fn create_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    target: Entity,
+    is_ui: bool,
+) -> Entity {
     let (row, content) = menu_submenu_styled(
         commands,
         fonts,
@@ -194,6 +244,7 @@ pub(crate) fn create_submenu(commands: &mut Commands, fonts: &EmberFonts, target
     );
     let items: Vec<Entity> = CreateKind::ALL
         .iter()
+        .filter(|k| !is_ui || k.on_ui())
         .map(|&kind| {
             menu_item_styled(
                 commands,
