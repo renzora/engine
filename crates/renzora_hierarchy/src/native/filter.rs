@@ -52,6 +52,28 @@ pub(crate) fn build_search_box(commands: &mut Commands, fonts: &EmberFonts) -> E
     input
 }
 
+/// Keep the search box's placeholder honest about what it searches.
+///
+/// Scoped to UI the tree holds a canvas and the nodes of its template, not
+/// scene entities, so "Search entities…" names the wrong thing. Written onto
+/// the component rather than bound at build time because the scope changes with
+/// the workspace, long after the box exists.
+pub(crate) fn hier_search_placeholder(
+    mut inputs: Query<&mut EmberTextInput, With<HierSearchInput>>,
+    filter: Option<Res<renzora_editor_framework::HierarchyFilter>>,
+) {
+    let want = if crate::state::ui_scoped_for(filter.as_deref()) {
+        renzora::lang::t_or("hierarchy.search_ui", "Search UI…")
+    } else {
+        renzora::lang::t("hierarchy.search")
+    };
+    for mut input in &mut inputs {
+        if input.placeholder != want {
+            input.placeholder = want.clone();
+        }
+    }
+}
+
 /// Mirror the search box's text into [`HierSearch`].
 pub(crate) fn hier_search_sync(
     inputs: Query<&EmberTextInput, With<HierSearchInput>>,

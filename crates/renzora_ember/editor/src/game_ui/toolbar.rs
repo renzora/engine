@@ -218,6 +218,9 @@ fn overlays_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         settings_separator(commands),
         settings_section(commands, fonts, "Labels"),
         canvas_switch!("Node names", show_names),
+        settings_separator(commands),
+        settings_section(commands, fonts, "Guides"),
+        canvas_switch!("Rulers", show_rulers),
     ];
     let panel = popup_panel(commands, &kids);
     let trigger = icon_popup_trigger(commands, fonts, "eye", panel);

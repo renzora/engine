@@ -132,12 +132,16 @@ type HierarchyCandidate = (
 /// The scene **saver** is unaffected either way — it cascades `HideInHierarchy`
 /// through `has_hidden_ancestor` on its own path, which is what stops a
 /// template being serialised into the `.bsn` and then thrown away on load.
-fn markup_rows_wanted(world: &World) -> bool {
+pub fn ui_scoped_for(filter: Option<&HierarchyFilter>) -> bool {
     matches!(
-        world.get_resource::<HierarchyFilter>(),
+        filter,
         Some(HierarchyFilter::OnlyWithComponents(names))
             if names.contains(&"UiCanvas")
     )
+}
+
+pub fn ui_scoped(world: &World) -> bool {
+    ui_scoped_for(world.get_resource::<HierarchyFilter>())
 }
 
 /// A display name for a markup node.
@@ -184,12 +188,12 @@ fn markup_label(world: &World, entity: Entity) -> String {
 pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -> Vec<EntityNode> {
     let mut candidates = world.query_filtered::<(Entity, &Name), HierarchyCandidate>();
     // Markup nodes, revealed only under a UI-scoped filter — see
-    // `markup_rows_wanted`. Built unconditionally because a `QueryState` has to
+    // `ui_scoped`. Built unconditionally because a `QueryState` has to
     // register its component ids while the borrow is still mutable; iterating it
     // is what's conditional.
     let mut markup = world
         .query_filtered::<Entity, (With<renzora_ember::markup::provenance::MarkupSource>, With<bevy::ui::Node>)>();
-    let show_markup = markup_rows_wanted(world);
+    let show_markup = ui_scoped(world);
     let world: &World = world;
 
     // One row per entity, as `(entity, label)`. Two sources, one body: markup

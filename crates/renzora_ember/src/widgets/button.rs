@@ -123,13 +123,16 @@ pub fn icon_label_button_parts(
 /// overflows or (before [`icon_label_button_parts`] pinned `flex_shrink: 0.0`)
 /// squeezed the button until its label broke onto a second line. Collapsing the
 /// label buys back ~40-60px per button and keeps everything on one row.
-pub fn icon_label_button_collapsing<F>(
+/// Returns `(button, label_text)`. The label entity is what a caller binds when
+/// the button's wording depends on context — the hierarchy's "Add Entity"
+/// becomes "New Canvas" in the UI workspace.
+pub fn icon_label_button_collapsing_parts<F>(
     commands: &mut Commands,
     fonts: &EmberFonts,
     icon: &str,
     label: &str,
     compact: F,
-) -> Entity
+) -> (Entity, Entity)
 where
     F: Fn(&Rx) -> bool + Clone + Send + Sync + 'static,
 {
@@ -163,7 +166,21 @@ where
             }
         }
     });
-    btn
+    (btn, text)
+}
+
+/// [`icon_label_button_collapsing`], for callers that only want the button.
+pub fn icon_label_button_collapsing<F>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    compact: F,
+) -> Entity
+where
+    F: Fn(&Rx) -> bool + Clone + Send + Sync + 'static,
+{
+    icon_label_button_collapsing_parts(commands, fonts, icon, label, compact).0
 }
 
 /// An icon-only square button (Styled `IconButton`), themed with the same

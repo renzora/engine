@@ -53,6 +53,7 @@ mod interaction;
 mod nav;
 mod overlay;
 mod register;
+mod ruler;
 pub mod spawn_ext;
 mod toolbar;
 mod ui_inspector;
@@ -96,6 +97,8 @@ pub(crate) struct NativeCanvasState {
     /// Put a node's name on the boxes above. Off leaves the outlines, which are
     /// still useful once you know the tree.
     pub show_names: bool,
+    /// Design-space rulers along the top and left of the canvas.
+    pub show_rulers: bool,
 }
 
 impl Default for NativeCanvasState {
@@ -116,6 +119,7 @@ impl Default for NativeCanvasState {
             hover_outline: true,
             hover_group: true,
             show_names: true,
+            show_rulers: true,
         }
     }
 }
@@ -146,6 +150,7 @@ impl Plugin for GameUiEditorPlugin {
         overlay::register(app);
         interaction::register(app);
         nav::register(app);
+        ruler::register(app);
         inspectors::register(app);
         app.add_systems(
             Update,

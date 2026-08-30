@@ -53,6 +53,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // this node when it lands *outside* the frame.
             Interaction::default(),
             crate::game_ui::interaction::CanvasBackground,
+            crate::game_ui::ruler::RulerArea,
             Name::new("ui-canvas-viewport"),
         ))
         .id();
@@ -205,6 +206,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let overlay = crate::game_ui::overlay::build(commands, fonts);
     commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
-    commands.entity(area).add_children(&[note, frame]);
+    // Last, so the strips sit over the frame's edges rather than under them.
+    let rulers = crate::game_ui::ruler::build(commands, fonts);
+    commands.entity(area).add_children(&[note, frame, rulers]);
     area
 }
