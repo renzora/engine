@@ -227,8 +227,9 @@ pub use markdown::*;
 pub use rich_text::*;
 pub use overflow_row::{arrange_row, arrange_row_items, ArrangeKey, ArrangeOrder, ArrangeRow};
 pub use toolbar::{
-    toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_pill, toolbar_separator, ToolbarPill,
-    TOOLBAR_BTN, TOOLBAR_ICON, TOOLBAR_INLINE_H, TOOLBAR_RADIUS,
+    settings_check_row, settings_section, settings_separator, toolbar_bar, toolbar_group,
+    toolbar_icon_button, toolbar_pill, toolbar_separator, ToolbarPill, TOOLBAR_BTN, TOOLBAR_ICON,
+    TOOLBAR_INLINE_H, TOOLBAR_RADIUS,
 };
 pub use overflow_strip::{
     overflow_strip, overflow_strip_gap, OverflowBudget, OverflowEntry, OverflowKeep, OverflowStrip,

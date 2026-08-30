@@ -228,6 +228,67 @@ pub fn toolbar_pill(
     }
 }
 
+/// A section heading inside a toolbar settings popup.
+pub fn settings_section(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    commands
+        .spawn((
+            crate::widgets::Text::new(label.to_string()),
+            crate::font::ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(crate::theme::text_muted())),
+            Name::new("settings-section"),
+        ))
+        .id()
+}
+
+/// A full-width hairline between sections of a settings popup.
+pub fn settings_separator(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(divider())),
+            Name::new("settings-separator"),
+        ))
+        .id()
+}
+
+/// A `label ………… [switch]` row for a settings popup, bound two-way.
+pub fn settings_check_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    get: impl Fn(&crate::reactive::Rx) -> bool + Send + Sync + 'static,
+    set: impl Fn(&mut World, bool) + Send + Sync + 'static,
+) -> Entity {
+    let sw = crate::widgets::toggle_switch(commands, false);
+    crate::reactive::tracked::bind_2way(commands, sw, get, move |w, v: &bool| set(w, *v));
+    let lbl = commands
+        .spawn((
+            crate::widgets::Text::new(label.to_string()),
+            crate::font::ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(value_text())),
+        ))
+        .id();
+    let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("settings-check-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[lbl, spacer, sw]);
+    row
+}
+
 /// A plain icon button at toolbar size. Returns `(button, icon)` — the caller
 /// keeps the icon entity so it can bind the glyph's colour to whatever state the
 /// button reflects.

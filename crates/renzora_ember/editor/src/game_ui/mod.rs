@@ -87,38 +87,15 @@ pub(crate) struct NativeCanvasState {
     /// hover name badge — the click path does its own hit-test at press time,
     /// because what a press hits depends on the current selection.
     pub hovered: Option<Entity>,
-    /// When to show a node's name badge on the canvas.
-    pub badge: NodeBadge,
-}
-
-/// When the canvas shows a node's name over it.
-///
-/// A drag always shows the drop target's name regardless of this — that badge
-/// answers "where is this about to land", which is not optional while you are
-/// asking the question.
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum NodeBadge {
-    /// Never — the canvas stays clean and the hierarchy is the place to read
-    /// names.
-    Off,
-    /// On the selected node. The default: you asked for that node, so the
-    /// canvas can afford to tell you which one it is.
-    #[default]
-    Selected,
-    /// On whatever the cursor is over. Reads the tree fastest, and is the
-    /// noisiest.
-    Hover,
-}
-
-impl NodeBadge {
-    pub const ALL: [NodeBadge; 3] = [NodeBadge::Off, NodeBadge::Selected, NodeBadge::Hover];
-    pub fn label(self) -> &'static str {
-        match self {
-            NodeBadge::Off => "No labels",
-            NodeBadge::Selected => "On select",
-            NodeBadge::Hover => "On hover",
-        }
-    }
+    /// Outline the node under the cursor, without needing a click.
+    pub hover_outline: bool,
+    /// Also outline the container the cursor is inside — the node's parent.
+    /// Reading which group you are in is most of what is hard about a nested
+    /// template, and it is the same box the drop target draws during a drag.
+    pub hover_group: bool,
+    /// Put a node's name on the boxes above. Off leaves the outlines, which are
+    /// still useful once you know the tree.
+    pub show_names: bool,
 }
 
 impl Default for NativeCanvasState {
@@ -136,7 +113,9 @@ impl Default for NativeCanvasState {
             marquee: None,
             drop: None,
             hovered: None,
-            badge: NodeBadge::default(),
+            hover_outline: true,
+            hover_group: true,
+            show_names: true,
         }
     }
 }

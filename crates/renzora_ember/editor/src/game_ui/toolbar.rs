@@ -14,14 +14,15 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    arrange_row_items, dropdown_compact, toolbar_bar, toolbar_group, toolbar_icon_button,
+    arrange_row_items, icon_popup_trigger, popup_anchor, popup_panel, settings_check_row,
+    settings_section, settings_separator, toolbar_bar, toolbar_group, toolbar_icon_button,
     toolbar_pill,
 };
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
 use crate::game_ui::geometry::WidgetGeom;
-use crate::game_ui::{NativeCanvasState, NodeBadge};
+use crate::game_ui::NativeCanvasState;
 
 #[derive(Component, Clone, Copy)]
 pub(crate) enum CanvasTbBtn {
@@ -141,34 +142,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
 
-    // When the canvas labels a node with its name. Off / on select / on hover —
-    // a template is mostly anonymous `<node>`s, so the labels are the difference
-    // between reading the tree and guessing at it, but they are also clutter
-    // once you know your way around.
-    let badge_labels: Vec<&str> = NodeBadge::ALL.iter().map(|b| b.label()).collect();
-    let badge_dd = dropdown_compact(commands, fonts, &badge_labels, 1, 84.0);
-    bind_2way(
-        commands,
-        badge_dd,
-        |w: &Rx| {
-            w.get_resource::<NativeCanvasState>()
-                .and_then(|s| NodeBadge::ALL.iter().position(|b| *b == s.badge))
-                .unwrap_or(1)
-        },
-        |w: &mut World, i: &usize| {
-            if let (Some(mut s), Some(b)) = (
-                w.get_resource_mut::<NativeCanvasState>(),
-                NodeBadge::ALL.get(*i).copied(),
-            ) {
-                s.badge = b;
-            }
-        },
-    );
+    let overlays = overlays_dropdown(commands, fonts);
 
     let view_group = toolbar_group(commands, "ui-view-group");
     commands
         .entity(view_group)
-        .add_children(&[grid, snap.root, backdrop, badge_dd]);
+        .add_children(&[grid, snap.root, backdrop, overlays]);
     kids.push(view_group);
 
     // Zoom cluster, with the canvas resolution read out beside it.
@@ -202,6 +181,47 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
     arrange_row_items(commands, fonts, bar, &entries);
     bar
+}
+
+/// The **Overlays** popup — one switch per thing the editor draws over the
+/// canvas, in the same shape as the viewport's Gizmos dropdown.
+///
+/// A popup rather than a plain dropdown because these are independent switches,
+/// not one choice among several: you can want the hover outline without the
+/// container box, or the boxes without their names. A dropdown would have forced
+/// them into a single ranked list of combinations.
+fn overlays_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    macro_rules! canvas_switch {
+        ($label:expr, $field:ident) => {
+            settings_check_row(
+                commands,
+                fonts,
+                $label,
+                |w: &Rx| {
+                    w.get_resource::<NativeCanvasState>()
+                        .map(|s| s.$field)
+                        .unwrap_or(false)
+                },
+                |w: &mut World, v: bool| {
+                    if let Some(mut s) = w.get_resource_mut::<NativeCanvasState>() {
+                        s.$field = v;
+                    }
+                },
+            )
+        };
+    }
+
+    let kids = vec![
+        settings_section(commands, fonts, "Highlight"),
+        canvas_switch!("Hovered node", hover_outline),
+        canvas_switch!("Parent container", hover_group),
+        settings_separator(commands),
+        settings_section(commands, fonts, "Labels"),
+        canvas_switch!("Node names", show_names),
+    ];
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
+    popup_anchor(commands, trigger, panel)
 }
 
 /// A toolbar button carrying the marker that says what pressing it does. The

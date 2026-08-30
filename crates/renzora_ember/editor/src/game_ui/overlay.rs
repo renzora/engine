@@ -87,7 +87,7 @@ pub(crate) struct CanvasHandle {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        (position_sel_boxes, position_marquee, position_drop, position_sel_labels)
+        (position_sel_boxes, position_marquee, position_drop, position_sel_labels, position_hover)
             // After the geometry snapshot so the box tracks the same frame's
             // widget sizes instead of trailing a frame behind during a resize.
             .after(crate::game_ui::geometry::snapshot_widgets)
@@ -160,10 +160,151 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
             Name::new("ui-canvas-dropline"),
         ))
         .id();
+    // Hover chrome: the node under the cursor, and the container it sits in.
+    // Persistent nodes toggled by `position_hover`, like the drop feedback —
+    // the cursor moves every frame and this is not the place to spawn entities.
+    //
+    // The group box is drawn first so the node's own outline sits on top of it;
+    // they overlap by definition, and the inner one is the one you are pointing
+    // at.
+    let hover_group = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
+            BorderColor::all(rgb(accent()).with_alpha(0.35)),
+            BackgroundColor(rgb(accent()).with_alpha(0.04)),
+            FocusPolicy::Pass,
+            Visibility::Hidden,
+            HoverGroupBox,
+            Name::new("ui-canvas-hovergroup"),
+        ))
+        .id();
+    let hover_group_label = name_badge(commands, fonts);
+    commands
+        .entity(hover_group_label)
+        .insert((HoverGroupLabel, BackgroundColor(rgb(accent()).with_alpha(0.55))));
+    commands.entity(hover_group).add_child(hover_group_label);
+
+    let hover_box = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
+            BorderColor::all(rgb(accent()).with_alpha(0.8)),
+            FocusPolicy::Pass,
+            Visibility::Hidden,
+            HoverBox,
+            Name::new("ui-canvas-hoverbox"),
+        ))
+        .id();
+    let hover_label = name_badge(commands, fonts);
+    commands.entity(hover_label).insert(HoverLabel);
+    commands.entity(hover_box).add_child(hover_label);
+
     commands
         .entity(layer)
-        .add_children(&[boxes, marquee, drop_box, drop_line]);
+        .add_children(&[boxes, marquee, hover_group, hover_box, drop_box, drop_line]);
     layer
+}
+
+/// Outline of the node under the cursor.
+#[derive(Component)]
+struct HoverBox;
+/// Its name badge.
+#[derive(Component)]
+struct HoverLabel;
+/// Outline of the container the cursor is inside — the hovered node's parent.
+#[derive(Component)]
+struct HoverGroupBox;
+/// Its name badge.
+#[derive(Component)]
+struct HoverGroupLabel;
+
+/// Draw the hover chrome from `NativeCanvasState::hovered`.
+///
+/// Hidden entirely during a drag: the drop feedback is already drawing a
+/// container box and an insertion line, and a hover outline underneath it is two
+/// overlays answering the same question with different edges.
+#[allow(clippy::too_many_arguments)]
+fn position_hover(
+    state: Res<NativeCanvasState>,
+    names: Query<&Name>,
+    sources: Query<&renzora_ember::markup::provenance::MarkupSource>,
+    mut hover: Query<(&mut Node, &mut Visibility), (With<HoverBox>, Without<HoverGroupBox>)>,
+    mut group: Query<(&mut Node, &mut Visibility), (With<HoverGroupBox>, Without<HoverBox>)>,
+    mut hover_lbl: Query<
+        (&mut bevy::ui::widget::Text, &mut Visibility),
+        (With<HoverLabel>, Without<HoverGroupLabel>, Without<HoverBox>, Without<HoverGroupBox>),
+    >,
+    mut group_lbl: Query<
+        (&mut bevy::ui::widget::Text, &mut Visibility),
+        (With<HoverGroupLabel>, Without<HoverLabel>, Without<HoverBox>, Without<HoverGroupBox>),
+    >,
+) {
+    let zoom = state.zoom;
+    let dragging = state.drop.is_some() || state.marquee.is_some();
+    let target = if dragging || !state.hover_outline {
+        None
+    } else {
+        state.hovered
+    };
+    let geom = target.and_then(|e| state.widgets.iter().find(|g| g.entity == e));
+    // The container is the hovered node's parent, and only when it is itself a
+    // tracked widget — the canvas root is not one, so pointing at a top-level
+    // node does not light up the whole canvas.
+    let group_geom = geom
+        .filter(|_| state.hover_group)
+        .and_then(|g| g.parent)
+        .and_then(|p| state.widgets.iter().find(|g| g.entity == p));
+
+    let place = |node: &mut Node, vis: &mut Visibility, g: Option<&crate::game_ui::geometry::WidgetGeom>| {
+        match g {
+            Some(g) => {
+                node.left = Val::Px(g.x * zoom);
+                node.top = Val::Px(g.y * zoom);
+                node.width = Val::Px(g.width * zoom);
+                node.height = Val::Px(g.height * zoom);
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    };
+    for (mut node, mut vis) in &mut hover {
+        place(&mut node, &mut vis, geom);
+    }
+    for (mut node, mut vis) in &mut group {
+        place(&mut node, &mut vis, group_geom);
+    }
+
+    let text_for = |e: Option<Entity>| {
+        e.filter(|_| state.show_names)
+            .map(|e| node_label(e, &names, &sources))
+    };
+    write_badge(&mut hover_lbl, text_for(geom.map(|g| g.entity)));
+    write_badge(&mut group_lbl, text_for(group_geom.map(|g| g.entity)));
+}
+
+/// Set a badge's text, or hide it when there is nothing to name.
+///
+/// Generic over the query filter because the hover badge and the container
+/// badge are distinct components with mutually-exclusive filters — a closure
+/// cannot take both, since each `Query` is its own type.
+fn write_badge<F: bevy::ecs::query::QueryFilter>(
+    q: &mut Query<(&mut bevy::ui::widget::Text, &mut Visibility), F>,
+    want: Option<String>,
+) {
+    for (mut text, mut vis) in q.iter_mut() {
+        let v = if want.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != v {
+            *vis = v;
+        }
+        if let Some(w) = want.as_ref() {
+            if text.0 != *w {
+                text.0 = w.clone();
+            }
+        }
+    }
 }
 
 /// A node's name, as a small tab sitting on the top-left of the box that frames
@@ -373,10 +514,10 @@ fn position_sel_labels(
     boxes: Query<(&SelBox, &Children)>,
     mut labels: Query<(&mut bevy::ui::widget::Text, &mut Visibility), With<SelLabel>>,
 ) {
-    let target = match state.badge {
-        crate::game_ui::NodeBadge::Off => None,
-        crate::game_ui::NodeBadge::Selected => selection.and_then(|s| s.get()),
-        crate::game_ui::NodeBadge::Hover => state.hovered,
+    let target = if state.show_names {
+        selection.and_then(|s| s.get())
+    } else {
+        None
     };
     for (sb, kids) in &boxes {
         // Only the box framing the target gets a label — with a multi-selection
