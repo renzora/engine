@@ -87,7 +87,7 @@ pub(crate) struct CanvasHandle {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        (position_sel_boxes, position_marquee, position_drop)
+        (position_sel_boxes, position_marquee, position_drop, position_sel_labels)
             // After the geometry snapshot so the box tracks the same frame's
             // widget sizes instead of trailing a frame behind during a resize.
             .after(crate::game_ui::geometry::snapshot_widgets)
@@ -147,25 +147,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
     // The container's name, sitting on its top edge. Which container you are
     // about to drop into is otherwise a guess — nested rows and columns in a
     // template look alike from the outside.
-    let drop_label = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(-1.0),
-                top: Val::Px(-15.0),
-                padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(2.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(accent())),
-            bevy::ui::widget::Text::new(""),
-            renzora_ember::font::ui_font(&fonts.ui, 9.0),
-            TextColor(Color::WHITE),
-            FocusPolicy::Pass,
-            DropLabel,
-            Name::new("ui-canvas-droplabel"),
-        ))
-        .id();
+    let drop_label = name_badge(commands, fonts);
+    commands.entity(drop_label).insert(DropLabel);
     commands.entity(drop_box).add_child(drop_label);
     let drop_line = commands
         .spawn((
@@ -181,6 +164,50 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
         .entity(layer)
         .add_children(&[boxes, marquee, drop_box, drop_line]);
     layer
+}
+
+/// A node's name, as a small tab sitting on the top-left of the box that frames
+/// it. Used for both the drop target and the selection, so the two read as the
+/// same piece of information rather than two similar-looking ones.
+///
+/// Offset up by its own height so it sits *above* the frame rather than over the
+/// node's first line of content.
+fn name_badge(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts) -> Entity {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-1.0),
+                top: Val::Px(-15.0),
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            bevy::ui::widget::Text::new(""),
+            renzora_ember::font::ui_font(&fonts.ui, 9.0),
+            TextColor(Color::WHITE),
+            FocusPolicy::Pass,
+            Name::new("ui-canvas-name-badge"),
+        ))
+        .id()
+}
+
+/// Best display name for a node: the markup's `name="..."` when it has one,
+/// otherwise its tag. A template is mostly anonymous `<node>`s, so falling back
+/// to the entity id would label almost everything with a number.
+fn node_label(
+    entity: Entity,
+    names: &Query<&Name>,
+    kinds: &Query<&renzora_ember::markup::provenance::MarkupSource>,
+) -> String {
+    if let Ok(n) = names.get(entity) {
+        return n.as_str().to_string();
+    }
+    if kinds.get(entity).is_ok() {
+        return "node".to_string();
+    }
+    format!("{entity}")
 }
 
 /// Outline of the container a flow drag would drop into.
@@ -268,11 +295,15 @@ fn selection_snapshot(world: &Rx) -> KeyedSnapshot {
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, _f, i| sel_box(c, present[i])),
+        build: Box::new(move |c, f, i| sel_box(c, f, present[i])),
     }
 }
 
-fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
+fn sel_box(
+    commands: &mut Commands,
+    fonts: &renzora_ember::font::EmberFonts,
+    entity: Entity,
+) -> Entity {
     let b = commands
         .spawn((
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
@@ -283,6 +314,12 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
             Name::new("ui-canvas-selbox"),
         ))
         .id();
+    // The node's name, hidden until `position_sel_labels` decides it applies.
+    let label = name_badge(commands, fonts);
+    commands
+        .entity(label)
+        .insert((SelLabel, Visibility::Hidden));
+    commands.entity(b).add_child(label);
     // 8 resize handles: 4 corners + 4 edge midpoints, positioned relative to the box.
     let handles = [
         ((0.0, 0.0), ResizeHandle::TopLeft),
@@ -321,6 +358,58 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
     commands.entity(b).add_child(rot);
     b
 }
+
+/// Show the selected (or hovered) node's name on its selection box, per
+/// [`NodeBadge`].
+///
+/// The drag already labels its drop target; this answers the same question
+/// outside a drag — "which of these boxes am I looking at" — which is the one a
+/// template full of anonymous `<node>`s makes hard.
+fn position_sel_labels(
+    state: Res<NativeCanvasState>,
+    selection: Option<Res<EditorSelection>>,
+    names: Query<&Name>,
+    sources: Query<&renzora_ember::markup::provenance::MarkupSource>,
+    boxes: Query<(&SelBox, &Children)>,
+    mut labels: Query<(&mut bevy::ui::widget::Text, &mut Visibility), With<SelLabel>>,
+) {
+    let target = match state.badge {
+        crate::game_ui::NodeBadge::Off => None,
+        crate::game_ui::NodeBadge::Selected => selection.and_then(|s| s.get()),
+        crate::game_ui::NodeBadge::Hover => state.hovered,
+    };
+    for (sb, kids) in &boxes {
+        // Only the box framing the target gets a label — with a multi-selection
+        // every box has one of these, and labelling all of them turns the canvas
+        // into a wall of tags.
+        let show = target == Some(sb.0);
+        let text = if show {
+            node_label(sb.0, &names, &sources)
+        } else {
+            String::new()
+        };
+        for kid in kids.iter() {
+            let Ok((mut t, mut vis)) = labels.get_mut(kid) else {
+                continue;
+            };
+            let want_vis = if show {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *vis != want_vis {
+                *vis = want_vis;
+            }
+            if show && t.0 != text {
+                t.0 = text.clone();
+            }
+        }
+    }
+}
+
+/// The name badge attached to a selection box.
+#[derive(Component)]
+struct SelLabel;
 
 /// Reposition + rotate each selection box from the live widget geometry × zoom
 /// (so the box + its handles track and rotate with the widget).

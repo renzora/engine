@@ -127,6 +127,34 @@ pub(crate) fn is_descendant_of(parents: &Query<&ChildOf>, mut e: Entity, ancesto
     false
 }
 
+/// Track the widget under the cursor, for the hover name badge.
+///
+/// Separate from the interaction system's hit-test on purpose: that one runs
+/// only on press and resolves "what does a press act on", which depends on the
+/// current selection (pressing inside a selected node drags *it*, not the child
+/// under the pointer). This is the plain question — what is the cursor over —
+/// and the answer differs.
+pub(crate) fn track_hover(
+    mut state: ResMut<NativeCanvasState>,
+    hit: Query<&bevy::ui::RelativeCursorPosition, With<crate::game_ui::overlay::CanvasHitLayer>>,
+) {
+    let want = hit
+        .iter()
+        .next()
+        .filter(|r| r.cursor_over)
+        .and_then(|r| r.normalized)
+        .map(|n| {
+            Vec2::new(
+                (n.x + 0.5) * state.canvas_width,
+                (n.y + 0.5) * state.canvas_height,
+            )
+        })
+        .and_then(|c| topmost_at(&state.widgets, c.x, c.y));
+    if state.hovered != want {
+        state.hovered = want;
+    }
+}
+
 /// Work out where a flow drag would drop `dragged` if released at `cursor`.
 ///
 /// The container is chosen from the deepest widget under the cursor that is not

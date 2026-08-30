@@ -83,6 +83,42 @@ pub(crate) struct NativeCanvasState {
     /// progress. The overlay outlines `parent` and draws the insertion line;
     /// releasing applies it. `None` whenever no flow drag is running.
     pub drop: Option<geometry::DropTarget>,
+    /// The widget under the cursor, recomputed every frame. Only needed for the
+    /// hover name badge — the click path does its own hit-test at press time,
+    /// because what a press hits depends on the current selection.
+    pub hovered: Option<Entity>,
+    /// When to show a node's name badge on the canvas.
+    pub badge: NodeBadge,
+}
+
+/// When the canvas shows a node's name over it.
+///
+/// A drag always shows the drop target's name regardless of this — that badge
+/// answers "where is this about to land", which is not optional while you are
+/// asking the question.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum NodeBadge {
+    /// Never — the canvas stays clean and the hierarchy is the place to read
+    /// names.
+    Off,
+    /// On the selected node. The default: you asked for that node, so the
+    /// canvas can afford to tell you which one it is.
+    #[default]
+    Selected,
+    /// On whatever the cursor is over. Reads the tree fastest, and is the
+    /// noisiest.
+    Hover,
+}
+
+impl NodeBadge {
+    pub const ALL: [NodeBadge; 3] = [NodeBadge::Off, NodeBadge::Selected, NodeBadge::Hover];
+    pub fn label(self) -> &'static str {
+        match self {
+            NodeBadge::Off => "No labels",
+            NodeBadge::Selected => "On select",
+            NodeBadge::Hover => "On hover",
+        }
+    }
 }
 
 impl Default for NativeCanvasState {
@@ -99,6 +135,8 @@ impl Default for NativeCanvasState {
             widgets: Vec::new(),
             marquee: None,
             drop: None,
+            hovered: None,
+            badge: NodeBadge::default(),
         }
     }
 }
@@ -121,7 +159,9 @@ impl Plugin for GameUiEditorPlugin {
         // panel-systems-ungated: game-UI runtime, not editor chrome — not tied to a panel's visibility
         app.add_systems(
             Update,
-            geometry::snapshot_widgets.run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
+            // Chained: `track_hover` hit-tests the snapshot, so it has to read
+            // the one taken this frame rather than last frame's.
+            (geometry::snapshot_widgets, geometry::track_hover).chain().run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
         );
         toolbar::register(app);
         overlay::register(app);

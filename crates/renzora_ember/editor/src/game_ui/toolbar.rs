@@ -14,13 +14,14 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    arrange_row_items, toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_pill,
+    arrange_row_items, dropdown_compact, toolbar_bar, toolbar_group, toolbar_icon_button,
+    toolbar_pill,
 };
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
 use crate::game_ui::geometry::WidgetGeom;
-use crate::game_ui::NativeCanvasState;
+use crate::game_ui::{NativeCanvasState, NodeBadge};
 
 #[derive(Component, Clone, Copy)]
 pub(crate) enum CanvasTbBtn {
@@ -140,10 +141,34 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
 
+    // When the canvas labels a node with its name. Off / on select / on hover —
+    // a template is mostly anonymous `<node>`s, so the labels are the difference
+    // between reading the tree and guessing at it, but they are also clutter
+    // once you know your way around.
+    let badge_labels: Vec<&str> = NodeBadge::ALL.iter().map(|b| b.label()).collect();
+    let badge_dd = dropdown_compact(commands, fonts, &badge_labels, 1, 84.0);
+    bind_2way(
+        commands,
+        badge_dd,
+        |w: &Rx| {
+            w.get_resource::<NativeCanvasState>()
+                .and_then(|s| NodeBadge::ALL.iter().position(|b| *b == s.badge))
+                .unwrap_or(1)
+        },
+        |w: &mut World, i: &usize| {
+            if let (Some(mut s), Some(b)) = (
+                w.get_resource_mut::<NativeCanvasState>(),
+                NodeBadge::ALL.get(*i).copied(),
+            ) {
+                s.badge = b;
+            }
+        },
+    );
+
     let view_group = toolbar_group(commands, "ui-view-group");
     commands
         .entity(view_group)
-        .add_children(&[grid, snap.root, backdrop]);
+        .add_children(&[grid, snap.root, backdrop, badge_dd]);
     kids.push(view_group);
 
     // Zoom cluster, with the canvas resolution read out beside it.
