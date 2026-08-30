@@ -38,7 +38,18 @@ const CARD_W: f32 = 124.0;
 /// Corner rounding on the square icon. Matches the proportion a store icon is
 /// usually drawn with (~13% of the side), so artwork that already has its own
 /// rounded corners lines up instead of showing a sliver of card behind it.
-const ICON_RADIUS: f32 = 18.0;
+/// Corner radius of the artwork square, and of the card that holds it.
+///
+/// They are one constant and a sum, not two numbers picked separately. A
+/// rounded box inside a rounded box only looks right when the inner radius plus
+/// the padding equals the outer one — otherwise the two curves run at different
+/// rates and the gap between them pinches at the corners. It was 18 inside a
+/// card of 11, so the artwork was *rounder than the thing containing it*.
+const ICON_RADIUS: f32 = 9.0;
+/// Padding between the artwork and the card edge.
+const CARD_PAD: f32 = 7.0;
+/// = `ICON_RADIUS + CARD_PAD`. See [`ICON_RADIUS`].
+const CARD_RADIUS: f32 = ICON_RADIUS + CARD_PAD;
 /// How many cards a home category shelf shows before "See all".
 ///
 /// Ten rather than six because the cards are a fixed width now: six of them
@@ -258,7 +269,7 @@ impl Plugin for NativeHubStore {
                 store_home_init,
                 store_refetch,
                 store_search_sync,
-                store_search_click,
+                store_search_enter,
                 // Nested to keep the outer tuple within Bevy's 20-system cap.
                 (store_sort_dropdown, store_rating_dropdown, store_price_dropdown),
                 store_category_click,
@@ -284,8 +295,6 @@ impl Plugin for NativeHubStore {
 
 #[derive(Component)]
 struct StoreSearch;
-#[derive(Component)]
-struct StoreSearchBtn;
 #[derive(Component)]
 struct StoreSortDropdown;
 #[derive(Component)]
@@ -336,22 +345,55 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
 
-    // Toolbar: a large, prominent search bar (the primary way to shop the store)
-    // + search button + sort dropdown + total.
+    // ── Toolbar: search, and who you are. That's all ─────────────────────────
+    //
+    // It used to carry the sort and both filter dropdowns as well, plus a loose
+    // asset count and a magnifier button — seven controls across the top of a
+    // storefront whose default view is a set of per-category top-lists that
+    // *none of those three dropdowns affect*. They sat there doing nothing on
+    // the view you land on, and they were most of the bar's weight.
+    //
+    // They moved down to the browse view, where they apply (see `filters`).
+    // What is left is the one control that works everywhere and the account,
+    // which is the top-right corner every store puts identity in.
     let toolbar = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(8.0), row_gap: Val::Px(6.0), flex_shrink: 0.0, padding: UiRect::vertical(Val::Px(4.0)), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(10.0), row_gap: Val::Px(6.0), flex_shrink: 0.0, padding: UiRect::vertical(Val::Px(4.0)), ..default() })
         .id();
+
+    // The magnifier is *inside* the field, not a button beside it. A separate
+    // search button next to a search box is a second thing to aim at for what
+    // Enter already does — and Enter did not do it before, which is the actual
+    // reason the button existed. `store_search_enter` fixes that.
+    let search_row = commands
+        .spawn((
+            Node { flex_grow: 1.0, min_width: Val::Px(160.0), height: Val::Px(36.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::horizontal(Val::Px(12.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() },
+            BackgroundColor(rgba([255, 255, 255, 16])),
+            BorderColor::all(rgba([255, 255, 255, 28])),
+        ))
+        .id();
+    let search_ic = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 13.0);
+    commands.entity(search_ic).insert(FocusPolicy::Pass);
     let search = text_input(commands, &fonts.ui, "Search assets...", "");
     commands.entity(search).insert((
         StoreSearch,
-        Node { flex_grow: 1.0, min_width: Val::Px(140.0), height: Val::Px(38.0), padding: UiRect::axes(Val::Px(14.0), Val::Px(9.0)), align_items: AlignItems::Center, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(9.0)), ..default() },
-        // Lighter surface than the default popup bg so the primary search field
-        // stands out from the panel.
-        BackgroundColor(rgba([255, 255, 255, 20])),
-        BorderColor::all(rgba([255, 255, 255, 34])),
+        Node { flex_grow: 1.0, min_width: Val::Px(0.0), align_items: AlignItems::Center, ..default() },
+        BackgroundColor(Color::NONE),
     ));
-    let search_btn = chip_button(commands, fonts, "magnifying-glass", None, StoreSearchBtn);
-    // Sort + filters (backend: `sort`, `min_rating`, `max_price`).
+    commands.entity(search_row).add_children(&[search_ic, search]);
+
+    // Account + Upload.
+    let account_bar = build_account_bar(commands, fonts);
+    commands
+        .entity(toolbar)
+        .add_children(&[search_row, account_bar]);
+
+    // ── Browse filters: sort, rating, price, count ───────────────────────────
+    //
+    // Shown only when there is a flat grid for them to act on. On the storefront
+    // home they filtered nothing.
+    let filters = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(8.0), row_gap: Val::Px(6.0), flex_shrink: 0.0, ..default() })
+        .id();
     let sort_labels: Vec<&str> = SORTS.iter().map(|(_, l)| *l).collect();
     // Default selection mirrors `HubStoreData::default().sort` (popular).
     let default_sort = SORTS.iter().position(|(v, _)| *v == "popular").unwrap_or(0);
@@ -363,14 +405,14 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let price_labels: Vec<&str> = PRICES.iter().map(|(_, l)| *l).collect();
     let price = dropdown(commands, fonts, &price_labels, 0);
     commands.entity(price).insert(StorePriceDropdown);
+    let fgap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    // The count belongs with the filters: it is what they produced.
     let total = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())))).id();
     bind_text(commands, total, |w| format!("{} assets", w.resource::<HubStoreData>().total));
-    // Account + Upload live at the right end of the toolbar, after the filters
-    // and the count — the top-right corner every store puts identity in.
-    let account_bar = build_account_bar(commands, fonts);
     commands
-        .entity(toolbar)
-        .add_children(&[search, search_btn, sort, rating, price, total, account_bar]);
+        .entity(filters)
+        .add_children(&[sort, rating, price, fgap, total]);
+    bind_display(commands, filters, |w| !w.resource::<HubStoreData>().is_home());
 
     // Status / error.
     let status = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(RED)), Node { flex_shrink: 0.0, ..default() })).id();
@@ -407,7 +449,10 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, browse, |w| !w.resource::<HubStoreData>().is_home());
     commands.entity(browse).add_children(&[grid_scroll, pager]);
 
-    commands.entity(right).add_children(&[home, browse]);
+    // The filters sit at the top of the *right* column, over the grid they act
+    // on — not across the whole panel, where they would sit above the category
+    // list as well and read as filtering that too.
+    commands.entity(right).add_children(&[filters, home, browse]);
 
     commands.entity(split).add_children(&[sidebar, right]);
     commands.entity(root).add_children(&[toolbar, status, banner, split]);
@@ -526,11 +571,23 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// from the keyed list. Kept in the signature because every `build_*` here takes
 /// it, and a sidebar that grows one label back should not change shape.
 fn build_sidebar(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
+    // A surface, not a floating column of text.
+    //
+    // With the stripes and the caption gone the list had nothing left holding it
+    // together — eleven labels adrift against the same background as the grid
+    // beside them, with no edge to say where navigation stopped and content
+    // started. A panel tint plus a hairline on its right edge is what a sidebar
+    // is; the stripes were standing in for it badly.
+    //
+    // 200 wide because "Materials & Shaders" still wrapped at 180 — the font is
+    // wider than the estimate that picked that number, and the honest fix is to
+    // measure by looking rather than guess again.
     let col = commands
-        // 180, not 160: at the 13px the rows now use, 160 was about fifteen
-        // pixels short of "Materials & Shaders" and the longest three names all
-        // wrapped. Widening the column is the fix that keeps the type size.
-        .spawn(Node { width: Val::Px(180.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .spawn((
+            Node { width: Val::Px(200.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(8.0)), border: UiRect::right(Val::Px(1.0)), ..default() },
+            BackgroundColor(rgb(panel_bg())),
+            BorderColor::all(rgb(border())),
+        ))
         .id();
 
     // No "Categories" caption. A column of category names under a search box, in
@@ -779,7 +836,7 @@ fn asset_card(
             // Padded, so the icon reads as an *icon* sitting on the card rather
             // than a banner bleeding to its edges — which is the difference
             // between a store tile and the old landscape card.
-            Node { width: Val::Px(CARD_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(7.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            Node { width: Val::Px(CARD_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(CARD_PAD)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)), ..default() },
             BackgroundColor(base),
             BorderColor::all(rgba([255, 255, 255, 12])),
             Interaction::default(),
@@ -851,11 +908,16 @@ fn asset_card(
         // as a soft gradient with no grey bars around the crisp centered art.
         // Skipped for 3D models/animations (transparent renders).
         if !is_3d_thumb(&a.category) {
+            // The radius is repeated on the image itself. bevy_ui's
+            // `Overflow::clip` clips to the node's RECT, not to its corner
+            // radius, so a square image inside a rounded frame simply covers the
+            // corners up — which is exactly what it looked like: rounded cards
+            // with square pictures in them.
             let bg = commands
                 .spawn((
                     ImageNode { color: Color::srgb(0.30, 0.30, 0.33), image_mode: NodeImageMode::Stretch, ..default() },
                     FocusPolicy::Pass,
-                    Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() },
+                    Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)), ..default() },
                 ))
                 .id();
             let burl = url.clone();
@@ -864,7 +926,7 @@ fn asset_card(
         }
         // Foreground: the full artwork, aspect-preserved, over the backdrop.
         let img = commands
-            .spawn((ImageNode::default(), FocusPolicy::Pass, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() }))
+            .spawn((ImageNode::default(), FocusPolicy::Pass, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)), ..default() }))
             .id();
         bind_with(commands, img, move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get(&url)), apply_thumb);
         commands.entity(thumb).add_child(img);
@@ -1067,10 +1129,34 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     // with occasional bold rows in it rather than as sections.
     let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     let spacer = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
-    let see_t = commands.spawn((Text::new("See all"), ui_font(&fonts.ui, 10.5), TextColor(rgb(accent())), FocusPolicy::Pass)).id();
-    let see_ic = icon_text(commands, &fonts.phosphor, "arrow-right", accent(), 11.0);
+    // A filled pill, not accent-coloured text. As text it was the same weight
+    // and nearly the same colour as a link in a body of prose, floating at the
+    // right end of a header with nothing to say it was pressable; the pill
+    // reads as a control at a glance and the white text on accent is the only
+    // pairing in this panel that has real contrast.
+    let see = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                height: Val::Px(24.0),
+                padding: UiRect::horizontal(Val::Px(11.0)),
+                border_radius: BorderRadius::all(Val::Px(12.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            // `Pass`: the whole header is the target, so the pill must not eat
+            // the press — it is the affordance for the row, not a second button.
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let see_t = commands.spawn((Text::new("See all"), ui_font(&fonts.ui, 10.5), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    let see_ic = icon_text(commands, &fonts.phosphor, "arrow-right", (255, 255, 255), 11.0);
     commands.entity(see_ic).insert(FocusPolicy::Pass);
-    commands.entity(header).add_children(&[title, spacer, see_t, see_ic]);
+    commands.entity(see).add_children(&[see_t, see_ic]);
+    commands.entity(header).add_children(&[title, spacer, see]);
 
     // The same wrapping grid the browse view uses, with the same gaps — because
     // it *is* the browse view, showing one category's top few. It was a
@@ -1406,11 +1492,27 @@ fn store_search_sync(input: Query<&EmberTextInput, With<StoreSearch>>, mut data:
     }
 }
 
-fn store_search_click(q: Query<&Interaction, (With<StoreSearchBtn>, Changed<Interaction>)>, mut data: ResMut<HubStoreData>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        data.page = 1;
-        data.dirty = true;
+/// Enter in the search field runs the search.
+///
+/// This is what the magnifier button beside the box was for. Typing only ever
+/// updated `data.search`; nothing queried until that button was pressed, so a
+/// user who typed and hit Enter — which is everyone — got nothing and had to go
+/// find a second target for the gesture they had already made. `text_input`
+/// deliberately leaves Enter to whoever owns the field (see its `Key::Enter`
+/// arm), and this is that owner.
+fn store_search_enter(
+    keys: Res<ButtonInput<KeyCode>>,
+    inputs: Query<&EmberTextInput, With<StoreSearch>>,
+    mut data: ResMut<HubStoreData>,
+) {
+    if !keys.just_pressed(KeyCode::Enter) && !keys.just_pressed(KeyCode::NumpadEnter) {
+        return;
     }
+    if !inputs.iter().any(|i| i.focused) {
+        return;
+    }
+    data.page = 1;
+    data.dirty = true;
 }
 
 /// Sort dropdown selection → re-query. Skips the no-op change the dropdown emits
