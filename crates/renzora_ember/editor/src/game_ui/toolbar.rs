@@ -15,8 +15,8 @@ use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     arrange_row_items, icon_popup_trigger, popup_anchor, popup_panel, settings_check_row,
-    settings_section, settings_separator, toolbar_bar, toolbar_group, toolbar_icon_button,
-    toolbar_pill,
+    settings_section, settings_separator, toggle_switch, toolbar_bar, toolbar_group,
+    toolbar_icon_button, toolbar_pill, HoverTooltip,
 };
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
@@ -108,25 +108,37 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0)
         .collect();
     commands.entity(align_group).add_children(&align_kids);
-    // Add leads the bar — the palette is where a template grows, so it belongs
-    // ahead of everything that only rearranges or views what is already there.
-    let add_group = toolbar_group(commands, "ui-add-group");
-    let palette = crate::game_ui::palette::build(commands, fonts);
-    commands.entity(add_group).add_children(&[palette]);
 
-    let mut kids: Vec<Entity> = vec![add_group, align_group];
+    let mut kids: Vec<Entity> = vec![align_group];
 
-    // Grid + backdrop are plain toggles; snap is a pill, because "snap" and
-    // "by how much" are one idea. As a separate icon and a separate boxed field
-    // they read as two unrelated widgets that happen to be adjacent — which is
-    // exactly how this toolbar looked next to the viewport's snap pills.
+    // Grid is a plain toggle; snap is a pill, because "snap" and "by how much"
+    // are one idea. As a separate icon and a separate boxed field they read as
+    // two unrelated widgets that happen to be adjacent — which is exactly how
+    // this toolbar looked next to the viewport's snap pills.
     let (grid, grid_ic) = icon_btn(commands, fonts, "grid-four", CanvasTbBtn::ToggleGrid);
     bind_text_color(commands, grid_ic, |w| toggle_color(w, |s| s.show_grid));
-    let (backdrop, backdrop_ic) = icon_btn(commands, fonts, "image", CanvasTbBtn::ToggleBackdrop);
-    bind_text_color(commands, backdrop_ic, |w| {
-        let on = w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0);
-        rgb(if on { accent() } else { text_muted() })
-    });
+
+    // The scene backdrop is a state, not an action, so it reads as a switch —
+    // the same control the Overlays popup uses for every other "is this drawn"
+    // question. As an icon button it was the odd one out, and its only "on"
+    // signal was a tint you had to already know to look for.
+    let backdrop = toggle_switch(commands, false);
+    commands
+        .entity(backdrop)
+        .insert(HoverTooltip::new("Scene backdrop"));
+    bind_2way(
+        commands,
+        backdrop,
+        |w: &Rx| {
+            w.get_resource::<UiCanvasPreviewEnabled>()
+                .is_none_or(|r| r.0)
+        },
+        |w: &mut World, v: &bool| {
+            if let Some(mut r) = w.get_resource_mut::<UiCanvasPreviewEnabled>() {
+                r.0 = *v;
+            }
+        },
+    );
 
     // `arrows-out-cardinal`, the glyph the viewport's translate-snap pill uses.
     // Both mean "snap movement to a step", so they should not be a magnet in one
@@ -136,7 +148,20 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(snap.value)
         .insert(renzora_ember::widgets::DragSnap(1.0));
-    bind_text_color(commands, snap.icon, |w| toggle_color(w, |s| s.snap_enabled));
+    // On, the pill fills with the accent — so the glyph has to become the colour
+    // that reads *on* that fill, not the accent itself. Tinting it accent made
+    // it vanish into the pill, so the icon looked missing exactly while the
+    // control was doing something.
+    bind_text_color(commands, snap.icon, |w| {
+        let on = w
+            .get_resource::<NativeCanvasState>()
+            .is_some_and(|s| s.snap_enabled);
+        if on {
+            Color::WHITE
+        } else {
+            rgb(text_muted())
+        }
+    });
     // The pill fills when snapping is on, the same read as the viewport's.
     bind_bg(commands, snap.root, |w| {
         let on = w.get_resource::<NativeCanvasState>().is_some_and(|s| s.snap_enabled);
@@ -183,7 +208,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Each group gets a grip and a saved position, exactly like the viewport's.
     // The grips double as the dividers between groups, which is why there are no
     // explicit separators left in here.
-    let keys = ["ui-add", "ui-align", "ui-view", "ui-zoom"];
+    let keys = ["ui-align", "ui-view", "ui-zoom"];
     let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
     arrange_row_items(commands, fonts, bar, &entries);
     bar

@@ -578,8 +578,12 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
 /// text form worth reaching; `scenes` is not tabbed beside the hierarchy the way
 /// Scene does it, since the document here is a template rather than a scene.
 fn layout_ui() -> DockTree {
+    // The palette is tabbed with the hierarchy rather than given its own column:
+    // both answer "what is in this UI", one as a catalogue to add from and one as
+    // the tree you added to, and a third column would cost the canvas width it
+    // needs more.
     DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
+        DockTree::tabs(&["hierarchy", "ui_palette"]),
         DockTree::horizontal(
             DockTree::tabs(&["ui_canvas", "code_editor"]),
             DockTree::leaf("inspector"),

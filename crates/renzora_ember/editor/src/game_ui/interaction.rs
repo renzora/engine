@@ -93,6 +93,7 @@ fn canvas_interact(
     parents: Query<&ChildOf>,
     mut state: ResMut<NativeCanvasState>,
     selection: Option<Res<EditorSelection>>,
+    mut palette_drag: ResMut<crate::game_ui::palette::PaletteDrag>,
     mut commands: Commands,
 ) {
     let Some(selection) = selection else { return };
@@ -111,6 +112,28 @@ fn canvas_interact(
 
     // ── Release ── finalize regardless of where the cursor ended up.
     if mouse.just_released(MouseButton::Left) {
+        // A palette element dropped on the canvas. Taken before the `Mode` match
+        // because there is no mode to match — and cleared unconditionally, so a
+        // release anywhere else abandons the drag rather than leaving it armed
+        // for the next click.
+        if let Some(id) = palette_drag.0.take() {
+            if let Some(drop) = state.drop.take() {
+                commands.queue(move |w: &mut World| {
+                    let Some(markup) = crate::game_ui::palette::markup_for(id) else {
+                        return;
+                    };
+                    renzora_ember::markup::writeback::insert_node_in_markup(
+                        w,
+                        drop.parent,
+                        drop.before,
+                        markup,
+                    );
+                });
+            }
+            *active = None;
+            state.marquee = None;
+            return;
+        }
         match active.take() {
             // Never became a drag → a click: apply its (possibly empty) selection.
             Some(Mode::Pending { select, .. }) => {
@@ -275,6 +298,18 @@ fn canvas_interact(
             // would rewrite the `.html` on every mouse move.
             let e = *entity;
             state.drop = crate::game_ui::geometry::drop_target_at(&state.widgets, &parents, e, cursor);
+        }
+        // A palette drag is not a `Mode`: it starts in another panel, so there
+        // was no press here to promote. It rides the same drop target and the
+        // same overlay, and only the release differs — inserting new markup
+        // instead of moving existing markup.
+        _ if palette_drag.0.is_some() => {
+            state.drop = crate::game_ui::geometry::drop_target_at(
+                &state.widgets,
+                &parents,
+                Entity::PLACEHOLDER,
+                cursor,
+            );
         }
         Some(Mode::Resize { entity, handle, start_cursor, bbox }) => {
             let (l, t, r, b) = handle.sides();
