@@ -118,18 +118,12 @@ pub fn register_native_hierarchy(app: &mut App) {
             // header could not, and a lone `+` centred in a bar is a puzzle.
             |_| false,
         );
-        // `Styled(ButtonAccent)`, not a `BackgroundColor`. `apply_theme` writes
-        // the background of everything carrying `Styled` from its role token, so
-        // a colour set here is overwritten on the next theme tick — which is why
-        // the first attempt at this looked exactly like the unchanged button.
-        // Switching the role gets the fill, its hover and press states, and a
-        // line in the Theme editor, instead of one colour that loses to the
-        // theme.
-        commands.entity(add).insert((
-            add_entity::HierAddEntity,
-            Name::new("add-entity"),
-            renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
-        ));
+        // Left on the default `Button` role. An accent fill was tried here and
+        // read as too loud for a button that sits in the tree rather than over
+        // it; the placement carries the emphasis on its own.
+        commands
+            .entity(add)
+            .insert((add_entity::HierAddEntity, Name::new("add-entity")));
         let search = filter::build_search_box(commands, fonts);
         let funnel = filter::build_filter_funnel(commands, fonts);
         let header = commands

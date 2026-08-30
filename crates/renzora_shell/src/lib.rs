@@ -5107,7 +5107,22 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match r {
                 StatusRow::Label(t, c) => (0u8, t, c).hash(&mut h),
-                StatusRow::Seg(s) => (1u8, &s.icon, &s.text, s.color).hash(&mut h),
+                // The bar's *fraction* is quantized to whole percent before it
+                // reaches the hash. It changes continuously, and every change
+                // rebuilds the row — a raw f32 would despawn and respawn the
+                // segment on most frames of a long job. `Busy` is not hashed at
+                // all beyond its kind: it animates in place (see
+                // `progress_indeterminate`), so it never needs a rebuild.
+                StatusRow::Seg(s) => {
+                    let bar = match s.bar {
+                        None => (0u8, 0u8),
+                        Some(renzora::ShellStatusBar::Busy) => (1u8, 0u8),
+                        Some(renzora::ShellStatusBar::Fraction(f)) => {
+                            (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
+                        }
+                    };
+                    (1u8, &s.icon, &s.text, s.color, bar).hash(&mut h)
+                }
             }
             (k.finish(), h.finish())
         })
@@ -5182,6 +5197,18 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                     ))
                     .id(),
             );
+            // Sized for a 22px-tall bar: wide enough to read as progress,
+            // narrow enough that a background job doesn't push the rest of the
+            // status bar around.
+            match s.bar {
+                None => {}
+                Some(renzora::ShellStatusBar::Busy) => kids.push(
+                    renzora_ember::widgets::progress_indeterminate(commands, 70.0, 4.0),
+                ),
+                Some(renzora::ShellStatusBar::Fraction(f)) => {
+                    kids.push(renzora_ember::widgets::progress_sized(commands, f, 70.0, 4.0))
+                }
+            }
             commands.entity(r).add_children(&kids);
             r
         }

@@ -320,6 +320,21 @@ app.register_shell_status_item(ShellStatusItem {
 
 `ShellReadyStatus` is the other half: writing `label = Some(text)` replaces the status bar's left-hand "Ready" for a transient message, and `None` restores it. That is how the auto-save plugin shows its countdown.
 
+#### Showing progress
+
+A segment can carry a progress bar, for background work that outlives the dialog that started it:
+
+```rust
+use renzora::core::ShellStatusBar;
+
+ShellStatusSegment::new("download-simple", format!("Installing {name} — {size}"), accent)
+    .bar(ShellStatusBar::Busy)
+```
+
+`ShellStatusBar::Fraction(f)` draws a determinate fill; `Busy` draws a block that sweeps the track. Reach for `Busy` whenever you do not genuinely know the total — a fraction invented from a curve that creeps toward 90% and waits is a lie the bar tells for the whole of the wait. Put the real number in the *text* instead (bytes so far, files written), which is what the marketplace's background installs do: nothing in the transport reports a file's size, so there is no percentage to be had.
+
+`Busy` animates in its own system, so it costs no rebuilds. A `Fraction` is quantized to whole percent before the status bar hashes the row, so a continuously moving value rebuilds the segment at most a hundred times rather than every frame.
+
 ### Viewport toolbar and strips
 
 Three registration points in `renzora_ember::toolbar`, all free functions taking a `Fn(&mut Commands, &EmberFonts) -> Entity`:

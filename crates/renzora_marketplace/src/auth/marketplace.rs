@@ -125,19 +125,56 @@ pub fn preview_file_url(asset_id: &str) -> String {
     format!("{API_BASE}/api/marketplace/{asset_id}/preview-file")
 }
 
+/// 256 MB. Enforced by the backend as the bytes arrive rather than after — this
+/// is an asset file whose size the marketplace chose, not us.
+const MAX_DOWNLOAD: u32 = 256 * 1024 * 1024;
+
 /// Download the actual file bytes from a URL.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
-    // 256 MB, enforced by the backend as the bytes arrive rather than after —
-    // this is an asset file whose size the marketplace chose, not us.
     let response = renzora::net::Request::get(url)
-        .max_bytes(256 * 1024 * 1024)
+        .max_bytes(MAX_DOWNLOAD)
         .send()
         .map_err(|e| format!("Download failed: {e}"))?;
     if !response.is_ok() {
         return Err(format!("Download failed: HTTP {}", response.status));
     }
     Ok(response.body)
+}
+
+/// [`download_file`], reporting the running byte count as it arrives.
+///
+/// Streamed for the progress alone — the body is still accumulated whole,
+/// because the installer writes it through an archive reader that wants all of
+/// it. The count is what the status bar shows while a background install runs,
+/// and it is the only real number available: nothing in the transport or the
+/// catalogue reports a total, so there is no percentage to be had. See
+/// `ShellStatusBar::Busy`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn download_file_progress(
+    url: &str,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, String> {
+    let mut stream = renzora::net::Request::get(url)
+        .max_bytes(MAX_DOWNLOAD)
+        .send_stream()
+        .map_err(|e| format!("Download failed: {e}"))?;
+
+    let mut body: Vec<u8> = Vec::new();
+    for chunk in &mut stream {
+        body.extend_from_slice(&chunk.data);
+        on_bytes(body.len() as u64);
+    }
+    // A stream that fails halfway delivers what it got and then stops, which is
+    // indistinguishable from success until asked — so ask, before treating a
+    // truncated body as a file.
+    if let Some(e) = stream.error() {
+        return Err(format!("Download failed: {e}"));
+    }
+    if stream.status() != 0 && !(200..300).contains(&stream.status()) {
+        return Err(format!("Download failed: HTTP {}", stream.status()));
+    }
+    Ok(body)
 }
 
 /// One entry in an asset's preview-media gallery. `media_type` is one of

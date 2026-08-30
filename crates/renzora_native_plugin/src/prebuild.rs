@@ -252,13 +252,10 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
 
 /// Relaunch this executable with the same arguments and exit.
 ///
-/// Spawned detached rather than waited on: this process is finished, and holding
-/// it open would leave a redundant parent in the task list for the whole session.
+/// Kept as a name here — `main`'s boot sequence reads better for it — but the
+/// implementation moved to the contract crate, because installing a plugin from
+/// the marketplace needs the same restart for the same reason and should not
+/// have to reach into the prebuild module to get it.
 pub fn restart() -> ! {
-    let exe = std::env::current_exe();
-    if let Ok(exe) = exe {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        let _ = std::process::Command::new(exe).args(args).spawn();
-    }
-    std::process::exit(0)
+    renzora::restart_process()
 }

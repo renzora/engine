@@ -449,13 +449,30 @@ pub struct ShellPanelInfo {
     pub category: String,
 }
 
+/// A progress bar drawn inside a status-bar segment, after its text.
+///
+/// Two kinds, because the honest answer is often "we don't know". A download
+/// whose server sent no `Content-Length` has no fraction, and inventing one —
+/// a curve that creeps toward 90% and waits — is a lie the bar tells for the
+/// whole of the wait. [`Busy`](Self::Busy) says "working" and animates, which
+/// is the true statement; the segment's *text* carries whatever real number
+/// there is (bytes so far, files written).
+#[derive(Clone, Copy, PartialEq)]
+pub enum ShellStatusBar {
+    /// Work in progress with no known total: an animated sweep.
+    Busy,
+    /// A known fraction, 0..=1.
+    Fraction(f32),
+}
+
 /// One drawn piece of a bevy_ui status-bar item: an optional phosphor icon
-/// (name *or* raw glyph) + text + color.
+/// (name *or* raw glyph) + text + color, and optionally a progress bar.
 #[derive(Clone)]
 pub struct ShellStatusSegment {
     pub icon: String,
     pub text: String,
     pub color: [u8; 3],
+    pub bar: Option<ShellStatusBar>,
 }
 
 impl ShellStatusSegment {
@@ -464,7 +481,14 @@ impl ShellStatusSegment {
             icon: icon.into(),
             text: text.into(),
             color,
+            bar: None,
         }
+    }
+
+    /// Draw a progress bar after the text.
+    pub fn bar(mut self, bar: ShellStatusBar) -> Self {
+        self.bar = Some(bar);
+        self
     }
 }
 
@@ -490,6 +514,28 @@ pub struct ShellStatusItem {
 #[derive(Resource, Default)]
 pub struct ShellStatusRegistry {
     pub items: Vec<ShellStatusItem>,
+}
+
+/// Relaunch this executable with the same arguments and exit.
+///
+/// Here in the contract crate because more than one thing needs it and none of
+/// them should own it: first-run setup restarts after building plugins, and
+/// installing a plugin from the marketplace has to restart to load it — plugins
+/// are opened once, during `App` assembly, so a new one on disk is not a new one
+/// in the process.
+///
+/// The replacement is spawned **detached** rather than waited on. This process
+/// is finished, and holding it open to parent the new one would leave a
+/// redundant entry in the task list for the whole of the next session. It also
+/// matters on Windows, where a plugin file cannot be replaced while a process
+/// holds it open: the successor starts as this one is leaving.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn restart_process() -> ! {
+    if let Ok(exe) = std::env::current_exe() {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let _ = std::process::Command::new(exe).args(args).spawn();
+    }
+    std::process::exit(0)
 }
 
 /// Overrides the status bar's left-hand **"Ready"** label. The host owns the

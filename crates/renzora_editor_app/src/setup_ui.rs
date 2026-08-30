@@ -38,6 +38,12 @@ struct Shared {
     latest: Option<Progress>,
     /// Set once the worker is finished, whatever the outcome.
     finished: bool,
+    /// Every [`Progress::Failed`] as it arrived, so the finished window can say
+    /// what went wrong. The caption only ever holds the *latest* step, and a
+    /// failure is usually followed by more steps that scroll it away.
+    failures: Vec<String>,
+    /// What the worker actually did, for the summary line.
+    prepared: prebuild::Prepared,
 }
 
 #[derive(Resource, Clone)]
@@ -49,7 +55,20 @@ struct BarFill;
 #[derive(Component)]
 struct StatusText;
 
-/// Run setup with a window, returning once it is complete.
+/// The "Start Editor" button, hidden until the worker finishes.
+#[derive(Component)]
+struct StartBtn;
+
+/// The progress bar, hidden once the worker finishes — a full bar under a
+/// summary reads as "still going", and the button below is the live thing then.
+#[derive(Component)]
+struct BarTrack;
+
+/// Run setup with a window, returning once the user starts the editor.
+///
+/// Not once the *work* is complete: the window ends on a **Start Editor**
+/// button, so a build failure stays readable instead of flashing past on the
+/// frame before the restart. Closing the window is the same as pressing it.
 ///
 /// The caller restarts afterwards; this function does not, so that the decision
 /// stays in `main` where the rest of the boot sequence is visible.
@@ -58,15 +77,21 @@ pub fn run() {
 
     let worker = shared.clone();
     std::thread::spawn(move || {
-        prebuild::run(&mut |p| {
+        let prepared = prebuild::run(&mut |p| {
             // Also logged: the window shows the current step, but a build failure
             // needs to survive the window closing.
             if let Progress::Failed(e) = &p {
                 eprintln!("[setup] {e}");
             }
-            worker.lock().expect("setup progress lock").latest = Some(p);
+            let mut s = worker.lock().expect("setup progress lock");
+            if let Progress::Failed(e) = &p {
+                s.failures.push(e.clone());
+            }
+            s.latest = Some(p);
         });
-        worker.lock().expect("setup progress lock").finished = true;
+        let mut s = worker.lock().expect("setup progress lock");
+        s.prepared = prepared;
+        s.finished = true;
     });
 
     App::new()
@@ -129,6 +154,7 @@ fn spawn_ui(mut commands: Commands) {
                         ..default()
                     },
                     BackgroundColor(Color::srgb(0.18, 0.18, 0.22)),
+                    BarTrack,
                     children![(
                         Node {
                             width: percent(0),
@@ -140,6 +166,29 @@ fn spawn_ui(mut commands: Commands) {
                         BarFill,
                     )],
                 ),
+                // Takes the bar's place when the work is done. Setup used to
+                // close itself the instant the worker finished, which meant the
+                // one thing worth reading — a plugin that failed to compile —
+                // was on screen for a single frame. Ending on a button instead
+                // holds the result until it has been seen, and makes starting
+                // the editor something that was chosen rather than something
+                // that happened.
+                (
+                    Button,
+                    Node {
+                        display: Display::None,
+                        padding: UiRect::axes(px(22), px(9)),
+                        border_radius: BorderRadius::all(px(6)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.35, 0.62, 0.95)),
+                    StartBtn,
+                    children![(
+                        Text::new("Start Editor"),
+                        TextFont::from_font_size(14.0),
+                        TextColor(Color::srgb(1.0, 1.0, 1.0)),
+                    )],
+                ),
             ],
         ))
         .insert(Name::new("SetupRoot"));
@@ -147,14 +196,47 @@ fn spawn_ui(mut commands: Commands) {
 
 fn tick(
     work: Res<Work>,
-    mut fill: Query<&mut Node, With<BarFill>>,
+    mut fill: Query<&mut Node, (With<BarFill>, Without<BarTrack>, Without<StartBtn>)>,
+    mut track: Query<&mut Node, (With<BarTrack>, Without<StartBtn>)>,
+    mut start: Query<(&mut Node, &Interaction), With<StartBtn>>,
     mut status: Query<&mut Text, With<StatusText>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut writer: MessageWriter<AppExit>,
 ) {
     let (latest, finished) = {
         let s = work.0.lock().expect("setup progress lock");
         (s.latest.clone(), s.finished)
     };
+
+    if finished {
+        // Swap the bar for the button, and the step caption for a summary of
+        // what happened. Done every frame rather than once: this system holds no
+        // state, and writing the same values again costs a string compare.
+        let summary = {
+            let s = work.0.lock().expect("setup progress lock");
+            summarize(&s.prepared, &s.failures)
+        };
+        if let Ok(mut text) = status.single_mut() {
+            if text.as_str() != summary {
+                **text = summary;
+            }
+        }
+        if let Ok(mut node) = track.single_mut() {
+            node.display = Display::None;
+        }
+        if let Ok((mut node, interaction)) = start.single_mut() {
+            node.display = Display::Flex;
+            // Enter as well as a click: this is the only control in the window,
+            // so the keyboard should reach it without a pointer.
+            if *interaction == Interaction::Pressed
+                || keys.just_pressed(KeyCode::Enter)
+                || keys.just_pressed(KeyCode::NumpadEnter)
+            {
+                writer.write(AppExit::Success);
+            }
+        }
+        return;
+    }
 
     if let Some(p) = &latest {
         if let Ok(mut text) = status.single_mut() {
@@ -184,8 +266,28 @@ fn tick(
             node.width = percent(frac.clamp(0.0, 1.0) * 100.0);
         }
     }
+}
 
-    if finished {
-        writer.write(AppExit::Success);
+/// One line describing how setup went, for the finished window.
+///
+/// Failures come first and win the line: a run that unpacked the SDK and built
+/// nine plugins but lost the tenth is a run the user needs to know about, and
+/// "Set up 9 plugins" would bury that. Only the first failure is named — the
+/// rest are counted, because this is one un-wrapped line and the console has
+/// them all.
+fn summarize(prepared: &prebuild::Prepared, failures: &[String]) -> String {
+    if let Some(first) = failures.first() {
+        return match failures.len() {
+            1 => first.clone(),
+            n => format!("{first} (+{} more — see the console)", n - 1),
+        };
+    }
+    match (prepared.unpacked_sdk, prepared.built) {
+        (true, 0) => "Rust SDK unpacked. Renzora is ready.".to_string(),
+        (true, 1) => "Rust SDK unpacked, 1 plugin built. Renzora is ready.".to_string(),
+        (true, n) => format!("Rust SDK unpacked, {n} plugins built. Renzora is ready."),
+        (false, 0) => "Nothing to do. Renzora is ready.".to_string(),
+        (false, 1) => "1 plugin built. Renzora is ready.".to_string(),
+        (false, n) => format!("{n} plugins built. Renzora is ready."),
     }
 }

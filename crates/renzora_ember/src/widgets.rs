@@ -378,6 +378,7 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     spinner::spinner_anim,
+                    progress::progress_indeterminate_anim,
                     scroll_area::scroll_wheel,
                     scroll_area::scroll_arrow_keys,
                     scroll_area::scroll_middle_drag,

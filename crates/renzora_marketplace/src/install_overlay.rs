@@ -9,10 +9,13 @@
 //! authenticated download endpoint or, for free assets, the public preview proxy.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::Arc;
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver};
+use renzora::RenzoraShellExt;
 
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
@@ -37,23 +40,128 @@ pub(crate) struct PendingInstall {
     session: Option<AuthSession>,
 }
 
-/// In-flight install result, polled to raise the completion notice. Carries the
-/// installed asset's category so a finished **theme** install can refresh the
-/// theme picker (via `ThemeManager::scan_themes`) without the user reopening the
-/// project — flat themes are otherwise only rescanned on project load.
-#[derive(Resource)]
-pub(crate) struct InstallResult {
-    rx: Receiver<Result<String, String>>,
-    category: String,
+/// What an install worker publishes as it goes, read by the status-bar item.
+///
+/// Atomics rather than a channel: the status bar samples this every frame and
+/// only ever wants the latest value, so there is nothing to queue.
+#[derive(Default)]
+pub(crate) struct InstallShared {
+    /// Bytes downloaded so far. Meaningful only in [`Phase::Downloading`].
+    bytes: AtomicU64,
+    /// The current [`Phase`], as its `u8`.
+    phase: AtomicU8,
 }
+
+/// Where an install has got to. There is no percentage anywhere in this: no
+/// part of the transport or the catalogue reports a file's size, so the byte
+/// count is the only true number and the bar stays indeterminate.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    /// Asking the server for a download URL (an authenticated round trip).
+    Resolving = 0,
+    Downloading = 1,
+    /// Unpacking into the destination folder.
+    Writing = 2,
+}
+
+impl Phase {
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Phase::Downloading,
+            2 => Phase::Writing,
+            _ => Phase::Resolving,
+        }
+    }
+}
+
+/// One install running on a background thread.
+///
+/// A `Vec` of these rather than a single slot, because the confirm overlay
+/// closes the instant you press Install: the editor is usable again straight
+/// away and there is nothing to stop you starting a second one. A single slot
+/// would drop the first install's result on the floor when the second replaced
+/// it — the download would finish and simply never be reported.
+pub(crate) struct InstallJob {
+    name: String,
+    category: String,
+    rx: Receiver<Result<String, String>>,
+    shared: Arc<InstallShared>,
+}
+
+/// Installs currently running. Carries each asset's category so a finished
+/// **theme** install can refresh the theme picker (via
+/// `ThemeManager::scan_themes`) without the user reopening the project — flat
+/// themes are otherwise only rescanned on project load.
+#[derive(Resource, Default)]
+pub(crate) struct InstallJobs(Vec<InstallJob>);
 
 #[derive(Component)]
 pub(crate) struct InstallConfirmBtn;
 #[derive(Component)]
 pub(crate) struct InstallDismissBtn(Entity);
+/// "Restart Editor" on the finished-install notice.
+#[derive(Component)]
+pub(crate) struct InstallRestartBtn;
 
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, (install_buttons, poll_install_result));
+    app.init_resource::<InstallJobs>();
+    app.add_systems(
+        Update,
+        (install_buttons, poll_install_result, restart_button),
+    );
+    // A background install is invisible without this: the confirm overlay
+    // closes on Install and the next thing that happens is a modal, minutes
+    // later. The status bar is where a job that outlives its dialog belongs.
+    app.register_shell_status_item(renzora::ShellStatusItem {
+        id: "marketplace.install",
+        align: renzora::ShellStatusAlign::Left,
+        order: -50,
+        render: install_status_segments,
+    });
+}
+
+/// One status-bar segment per running install.
+fn install_status_segments(world: &World) -> Vec<renzora::ShellStatusSegment> {
+    let Some(jobs) = world.get_resource::<InstallJobs>() else {
+        return Vec::new();
+    };
+    jobs.0
+        .iter()
+        .map(|job| {
+            let phase = Phase::from_u8(job.shared.phase.load(Ordering::Relaxed));
+            let text = match phase {
+                Phase::Resolving => format!("Installing {}…", job.name),
+                Phase::Downloading => format!(
+                    "Installing {} — {}",
+                    job.name,
+                    human_bytes(job.shared.bytes.load(Ordering::Relaxed))
+                ),
+                Phase::Writing => format!("Installing {} — writing files", job.name),
+            };
+            renzora::ShellStatusSegment::new("download-simple", text, accent_rgb())
+                .bar(renzora::ShellStatusBar::Busy)
+        })
+        .collect()
+}
+
+/// Bytes as a short human string. One decimal above a megabyte and none below:
+/// this sits in an 11px status bar, and "4.2 MB" changing to "4.3 MB" is legible
+/// movement where "4,394,124 bytes" is noise.
+fn human_bytes(n: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    if n >= MB {
+        format!("{:.1} MB", n as f64 / MB as f64)
+    } else if n >= KB {
+        format!("{} KB", n / KB)
+    } else {
+        format!("{n} B")
+    }
+}
+
+fn accent_rgb() -> [u8; 3] {
+    let (r, g, b) = accent();
+    [r, g, b]
 }
 
 /// Open the confirm overlay for `asset`. Exclusive-world entry (queued from the
@@ -191,6 +299,8 @@ fn install_buttons(
     dismiss: Query<(&Interaction, &InstallDismissBtn), Changed<Interaction>>,
     pending: Option<Res<PendingInstall>>,
     pick: Res<FolderPick>,
+    mut jobs: ResMut<InstallJobs>,
+    mut toasts: ResMut<crate::toasts::ToastQueue>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
@@ -211,46 +321,88 @@ fn install_buttons(
     let session = pending.session.as_ref().map(clone_session);
     commands.remove_resource::<PendingInstall>();
 
+    // Say where it went. The overlay is gone by the time the download starts, so
+    // without this the press has no visible consequence at all until the modal
+    // arrives — which for a large asset is a long way off.
+    toasts.push(
+        crate::toasts::Tone::Info,
+        format!("Installing {} in the background", asset.name),
+        None,
+    );
+
     let (tx, rx) = unbounded();
-    let category = asset.category.clone();
-    commands.insert_resource(InstallResult { rx, category });
-    spawn_install(session, asset, dest, tx);
+    let shared = Arc::new(InstallShared::default());
+    jobs.0.push(InstallJob {
+        name: asset.name.clone(),
+        category: asset.category.clone(),
+        rx,
+        shared: shared.clone(),
+    });
+    spawn_install(session, asset, dest, tx, shared);
 }
 
-/// Raise the completion notice when the background install finishes.
+/// Raise the completion notice when a background install finishes.
 fn poll_install_result(
-    result: Option<Res<InstallResult>>,
+    jobs: Option<ResMut<InstallJobs>>,
     fonts: Option<Res<EmberFonts>>,
     mut theme_manager: Option<ResMut<ThemeManager>>,
     mut commands: Commands,
 ) {
-    let (Some(result), Some(fonts)) = (result, fonts) else { return };
-    let Ok(outcome) = result.rx.try_recv() else { return };
-    let installed_theme = install::install_dir_for_category(&result.category) == "themes";
-    commands.remove_resource::<InstallResult>();
-    let (title, body) = match outcome {
-        Ok(msg) => {
-            renzora::core::console_log::console_info("Marketplace", msg.clone());
-            // A freshly installed flat theme is only picked up by the picker on a
-            // rescan; do it now so it appears without reopening the project.
-            if installed_theme {
-                if let Some(manager) = theme_manager.as_mut() {
-                    manager.scan_themes();
-                }
-            }
-            ("Asset Installed".to_string(), msg)
+    let (Some(mut jobs), Some(fonts)) = (jobs, fonts) else { return };
+    // Drain every job that has an answer, keep the rest. `retain` rather than an
+    // index scan because a finished job is removed while its neighbours keep
+    // running.
+    let mut finished: Vec<(String, Result<String, String>)> = Vec::new();
+    jobs.0.retain(|job| match job.rx.try_recv() {
+        Ok(outcome) => {
+            finished.push((job.category.clone(), outcome));
+            false
         }
-        Err(e) => ("Install Failed".to_string(), e),
-    };
-    let f = fonts.clone();
-    commands.queue(move |world: &mut World| {
-        let mut queue = CommandQueue::default();
-        {
-            let mut commands = Commands::new(&mut queue, world);
-            spawn_notice(&mut commands, &f, &title, &body);
-        }
-        queue.apply(world);
+        Err(_) => true,
     });
+    if finished.is_empty() {
+        return;
+    }
+
+    for (category, outcome) in finished {
+        let dir = install::install_dir_for_category(&category);
+        let (title, body) = match outcome {
+            Ok(msg) => {
+                renzora::core::console_log::console_info("Marketplace", msg.clone());
+                // A freshly installed flat theme is only picked up by the picker
+                // on a rescan; do it now so it appears without reopening the
+                // project.
+                if dir == "themes" {
+                    if let Some(manager) = theme_manager.as_mut() {
+                        manager.scan_themes();
+                    }
+                }
+                ("Asset Installed".to_string(), msg)
+            }
+            Err(e) => ("Install Failed".to_string(), e),
+        };
+        // A plugin is opened once, during `App` assembly, so a new one on disk
+        // is not a new one in the process — the notice offers the restart rather
+        // than leaving the user to work out that the thing they just installed
+        // is not there.
+        let offer_restart = dir == "plugins" && title == "Asset Installed";
+        let f = fonts.clone();
+        commands.queue(move |world: &mut World| {
+            let mut queue = CommandQueue::default();
+            {
+                let mut commands = Commands::new(&mut queue, world);
+                spawn_notice(&mut commands, &f, &title, &body, offer_restart);
+            }
+            queue.apply(world);
+        });
+    }
+}
+
+/// "Restart Editor" on the install notice.
+fn restart_button(q: Query<&Interaction, (With<InstallRestartBtn>, Changed<Interaction>)>) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        renzora::restart_process();
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -259,9 +411,10 @@ fn spawn_install(
     asset: AssetSummary,
     dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
+    shared: Arc<InstallShared>,
 ) {
     std::thread::spawn(move || {
-        let _ = tx.send(run_install(session.as_ref(), &asset, &dest));
+        let _ = tx.send(run_install(session.as_ref(), &asset, &dest, &shared));
     });
 }
 
@@ -271,6 +424,7 @@ fn spawn_install(
     _asset: AssetSummary,
     _dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
+    _shared: Arc<InstallShared>,
 ) {
     let _ = tx.send(Err("Downloads aren't supported in the browser yet".into()));
 }
@@ -278,19 +432,32 @@ fn spawn_install(
 /// Fetch the asset bytes (authenticated download when signed in, otherwise the
 /// public preview proxy for free assets) and install into `dest`.
 #[cfg(not(target_arch = "wasm32"))]
-fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path) -> Result<String, String> {
+fn run_install(
+    session: Option<&AuthSession>,
+    asset: &AssetSummary,
+    dest: &Path,
+    shared: &InstallShared,
+) -> Result<String, String> {
     use crate::auth::marketplace as mk;
+    let mut on_bytes = |n: u64| shared.bytes.store(n, Ordering::Relaxed);
     let (bytes, filename, url) = if let Some(s) = session.filter(|s| s.is_signed_in()) {
+        // Resolving is a round trip of its own, and on a slow link it is a
+        // second or two of a status bar that would otherwise claim to be
+        // downloading nothing.
+        shared.phase.store(Phase::Resolving as u8, Ordering::Relaxed);
         let dl = mk::download_asset(s, &asset.id)?;
-        let bytes = mk::download_file(&dl.download_url)?;
+        shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
+        let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
         (bytes, dl.download_filename, dl.download_url)
     } else if asset.price_credits == 0 {
         let url = mk::preview_file_url(&asset.id);
-        let bytes = mk::download_file(&url)?;
+        shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
+        let bytes = mk::download_file_progress(&url, &mut on_bytes)?;
         (bytes, String::new(), url)
     } else {
         return Err("Sign in to download this asset".into());
     };
+    shared.phase.store(Phase::Writing as u8, Ordering::Relaxed);
     let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
     // Plugins get a metadata sidecar next to the dll so a lean export can trace
     // it back to source and the official editor can fetch the right per-release
@@ -425,19 +592,45 @@ fn paragraph(commands: &mut Commands, fonts: &EmberFonts, text: &str, color: Col
         .id()
 }
 
-fn spawn_notice(commands: &mut Commands, fonts: &EmberFonts, title: &str, body: &str) {
-    let (root, content) = overlay_sized(commands, fonts, title, 460.0, 170.0, true);
+/// The finished-install modal. `offer_restart` adds a **Restart Editor** button
+/// beside OK, for the one category where finishing isn't enough.
+fn spawn_notice(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    body: &str,
+    offer_restart: bool,
+) {
+    let height = if offer_restart { 200.0 } else { 170.0 };
+    let (root, content) = overlay_sized(commands, fonts, title, 460.0, height, true);
     let body_node = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(14.0)), row_gap: Val::Px(8.0), ..default() })
         .id();
     let text = paragraph(commands, fonts, body, rgb(text_primary()));
+    let mut kids = vec![text];
+    if offer_restart {
+        kids.push(paragraph(
+            commands,
+            fonts,
+            "Plugins load when the editor starts, so this one won't appear until \
+             you restart. Unsaved work is not saved for you.",
+            rgb(text_muted()),
+        ));
+    }
     let buttons = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, ..default() })
+        .spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(8.0), ..default() })
         .id();
     let ok = button(commands, &fonts.ui, "OK");
     commands.entity(ok).insert(InstallDismissBtn(root));
-    commands.entity(buttons).add_child(ok);
-    commands.entity(body_node).add_children(&[text, buttons]);
+    let mut btns = vec![ok];
+    if offer_restart {
+        let restart = button(commands, &fonts.ui, "Restart Editor");
+        commands.entity(restart).insert(InstallRestartBtn);
+        btns.push(restart);
+    }
+    commands.entity(buttons).add_children(&btns);
+    kids.push(buttons);
+    commands.entity(body_node).add_children(&kids);
     commands.entity(content).add_child(body_node);
 }
 

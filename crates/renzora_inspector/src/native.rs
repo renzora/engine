@@ -2734,16 +2734,6 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },
         Name::new("add-component"),
-        // Accent-filled, matching the hierarchy's Add Entity. Both are the one
-        // control in their panel that *creates* something, sitting in a bar of
-        // controls that find and filter — at the themed button's default weight
-        // it read as another filter.
-        //
-        // A role swap, not a `BackgroundColor`: `apply_theme` writes the
-        // background of everything carrying `Styled` from its role token, so a
-        // colour set here would be overwritten on the next theme tick. The role
-        // brings hover and press states with it and stays themeable.
-        renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
     ));
     btn
 }
