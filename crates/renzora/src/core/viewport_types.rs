@@ -621,10 +621,21 @@ impl ViewportMode {
     /// The modes the header's Mode dropdown offers for the given view:
     /// Sculpt is mesh sculpting (3D only), Erase is the tile eraser (2D
     /// only).
+    /// The modes a view offers, in dropdown order.
+    ///
+    /// 3D lists Select and Edit only. Sculpt and Paint were there and are not
+    /// any more: sculpting is moving out to a plugin, and 3D vertex painting
+    /// went with it — both are a brush over a mesh rather than something the
+    /// scene editor does. Until that plugin exists the modes are unreachable
+    /// from here, which is deliberate rather than an oversight.
+    ///
+    /// 2D keeps Paint and Erase. They look like the same two words but are the
+    /// tilemap brush and its eraser, which is most of what a 2D viewport is for
+    /// — dropping them would take tile editing with them.
     pub fn for_view(view: ViewportView) -> &'static [ViewportMode] {
         match view {
             ViewportView::Two => &[Self::Scene, Self::Edit, Self::Paint, Self::Erase],
-            _ => &[Self::Scene, Self::Edit, Self::Sculpt, Self::Paint],
+            _ => &[Self::Scene, Self::Edit],
         }
     }
     pub fn label(&self) -> &'static str {

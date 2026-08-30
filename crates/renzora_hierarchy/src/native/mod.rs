@@ -100,16 +100,29 @@ pub fn register_native_hierarchy(app: &mut App) {
             ))
             .id();
 
+        // Add Entity sits in a pinned footer, centred, rather than in the header
+        // beside the search box. It is the panel's one *creating* action among a
+        // header of *finding* ones (search, filter), and reads as another of
+        // them up there. At the bottom it is where you look after scrolling
+        // through what exists to conclude that what you want does not.
+        //
+        // Accent-filled for the same reason: it was an unfilled icon-label like
+        // every other header control, which is the right weight for a filter and
+        // the wrong one for the button that puts things in the scene.
         let add = renzora_ember::widgets::icon_label_button_collapsing(
             commands,
             fonts,
             "plus",
             &renzora::lang::t("hierarchy.add_entity"),
-            |w| w.get_resource::<HierCompact>().is_some_and(|c| c.0),
+            // Never collapses to its icon now: the footer gives it the width the
+            // header could not, and a lone `+` centred in a bar is a puzzle.
+            |_| false,
         );
-        commands
-            .entity(add)
-            .insert((add_entity::HierAddEntity, Name::new("add-entity")));
+        commands.entity(add).insert((
+            add_entity::HierAddEntity,
+            Name::new("add-entity"),
+            BackgroundColor(renzora_ember::theme::rgb(renzora_ember::theme::accent())),
+        ));
         let search = filter::build_search_box(commands, fonts);
         let funnel = filter::build_filter_funnel(commands, fonts);
         let header = commands
@@ -126,7 +139,26 @@ pub fn register_native_hierarchy(app: &mut App) {
                 Name::new("hierarchy-header"),
             ))
             .id();
-        commands.entity(header).add_children(&[add, search, funnel]);
+        commands.entity(header).add_children(&[search, funnel]);
+
+        // The footer: pinned below the scrolling tree, Add Entity centred in it.
+        let footer = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                    // Outside the scroll area, so it stays put however long the
+                    // tree is — the whole point of moving it here.
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Name::new("hierarchy-footer"),
+            ))
+            .id();
+        commands.entity(footer).add_child(add);
 
         let list = commands
             .spawn((
@@ -173,7 +205,7 @@ pub fn register_native_hierarchy(app: &mut App) {
         let picker = scene_starter::build_picker(commands, fonts);
         renzora_ember::reactive::tracked::bind_display(commands, picker, scene_starter::scene_is_empty);
 
-        commands.entity(root).add_children(&[header, scroll, picker]);
+        commands.entity(root).add_children(&[header, scroll, picker, footer]);
         root
     });
     app.add_systems(

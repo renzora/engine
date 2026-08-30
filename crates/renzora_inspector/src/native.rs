@@ -2734,6 +2734,15 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },
         Name::new("add-component"),
+        // Accent-filled, matching the hierarchy's Add Entity. Both are the one
+        // control in their panel that *creates* something, sitting in a bar of
+        // controls that find and filter — at the themed button's default weight
+        // it read as another filter.
+        //
+        // Inserted after the widget rather than restyled inside it: this is the
+        // exception, and giving `icon_label_button` a variant for it would make
+        // every caller choose a weight they do not care about.
+        BackgroundColor(renzora_ember::theme::rgb(renzora_ember::theme::accent())),
     ));
     btn
 }

@@ -66,9 +66,14 @@ const RENAME_W: f32 = 150.0;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 enum Density {
     /// Roomier strips: a bigger pan knob and a caption under it.
-    #[default]
     Wide,
     /// Tighter strips, for fitting a large board in a short bottom panel.
+    ///
+    /// The default, because that short bottom panel is where the mixer lives.
+    /// Wide was the default and assumed a board given real height; docked along
+    /// the bottom at its usual size it simply meant fewer channels visible, and
+    /// the first thing to do on opening the panel was to switch density.
+    #[default]
     Compact,
 }
 
