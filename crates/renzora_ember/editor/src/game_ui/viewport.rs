@@ -54,6 +54,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Interaction::default(),
             crate::game_ui::interaction::CanvasBackground,
             crate::game_ui::ruler::RulerArea,
+            // The rulers' cursor markers measure against this node, so the
+            // reading is valid over the whole canvas area — not just the frame.
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("ui-canvas-viewport"),
         ))
         .id();

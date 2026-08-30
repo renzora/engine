@@ -146,17 +146,88 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     }
 
+    // Cursor markers — one per strip, tracking the pointer. Accented and drawn
+    // over the ticks, because the point of them is to be found at a glance
+    // while you are looking somewhere else entirely.
+    for horizontal in [true, false] {
+        let parent = if horizontal { h } else { v };
+        let mark = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: if horizontal { Val::Px(1.0) } else { Val::Px(RULER) },
+                    height: if horizontal { Val::Px(RULER) } else { Val::Px(1.0) },
+                    ..default()
+                },
+                BackgroundColor(rgb(accent())),
+                GlobalZIndex(2),
+                Visibility::Hidden,
+                bevy::ui::FocusPolicy::Pass,
+                Pickable::IGNORE,
+                CursorMark { horizontal },
+                Name::new(if horizontal { "ruler-mark-x" } else { "ruler-mark-y" }),
+            ))
+            .id();
+        commands.entity(parent).add_child(mark);
+    }
+
     commands.entity(root).add_children(&[h, v, corner]);
     root
+}
+
+/// The pointer's position on a ruler strip.
+#[derive(Component, Clone, Copy)]
+struct CursorMark {
+    horizontal: bool,
 }
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        position_ticks
+        (position_ticks, position_cursor_marks)
             .after(crate::game_ui::geometry::snapshot_widgets)
             .run_if(in_state(renzora::SplashState::Editor)),
     );
+}
+
+/// Slide each strip's marker to the pointer.
+///
+/// Measured against the canvas *area*, not the design frame: the cursor is
+/// still somewhere meaningful when it is out over the dark surround, and a
+/// marker that vanished the moment you left the frame would drop out exactly
+/// when you were reaching for an edge.
+fn position_cursor_marks(
+    state: Res<NativeCanvasState>,
+    area: Query<(&ComputedNode, &bevy::ui::RelativeCursorPosition), With<RulerArea>>,
+    mut marks: Query<(&CursorMark, &mut Node, &mut Visibility)>,
+) {
+    let show = state.show_rulers && state.active_canvas.is_some();
+    let at = area.single().ok().filter(|_| show).and_then(|(cn, rcp)| {
+        let n = rcp.normalized?;
+        rcp.cursor_over
+            .then(|| Vec2::new((n.x + 0.5) * cn.size.x, (n.y + 0.5) * cn.size.y))
+    });
+    for (mark, mut node, mut vis) in &mut marks {
+        match at {
+            Some(p) => {
+                if mark.horizontal {
+                    node.left = Val::Px(p.x);
+                } else {
+                    node.top = Val::Px(p.y);
+                }
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
+    }
 }
 
 /// Lay the ticks out from the current pan/zoom, and hide the ones not needed.
