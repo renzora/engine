@@ -123,27 +123,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_display(commands, frame, |w| w.get_resource::<NativeCanvasState>().is_some_and(|s| s.active_canvas.is_some()));
-    bind_with(
-        commands,
-        frame,
-        |w| {
-            let s = w.get_resource::<NativeCanvasState>();
-            let zoom = s.map(|s| s.zoom).unwrap_or(1.0);
-            let (cw, ch) = s.map(|s| (s.canvas_width, s.canvas_height)).unwrap_or((1280.0, 720.0));
-            (cw * zoom, ch * zoom)
-        },
-        |w, e, (fw, fh): &(f32, f32)| {
-            if let Some(mut n) = w.get_mut::<Node>(e) {
-                let (pw, ph) = (Val::Px(*fw), Val::Px(*fh));
-                if n.width != pw {
-                    n.width = pw;
-                }
-                if n.height != ph {
-                    n.height = ph;
-                }
-            }
-        },
-    );
+    // The frame's size is *not* bound here. It is written by `nav::apply_view`,
+    // alongside the pan offset, so a zoom's move and resize land on the same
+    // frame — see that function. As a `bind_with` it ran in `run_reactions`,
+    // unordered against `apply_view`, and the split showed up as a twitch on
+    // every scroll. The `Node` above carries the un-zoomed size as the starting
+    // value; `apply_view` corrects it on the first tick.
 
     // Scene backdrop: the editor-camera render (the same slot-0 image the
     // viewport shows — 3D, or 2D when UI view was entered from the 2D view)

@@ -26,7 +26,11 @@ pub(crate) struct CanvasFrame;
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        (canvas_pan, canvas_wheel, apply_pan)
+        // Chained: the input systems write `pan`/`zoom` and `apply_view` reads
+        // them, so a scroll shows up on the same frame it happened rather than
+        // the next one.
+        (canvas_pan, canvas_wheel, apply_view)
+            .chain()
             .run_if(in_state(SplashState::Editor))
             // Only while the canvas panel is actually mounted — otherwise the
             // wheel / right-drag would pan an unseen canvas from the 3D viewport.
@@ -124,9 +128,35 @@ fn canvas_wheel(
     state.zoom = new;
 }
 
-fn apply_pan(state: Res<NativeCanvasState>, mut q: Query<&mut UiTransform, With<CanvasFrame>>) {
-    for mut tf in &mut q {
-        let want = Val2::px(state.pan.x, state.pan.y);
+/// Push the whole view — frame size from `zoom`, offset from `pan` — onto the
+/// design frame.
+///
+/// Both halves are written here, together, because a zoom moves the frame *and*
+/// resizes it and the two have to land on the same frame to look like one
+/// gesture. The size used to come from a `bind_with` on the frame's `Node` while
+/// the offset came from this system, and nothing ordered `run_reactions` against
+/// it: whichever ran first that tick decided whether you saw the new pan against
+/// the old size. Since the winner could change from frame to frame, a scroll
+/// produced a lateral twitch that snapped back — the canvas appearing to move in
+/// x and y before settling.
+///
+/// The `!=` guards are load-bearing. Reading a field through `Mut` does not mark
+/// the component changed, but assigning does, and dirtying `Node` every frame
+/// would re-run layout for the whole tree.
+fn apply_view(
+    state: Res<NativeCanvasState>,
+    mut q: Query<(&mut Node, &mut UiTransform), With<CanvasFrame>>,
+) {
+    let w = Val::Px(state.canvas_width * state.zoom);
+    let h = Val::Px(state.canvas_height * state.zoom);
+    let want = Val2::px(state.pan.x, state.pan.y);
+    for (mut node, mut tf) in &mut q {
+        if node.width != w {
+            node.width = w;
+        }
+        if node.height != h {
+            node.height = h;
+        }
         if tf.translation != want {
             tf.translation = want;
         }
