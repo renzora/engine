@@ -33,7 +33,10 @@ const GREEN: (u8, u8, u8) = (52, 180, 96);
 const RED: (u8, u8, u8) = (224, 80, 80);
 /// Warm gold for the credit price — reads as "store currency".
 const GOLD: (u8, u8, u8) = (238, 184, 82);
-const CARD_W: f32 = 168.0;
+/// Tile width. Narrow on purpose: an app store shows a *lot* of icons at once,
+/// and the tile is an icon plus two short lines — at 168 it was a card with an
+/// icon in it, and a shelf fitted four.
+const CARD_W: f32 = 124.0;
 /// Corner rounding on the square icon. Matches the proportion a store icon is
 /// usually drawn with (~13% of the side), so artwork that already has its own
 /// rounded corners lines up instead of showing a sliver of card behind it.
@@ -356,7 +359,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(price).insert(StorePriceDropdown);
     let total = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())))).id();
     bind_text(commands, total, |w| format!("{} assets", w.resource::<HubStoreData>().total));
-    commands.entity(toolbar).add_children(&[search, search_btn, sort, rating, price, total]);
+    // Account + Upload live at the right end of the toolbar, after the filters
+    // and the count — the top-right corner every store puts identity in.
+    let account_bar = build_account_bar(commands, fonts);
+    commands
+        .entity(toolbar)
+        .add_children(&[search, search_btn, sort, rating, price, total, account_bar]);
 
     // Status / error.
     let status = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(RED)), Node { flex_shrink: 0.0, ..default() })).id();
@@ -400,24 +408,40 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-/// The left column: account header (signed-in identity + credit balance, or a
-/// Sign In button), an Upload Asset action, then the scrollable category list.
-fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The account cluster for the **toolbar**: signed-in identity + credit balance,
+/// or a Sign In button, plus Upload Asset.
+///
+/// These lived at the top of the category sidebar, which is where the store's
+/// own artwork now starts and where a shopper is looking for genres rather than
+/// for their account. Every store puts identity and "sell something" in the top
+/// bar; moving them there also gives the sidebar back to the category list,
+/// which is what the larger category type is for.
+///
+/// Returns one row, laid out horizontally rather than the sidebar's column.
+fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
-        .spawn(Node { width: Val::Px(160.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            flex_shrink: 0.0,
+            ..default()
+        })
         .id();
 
     // ── Account block ──
     let account = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), padding: UiRect::all(Val::Px(8.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
         ))
         .id();
 
     // Signed-in identity + balance.
-    let signed = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
+    // A row now, not a column: in the toolbar the identity and the balance sit
+    // side by side rather than stacked, so the bar keeps one line's height.
+    let signed = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).id();
     bind_display(commands, signed, signed_in);
     let who_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }).id();
     let who_icon = icon_text(commands, &fonts.phosphor, "user-circle", text_muted(), 14.0);
@@ -472,7 +496,7 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // ── Upload Asset (opens the Publish uploader panel) ──
     let upload = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(hover_bg())),
             BorderColor::all(rgb(border())),
             Interaction::default(),
@@ -484,7 +508,19 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let up_txt = commands.spawn((Text::new("Upload Asset"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     commands.entity(upload).add_children(&[up_icon, up_txt]);
 
-    // ── Categories ──
+    commands.entity(col).add_children(&[upload, account]);
+    col
+}
+
+/// The left column: nothing but the category list now.
+///
+/// The account header and Upload Asset used to sit above it — see
+/// [`build_account_bar`] for why they are in the toolbar instead.
+fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node { width: Val::Px(160.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .id();
+
     let cat_caption = commands.spawn((Text::new("Categories"), ui_font(&fonts.ui, 9.5), TextColor(rgb(text_muted())), Node { margin: UiRect::top(Val::Px(2.0)), ..default() })).id();
     // Natural-height column (sums its rows) so the scroll viewport overflows and
     // scrolls; with flex_grow the rows would squash to fit instead.
@@ -494,7 +530,7 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, cats, categories_snapshot);
     let cats_scroll = renzora_ember::widgets::scroll_view(commands, cats);
 
-    commands.entity(col).add_children(&[account, upload, cat_caption, cats_scroll]);
+    commands.entity(col).add_children(&[cat_caption, cats_scroll]);
     col
 }
 
@@ -597,7 +633,7 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: O
     };
     let row = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(24.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            Node { width: Val::Percent(100.0), height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
             Interaction::default(),
             StoreCatRow(slug.clone()),
@@ -619,8 +655,12 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: O
             }
         });
     }
-    let ic = icon_text(commands, &fonts.phosphor, icon, icon_col, 11.0);
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
+    // Larger than the 11.0 the rest of the panel uses. The category list is the
+    // sidebar's whole job now that the account controls have moved to the
+    // toolbar, and at 11 it read as a caption beside the artwork rather than as
+    // the primary way to move around the store.
+    let ic = icon_text(commands, &fonts.phosphor, icon, icon_col, 13.0);
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
     commands.entity(row).add_children(&[ic, lbl]);
     row
 }
@@ -663,7 +703,7 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
             // Padded, so the icon reads as an *icon* sitting on the card rather
             // than a banner bleeding to its edges — which is the difference
             // between a store tile and the old landscape card.
-            Node { flex_grow: 1.0, flex_basis: Val::Px(CARD_W), min_width: Val::Px(CARD_W), max_width: Val::Px(CARD_W * 1.35), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), padding: UiRect::all(Val::Px(10.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(14.0)), ..default() },
+            Node { flex_grow: 1.0, flex_basis: Val::Px(CARD_W), min_width: Val::Px(CARD_W), max_width: Val::Px(CARD_W * 1.3), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(7.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
             BackgroundColor(base),
             BorderColor::all(rgba([255, 255, 255, 12])),
             Interaction::default(),

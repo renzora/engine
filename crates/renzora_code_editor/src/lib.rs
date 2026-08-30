@@ -266,10 +266,96 @@ pub(crate) fn build_code_editor_toolbar(
         },
     );
 
+    // Zoom, flanking the size field so the three read as one control: −, the
+    // number, +. `CodeEditorState` already had `zoom_in`/`zoom_out` with their
+    // own clamps; nothing had ever called them.
+    let zoom_out = zoom_button(commands, fonts, "minus", CodeZoom::Out);
+    let zoom_in = zoom_button(commands, fonts, "plus", CodeZoom::In);
+
     commands
         .entity(row)
-        .add_children(&[size_label, size, mini_label, mini, ws_label, ws, wrap_label, wrap]);
+        .add_children(&[zoom_out, size_label, size, zoom_in, mini_label, mini, ws_label, ws, wrap_label, wrap]);
     row
+}
+
+/// Which way a zoom button steps.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodeZoom {
+    In,
+    Out,
+}
+
+fn zoom_button(
+    commands: &mut Commands,
+    fonts: &renzora_ember::font::EmberFonts,
+    icon: &str,
+    dir: CodeZoom,
+) -> Entity {
+    use renzora_ember::font::icon_text;
+    use renzora_ember::theme::{hover_bg, rgb, text_primary};
+
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(20.0),
+                height: Val::Px(20.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(hover_bg())),
+            Interaction::default(),
+            // Blocks its own press: 0.19 defaults `FocusPolicy` to `Pass`, and
+            // this sits on a toolbar row inside a panel with its own handlers.
+            bevy::ui::FocusPolicy::Block,
+            dir,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 11.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(btn).add_child(ic);
+    btn
+}
+
+/// Zoom buttons, and `Ctrl` `+` / `-` / `0` while the Code Editor panel is up.
+///
+/// The keys are handled here rather than registered as editor shortcuts because
+/// they belong to a panel, not to the application: a global `Ctrl +` would zoom
+/// a code editor nobody is looking at. `panel_active` is the same gate the
+/// panel's other input uses.
+pub(crate) fn code_zoom_input(
+    buttons: Query<(&Interaction, &CodeZoom), Changed<Interaction>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut state: ResMut<CodeEditorState>,
+) {
+    for (interaction, dir) in &buttons {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match dir {
+            CodeZoom::In => state.zoom_in(),
+            CodeZoom::Out => state.zoom_out(),
+        }
+    }
+
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    if !ctrl {
+        return;
+    }
+    // Both the main row and the numpad, and `Equal` as well as `NumpadAdd`
+    // because `Ctrl +` on a standard layout is physically `Ctrl` + `=`.
+    if keys.any_just_pressed([KeyCode::Equal, KeyCode::NumpadAdd]) {
+        state.zoom_in();
+    }
+    if keys.any_just_pressed([KeyCode::Minus, KeyCode::NumpadSubtract]) {
+        state.zoom_out();
+    }
+    if keys.any_just_pressed([KeyCode::Digit0, KeyCode::Numpad0]) {
+        state.zoom_reset();
+    }
 }
 
 #[derive(Default)]
@@ -289,6 +375,7 @@ impl Plugin for CodeEditorPlugin {
                 reload_saved_ui_templates,
                 sync_asset_filter_for_scripting,
                 sync_settings_to_code_editor_prefs,
+                code_zoom_input.run_if(renzora_ember::dock::panel_active("code_editor")),
             )
                 .run_if(in_state(SplashState::Editor)),
         );

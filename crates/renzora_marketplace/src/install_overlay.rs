@@ -95,11 +95,40 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     } else {
         format!("{} credits", asset.price_credits)
     };
-    let mut kids = vec![
+    // Header: the artwork on the left, the details beside it. Stacked, the four
+    // label/value rows read as a form to fill in; next to the thing they
+    // describe they read as a confirmation of what is about to be installed,
+    // which is what this overlay is for.
+    let header = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::FlexStart,
+            column_gap: Val::Px(12.0),
+            ..default()
+        })
+        .id();
+    let thumb = install_thumb(&mut commands, &fonts, &asset);
+    let details = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    let rows = [
         info_row(&mut commands, &fonts, "Asset", &asset.name),
         info_row(&mut commands, &fonts, "Category", &asset.category),
         info_row(&mut commands, &fonts, "Creator", &asset.creator_name),
         info_row(&mut commands, &fonts, "Price", &price),
+    ];
+    commands.entity(details).add_children(&rows);
+    commands.entity(header).add_children(&[thumb, details]);
+
+    let mut kids = vec![
+        header,
         section_label(&mut commands, &fonts, "Install into"),
     ];
 
@@ -289,6 +318,72 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path)
 }
 
 // ── Small UI helpers (mirror `plugin_install`) ────────────────────────────────
+
+/// The asset's artwork, square, for the left of the header.
+///
+/// Fixed pixel size rather than an aspect ratio: this sits beside four rows of
+/// text whose height does not change, so the artwork should not either — and a
+/// square that grew with the overlay would push the detail rows into a narrow
+/// column at the widths where the name is longest.
+///
+/// Falls back to the category glyph when the asset has no thumbnail, so the
+/// header keeps its shape rather than collapsing to text.
+fn install_thumb(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> Entity {
+    const SIDE: f32 = 96.0;
+    let frame = commands
+        .spawn((
+            Node {
+                width: Val::Px(SIDE),
+                height: Val::Px(SIDE),
+                flex_shrink: 0.0,
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(12.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(hover_bg())),
+        ))
+        .id();
+
+    let ph = renzora_ember::font::icon_text(commands, &fonts.phosphor, "package", text_muted(), 30.0);
+    commands.entity(frame).add_child(ph);
+
+    if let Some(url) = a.thumbnail_url.clone() {
+        let img = commands
+            .spawn((
+                ImageNode::default(),
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    display: Display::None,
+                    ..default()
+                },
+            ))
+            .id();
+        renzora_ember::reactive::tracked::bind_with(
+            commands,
+            img,
+            move |w| w.get_resource::<crate::thumbs::HubThumbs>().and_then(|t| t.get(&url)),
+            |w, e, h: &Option<Handle<Image>>| {
+                if let Some(h) = h {
+                    if let Some(mut n) = w.get_mut::<ImageNode>(e) {
+                        if n.image != *h {
+                            n.image = h.clone();
+                        }
+                    }
+                    if let Some(mut node) = w.get_mut::<Node>(e) {
+                        node.display = Display::Flex;
+                    }
+                }
+            },
+        );
+        commands.entity(frame).add_child(img);
+    }
+    frame
+}
 
 fn info_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: &str) -> Entity {
     let row = commands
