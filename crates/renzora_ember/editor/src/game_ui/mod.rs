@@ -133,7 +133,11 @@ impl Plugin for GameUiEditorPlugin {
         // built without this plugin simply not offer it.
         use renzora::core::RenzoraShellExt;
         use renzora_ember::panel::RegisterPanelContent;
-        app.register_shell_panel("ui_canvas", "UI Canvas", "browser", "Scene");
+        // "UI Editor", not "UI Canvas": the panel is the place you edit a UI.
+        // The *canvas* is the entity in the scene that mounts a template, and
+        // two things with the same name would be one thing in the user's head.
+        // The id stays `ui_canvas` — it is in saved layouts.
+        app.register_shell_panel("ui_canvas", "UI Editor", "browser", "Scene");
         app.register_panel_content("ui_canvas", false, |commands, fonts| {
             build_ui_canvas(commands, fonts)
         });

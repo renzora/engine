@@ -90,9 +90,12 @@ pub fn register_game_ui_editor(app: &mut App) {
                 },
             ));
         }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<components::UiCanvas>();
-        }),
+        // No trash button. Removing the marker left the full-size `Node` behind
+        // — an invisible screen-covering entity that is no longer a canvas, no
+        // longer holds a template, and reads in the hierarchy as an ordinary
+        // empty. Deleting the entity is what you actually wanted, and the
+        // hierarchy already does that.
+        remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
@@ -173,11 +176,22 @@ pub fn register_game_ui_editor(app: &mut App) {
         icon: "square-half",
         category: "ui",
         has_fn: |world, entity| {
-            // Restrict to UI entities so Bevy's Node component on
-            // non-UI usages isn't picked up.
+            // Widgets only — never a canvas.
+            //
+            // A canvas has a `Node`, but it is structural: full-size, absolute,
+            // the surface the template's root sizes against. Offering Position /
+            // X / Y / Width / Height / Direction / Justify / Align on it invited
+            // you to make the canvas not fill the screen, and put a second,
+            // competing answer to "what lays this out" next to the template that
+            // actually does. The canvas says *how big the design surface is*
+            // (Ref Width / Ref Height) and *where it renders* (Render Space);
+            // layout belongs to the markup.
+            //
+            // Restricted to UI entities as well, so Bevy's `Node` on a non-UI
+            // usage isn't picked up.
             world.get::<bevy::ui::Node>(entity).is_some()
-                && (world.get::<components::UiCanvas>(entity).is_some()
-                    || world.get::<components::UiWidget>(entity).is_some())
+                && world.get::<components::UiCanvas>(entity).is_none()
+                && world.get::<components::UiWidget>(entity).is_some()
         },
         add_fn: None,
         remove_fn: None,
