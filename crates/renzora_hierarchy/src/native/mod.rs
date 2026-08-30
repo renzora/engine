@@ -47,14 +47,6 @@ pub(crate) struct HierScrollContent;
 #[derive(Component)]
 pub(crate) struct HierScrollViewport;
 
-/// The search + filter row.
-#[derive(Component)]
-pub(crate) struct HierHeaderRow;
-
-/// The row holding Add Entity, under the tree.
-#[derive(Component)]
-pub(crate) struct HierAddRow;
-
 /// The panel is too narrow for the header's full "+ Add Entity" label. Set by
 /// [`hier_responsive_header`] from the measured panel width; the button collapses
 /// to icon-only so the search box keeps a usable width. Before this, the button
@@ -150,7 +142,6 @@ pub fn register_native_hierarchy(app: &mut App) {
                     ..default()
                 },
                 Name::new("hierarchy-header"),
-                HierHeaderRow,
             ))
             .id();
         commands.entity(header).add_children(&[search, funnel]);
@@ -178,7 +169,6 @@ pub fn register_native_hierarchy(app: &mut App) {
                     ..default()
                 },
                 Name::new("hierarchy-add-row"),
-                HierAddRow,
             ))
             .id();
         commands.entity(footer).add_child(add);
@@ -313,31 +303,66 @@ pub fn register_native_hierarchy(app: &mut App) {
 /// about the list depends on the viewport's height except which rows get built
 /// — which does not change the total.
 fn hier_fit_scroll(
-    root: Query<&bevy::ui::ComputedNode, With<scene_drop::HierRoot>>,
-    header: Query<&bevy::ui::ComputedNode, With<HierHeaderRow>>,
-    add_row: Query<&bevy::ui::ComputedNode, With<HierAddRow>>,
-    list: Query<&bevy::ui::ComputedNode, With<HierScrollContent>>,
-    mut viewport: Query<&mut Node, With<HierScrollViewport>>,
+    viewports: Query<(Entity, &ChildOf), With<HierScrollViewport>>,
+    children_q: Query<&Children>,
+    computed: Query<&bevy::ui::ComputedNode>,
+    lists: Query<(), With<HierScrollContent>>,
+    mut nodes: Query<&mut Node>,
 ) {
-    let (Ok(root), Ok(header), Ok(add_row), Ok(list)) =
-        (root.single(), header.single(), add_row.single(), list.single())
-    else {
-        return;
-    };
-    let inv = root.inverse_scale_factor();
-    let panel_h = root.size().y * inv;
-    // Nothing has been laid out yet (a backgrounded dock tab, or the first
-    // frame). Leave the height alone rather than collapsing the panel to zero
-    // and rebuilding it when it comes back.
-    if panel_h <= 0.0 {
-        return;
-    }
-    let available = (panel_h - header.size().y * inv - add_row.size().y * inv).max(0.0);
-    let content = list.size().y * inv;
-    let target = Val::Px(content.min(available));
-    if let Ok(mut node) = viewport.single_mut() {
-        if node.height != target {
-            node.height = target;
+    // Resolved through the hierarchy rather than by `single()` on each marker.
+    // A panel can exist more than once — a second dock leaf, or a stashed copy
+    // the dock keeps alive — and a `single()` that finds two entities returns
+    // an error, so one extra instance anywhere in the editor would silently
+    // switch this off for the visible one.
+    for (viewport, child_of) in &viewports {
+        let root = child_of.parent();
+        let Ok(root_cn) = computed.get(root) else {
+            continue;
+        };
+        let inv = root_cn.inverse_scale_factor();
+        let panel_h = root_cn.size().y * inv;
+        // Nothing has been laid out yet (a backgrounded dock tab, or the first
+        // frame). Leave the height alone rather than collapsing the panel to
+        // zero and rebuilding it when it comes back.
+        if panel_h <= 0.0 {
+            continue;
+        }
+
+        // What the panel column spends on everything that isn't the tree: the
+        // search header and the Add Entity row. Measured rather than named, so
+        // a fourth thing added to this panel is accounted for without touching
+        // this system. A hidden child (the empty-scene picker) measures zero.
+        let mut spent = 0.0;
+        if let Ok(kids) = children_q.get(root) {
+            for kid in kids.iter() {
+                if kid == viewport {
+                    continue;
+                }
+                if let Ok(cn) = computed.get(kid) {
+                    spent += cn.size().y * inv;
+                }
+            }
+        }
+
+        // The tree's own height, from the list rather than the viewport — the
+        // viewport is what we are about to set, and the list is what it should
+        // be set from.
+        let mut content = 0.0;
+        if let Ok(kids) = children_q.get(viewport) {
+            for kid in kids.iter() {
+                if lists.contains(kid) {
+                    if let Ok(cn) = computed.get(kid) {
+                        content = cn.size().y * inv;
+                    }
+                }
+            }
+        }
+
+        let target = Val::Px(content.min((panel_h - spent).max(0.0)));
+        if let Ok(mut node) = nodes.get_mut(viewport) {
+            if node.height != target {
+                node.height = target;
+            }
         }
     }
 }
