@@ -36,7 +36,14 @@ pub(crate) fn snapshot_widgets(
     let Some(active) = state.active_canvas else { return };
     let scale = ui_scale.map(|s| s.0).unwrap_or(1.0).max(0.001);
     for (entity, widget, cn, ugt, ut, child_of) in &widgets {
-        if !is_descendant_of(&parents, entity, active) {
+        // The canvas root is the surface, not something on it. It gets tagged
+        // `UiWidget` like every other node once its template builds, and
+        // `is_descendant_of` counts an entity as its own descendant, so without
+        // this it joined the hit-test — a click on empty canvas grabbed the root
+        // and a drag rewrote its `Node` to a zero-size box parked off-screen,
+        // which renders as a canvas that is simply blank. There is nothing to
+        // drag it *within*, so it is excluded rather than merely locked.
+        if entity == active || !is_descendant_of(&parents, entity, active) {
             continue;
         }
         let w = cn.size.x / scale;

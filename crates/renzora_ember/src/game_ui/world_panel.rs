@@ -367,7 +367,9 @@ fn sync_world_ui_canvases(
                     MeshMaterial3d<StandardMaterial>,
                     super::world_ui_mesh::WorldUiMeshBuilt,
                 )>();
-                commands.entity(entity).insert(screen_canvas_node());
+                commands
+                    .entity(entity)
+                    .insert(super::components::canvas_root_node());
             }
             continue;
         }
@@ -514,19 +516,6 @@ fn sync_world_ui_canvases(
                 image: image_handle,
             },
         ));
-    }
-}
-
-/// The standard fullscreen root node a screen-space canvas uses. Re-inserted when
-/// a canvas is switched back from world space.
-fn screen_canvas_node() -> Node {
-    Node {
-        width: Val::Percent(100.0),
-        height: Val::Percent(100.0),
-        position_type: PositionType::Absolute,
-        left: Val::Px(0.0),
-        top: Val::Px(0.0),
-        ..default()
     }
 }
 

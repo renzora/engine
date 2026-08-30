@@ -103,7 +103,17 @@ impl Plugin for GameUiPlugin {
         // that after any reparent — drag, undo-restore, scene load, or script.
         // See the systems below for why the leak is otherwise invisible-yet-
         // destructive (an orphaned widget renders into the editor's own UI).
-        app.add_systems(Update, (heal_orphaned_ui_widgets, heal_nested_ui_canvases));
+        // …and a canvas root must keep the geometry of the surface it *is* —
+        // see `heal_canvas_root_geometry`, which is what repairs a scene that
+        // already has a collapsed canvas saved in it.
+        app.add_systems(
+            Update,
+            (
+                heal_orphaned_ui_widgets,
+                heal_nested_ui_canvases,
+                heal_canvas_root_geometry,
+            ),
+        );
 
         // Visibility-mode binding: same dual-path setup as the reparent
         // logic. The Changed system handles inspector edits to the
@@ -416,6 +426,44 @@ fn heal_nested_ui_canvases(
                     em.remove_parent_in_place();
                 }
             });
+        }
+    }
+}
+
+/// Force every canvas root back to full-target geometry.
+///
+/// The canvas root's rect is not authorable — see [`canvas_root_node`] — but it
+/// is an ordinary `Node`, so every tool that writes a `Node` could reach it. The
+/// UI editor's move/resize did: the canvas root carries `UiWidget` once its
+/// template has built, which put it in the canvas editor's hit-test alongside the
+/// markup nodes it contains, and one drag rewrote it to
+/// `left: 107.8%, top: 29.2%, width: 0%, height: 0%`.
+///
+/// A canvas at zero size is not a visible mistake. It has no border and no
+/// background, so there is nothing on screen to look wrong — the template
+/// underneath still loads, still builds its children, still reports a sensible
+/// `content_size`, and simply lays all of it out inside a zero-by-zero box. The
+/// UI editor renders an empty black rectangle and the file looks broken. That is
+/// the whole reason this is an invariant re-established every frame rather than a
+/// guard at the one call site that happened to violate it: an error you cannot
+/// see is one you cannot be trusted to avoid.
+///
+/// Writing only on a mismatch matters — an unconditional assignment would dirty
+/// `Node` every frame and re-run layout for the whole UI tree.
+fn heal_canvas_root_geometry(mut canvases: Query<&mut Node, With<UiCanvas>>) {
+    let want = components::canvas_root_node();
+    for mut node in &mut canvases {
+        if node.position_type != want.position_type
+            || node.left != want.left
+            || node.top != want.top
+            || node.width != want.width
+            || node.height != want.height
+        {
+            node.position_type = want.position_type;
+            node.left = want.left;
+            node.top = want.top;
+            node.width = want.width;
+            node.height = want.height;
         }
     }
 }

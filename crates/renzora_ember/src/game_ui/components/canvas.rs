@@ -72,3 +72,27 @@ impl Default for UiCanvas {
         }
     }
 }
+
+/// The `Node` every canvas root must have: the full render target, pinned to its
+/// top-left.
+///
+/// A canvas is the *surface* a template is laid out on, not a box on a surface —
+/// there is no outer frame for it to be positioned within, so its rect is not a
+/// property anyone gets to author. Where the UI sits on screen is decided by the
+/// template's own layout; the canvas only says how big "the screen" is, and that
+/// is `reference_width`/`reference_height`, not this.
+///
+/// It lives here, next to the component, because three separate places need the
+/// same answer: the editor's spawn, the scene-load healer, and anything that
+/// rebuilds a canvas. When it was written out longhand at the spawn site only,
+/// nothing else knew what a correct canvas root looked like.
+pub fn canvas_root_node() -> bevy::ui::Node {
+    bevy::ui::Node {
+        position_type: bevy::ui::PositionType::Absolute,
+        left: bevy::ui::Val::Px(0.0),
+        top: bevy::ui::Val::Px(0.0),
+        width: bevy::ui::Val::Percent(100.0),
+        height: bevy::ui::Val::Percent(100.0),
+        ..default()
+    }
+}

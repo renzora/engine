@@ -839,12 +839,10 @@ pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
     let entity = world
         .spawn((
             components::UiCanvas::default(),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                ..default()
-            },
+            // Not written out here: `heal_canvas_root_geometry` re-establishes
+            // exactly this every frame, and two copies of the definition is how
+            // they drift.
+            components::canvas_root_node(),
         ))
         .id();
     // The engine's one-id-per-entity rule, applied here rather than left to the
