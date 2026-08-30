@@ -234,6 +234,53 @@ pub enum Dest {
     After { start: u32, end: u32 },
 }
 
+/// Resolve a [`Dest`] to `(byte offset, prefix, suffix)`.
+///
+/// `prefix`/`suffix` are the indentation placed on whichever side of the
+/// inserted text keeps it on a line of its own — before it when landing after a
+/// sibling, after it when landing before one.
+fn dest_parts(source: &[u8], dest: Dest) -> Option<(usize, &[u8], &[u8])> {
+    match dest {
+        Dest::Before(p) => {
+            let p = p as usize;
+            if p > source.len() {
+                return None;
+            }
+            Some((p, &[], &source[line_lead_start(source, p)..p]))
+        }
+        Dest::After { start, end } => {
+            let (s, e) = (start as usize, end as usize);
+            if e > source.len() || s > source.len() {
+                return None;
+            }
+            Some((e, &source[line_lead_start(source, s)..s], &[]))
+        }
+    }
+}
+
+/// Splice new markup into `source` at `dest`, returning the new bytes.
+///
+/// The snippet's own indentation is *relative*: every line after the first gets
+/// the destination's indentation prepended, so a two-level snippet dropped three
+/// levels deep comes out at five, not two. Without that, everything inserted by
+/// the palette would sit flush against the left margin regardless of where it
+/// landed.
+pub fn insert_element(source: &[u8], dest: Dest, markup: &str) -> Option<Vec<u8>> {
+    let (at, prefix, suffix) = dest_parts(source, dest)?;
+    let lead = if prefix.is_empty() { suffix } else { prefix };
+    let indented = match std::str::from_utf8(lead) {
+        Ok(l) if l.contains('\n') => markup.replace('\n', l),
+        _ => markup.to_string(),
+    };
+    let mut out = Vec::with_capacity(source.len() + indented.len() + lead.len());
+    out.extend_from_slice(&source[..at]);
+    out.extend_from_slice(prefix);
+    out.extend_from_slice(indented.as_bytes());
+    out.extend_from_slice(suffix);
+    out.extend_from_slice(&source[at..]);
+    Some(out)
+}
+
 /// Move the element at `element` to `dest` within `source`, returning the new
 /// bytes. `None` when the span is malformed or the destination lies inside the
 /// element being moved (which is not a move).
@@ -250,24 +297,7 @@ pub fn move_element(source: &[u8], element: Span, dest: Dest) -> Option<Vec<u8>>
     let cut_start = line_lead_start(source, el_start);
     let moved = &source[el_start..el_end];
 
-    // `prefix`/`suffix` are the indentation placed on whichever side of the
-    // moved text keeps it on a line of its own.
-    let (at, prefix, suffix): (usize, &[u8], &[u8]) = match dest {
-        Dest::Before(p) => {
-            let p = p as usize;
-            if p > source.len() {
-                return None;
-            }
-            (p, &[], &source[line_lead_start(source, p)..p])
-        }
-        Dest::After { start, end } => {
-            let (s, e) = (start as usize, end as usize);
-            if e > source.len() || s > source.len() {
-                return None;
-            }
-            (e, &source[line_lead_start(source, s)..s], &[])
-        }
-    };
+    let (at, prefix, suffix) = dest_parts(source, dest)?;
     if at > cut_start && at < el_end {
         return None;
     }
@@ -438,6 +468,87 @@ pub fn move_node_in_markup(
     world.resource_mut::<Assets<HtmlTemplate>>().get_mut(&handle);
 }
 
+/// Insert `markup` into the template as a child of `parent`, ahead of `before`
+/// (or last when that is `None`).
+///
+/// The palette's write-back. Same file-then-rebuild path as
+/// [`move_node_in_markup`] and for the same reason: new elements have no live
+/// entities to patch, so the loader has to build them from source.
+pub fn insert_node_in_markup(
+    world: &mut World,
+    parent: Entity,
+    before: Option<Entity>,
+    markup: &str,
+) {
+    let Some(parent_src) = world.get::<MarkupSource>(parent) else {
+        return;
+    };
+    let handle = parent_src.template_handle.clone();
+    let parent_path = parent_src.node_path.clone();
+    let before_path = before.and_then(|b| match world.get::<MarkupSource>(b) {
+        Some(s) if s.template_handle == handle => Some(s.node_path.clone()),
+        _ => None,
+    });
+
+    let Some(asset_path) = world
+        .resource::<AssetServer>()
+        .get_path(&handle)
+        .map(|p| p.to_string())
+    else {
+        return;
+    };
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|cp| cp.path.clone());
+
+    let new_source = {
+        let templates = world.resource::<Assets<HtmlTemplate>>();
+        let Some(template) = templates.get(&handle) else {
+            return;
+        };
+        let Some(parent_node) = walk_node(&template.root, &parent_path) else {
+            return;
+        };
+        let dest = match before_path
+            .as_deref()
+            .and_then(|p| walk_node(&template.root, p))
+        {
+            Some(next) => Dest::Before(next.element.start),
+            None => match parent_node.children.last() {
+                Some(last) => Dest::After {
+                    start: last.element.start,
+                    end: last.element.end,
+                },
+                // An empty container has no sibling to anchor to, so land just
+                // past its open tag — the one position that is always inside it.
+                None => Dest::Before(parent_node.open_tag_close.start + 1),
+            },
+        };
+        match insert_element(&template.source, dest, markup) {
+            Some(bytes) => bytes,
+            None => return,
+        }
+    };
+
+    let disk_path: PathBuf = match project_root {
+        Some(root) => root.join(&asset_path),
+        None => PathBuf::from(&asset_path),
+    };
+    if let Err(err) = std::fs::write(&disk_path, &new_source) {
+        warn!(
+            "renzora_hui insert: failed to write {} — {err}",
+            disk_path.display()
+        );
+        return;
+    }
+    if let Some(mut requests) =
+        world.get_resource_mut::<crate::markup::template::TemplateReloadRequests>()
+    {
+        requests.0.insert(handle.id());
+    }
+    world.resource_mut::<Assets<HtmlTemplate>>().get_mut(&handle);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,6 +643,53 @@ mod tests {
         assert_eq!(
             String::from_utf8(out).unwrap(),
             "<node>\n    <a/>\n    <box>\n        <x/>\n    </box>\n</node>"
+        );
+    }
+
+    #[test]
+    fn insert_before_a_sibling_takes_its_indentation() {
+        let out = insert_element(
+            TREE.as_bytes(),
+            Dest::Before(span_of(TREE, "<b/>").start),
+            "<x/>",
+        )
+        .expect("inserts");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <a/>\n    <x/>\n    <b/>\n    <c/>\n</node>"
+        );
+    }
+
+    #[test]
+    fn insert_after_the_last_child_appends() {
+        let c = span_of(TREE, "<c/>");
+        let out = insert_element(
+            TREE.as_bytes(),
+            Dest::After { start: c.start, end: c.end },
+            "<x/>",
+        )
+        .expect("inserts");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <a/>\n    <b/>\n    <c/>\n    <x/>\n</node>"
+        );
+    }
+
+    /// A snippet's own indentation is relative — it has to gain the
+    /// destination's on top, or everything the palette inserts sits flush left
+    /// no matter how deep it lands.
+    #[test]
+    fn a_multi_line_snippet_is_reindented_to_its_destination() {
+        let src = "<node>\n    <box>\n        <x/>\n    </box>\n</node>";
+        let out = insert_element(
+            src.as_bytes(),
+            Dest::Before(span_of(src, "<x/>").start),
+            "<button>\n    <text>Go</text>\n</button>",
+        )
+        .expect("inserts");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <box>\n        <button>\n            <text>Go</text>\n        </button>\n        <x/>\n    </box>\n</node>"
         );
     }
 

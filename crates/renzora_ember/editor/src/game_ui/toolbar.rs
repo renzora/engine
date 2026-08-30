@@ -108,7 +108,13 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0)
         .collect();
     commands.entity(align_group).add_children(&align_kids);
-    let mut kids: Vec<Entity> = vec![align_group];
+    // Add leads the bar — the palette is where a template grows, so it belongs
+    // ahead of everything that only rearranges or views what is already there.
+    let add_group = toolbar_group(commands, "ui-add-group");
+    let palette = crate::game_ui::palette::build(commands, fonts);
+    commands.entity(add_group).add_children(&[palette]);
+
+    let mut kids: Vec<Entity> = vec![add_group, align_group];
 
     // Grid + backdrop are plain toggles; snap is a pill, because "snap" and
     // "by how much" are one idea. As a separate icon and a separate boxed field
@@ -177,7 +183,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Each group gets a grip and a saved position, exactly like the viewport's.
     // The grips double as the dividers between groups, which is why there are no
     // explicit separators left in here.
-    let keys = ["ui-align", "ui-view", "ui-zoom"];
+    let keys = ["ui-add", "ui-align", "ui-view", "ui-zoom"];
     let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
     arrange_row_items(commands, fonts, bar, &entries);
     bar

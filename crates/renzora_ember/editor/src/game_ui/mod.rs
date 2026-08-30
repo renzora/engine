@@ -52,6 +52,7 @@ mod inspectors;
 mod interaction;
 mod nav;
 mod overlay;
+mod palette;
 mod register;
 mod ruler;
 pub mod spawn_ext;
@@ -151,6 +152,7 @@ impl Plugin for GameUiEditorPlugin {
         interaction::register(app);
         nav::register(app);
         ruler::register(app);
+        palette::register(app);
         inspectors::register(app);
         app.add_systems(
             Update,
