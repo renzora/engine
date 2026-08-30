@@ -216,6 +216,7 @@ impl Plugin for ShellPlugin {
                 (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
                 (settings_btn_click, shell_action_press),
+                sync_hierarchy_filter_to_workspace,
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -6503,6 +6504,49 @@ fn elide(s: &str, max: usize) -> String {
     }
     let kept: String = s.chars().take(max.saturating_sub(1)).collect();
     format!("{}…", kept.trim_end())
+}
+
+/// The workspace whose hierarchy is narrowed to UI canvases.
+///
+/// Matched by name rather than index because the user can reorder, rename and
+/// remove workspaces, and their saved set is merged with the defaults on load —
+/// so a stored index means nothing across sessions.
+const UI_WORKSPACE: &str = "UI";
+
+/// Narrow the hierarchy to UI canvases while the UI workspace is active.
+///
+/// `HierarchyFilter` has existed for this since before the UI workspace did —
+/// its own doc gives "UI workspace only shows cameras + canvases" as the
+/// example. Nothing had ever set it.
+///
+/// Only canvases, not their contents: a canvas's widgets come from its `.html`
+/// and are rebuilt from that file on every load, so the tree would be offering
+/// rows whose edits the next rebuild discards. They are already excluded — see
+/// the `HideInHierarchy` note in `markup/loader.rs`.
+///
+/// Driven from `ShellLayouts`, not `LayoutManager`. The established version of
+/// this pattern (`sync_asset_filter_for_scripting`, which restricts the asset
+/// browser to text formats in the Scripting workspace) reads
+/// `LayoutManager::active_name` — and nothing updates `LayoutManager` any more,
+/// so that feature has quietly not worked since the shell took over workspace
+/// switching.
+fn sync_hierarchy_filter_to_workspace(
+    layouts: Res<ShellLayouts>,
+    filter: Option<ResMut<renzora_editor_framework::HierarchyFilter>>,
+) {
+    let Some(mut filter) = filter else { return };
+    let is_ui = layouts
+        .layouts
+        .get(layouts.active)
+        .is_some_and(|(name, _)| name == UI_WORKSPACE);
+    let desired = if is_ui {
+        renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"])
+    } else {
+        renzora_editor_framework::HierarchyFilter::All
+    };
+    if *filter != desired {
+        *filter = desired;
+    }
 }
 
 // `sync_viewport_view_to_workspace` lived here: it put the viewport into

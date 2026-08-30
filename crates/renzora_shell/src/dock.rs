@@ -550,20 +550,18 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// UI: UI Hierarchy | UI Editor + Code | Inspector.
+/// UI: Hierarchy | UI Editor + Code | Inspector.
 ///
 /// The same three columns as Scene, and the same loop — select in the tree,
 /// drag on the canvas, set properties in the inspector (all ~24 of the `ui_*`
 /// inspector entries are already registered).
 ///
-/// The tree is `ui_hierarchy`, **not** the scene hierarchy. A UI is a `.html`
-/// document whose nodes are rebuilt from the file on every load and which the
-/// scene deliberately does not serialise; the scene tree lists entities you can
-/// transform, parent and save. They answer different questions, and a mesh in
-/// the list while you are laying out a menu is something you cannot do anything
-/// UI-shaped to. Filtering the scene panel by workspace was the alternative and
-/// is worse: the same panel showing different contents depending on where you
-/// stand is state the user cannot see.
+/// It is the **ordinary hierarchy panel**, narrowed to UI canvases by
+/// `sync_hierarchy_filter_to_workspace` in `lib.rs`. A mesh in the list while
+/// you are laying out a menu is something you cannot do anything UI-shaped to,
+/// but that is an argument for filtering the tree, not for building a second
+/// one — the panel already has search, type filters, rename, drag-reparent and
+/// a context menu, and a UI-only copy would have had none of them.
 ///
 /// The canvas is the **`ui_canvas` panel**, not the viewport in a special mode.
 /// It used to be the latter: mounted inside the viewport panel's slot 0 and
@@ -578,7 +576,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
 /// Scene does it, since the document here is a template rather than a scene.
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("ui_hierarchy"),
+        DockTree::leaf("hierarchy"),
         DockTree::horizontal(
             DockTree::tabs(&["ui_canvas", "code_editor"]),
             DockTree::leaf("inspector"),
