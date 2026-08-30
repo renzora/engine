@@ -315,13 +315,26 @@ fn set_node_rect(world: &mut World, entity: Entity, nx: f32, ny: f32, nw: f32, n
     }
 }
 
+/// Rotation write-back. `rot` is the angle the user is aiming the handle at on
+/// screen, so it is a **global** angle; `UiTransform.rotation` is **local**, and
+/// rotation is inherited, so the parent's own global angle has to come off first.
+///
+/// It is identical either way for a node whose ancestors are unrotated, which is
+/// most of them — but rotate a child inside a rotated parent without this and it
+/// jumps by the parent's angle the moment you grab it.
 fn set_rotation(world: &mut World, entity: Entity, rot: f32) {
+    let parent_angle = world
+        .get::<ChildOf>(entity)
+        .map(|c| c.parent())
+        .and_then(|p| world.get::<bevy::ui::UiGlobalTransform>(p))
+        .map(|t| t.to_scale_angle_translation().1)
+        .unwrap_or(0.0);
     if let Ok(mut em) = world.get_entity_mut(entity) {
         if em.get::<UiTransform>().is_none() {
             em.insert(UiTransform::IDENTITY);
         }
         if let Some(mut t) = em.get_mut::<UiTransform>() {
-            t.rotation = Rot2::radians(rot);
+            t.rotation = Rot2::radians(rot - parent_angle);
         }
     }
 }

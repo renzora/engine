@@ -8,7 +8,7 @@
 //! computed handle positions.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 
 use renzora_ember::game_ui::UiWidget;
 
@@ -33,13 +33,13 @@ pub(crate) struct WidgetGeom {
 pub(crate) fn snapshot_widgets(
     mut state: ResMut<NativeCanvasState>,
     ui_scale: Option<Res<UiScale>>,
-    widgets: Query<(Entity, &UiWidget, &ComputedNode, &UiGlobalTransform, Option<&UiTransform>, Option<&ChildOf>)>,
+    widgets: Query<(Entity, &UiWidget, &ComputedNode, &UiGlobalTransform, Option<&ChildOf>)>,
     parents: Query<&ChildOf>,
 ) {
     state.widgets.clear();
     let Some(active) = state.active_canvas else { return };
     let scale = ui_scale.map(|s| s.0).unwrap_or(1.0).max(0.001);
-    for (entity, widget, cn, ugt, ut, child_of) in &widgets {
+    for (entity, widget, cn, ugt, child_of) in &widgets {
         // The canvas root is the surface, not something on it. It gets tagged
         // `UiWidget` like every other node once its template builds, and
         // `is_descendant_of` counts an entity as its own descendant, so without
@@ -50,17 +50,25 @@ pub(crate) fn snapshot_widgets(
         if entity == active || !is_descendant_of(&parents, entity, active) {
             continue;
         }
+        // Angle comes from the *global* transform, not the node's own
+        // `UiTransform`. Rotation is inherited, so a `<text>` inside a rotated
+        // `<button>` has no local rotation of its own — reading the local one
+        // gave every child an angle of zero and drew an axis-aligned selection
+        // box over a rotated widget. Position already came from the global
+        // transform, so the box was centred correctly and only the angle was
+        // wrong, which is exactly what it looked like.
+        let (_, angle, translation) = ugt.to_scale_angle_translation();
         let w = cn.size.x / scale;
         let h = cn.size.y / scale;
-        let cx = ugt.translation.x / scale;
-        let cy = ugt.translation.y / scale;
+        let cx = translation.x / scale;
+        let cy = translation.y / scale;
         state.widgets.push(WidgetGeom {
             entity,
             x: cx - w * 0.5,
             y: cy - h * 0.5,
             width: w,
             height: h,
-            rotation: ut.map(|t| t.rotation.as_radians()).unwrap_or(0.0),
+            rotation: angle,
             locked: widget.locked,
             parent: child_of.map(|c| c.parent()),
             depth: depth_below(&parents, entity, active),
