@@ -126,7 +126,11 @@ fn register_editor_entries(app: &mut App) {
     app.register_inspector(InspectorEntry {
         type_id: "html_template",
         display_name: "UI Template",
-        icon: "browser",
+        // `browser` renders — it is just a bare rounded rectangle, which at the
+        // 11px of a section header is indistinguishable from a missing glyph.
+        // `file-html` says what the slot actually holds, and reads at that size.
+        // The UI Editor *panel* keeps `browser`: there it is a window, not a file.
+        icon: "file-html",
         category: "ui",
         has_fn: |world, entity| {
             world.get::<UiCanvas>(entity).is_some() || world.get::<HtmlTemplatePath>(entity).is_some()
