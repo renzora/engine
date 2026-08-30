@@ -10,7 +10,6 @@
 //! channels.
 
 use bevy::prelude::*;
-use renzora::core::RenzoraShellExt;
 use bevy::ui::widget::NodeImageMode;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};
@@ -18,7 +17,6 @@ use crossbeam_channel::{unbounded, Receiver};
 use crate::auth::marketplace::{AssetSummary, MarketplaceListResponse};
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_with, keyed_list};
@@ -239,11 +237,11 @@ impl Plugin for NativeHubStore {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubStoreData>();
         app.init_resource::<ThemePreview>();
-        // The shell's static panel table no longer carries the Marketplace
-        // entries — they moved here with the plugin, so an install without it
-        // shows no Marketplace category instead of panels that open empty.
-        app.register_shell_panel("hub_store", "Marketplace", "storefront", "Marketplace");
-        app.register_panel_content("hub_store", false, build);
+        // The Marketplace is an overlay now, not a docked panel — see
+        // `store_overlay` for why. It is deliberately not registered with
+        // `register_shell_panel` any more: leaving it in the Add-Panel picker
+        // would offer a second, worse way into the same thing.
+        crate::store_overlay::register(app);
         crate::install_overlay::register(app);
         crate::item_overlay::register(app);
         // panel-systems-ungated: poll_store drains in-flight async marketplace requests
@@ -317,7 +315,10 @@ fn signed_in(w: &Rx) -> bool {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// Build the store's content. Used both by the dock panel registration and by
+/// the overlay (`store_overlay`), which is the same tree in a different
+/// container — there is nothing panel-shaped about it.
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn(Node {
             width: Val::Percent(100.0),

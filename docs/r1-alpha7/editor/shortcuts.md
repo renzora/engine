@@ -29,7 +29,7 @@ Press `Ctrl+P` to open the command palette (`renzora_command_palette`). It is a 
 | Users | Community members | Opens their profile |
 | Feed | Recent community-feed posts | Opens the post, comments expanded |
 | Courses | Learning courses | Opens the Docs panel |
-| Marketplace | Store assets (server-side search) | Opens the Marketplace panel |
+| Marketplace | Store assets (server-side search) | Opens the marketplace overlay |
 
 The remote tabs (Docs → Marketplace) query renzora.com as you type, debounced; Docs/Forum/Users want at least two characters, while Feed/Courses/Marketplace list their latest content even with an empty query.
 

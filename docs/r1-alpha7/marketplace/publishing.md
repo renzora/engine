@@ -35,10 +35,11 @@ You don't have to leave the engine to publish. The editor ships a **Publish** pa
 
 **Opening it:**
 
-- In the **Marketplace** panel's left column, click **Upload Asset**.
+- Switch to the **Marketplace** workspace — Publish is its left pane, with your Library and Wallet beside it.
+- Or in the marketplace overlay's toolbar, click **Upload Asset**.
 - Or open the **command palette** (`Ctrl`/`Cmd` + `P`) and run **Open Publish**.
 
-The panel docks like any other, so you can keep it beside the viewport while you prepare files. You must be **signed in** (sign in from the Marketplace panel first); publishing to a *paid* price also needs a connected payout account, exactly as on the web.
+Publish is a dock panel, unlike the store itself, and that's the point: uploading is work you come back to over several sittings, so you want it beside the viewport while you prepare files rather than over the top of it. You must be **signed in** (sign in from the marketplace overlay first); publishing to a *paid* price also needs a connected payout account, exactly as on the web.
 
 **How it differs from the website (only in mechanics, not in fields):**
 

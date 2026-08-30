@@ -785,15 +785,20 @@ fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity>
         // question whether the answer is on disk or in the store, and the store
         // was otherwise only reachable from the top-bar workspace switcher.
         //
-        // Opens the panel rather than importing anything: what arrives from the
-        // marketplace is chosen there and installed by its own overlay, which
+        // Opens the marketplace rather than importing anything: what arrives
+        // from it is chosen there and installed by its own overlay, which
         // already asks where to put it.
+        //
+        // Through the shell-action message, not a panel id — the Marketplace is
+        // an overlay now, and this crate has never heard of the one that owns
+        // it. The id is the only thing that crosses, and it lives in the
+        // contract crate so both ends agree on the string.
         menu_item(
             commands,
             fonts,
             "storefront",
             &renzora::lang::t("assets.search_marketplace"),
-            |w| renzora_ember::dock::open_or_focus_panel(w, "hub_store"),
+            |w| renzora::ShellActionInvoked::invoke(w, renzora::ACTION_MARKETPLACE),
         ),
     ]
 }

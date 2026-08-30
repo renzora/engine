@@ -397,11 +397,14 @@ const MARKETPLACE: Chapter = Chapter {
 };
 
 const MARKETPLACE_STEPS: &[Step] = &[
+    // `Info`, not `OpenPanel`: the store is an overlay now, and `OpenPanel`
+    // detects a panel *in the dock tree*, so that predicate could never come
+    // true again and the chapter would stall on step one.
     Step {
-        kind: StepKind::OpenPanel("hub_store"),
+        kind: StepKind::Info,
         badge: "storefront",
         title: "Open the Store",
-        body: "Add the *Store* panel from a tab bar's + picker. It's the renzora.com marketplace, in a dock panel — models, materials, themes and plugins.",
+        body: "Click the **storefront** icon in the top bar, beside the gear. It opens the renzora.com marketplace over your work — models, materials, themes and plugins. The Import button in the Assets panel has a *Search marketplace* row that opens the same thing.",
         hint: Hint { icons: &["mouse-left-click", "storefront"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {

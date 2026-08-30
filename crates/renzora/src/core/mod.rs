@@ -516,6 +516,70 @@ pub struct ShellStatusRegistry {
     pub items: Vec<ShellStatusItem>,
 }
 
+/// An icon button a plugin contributes to the top bar, to the right of the
+/// built-in controls.
+///
+/// The shell owns the chrome and the plugin owns the thing the button opens, so
+/// neither can hold both halves: this is the seam. The shell draws whatever is
+/// registered and reports presses through [`ShellActionPressed`]; the plugin
+/// reads its own id there and does whatever it likes. No callback crosses the
+/// boundary, which is what lets a plugin that links no shell code put a button
+/// in the shell.
+pub struct ShellActionItem {
+    /// Stable, unique. This is the string a plugin looks for in
+    /// [`ShellActionPressed`].
+    pub id: &'static str,
+    /// Phosphor icon NAME (kebab-case), resolved by the shell.
+    pub icon: &'static str,
+    /// The tooltip, as a function rather than a string: it is built when the
+    /// bar is built, which may be long after registration and after the user
+    /// has changed language.
+    pub tooltip: fn() -> String,
+    /// Left-to-right order among the contributed buttons. Ties keep
+    /// registration order.
+    pub order: i32,
+}
+
+/// Registry of plugin-contributed top-bar buttons. Any plugin can push to it;
+/// the shell renders them beside the gear.
+#[derive(Resource, Default)]
+pub struct ShellActionRegistry {
+    pub items: Vec<ShellActionItem>,
+}
+
+/// A shell action was invoked.
+///
+/// The top bar's button writes this, but it is deliberately not *only* the top
+/// bar's: anything that should open the same thing writes the same id, which is
+/// how the asset browser's Import button reaches the Marketplace without either
+/// crate knowing about the other. The plugin that registered the id reads the
+/// message and does the work.
+#[derive(bevy::prelude::Message, Clone, Copy)]
+pub struct ShellActionInvoked(pub &'static str);
+
+impl ShellActionInvoked {
+    /// Invoke a shell action from an exclusive system.
+    ///
+    /// A no-op when nothing has registered the id — the message type is only
+    /// added by `register_shell_action`, so an editor built without the plugin
+    /// that owns this action simply has nowhere to send it, which is the right
+    /// outcome and not an error.
+    pub fn invoke(world: &mut bevy::prelude::World, id: &'static str) {
+        if let Some(mut messages) =
+            world.get_resource_mut::<bevy::ecs::message::Messages<Self>>()
+        {
+            messages.write(Self(id));
+        }
+    }
+}
+
+/// The Marketplace overlay's action id.
+///
+/// Here rather than in the plugin that owns it because the asset browser's
+/// Import menu opens the same thing, and neither crate should depend on the
+/// other to agree on a string.
+pub const ACTION_MARKETPLACE: &str = "marketplace.open";
+
 /// Relaunch this executable with the same arguments and exit.
 ///
 /// Here in the contract crate because more than one thing needs it and none of
@@ -568,6 +632,10 @@ pub trait RenzoraShellExt {
 
     /// Register a status-bar item.
     fn register_shell_status_item(&mut self, item: ShellStatusItem) -> &mut Self;
+
+    /// Register a top-bar icon button. Pressing it writes a
+    /// [`ShellActionInvoked`] carrying the id.
+    fn register_shell_action(&mut self, item: ShellActionItem) -> &mut Self;
 }
 
 impl RenzoraShellExt for bevy::app::App {
@@ -594,6 +662,16 @@ impl RenzoraShellExt for bevy::app::App {
         self.init_resource::<ShellStatusRegistry>();
         self.world_mut()
             .resource_mut::<ShellStatusRegistry>()
+            .items
+            .push(item);
+        self
+    }
+
+    fn register_shell_action(&mut self, item: ShellActionItem) -> &mut Self {
+        self.init_resource::<ShellActionRegistry>();
+        self.add_message::<ShellActionInvoked>();
+        self.world_mut()
+            .resource_mut::<ShellActionRegistry>()
             .items
             .push(item);
         self

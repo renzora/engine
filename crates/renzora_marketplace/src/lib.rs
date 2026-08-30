@@ -54,6 +54,7 @@ mod material_viewer;
 mod model_viewer;
 mod native_library;
 mod native_store;
+mod store_overlay;
 mod onboarding;
 mod thumbs;
 mod toasts;

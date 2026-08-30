@@ -33,13 +33,28 @@ pub fn overlay(commands: &mut Commands, fonts: &EmberFonts, title: &str) -> (Ent
     overlay_sized(commands, fonts, title, 540.0, 520.0, true)
 }
 
-/// [`overlay`] with an explicit fixed `width`×`height` and optional border.
+/// [`overlay`] with an explicit fixed `width`×`height` in px, and optional
+/// border.
 pub fn overlay_sized(
     commands: &mut Commands,
     fonts: &EmberFonts,
     title: &str,
     width: f32,
     height: f32,
+    bordered: bool,
+) -> (Entity, Entity) {
+    overlay_val(commands, fonts, title, Val::Px(width), Val::Px(height), bordered)
+}
+
+/// [`overlay_sized`] with the card sized in whatever [`Val`] suits — for an
+/// overlay that is a *workspace* rather than a dialog and should take a share of
+/// the window rather than a fixed number of pixels.
+pub fn overlay_val(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    width: Val,
+    height: Val,
     bordered: bool,
 ) -> (Entity, Entity) {
     let root = commands
@@ -66,8 +81,8 @@ pub fn overlay_sized(
     let card = commands
         .spawn((
             Node {
-                width: Val::Px(width),
-                height: Val::Px(height),
+                width,
+                height,
                 flex_direction: FlexDirection::Column,
                 min_height: Val::Px(0.0),
                 border: UiRect::all(Val::Px(if bordered { 1.0 } else { 0.0 })),

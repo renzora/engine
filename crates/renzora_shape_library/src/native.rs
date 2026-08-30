@@ -16,7 +16,19 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
-const TILE_W: f32 = 58.0;
+/// Tile width. 58 was too narrow for the names the library actually has —
+/// "Quarter Pipe", "Half Cylinder", "Spiral Stairs", "Window Wall" all broke
+/// onto a second line, and because the tile's height was fixed at `TILE_W + 16`
+/// that second line was clipped and every row it appeared in sat ragged against
+/// its neighbours.
+const TILE_W: f32 = 76.0;
+/// Height reserved for the label: two lines at 10px, always, whether or not the
+/// name uses both. Reserving the space is what keeps a row of tiles level; the
+/// alternative is rows that jump by a line depending on which shapes matched the
+/// search.
+const LABEL_H: f32 = 26.0;
+/// Total tile height: the icon block plus the label block plus padding.
+const TILE_H: f32 = 34.0 + LABEL_H + 12.0;
 
 pub struct NativeShapeLibrary;
 
@@ -63,8 +75,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(6.0),
-            padding: UiRect::all(Val::Px(6.0)),
+            row_gap: Val::Px(8.0),
+            padding: UiRect::all(Val::Px(8.0)),
             ..default()
         })
         .id();
@@ -89,8 +101,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::Wrap,
             align_content: AlignContent::FlexStart,
-            column_gap: Val::Px(4.0),
-            row_gap: Val::Px(4.0),
+            column_gap: Val::Px(6.0),
+            row_gap: Val::Px(6.0),
             ..default()
         })
         .id();
@@ -174,18 +186,22 @@ fn shape_tile(
         .spawn((
             Node {
                 width: Val::Px(TILE_W),
-                height: Val::Px(TILE_W + 16.0),
+                height: Val::Px(TILE_H),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(2.0),
+                justify_content: JustifyContent::FlexStart,
+                padding: UiRect::vertical(Val::Px(6.0)),
+                row_gap: Val::Px(4.0),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            BorderColor::all(Color::NONE),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            // The full name, for the ones the two-line label still can't hold.
+            renzora_ember::widgets::HoverTooltip::new(name),
             ShapeTile { id, name, color },
             Name::new(format!("shape:{id}")),
         ))
@@ -200,14 +216,53 @@ fn shape_tile(
             rgb(section_bg())
         }
     });
-    let ic = renzora_ember::font::icon_text(commands, &fonts.phosphor, icon, text_primary(), 26.0);
+    // The border does the hover work the background alone was too subtle for —
+    // `section_bg` to `hover_bg` is a couple of percent of lightness on a dark
+    // theme, and on a grid of thirty tiles that is not enough to tell which one
+    // is under the cursor.
+    renzora_ember::reactive::tracked::bind_with(
+        commands,
+        tile,
+        move |w| {
+            matches!(
+                w.get::<Interaction>(tile),
+                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            )
+        },
+        |w, e, hot: &bool| {
+            let c = if *hot { rgb(accent()) } else { rgb(border()) };
+            if let Some(mut b) = w.get_mut::<BorderColor>(e) {
+                *b = BorderColor::all(c);
+            }
+        },
+    );
+
+    // Icon in a fixed block, so the label starts at the same height on every
+    // tile whatever the glyph's own metrics are.
+    let ic = renzora_ember::font::icon_text(commands, &fonts.phosphor, icon, text_primary(), 24.0);
+    commands.entity(ic).insert(Node {
+        height: Val::Px(30.0),
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        ..default()
+    });
+
     let lbl = commands
         .spawn((
             Text::new(name),
-            ui_font(&fonts.ui, 9.5),
-            TextColor(rgb(text_muted())),
+            ui_font(&fonts.ui, 10.0),
+            // `text_primary`, not `text_muted`: the name is what you read to
+            // pick a shape, and several of the icons are shared between shapes
+            // (Sphere and Hemisphere are the same globe), so the label is
+            // frequently the only thing telling two tiles apart.
+            TextColor(rgb(text_primary())),
             bevy::text::TextLayout::justify(bevy::text::Justify::Center),
-            Node { max_width: Val::Px(TILE_W - 4.0), overflow: Overflow::clip(), ..default() },
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(LABEL_H),
+                overflow: Overflow::clip(),
+                ..default()
+            },
         ))
         .id();
     commands.entity(tile).add_children(&[ic, lbl]);

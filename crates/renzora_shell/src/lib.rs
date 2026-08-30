@@ -215,7 +215,7 @@ impl Plugin for ShellPlugin {
                 #[cfg(target_arch = "wasm32")]
                 (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
-                settings_btn_click,
+                (settings_btn_click, shell_action_press),
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -5264,6 +5264,10 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     let hamburger = hamburger_menu_item(commands);
     let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
+    // Plugin-contributed icon buttons, right of the gear. The Marketplace's is
+    // the first: it is a place you go, not a panel you dock, so it wants a door
+    // in the chrome rather than a tab in a workspace.
+    let actions = build_shell_actions(commands);
     let play = build_play_group(commands, font);
     // The document tabs, for anyone who'd rather not spend a row of the window
     // on them — hidden unless Settings has them set to Dropdown, in which case
@@ -5271,7 +5275,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     let docs = build_doc_tab_menu_group(commands, fonts, font);
     commands
         .entity(left)
-        .add_children(&[hamburger, session, settings, play, docs]);
+        .add_children(&[hamburger, session, settings, actions, play, docs]);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
@@ -7333,6 +7337,102 @@ fn settings_button(commands: &mut Commands) -> Entity {
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     gear
+}
+
+/// Marks a plugin-contributed top-bar button with the id it reports when
+/// pressed.
+#[derive(Component)]
+struct ShellActionBtn(&'static str);
+
+/// The row of plugin-contributed top-bar buttons.
+///
+/// Built once with the chrome, from whatever is in
+/// [`renzora::ShellActionRegistry`] at that moment — which is every plugin's
+/// registration, since plugins are added during `App` assembly and the chrome is
+/// built after the splash. A plugin that registers later gets its button on the
+/// next chrome rebuild (a theme or layout change), which is the same deal
+/// status-bar items and panels get.
+fn build_shell_actions(commands: &mut Commands) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                ..default()
+            },
+            Name::new("top-bar-actions"),
+        ))
+        .id();
+    commands.queue(move |world: &mut World| {
+        let items: Vec<(&'static str, &'static str, String, i32)> = world
+            .get_resource::<renzora::ShellActionRegistry>()
+            .map(|reg| {
+                let mut v: Vec<_> = reg
+                    .items
+                    .iter()
+                    .map(|i| (i.id, i.icon, (i.tooltip)(), i.order))
+                    .collect();
+                v.sort_by_key(|i| i.3);
+                v
+            })
+            .unwrap_or_default();
+        if items.is_empty() {
+            return;
+        }
+        let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+            return;
+        };
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            let kids: Vec<Entity> = items
+                .into_iter()
+                .map(|(id, icon, tooltip, _)| {
+                    let btn = renzora_ember::font::icon_text(
+                        &mut commands,
+                        &fonts.phosphor,
+                        icon,
+                        text_muted(),
+                        14.0,
+                    );
+                    commands.entity(btn).insert((
+                        Node {
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            padding: UiRect::axes(Val::Px(5.0), Val::Px(3.0)),
+                            border_radius: BorderRadius::all(Val::Px(4.0)),
+                            ..default()
+                        },
+                        Interaction::default(),
+                        ShellActionBtn(id),
+                        renzora_ember::widgets::HoverTooltip::new(tooltip),
+                        renzora_ember::cursor_icon::HoverCursor(
+                            bevy::window::SystemCursorIcon::Pointer,
+                        ),
+                        Name::new(format!("top-action:{id}")),
+                    ));
+                    btn
+                })
+                .collect();
+            commands.entity(row).add_children(&kids);
+        }
+        queue.apply(world);
+    });
+    row
+}
+
+/// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered
+/// the id.
+fn shell_action_press(
+    q: Query<(&Interaction, &ShellActionBtn), Changed<Interaction>>,
+    mut invoked: MessageWriter<renzora::ShellActionInvoked>,
+) {
+    for (interaction, btn) in &q {
+        if *interaction == Interaction::Pressed {
+            invoked.write(renzora::ShellActionInvoked(btn.0));
+        }
+    }
 }
 
 /// Gear → toggle the Settings panel. Same toggle the hamburger's Settings row
