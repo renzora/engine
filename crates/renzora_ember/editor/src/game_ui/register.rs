@@ -828,28 +828,31 @@ fn debug_ui_tree(
     info!("[ui_editor] === END UI TREE DUMP ===");
 }
 
-/// Register UI Canvas + all UI widget types as entity presets in the hierarchy
-/// "Add Entity" overlay. Each widget preset spawns via `spawn::spawn_widget`,
-/// which finds (or creates) a canvas and parents the new widget to it.
+/// Spawn a bare UI Canvas: the marker, a name, and the full-size absolute
+/// `Node` that makes it a UI root. No template and no file written — pick one in
+/// the inspector's UI Template slot, or make one there with "+".
+///
+/// Module-level (rather than nested in `register_ui_presets`) because three
+/// things create a canvas now: the Add Entity preset, the "New UI Canvas"
+/// starter, and the UI editor's own empty state.
+pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
+    world
+        .spawn((
+            Name::new("UI Canvas"),
+            components::UiCanvas::default(),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+        ))
+        .id()
+}
+
+/// Register the UI Canvas entity preset and the "New UI Canvas" scene starter.
 fn register_ui_presets(app: &mut App) {
     use renzora::{AppEditorExt, EntityPreset, SceneStarter};
-
-    // A bare canvas, with no template and no file written. Pick one in the
-    // inspector's UI Template slot, or make one there with "+".
-    fn spawn_ui_canvas(world: &mut World) -> Entity {
-        world
-            .spawn((
-                Name::new("UI Canvas"),
-                components::UiCanvas::default(),
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-            ))
-            .id()
-    }
 
     // UI Canvas — always spawned at root.
     app.register_entity_preset(EntityPreset {

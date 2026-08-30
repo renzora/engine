@@ -13,6 +13,28 @@ use crate::game_ui::canvas::UiCanvasPreviewEnabled;
 use crate::game_ui::canvas_render::UiCanvasRender;
 use crate::game_ui::NativeCanvasState;
 
+/// The empty state's "Create one" button.
+#[derive(Component)]
+pub(crate) struct CreateCanvasBtn;
+
+/// Spawn a canvas and select it, so the inspector opens on the UI Template slot
+/// — which is the next thing to fill and the whole reason the entity exists.
+pub(crate) fn create_canvas_click(
+    q: Query<&Interaction, (With<CreateCanvasBtn>, Changed<Interaction>)>,
+    cmds: Option<Res<renzora::EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    cmds.push(|world: &mut World| {
+        let canvas = super::register::spawn_ui_canvas(world);
+        if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
+            sel.set(Some(canvas));
+        }
+    });
+}
+
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let area = commands
         .spawn((
@@ -35,10 +57,56 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // "No canvas" note.
+    // The empty state: what is missing, and the one thing to do about it.
+    //
+    // It was a line of grey text and nothing else — a dead end in the panel you
+    // had just gone to the trouble of opening. The panel knows exactly what is
+    // wrong and exactly how to fix it, so it should offer to.
     let note = commands
-        .spawn((Text::new("No UI canvas in the scene"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted()))))
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(10.0),
+                ..default()
+            },
+            Name::new("ui-canvas-empty"),
+        ))
         .id();
+    let note_text = commands
+        .spawn((
+            Text::new("No UI canvas in the scene"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let create = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            CreateCanvasBtn,
+            Name::new("ui-canvas-create"),
+        ))
+        .id();
+    let create_label = commands
+        .spawn((
+            Text::new("Create one"),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(Color::WHITE),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(create).add_child(create_label);
+    commands.entity(note).add_children(&[note_text, create]);
     bind_display(commands, note, |w| w.get_resource::<NativeCanvasState>().is_none_or(|s| s.active_canvas.is_none()));
 
     // The design frame — sized to reference resolution × zoom.
