@@ -35,12 +35,17 @@ use renzora_ember::widgets::{text_input, EmberTextInput};
 
 use crate::game_ui::NativeCanvasState;
 
-/// Tile metrics, matching the Shape Library's so the two panels read as one
-/// family. Two lines of label are reserved whether or not a name uses both —
-/// that is what keeps a row level regardless of which entries matched a search.
-const TILE_W: f32 = 76.0;
+/// Tile height. Two lines of label are reserved whether or not a name uses both
+/// — that is what keeps a row level regardless of which entries matched a
+/// search. The *width* is not a constant: tiles fill their grid column.
 const LABEL_H: f32 = 26.0;
 const TILE_H: f32 = 34.0 + LABEL_H + 12.0;
+/// Never fewer than four columns. Three tiles across a narrow panel reads as a
+/// list that failed to be a grid.
+const MIN_COLUMNS: u16 = 4;
+/// Column count is picked from the panel width against this: wide enough for
+/// the icon and a short label, narrow enough that four fit the default column.
+const COLUMN_TARGET: f32 = 62.0;
 /// Cursor travel before a press becomes a drag rather than a click.
 const DRAG_THRESHOLD: f32 = 6.0;
 
@@ -230,6 +235,10 @@ pub(crate) struct PaletteDrag(pub Option<&'static str>);
 #[derive(Component)]
 struct PaletteSearch;
 
+/// The tile grid, so [`palette_columns`] can measure it.
+#[derive(Component)]
+struct PaletteGrid;
+
 #[derive(Component, Clone, Copy)]
 struct PaletteTile(&'static str);
 
@@ -242,7 +251,7 @@ pub(crate) fn register(app: &mut App) {
     app.register_panel_content("ui_palette", true, build)
         .systems(
             Update,
-            palette_search_sync.run_if(in_state(SplashState::Editor)),
+            (palette_search_sync, palette_columns).run_if(in_state(SplashState::Editor)),
         )
         // NOT panel-gated. `PanelScope::systems` runs a system only while its
         // panel is the active tab, which is right for a panel's own upkeep and
@@ -283,16 +292,24 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     ));
 
+    // A grid, not a wrapping row of fixed-width tiles. A wrap row leaves
+    // whatever the last column could not use as dead space against the right
+    // edge — at the default panel width that was three tiles and a visible gap.
+    // Equal `flex` tracks divide the width exactly, so the grid always meets
+    // both edges whatever the column count works out to.
     let grid = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            align_content: AlignContent::FlexStart,
-            column_gap: Val::Px(6.0),
-            row_gap: Val::Px(6.0),
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                display: Display::Grid,
+                grid_template_columns: vec![RepeatedGridTrack::flex(MIN_COLUMNS, 1.0)],
+                align_content: AlignContent::FlexStart,
+                column_gap: Val::Px(6.0),
+                row_gap: Val::Px(6.0),
+                ..default()
+            },
+            PaletteGrid,
+        ))
         .id();
     renzora_ember::virtual_scroll::virtual_scroll_versioned(
         commands,
@@ -448,7 +465,10 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
     let t = commands
         .spawn((
             Node {
-                width: Val::Px(TILE_W),
+                // Fills its grid column — the grid decides the width, so the
+                // tiles meet both edges of the panel at any size.
+                width: Val::Percent(100.0),
+                min_width: Val::Px(0.0),
                 height: Val::Px(TILE_H),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
@@ -457,6 +477,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
                 row_gap: Val::Px(4.0),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
@@ -521,6 +542,26 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
         .id();
     commands.entity(t).add_children(&[ic, lbl]);
     t
+}
+
+/// Re-fit the grid's column count to the panel's width.
+///
+/// Measured rather than fixed because this panel is docked in a column the user
+/// resizes: a count that suits the default width is wrong the moment they drag
+/// the splitter. Written only on a change, so it does not dirty `Node` — and
+/// therefore re-run layout for the whole tree — every frame.
+fn palette_columns(mut grid: Query<(&bevy::ui::ComputedNode, &mut Node), With<PaletteGrid>>) {
+    for (cn, mut node) in &mut grid {
+        let width = cn.size().x * cn.inverse_scale_factor();
+        if width <= 0.0 {
+            continue;
+        }
+        let n = ((width / COLUMN_TARGET).floor() as u16).clamp(MIN_COLUMNS, 8);
+        let want = vec![RepeatedGridTrack::flex(n, 1.0)];
+        if node.grid_template_columns != want {
+            node.grid_template_columns = want;
+        }
+    }
 }
 
 fn palette_search_sync(
