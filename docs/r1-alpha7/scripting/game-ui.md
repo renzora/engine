@@ -57,6 +57,22 @@ A handful of tags cover almost everything:
 
 There are a few more tags for repeating lists and reusing components. See the [Scripting API](/docs/r1-alpha7/api/scripting) for the full list.
 
+### Sizes and spacing
+
+Lengths are written like CSS: `12px`, `50%`, `auto`, or the viewport units
+`vw` / `vh` / `vmin` / `vmax`. A bare `0` is fine and means `0px`.
+
+`padding`, `margin`, `border` and `border_radius` take one, two or four values:
+
+| Form | Meaning |
+|---|---|
+| `padding="10px"` | all four sides |
+| `padding="10px 20px"` | **horizontal, then vertical** |
+| `padding="5px 10px 5px 10px"` | top, right, bottom, left |
+
+Note the two-value form: it is horizontal first, which is the opposite way round
+from CSS. The four-value form follows CSS exactly.
+
 ## Making the UI show live values
 
 The best part: your UI can show numbers that change as the game runs. Wrap a value in **double braces** and it re-reads every frame:

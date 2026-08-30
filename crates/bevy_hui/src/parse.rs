@@ -1571,13 +1571,25 @@ where
             multispace0,
             alt((
                 map(tag("auto"), |_| Val::Auto),
-                map(tag("0"), |_| Val::Px(0.)),
                 map(tuple((float, tag("px"))), |(val, _)| Val::Px(val)),
                 map(tuple((float, tag("%"))), |(val, _)| Val::Percent(val)),
                 map(tuple((float, tag("vw"))), |(val, _)| Val::Vw(val)),
                 map(tuple((float, tag("vh"))), |(val, _)| Val::Vh(val)),
                 map(tuple((float, tag("vmin"))), |(val, _)| Val::VMin(val)),
                 map(tuple((float, tag("vmax"))), |(val, _)| Val::VMax(val)),
+                // Bare `0`, the one length CSS lets you write without a unit.
+                // It has to come *last*: `alt` takes the first branch that
+                // matches, and `tag("0")` matches the leading `0` of `0px`
+                // while consuming only that digit. It used to sit second, so
+                // `parse_val("0px")` returned `Px(0)` and left `px` behind —
+                // harmless on its own, fatal inside a multi-value shorthand.
+                // `padding="0 0 0 88px"` parsed; `padding="0px 0px 0px 88px"`
+                // left `px …` for the next value, failed the four-value branch,
+                // fell through `alt` to the single-value one and came out as
+                // `UiRect::all(0)`. So the padding vanished, and a
+                // `margin="10px 0px 0px 0px"` meant to add a gap above a button
+                // became a 10px margin on all four sides instead.
+                map(tag("0"), |_| Val::Px(0.)),
             )),
             multispace0,
         ),
@@ -1884,9 +1896,29 @@ mod tests {
     #[test_case("20px", Val::Px(20.))]
     #[test_case("20vmin", Val::VMin(20.))]
     #[test_case("20vmax", Val::VMax(20.))]
+    #[test_case("0px", Val::Px(0.))]
+    #[test_case("0%", Val::Percent(0.))]
     fn test_value(input: &str, expected: Val) {
         let result = parse_val::<nom::error::Error<_>>(input.as_bytes());
         assert_eq!(Ok(("".as_bytes(), expected)), result);
+    }
+
+    /// A zero with a unit has to consume its unit, or every value after it in a
+    /// shorthand is parsed against leftover `px`. `alt` then falls back to the
+    /// one-value branch and the whole rect silently becomes `all(0)` — the
+    /// failure is a layout that looks plausible, not a parse error.
+    #[test_case("0px 0px 0px 88px", UiRect { top: Val::Px(0.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(88.) })]
+    #[test_case("0 0 0 88px", UiRect { top: Val::Px(0.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(88.) })]
+    #[test_case("10px 0px 0px 0px", UiRect { top: Val::Px(10.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(0.) })]
+    // Note the two-value form is **not** CSS's `vertical horizontal`: this
+    // parser reads it as `horizontal vertical`. Left as-is deliberately — every
+    // template in the tree is already written against it, and flipping it would
+    // reflow all of them silently. Pinned here so the difference is on the record.
+    #[test_case("14px 18px", UiRect::axes(Val::Px(14.), Val::Px(18.)))]
+    #[test_case("0px", UiRect::all(Val::Px(0.)))]
+    fn test_ui_rect_zero_with_unit(input: &str, expected: UiRect) {
+        let result = parse_ui_rect::<VerboseHtmlError>(input.as_bytes());
+        assert_eq!(expected, result.expect("should parse").1);
     }
 
     #[test_case("auto", GridPlacement::auto())]
