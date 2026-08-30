@@ -40,7 +40,12 @@ const CARD_W: f32 = 124.0;
 /// rounded corners lines up instead of showing a sliver of card behind it.
 const ICON_RADIUS: f32 = 18.0;
 /// How many cards a home category shelf shows before "See all".
-const SECTION_CAP: usize = 6;
+///
+/// Ten rather than six because the cards are a fixed width now: six of them
+/// filled a rail that stretched to the panel, but they fill only about half a
+/// line of a maximised window at their real size, and a shelf that is mostly
+/// empty space reads as a category with nothing in it.
+const SECTION_CAP: usize = 10;
 
 const SORTS: [(&str, &str); 5] = [
     ("popular", "Most Downloaded"),
@@ -519,7 +524,10 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// [`build_account_bar`] for why they are in the toolbar instead.
 fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
-        .spawn(Node { width: Val::Px(160.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        // 180, not 160: at the 13px the rows now use, 160 was about fifteen
+        // pixels short of "Materials & Shaders" and the longest three names all
+        // wrapped. Widening the column is the fix that keeps the type size.
+        .spawn(Node { width: Val::Px(180.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
         .id();
 
     let cat_caption = commands.spawn((Text::new("Categories"), ui_font(&fonts.ui, 9.5), TextColor(rgb(text_muted())), Node { margin: UiRect::top(Val::Px(2.0)), ..default() })).id();
@@ -634,7 +642,13 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: O
     };
     let row = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            // `min_height` + padding, not a fixed `height`. At 28px fixed, the
+            // three two-word categories — "Materials & Shaders", "Textures &
+            // HDRIs", "Complete Projects" — wrapped to a second line inside a
+            // box that could not grow, and their overflow drew straight over the
+            // row beneath. A row that can grow is worth more than rows that are
+            // all exactly the same height.
+            Node { width: Val::Percent(100.0), min_height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
             Interaction::default(),
             StoreCatRow(slug.clone()),
@@ -697,14 +711,25 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
     let hover = lighten(base, 0.12);
     let card = commands
         .spawn((
-            // Flex-grow from a CARD_W basis so each row stretches to fill the
-            // panel width (no ragged right-edge gap); capped so a sparse last row
-            // doesn't balloon. align_items:FlexStart on the grid keeps heights
-            // content-sized.
+            // One fixed width, everywhere.
+            //
+            // The card used to flex-grow from a `CARD_W` basis so a row filled
+            // the panel with no ragged right-edge gap. The cost was that a card
+            // had no size of its own — it had the size of whatever slack its row
+            // happened to have. A browse grid of forty cards leaves each of them
+            // almost none, so they sat near 124px; a home shelf of six cards on
+            // the same screen left each of them plenty, so they hit the 1.3 cap
+            // at 161. Same builder, same panel, visibly different store,
+            // depending only on how many results came back.
+            //
+            // A fixed width costs a trailing gap of less than one card. That is
+            // what every asset store looks like, and it is a much smaller
+            // problem than tiles that change size when you click a category.
+            //
             // Padded, so the icon reads as an *icon* sitting on the card rather
             // than a banner bleeding to its edges — which is the difference
             // between a store tile and the old landscape card.
-            Node { flex_grow: 1.0, flex_basis: Val::Px(CARD_W), min_width: Val::Px(CARD_W), max_width: Val::Px(CARD_W * 1.3), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(7.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            Node { width: Val::Px(CARD_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(7.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
             BackgroundColor(base),
             BorderColor::all(rgba([255, 255, 255, 12])),
             Interaction::default(),
@@ -830,9 +855,25 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
     let info = commands
         .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, FocusPolicy::Pass))
         .id();
+    // `width: 100%` is what makes `no_wrap` + `clip` actually truncate. Without
+    // it the node takes the text's intrinsic width, so there is nothing for the
+    // clip to clip against: a long name ran straight out past the card's right
+    // edge, and — worse — its min-content width fought the card's own, which is
+    // what left "Simple Pixel Banana Leaf" rendering as a card with no artwork
+    // at all.
     let name = commands
-        .spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
+        .spawn((
+            Text::new(a.name.clone()),
+            ui_font(&fonts.ui, 12.5),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+            FocusPolicy::Pass,
+            Node { width: Val::Percent(100.0), overflow: Overflow::clip(), ..default() },
+        ))
         .id();
+    commands
+        .entity(name)
+        .insert(renzora_ember::widgets::HoverTooltip::new(a.name.clone()));
 
     let chue = category_hue(&a.category);
     let sub = commands
@@ -938,13 +979,16 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     commands.entity(see_ic).insert(FocusPolicy::Pass);
     commands.entity(header).add_children(&[title, spacer, see_t, see_ic]);
 
-    // A single non-wrapping shelf row (like a store's category rail) — the cards
-    // flex-grow to fill the width, so there's never a half-empty second row.
-    // "See all" opens the full category.
+    // The same wrapping grid the browse view uses, with the same gaps — because
+    // it *is* the browse view, showing one category's top few. It was a
+    // non-wrapping rail that clipped, which meant a narrow window silently hid
+    // cards with no way to reach them but "See all".
     let row = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::NoWrap, align_items: AlignItems::FlexStart, column_gap: Val::Px(12.0), overflow: Overflow::clip(), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_content: AlignContent::FlexStart, align_items: AlignItems::FlexStart, column_gap: Val::Px(12.0), row_gap: Val::Px(14.0), ..default() })
         .id();
-    let cards: Vec<Entity> = assets.iter().take(6).map(|a| asset_card(commands, fonts, a)).collect();
+    // `SECTION_CAP`, not a second hardcoded 6 — they had drifted apart already
+    // in waiting.
+    let cards: Vec<Entity> = assets.iter().take(SECTION_CAP).map(|a| asset_card(commands, fonts, a)).collect();
     commands.entity(row).add_children(&cards);
 
     commands.entity(col).add_children(&[header, row]);
