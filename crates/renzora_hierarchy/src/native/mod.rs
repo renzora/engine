@@ -118,10 +118,17 @@ pub fn register_native_hierarchy(app: &mut App) {
             // header could not, and a lone `+` centred in a bar is a puzzle.
             |_| false,
         );
+        // `Styled(ButtonAccent)`, not a `BackgroundColor`. `apply_theme` writes
+        // the background of everything carrying `Styled` from its role token, so
+        // a colour set here is overwritten on the next theme tick — which is why
+        // the first attempt at this looked exactly like the unchanged button.
+        // Switching the role gets the fill, its hover and press states, and a
+        // line in the Theme editor, instead of one colour that loses to the
+        // theme.
         commands.entity(add).insert((
             add_entity::HierAddEntity,
             Name::new("add-entity"),
-            BackgroundColor(renzora_ember::theme::rgb(renzora_ember::theme::accent())),
+            renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
         ));
         let search = filter::build_search_box(commands, fonts);
         let funnel = filter::build_filter_funnel(commands, fonts);
@@ -141,7 +148,10 @@ pub fn register_native_hierarchy(app: &mut App) {
             .id();
         commands.entity(header).add_children(&[search, funnel]);
 
-        // The footer: pinned below the scrolling tree, Add Entity centred in it.
+        // The row Add Entity sits in: directly under the last entity, and it
+        // SCROLLS WITH THE TREE rather than being pinned to the panel's bottom
+        // edge. "After the last item" is the placement — reach the end of what
+        // exists and the way to add another is right there.
         let footer = commands
             .spawn((
                 Node {
@@ -149,13 +159,11 @@ pub fn register_native_hierarchy(app: &mut App) {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
-                    padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
-                    // Outside the scroll area, so it stays put however long the
-                    // tree is — the whole point of moving it here.
+                    padding: UiRect::axes(Val::Px(6.0), Val::Px(8.0)),
                     flex_shrink: 0.0,
                     ..default()
                 },
-                Name::new("hierarchy-footer"),
+                Name::new("hierarchy-add-row"),
             ))
             .id();
         commands.entity(footer).add_child(add);
@@ -185,7 +193,25 @@ pub fn register_native_hierarchy(app: &mut App) {
             tree::hier_flat_version,
             tree::hierarchy_snapshot,
         );
-        let scroll = renzora_ember::widgets::scroll_view(commands, list);
+        // The scrolled content is `list` PLUS the add row, not `list` alone.
+        // `list`'s children belong to the virtual scroller's `keyed_list`, which
+        // reconciles them against its snapshot — a button parented there would be
+        // despawned as a row it does not recognise. A wrapper is also free:
+        // `virtual_scroll` finds its viewport by walking up the parent chain, so
+        // one more level between the list and the scroll node changes nothing.
+        let content = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Name::new("hierarchy-content"),
+            ))
+            .id();
+        commands.entity(content).add_children(&[list, footer]);
+        let scroll = renzora_ember::widgets::scroll_view(commands, content);
         // Hit-test target for the right-click quick-add menu (see `context_menu`).
         commands.entity(scroll).insert((
             context_menu::HierListArea,
@@ -205,7 +231,7 @@ pub fn register_native_hierarchy(app: &mut App) {
         let picker = scene_starter::build_picker(commands, fonts);
         renzora_ember::reactive::tracked::bind_display(commands, picker, scene_starter::scene_is_empty);
 
-        commands.entity(root).add_children(&[header, scroll, picker, footer]);
+        commands.entity(root).add_children(&[header, scroll, picker]);
         root
     });
     app.add_systems(
