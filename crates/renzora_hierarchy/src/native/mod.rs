@@ -142,10 +142,17 @@ pub fn register_native_hierarchy(app: &mut App) {
             .id();
         commands.entity(header).add_children(&[search, funnel]);
 
-        // The row Add Entity sits in: directly under the last entity, and it
-        // SCROLLS WITH THE TREE rather than being pinned to the panel's bottom
-        // edge. "After the last item" is the placement — reach the end of what
-        // exists and the way to add another is right there.
+        // The row Add Entity sits in: directly under the last entity.
+        //
+        // It is a sibling of the scroll viewport, not a child of it, and the
+        // viewport SHRINK-WRAPS its content (see below). Those two together are
+        // what make one row satisfy both halves of the requirement: with a few
+        // entities the viewport is only as tall as the tree, so the button sits
+        // immediately under the last one; with a few hundred the viewport fills
+        // the panel and the button is pinned under it, still on screen.
+        //
+        // Inside the scroll it was genuinely after the last row and genuinely
+        // unreachable — several hundred rows below the fold in any real scene.
         let footer = commands
             .spawn((
                 Node {
@@ -187,25 +194,23 @@ pub fn register_native_hierarchy(app: &mut App) {
             tree::hier_flat_version,
             tree::hierarchy_snapshot,
         );
-        // The scrolled content is `list` PLUS the add row, not `list` alone.
-        // `list`'s children belong to the virtual scroller's `keyed_list`, which
-        // reconciles them against its snapshot — a button parented there would be
-        // despawned as a row it does not recognise. A wrapper is also free:
-        // `virtual_scroll` finds its viewport by walking up the parent chain, so
-        // one more level between the list and the scroll node changes nothing.
-        let content = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                Name::new("hierarchy-content"),
-            ))
-            .id();
-        commands.entity(content).add_children(&[list, footer]);
-        let scroll = renzora_ember::widgets::scroll_view(commands, content);
+        let scroll = renzora_ember::widgets::scroll_view(commands, list);
+        // Shrink-wrap the viewport instead of filling the panel. `scroll_view`
+        // hands back `height: 100%`, which is right for a panel whose whole body
+        // is one list; here it would push the Add Entity row to the panel's
+        // bottom edge even when the tree is three items long, which is what
+        // "after the last item" was rejecting.
+        //
+        // `Auto` + `flex_shrink` gives both cases from one rule: the viewport
+        // asks for its content's height and the column shrinks it to whatever is
+        // left, so it is exactly as tall as the tree until the tree is taller
+        // than the panel, and full-height after that. `min_height: 0` is what
+        // lets it shrink at all — a flex item's default floor is its content.
+        commands.entity(scroll).entry::<Node>().and_modify(|mut n| {
+            n.height = Val::Auto;
+            n.flex_shrink = 1.0;
+            n.min_height = Val::Px(0.0);
+        });
         // Hit-test target for the right-click quick-add menu (see `context_menu`).
         commands.entity(scroll).insert((
             context_menu::HierListArea,
@@ -220,12 +225,15 @@ pub fn register_native_hierarchy(app: &mut App) {
             current: Vec::new(),
         });
         // While the scene has entities, show the tree; when empty, the starter
-        // picker takes its place.
+        // picker takes its place. Add Entity follows the tree — with no scene
+        // the picker *is* the way to add the first thing, and a second control
+        // for it under an empty panel is noise.
         renzora_ember::reactive::tracked::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
+        renzora_ember::reactive::tracked::bind_display(commands, footer, |w| !scene_starter::scene_is_empty(w));
         let picker = scene_starter::build_picker(commands, fonts);
         renzora_ember::reactive::tracked::bind_display(commands, picker, scene_starter::scene_is_empty);
 
-        commands.entity(root).add_children(&[header, scroll, picker]);
+        commands.entity(root).add_children(&[header, scroll, footer, picker]);
         root
     });
     app.add_systems(
