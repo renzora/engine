@@ -550,29 +550,29 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// UI: Hierarchy | Canvas | Inspector.
+/// UI: Hierarchy | UI Canvas + Code | Inspector.
 ///
 /// The same three columns as Scene, and that is the point — building a game's
 /// interface is entity work like any other: you select a widget in the tree,
 /// drag it on the canvas, and set its properties in the inspector (all ~24 of
 /// the `ui_*` inspector entries are already registered).
 ///
-/// What makes this a *workspace* rather than a view toggle is what it takes
-/// away. The UI editor mounts inside the viewport panel's slot 0 and is gated on
-/// `ViewportView::Ui`, so before this existed, opening a UI meant flipping the
-/// scene viewport into UI mode — the 3D view you were working in vanished and
-/// came back only when you selected something 3D again. Editing a menu and
-/// editing a level fought over one surface. Now they are two places, and
-/// `sync_viewport_view_to_workspace` in `lib.rs` is what puts the viewport into
-/// UI mode on arrival and back on the way out.
+/// The canvas is the **`ui_canvas` panel**, not the viewport in a special mode.
+/// It used to be the latter: mounted inside the viewport panel's slot 0 and
+/// revealed by a `ViewportView::Ui` that hid the rendered scene underneath it.
+/// Opening a UI therefore took the 3D view away, and gave it back only when you
+/// next selected something 3D — one surface doing two jobs, with whichever you
+/// were not doing hidden. Two panels means you can dock them side by side and
+/// watch a HUD against the scene it sits over.
 ///
-/// `scenes` is not tabbed beside the hierarchy the way Scene does it: the
-/// document you are editing here is a `.html` template, not a scene file.
+/// `code_editor` is tabbed with the canvas because a `.html` template has a
+/// text form worth reaching; `scenes` is not tabbed beside the hierarchy the way
+/// Scene does it, since the document here is a template rather than a scene.
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
         DockTree::leaf("hierarchy"),
         DockTree::horizontal(
-            DockTree::tabs(&["viewport", "code_editor"]),
+            DockTree::tabs(&["ui_canvas", "code_editor"]),
             DockTree::leaf("inspector"),
             0.76,
         ),

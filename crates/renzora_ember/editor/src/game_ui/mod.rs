@@ -19,11 +19,22 @@
 //! - `viewport.rs`— the rendered-canvas image + zoomed design frame
 //! - `toolbar.rs` — zoom / grid / snap controls
 //!
-//! NOT YET REGISTERED: the plugin sets up state + the toolbar, but does not call
-//! `register_panel_content("ui_canvas", ...)` until the selection + interaction
-//! layer (`overlay.rs` / `interaction.rs`: click/marquee select, drag-move,
-//! resize, rotate, align/distribute) lands — so the egui panel stays active and
-//! direct-manipulation editing isn't lost mid-port. Flip it on in `build_panel`.
+//! # Its own panel
+//!
+//! Registered as the `ui_canvas` dock panel. It spent a while mounted *inside*
+//! the viewport panel instead, revealed by `ViewportView::Ui` — a stopgap from
+//! before `overlay.rs` / `interaction.rs` existed, when the egui panel was still
+//! the real editor and this could not yet stand alone.
+//!
+//! The cost of that arrangement was that opening a UI took the 3D view away:
+//! one surface, two jobs, and whichever you were not doing vanished. As a panel
+//! it docks anywhere, sits beside the viewport if you want both, and the
+//! viewport goes back to being 3D-or-2D and nothing else.
+//!
+//! It still shows the scene behind the canvas — `viewport.rs` reads the shared
+//! `renzora::ViewportRenderTarget` image, which is contract state any panel may
+//! sample. Borrowing the picture never required living inside the panel that
+//! draws it.
 
 #![allow(dead_code)]
 
@@ -112,11 +123,36 @@ impl Plugin for GameUiEditorPlugin {
         interaction::register(app);
         nav::register(app);
         inspectors::register(app);
-        // The editor lives in the viewport's "UI" mode (there's no separate
-        // ui_canvas dock tab) — `renzora_viewport` mounts `build_ui_canvas`
-        // there. The interaction/overlay systems above run wherever the hit
-        // layer is mounted, so the in-viewport editor is fully live.
+
+        // The panel. `false` — it owns its own scrolling (the canvas area pans
+        // and zooms rather than scrolls).
+        //
+        // Registered here rather than by the shell because the shell's static
+        // panel table is for panels the shell itself knows how to draw; this one
+        // belongs to the crate that draws it, which is also what lets an editor
+        // built without this plugin simply not offer it.
+        use renzora::core::RenzoraShellExt;
+        use renzora_ember::panel::RegisterPanelContent;
+        app.register_shell_panel("ui_canvas", "UI Canvas", "browser", "Scene");
+        app.register_panel_content("ui_canvas", false, |commands, fonts| {
+            build_ui_canvas(commands, fonts)
+        });
     }
+}
+
+/// Is the UI canvas panel on screen?
+///
+/// `renzora_viewport` asks, so it can run the offscreen UI render camera only
+/// while something is showing its output. That used to be
+/// `view == ViewportView::Ui`, which is exactly the coupling the panel exists to
+/// undo.
+pub fn canvas_panel_visible(world: &World) -> bool {
+    renzora_ember::dock::panel_visible_anywhere(
+        "ui_canvas",
+        world.get_resource::<renzora_ember::dock::Dock>(),
+        world.get_resource::<renzora_ember::dock::FixedDock>(),
+        world.get_resource::<renzora_ember::dock::DockWindows>(),
+    )
 }
 
 renzora::add!(GameUiEditorPlugin, Editor);

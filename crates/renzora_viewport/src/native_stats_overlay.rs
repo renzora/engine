@@ -50,7 +50,7 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+use renzora::core::viewport_types::ViewportSettings;
 use renzora::core::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -134,11 +134,13 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Hidden in play mode (the game's own HUD owns the screen then) and in UI
-    // view (there is no 3D scene behind it to count).
+    // Hidden in play mode — the game's own HUD owns the screen then. It was
+    // also hidden in UI view, when the UI editor covered this panel and there
+    // was no 3D scene behind the stats to count; the editor is its own panel
+    // now, so the viewport always has a scene.
     bind_display(commands, root, |w| {
         w.get_resource::<ViewportSettings>()
-            .is_some_and(|s| s.show_stats && s.viewport_view != ViewportView::Ui)
+            .is_some_and(|s| s.show_stats)
             && !w
                 .get_resource::<PlayModeState>()
                 .is_some_and(|p| p.is_in_play_mode())

@@ -649,30 +649,26 @@ impl ViewportMode {
     }
 }
 
-/// What kind of content the viewport is currently displaying. Switches the
-/// camera/projection preset and, for `Ui`, swaps the viewport panel's rendered
-/// image for the UI canvas editor mounted inside it (slot 0 only — see
-/// `renzora_viewport::native_viewport`).
+/// What kind of content the viewport is currently displaying — the
+/// camera/projection preset it uses.
 ///
-/// `Ui` is normally reached by entering the **UI workspace**, which sets it on
-/// arrival and restores the previous view on the way out. The viewport header's
-/// segmented control still switches it directly, for editing a canvas without
-/// leaving the workspace you are in.
+/// There was a third variant, `Ui`, which swapped the viewport's rendered image
+/// for the game-UI canvas editor mounted inside the panel. That editor is the
+/// `ui_canvas` dock panel now, so the viewport shows a scene and nothing else,
+/// and this enum is back to being about cameras.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ViewportView {
     #[default]
     Three,
     Two,
-    Ui,
 }
 
 impl ViewportView {
-    pub const ALL: &'static [ViewportView] = &[Self::Three, Self::Two, Self::Ui];
+    pub const ALL: &'static [ViewportView] = &[Self::Three, Self::Two];
     pub fn label(&self) -> &'static str {
         match self {
             Self::Three => "3D",
             Self::Two => "2D",
-            Self::Ui => "UI",
         }
     }
 }

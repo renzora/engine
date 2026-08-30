@@ -216,7 +216,6 @@ impl Plugin for ShellPlugin {
                 (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
                 (settings_btn_click, shell_action_press),
-                sync_viewport_view_to_workspace,
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -6506,84 +6505,12 @@ fn elide(s: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
-/// The name of the workspace whose viewport is the UI canvas editor.
-///
-/// Matched by name rather than index because the user can reorder, rename and
-/// remove workspaces, and their saved set is merged with the defaults on load —
-/// so a stored index means nothing across sessions.
-const UI_WORKSPACE: &str = "UI";
-
-/// What the viewport was showing before the UI workspace took it, so leaving
-/// gives it back rather than dumping you in 3D from a 2D scene.
-#[derive(Resource)]
-struct ViewBeforeUiWorkspace(renzora::core::viewport_types::ViewportView);
-
-/// Put the viewport into UI mode while the UI workspace is active, and restore
-/// the previous view on the way out.
-///
-/// The coupling lives here because the shell owns workspaces and
-/// `ViewportSettings` is contract state anything may read — the alternative was
-/// the UI editor reaching into the shell's layout list, which is backwards.
-///
-/// Driven by change detection on [`ShellLayouts`] rather than by hooking
-/// `apply_workspace`: that function is called from the ribbon, from doc-tab
-/// focus and from layout restore, and only one of those has the resources to do
-/// this. Watching the state means every route through it behaves the same.
-///
-/// It deliberately does **not** force the view every frame. Inside the UI
-/// workspace the viewport header's segmented control still works — flipping to
-/// 3D to check what a HUD sits over is a reasonable thing to want, and a system
-/// that slammed the view back would make that control dead in the one workspace
-/// it matters most.
-fn sync_viewport_view_to_workspace(
-    layouts: Res<ShellLayouts>,
-    settings: Option<ResMut<renzora::core::viewport_types::ViewportSettings>>,
-    saved: Option<Res<ViewBeforeUiWorkspace>>,
-    mut was_ui: Local<Option<bool>>,
-    mut commands: Commands,
-) {
-    use renzora::core::viewport_types::ViewportView;
-    if !layouts.is_changed() && was_ui.is_some() {
-        return;
-    }
-    let Some(mut settings) = settings else { return };
-    let is_ui = layouts
-        .layouts
-        .get(layouts.active)
-        .is_some_and(|(name, _)| name == UI_WORKSPACE);
-    // First run seeds the edge detector without acting: the layout that was
-    // restored from disk is not an arrival.
-    let Some(prev) = *was_ui else {
-        *was_ui = Some(is_ui);
-        if is_ui && settings.viewport_view != ViewportView::Ui {
-            settings.viewport_view = ViewportView::Ui;
-        }
-        return;
-    };
-    if prev == is_ui {
-        return;
-    }
-    *was_ui = Some(is_ui);
-    if is_ui {
-        commands.insert_resource(ViewBeforeUiWorkspace(settings.viewport_view));
-        if settings.viewport_view != ViewportView::Ui {
-            settings.viewport_view = ViewportView::Ui;
-        }
-    } else {
-        // Only restore if the workspace still had the viewport in UI mode. If
-        // the user switched it to 3D by hand while in there, leaving must not
-        // undo that.
-        if settings.viewport_view == ViewportView::Ui {
-            let back = saved.map(|s| s.0).unwrap_or(ViewportView::Three);
-            settings.viewport_view = if back == ViewportView::Ui {
-                ViewportView::Three
-            } else {
-                back
-            };
-        }
-        commands.remove_resource::<ViewBeforeUiWorkspace>();
-    }
-}
+// `sync_viewport_view_to_workspace` lived here: it put the viewport into
+// `ViewportView::Ui` on entering the UI workspace and gave the previous view
+// back on the way out. It was the right fix while the UI editor was mounted
+// inside the viewport panel — and it stopped being needed the moment the editor
+// became the `ui_canvas` panel, which is what the UI workspace docks. The
+// workspace no longer has anything to say about what the viewport is looking at.
 
 /// Swap the dock to workspace `index`, saving the current layout into the active
 /// slot first. The ribbon highlight follows via the reactive rebuild (the

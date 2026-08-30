@@ -162,8 +162,8 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         commands.entity(content).add_child(stats);
     }
 
-    // The primary viewport (slot 0) owns the shared header + the UI editor; the
-    // extra slots are bare camera-angle views.
+    // The primary viewport (slot 0) owns the shared header; the extra slots are
+    // bare camera-angle views.
     let root = commands
         .spawn((
             Node {
@@ -175,24 +175,12 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             Name::new("native-viewport-root"),
         ))
         .id();
-    // The embedded UI-editor canvas is slot-0 only — it edits the single shared
-    // UI document, so it belongs to the primary viewport.
-    if index == 0 {
-        use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-        // In UI view the shared image hides and the embedded UI editor (toolbar +
-        // scene backdrop + UI render + selection handles) takes over. In 2D view
-        // the image STAYS visible: the 2D editor camera renders the 2D scene (grid
-        // + sprites + tilemaps) into that same offscreen image, so hiding it would
-        // hide the 2D editor. Only UI view swaps the image out.
-        renzora_ember::reactive::tracked::bind_display(commands, img, |w| {
-            w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) != Some(ViewportView::Ui)
-        });
-        let editor = renzora_ember_editor::game_ui::build_ui_canvas(commands, fonts);
-        renzora_ember::reactive::tracked::bind_display(commands, editor, |w| {
-            w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
-        });
-        commands.entity(content).add_child(editor);
-    }
+    // The UI canvas editor used to be mounted here, slot 0, revealed by
+    // `ViewportView::Ui` — and the shared image hidden underneath it. It is the
+    // `ui_canvas` dock panel now (`renzora_ember_editor::game_ui`), so the
+    // viewport is 3D-or-2D and nothing else, and the image no longer has a third
+    // reason to disappear.
+    //
     // This viewport's toolbar — on EVERY viewport, so each view has its own
     // controls. It sits **above** the rendered scene rather than overlaid on it:
     // the bar wraps to a second line when it runs out of width, and a line of

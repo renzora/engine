@@ -66,7 +66,6 @@ pub fn register_game_ui_editor(app: &mut App) {
 
     register_ui_presets(app);
     app.init_resource::<canvas::UiCanvasPreviewEnabled>();
-    app.init_resource::<LastSelectionForViewSwitch>();
     // Per-component inspector entries (Phase A of the UI inspector
     // decomposition). Each constituent component gets its own
     // collapsible in the main inspector. Fill/stroke/etc. are still
@@ -619,8 +618,14 @@ pub fn register_game_ui_editor(app: &mut App) {
         )
             .chain(),
     );
-    app.add_systems(Update, auto_switch_view_on_selection);
-    app.add_systems(Update, switch_to_3d_on_world_canvas);
+    // Two systems used to live here — `auto_switch_view_on_selection` and
+    // `switch_to_3d_on_world_canvas` — whose whole job was steering
+    // `ViewportView::Ui`: flip the viewport into UI view when a widget was
+    // selected, flip it back to 3D on a camera or a world-space canvas. That
+    // variant is gone with the in-viewport editor, and so are they. Selecting a
+    // widget no longer changes what the viewport is looking at, which is the
+    // point of the canvas being its own panel: the two surfaces stop reaching
+    // into each other.
 }
 
 // ── Canvas reference resolution ─────────────────────────────────────────
@@ -634,123 +639,12 @@ pub fn register_game_ui_editor(app: &mut App) {
 
 // ── Editor-only systems ─────────────────────────────────────────────────────
 
-/// Tracks the last selection we processed for view-auto-switching, so the
-/// switch fires on selection *change* only — not every frame, which would
-/// fight a user who explicitly picked a different viewport view while a
-/// UI entity was selected.
-#[derive(Resource, Default)]
-struct LastSelectionForViewSwitch(Option<Entity>);
-
-/// When the selection changes to a UI entity (`UiCanvas`/`UiWidget` or a
-/// descendant of one), flip the viewport into UI view. When it changes to an
-/// *affirmatively 3D* entity (3D camera, light) while we're in UI view, flip
-/// back to 3D. Ambiguous selections — a freshly dropped `SceneInstance` root,
-/// an empty group node — carry no markers either way and must leave the view
-/// alone (treating "not UI" as "3D" used to yank the viewport to 3D on
-/// hierarchy drops). 2D picks are left to the 2D auto-switch so the two
-/// systems can't fight over the same selection change.
-fn auto_switch_view_on_selection(world: &mut World) {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-
-    let current_sel = world
-        .get_resource::<renzora::EditorSelection>()
-        .and_then(|s| s.get());
-    let last_sel = world
-        .get_resource::<LastSelectionForViewSwitch>()
-        .map(|l| l.0)
-        .unwrap_or(None);
-    if current_sel == last_sel {
-        return;
-    }
-    if let Some(mut last) = world.get_resource_mut::<LastSelectionForViewSwitch>() {
-        last.0 = current_sel;
-    }
-    let Some(entity) = current_sel else { return };
-
-    // A world-space canvas IS a 3D plane — selecting it should show 3D, not the
-    // flat UI view. This must come before the hybrid `Mesh3d` guard below, since a
-    // world canvas carries a mesh and would otherwise be left alone.
-    if world
-        .get::<UiCanvas>(entity)
-        .is_some_and(|c| c.is_world())
-    {
-        if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
-            if settings.viewport_view != ViewportView::Three {
-                settings.viewport_view = ViewportView::Three;
-            }
-        }
-        return;
-    }
-
-    // Hybrid entity (a 3D mesh that *also* carries a `UiCanvas` to render UI
-    // onto itself): don't auto-switch either way. Yanking the viewport to UI
-    // every time you click a cube-with-a-canvas would make it impossible to
-    // manipulate its transform in 3D. The user toggles the view manually when
-    // they want to edit that entity's UI.
-    if world.get::<bevy::prelude::Mesh3d>(entity).is_some() {
-        return;
-    }
-
-    let mut check = entity;
-    let is_ui = loop {
-        if world.get::<UiCanvas>(check).is_some() || world.get::<UiWidget>(check).is_some() {
-            break true;
-        }
-        match world.get::<ChildOf>(check) {
-            Some(c) => check = c.parent(),
-            None => break false,
-        }
-    };
-
-    // `Mesh3d` picks already early-returned above (the hybrid guard), so the
-    // remaining affirmatively-3D markers are cameras and lights.
-    let is_3d = world.get::<bevy::prelude::Camera3d>(entity).is_some()
-        || world.get::<bevy::prelude::DirectionalLight>(entity).is_some()
-        || world.get::<bevy::prelude::PointLight>(entity).is_some()
-        || world.get::<bevy::prelude::SpotLight>(entity).is_some();
-
-    let view = world
-        .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view)
-        .unwrap_or_default();
-    let target = match (is_ui, view) {
-        (true, ViewportView::Ui) => return,
-        (true, _) => ViewportView::Ui,
-        (false, ViewportView::Ui) if is_3d => ViewportView::Three,
-        (false, _) => return,
-    };
-    if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
-        settings.viewport_view = target;
-    }
-}
-
-/// Flip the viewport to 3D when the selected canvas is switched to world space.
-///
-/// A world canvas is a 3D object, so authoring it from the flat UI view makes no
-/// sense — the user can't see or place the plane. We switch on the actual
-/// screen→world *transition* of the *selected* canvas (tracked per-entity), so a
-/// stray `Changed<UiCanvas>` (sort-order sync, hot-reload) doesn't yank the view,
-/// and the user can still manually drop back to UI/2D afterward to peek.
-fn switch_to_3d_on_world_canvas(
-    changed: Query<(Entity, &UiCanvas), Changed<UiCanvas>>,
-    selection: Option<Res<renzora::EditorSelection>>,
-    mut settings: Option<ResMut<renzora::core::viewport_types::ViewportSettings>>,
-    mut last_world: Local<std::collections::HashMap<Entity, bool>>,
-) {
-    use renzora::core::viewport_types::ViewportView;
-    let sel = selection.and_then(|s| s.get());
-    for (entity, canvas) in &changed {
-        let now = canvas.is_world();
-        let was = last_world.insert(entity, now).unwrap_or(false);
-        if now && !was && sel == Some(entity) {
-            if let Some(settings) = settings.as_mut() {
-                if settings.viewport_view != ViewportView::Three {
-                    settings.viewport_view = ViewportView::Three;
-                }
-            }
-        }
-    }
-}
+// `LastSelectionForViewSwitch`, `auto_switch_view_on_selection` and
+// `switch_to_3d_on_world_canvas` stood here. All three existed only to steer
+// `ViewportView::Ui` — flip the viewport into UI view when a widget was
+// selected, flip it back to 3D on a camera, a light, or a canvas switched to
+// world space. That variant went with the in-viewport editor, and they went with
+// it. See the note at the end of `register_game_ui_editor`.
 
 /// In the editor, sync `UiCanvas::sort_order` from `HierarchyOrder` so that
 /// reordering canvases in the hierarchy panel updates their z-index.
