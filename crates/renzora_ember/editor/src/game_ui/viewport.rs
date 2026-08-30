@@ -209,8 +209,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let overlay = crate::game_ui::overlay::build(commands, fonts);
     commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
-    // Last, so the strips sit over the frame's edges rather than under them.
+    // Rulers before the shelf, so the shelf floats over them rather than being
+    // clipped by the strip it sits beside.
     let rulers = crate::game_ui::ruler::build(commands, fonts);
-    commands.entity(area).add_children(&[note, frame, rulers]);
+    let shelf = crate::game_ui::palette::build_shelf(commands, fonts);
+    commands
+        .entity(area)
+        .add_children(&[note, frame, rulers, shelf]);
     area
 }

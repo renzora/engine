@@ -480,7 +480,11 @@ pub fn insert_node_in_markup(
     before: Option<Entity>,
     markup: &str,
 ) {
+    // Every early return below is a silent no-op from the user's side — the
+    // click just does nothing — so each one says why. An insert that quietly
+    // declines is indistinguishable from a dead button.
     let Some(parent_src) = world.get::<MarkupSource>(parent) else {
+        warn!("ui insert: {parent} is not a markup node (no MarkupSource)");
         return;
     };
     let handle = parent_src.template_handle.clone();
@@ -495,6 +499,7 @@ pub fn insert_node_in_markup(
         .get_path(&handle)
         .map(|p| p.to_string())
     else {
+        warn!("ui insert: the template handle has no asset path");
         return;
     };
     let project_root = world
@@ -504,9 +509,11 @@ pub fn insert_node_in_markup(
     let new_source = {
         let templates = world.resource::<Assets<HtmlTemplate>>();
         let Some(template) = templates.get(&handle) else {
+            warn!("ui insert: {asset_path} is not loaded");
             return;
         };
         let Some(parent_node) = walk_node(&template.root, &parent_path) else {
+            warn!("ui insert: node_path {parent_path:?} is not in {asset_path}");
             return;
         };
         let dest = match before_path
@@ -526,7 +533,10 @@ pub fn insert_node_in_markup(
         };
         match insert_element(&template.source, dest, markup) {
             Some(bytes) => bytes,
-            None => return,
+            None => {
+                warn!("ui insert: could not splice into {asset_path} at {dest:?}");
+                return;
+            }
         }
     };
 

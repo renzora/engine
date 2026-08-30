@@ -170,6 +170,46 @@ pub(crate) const ELEMENTS: &[Element] = &[
         group: "Widgets",
         markup: "<node flex_direction=\"column\" row_gap=\"6px\" padding=\"14px 14px 14px 14px\" border_radius=\"10px\" background=\"#0E121A\" border=\"1px\" border_color=\"#1D2431\">\n    <text font_size=\"14\" font_color=\"#F2F5FA\">Title</text>\n    <text font_size=\"12\" font_color=\"#8A93A2\">Supporting line of text.</text>\n</node>",
     },
+    // ── Bound ────────────────────────────────────────────────────────────
+    //
+    // These carry *behaviour*, from the markup widget kernel in
+    // `markup::widgets` — `toggle` flips a bool, `drag_value` scrubs a number,
+    // `fill` sizes a node from one, `toggles` shows and hides by name. All four
+    // ship in the runtime, so these work in an exported game exactly as they do
+    // in the editor.
+    //
+    // The `Path.field` targets are placeholders: point them at a component field
+    // or a script var on the canvas and they are live. Left empty they render
+    // and do nothing, which is the right failure for a template you are still
+    // laying out.
+    Element {
+        id: "switch",
+        icon: "toggle-right",
+        label: "Switch",
+        group: "Bound",
+        markup: "<node toggle=\"Player.Settings.enabled\" width=\"36px\" height=\"20px\" border_radius=\"10px\" padding=\"2px 2px 2px 2px\" align_items=\"center\" background=\"#1C2431\" hover:background=\"#243040\" duration=\"120ms\">\n    <node width=\"16px\" height=\"16px\" border_radius=\"8px\" background=\"#8A93A2\" />\n</node>",
+    },
+    Element {
+        id: "slider",
+        icon: "faders-horizontal",
+        label: "Slider",
+        group: "Bound",
+        markup: "<node drag_value=\"Player.Settings.volume\" drag_min=\"0\" drag_max=\"100\" width=\"160px\" height=\"16px\" align_items=\"center\">\n    <node width=\"100%\" height=\"4px\" border_radius=\"2px\" background=\"#161D28\">\n        <node fill=\"Player.Settings.volume\" fill_min=\"0\" fill_max=\"100\" height=\"100%\" border_radius=\"2px\" background=\"#4C8BF5\" />\n    </node>\n</node>",
+    },
+    Element {
+        id: "meter",
+        icon: "gauge",
+        label: "Meter",
+        group: "Bound",
+        markup: "<node width=\"160px\" height=\"8px\" border_radius=\"4px\" background=\"#161B24\" border=\"1px\" border_color=\"#232B37\">\n    <node fill=\"Player.Health.current\" fill_min=\"0\" fill_max=\"100\" height=\"100%\" border_radius=\"4px\" background=\"#E06C75\" />\n</node>",
+    },
+    Element {
+        id: "disclosure",
+        icon: "caret-down",
+        label: "Disclosure",
+        group: "Bound",
+        markup: "<node flex_direction=\"column\" row_gap=\"6px\">\n    <button toggles=\"panel_body\" flex_direction=\"row\" align_items=\"center\" column_gap=\"8px\" padding=\"8px 10px 8px 10px\" border_radius=\"6px\" background=\"#141A24\" hover:background=\"#1B2330\">\n        <icon name=\"caret-down\" font_size=\"12\" font_color=\"#8A93A2\" />\n        <text font_size=\"13\" font_color=\"#D7DEEA\">Section</text>\n    </button>\n    <node name=\"panel_body\" flex_direction=\"column\" row_gap=\"6px\" padding=\"0 0 0 18px\">\n        <text font_size=\"12\" font_color=\"#8A93A2\">Body</text>\n    </node>\n</node>",
+    },
 ];
 
 #[derive(Resource, Default)]
@@ -198,11 +238,22 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<PaletteState>();
     app.init_resource::<PalettePress>();
     app.init_resource::<PaletteDrag>();
-    app.register_shell_panel("ui_palette", "UI Palette", "shapes", "Scene");
+    app.register_shell_panel("ui_palette", "UI Widgets", "shapes", "Scene");
     app.register_panel_content("ui_palette", true, build)
         .systems(
             Update,
-            (palette_search_sync, palette_press, palette_drag_or_click)
+            palette_search_sync.run_if(in_state(SplashState::Editor)),
+        )
+        // NOT panel-gated. `PanelScope::systems` runs a system only while its
+        // panel is the active tab, which is right for a panel's own upkeep and
+        // wrong for resolving a gesture that *leaves* it: a drag from the
+        // palette onto the canvas can change which tab is active, and a press
+        // that stops being resolved half-way through is a drag that silently
+        // does nothing.
+        .always(
+            Update,
+            (palette_press, palette_drag_or_click)
+                .chain()
                 .run_if(in_state(SplashState::Editor)),
         );
 }
@@ -292,6 +343,105 @@ fn palette_snapshot(world: &Rx) -> KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| tile(c, f, shown[i])),
     }
+}
+
+/// The floating shelf inside the UI editor: the pieces you reach for constantly,
+/// one click away, without going to another tab.
+///
+/// Layout and Content only. Widgets and Bound are assemblies you place once and
+/// then configure, so they belong in the panel where they have names and a
+/// search; a shelf of sixteen unlabelled glyphs is a memory test.
+///
+/// The buttons carry the same `PaletteTile` the panel's tiles do, so the press,
+/// drag and insert systems drive both with no second code path.
+pub(crate) fn build_shelf(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let shelf = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                // Clear of the vertical ruler, which owns the first 16px.
+                left: Val::Px(26.0),
+                top: Val::Px(26.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(2.0),
+                padding: UiRect::all(Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(panel_bg())),
+            BorderColor::all(rgb(border())),
+            renzora_ember::widgets::OverlaySurface,
+            Name::new("ui-canvas-shelf"),
+        ))
+        .id();
+
+    let mut last_group = "";
+    let mut kids: Vec<Entity> = Vec::new();
+    for e in ELEMENTS.iter().filter(|e| is_shelf_group(e.group)) {
+        if !last_group.is_empty() && e.group != last_group {
+            kids.push(
+                commands
+                    .spawn((
+                        Node {
+                            width: Val::Px(18.0),
+                            height: Val::Px(1.0),
+                            margin: UiRect::vertical(Val::Px(2.0)),
+                            ..default()
+                        },
+                        BackgroundColor(rgb(border())),
+                    ))
+                    .id(),
+            );
+        }
+        last_group = e.group;
+        kids.push(shelf_button(commands, fonts, e));
+    }
+    commands.entity(shelf).add_children(&kids);
+    shelf
+}
+
+fn is_shelf_group(group: &str) -> bool {
+    matches!(group, "Layout" | "Content")
+}
+
+fn shelf_button(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Entity {
+    let b = commands
+        .spawn((
+            Node {
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            // The shelf has no room for labels, so the tooltip is the only thing
+            // naming these — it is not optional here the way it is on a tile.
+            renzora_ember::widgets::HoverTooltip::new(e.label),
+            PaletteTile(e.id),
+            Name::new(format!("ui-shelf:{}", e.id)),
+        ))
+        .id();
+    bind_bg(commands, b, move |w| {
+        if matches!(
+            w.get::<Interaction>(b),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        ) {
+            rgb(hover_bg())
+        } else {
+            Color::NONE
+        }
+    });
+    let ic = icon_text(commands, &fonts.phosphor, e.icon, text_muted(), 15.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(b).add_child(ic);
+    b
 }
 
 fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Entity {
@@ -425,6 +575,10 @@ fn palette_drag_or_click(
         cmds.push(move |w: &mut World| {
             let Some(markup) = markup_for(id) else { return };
             let Some((parent, before)) = insertion_point(w, selected, canvas) else {
+                // No canvas, or a canvas whose template has not built yet, so
+                // there is nothing to insert *into*. Said out loud because the
+                // alternative is a palette that looks broken.
+                warn!("ui palette: no UI canvas with a built template to insert into");
                 return;
             };
             renzora_ember::markup::writeback::insert_node_in_markup(w, parent, before, markup);
