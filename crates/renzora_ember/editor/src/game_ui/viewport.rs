@@ -202,7 +202,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     // Editing overlay (selection box + handles + hit layer) over the image.
-    let overlay = crate::game_ui::overlay::build(commands);
+    let overlay = crate::game_ui::overlay::build(commands, fonts);
     commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
     commands.entity(area).add_children(&[note, frame]);

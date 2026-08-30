@@ -163,6 +163,12 @@ where
     //   `uncompiled`, `tags`, …) the value ultimately landed in.
     xnode.open_tag_close = span_of(xml.open_tag_close, base);
     xnode.content_span = xml.value.map(|v| span_of(v, base));
+    // Both are zero-length markers, so the element's range runs from one
+    // `start` to the other.
+    xnode.element = Span {
+        start: span_of(xml.elem_start, base).start,
+        end: span_of(xml.elem_end, base).start,
+    };
 
     xnode.content_id = xml
         .value
@@ -227,6 +233,12 @@ struct Xml<'a> {
     /// open tag. Used by the editor as the insertion point for *new*
     /// attributes — span derived via `span_of` in `from_raw_xml`.
     open_tag_close: &'a [u8],
+    /// Zero-length slices at the `<` that opens this element and at the byte
+    /// just past its `/>` or `</name>`. Together they bound the element's whole
+    /// source text, which is what the editor needs to *move* a node rather than
+    /// just patch an attribute inside one.
+    elem_start: &'a [u8],
+    elem_end: &'a [u8],
 }
 
 struct XmlAttr<'a> {
@@ -258,6 +270,11 @@ where
 
     not(tag("</"))(input)?;
 
+    // Captured before the `<` is consumed, so it points at the element's first
+    // byte. Comments and leading whitespace have already been trimmed, so the
+    // span covers the element itself and nothing around it.
+    let elem_start: &[u8] = &input[..0];
+
     let (input, (prefix, start_name)) = preceded(
         tag("<"),
         preceded(multispace0, tuple((parse_prefix0, take_snake))),
@@ -275,6 +292,7 @@ where
     ))(input)?;
 
     if is_empty {
+        let elem_end: &[u8] = &input[..0];
         return Ok((
             input,
             Xml {
@@ -284,6 +302,8 @@ where
                 value: None,
                 children: vec![],
                 open_tag_close,
+                elem_start,
+                elem_end,
             },
         ));
     }
@@ -305,6 +325,7 @@ where
             err,
         )));
     }
+    let elem_end: &[u8] = &input[..0];
     Ok((
         input,
         Xml {
@@ -314,6 +335,8 @@ where
             value,
             children,
             open_tag_close,
+            elem_start,
+            elem_end,
         },
     ))
 }
@@ -2154,5 +2177,57 @@ mod tests {
         // Text content span.
         let cs = root.content_span.expect("text has content span");
         assert_eq!(&template.source[cs.as_range()], b"#");
+
+        // The whole element, `<` to past `</text>`. Cutting exactly this range
+        // out of the source has to leave valid markup behind, which is what
+        // moving a node in the file relies on.
+        assert_eq!(
+            &template.source[root.element.as_range()],
+            br##"<text font_size="12" font_color="#8A93A2">#</text>"##
+        );
+    }
+
+    /// Element spans for a nested tree: children, self-closing tags, and
+    /// siblings separated by whitespace and comments. A move splices at these
+    /// boundaries, so an off-by-one here corrupts the file.
+    #[test]
+    fn test_element_spans_nested() {
+        struct NullAdaptor;
+        impl AssetLoadAdaptor for NullAdaptor {
+            fn load<'a, A: bevy::asset::Asset>(
+                &mut self,
+                _path: impl Into<bevy::asset::AssetPath<'a>>,
+            ) -> bevy::asset::Handle<A> {
+                bevy::asset::Handle::default()
+            }
+        }
+
+        let src = br##"<template><node id="root"><text>a</text>
+    <!-- a comment --> <image src="x.png" />
+    <button on_press="go"><text>b</text></button></node></template>"##;
+        let mut adapter = NullAdaptor;
+        let (_, template) =
+            parse_template::<VerboseHtmlError>(src, &mut adapter).expect("parse ok");
+
+        let root = &template.root[0];
+        let at = |n: &XNode| String::from_utf8(template.source[n.element.as_range()].to_vec()).unwrap();
+
+        assert!(at(root).starts_with(r##"<node id="root">"##));
+        assert!(at(root).ends_with("</node>"));
+
+        assert_eq!(root.children.len(), 3);
+        assert_eq!(at(&root.children[0]), "<text>a</text>");
+        // A self-closing tag ends just past `/>`, and the comment before it is
+        // *not* part of the element.
+        assert_eq!(at(&root.children[1]), r##"<image src="x.png" />"##);
+        assert_eq!(
+            at(&root.children[2]),
+            r##"<button on_press="go"><text>b</text></button>"##
+        );
+        // A child's span sits strictly inside its parent's.
+        for child in &root.children {
+            assert!(child.element.start > root.element.start);
+            assert!(child.element.end < root.element.end);
+        }
     }
 }

@@ -79,6 +79,10 @@ pub(crate) struct NativeCanvasState {
     /// `(press, current)` corners. `None` when not box-selecting. The overlay
     /// draws it; release selects the widgets it fully encloses.
     pub marquee: Option<(Vec2, Vec2)>,
+    /// Where a flow drag would drop, recomputed each frame while one is in
+    /// progress. The overlay outlines `parent` and draws the insertion line;
+    /// releasing applies it. `None` whenever no flow drag is running.
+    pub drop: Option<geometry::DropTarget>,
 }
 
 impl Default for NativeCanvasState {
@@ -94,6 +98,7 @@ impl Default for NativeCanvasState {
             canvas_height: 720.0,
             widgets: Vec::new(),
             marquee: None,
+            drop: None,
         }
     }
 }

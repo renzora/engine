@@ -194,3 +194,355 @@ fn shift_spans_after(node: &mut XNode, after: u32, delta: i32) {
         shift_spans_after(child, after, delta);
     }
 }
+
+// ── Structural writeback: moving a node ─────────────────────────────────────
+//
+// Unlike an attribute edit, a move changes the *shape* of the tree, so there is
+// no way to patch the live entities into agreement with the file — a node has a
+// new parent and new siblings, and every span after the splice has moved. So
+// this path deliberately does the opposite of the attribute path: it writes the
+// file and asks for a rebuild, letting the loader reparse and respawn. That is
+// why it does not bother with `shift_spans_after`, which only fixes up the
+// edited node's own subtree anyway.
+
+/// Start of the whitespace that indents the byte at `at`, including the newline
+/// before it.
+///
+/// Returns `at` unchanged when the run does not reach a newline — an element
+/// written inline (`<a/><b/>`) has no indentation to carry, and inventing one
+/// would reformat a line the user chose to keep tight.
+fn line_lead_start(source: &[u8], at: usize) -> usize {
+    let mut i = at.min(source.len());
+    while i > 0 && matches!(source[i - 1], b' ' | b'\t') {
+        i -= 1;
+    }
+    if i > 0 && source[i - 1] == b'\n' {
+        i - 1
+    } else {
+        at
+    }
+}
+
+/// Where a moved element lands among its new siblings.
+#[derive(Clone, Copy, Debug)]
+pub enum Dest {
+    /// Immediately before the sibling whose element begins at this offset.
+    Before(u32),
+    /// Immediately after the sibling occupying this range. Both ends are
+    /// needed: `end` is where the text goes, `start` is whose indentation it
+    /// copies.
+    After { start: u32, end: u32 },
+}
+
+/// Move the element at `element` to `dest` within `source`, returning the new
+/// bytes. `None` when the span is malformed or the destination lies inside the
+/// element being moved (which is not a move).
+///
+/// The element carries its own line with it: the cut reaches back over the
+/// whitespace indenting it, and the insert re-adds the indentation of its new
+/// neighbour. Without that, moving a node down a file leaves a blank ragged line
+/// where it was and jams it against the sibling where it lands.
+pub fn move_element(source: &[u8], element: Span, dest: Dest) -> Option<Vec<u8>> {
+    let (el_start, el_end) = (element.start as usize, element.end as usize);
+    if el_start >= el_end || el_end > source.len() {
+        return None;
+    }
+    let cut_start = line_lead_start(source, el_start);
+    let moved = &source[el_start..el_end];
+
+    // `prefix`/`suffix` are the indentation placed on whichever side of the
+    // moved text keeps it on a line of its own.
+    let (at, prefix, suffix): (usize, &[u8], &[u8]) = match dest {
+        Dest::Before(p) => {
+            let p = p as usize;
+            if p > source.len() {
+                return None;
+            }
+            (p, &[], &source[line_lead_start(source, p)..p])
+        }
+        Dest::After { start, end } => {
+            let (s, e) = (start as usize, end as usize);
+            if e > source.len() || s > source.len() {
+                return None;
+            }
+            (e, &source[line_lead_start(source, s)..s], &[])
+        }
+    };
+    if at > cut_start && at < el_end {
+        return None;
+    }
+
+    let mut out = Vec::with_capacity(source.len() + prefix.len() + suffix.len());
+    if at <= cut_start {
+        out.extend_from_slice(&source[..at]);
+        out.extend_from_slice(prefix);
+        out.extend_from_slice(moved);
+        out.extend_from_slice(suffix);
+        out.extend_from_slice(&source[at..cut_start]);
+        out.extend_from_slice(&source[el_end..]);
+    } else {
+        out.extend_from_slice(&source[..cut_start]);
+        out.extend_from_slice(&source[el_end..at]);
+        out.extend_from_slice(prefix);
+        out.extend_from_slice(moved);
+        out.extend_from_slice(suffix);
+        out.extend_from_slice(&source[at..]);
+    }
+    Some(out)
+}
+
+/// Walk into `roots` by an index chain, immutably. See [`walk_node_mut`].
+fn walk_node<'a>(roots: &'a [XNode], path: &[u32]) -> Option<&'a XNode> {
+    let mut cursor = roots.first()?;
+    for idx in path.iter().copied() {
+        cursor = cursor.children.get(idx as usize)?;
+    }
+    Some(cursor)
+}
+
+/// Reorder `entity` to be child number `insert_index` of `new_parent`, in the
+/// `.html` and in the live tree.
+///
+/// This is the write-back for a drag that reorders a flex child. It is the
+/// structural counterpart to [`write_attr_to_markup`], and it works the other
+/// way round on purpose: the attribute path patches bytes and leaves the live
+/// entity alone, whereas this writes the file and asks for a rebuild. A move
+/// gives the node a new parent and new siblings and shifts every span after the
+/// splice, so there is nothing to patch the live tree *into* — reparsing is both
+/// simpler and the only version that is actually correct.
+///
+/// The live reorder still happens first so the drop looks instant. The rebuild
+/// throws that away a frame or two later and replaces it with the same thing.
+pub fn move_node_in_markup(
+    world: &mut World,
+    entity: Entity,
+    new_parent: Entity,
+    before: Option<Entity>,
+) {
+    let Some(src) = world.get::<MarkupSource>(entity) else {
+        return;
+    };
+    let handle = src.template_handle.clone();
+    let node_path = src.node_path.clone();
+    let Some(parent_src) = world.get::<MarkupSource>(new_parent) else {
+        return;
+    };
+    // Moving between two different `.html` files would mean deleting from one
+    // and inserting into the other — a different operation, and not one any
+    // drag in a single canvas can ask for.
+    if parent_src.template_handle != handle {
+        return;
+    }
+    let parent_path = parent_src.node_path.clone();
+    // The sibling's own recorded position, not a counted index — see
+    // `DropTarget::before` for why the two lists cannot be assumed to line up.
+    let before_path = match before {
+        Some(b) => match world.get::<MarkupSource>(b) {
+            Some(s) if s.template_handle == handle => Some(s.node_path.clone()),
+            // A sibling with no provenance (or from another file) is not
+            // something we can address in the source, so fall back to appending
+            // rather than guessing at a slot.
+            _ => None,
+        },
+        None => None,
+    };
+
+    let asset_path = world
+        .resource::<AssetServer>()
+        .get_path(&handle)
+        .map(|p| p.to_string());
+    let Some(asset_path) = asset_path else {
+        return;
+    };
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|cp| cp.path.clone());
+
+    let new_source = {
+        let templates = world.resource::<Assets<HtmlTemplate>>();
+        let Some(template) = templates.get(&handle) else {
+            return;
+        };
+        let Some(node) = walk_node(&template.root, &node_path) else {
+            return;
+        };
+        let Some(parent) = walk_node(&template.root, &parent_path) else {
+            return;
+        };
+        let element = node.element;
+
+        // Dropping a node back onto its own slot is a no-op, not a move onto
+        // itself.
+        let dest = match before_path.as_deref().and_then(|p| walk_node(&template.root, p)) {
+            Some(next) if next.element.start == element.start => return,
+            Some(next) => Dest::Before(next.element.start),
+            None => {
+                let Some(last) = parent.children.last() else {
+                    return;
+                };
+                if last.element.start == element.start {
+                    return;
+                }
+                Dest::After {
+                    start: last.element.start,
+                    end: last.element.end,
+                }
+            }
+        };
+        match move_element(&template.source, element, dest) {
+            Some(bytes) => bytes,
+            None => return,
+        }
+    };
+
+    let disk_path: PathBuf = match project_root {
+        Some(root) => root.join(&asset_path),
+        None => PathBuf::from(&asset_path),
+    };
+    if let Err(err) = std::fs::write(&disk_path, &new_source) {
+        warn!(
+            "renzora_hui move: failed to write {} — {err}",
+            disk_path.display()
+        );
+        return;
+    }
+
+    // Show the new order immediately; the rebuild below replaces it with the
+    // same arrangement once the asset has re-read from disk. The live index is
+    // found from the live children, which is the one place counting them is
+    // right — this list is the thing being reordered.
+    let live_index = world
+        .get::<Children>(new_parent)
+        .and_then(|kids| {
+            before.and_then(|b| kids.iter().position(|c| c == b))
+        })
+        .unwrap_or_else(|| {
+            world
+                .get::<Children>(new_parent)
+                .map(|k| k.len())
+                .unwrap_or(0)
+        });
+    if let Ok(mut em) = world.get_entity_mut(new_parent) {
+        em.insert_children(live_index, &[entity]);
+    }
+
+    // Registering the handle is what lets `hot_reload_templates` act on the
+    // `Modified` this write is about to produce — every other writeback
+    // deliberately does not, because it has already updated the live entity.
+    if let Some(mut requests) =
+        world.get_resource_mut::<crate::markup::template::TemplateReloadRequests>()
+    {
+        let handle_id = handle.id();
+        requests.0.insert(handle_id);
+    }
+    world.resource_mut::<Assets<HtmlTemplate>>().get_mut(&handle);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locate `needle` in `hay` and return it as a span, so the tests can talk
+    /// about elements by their text instead of hard-coded byte offsets.
+    fn span_of(hay: &str, needle: &str) -> Span {
+        let start = hay.find(needle).expect("needle present") as u32;
+        Span {
+            start,
+            end: start + needle.len() as u32,
+        }
+    }
+
+    const TREE: &str = "<node>\n    <a/>\n    <b/>\n    <c/>\n</node>";
+
+    #[test]
+    fn move_last_to_front() {
+        let out = move_element(
+            TREE.as_bytes(),
+            span_of(TREE, "<c/>"),
+            Dest::Before(span_of(TREE, "<a/>").start),
+        )
+        .expect("moves");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <c/>\n    <a/>\n    <b/>\n</node>"
+        );
+    }
+
+    #[test]
+    fn move_first_to_back() {
+        let c = span_of(TREE, "<c/>");
+        let out = move_element(
+            TREE.as_bytes(),
+            span_of(TREE, "<a/>"),
+            Dest::After {
+                start: c.start,
+                end: c.end,
+            },
+        )
+        .expect("moves");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <b/>\n    <c/>\n    <a/>\n</node>"
+        );
+    }
+
+    #[test]
+    fn move_into_a_deeper_parent_keeps_that_parents_indentation() {
+        let src = "<node>\n    <a/>\n    <box>\n        <x/>\n    </box>\n</node>";
+        let out = move_element(
+            src.as_bytes(),
+            span_of(src, "<a/>"),
+            Dest::Before(span_of(src, "<x/>").start),
+        )
+        .expect("moves");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <box>\n        <a/>\n        <x/>\n    </box>\n</node>"
+        );
+    }
+
+    /// A node written inline has no indentation to carry, and gaining one would
+    /// reformat a line the author chose to keep tight.
+    #[test]
+    fn inline_siblings_stay_inline() {
+        let src = "<node><a/><b/></node>";
+        let out = move_element(
+            src.as_bytes(),
+            span_of(src, "<b/>"),
+            Dest::Before(span_of(src, "<a/>").start),
+        )
+        .expect("moves");
+        assert_eq!(String::from_utf8(out).unwrap(), "<node><b/><a/></node>");
+    }
+
+    /// Moving a subtree takes its children with it.
+    #[test]
+    fn move_carries_children() {
+        let src = "<node>\n    <box>\n        <x/>\n    </box>\n    <a/>\n</node>";
+        let a = span_of(src, "<a/>");
+        let out = move_element(
+            src.as_bytes(),
+            span_of(src, "<box>\n        <x/>\n    </box>"),
+            Dest::After {
+                start: a.start,
+                end: a.end,
+            },
+        )
+        .expect("moves");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <a/>\n    <box>\n        <x/>\n    </box>\n</node>"
+        );
+    }
+
+    #[test]
+    fn refuses_a_destination_inside_the_moved_element() {
+        let src = "<node>\n    <box>\n        <x/>\n    </box>\n</node>";
+        assert!(move_element(
+            src.as_bytes(),
+            span_of(src, "<box>\n        <x/>\n    </box>"),
+            Dest::Before(span_of(src, "<x/>").start),
+        )
+        .is_none());
+    }
+}

@@ -87,7 +87,7 @@ pub(crate) struct CanvasHandle {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        (position_sel_boxes, position_marquee)
+        (position_sel_boxes, position_marquee, position_drop)
             // After the geometry snapshot so the box tracks the same frame's
             // widget sizes instead of trailing a frame behind during a resize.
             .after(crate::game_ui::geometry::snapshot_widgets)
@@ -100,7 +100,7 @@ pub(crate) fn register(app: &mut App) {
 struct MarqueeRect;
 
 /// Build the overlay layer (added as a child of the design frame, over the image).
-pub(crate) fn build(commands: &mut Commands) -> Entity {
+pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts) -> Entity {
     let layer = commands
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
@@ -129,8 +129,127 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
             Name::new("ui-canvas-marquee"),
         ))
         .id();
-    commands.entity(layer).add_children(&[boxes, marquee]);
+    // Flow-drop feedback: the container that would receive the node, named, plus
+    // the slot the node would land in. Both are single persistent nodes toggled
+    // by `position_drop`, like the marquee — a drag is not the moment to be
+    // spawning entities every frame.
+    let drop_box = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
+            BorderColor::all(rgb(accent()).with_alpha(0.55)),
+            BackgroundColor(rgb(accent()).with_alpha(0.06)),
+            FocusPolicy::Pass,
+            Visibility::Hidden,
+            DropBox,
+            Name::new("ui-canvas-dropbox"),
+        ))
+        .id();
+    // The container's name, sitting on its top edge. Which container you are
+    // about to drop into is otherwise a guess — nested rows and columns in a
+    // template look alike from the outside.
+    let drop_label = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-1.0),
+                top: Val::Px(-15.0),
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            bevy::ui::widget::Text::new(""),
+            renzora_ember::font::ui_font(&fonts.ui, 9.0),
+            TextColor(Color::WHITE),
+            FocusPolicy::Pass,
+            DropLabel,
+            Name::new("ui-canvas-droplabel"),
+        ))
+        .id();
+    commands.entity(drop_box).add_child(drop_label);
+    let drop_line = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, ..default() },
+            BackgroundColor(rgb(accent())),
+            FocusPolicy::Pass,
+            Visibility::Hidden,
+            DropLine,
+            Name::new("ui-canvas-dropline"),
+        ))
+        .id();
+    commands
+        .entity(layer)
+        .add_children(&[boxes, marquee, drop_box, drop_line]);
     layer
+}
+
+/// Outline of the container a flow drag would drop into.
+#[derive(Component)]
+struct DropBox;
+
+/// The container's name, on the top edge of [`DropBox`].
+#[derive(Component)]
+struct DropLabel;
+
+/// The slot a flow drag would land in — a line between two siblings.
+#[derive(Component)]
+struct DropLine;
+
+/// Draw the flow-drop feedback from `NativeCanvasState::drop`, or hide it.
+///
+/// The label reads the container's `Name` when the markup gave it one
+/// (`name="actions"`) and falls back to its entity id, which is still enough to
+/// tell two nested columns apart while dragging between them.
+fn position_drop(
+    state: Res<NativeCanvasState>,
+    names: Query<&Name>,
+    mut boxes: Query<(&mut Node, &mut Visibility), (With<DropBox>, Without<DropLine>)>,
+    mut lines: Query<(&mut Node, &mut Visibility), (With<DropLine>, Without<DropBox>)>,
+    mut labels: Query<&mut bevy::ui::widget::Text, With<DropLabel>>,
+) {
+    let zoom = state.zoom;
+    let drop = state.drop;
+    for (mut node, mut vis) in &mut boxes {
+        match drop {
+            Some(d) => {
+                let (x, y, w, h) = d.parent_box;
+                node.left = Val::Px(x * zoom);
+                node.top = Val::Px(y * zoom);
+                node.width = Val::Px(w * zoom);
+                node.height = Val::Px(h * zoom);
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    }
+    for (mut node, mut vis) in &mut lines {
+        match drop {
+            Some(d) => {
+                let (a, b) = d.line;
+                let (min, max) = (a.min(b), a.max(b));
+                // One axis is degenerate; give it a visible thickness centred on
+                // the boundary rather than a zero-width node.
+                node.left = Val::Px(min.x * zoom - 1.0);
+                node.top = Val::Px(min.y * zoom - 1.0);
+                node.width = Val::Px((max.x - min.x) * zoom + 2.0);
+                node.height = Val::Px((max.y - min.y) * zoom + 2.0);
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    }
+    for mut text in &mut labels {
+        let want = match drop {
+            Some(d) => names
+                .get(d.parent)
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|_| format!("{}", d.parent)),
+            None => String::new(),
+        };
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
 }
 
 fn selection_snapshot(world: &Rx) -> KeyedSnapshot {

@@ -65,7 +65,18 @@ enum Mode {
     /// Pressed, not yet past the threshold. `select` is what a click selects;
     /// `drag` is what a drag moves; `marquee` starts a rubber-band instead.
     Pending { select: Option<Entity>, drag: Option<Entity>, marquee: bool, start_cursor: Vec2, start_bbox: Bbox },
+    /// Free placement: the node is already `position: absolute`, so dragging it
+    /// writes coordinates. Nothing else in the layout moves.
     Move { entity: Entity, start_cursor: Vec2, start_bbox: Bbox },
+    /// Flow drag: the node is laid out by its parent, so dragging it picks a new
+    /// slot rather than a new coordinate. Nothing is written until release —
+    /// each frame only recomputes `NativeCanvasState::drop` for the overlay.
+    ///
+    /// This is the case that used to go through `Move`, which pinned the node to
+    /// `position: absolute` at the cursor. That is what "detached from its
+    /// position with no way to get it back" was: the drag did not move the node
+    /// within its layout, it removed it from the layout.
+    Reflow { entity: Entity },
     Resize { entity: Entity, handle: ResizeHandle, start_cursor: Vec2, bbox: Bbox },
     Rotate { entity: Entity, center: Vec2, start_offset: f32 },
     Marquee { start: Vec2 },
@@ -122,14 +133,33 @@ fn canvas_interact(
                     }
                 }
             }
+            // Flow drag: commit the slot the overlay has been showing. This is
+            // the only write the gesture makes — releasing without a target
+            // (dragged off the canvas, or onto its own subtree) leaves the
+            // layout exactly as it was, which is what makes the drag safe to
+            // abandon.
+            Some(Mode::Reflow { entity }) => {
+                if let Some(drop) = state.drop.take() {
+                    commands.queue(move |w: &mut World| {
+                        renzora_ember::markup::writeback::move_node_in_markup(
+                            w,
+                            entity,
+                            drop.parent,
+                            drop.before,
+                        );
+                    });
+                }
+            }
             _ => {}
         }
         state.marquee = None;
+        state.drop = None;
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
         *active = None;
         state.marquee = None;
+        state.drop = None;
         return;
     }
 
@@ -212,7 +242,18 @@ fn canvas_interact(
             Some(Mode::Marquee { start: start_cursor })
         } else if let Some(entity) = drag {
             selection.set(Some(entity));
-            Some(Mode::Move { entity, start_cursor, start_bbox })
+            // Which drag this is depends on the node, not the gesture: one laid
+            // out by its parent gets reordered, one already pinned gets moved.
+            let in_flow = state
+                .widgets
+                .iter()
+                .find(|g| g.entity == entity)
+                .is_some_and(|g| g.in_flow);
+            if in_flow {
+                Some(Mode::Reflow { entity })
+            } else {
+                Some(Mode::Move { entity, start_cursor, start_bbox })
+            }
         } else {
             None
         };
@@ -228,6 +269,12 @@ fn canvas_interact(
             let e = *entity;
             let p = parent_rect(&state, e);
             commands.queue(move |w: &mut World| set_node_move(w, e, nx, ny, bw, bh, p));
+        }
+        Some(Mode::Reflow { entity }) => {
+            // Recompute only — the drop is applied on release. Writing per frame
+            // would rewrite the `.html` on every mouse move.
+            let e = *entity;
+            state.drop = crate::game_ui::geometry::drop_target_at(&state.widgets, &parents, e, cursor);
         }
         Some(Mode::Resize { entity, handle, start_cursor, bbox }) => {
             let (l, t, r, b) = handle.sides();

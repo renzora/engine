@@ -93,6 +93,14 @@ pub struct XNode {
     /// open tag. Insertion point for *new* attributes added via the
     /// inspector.
     pub open_tag_close: Span,
+    /// Byte range of the element's entire source text, from its `<` to just
+    /// past its `/>` or `</name>`.
+    ///
+    /// `attr_spans` and `content_span` let the editor patch *inside* a node.
+    /// This is what lets it move the node itself: cut this range out of
+    /// `HtmlTemplate::source` and splice it back in somewhere else, which is
+    /// how a drag that reorders a flex child is written to the `.html`.
+    pub element: Span,
     /// Byte range of the text content between `<text>HERE</text>`. `None`
     /// when the node is self-closing or has only child elements.
     pub content_span: Option<Span>,
