@@ -238,7 +238,7 @@ pub use drag_window::{drag_grip, DragHandle};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
-pub use submenu::{menu_submenu, menu_submenu_styled};
+pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_styled};
 pub use scene::{
     EmberButtonWidget, EmberCheckbox, EmberClip, EmberDropdown, EmberInput, EmberProgress,
     EmberSliderWidget, EmberTable, EmberTabs, EmberTimeline, EmberToggle, EmberTrack,

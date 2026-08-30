@@ -7888,10 +7888,17 @@ fn anchor_below(
 /// `renzora_ember` and this widens the handful of rows that want it, rather than
 /// fattening every context menu in the editor to change one.
 ///
-/// Never call it on a [`menu_sep`] — a separator is a 1px-tall node, and adding
-/// vertical padding turns it into a bar.
+/// Separators are skipped rather than forbidden. A `menu_sep` is a 1px-tall
+/// node and vertical padding would turn it into a bar, but the lists this walks
+/// are built elsewhere and hand back rows and separators mixed together — so the
+/// check lives here, where it cannot be forgotten, instead of at each call site.
 fn spacious(commands: &mut Commands, row: Entity) -> Entity {
     commands.entity(row).entry::<Node>().and_modify(|mut n| {
+        if n.height == Val::Px(1.0) {
+            // A separator: give it more air around it, nothing inside it.
+            n.margin = UiRect::vertical(Val::Px(5.0));
+            return;
+        }
         n.padding = UiRect::axes(Val::Px(10.0), Val::Px(7.0));
         n.column_gap = Val::Px(10.0);
         n.border_radius = BorderRadius::all(Val::Px(6.0));
@@ -7982,60 +7989,32 @@ fn menu_account_header(
     block
 }
 
-/// The search row: shaped like a field, behaves like a button — pressing it
-/// opens the command palette.
+/// A submenu row for the hamburger's panel, with its floating panel styled to
+/// match the dropdown it hangs off.
 ///
-/// A field that filtered this menu's own nine rows would be furniture. The
-/// palette already searches every command, panel and setting in the editor, so
-/// this is a visible door to it for anyone who has not learned `Ctrl+P`. Shaped
-/// like an input because that is what it leads to, which is the same bargain
-/// every "search" entry point in a menu makes.
-fn menu_search_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(32.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                margin: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
-                padding: UiRect::horizontal(Val::Px(10.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(7.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            BorderColor::all(rgb(renzora_ember::theme::border())),
-            Interaction::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::MenuAction(Box::new(|w: &mut World| {
-                w.insert_resource(renzora::core::ToggleCommandPaletteRequested);
-            })),
-            Name::new("menu-search"),
-        ))
-        .id();
-    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
-        match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
-                rgb(renzora_ember::theme::hover_bg())
-            }
-            _ => Color::NONE,
-        }
+/// Without this the second level was a plain context menu: 184px wide, 6px
+/// corners, rows at context-menu pitch, opening off a 264px panel with 10px
+/// corners and rows at twice the height. One menu in two visual languages,
+/// depending how deep you had gone.
+fn panel_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    kids: Vec<Entity>,
+) -> Entity {
+    let (row, content, panel) =
+        renzora_ember::widgets::menu_submenu_parts(commands, fonts, icon, label, text_muted());
+    commands.entity(panel).entry::<Node>().and_modify(|mut n| {
+        n.min_width = Val::Px(230.0);
+        n.padding = UiRect::all(Val::Px(6.0));
+        n.border_radius = BorderRadius::all(Val::Px(10.0));
     });
-    let ic = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 13.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
-    let label = commands
-        .spawn((
-            Text::new(renzora::lang::t_or("menu.search", "Search commands…")),
-            ui_font(&fonts.ui, 11.5),
-            TextColor(rgb(renzora_ember::theme::placeholder())),
-            bevy::ui::FocusPolicy::Pass,
-            bevy::text::TextLayout::no_wrap(),
-        ))
-        .id();
-    commands.entity(row).add_children(&[ic, label]);
-    row
+    for kid in &kids {
+        spacious(commands, *kid);
+    }
+    commands.entity(content).add_children(&kids);
+    spacious(commands, row)
 }
 
 fn build_menu_items(
@@ -8048,7 +8027,7 @@ fn build_menu_items(
     // version instead of making you go and look.
     update_tag: Option<&str>,
 ) -> Vec<Entity> {
-    use renzora_ember::widgets::{menu_item, menu_sep, menu_submenu};
+    use renzora_ember::widgets::{menu_item, menu_sep};
     match kind {
         // The hamburger's own dropdown: the account, then four submenu rows,
         // each filled by recursing into the item list that used to be its own
@@ -8070,35 +8049,42 @@ fn build_menu_items(
             let mut rows: Vec<Entity> = Vec::new();
 
             rows.push(menu_account_header(commands, fonts, account));
-
-            // Opens the command palette. A search box in a menu that filtered
-            // the menu's own nine rows would be furniture; the palette already
-            // searches every command, panel and setting in the editor, and this
-            // is a door to it for anyone who does not know `Ctrl+P`.
-            rows.push(menu_search_row(commands, fonts));
             rows.push(menu_sep(commands));
 
-            rows.extend(
-                [
-                    ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
-                    ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
-                    ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
-                    ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
-                ]
-                .into_iter()
-                .map(|(icon, label, sub)| {
-                    let (row, content) = menu_submenu(commands, fonts, icon, &label);
-                    let kids = build_menu_items(commands, fonts, sub, account, update_tag);
-                    commands.entity(content).add_children(&kids);
-                    spacious(commands, row)
+            for (icon, label, sub) in [
+                ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
+                ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
+                ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
+                ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
+            ] {
+                let kids = build_menu_items(commands, fonts, sub, account, update_tag);
+                rows.push(panel_submenu(commands, fonts, icon, &label, kids));
+            }
+
+            // Import, Export and Settings are top-level rather than buried at
+            // the bottom of File. Settings took the gear button's place when
+            // that left the top bar; the other two bracket a project's life and
+            // are reached far too often to sit two hovers deep.
+            rows.push(menu_sep(commands));
+            // Import is a submenu because no OS dialog picks files and folders
+            // in one pass — the same reason the Assets panel's Import button
+            // opens a two-row menu instead of a picker. See
+            // `renzora::core::ImportPick`.
+            let import_kids = vec![
+                menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| {
+                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
                 }),
-            );
-            // Export and Settings are top-level rather than buried at the bottom
-            // of File. Settings took the gear button's place when that left the
-            // top bar, and both are reached far too often to sit two hovers deep
-            // — exporting is the end of every project, not a File housekeeping
-            // chore.
-            rows.push(menu_sep(commands));
+                menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| {
+                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
+                }),
+            ];
+            rows.push(panel_submenu(
+                commands,
+                fonts,
+                "download-simple",
+                &renzora::lang::t("assets.import"),
+                import_kids,
+            ));
             let export = menu_item(
                 commands,
                 fonts,
