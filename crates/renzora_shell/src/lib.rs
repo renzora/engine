@@ -6767,20 +6767,32 @@ fn sync_workspace_to_active_doc(
     // double-click, because it has to happen *after* the workspace switch
     // above — done there, the code editor was added to the layout we were on
     // the way out of.
-    if matches!(
-        tab.kind,
-        renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader
-    ) {
-        if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
-            commands.insert_resource(renzora::core::OpenCodeEditorFile {
-                path: project.resolve_path(rel),
-            });
+    match tab.kind {
+        renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader => {
+            if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
+                commands.insert_resource(renzora::core::OpenCodeEditorFile {
+                    path: project.resolve_path(rel),
+                });
+            }
+            // Dirty either way: `focus_or_add_panel` returns false when the
+            // panel was already there, but it still moved that leaf's active
+            // tab, and the dock only repaints when flagged.
+            dock.tree.focus_or_add_panel("code_editor");
+            dirty.0 = true;
         }
-        // Dirty either way: `focus_or_add_panel` returns false when the panel
-        // was already there, but it still moved that leaf's active tab, and the
-        // dock only repaints when flagged.
-        dock.tree.focus_or_add_panel("code_editor");
-        dirty.0 = true;
+        // A UI template's document *is* a canvas, so returning to its tab
+        // re-selects that canvas and reveals the panel showing it — the same
+        // move, one panel over.
+        renzora_ui::DocTabKind::Ui => {
+            if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
+                commands.insert_resource(renzora::core::OpenUiTemplateFile {
+                    path: project.resolve_path(rel),
+                });
+            }
+            dock.tree.focus_or_add_panel("ui_canvas");
+            dirty.0 = true;
+        }
+        _ => {}
     }
 }
 

@@ -2236,7 +2236,7 @@ fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         "particle" => ((230, 160, 90), "Particle"),
         "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
-        "html" => ((230, 120, 90), "Template"),
+        "html" => ((230, 120, 90), "UI Template"),
         "" => ((150, 155, 170), "File"),
         other => ((150, 155, 170), uppercase_ext(other)),
     }
@@ -4648,8 +4648,12 @@ fn opens_in_editor(path: &Path) -> bool {
     renzora_editor_framework::doc_kind_for_path(path).is_some() || is_editable_text(path)
 }
 
-/// Code-editor-backed kinds: scripts, shaders, HTML templates, and plain text.
-/// These open straight into `CodeEditorState` (no layout switch).
+/// Code-editor-backed kinds: scripts, shaders and plain text. These open
+/// straight into `CodeEditorState` (no layout switch).
+///
+/// A `.html` UI template is deliberately **not** one of them any more. It is
+/// `DocTabKind::Ui`, which opens the canvas — the code editor is tabbed beside
+/// it in the UI workspace for whoever wants the markup.
 fn is_code_kind(path: &Path) -> bool {
     use renzora_editor_framework::DocTabKind;
     matches!(
@@ -4679,6 +4683,9 @@ fn open_action(path: &Path) -> Option<(&'static str, String)> {
         Some(DocTabKind::Blueprint) => Some(("blueprint", renzora::lang::t("assets.open_in.blueprint_editor"))),
         Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
         Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
+        // Without this arm a `.html` fell through to `None` and lost its
+        // right-click **Open** entirely the moment it stopped being a `Script`.
+        Some(DocTabKind::Ui) => Some(("browser", renzora::lang::t_or("assets.open_in.ui_editor", "Open in UI Editor"))),
         _ if is_editable_text(path) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         _ => None,
     }
