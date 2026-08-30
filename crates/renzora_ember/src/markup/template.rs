@@ -115,7 +115,11 @@ fn finalize_pending_templates(
             }
         }
 
-        let child = commands.spawn_empty().id();
+        // Hidden from the hierarchy like every node the loader builds under it —
+        // see the note beside the `HideInHierarchy` insert in `loader.rs`. The
+        // wrapper needs its own because that marker does not cascade in the
+        // hierarchy panel.
+        let child = commands.spawn(renzora::HideInHierarchy).id();
         commands.entity(entity).add_child(child);
 
         info!(

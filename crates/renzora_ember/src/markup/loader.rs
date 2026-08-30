@@ -556,6 +556,21 @@ fn apply_xnode_to(
     // lands on the text (deepest match wins). Combined with `MarkupSource`
     // below, that makes per-element edits round-trip to the `.html` file.
     ec.insert(crate::game_ui::UiWidget::default());
+    // …and no markup node belongs in the scene hierarchy.
+    //
+    // The `.html` is the source of truth for this tree: it is rebuilt from the
+    // file on every load and hot-reload, and `finalize_pending_templates`
+    // despawns the whole subtree before rebuilding it. So the hierarchy showing
+    // it offered a tree you could select in and reorder, whose edits the next
+    // rebuild silently threw away — and the scene *saved* it, serialising a
+    // duplicate of the template into the scene file that is discarded on load.
+    //
+    // The scene panel shows the canvas; the canvas's own editor shows what is on
+    // it. Marked per node rather than once on the root because the hierarchy's
+    // `HideInHierarchy` deliberately does not cascade to children (it is how
+    // dropped-model wrapper nodes are skipped without hiding the meshes under
+    // them); the scene *saver* does cascade, via `has_hidden_ancestor`.
+    ec.insert(renzora::HideInHierarchy);
 
     // `hover:` / `pressed:` color overrides + tween timing → `Interactive`.
     // bevy_hui parses these into `StyleAttr::Hover/Pressed(inner)`; collect the

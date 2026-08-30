@@ -9,24 +9,20 @@
 //! instance's position. So this module is just editor registrations.
 
 use bevy::prelude::*;
-use bevy_hui::prelude::{HtmlNode, Tags};
+use bevy_hui::prelude::Tags;
 use renzora::{
-    AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
+    AppEditorExt, ComponentIconEntry, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 use renzora_ember::game_ui::{UiCanvas, UiWidget};
 
 use renzora_ember::markup::HtmlTemplatePath;
-
-/// Default template a freshly-created HTML entity points at, so it shows
-/// something immediately instead of an empty node.
-const DEFAULT_TEMPLATE: &str = "ui/example_menu.html";
 
 pub struct HuiEditorPlugin;
 
 impl Plugin for HuiEditorPlugin {
     fn build(&self, app: &mut App) {
         register_editor_entries(app);
-        app.add_systems(Update, (tag_built_nodes, ensure_canvas_template));
+        app.add_systems(Update, tag_built_nodes);
     }
 }
 
@@ -52,23 +48,15 @@ fn tag_built_nodes(
 }
 
 fn register_editor_entries(app: &mut App) {
-    // "+ Add Entity" → UI → "HTML Template". Spawns a draggable, absolutely-
-    // positioned instance under a UI Canvas; the runtime observer builds the
-    // markup beneath it.
-    app.register_entity_preset(EntityPreset {
-        id: "html_template",
-        display_name: "HTML Template",
-        icon: "code",
-        category: "ui",
-        spawn_fn: |world| {
-            renzora_ember::game_ui::spawn::spawn_html_template_at(
-                world,
-                std::path::Path::new(DEFAULT_TEMPLATE),
-                None,
-            )
-        },
-    });
-
+    // The "HTML Template" preset was here: "+ Add Entity" → UI → HTML Template
+    // spawned a `UiWidget` instance under a canvas, carrying its own
+    // `HtmlTemplatePath`. It was a second kind of template holder — one that
+    // was not a canvas, had no reference resolution or render space, and was
+    // wiped by the next rebuild of the canvas it sat under.
+    //
+    // A template belongs to a UI Canvas and nothing else. The one entity you add
+    // is the canvas; the template goes in its slot.
+    //
     // World-space UI is no longer a separate entity — it's a `UiCanvas` with its
     // `render_space` set to "world" (see the canvas inspector). So there's no
     // "World UI Panel" preset; you add a UI Canvas and flip it to world space.
@@ -118,37 +106,33 @@ fn register_editor_entries(app: &mut App) {
     // + render_mode) — see `renzora_ember_editor::game_ui::register`. No separate
     // World UI Panel inspector.
 
-    // Inspector: pick/replace the .html the instance displays. Adding the
-    // component (also via "Add Component") seeds the default template.
+    // Inspector: the template slot on a UI Canvas. Pick an existing `.html` or
+    // create one in place with "+".
+    //
+    // **A canvas is the only thing that can hold a template**, and it holds it
+    // for its whole life. That is the entity's entire purpose in the scene:
+    // "this template appears here, at this reference resolution, in this render
+    // space". Which is why all three of the usual controls are gone:
+    //
+    // - `has_fn` answers for any canvas, template or not, so the slot is visible
+    //   and pickable on a fresh canvas rather than appearing only once a path
+    //   exists — which, with auto-population dropped, would have been never.
+    // - `add_fn: None` keeps it out of "Add Component" entirely. It used to seed
+    //   `DEFAULT_TEMPLATE` onto *any* entity, which made a second kind of
+    //   template holder that nothing else in the editor understood.
+    // - `remove_fn: None` removes the trash button. It was already a no-op on a
+    //   canvas — it checked and returned — so the button was there and did
+    //   nothing, which is worse than not being there.
     app.register_inspector(InspectorEntry {
         type_id: "html_template",
-        display_name: "HTML Template",
-        icon: "code",
+        display_name: "UI Template",
+        icon: "browser",
         category: "ui",
-        has_fn: |world, entity| world.get::<HtmlTemplatePath>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(HtmlTemplatePath(DEFAULT_TEMPLATE.to_string()));
-        }),
-        remove_fn: Some(|world, entity| {
-            // A UiCanvas's template is its backbone — mandatory, not removable.
-            // (Standalone `html_template` instance entities can still drop it.)
-            if world.get::<UiCanvas>(entity).is_some() {
-                return;
-            }
-            // Drop the path and any markup child it built.
-            let children: Vec<Entity> = world
-                .get::<Children>(entity)
-                .map(|c| c.iter().collect())
-                .unwrap_or_default();
-            for child in children {
-                if world.get::<HtmlNode>(child).is_some() {
-                    world.entity_mut(child).despawn();
-                }
-            }
-            world.entity_mut(entity).remove::<HtmlTemplatePath>();
-        }),
+        has_fn: |world, entity| {
+            world.get::<UiCanvas>(entity).is_some() || world.get::<HtmlTemplatePath>(entity).is_some()
+        },
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![FieldDef {
@@ -168,10 +152,18 @@ fn register_editor_entries(app: &mut App) {
                     let is_world_canvas = world
                         .get::<UiCanvas>(entity)
                         .is_some_and(|c| c.is_world());
+                    // Named after the canvas, so a scene with three of them ends
+                    // up with `main_menu.html` and `hud.html` rather than
+                    // `template.html` and `template_1.html`.
+                    let slug = world
+                        .get::<Name>(entity)
+                        .map(|n| slug_name(n.as_str()))
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "canvas".to_string());
                     let rel = if is_world_canvas {
-                        create_unique_panel_template(&root, "world_canvas")
+                        create_unique_panel_template(&root, &slug)
                     } else {
-                        create_unique_template(&root, "template")
+                        create_unique_template(&root, &slug)
                     };
                     if let Some(rel) = rel {
                         world.entity_mut(entity).insert(HtmlTemplatePath(rel));
@@ -198,50 +190,15 @@ fn register_editor_entries(app: &mut App) {
     });
 }
 
-/// A canvas the user asked for *directly* — "+ Add Entity → UI Canvas" or the
-/// "New UI" scene starter. Only these get a blank template written for them.
-///
-/// Canvases also appear implicitly, as a host for something the user dropped
-/// when the scene had no canvas yet (`spawn_html_template_at` for a dropped
-/// `.html`, `spawn_widget`, `spawn_image_at`). Those already carry the content
-/// the user chose, so writing a fresh `ui/<name>.html` for the host would leave
-/// a stray blank template in the project next to the real one.
-#[derive(Component)]
-pub(crate) struct AutoCanvasTemplate;
-
-/// A `UiCanvas` the user created deliberately is backed by an `.html` template —
-/// its contents are authored as markup, so the template is its backbone, not an
-/// optional add-on. Such a canvas starts with none, so we create one under the
-/// project's `ui/` folder and link it here.
-///
-/// Filtered to `Added<UiCanvas>` *without* a path, so scene-loaded canvases
-/// (which already carry their template) are left alone, and to
-/// `AutoCanvasTemplate` so implicitly-spawned host canvases don't get a blank
-/// template they never asked for. Creating it eagerly on spawn — rather than
-/// lazily on the first widget — means a canvas always has its template *before*
-/// any widget is added, so the markup loader's build-on-insert runs against an
-/// empty canvas and never wipes authored children.
-fn ensure_canvas_template(
-    mut commands: Commands,
-    project: Option<Res<renzora::CurrentProject>>,
-    canvases: Query<
-        (Entity, Option<&Name>),
-        (Added<UiCanvas>, With<AutoCanvasTemplate>, Without<HtmlTemplatePath>),
-    >,
-) {
-    let Some(project) = project else {
-        return; // No project open — nowhere to write the file.
-    };
-    for (entity, name) in &canvases {
-        let slug = name
-            .map(|n| slug_name(n.as_str()))
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "canvas".to_string());
-        if let Some(rel) = create_unique_template(&project.path, &slug) {
-            commands.entity(entity).insert(HtmlTemplatePath(rel));
-        }
-    }
-}
+// `AutoCanvasTemplate` + `ensure_canvas_template` lived here. Adding a UI Canvas
+// wrote `<project>/ui/<slug>.html` on the frame the entity appeared, and linked
+// it. Spawning an entity should not put a file in someone's project: you get an
+// empty canvas and pick a template, or make one with the slot's "+" — which is
+// the same `create_unique_template` this used, on a press instead of a spawn.
+//
+// The Assets panel's **New → UI Template** is the other way in, and it is the
+// one to reach for first: it names the file, puts it where you want it, and the
+// canvas is then just the thing that mounts it.
 
 /// Sanitize an entity name into a lowercase, filesystem-safe file stem
 /// (`"UI Canvas"` → `ui_canvas`). Non-alphanumerics become `_`; leading/trailing

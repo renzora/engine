@@ -820,16 +820,13 @@ fn debug_ui_tree(
 fn register_ui_presets(app: &mut App) {
     use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
-    // The user asked for a bare canvas, so this is the one path that wants a
-    // blank backing template created for it (`ensure_canvas_template`). Canvases
-    // spawned implicitly to host a dropped template/widget/image carry no marker
-    // and keep the content that was dropped, with no stray `.html` written.
+    // A bare canvas, with no template and no file written. Pick one in the
+    // inspector's UI Template slot, or make one there with "+".
     fn spawn_ui_canvas(world: &mut World) -> Entity {
         world
             .spawn((
                 Name::new("UI Canvas"),
                 components::UiCanvas::default(),
-                crate::editor::AutoCanvasTemplate,
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Percent(100.0),
@@ -864,63 +861,25 @@ fn register_ui_presets(app: &mut App) {
         },
     });
 
-    macro_rules! widget_preset {
-        ($variant:ident, $id:literal, $label:literal) => {{
-            fn spawn_fn(world: &mut World) -> Entity {
-                let e =
-                    renzora_ember::game_ui::spawn::spawn_widget(world, &UiWidgetType::$variant, None);
-                // Editor follow-up that used to live inside `spawn_widget`'s
-                // `#[cfg(feature = "editor")]` block: expand the parent in the
-                // hierarchy panel + select the freshly-spawned widget.
-                if let Some(parent) = world.get::<ChildOf>(e).map(|c| c.parent()) {
-                    if let Some(requests) =
-                        world.get_resource::<renzora::HierarchyExpandRequests>()
-                    {
-                        requests.push(parent);
-                    }
-                }
-                if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
-                    sel.set(Some(e));
-                }
-                e
-            }
-            app.register_entity_preset(EntityPreset {
-                id: $id,
-                display_name: $label,
-                icon: widget_icon(&UiWidgetType::$variant),
-                category: "ui",
-                spawn_fn,
-            });
-        }};
-    }
-
-    widget_preset!(Container, "ui_container", "Container");
-    widget_preset!(Panel, "ui_panel", "Panel");
-    widget_preset!(ScrollView, "ui_scroll_view", "Scroll View");
-    widget_preset!(Text, "ui_text", "Text");
-    widget_preset!(Image, "ui_image", "Image");
-    widget_preset!(Button, "ui_button", "Button");
-    widget_preset!(Slider, "ui_slider", "Slider");
-    widget_preset!(Checkbox, "ui_checkbox", "Checkbox");
-    widget_preset!(Toggle, "ui_toggle", "Toggle");
-    widget_preset!(RadioButton, "ui_radio_button", "Radio Button");
-    widget_preset!(Dropdown, "ui_dropdown", "Dropdown");
-    widget_preset!(TextInput, "ui_text_input", "Text Input");
-    widget_preset!(BarFill, "ui_bar_fill", "Bar Fill");
-    widget_preset!(Tooltip, "ui_tooltip", "Tooltip");
-    widget_preset!(Modal, "ui_modal", "Modal");
-    widget_preset!(DraggableWindow, "ui_draggable_window", "Draggable Window");
-    widget_preset!(KeybindRow, "ui_keybind_row", "Keybind Row");
-    widget_preset!(SettingsRow, "ui_settings_row", "Settings Row");
-    widget_preset!(Separator, "ui_separator", "Separator");
-    widget_preset!(NumberInput, "ui_number_input", "Number Input");
-    widget_preset!(Scrollbar, "ui_scrollbar", "Scrollbar");
-    widget_preset!(Circle, "ui_circle", "Circle");
-    widget_preset!(Arc, "ui_arc", "Arc");
-    widget_preset!(RadialProgress, "ui_radial_progress", "Radial Progress");
-    widget_preset!(Line, "ui_line", "Line");
-    widget_preset!(Triangle, "ui_triangle", "Triangle");
-    widget_preset!(Polygon, "ui_polygon", "Polygon");
-    widget_preset!(Rectangle, "ui_rectangle", "Rectangle");
-    widget_preset!(Wedge, "ui_wedge", "Wedge");
+    // ── The 29 widget presets are gone ───────────────────────────────────────
+    //
+    // Container, Panel, Button, Slider, … each spawned a `UiWidget` entity under
+    // the canvas via `spawn_widget`. Three things were wrong with that, in
+    // increasing order of seriousness:
+    //
+    // 1. Building a UI by clicking Add Entity once per element is slow, and 29
+    //    entries made the UI category the largest thing in that menu.
+    // 2. Those entities carry no `MarkupSource`, so nothing they contain is
+    //    written to the template — the `.html` never learns they exist.
+    // 3. **They are destroyed.** `finalize_pending_templates` despawns every
+    //    `Node`-bearing child of the canvas before rebuilding from the file, so
+    //    a hot-reload, a scene reload or a template change silently deletes
+    //    everything added this way. It looked like an authoring tool and behaved
+    //    like a scratchpad.
+    //
+    // The `.html` is the source of truth for a canvas's contents, so the way to
+    // add a widget is to add a node to the template. `spawn_widget` and the
+    // `UiWidgetType` vocabulary stay in `renzora_ember::game_ui::spawn` — they
+    // are what a markup-inserting palette will need to describe — but nothing
+    // reaches them from Add Entity any more.
 }
