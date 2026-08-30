@@ -383,6 +383,22 @@ pub fn spawn_html_template_at(
 }
 
 pub fn reapply_layout_from_parent(world: &mut World, entity: Entity) {
+    // A node built from markup authored its own layout in the `.html`, and this
+    // function exists to guess a layout for someone who *dragged* a widget — which
+    // cannot happen to a markup node, since they are all `HideInHierarchy` and
+    // never appear in the tree you drag in.
+    //
+    // Without the exemption `ParentLayout::Container` won, and it forces
+    // `position_type: Relative` and clears left/right/top/bottom to `Auto`. So
+    // every `position="absolute"` in a template was silently reverted the first
+    // frame after it built: a node pinned to `left: 88px; bottom: 34px` popped
+    // back into flex flow beside its sibling. The `Changed<ChildOf>` system is
+    // what catches them — a freshly spawned `ChildOf` reads as changed — so the
+    // "no `UiWidget` yet when the observers fire" ordering that `tag_built_nodes`
+    // relies on does not save markup here.
+    if world.get::<crate::markup::provenance::MarkupSource>(entity).is_some() {
+        return;
+    }
     let parent = world.get::<ChildOf>(entity).map(|co| co.parent());
     let (_, layout) = classify_parent(world, parent);
     apply_parent_layout(world, entity, layout);
