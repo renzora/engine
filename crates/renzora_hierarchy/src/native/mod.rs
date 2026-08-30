@@ -43,10 +43,6 @@ pub(crate) struct HierExpanded(pub HashSet<Entity>);
 #[derive(Component)]
 pub(crate) struct HierScrollContent;
 
-/// The tree's scroll viewport, sized every frame by [`hier_fit_scroll`].
-#[derive(Component)]
-pub(crate) struct HierScrollViewport;
-
 /// The panel is too narrow for the header's full "+ Add Entity" label. Set by
 /// [`hier_responsive_header`] from the measured panel width; the button collapses
 /// to icon-only so the search box keeps a usable width. Before this, the button
@@ -104,27 +100,13 @@ pub fn register_native_hierarchy(app: &mut App) {
             ))
             .id();
 
-        // Add Entity sits in a pinned footer, centred, rather than in the header
-        // beside the search box. It is the panel's one *creating* action among a
-        // header of *finding* ones (search, filter), and reads as another of
-        // them up there. At the bottom it is where you look after scrolling
-        // through what exists to conclude that what you want does not.
-        //
-        // Accent-filled for the same reason: it was an unfilled icon-label like
-        // every other header control, which is the right weight for a filter and
-        // the wrong one for the button that puts things in the scene.
         let add = renzora_ember::widgets::icon_label_button_collapsing(
             commands,
             fonts,
             "plus",
             &renzora::lang::t("hierarchy.add_entity"),
-            // Never collapses to its icon now: the footer gives it the width the
-            // header could not, and a lone `+` centred in a bar is a puzzle.
-            |_| false,
+            |w| w.get_resource::<HierCompact>().is_some_and(|c| c.0),
         );
-        // Left on the default `Button` role. An accent fill was tried here and
-        // read as too loud for a button that sits in the tree rather than over
-        // it; the placement carries the emphasis on its own.
         commands
             .entity(add)
             .insert((add_entity::HierAddEntity, Name::new("add-entity")));
@@ -144,34 +126,7 @@ pub fn register_native_hierarchy(app: &mut App) {
                 Name::new("hierarchy-header"),
             ))
             .id();
-        commands.entity(header).add_children(&[search, funnel]);
-
-        // The row Add Entity sits in: directly under the last entity.
-        //
-        // It is a sibling of the scroll viewport, not a child of it, and the
-        // viewport SHRINK-WRAPS its content (see below). Those two together are
-        // what make one row satisfy both halves of the requirement: with a few
-        // entities the viewport is only as tall as the tree, so the button sits
-        // immediately under the last one; with a few hundred the viewport fills
-        // the panel and the button is pinned under it, still on screen.
-        //
-        // Inside the scroll it was genuinely after the last row and genuinely
-        // unreachable — several hundred rows below the fold in any real scene.
-        let footer = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    padding: UiRect::axes(Val::Px(6.0), Val::Px(8.0)),
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                Name::new("hierarchy-add-row"),
-            ))
-            .id();
-        commands.entity(footer).add_child(add);
+        commands.entity(header).add_children(&[add, search, funnel]);
 
         let list = commands
             .spawn((
@@ -200,11 +155,8 @@ pub fn register_native_hierarchy(app: &mut App) {
         );
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
         // Hit-test target for the right-click quick-add menu (see `context_menu`).
-        // `HierScrollViewport` hands its height to `hier_fit_scroll`, which is
-        // what makes Add Entity sit under the last row until the tree overflows.
         commands.entity(scroll).insert((
             context_menu::HierListArea,
-            HierScrollViewport,
             bevy::ui::RelativeCursorPosition::default(),
         ));
         // Parent-stacking overlay: pinned ancestor headers over the top of the
@@ -216,15 +168,12 @@ pub fn register_native_hierarchy(app: &mut App) {
             current: Vec::new(),
         });
         // While the scene has entities, show the tree; when empty, the starter
-        // picker takes its place. Add Entity follows the tree — with no scene
-        // the picker *is* the way to add the first thing, and a second control
-        // for it under an empty panel is noise.
+        // picker takes its place.
         renzora_ember::reactive::tracked::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
-        renzora_ember::reactive::tracked::bind_display(commands, footer, |w| !scene_starter::scene_is_empty(w));
         let picker = scene_starter::build_picker(commands, fonts);
         renzora_ember::reactive::tracked::bind_display(commands, picker, scene_starter::scene_is_empty);
 
-        commands.entity(root).add_children(&[header, scroll, footer, picker]);
+        commands.entity(root).add_children(&[header, scroll, picker]);
         root
     });
     app.add_systems(
@@ -247,7 +196,6 @@ pub fn register_native_hierarchy(app: &mut App) {
                 marquee::hier_marquee_overlay,
                 marquee::hier_marquee_autoscroll,
                 hier_responsive_header,
-                hier_fit_scroll,
                 row::animate_audio_bars,
             ),
             (
@@ -281,90 +229,6 @@ pub fn register_native_hierarchy(app: &mut App) {
     );
     scene_starter::register(app);
     create_asset::register(app);
-}
-
-/// Size the tree's scroll viewport to its content, capped at the space the panel
-/// has left over — which is what puts Add Entity under the last entity in a
-/// small scene and pins it to the panel's bottom edge in a large one.
-///
-/// # Why this is measured rather than declared
-///
-/// The declarative spelling is `height: Auto` + `flex_shrink: 1` on the
-/// viewport: ask for the content's height, let the column shrink it to what is
-/// available. That is the whole behaviour in three fields, and it did not work
-/// — a `Overflow::scroll_y` box with an auto height does not resolve to its
-/// content the way a plain box does, so the viewport kept taking the full panel
-/// and the button stayed welded to the bottom no matter how few entities were
-/// in the scene.
-///
-/// So the two numbers are read from the laid-out nodes instead. There is no
-/// feedback loop in doing it here: the list's height comes from its rows (the
-/// virtual scroller's spacers stand in for the windowed-out ones), and nothing
-/// about the list depends on the viewport's height except which rows get built
-/// — which does not change the total.
-fn hier_fit_scroll(
-    viewports: Query<(Entity, &ChildOf), With<HierScrollViewport>>,
-    children_q: Query<&Children>,
-    computed: Query<&bevy::ui::ComputedNode>,
-    lists: Query<(), With<HierScrollContent>>,
-    mut nodes: Query<&mut Node>,
-) {
-    // Resolved through the hierarchy rather than by `single()` on each marker.
-    // A panel can exist more than once — a second dock leaf, or a stashed copy
-    // the dock keeps alive — and a `single()` that finds two entities returns
-    // an error, so one extra instance anywhere in the editor would silently
-    // switch this off for the visible one.
-    for (viewport, child_of) in &viewports {
-        let root = child_of.parent();
-        let Ok(root_cn) = computed.get(root) else {
-            continue;
-        };
-        let inv = root_cn.inverse_scale_factor();
-        let panel_h = root_cn.size().y * inv;
-        // Nothing has been laid out yet (a backgrounded dock tab, or the first
-        // frame). Leave the height alone rather than collapsing the panel to
-        // zero and rebuilding it when it comes back.
-        if panel_h <= 0.0 {
-            continue;
-        }
-
-        // What the panel column spends on everything that isn't the tree: the
-        // search header and the Add Entity row. Measured rather than named, so
-        // a fourth thing added to this panel is accounted for without touching
-        // this system. A hidden child (the empty-scene picker) measures zero.
-        let mut spent = 0.0;
-        if let Ok(kids) = children_q.get(root) {
-            for kid in kids.iter() {
-                if kid == viewport {
-                    continue;
-                }
-                if let Ok(cn) = computed.get(kid) {
-                    spent += cn.size().y * inv;
-                }
-            }
-        }
-
-        // The tree's own height, from the list rather than the viewport — the
-        // viewport is what we are about to set, and the list is what it should
-        // be set from.
-        let mut content = 0.0;
-        if let Ok(kids) = children_q.get(viewport) {
-            for kid in kids.iter() {
-                if lists.contains(kid) {
-                    if let Ok(cn) = computed.get(kid) {
-                        content = cn.size().y * inv;
-                    }
-                }
-            }
-        }
-
-        let target = Val::Px(content.min((panel_h - spent).max(0.0)));
-        if let Ok(mut node) = nodes.get_mut(viewport) {
-            if node.height != target {
-                node.height = target;
-            }
-        }
-    }
 }
 
 /// Watch the panel width and flip [`HierCompact`] at the point where the header's

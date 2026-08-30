@@ -2287,7 +2287,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
+                // A column: the toolbar spans the panel, and the
+                // tree|splitter|grid row sits under it (see `body`, below).
+                flex_direction: FlexDirection::Column,
                 min_width: Val::Px(0.0),
                 min_height: Val::Px(0.0),
                 ..default()
@@ -2818,14 +2820,38 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         zoom_box,
     ]);
 
-    commands.entity(content).add_children(&[toolbar, crumb_row, grid_scroll]);
+    commands.entity(content).add_children(&[crumb_row, grid_scroll]);
+
+    // The toolbar spans the whole panel, above the tree as well as the grid —
+    // so `root` is a column of [toolbar, body] and the tree|splitter|grid row is
+    // `body`. It used to be the grid column's first child, which made the
+    // panel's one bar of actions start halfway across and left a 180px notch of
+    // empty header above the folder tree.
+    let body = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Row,
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
+                ..default()
+            },
+            Name::new("assets-body"),
+        ))
+        .id();
+    commands.entity(body).add_children(&[tree_pane, splitter, content]);
 
     // Responsive: when the panel is too narrow, hide the grid + splitter so the
     // tree fills it as a file browser (see `responsive_layout` / `narrow`).
+    // The toolbar goes with them now that it is no longer inside `content` —
+    // the narrow layout has its own header in the tree pane (`narrow_header`),
+    // and showing both would be two search boxes and two Add buttons.
     bind_display(commands, content, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
     bind_display(commands, splitter, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
+    bind_display(commands, toolbar, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
 
-    commands.entity(root).add_children(&[tree_pane, splitter, content]);
+    commands.entity(root).add_children(&[toolbar, body]);
 
     // Drop-to-import highlight — an accent-bordered overlay shown only while an
     // OS file drag hovers the window (`FileDragHovering`, set by the importer).
