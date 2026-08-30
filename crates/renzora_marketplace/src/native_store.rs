@@ -387,7 +387,11 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // reason the button existed. `store_search_enter` fixes that.
     let search_row = commands
         .spawn((
-            Node { flex_grow: 1.0, min_width: Val::Px(160.0), height: Val::Px(36.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::horizontal(Val::Px(12.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() },
+            // 8, not the 18 that made it a full pill. A pill is a *button*
+            // shape — it says "press me and something happens once"; a field you
+            // type into wants corners closer to the square it actually is, and
+            // 8 is what the rest of the panel's boxes use.
+            Node { flex_grow: 1.0, min_width: Val::Px(160.0), height: Val::Px(36.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::horizontal(Val::Px(12.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() },
             BackgroundColor(rgba([255, 255, 255, 16])),
             BorderColor::all(rgba([255, 255, 255, 28])),
         ))
