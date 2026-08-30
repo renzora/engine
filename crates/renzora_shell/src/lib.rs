@@ -6506,43 +6506,46 @@ fn elide(s: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
-/// The workspace whose hierarchy is narrowed to UI canvases.
+/// Narrow the hierarchy — and Add Entity — to UI canvases while the UI editor is
+/// the surface you are working on.
 ///
-/// Matched by name rather than index because the user can reorder, rename and
-/// remove workspaces, and their saved set is merged with the defaults on load —
-/// so a stored index means nothing across sessions.
-const UI_WORKSPACE: &str = "UI";
-
-/// Narrow the hierarchy to UI canvases while the UI workspace is active.
+/// **Which surface is visible, not which workspace you are in.** Panels move:
+/// the UI editor can be docked into any workspace, the UI workspace can be
+/// renamed, and a workspace can hold both surfaces at once. Reading the panels
+/// answers the question directly instead of guessing from a label.
 ///
-/// `HierarchyFilter` has existed for this since before the UI workspace did —
-/// its own doc gives "UI workspace only shows cameras + canvases" as the
-/// example. Nothing had ever set it.
+/// The rule is the obvious one. UI editor showing and no viewport → the tree is
+/// about UI. Viewport showing → it is about the scene, whether or not the UI
+/// editor is up beside it, because with both on screen you are working across
+/// them and hiding half the scene is the wrong answer. Neither → unchanged.
 ///
 /// Only canvases, not their contents: a canvas's widgets come from its `.html`
 /// and are rebuilt from that file on every load, so the tree would be offering
 /// rows whose edits the next rebuild discards. They are already excluded — see
 /// the `HideInHierarchy` note in `markup/loader.rs`.
 ///
-/// Driven from `ShellLayouts`, not `LayoutManager`. The established version of
-/// this pattern (`sync_asset_filter_for_scripting`, which restricts the asset
-/// browser to text formats in the Scripting workspace) reads
-/// `LayoutManager::active_name` — and nothing updates `LayoutManager` any more,
-/// so that feature has quietly not worked since the shell took over workspace
-/// switching.
-/// Also narrows what Add Entity offers, via [`renzora::SpawnCategoryScope`].
-/// A tree showing only UI canvases must not offer to spawn a point light: the
-/// thing you spawned would not appear in the list you spawned it from, which
-/// reads as the editor having swallowed it.
+/// `HierarchyFilter` has existed for this since before the UI workspace did —
+/// its own doc gives "UI workspace only shows cameras + canvases" as the
+/// example. Nothing had ever set it. `SpawnCategoryScope` is its companion for
+/// Add Entity: a tree showing only UI canvases must not offer to spawn a point
+/// light, because the thing you spawned would not appear in the list you
+/// spawned it from.
 fn sync_hierarchy_filter_to_workspace(
-    layouts: Res<ShellLayouts>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     filter: Option<ResMut<renzora_editor_framework::HierarchyFilter>>,
     spawn_scope: Option<ResMut<renzora::SpawnCategoryScope>>,
 ) {
-    let is_ui = layouts
-        .layouts
-        .get(layouts.active)
-        .is_some_and(|(name, _)| name == UI_WORKSPACE);
+    let visible = |id: &str| {
+        renzora_ember::dock::panel_visible_anywhere(
+            id,
+            dock.as_deref(),
+            fixed.as_deref(),
+            wins.as_deref(),
+        )
+    };
+    let is_ui = visible("ui_canvas") && !visible("viewport");
     if let Some(mut filter) = filter {
         let desired = if is_ui {
             renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"])

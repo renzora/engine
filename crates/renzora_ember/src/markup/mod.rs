@@ -29,6 +29,48 @@ pub mod writeback;
 pub use provenance::MarkupSource;
 pub use template::{HtmlTemplatePath, TemplateReloadRequests};
 
+/// Starter contents for a new `.html` UI template.
+///
+/// Owned by the crate that parses the format, so the three places that create
+/// one — the Assets panel's New menu, the hierarchy's Attach menu, and the UI
+/// Template slot's "+" — write the same file.
+///
+/// `boilerplate` off still writes the `<template>` root: markup without it does
+/// not parse, so "minimal" is a skeleton rather than an empty file. On, it is a
+/// laid-out panel with a heading and a button, because an empty `<node>` renders
+/// as nothing at all and a canvas that shows nothing is indistinguishable from
+/// one that is broken.
+pub fn starter_template(boilerplate: bool) -> String {
+    if !boilerplate {
+        return "<template>\n    <node></node>\n</template>\n".to_string();
+    }
+    concat!(
+        "<template>\n",
+        "    <node\n",
+        "        width=\"100%\"\n",
+        "        height=\"100%\"\n",
+        "        display=\"flex\"\n",
+        "        flex_direction=\"column\"\n",
+        "        align_items=\"center\"\n",
+        "        justify_content=\"center\"\n",
+        "        row_gap=\"12px\"\n",
+        "    >\n",
+        "        <text font_size=\"28\" font_color=\"#FFFFFF\">Your UI</text>\n",
+        "\n",
+        "        <button\n",
+        "            padding=\"10px 22px\"\n",
+        "            border_radius=\"6px\"\n",
+        "            background=\"#5B9CF5\"\n",
+        "            hover:background=\"#7BB0FF\"\n",
+        "        >\n",
+        "            <text font_size=\"14\" font_color=\"#FFFFFF\">Play</text>\n",
+        "        </button>\n",
+        "    </node>\n",
+        "</template>\n",
+    )
+    .to_string()
+}
+
 /// The markup runtime plugin (formerly `renzora_hui::HuiPlugin`). Registered via
 /// `renzora::add!` at Runtime scope so it runs in both the editor viewport and
 /// shipped games — anywhere markup UI is used. The lean export strips this whole

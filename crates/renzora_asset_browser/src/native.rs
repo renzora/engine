@@ -416,7 +416,11 @@ impl NewAsset {
             NewAsset::Bsn => "NewScene.bsn",
         }
     }
-    fn content(self) -> String {
+    /// `boilerplate` comes from `EditorSettings::new_file_boilerplate`; the
+    /// starters themselves are owned by the crates that consume the formats, so
+    /// a file made here is byte-identical to one made from the hierarchy's
+    /// Attach menu.
+    fn content(self, boilerplate: bool) -> String {
         match self {
             NewAsset::Folder => String::new(),
             NewAsset::Material => "{}".to_string(),
@@ -424,9 +428,9 @@ impl NewAsset {
             // event, so a new file starts with On Ready + On Update placed —
             // see `renzora_blueprint::starter`.
             NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
-            NewAsset::Lua => "-- New Lua script\n".to_string(),
+            NewAsset::Lua => renzora_scripting::starter_lua(boilerplate),
             NewAsset::Particle => "(name: \"New Particle\")".to_string(),
-            NewAsset::Template => "<template>\n    <node></node>\n</template>\n".to_string(),
+            NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             NewAsset::Bsn => "// renzora interim bsn v1\n".to_string(),
         }
@@ -692,7 +696,9 @@ fn create_asset_click(
     q: Query<(&Interaction, &NewAssetBtn), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
+    let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
     for (interaction, btn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -705,7 +711,7 @@ fn create_asset_click(
         let ok = if kind.is_folder() {
             std::fs::create_dir_all(&path).is_ok()
         } else {
-            std::fs::write(&path, kind.content()).is_ok()
+            std::fs::write(&path, kind.content(boilerplate)).is_ok()
         };
         if ok {
             state.selected = Some(path);
@@ -2013,11 +2019,14 @@ fn create_asset(world: &mut World, kind: NewAsset) {
     let Some(folder) = folder else {
         return;
     };
+    let boilerplate = world
+        .get_resource::<renzora_editor_framework::EditorSettings>()
+        .is_none_or(|s| s.new_file_boilerplate);
     let path = unique_path(&folder, kind.filename(), kind.is_folder());
     let ok = if kind.is_folder() {
         std::fs::create_dir_all(&path).is_ok()
     } else {
-        std::fs::write(&path, kind.content()).is_ok()
+        std::fs::write(&path, kind.content(boilerplate)).is_ok()
     };
     if ok {
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {

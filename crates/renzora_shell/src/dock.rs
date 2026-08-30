@@ -557,11 +557,14 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
 /// inspector entries are already registered).
 ///
 /// It is the **ordinary hierarchy panel**, narrowed to UI canvases by
-/// `sync_hierarchy_filter_to_workspace` in `lib.rs`. A mesh in the list while
-/// you are laying out a menu is something you cannot do anything UI-shaped to,
-/// but that is an argument for filtering the tree, not for building a second
-/// one — the panel already has search, type filters, rename, drag-reparent and
-/// a context menu, and a UI-only copy would have had none of them.
+/// `sync_hierarchy_filter_to_workspace` in `lib.rs` — which keys off the UI
+/// editor being the visible surface, not off this workspace's name, so docking
+/// the UI editor anywhere gets the same behaviour and docking a viewport beside
+/// it here gets the scene back. A mesh in the list while you are laying out a
+/// menu is something you cannot do anything UI-shaped to, but that is an
+/// argument for filtering the tree, not for building a second one — the panel
+/// already has search, type filters, rename, drag-reparent and a context menu,
+/// and a UI-only copy would have had none of them.
 ///
 /// The canvas is the **`ui_canvas` panel**, not the viewport in a special mode.
 /// It used to be the latter: mounted inside the viewport panel's slot 0 and

@@ -7230,6 +7230,7 @@ dependencies = [
  "renzora_blueprint",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_scripting",
  "renzora_webfs",
  "zip",
 ]

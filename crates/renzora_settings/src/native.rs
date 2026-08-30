@@ -2039,6 +2039,25 @@ fn tab_interface(
         |w, &v| w.resource_mut::<EditorSettings>().ui_preview_by_default = v,
     );
     settings_row(commands, fonts, body, 0, &tr("common.preview"), t);
+    // New scripts and UI templates: a commented starter that shows the hooks and
+    // a laid-out panel, or the bare minimum that works. Off is *minimal*, not
+    // empty — a `.rs` without `renzora::script!` exports no entry point and a
+    // `.html` without a `<template>` root does not parse — so the skeleton is
+    // written either way and this decides what is inside it.
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| w.resource::<EditorSettings>().new_file_boilerplate,
+        |w, &v| w.resource_mut::<EditorSettings>().new_file_boilerplate = v,
+    );
+    settings_row(
+        commands,
+        fonts,
+        body,
+        1,
+        &renzora::lang::t_or("settings.new_file_boilerplate", "Boilerplate in new files"),
+        t,
+    );
     // Where the open documents are listed: the full-width strip under the top
     // bar, or a dropdown in the top bar beside Play that gives that row back to
     // the dock. Persisted per-user, so the shell builds the right chrome on the

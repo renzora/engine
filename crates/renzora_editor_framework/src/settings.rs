@@ -245,6 +245,15 @@ pub struct EditorSettings {
     pub renderer_backend: renzora::RendererBackend,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
+    /// New scripts and UI templates are created with commented boilerplate
+    /// showing the shape of the thing — hooks for a script, a laid-out panel
+    /// for a template — rather than the bare minimum that parses.
+    ///
+    /// "Off" is *minimal*, not empty: a `.rs` script without
+    /// `renzora::script!` exports no entry point and a `.html` without a
+    /// `<template>` root does not parse, so the skeleton those need is always
+    /// written. What the switch controls is whether there is anything inside it.
+    pub new_file_boilerplate: bool,
     /// Pin expanded ancestor rows to the top of the hierarchy as you scroll.
     pub hierarchy_parent_stacking: bool,
     /// A hierarchy row click expands/collapses its subtree as well as selecting
@@ -317,6 +326,7 @@ impl Default for EditorSettings {
             // settings panel shows what the renderer actually booted with.
             renderer_backend: renzora::load_renderer_backend(),
             ui_preview_by_default: true,
+            new_file_boilerplate: true,
             hierarchy_parent_stacking: true,
             hierarchy_toggle_on_click: renzora::load_hierarchy_toggle_on_click(),
             inspector_expand_default: InspectorExpandDefault::default(),

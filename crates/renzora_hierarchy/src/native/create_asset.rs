@@ -114,31 +114,24 @@ impl CreateKind {
 
     /// Starter contents — byte-identical to what the assets panel writes, so a
     /// file created here opens in exactly the same state as one created there.
-    fn content(self) -> String {
+    ///
+    /// `boilerplate` (Settings → *Boilerplate in new files*) chooses between a
+    /// commented starter that shows the shape of the thing and the bare minimum
+    /// that works. **Minimum is not empty**: a `.rs` without `renzora::script!`
+    /// exports no entry point and a `.html` without a `<template>` root does not
+    /// parse, so the skeleton those need is always written. The switch decides
+    /// whether there is anything inside it.
+    fn content(self, boilerplate: bool) -> String {
         match self {
-            CreateKind::Script => "-- New Lua script\n".to_string(),
-            // A complete, compiling script — not a stub. `renzora::script!` is
-            // what exports the entry point, and a `.rs` without it loads and
-            // then reports "exports no entry point", which is a poor first
-            // impression of a feature whose whole promise is that it compiles.
-            CreateKind::RustScript => concat!(
-                "use bevy::prelude::*;\n",
-                "use renzora::ScriptCtx;\n",
-                "\n",
-                "fn update(ctx: &mut ScriptCtx) {\n",
-                "    let _dt = ctx.delta();\n",
-                "}\n",
-                "\n",
-                "renzora::script!(update);\n",
-            )
-            .to_string(),
+            CreateKind::Script => renzora_scripting::starter_lua(boilerplate),
+            CreateKind::RustScript => renzora_scripting::starter_rust(boilerplate),
             // Not `{}`: a blueprint with no event node is a dead canvas, so new
             // files start with On Ready + On Update already placed. Owned by
             // the blueprint crate so both create paths write the same graph.
             CreateKind::Blueprint => renzora_blueprint::starter_blueprint_json(),
             CreateKind::Material => "{}".to_string(),
             CreateKind::Particle => "(name: \"New Particle\")".to_string(),
-            CreateKind::Template => "<template>\n    <node></node>\n</template>\n".to_string(),
+            CreateKind::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             CreateKind::Scene => "// renzora interim bsn v1\n".to_string(),
         }
@@ -183,13 +176,43 @@ impl CreateKind {
     }
 
     /// Whether the entity can carry this asset. Scripts and blueprints both run
-    /// through `ScriptComponent`; the rest are project files with no direct
-    /// entity attachment, so their overlay omits the attach row entirely.
+    /// through `ScriptComponent`; a template goes into a canvas's
+    /// `HtmlTemplatePath` (see [`Self::attach_to`]). The rest are project files
+    /// with no direct entity attachment, so their overlay omits the row.
     fn attachable(self) -> bool {
         matches!(
             self,
-            CreateKind::Script | CreateKind::RustScript | CreateKind::Blueprint
+            CreateKind::Script
+                | CreateKind::RustScript
+                | CreateKind::Blueprint
+                | CreateKind::Template
         )
+    }
+
+    /// Put the freshly-created file on `entity`.
+    ///
+    /// Templates were `attachable() == false`, so "Attach ▸ UI Template" on a
+    /// canvas wrote the file, said it was done, and left the canvas empty — the
+    /// one row in that menu whose whole name is *attach* was the one that did
+    /// not. Two attachment mechanisms, one per kind, rather than one that only
+    /// knew about scripts.
+    fn attach_to(self, em: &mut bevy::ecs::world::EntityWorldMut, rel: PathBuf) {
+        if matches!(self, CreateKind::Template) {
+            // Insert, not modify: the binding observer fires on insert and is
+            // what builds the markup under the canvas.
+            em.insert(renzora_ember::markup::HtmlTemplatePath(
+                rel.to_string_lossy().replace('\\', "/"),
+            ));
+            return;
+        }
+        match em.get_mut::<ScriptComponent>() {
+            Some(mut sc) => {
+                sc.add_file_script(rel);
+            }
+            None => {
+                em.insert(ScriptComponent::from_file(rel));
+            }
+        }
     }
 }
 
@@ -411,6 +434,7 @@ fn create_overlay_buttons(
     checks: Query<&Bound<bool>>,
     pick: Res<FolderPick>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     mut toasts: Option<ResMut<renzora_ui::Toasts>>,
     mut commands: Commands,
 ) {
@@ -442,7 +466,11 @@ fn create_overlay_buttons(
     commands.entity(pending.overlay).despawn();
 
     let path = unique_path(&dir, &stem, kind.ext());
-    if let Err(e) = std::fs::write(&path, kind.content()) {
+    // Defaults to boilerplate when settings are missing, matching
+    // `EditorSettings::default` — a first-run editor should show you the shape
+    // of the thing rather than an empty file.
+    let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
+    if let Err(e) = std::fs::write(&path, kind.content(boilerplate)) {
         if let Some(toasts) = toasts.as_mut() {
             toasts.error(format!("{}: {e}", path.display()));
         }
@@ -472,14 +500,7 @@ fn create_overlay_buttons(
                 // still written, there's just nothing left to attach it to.
                 return;
             };
-            match em.get_mut::<ScriptComponent>() {
-                Some(mut sc) => {
-                    sc.add_file_script(rel);
-                }
-                None => {
-                    em.insert(ScriptComponent::from_file(rel));
-                }
-            }
+            kind.attach_to(&mut em, rel);
         });
     }
 
