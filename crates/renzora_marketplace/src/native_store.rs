@@ -522,7 +522,10 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 ///
 /// The account header and Upload Asset used to sit above it — see
 /// [`build_account_bar`] for why they are in the toolbar instead.
-fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// `_fonts` is unused now the caption is gone — the rows build their own text
+/// from the keyed list. Kept in the signature because every `build_*` here takes
+/// it, and a sidebar that grows one label back should not change shape.
+fn build_sidebar(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
     let col = commands
         // 180, not 160: at the 13px the rows now use, 160 was about fifteen
         // pixels short of "Materials & Shaders" and the longest three names all
@@ -530,16 +533,19 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { width: Val::Px(180.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
         .id();
 
-    let cat_caption = commands.spawn((Text::new("Categories"), ui_font(&fonts.ui, 9.5), TextColor(rgb(text_muted())), Node { margin: UiRect::top(Val::Px(2.0)), ..default() })).id();
+    // No "Categories" caption. A column of category names under a search box, in
+    // a store, is not ambiguous, and the caption was a row of chrome bought with
+    // vertical space the list itself wanted.
+    //
     // Natural-height column (sums its rows) so the scroll viewport overflows and
     // scrolls; with flex_grow the rows would squash to fit instead.
     let cats = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() })
         .id();
     keyed_list(commands, cats, categories_snapshot);
     let cats_scroll = renzora_ember::widgets::scroll_view(commands, cats);
 
-    commands.entity(col).add_children(&[cat_caption, cats_scroll]);
+    commands.entity(col).add_children(&[cats_scroll]);
     col
 }
 
@@ -629,11 +635,13 @@ fn categories_snapshot(world: &Rx) -> KeyedSnapshot {
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| category_row(c, f, i, rows[i].0.clone(), &rows[i].1)),
+        build: Box::new(move |c, f, i| category_row(c, f, rows[i].0.clone(), &rows[i].1)),
     }
 }
 
-fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: Option<String>, name: &str) -> Entity {
+/// No `idx` any more: it existed only to pick an odd/even stripe colour, and
+/// the stripes are gone.
+fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String>, name: &str) -> Entity {
     // "All" gets the accent; real categories get their category color + icon.
     let (icon, icon_col) = if slug.is_none() {
         ("squares-four", accent())
@@ -648,27 +656,51 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: O
             // box that could not grow, and their overflow drew straight over the
             // row beneath. A row that can grow is worth more than rows that are
             // all exactly the same height.
-            Node { width: Val::Percent(100.0), min_height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            Node { width: Val::Percent(100.0), min_height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::left(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
             Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             StoreCatRow(slug.clone()),
             Name::new("store-cat"),
         ))
         .id();
     {
         let slug = slug.clone();
+        // No zebra stripes. They are worth having in a dense table of values you
+        // read across; on eleven navigation rows they are eleven bands of
+        // alternating grey competing with the one row that actually means
+        // something — the selected one. Selection and hover are the only two
+        // states this list has, so they are the only two it shows.
         bind_bg(commands, row, move |w| {
             let d = w.resource::<HubStoreData>();
             if d.category == slug {
                 rgb(accent()).with_alpha(0.18)
             } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
                 rgb(hover_bg())
-            } else if idx.is_multiple_of(2) {
-                rgb(row_even())
             } else {
-                rgb(row_odd())
+                Color::NONE
             }
         });
+    }
+    // A solid accent bar down the selected row's left edge. The 18%-alpha fill
+    // alone is easy to lose against the panel at a glance; the bar is what you
+    // find when you look for "where am I".
+    {
+        let slug = slug.clone();
+        bind_with(
+            commands,
+            row,
+            move |w| w.resource::<HubStoreData>().category == slug,
+            |w, e, sel: &bool| {
+                let c = if *sel { rgb(accent()) } else { Color::NONE };
+                if let Some(mut b) = w.get_mut::<BorderColor>(e) {
+                    // Only the left edge is drawn — the row's `border` is
+                    // `UiRect::left`, so the other three have no width to fill.
+                    b.left = c;
+                }
+            },
+        );
     }
     // Larger than the 11.0 the rest of the panel uses. The category list is the
     // sidebar's whole job now that the account controls have moved to the
@@ -689,6 +721,10 @@ fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
         return note_snapshot("No assets found. Try a different search or category.");
     }
     let assets = d.assets.clone();
+    // A search is the one grid whose results are genuinely mixed, so it is the
+    // one grid where a card has to say which category it is from. A category
+    // grid already says so in the highlighted sidebar row.
+    let show_category = !d.search.trim().is_empty();
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = assets
         .iter()
@@ -696,17 +732,31 @@ fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             a.slug.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&a.name, &a.category, a.price_credits).hash(&mut h);
+            // `show_category` is in the hash: it changes what a card draws, so a
+            // card left over from a search must rebuild when the search clears.
+            (&a.name, &a.category, a.price_credits, a.downloads, show_category).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| asset_card(c, f, &assets[i])),
+        build: Box::new(move |c, f, i| asset_card(c, f, &assets[i], show_category)),
     }
 }
 
-fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> Entity {
+/// One store tile.
+///
+/// `show_category` is for search results only, where the grid genuinely holds
+/// several categories at once. Everywhere else the answer is already on screen —
+/// a shelf has a header naming it, a browse grid has a highlighted sidebar row —
+/// and repeating it on forty cards spends the card's one line of context on
+/// something the user has just clicked.
+fn asset_card(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    a: &AssetSummary,
+    show_category: bool,
+) -> Entity {
     let base = rgb(section_bg());
     let hover = lighten(base, 0.12);
     let card = commands
@@ -737,6 +787,12 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
             // there). Passive children are `FocusPolicy::Pass` so any click but
             // the preview button falls through to here.
             crate::item_overlay::StoreCardBtn(a.clone()),
+            // Geometric, unlike `Interaction`: the Get pill is `FocusPolicy::
+            // Block`, so once it appears it takes the hover and the card behind
+            // it stops being `Hovered` — a pill bound to the card's `Interaction`
+            // would hide itself the instant the cursor reached it, and flicker.
+            // `cursor_over` is a rect test and does not care what is on top.
+            bevy::ui::RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("store-card"),
         ))
@@ -845,13 +901,11 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
         commands.entity(thumb).add_child(preview);
     }
 
-    // ── Info: name, then one muted subtitle line, then the GET pill ──
+    // ── Info: name, then one line of context ──
     //
     // The old card stacked name, "by creator", a coloured category chip and a
     // download count — four rows of chrome under a picture. A store tile gets one
-    // line of context, so the category and the download count share it and the
-    // creator is left to the detail overlay. The category keeps its hue: it was
-    // the only colour in the grid, and the icons do not all provide their own.
+    // line of context, so the creator is left to the detail overlay.
     let info = commands
         .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, FocusPolicy::Pass))
         .id();
@@ -875,24 +929,60 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
         .entity(name)
         .insert(renzora_ember::widgets::HoverTooltip::new(a.name.clone()));
 
-    let chue = category_hue(&a.category);
+    // The meta line: what it costs on the left, how many people took it on the
+    // right. Both are facts you compare cards by, which is what earns a
+    // permanent line; the category is not, because every card in a shelf sits
+    // under a header naming it and every card in a browse grid sits beside a
+    // highlighted sidebar row saying the same. It comes back only for a search,
+    // where the results genuinely are mixed — see `show_category`.
     let sub = commands
         .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, FocusPolicy::Pass))
         .id();
-    let cat_t = commands
-        .spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
-        .id();
-    let dot = commands
-        .spawn((Text::new("·"), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), FocusPolicy::Pass))
-        .id();
-    let dl_t = commands
-        .spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
-        .id();
-    commands.entity(sub).add_children(&[cat_t, dot, dl_t]);
+    let mut sub_kids: Vec<Entity> = Vec::new();
+    if show_category {
+        let chue = category_hue(&a.category);
+        sub_kids.push(
+            commands
+                .spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
+                .id(),
+        );
+    } else {
+        // Price as text, not as a filled button. `Free` in green and a credit
+        // count in gold carry the same information the pill did at a fraction of
+        // its weight — a grid of forty saturated pills was the loudest thing on
+        // the page, and the artwork is what the page is for.
+        let free = a.price_credits == 0;
+        let (label, colour) = if free {
+            ("Free".to_string(), GREEN)
+        } else {
+            (format!("{} cr", a.price_credits), GOLD)
+        };
+        sub_kids.push(
+            commands
+                .spawn((Text::new(label), ui_font(&fonts.ui, 10.0), TextColor(rgb(colour)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
+                .id(),
+        );
+    }
+    sub_kids.push(commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id());
+    let dl_ic = icon_text(commands, &fonts.phosphor, "download-simple", placeholder(), 9.5);
+    commands.entity(dl_ic).insert(FocusPolicy::Pass);
+    sub_kids.push(dl_ic);
+    sub_kids.push(
+        commands
+            .spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
+            .id(),
+    );
+    commands.entity(sub).add_children(&sub_kids);
     commands.entity(info).add_children(&[name, sub]);
 
-    let get = get_pill(commands, fonts, a);
-    commands.entity(card).add_children(&[thumb, info, get]);
+    // The action sits *on* the artwork and appears under the cursor, rather than
+    // occupying a permanent row on every card. One-click install survives for
+    // anyone who wants it; everyone else gets a page of assets instead of a page
+    // of buttons, and the card itself still opens the detail overlay where the
+    // full-size Get button lives.
+    let get = get_pill(commands, fonts, a, card);
+    commands.entity(thumb).add_child(get);
+    commands.entity(card).add_children(&[thumb, info]);
     card
 }
 
@@ -910,7 +1000,7 @@ fn build_home(commands: &mut Commands) -> Entity {
     // Natural-height column so the scroll viewport overflows and scrolls (a
     // `flex_grow` column would squash the shelves to fit instead).
     let col = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(16.0), padding: UiRect::right(Val::Px(4.0)), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(28.0), padding: UiRect::right(Val::Px(4.0)), ..default() })
         .id();
 
     // Category shelves, keyed on `home_version` via their content hashes.
@@ -972,7 +1062,10 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
             Name::new("store-section-header"),
         ))
         .id();
-    let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 13.5), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    // 15, and the shelf column below carries the space. The headers were only a
+    // point above the card names, so a page of shelves read as one long list
+    // with occasional bold rows in it rather than as sections.
+    let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     let spacer = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
     let see_t = commands.spawn((Text::new("See all"), ui_font(&fonts.ui, 10.5), TextColor(rgb(accent())), FocusPolicy::Pass)).id();
     let see_ic = icon_text(commands, &fonts.phosphor, "arrow-right", accent(), 11.0);
@@ -988,24 +1081,39 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
         .id();
     // `SECTION_CAP`, not a second hardcoded 6 — they had drifted apart already
     // in waiting.
-    let cards: Vec<Entity> = assets.iter().take(SECTION_CAP).map(|a| asset_card(commands, fonts, a)).collect();
+    // `false`: the header directly above these cards is the category.
+    let cards: Vec<Entity> = assets
+        .iter()
+        .take(SECTION_CAP)
+        .map(|a| asset_card(commands, fonts, a, false))
+        .collect();
     commands.entity(row).add_children(&cards);
 
     commands.entity(col).add_children(&[header, row]);
     col
 }
 
-/// The store tile's action: **GET** when free, the credit price when not.
+/// The store tile's action: **Download** when free, the credit price when not.
 ///
 /// `Block`ing and carrying [`StoreInstallBtn`], so pressing it goes straight to
 /// install or purchase rather than opening the detail overlay the rest of the
-/// card opens. That is the App Store's defining affordance and the reason the
-/// price stopped being a passive badge — a price you can press is a button, and
-/// one you cannot is decoration sitting on the artwork.
+/// card opens.
 ///
-/// Full width, so a row of tiles has its actions on one line regardless of how
-/// long each name is.
-fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> Entity {
+/// # Why it hides
+///
+/// It used to be a permanent full-width pill under every card. Forty saturated
+/// green rectangles were the loudest thing in the window, and a marketplace's
+/// job is to show you the work — the grid read as a page of buttons with some
+/// pictures above them. It sits on the artwork now and appears only while the
+/// cursor is over its card, which costs nothing: the card opens the detail
+/// overlay, where the same action is a full-size button that is always there.
+/// The price it used to carry moved to the meta line as text, so nothing is
+/// hidden — only the *button* is.
+///
+/// Bound to `card`'s [`RelativeCursorPosition`] rather than its `Interaction`,
+/// because this pill blocks focus and would otherwise steal the hover it depends
+/// on the moment the cursor arrived.
+fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, card: Entity) -> Entity {
     let free = a.price_credits == 0;
     let base = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 235]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 240]) };
     let hot = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 255]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 255]) };
@@ -1014,8 +1122,12 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> En
     let pill = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                left: Val::Px(8.0),
+                right: Val::Px(8.0),
+                bottom: Val::Px(8.0),
                 height: Val::Px(26.0),
+                display: Display::None,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -1042,6 +1154,10 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> En
         } else {
             base
         }
+    });
+    bind_display(commands, pill, move |w| {
+        w.get::<bevy::ui::RelativeCursorPosition>(card)
+            .is_some_and(|r| r.cursor_over)
     });
 
     if free {
