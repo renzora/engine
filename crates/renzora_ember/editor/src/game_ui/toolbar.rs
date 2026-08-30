@@ -120,7 +120,10 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         rgb(if on { accent() } else { text_muted() })
     });
 
-    let snap = toolbar_pill(commands, fonts, "magnet-straight", 1.0, 256.0, 1.0);
+    // `arrows-out-cardinal`, the glyph the viewport's translate-snap pill uses.
+    // Both mean "snap movement to a step", so they should not be a magnet in one
+    // panel and a move cursor in the other.
+    let snap = toolbar_pill(commands, fonts, "arrows-out-cardinal", 1.0, 256.0, 1.0);
     commands.entity(snap.toggle).insert(CanvasTbBtn::ToggleSnap);
     commands
         .entity(snap.value)

@@ -594,6 +594,9 @@ pub fn register_game_ui_editor(app: &mut App) {
 
     // Register hierarchy icons for UI entities
     app.register_component_icon(renzora::ComponentIconEntry {
+        // Outranks `HtmlTemplatePath` (66): a canvas holding a template is
+        // still a canvas, and holding one is the entity's whole purpose — so
+        // letting the path win meant every canvas rendered as a template.
         type_id: std::any::TypeId::of::<components::UiCanvas>(),
         name: "UI Canvas",
         icon: "frame-corners",

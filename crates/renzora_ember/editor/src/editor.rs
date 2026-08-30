@@ -62,21 +62,32 @@ fn register_editor_entries(app: &mut App) {
     // "World UI Panel" preset; you add a UI Canvas and flip it to world space.
 
     // Distinctive icon + type label in the hierarchy tree.
+    //
+    // `browser`, not `code`: `code` is the script glyph, and a canvas is not a
+    // script. It also has to sit *below* `UiCanvas` (see its entry in
+    // `game_ui::register`). The registry returns the first match by descending
+    // priority, and a canvas's whole purpose is to hold a template path — so at
+    // 96 this outranked the canvas's own icon and every canvas in the tree
+    // rendered as a template, indistinguishable from the template under it.
+    //
+    // What is left for this entry is the template *instance* — a `UiWidget`
+    // holding a path with no canvas of its own — where it still beats
+    // `UiWidget`'s generic container glyph.
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<HtmlTemplatePath>(),
         name: "HTML Template",
-        icon: "code",
+        icon: "browser",
         color: [120, 170, 220],
-        priority: 96,
+        priority: 66,
         dynamic_icon_fn: None,
     });
 
     // Per-markup-node icons. Every node built from `.html` is tagged with
     // `UiWidget::default()` (priority 60, Container icon) by `tag_built_nodes`,
     // so without these the hierarchy is a wall of identical Container icons.
-    // Priorities sit *above* UiWidget(60) and *below* HtmlTemplatePath(96) so
-    // the template root keeps its CODE icon while children get type-specific
-    // ones.
+    // Priorities sit above UiWidget(60) and above HtmlTemplatePath(66), so a
+    // node that is *both* a template holder and a `<text>` reads as the text it
+    // draws — which is the more useful of the two facts.
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Text>(),
         name: "UI Text",
