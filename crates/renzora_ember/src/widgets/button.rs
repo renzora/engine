@@ -15,6 +15,17 @@ pub(crate) struct EmberButton;
 
 /// A clickable button with hover/press color states.
 pub fn button(commands: &mut Commands, font: &bevy::text::FontSource, label: &str) -> Entity {
+    button_parts(commands, font, label).0
+}
+
+/// [`button`], handing back its label entity too, for a caller whose button
+/// changes what it says — a confirm that reads "Create" or "Attach" depending on
+/// what is selected. Mirrors `icon_label_button_parts`.
+pub fn button_parts(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    label: &str,
+) -> (Entity, Entity) {
     let b = commands
         .spawn((
             Node {
@@ -40,7 +51,7 @@ pub fn button(commands: &mut Commands, font: &bevy::text::FontSource, label: &st
         ))
         .id();
     commands.entity(b).add_child(t);
-    b
+    (b, t)
 }
 
 /// A clickable button with a leading Phosphor icon and a label, themed with the

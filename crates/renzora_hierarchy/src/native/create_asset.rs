@@ -20,11 +20,12 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::reactive::Bound;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    button, checkbox, folder_new_button, folder_picker, menu_item_styled, menu_submenu_styled, overlay_sized,
-    text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
+    checkbox, folder_new_button, folder_picker_files, menu_item_styled, menu_submenu_styled,
+    overlay_sized, text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
 };
 use renzora_scripting::ScriptComponent;
 
@@ -216,6 +217,17 @@ impl CreateKind {
     }
 }
 
+/// Is the picker currently pointing at a file rather than a folder?
+///
+/// Drives the overlay's three reactive bits — the name row hides, the label
+/// above the picker changes, and Confirm says "Attach" — so that one overlay
+/// reads as two modes without having a mode.
+fn file_selected(w: &renzora_ember::reactive::Rx) -> bool {
+    w.get_resource::<FolderPick>()
+        .and_then(|p| p.0.clone())
+        .is_some_and(|p| p.is_file())
+}
+
 /// The overlay awaiting confirmation. Lives only while it's on screen — Escape,
 /// a backdrop click or the X despawn the overlay, and [`create_overlay_reap`]
 /// drops this behind it.
@@ -324,17 +336,37 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
     );
 
     let name_input = text_input(&mut commands, &fonts.ui, kind.stem(), kind.stem());
-    let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH);
-    let mut kids = vec![
-        field_row(
-            &mut commands,
-            &fonts,
-            &renzora::lang::t("hierarchy.create.name"),
-            name_input,
-        ),
-        section_label(&mut commands, &fonts, &renzora::lang::t("hierarchy.create.destination")),
-        picker,
-    ];
+    // The picker lists matching **files** as well as folders, which is what
+    // makes one overlay do both jobs. "Attach" means attach, and it used to only
+    // ever create — you could not point it at the script you already had.
+    //
+    // No mode switch: what you click decides. Pick a folder and the name field
+    // applies, so Confirm creates a file there; pick a file and there is nothing
+    // to name, so Confirm attaches that one. The name row and the button's label
+    // follow the selection.
+    let ext = kind.ext();
+    let picker =
+        folder_picker_files(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH, &[ext]);
+    let name_row = field_row(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t("hierarchy.create.name"),
+        name_input,
+    );
+    bind_display(&mut commands, name_row, |w| !file_selected(w));
+    let dest_label = section_label(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t("hierarchy.create.destination"),
+    );
+    bind_text(&mut commands, dest_label, |w| {
+        if file_selected(w) {
+            renzora::lang::t_or("hierarchy.create.pick_existing", "Attach an existing file")
+        } else {
+            renzora::lang::t("hierarchy.create.destination")
+        }
+    });
+    let mut kids = vec![name_row, dest_label, picker];
 
     let attach = kind.attachable().then(|| {
         let cb = checkbox(&mut commands, true);
@@ -361,10 +393,28 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
     // controls, not two. It floats at the row's left edge (absolute, out of
     // flow), so Cancel and Create lay out untouched.
     let new_folder = folder_new_button(&mut commands, &fonts, picker);
-    let cancel = button(&mut commands, &fonts.ui, &renzora::lang::t("common.cancel"));
+    let cancel = renzora_ember::widgets::button(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t("common.cancel"),
+    );
     commands.entity(cancel).insert(CreateCancelBtn);
-    let confirm = button(&mut commands, &fonts.ui, &renzora::lang::t("hierarchy.create.confirm"));
+    let (confirm, confirm_label) = renzora_ember::widgets::button_parts(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t("hierarchy.create.confirm"),
+    );
     commands.entity(confirm).insert(CreateConfirmBtn);
+    // The button says which of the two things it is about to do. A "Create"
+    // button that attaches an existing file is the kind of small lie that costs
+    // someone a duplicated asset.
+    bind_text(&mut commands, confirm_label, |w| {
+        if file_selected(w) {
+            renzora::lang::t_or("hierarchy.create.confirm_attach", "Attach")
+        } else {
+            renzora::lang::t("hierarchy.create.confirm")
+        }
+    });
     commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
     kids.push(buttons);
 
@@ -450,6 +500,40 @@ fn create_overlay_buttons(
     }
 
     let kind = pending.kind;
+
+    // A file is selected → attach that one and write nothing. This is the whole
+    // "Attach means attach" half of the overlay; the create path below is
+    // unchanged.
+    if let Some(existing) = pick.path().filter(|p| p.is_file()).map(Path::to_path_buf) {
+        commands.entity(pending.overlay).despawn();
+        let target = pending.target;
+        let name = existing
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if let Some(root) = project.as_ref().map(|p| p.path.clone()) {
+            let rel = PathBuf::from(
+                existing
+                    .strip_prefix(&root)
+                    .unwrap_or(&existing)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+            commands.queue(move |w: &mut World| {
+                if let Ok(mut em) = w.get_entity_mut(target) {
+                    kind.attach_to(&mut em, rel);
+                }
+            });
+        }
+        if let Some(toasts) = toasts.as_mut() {
+            toasts.success(
+                renzora::lang::t("hierarchy.create.toast_attached").replace("{name}", &name),
+            );
+        }
+        commands.remove_resource::<PendingCreate>();
+        return;
+    }
+
     let typed = inputs
         .get(pending.name_input)
         .map(|i| i.value.trim().to_string())

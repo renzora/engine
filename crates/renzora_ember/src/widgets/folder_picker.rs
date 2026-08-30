@@ -73,6 +73,9 @@ pub(crate) struct FolderPickerTree {
     /// Raised (never lowered) when a folder is created below the current bound,
     /// so the thing that was just created is never invisible.
     max_depth: usize,
+    /// File extensions to list alongside the folders (lowercase, no dot). Empty
+    /// = folders only, the original behaviour.
+    exts: Vec<String>,
 }
 
 /// The New Folder button, carrying the picker box it creates into.
@@ -114,6 +117,25 @@ pub fn folder_picker(
     selected: &Path,
     max_depth: usize,
 ) -> Entity {
+    folder_picker_files(commands, fonts, root, selected, max_depth, &[])
+}
+
+/// [`folder_picker`] that also lists files with these extensions (lowercase, no
+/// dot), so the same widget can answer "where should this go?" and "which one of
+/// these?".
+///
+/// [`FolderPick`] then holds whichever the user clicked — check `is_file()` if
+/// the distinction matters to you. A separate constructor rather than a
+/// parameter on the original: three call sites want folders only, and none of
+/// them should have to say so.
+pub fn folder_picker_files(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    root: &Path,
+    selected: &Path,
+    max_depth: usize,
+    exts: &[&str],
+) -> Entity {
     commands.insert_resource(FolderPick(Some(selected.to_path_buf())));
 
     // Reserved up front: every row points back at the box (that's how an inline
@@ -132,7 +154,8 @@ pub fn folder_picker(
         ))
         .id();
 
-    let rows = spawn_rows(commands, fonts, boxed, root, max_depth, None);
+    let ext_owned: Vec<String> = exts.iter().map(|e| e.to_lowercase()).collect();
+    let rows = spawn_rows(commands, fonts, boxed, root, max_depth, None, &ext_owned);
     commands.entity(tree).add_children(&rows);
 
     let scroll = scroll_view(commands, tree);
@@ -154,6 +177,7 @@ pub fn folder_picker(
             rows: tree,
             root: root.to_path_buf(),
             max_depth,
+            exts: ext_owned,
         },
         Name::new("folder-picker"),
     ));
@@ -203,13 +227,15 @@ fn spawn_rows(
     root: &Path,
     max_depth: usize,
     editing: Option<&Path>,
+    exts: &[String],
 ) -> Vec<Entity> {
     let root_name = root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.display().to_string());
     let mut rows = vec![folder_row(commands, fonts, picker, root.to_path_buf(), 0, &root_name, false)];
-    for (path, depth, name) in folder_dirs(root, max_depth) {
+    let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+    for (path, depth, name) in folder_entries(root, max_depth, &ext_refs) {
         let edit = editing == Some(path.as_path());
         rows.push(folder_row(commands, fonts, picker, path, depth + 1, &name, edit));
     }
@@ -234,7 +260,15 @@ fn refresh_rows(
             commands.entity(kid).try_despawn();
         }
     }
-    let rows = spawn_rows(commands, fonts, picker, &spec.root, spec.max_depth, editing);
+    let rows = spawn_rows(
+        commands,
+        fonts,
+        picker,
+        &spec.root,
+        spec.max_depth,
+        editing,
+        &spec.exts,
+    );
     commands.entity(spec.rows).replace_children(&rows);
 }
 
@@ -258,16 +292,53 @@ fn unique_folder(parent: &Path, base: &str) -> PathBuf {
 /// so a caller that wants its own row rendering can still share the walk (and
 /// its skip rules) rather than re-deriving them.
 pub fn folder_dirs(root: &Path, max_depth: usize) -> Vec<(PathBuf, usize, String)> {
-    fn rec(dir: &Path, depth: usize, max: usize, out: &mut Vec<(PathBuf, usize, String)>) {
+    folder_entries(root, max_depth, &[])
+}
+
+/// [`folder_dirs`], plus the files whose extension is in `exts` (lowercase, no
+/// dot). An empty `exts` gives directories only, which is what `folder_dirs` is.
+///
+/// Files are listed **after** the directories at each level, so a folder's
+/// contents read as "these are the sub-folders, then these are the things in
+/// here" rather than interleaving alphabetically and hiding the structure.
+///
+/// A directory whose subtree contains no matching file is still listed: a picker
+/// that hid empty folders would be a picker you cannot navigate *through*.
+pub fn folder_entries(
+    root: &Path,
+    max_depth: usize,
+    exts: &[&str],
+) -> Vec<(PathBuf, usize, String)> {
+    fn rec(
+        dir: &Path,
+        depth: usize,
+        max: usize,
+        exts: &[&str],
+        out: &mut Vec<(PathBuf, usize, String)>,
+    ) {
         if depth > max || out.len() > MAX_ROWS {
             return;
         }
         let Ok(read) = std::fs::read_dir(dir) else {
             return;
         };
-        let mut entries: Vec<PathBuf> = read.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
-        entries.sort();
-        for path in entries {
+        let all: Vec<PathBuf> = read.flatten().map(|e| e.path()).collect();
+        let mut dirs: Vec<PathBuf> = all.iter().filter(|p| p.is_dir()).cloned().collect();
+        dirs.sort();
+        let mut files: Vec<PathBuf> = if exts.is_empty() {
+            Vec::new()
+        } else {
+            all.into_iter()
+                .filter(|p| {
+                    p.is_file()
+                        && p.extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(|e| exts.contains(&e.to_lowercase().as_str()))
+                })
+                .collect()
+        };
+        files.sort();
+        for path in dirs {
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -279,11 +350,21 @@ pub fn folder_dirs(root: &Path, max_depth: usize) -> Vec<(PathBuf, usize, String
                 continue;
             }
             out.push((path.clone(), depth, name));
-            rec(&path, depth + 1, max, out);
+            rec(&path, depth + 1, max, exts, out);
+        }
+        for path in files {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if name.starts_with('.') {
+                continue;
+            }
+            out.push((path, depth, name));
         }
     }
     let mut out = Vec::new();
-    rec(root, 0, max_depth, &mut out);
+    rec(root, 0, max_depth, exts, &mut out);
     out
 }
 
@@ -329,7 +410,17 @@ fn folder_row(
             Color::NONE
         }
     });
-    let icon = icon_text(commands, &fonts.phosphor, "folder", text_muted(), 12.0);
+    // Files only appear when the caller asked for them (`folder_picker_files`),
+    // and they are what you pick in that mode — so they get their own glyph
+    // rather than a folder icon on something that is not one.
+    let is_file = path.is_file();
+    let icon = icon_text(
+        commands,
+        &fonts.phosphor,
+        if is_file { "file" } else { "folder" },
+        if is_file { value_text() } else { text_muted() },
+        12.0,
+    );
     let label = if editing {
         inline_name_field(commands, fonts, picker, &path, name)
     } else {
