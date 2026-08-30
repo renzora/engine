@@ -550,12 +550,20 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// UI: Hierarchy | UI Canvas + Code | Inspector.
+/// UI: UI Hierarchy | UI Editor + Code | Inspector.
 ///
-/// The same three columns as Scene, and that is the point — building a game's
-/// interface is entity work like any other: you select a widget in the tree,
-/// drag it on the canvas, and set its properties in the inspector (all ~24 of
-/// the `ui_*` inspector entries are already registered).
+/// The same three columns as Scene, and the same loop — select in the tree,
+/// drag on the canvas, set properties in the inspector (all ~24 of the `ui_*`
+/// inspector entries are already registered).
+///
+/// The tree is `ui_hierarchy`, **not** the scene hierarchy. A UI is a `.html`
+/// document whose nodes are rebuilt from the file on every load and which the
+/// scene deliberately does not serialise; the scene tree lists entities you can
+/// transform, parent and save. They answer different questions, and a mesh in
+/// the list while you are laying out a menu is something you cannot do anything
+/// UI-shaped to. Filtering the scene panel by workspace was the alternative and
+/// is worse: the same panel showing different contents depending on where you
+/// stand is state the user cannot see.
 ///
 /// The canvas is the **`ui_canvas` panel**, not the viewport in a special mode.
 /// It used to be the latter: mounted inside the viewport panel's slot 0 and
@@ -570,7 +578,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
 /// Scene does it, since the document here is a template rather than a scene.
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
+        DockTree::leaf("ui_hierarchy"),
         DockTree::horizontal(
             DockTree::tabs(&["ui_canvas", "code_editor"]),
             DockTree::leaf("inspector"),

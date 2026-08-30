@@ -55,6 +55,7 @@ mod overlay;
 mod register;
 pub mod spawn_ext;
 mod toolbar;
+mod tree;
 mod ui_inspector;
 mod viewport;
 
@@ -123,6 +124,7 @@ impl Plugin for GameUiEditorPlugin {
         interaction::register(app);
         nav::register(app);
         inspectors::register(app);
+        tree::register(app);
 
         // The panel. `false` — it owns its own scrolling (the canvas area pans
         // and zooms rather than scrolls).
