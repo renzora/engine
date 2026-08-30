@@ -447,8 +447,11 @@ macro_rules! __plugin_init_body {
     }};
 }
 
-/// Emit the two lang items a `#![no_std]` plugin must define itself: a global
-/// allocator and a panic handler. Call it once, beside [`add!`].
+/// Emit the runtime items a `#![no_std]` plugin must define itself: a global
+/// allocator, a panic handler, and no-op stubs for the two unwind symbols the
+/// precompiled sysroot leaves undefined (`rust_eh_personality`,
+/// `_Unwind_Resume` — see their definitions below). Call it once, beside
+/// [`add!`].
 ///
 /// ```ignore
 /// #![no_std]
@@ -506,6 +509,38 @@ macro_rules! no_std_runtime {
         #[cfg(not(test))]
         #[panic_handler]
         fn __renzora_panic(_: &::core::panic::PanicInfo) -> ! {
+            $crate::no_std_heap::abort()
+        }
+
+        /// Satisfies the `rust_eh_personality` reference that the *precompiled*
+        /// `core` in the sysroot leaves in the cdylib even under
+        /// `panic = "abort"` (the sysroot's `core` is built with unwinding, and
+        /// its objects carry EH frames naming this symbol). The reference is
+        /// harmless at link time but fatal at load time: `dlopen` resolves
+        /// eagerly, the host executable does not export the symbol (and must
+        /// not be asked to — a plugin imports nothing from the host), so every
+        /// `no_std` plugin failed to load with
+        /// `undefined symbol: rust_eh_personality`.
+        ///
+        /// The body is unreachable: with `panic = "abort"` no landing pad is
+        /// ever taken, so the personality routine is never actually called —
+        /// this exists purely so the dynamic linker finds a definition. (The
+        /// real lang item stays nightly-only; defining the *symbol* is stable.)
+        #[cfg(not(test))]
+        #[no_mangle]
+        extern "C" fn rust_eh_personality() {
+            $crate::no_std_heap::abort()
+        }
+
+        /// Same story as `rust_eh_personality`, for the other symbol the
+        /// sysroot's unwind-compiled objects can reference: plugins that pull
+        /// in enough of `alloc`/`core` (e.g. `flock`, `widgets`) carried an
+        /// undefined `_Unwind_Resume`, which libgcc would normally provide.
+        /// Linking libgcc instead would hand the plugin a host dependency for a
+        /// function that `panic = "abort"` guarantees is never reached.
+        #[cfg(not(test))]
+        #[no_mangle]
+        extern "C" fn _Unwind_Resume() {
             $crate::no_std_heap::abort()
         }
     };
