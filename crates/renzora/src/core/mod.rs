@@ -1231,6 +1231,18 @@ pub struct OpenCodeEditorFile {
     pub path: std::path::PathBuf,
 }
 
+/// One-shot: request the UI editor to open a `.html` template on a canvas.
+///
+/// The counterpart to [`OpenCodeEditorFile`] for the visual editor. Consumed by
+/// `renzora_viewport`, which spawns (or re-selects) a `UiCanvas` carrying the
+/// template and selects it — the same thing dropping the file on the viewport
+/// does, which is what made this reachable at all before the UI workspace
+/// existed.
+#[derive(Resource)]
+pub struct OpenUiTemplateFile {
+    pub path: std::path::PathBuf,
+}
+
 /// One-shot: request the command palette to toggle open/closed.
 ///
 /// Inserted by the title-bar search button; consumed by `renzora_command_palette`.

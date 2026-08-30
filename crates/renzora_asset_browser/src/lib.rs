@@ -72,7 +72,13 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
-        "lua" | "js" | "ts" | "py" | "html" => DocTabKind::Script,
+        "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        // Not `Script`. A `.html` is a UI template, and double-clicking one
+        // dropped you in the *text* editor in the Scripting workspace — the
+        // visual editor for it was reachable only by dragging the file onto the
+        // viewport. It opens the UI workspace now; the code editor is still
+        // tabbed beside the canvas there for anyone who wants the markup.
+        "html" => DocTabKind::Ui,
         "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })

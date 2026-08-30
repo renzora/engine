@@ -1060,10 +1060,21 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
     // Sync EditorContext + route to the appropriate (asset-mode or scene-mode) layout.
     sync_context_and_layout_for_active_tab(world);
 
-    if matches!(kind, DocTabKind::Script | DocTabKind::Shader) {
-        world.insert_resource(renzora::core::OpenCodeEditorFile {
-            path: path.to_path_buf(),
-        });
+    match kind {
+        DocTabKind::Script | DocTabKind::Shader => {
+            world.insert_resource(renzora::core::OpenCodeEditorFile {
+                path: path.to_path_buf(),
+            });
+        }
+        // A UI template opens on the canvas, not in the text editor. The code
+        // editor is tabbed beside the viewport in the UI workspace, so the
+        // markup is one click away for anyone who wants it.
+        DocTabKind::Ui => {
+            world.insert_resource(renzora::core::OpenUiTemplateFile {
+                path: path.to_path_buf(),
+            });
+        }
+        _ => {}
     }
 }
 
@@ -1100,7 +1111,9 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
-        "lua" | "js" | "ts" | "py" | "html" => DocTabKind::Script,
+        "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        // See the note on the copy of this table in `renzora_asset_browser`.
+        "html" => DocTabKind::Ui,
         "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })

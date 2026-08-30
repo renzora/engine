@@ -188,6 +188,7 @@ impl Plugin for ViewportPlugin {
                     shape_drop::native_shape_drop
                         .after(shape_drop::update_shape_drag_preview),
                     html_drop::native_html_drop,
+                    html_drop::open_ui_template_request,
                     // Native (bevy_ui) asset drops (material / scene / sprite).
                     // `arm` captures the hovering drop candidate each frame;
                     // `commit` fires it on release — see `native_drop` for why

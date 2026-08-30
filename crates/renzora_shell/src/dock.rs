@@ -544,9 +544,40 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
+        ("UI".into(), layout_ui()),
         ("Debug".into(), layout_debug()),
         ("Marketplace".into(), layout_marketplace()),
     ]
+}
+
+/// UI: Hierarchy | Canvas | Inspector.
+///
+/// The same three columns as Scene, and that is the point — building a game's
+/// interface is entity work like any other: you select a widget in the tree,
+/// drag it on the canvas, and set its properties in the inspector (all ~24 of
+/// the `ui_*` inspector entries are already registered).
+///
+/// What makes this a *workspace* rather than a view toggle is what it takes
+/// away. The UI editor mounts inside the viewport panel's slot 0 and is gated on
+/// `ViewportView::Ui`, so before this existed, opening a UI meant flipping the
+/// scene viewport into UI mode — the 3D view you were working in vanished and
+/// came back only when you selected something 3D again. Editing a menu and
+/// editing a level fought over one surface. Now they are two places, and
+/// `sync_viewport_view_to_workspace` in `lib.rs` is what puts the viewport into
+/// UI mode on arrival and back on the way out.
+///
+/// `scenes` is not tabbed beside the hierarchy the way Scene does it: the
+/// document you are editing here is a `.html` template, not a scene file.
+fn layout_ui() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("hierarchy"),
+        DockTree::horizontal(
+            DockTree::tabs(&["viewport", "code_editor"]),
+            DockTree::leaf("inspector"),
+            0.76,
+        ),
+        0.15,
+    )
 }
 
 /// Blueprints: NodeProperties | BlueprintGraph over Console.

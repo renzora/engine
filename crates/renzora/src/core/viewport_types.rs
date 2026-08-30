@@ -650,9 +650,14 @@ impl ViewportMode {
 }
 
 /// What kind of content the viewport is currently displaying. Switches the
-/// camera/projection preset and (for `Ui`) hands off rendering to the
-/// `ui_canvas` panel so UI authoring lives in the same surface as the 3D
-/// scene.
+/// camera/projection preset and, for `Ui`, swaps the viewport panel's rendered
+/// image for the UI canvas editor mounted inside it (slot 0 only — see
+/// `renzora_viewport::native_viewport`).
+///
+/// `Ui` is normally reached by entering the **UI workspace**, which sets it on
+/// arrival and restores the previous view on the way out. The viewport header's
+/// segmented control still switches it directly, for editing a canvas without
+/// leaving the workspace you are in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ViewportView {
     #[default]

@@ -86,6 +86,8 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 
 The viewport header also has a **3D / 2D / UI** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below), and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha7/scripting/game-ui).
 
+For anything more than a quick look, use the **UI workspace** instead of this selector. It is the same canvas — Hierarchy, viewport and Inspector, with the viewport already in UI mode — but it is a *place*, so opening a menu to edit doesn't take away the 3D view you were working in. Double-clicking a `.html` in the Assets panel goes there and puts that template on the canvas; the code editor is tabbed beside it if you want the markup. Switching back to Scene (or any other workspace) hands the viewport back to whichever view it had — unless you changed it by hand while you were in there, in which case your choice stands.
+
 ## The 2D view
 
 Pick **2D** in the header selector (or select any 2D node — the viewport switches automatically) to edit a 2D scene. The auto-switch only leaves 2D when you select something clearly 3D (a mesh, 3D camera, or light) — selecting an ambiguous entity like a freshly dropped scene instance keeps the view where it is:
