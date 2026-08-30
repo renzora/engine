@@ -141,6 +141,9 @@ impl Plugin for CodeEditorPlugin {
                 systems::code_theme_watch,
                 systems::code_render,
                 systems::code_caret,
+                // After the wheel and after `code_measure`, so the thumb is
+                // placed from this frame's scroll index and row count.
+                systems::code_scrollbar_sync,
             ),
         );
     }
@@ -315,6 +318,19 @@ pub(crate) struct CodeViewport {
     editor: Entity,
 }
 
+/// Width of the code editor's scrollbar, in logical px.
+pub(crate) const SCROLLBAR_W: f32 = 8.0;
+
+/// The scrollbar track, which knows which editor it reports on.
+#[derive(Component)]
+pub(crate) struct CodeScrollTrack {
+    pub editor: Entity,
+}
+
+/// The moving part, sized and positioned by `code_scrollbar_sync`.
+#[derive(Component)]
+pub(crate) struct CodeScrollThumb;
+
 /// A clickable gutter fold chevron. Toggles the fold headed by `line` on the
 /// editor it points at.
 #[derive(Component)]
@@ -423,7 +439,50 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             Name::new("code-probe"),
         ))
         .id();
-    commands.entity(viewport).add_children(&[body, caret, probe]);
+    // Vertical scrollbar. Drawn rather than delegated to ember's `scroll_view`:
+    // this viewport does not scroll a laid-out subtree, it renders a window of
+    // rows chosen by `CodeEditor::scroll`, so there is no overflowing content
+    // for a generic scroll container to measure. The wheel already moved that
+    // index; what was missing was any indication of where in the file you were.
+    let track = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                width: Val::Px(SCROLLBAR_W),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            // Passive: the wheel and the click-to-place-caret behaviour below it
+            // both belong to the viewport, and a track that swallowed presses
+            // would put a dead 8px strip down the right of every file.
+            bevy::ui::FocusPolicy::Pass,
+            CodeScrollTrack { editor: root },
+            Name::new("code-scroll-track"),
+        ))
+        .id();
+    let thumb = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(1.0),
+                right: Val::Px(1.0),
+                top: Val::Px(0.0),
+                height: Val::Px(0.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(text_muted()).with_alpha(0.45)),
+            bevy::ui::FocusPolicy::Pass,
+            CodeScrollThumb,
+            Name::new("code-scroll-thumb"),
+        ))
+        .id();
+    commands.entity(track).add_child(thumb);
+    commands.entity(viewport).add_children(&[body, caret, probe, track]);
     commands.entity(root).add_child(viewport);
     let mut ed = CodeEditor {
         text: lines,

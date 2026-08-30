@@ -780,6 +780,21 @@ fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity>
             &renzora::lang::t("assets.import_folder"),
             |w| request_import(w, renzora::core::ImportPick::Folder),
         ),
+        // The third way to get an asset into a project, beside the two local
+        // ones. It belongs in this menu because "I need a tree" is the same
+        // question whether the answer is on disk or in the store, and the store
+        // was otherwise only reachable from the top-bar workspace switcher.
+        //
+        // Opens the panel rather than importing anything: what arrives from the
+        // marketplace is chosen there and installed by its own overlay, which
+        // already asks where to put it.
+        menu_item(
+            commands,
+            fonts,
+            "storefront",
+            &renzora::lang::t("assets.search_marketplace"),
+            |w| renzora_ember::dock::open_or_focus_panel(w, "hub_store"),
+        ),
     ]
 }
 

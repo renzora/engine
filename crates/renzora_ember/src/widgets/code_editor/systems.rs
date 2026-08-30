@@ -19,8 +19,8 @@ use super::edit::{self, bracket_match, has_selection, sel_range};
 use super::highlight::tokenize;
 use super::layout::{self, char_len};
 use super::{
-    mono, CodeEditor, CodeFoldToggle, CodeProbe, CodeViewport, Metrics, RenderedRow, FOLD_COL_W,
-    PAD, PROBE_LEN, TAB_WIDTH,
+    mono, CodeEditor, CodeFoldToggle, CodeProbe, CodeScrollTrack, CodeViewport, Metrics,
+    RenderedRow, FOLD_COL_W, PAD, PROBE_LEN, TAB_WIDTH,
 };
 
 /// Recompute each editor's derived metrics; flag a re-render when they change.
@@ -61,6 +61,56 @@ pub(crate) fn code_probe(
         if (0.50..=0.72).contains(&ratio) && (ratio - ed.advance_ratio).abs() > 0.001 {
             ed.advance_ratio = ratio;
             ed.dirty = true;
+        }
+    }
+}
+
+/// Size and place the scrollbar thumb from the editor's scroll position.
+///
+/// The whole bar hides when the file fits, which is most files most of the time
+/// — a full-height thumb that can never move is decoration, and it would sit
+/// over the last column of every short file.
+///
+/// Positioned in the track's *free* space (`track − thumb`) rather than by
+/// scrolling a proportion of the track: at the bottom of the file the thumb has
+/// to end flush with the track, and scaling by `scroll/max` alone leaves it
+/// short by its own height.
+pub(crate) fn code_scrollbar_sync(
+    tracks: Query<(Entity, &CodeScrollTrack, &ComputedNode, &Children)>,
+    editors: Query<&CodeEditor>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (track_e, track, cn, kids) in &tracks {
+        let Ok(ed) = editors.get(track.editor) else {
+            continue;
+        };
+        let total = ed.rows().len();
+        let visible = ed.visible.max(1);
+        let show = total > visible;
+
+        if let Ok(mut n) = nodes.get_mut(track_e) {
+            let want = if show { Display::Flex } else { Display::None };
+            if n.display != want {
+                n.display = want;
+            }
+        }
+        if !show {
+            continue;
+        }
+
+        let track_h = cn.size().y * cn.inverse_scale_factor();
+        // Floored at 24px so a very long file still leaves something grabbable
+        // to look at rather than a one-pixel tick.
+        let thumb_h = (track_h * visible as f32 / total as f32).max(24.0).min(track_h);
+        let max_scroll = total.saturating_sub(visible).max(1) as f32;
+        let t = (ed.scroll as f32 / max_scroll).clamp(0.0, 1.0);
+        let top = (track_h - thumb_h) * t;
+
+        for kid in kids.iter() {
+            if let Ok(mut n) = nodes.get_mut(kid) {
+                n.height = Val::Px(thumb_h);
+                n.top = Val::Px(top);
+            }
         }
     }
 }

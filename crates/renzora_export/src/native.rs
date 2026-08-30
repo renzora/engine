@@ -51,6 +51,7 @@ pub(crate) fn register(app: &mut App) {
             source_download_click,
             install_click,
             export_click,
+            save_prompt_click,
             cancel_or_back_click,
             copy_log_click,
             close_click,
@@ -1867,20 +1868,113 @@ fn icon_clear_click(q: Query<&Interaction, (With<IconClearBtn>, Changed<Interact
     }
 }
 
+/// Marks the save-before-export prompt, so its buttons can dismiss it.
+#[derive(Component)]
+struct SavePromptRoot;
+
+/// "Save and export" — save the scene, then run the build.
+#[derive(Component)]
+struct SavePromptSaveBtn;
+
+/// "Export without saving" — run the build against what is on disk.
+#[derive(Component)]
+struct SavePromptSkipBtn;
+
+/// Ask before every export, and deliberately *not* only when the scene is dirty.
+///
+/// The editor tracks modified-ness per scene tab, so it can tell. The prompt
+/// still always appears, because the question an export raises is not "have you
+/// typed since the last save" — it is "is what is on disk the thing you want
+/// built", and a dialog that only sometimes appears trains you to click through
+/// it without reading on the occasions it does.
+fn spawn_save_prompt(world: &mut World) {
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    let mut queue = CommandQueue::default();
+    {
+        let mut c = Commands::new(&mut queue, world);
+        let (overlay, content) =
+            renzora_ember::widgets::overlay_sized(&mut c, &fonts, "Export", 420.0, 190.0, true);
+        // Above the export dialog (9300) that opened it.
+        c.entity(overlay).insert((GlobalZIndex(9800), SavePromptRoot));
+
+        let msg = txt(
+            &mut c,
+            &fonts,
+            "Save the project before exporting? The build uses what is on disk.",
+            12.0,
+            text_primary(),
+        );
+        c.entity(msg).insert(Node { margin: UiRect::bottom(Val::Px(14.0)), ..default() });
+
+        let row = c
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::FlexEnd,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::top(Val::Px(8.0)),
+                ..default()
+            })
+            .id();
+        let skip = renzora_ember::widgets::button(&mut c, &fonts.ui, "Export without saving");
+        c.entity(skip).insert(SavePromptSkipBtn);
+        let save = renzora_ember::widgets::button(&mut c, &fonts.ui, "Save and export");
+        c.entity(save).insert(SavePromptSaveBtn);
+        c.entity(row).add_children(&[skip, save]);
+        c.entity(content).add_children(&[msg, row]);
+    }
+    queue.apply(world);
+}
+
+/// Run the build that the prompt was standing in front of.
+fn start_export(w: &mut World) {
+    if let Some(mut state) = w.get_resource_mut::<ExportOverlayState>() {
+        state.sync_active_preset();
+        state.save_presets();
+    }
+    let name = w
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|p| p.config.name.clone())
+        .unwrap_or_default();
+    run_export(w, &name);
+}
+
+/// Dismiss the prompt, then either save first or go straight to the build.
+fn save_prompt_click(
+    save: Query<&Interaction, (With<SavePromptSaveBtn>, Changed<Interaction>)>,
+    skip: Query<&Interaction, (With<SavePromptSkipBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    let pressed = |q: &Query<&Interaction, _>| q.iter().any(|i| *i == Interaction::Pressed);
+    let want_save = save.iter().any(|i| *i == Interaction::Pressed);
+    let want_skip = pressed(&skip);
+    if !want_save && !want_skip {
+        return;
+    }
+    commands.queue(move |w: &mut World| {
+        let mut roots = w.query_filtered::<Entity, With<SavePromptRoot>>();
+        let ids: Vec<Entity> = roots.iter(w).collect();
+        for e in ids {
+            if w.get_entity(e).is_ok() {
+                w.entity_mut(e).despawn();
+            }
+        }
+        if want_save {
+            // The same request the Save command uses, so this goes through the
+            // one save path rather than a second one that could drift from it.
+            w.insert_resource(renzora::core::SaveSceneRequested);
+        }
+        start_export(w);
+    });
+}
+
 fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
             if can_export(&Rx::new(&*w)) {
-                // Persist what is about to be built. An export is the moment a
-                // configuration is proven to be the one you wanted, and a build
-                // that takes minutes is exactly when the editor is most likely
-                // to be closed or to crash before the settings were saved.
-                if let Some(mut state) = w.get_resource_mut::<ExportOverlayState>() {
-                    state.sync_active_preset();
-                    state.save_presets();
-                }
-                let name = w.get_resource::<renzora::core::CurrentProject>().map(|p| p.config.name.clone()).unwrap_or_default();
-                run_export(w, &name);
+                spawn_save_prompt(w);
             }
         });
     }
