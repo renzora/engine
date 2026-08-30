@@ -24,6 +24,10 @@ pub(crate) struct WidgetGeom {
     pub rotation: f32,
     pub locked: bool,
     pub parent: Option<Entity>,
+    /// Steps from the active canvas: `0` is the template root, `1` its
+    /// children, and so on. The hit-test picks the deepest containing node —
+    /// see [`topmost_at`].
+    pub depth: u32,
 }
 
 pub(crate) fn snapshot_widgets(
@@ -59,6 +63,7 @@ pub(crate) fn snapshot_widgets(
             rotation: ut.map(|t| t.rotation.as_radians()).unwrap_or(0.0),
             locked: widget.locked,
             parent: child_of.map(|c| c.parent()),
+            depth: depth_below(&parents, entity, active),
         });
     }
 }
@@ -77,12 +82,43 @@ pub(crate) fn is_descendant_of(parents: &Query<&ChildOf>, mut e: Entity, ancesto
     false
 }
 
-/// Topmost non-locked widget whose AABB contains the design-space point.
-/// Later entries paint on top, so search in reverse.
+/// How many `ChildOf` steps `e` sits below `ancestor`. Returns 0 for the
+/// ancestor itself, and for anything that never reaches it (the caller has
+/// already filtered those out with [`is_descendant_of`]).
+fn depth_below(parents: &Query<&ChildOf>, mut e: Entity, ancestor: Entity) -> u32 {
+    for step in 0..256 {
+        if e == ancestor {
+            return step;
+        }
+        match parents.get(e) {
+            Ok(c) => e = c.parent(),
+            Err(_) => return step,
+        }
+    }
+    256
+}
+
+/// The deepest non-locked widget whose AABB contains the design-space point.
+///
+/// Depth decides it, not position in the array. This used to search the list in
+/// reverse on the assumption that later entries paint on top, but the list comes
+/// out of a Bevy query, so its order is by *archetype* — arbitrary with respect
+/// to the tree. The template root is a 100% × 100% node that contains every
+/// point, so whenever it happened to sort after a `<button>`, clicking that
+/// button selected the whole canvas instead. `<text>` and `<icon>` landed in
+/// different archetypes and kept working, which is what made it look like
+/// buttons specifically were unclickable.
+///
+/// Deepest-wins is also what the markup loader already promises: clicking a
+/// `<text>` inside a `<panel>` should land on the text. Ties (siblings that
+/// overlap, both at the same depth) fall back to the later entry.
 pub(crate) fn topmost_at(widgets: &[WidgetGeom], px: f32, py: f32) -> Option<Entity> {
     widgets
         .iter()
-        .rev()
-        .find(|g| !g.locked && px >= g.x && px <= g.x + g.width && py >= g.y && py <= g.y + g.height)
-        .map(|g| g.entity)
+        .enumerate()
+        .filter(|(_, g)| {
+            !g.locked && px >= g.x && px <= g.x + g.width && py >= g.y && py <= g.y + g.height
+        })
+        .max_by_key(|(i, g)| (g.depth, *i))
+        .map(|(_, g)| g.entity)
 }
