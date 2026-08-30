@@ -7606,7 +7606,6 @@ enum TopMenuKind {
     Edit,
     View,
     Help,
-    Account,
 }
 
 #[derive(Component)]
@@ -7746,6 +7745,17 @@ fn spawn_top_menu(
     update_tag: Option<&str>,
 ) -> Entity {
     let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
+    // The hamburger's dropdown is a panel, not a context menu: 184px is right
+    // for a list of verbs and far too narrow for an identity block with a name
+    // and a line of description under it. Only this one menu is widened —
+    // `screen_menu`'s default is what every other menu in the editor wants.
+    if matches!(kind, TopMenuKind::Main) {
+        commands.entity(root).entry::<Node>().and_modify(|mut n| {
+            n.min_width = Val::Px(264.0);
+            n.padding = UiRect::all(Val::Px(6.0));
+            n.border_radius = BorderRadius::all(Val::Px(10.0));
+        });
+    }
     let kids = build_menu_items(commands, fonts, kind, account, update_tag);
     commands.entity(root).add_children(&kids);
     root
@@ -7870,6 +7880,164 @@ fn anchor_below(
 /// Build one menu's rows. `account` is the signed-in username (`None` = signed
 /// out) — the menu needs the name itself now, not just the fact of being signed
 /// in, because the hamburger's first row *is* the username.
+/// Open a menu row's padding out to panel proportions.
+///
+/// The hamburger's dropdown is the app's front door and wants air; every other
+/// menu in the editor is a context menu, where tight rows are right and a list
+/// of twenty verbs has to fit on screen. So the metrics stay where they are in
+/// `renzora_ember` and this widens the handful of rows that want it, rather than
+/// fattening every context menu in the editor to change one.
+///
+/// Never call it on a [`menu_sep`] — a separator is a 1px-tall node, and adding
+/// vertical padding turns it into a bar.
+fn spacious(commands: &mut Commands, row: Entity) -> Entity {
+    commands.entity(row).entry::<Node>().and_modify(|mut n| {
+        n.padding = UiRect::axes(Val::Px(10.0), Val::Px(7.0));
+        n.column_gap = Val::Px(10.0);
+        n.border_radius = BorderRadius::all(Val::Px(6.0));
+    });
+    row
+}
+
+/// The identity block at the top of the hamburger menu: a round avatar chip, the
+/// account name, and what the account *is* underneath it.
+///
+/// Not a row — it has no action and no hover. Signing in is a row further down,
+/// where it belongs with the other verbs; a header that is sometimes a button is
+/// a header you have to test to understand.
+fn menu_account_header(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    account: Option<&str>,
+) -> Entity {
+    let block = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(9.0)),
+                ..default()
+            },
+            Name::new("menu-account-header"),
+        ))
+        .id();
+
+    // A circle with a glyph in it, not an image: the shell has no avatar cache
+    // — that lives with the marketplace plugin, which the shell must not depend
+    // on. A filled circle reads as an avatar slot either way.
+    let avatar = commands
+        .spawn((
+            Node {
+                width: Val::Px(34.0),
+                height: Val::Px(34.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(17.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
+        ))
+        .id();
+    let glyph_name = if account.is_some() { "user" } else { "user-circle-dashed" };
+    let av_ic = icon_text(commands, &fonts.phosphor, glyph_name, text_muted(), 17.0);
+    commands.entity(avatar).add_child(av_ic);
+
+    let text_col = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            row_gap: Val::Px(1.0),
+            ..default()
+        })
+        .id();
+    let (title, subtitle) = match account {
+        Some(name) => (name.to_string(), "renzora.com account".to_string()),
+        None => (
+            renzora::lang::t_or("auth.signed_out", "Not signed in"),
+            renzora::lang::t_or("auth.signed_out_hint", "Sign in to buy and publish").to_string(),
+        ),
+    };
+    let t = commands
+        .spawn((
+            Text::new(title),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    let s = commands
+        .spawn((
+            Text::new(subtitle),
+            ui_font(&fonts.ui, 10.5),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(text_col).add_children(&[t, s]);
+    commands.entity(block).add_children(&[avatar, text_col]);
+    block
+}
+
+/// The search row: shaped like a field, behaves like a button — pressing it
+/// opens the command palette.
+///
+/// A field that filtered this menu's own nine rows would be furniture. The
+/// palette already searches every command, panel and setting in the editor, so
+/// this is a visible door to it for anyone who has not learned `Ctrl+P`. Shaped
+/// like an input because that is what it leads to, which is the same bargain
+/// every "search" entry point in a menu makes.
+fn menu_search_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(32.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                padding: UiRect::horizontal(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::MenuAction(Box::new(|w: &mut World| {
+                w.insert_resource(renzora::core::ToggleCommandPaletteRequested);
+            })),
+            Name::new("menu-search"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
+        match w.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::hover_bg())
+            }
+            _ => Color::NONE,
+        }
+    });
+    let ic = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 13.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t_or("menu.search", "Search commands…")),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(renzora_ember::theme::placeholder())),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(row).add_children(&[ic, label]);
+    row
+}
+
 fn build_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -7885,22 +8053,31 @@ fn build_menu_items(
         // The hamburger's own dropdown: the account, then four submenu rows,
         // each filled by recursing into the item list that used to be its own
         // top-bar title.
+        // ── The hamburger's own dropdown ─────────────────────────────────────
+        //
+        // Built as a small **panel**, not a context menu: an identity block, a
+        // way in to search, then the four submenus, then the two things reached
+        // often enough to be top-level, then the account action. A context menu
+        // is a list of verbs for the thing you right-clicked; this is the app's
+        // front door, and it was reading as the former — a wall of nine tight
+        // rows with the account buried among them.
+        //
+        // The rows are ember's ordinary menu rows with their padding opened up
+        // (`spacious`), rather than a second set of widgets. Everything about
+        // them — hover, click-to-close, submenu hover-open — is behaviour this
+        // menu wants unchanged; only the rhythm is different.
         TopMenuKind::Main => {
             let mut rows: Vec<Entity> = Vec::new();
-            // The signed-in username, which lost its top-bar slot to the
-            // document tabs. Signed out there's nothing to nest, so it's a plain
-            // "Sign In" row rather than a submenu holding one item. No reactive
-            // binding needed either way: the menu is rebuilt on every open, so
-            // the label is read fresh each time.
-            if let Some(name) = account {
-                let (row, content) = menu_submenu(commands, fonts, "user", name);
-                let kids = build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag);
-                commands.entity(content).add_children(&kids);
-                rows.push(row);
-            } else {
-                rows.extend(build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag));
-            }
+
+            rows.push(menu_account_header(commands, fonts, account));
+
+            // Opens the command palette. A search box in a menu that filtered
+            // the menu's own nine rows would be furniture; the palette already
+            // searches every command, panel and setting in the editor, and this
+            // is a door to it for anyone who does not know `Ctrl+P`.
+            rows.push(menu_search_row(commands, fonts));
             rows.push(menu_sep(commands));
+
             rows.extend(
                 [
                     ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
@@ -7913,7 +8090,7 @@ fn build_menu_items(
                     let (row, content) = menu_submenu(commands, fonts, icon, &label);
                     let kids = build_menu_items(commands, fonts, sub, account, update_tag);
                     commands.entity(content).add_children(&kids);
-                    row
+                    spacious(commands, row)
                 }),
             );
             // Export and Settings are top-level rather than buried at the bottom
@@ -7922,7 +8099,7 @@ fn build_menu_items(
             // — exporting is the end of every project, not a File housekeeping
             // chore.
             rows.push(menu_sep(commands));
-            rows.push(menu_item(
+            let export = menu_item(
                 commands,
                 fonts,
                 "package",
@@ -7930,8 +8107,9 @@ fn build_menu_items(
                 |w| {
                     w.insert_resource(renzora::core::ExportRequested);
                 },
-            ));
-            rows.push(menu_item(
+            );
+            rows.push(spacious(commands, export));
+            let settings = menu_item(
                 commands,
                 fonts,
                 "gear",
@@ -7943,32 +8121,34 @@ fn build_menu_items(
                         s.show_settings = !s.show_settings;
                     }
                 },
-            ));
-            rows
-        }
-        TopMenuKind::Account => {
+            );
+            rows.push(spacious(commands, settings));
+
+            // The account actions last, on their own — the reference's Log Out
+            // position, and the right one: they are the only rows here that end
+            // a session rather than start a task.
+            rows.push(menu_sep(commands));
             if account.is_some() {
-                vec![
-                    // No Notifications row: notifications existed to announce
-                    // feed, message and friend activity, all of which is gone.
-                    menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
-                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-                            dock.tree.focus_or_add_panel("hub_library");
-                        }
-                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
-                            d.0 = true;
-                        }
-                    }),
-                    menu_sep(commands),
-                    menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
-                        w.insert_resource(renzora::core::AuthSignOutRequest);
-                    }),
-                ]
+                let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
+                    if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                        dock.tree.focus_or_add_panel("hub_library");
+                    }
+                    if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                        d.0 = true;
+                    }
+                });
+                rows.push(spacious(commands, library));
+                let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
+                    w.insert_resource(renzora::core::AuthSignOutRequest);
+                });
+                rows.push(spacious(commands, out));
             } else {
-                vec![menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
+                let sign_in = menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
                     w.insert_resource(renzora::core::AuthToggleWindowRequest);
-                })]
+                });
+                rows.push(spacious(commands, sign_in));
             }
+            rows
         }
         TopMenuKind::File => vec![
             menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| {

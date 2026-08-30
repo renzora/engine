@@ -1696,6 +1696,9 @@ version = "1.0"
 
 # ─── software update ───
 "menu.label" = "Menu"
+"menu.search" = "Search commands…"
+"auth.signed_out" = "Not signed in"
+"auth.signed_out_hint" = "Sign in to buy and publish"
 "menu.help.check_updates" = "Check for Updates…"
 "menu.help.update_to" = "Update to"
 "menu.help.update_new" = "New update"
