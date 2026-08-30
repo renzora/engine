@@ -150,12 +150,39 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // behind the UI, toggled by UiCanvasPreviewEnabled (default on).
     let backdrop = commands
         .spawn((
-            ImageNode::default(),
+            // `Stretch`: the render target's aspect follows the viewport
+            // panel's, which is not the canvas's reference aspect, and the
+            // default mode letterboxed it inside the frame — a scene backdrop
+            // with black bars down both sides reads as part of the UI.
+            ImageNode { image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             Name::new("ui-canvas-backdrop"),
         ))
         .id();
-    bind_display(commands, backdrop, |w| w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0));
+    // Two conditions, and the second is not a preference.
+    //
+    // An undocked viewport slot shrinks its render target to 64×64 — the always-
+    // on atmosphere/IBL pass has to keep running, and shrinking it is what makes
+    // that nearly free (see `UNDOCKED_TARGET_SIZE` in `renzora_viewport`). So in
+    // a workspace with no viewport panel, the "scene behind your UI" is a 64px
+    // square smeared across a 1280×720 frame: small, blurry, and the wrong
+    // aspect. It is not a preview of anything.
+    //
+    // The backdrop is therefore only shown when a viewport is also on screen —
+    // which is the arrangement where it earns its keep anyway, since you are
+    // then placing a HUD over a scene you can see rendered properly next to it.
+    bind_display(commands, backdrop, |w| {
+        let wanted = w
+            .get_resource::<UiCanvasPreviewEnabled>()
+            .is_none_or(|r| r.0);
+        wanted
+            && renzora_ember::dock::panel_visible_anywhere(
+                "viewport",
+                w.get_resource::<renzora_ember::dock::Dock>(),
+                w.get_resource::<renzora_ember::dock::FixedDock>(),
+                w.get_resource::<renzora_ember::dock::DockWindows>(),
+            )
+    });
     bind_with(
         commands,
         backdrop,

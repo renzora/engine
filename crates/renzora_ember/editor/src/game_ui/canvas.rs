@@ -22,7 +22,12 @@ use bevy::prelude::*;
 pub struct UiCanvasPreviewEnabled(pub bool);
 
 impl Default for UiCanvasPreviewEnabled {
+    // Off. The backdrop is only meaningful with a viewport panel on screen —
+    // without one the scene renders at 64×64 (see the note on the backdrop's
+    // `bind_display` in `viewport.rs`) — and the UI workspace ships without a
+    // viewport, so on-by-default meant the common case was a blurry smear
+    // behind every canvas.
     fn default() -> Self {
-        Self(true)
+        Self(false)
     }
 }

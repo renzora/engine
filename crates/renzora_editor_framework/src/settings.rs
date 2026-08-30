@@ -325,7 +325,10 @@ impl Default for EditorSettings {
             // Seed the UI's working copy from the persisted preference so the
             // settings panel shows what the renderer actually booted with.
             renderer_backend: renzora::load_renderer_backend(),
-            ui_preview_by_default: true,
+            // Off: the backdrop needs a viewport panel on screen to have
+            // anything to show — an undocked viewport slot renders at 64×64 —
+            // and the UI workspace ships without one.
+            ui_preview_by_default: false,
             new_file_boilerplate: true,
             hierarchy_parent_stacking: true,
             hierarchy_toggle_on_click: renzora::load_hierarchy_toggle_on_click(),
