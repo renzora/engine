@@ -836,9 +836,8 @@ fn debug_ui_tree(
 /// things create a canvas now: the Add Entity preset, the "New UI Canvas"
 /// starter, and the UI editor's own empty state.
 pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
-    world
+    let entity = world
         .spawn((
-            Name::new("UI Canvas"),
             components::UiCanvas::default(),
             Node {
                 width: Val::Percent(100.0),
@@ -847,7 +846,17 @@ pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
                 ..default()
             },
         ))
-        .id()
+        .id();
+    // The engine's one-id-per-entity rule, applied here rather than left to the
+    // caller. Spawning through Add Entity gets it for free —
+    // `renzora_context_menu` re-ids every preset it spawns — but the "New UI
+    // Canvas" starter and the UI editor's own empty state call this directly,
+    // and they were producing a second entity called "UI Canvas". Three rows you
+    // cannot tell apart, all racing for `ui/ui_canvas.html`, since the template
+    // "+" names the file after the canvas.
+    let id = renzora::unique_entity_name(world, "UI Canvas", entity);
+    world.entity_mut(entity).insert(Name::new(id));
+    entity
 }
 
 /// Register the UI Canvas entity preset and the "New UI Canvas" scene starter.

@@ -131,13 +131,12 @@ pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::
     } else {
         asset_path.to_string_lossy().replace('\\', "/")
     };
-    let name = asset_path
+    let base = asset_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "UI Canvas".to_string());
-    world
+    let entity = world
         .spawn((
-            Name::new(name),
             UiCanvas::default(),
             HtmlTemplatePath(load_path),
             Node {
@@ -147,7 +146,14 @@ pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::
                 ..default()
             },
         ))
-        .id()
+        .id();
+    // Named after the template it mounts, then run through the engine's
+    // one-id-per-entity rule — dropping the same `.html` twice is a reasonable
+    // thing to do, and two rows called `main_menu` are two rows you cannot tell
+    // apart.
+    let id = renzora::unique_entity_name(world, &base, entity);
+    world.entity_mut(entity).insert(Name::new(id));
+    entity
 }
 
 pub fn spawn_widget(
