@@ -41,6 +41,8 @@ use super::text_input::{text_input, EmberTextInput};
 
 /// How many rows the walk will produce before it gives up descending.
 const MAX_ROWS: usize = 300;
+/// Width of one indent level — also the width of its guide line's cell.
+const INDENT: f32 = 14.0;
 
 /// The folder the open picker currently targets. [`folder_picker`] seeds it;
 /// the caller reads it when its overlay is confirmed.
@@ -76,6 +78,26 @@ pub(crate) struct FolderPickerTree {
     /// File extensions to list alongside the folders (lowercase, no dot). Empty
     /// = folders only, the original behaviour.
     exts: Vec<String>,
+}
+
+/// Folders the user has collapsed, by path.
+///
+/// Collapsed rather than expanded, so the default is "everything visible" — the
+/// picker's whole job is showing you where things can go, and a tree that opens
+/// shut would make you work to see the answer. It also means a folder created
+/// while its parent is open is visible immediately, with no state to update.
+///
+/// A `Resource` rather than per-row state because `refresh_rows` despawns and
+/// rebuilds every row on any change; anything stored on a row would not survive
+/// the walk that a collapse triggers.
+#[derive(Resource, Default)]
+pub struct FolderPickCollapsed(pub std::collections::HashSet<PathBuf>);
+
+/// The caret on a folder row that has something under it.
+#[derive(Component, Clone)]
+pub(crate) struct FolderPickCaret {
+    path: PathBuf,
+    picker: Entity,
 }
 
 /// The New Folder button, carrying the picker box it creates into.
@@ -154,8 +176,22 @@ pub fn folder_picker_files(
         ))
         .id();
 
+    // Fully expanded, and the collapse set is reset per picker — the same way
+    // `FolderPick` is seeded above. Carrying folds between two different
+    // overlays would mean opening one and finding branches shut for a reason
+    // that happened somewhere else.
+    commands.insert_resource(FolderPickCollapsed::default());
     let ext_owned: Vec<String> = exts.iter().map(|e| e.to_lowercase()).collect();
-    let rows = spawn_rows(commands, fonts, boxed, root, max_depth, None, &ext_owned);
+    let rows = spawn_rows(
+        commands,
+        fonts,
+        boxed,
+        root,
+        max_depth,
+        None,
+        &ext_owned,
+        &Default::default(),
+    );
     commands.entity(tree).add_children(&rows);
 
     let scroll = scroll_view(commands, tree);
@@ -228,16 +264,47 @@ fn spawn_rows(
     max_depth: usize,
     editing: Option<&Path>,
     exts: &[String],
+    collapsed: &std::collections::HashSet<PathBuf>,
 ) -> Vec<Entity> {
     let root_name = root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.display().to_string());
-    let mut rows = vec![folder_row(commands, fonts, picker, root.to_path_buf(), 0, &root_name, false)];
+    let mut rows = vec![folder_row(commands, fonts, picker, root.to_path_buf(), 0, &root_name, false, false)];
     let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
-    for (path, depth, name) in folder_entries(root, max_depth, &ext_refs) {
+    let entries = folder_entries(root, max_depth, &ext_refs);
+    // Which rows are hidden by a collapsed ancestor, and which folders have
+    // anything under them at all.
+    //
+    // Both are answered from the flat walk rather than by re-reading the disk:
+    // the walk is depth-first, so a row is inside `parent` exactly when it comes
+    // after it and is deeper, and a folder has children exactly when the next
+    // entry is deeper than it is.
+    let collapsed_set: Vec<PathBuf> = collapsed.iter().cloned().collect();
+    let hidden = |path: &Path| {
+        collapsed_set
+            .iter()
+            .any(|c| path != c.as_path() && path.starts_with(c))
+    };
+    for (i, (path, depth, name)) in entries.iter().enumerate() {
+        if hidden(path) {
+            continue;
+        }
+        let has_children = path.is_dir()
+            && entries
+                .get(i + 1)
+                .is_some_and(|(next, next_depth, _)| *next_depth > *depth && next.starts_with(path));
         let edit = editing == Some(path.as_path());
-        rows.push(folder_row(commands, fonts, picker, path, depth + 1, &name, edit));
+        rows.push(folder_row(
+            commands,
+            fonts,
+            picker,
+            path.clone(),
+            depth + 1,
+            name,
+            edit,
+            has_children,
+        ));
     }
     rows
 }
@@ -254,6 +321,7 @@ fn refresh_rows(
     picker: Entity,
     spec: &FolderPickerTree,
     editing: Option<&Path>,
+    collapsed: &std::collections::HashSet<PathBuf>,
 ) {
     if let Ok(kids) = children.get(spec.rows) {
         for kid in kids.iter() {
@@ -268,6 +336,7 @@ fn refresh_rows(
         spec.max_depth,
         editing,
         &spec.exts,
+        collapsed,
     );
     commands.entity(spec.rows).replace_children(&rows);
 }
@@ -376,6 +445,7 @@ fn folder_row(
     depth: usize,
     name: &str,
     editing: bool,
+    has_children: bool,
 ) -> Entity {
     let row = commands
         .spawn((
@@ -385,8 +455,8 @@ fn folder_row(
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::left(Val::Px(8.0 + depth as f32 * 14.0)),
+                column_gap: Val::Px(4.0),
+                padding: UiRect::left(Val::Px(4.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
@@ -411,14 +481,20 @@ fn folder_row(
         }
     });
     // Files only appear when the caller asked for them (`folder_picker_files`),
-    // and they are what you pick in that mode — so they get their own glyph
-    // rather than a folder icon on something that is not one.
+    // and they are what you pick in that mode — so they get the same glyph and
+    // accent the asset browser gives them, from the one table in
+    // `crate::file_kind`. A `.lua` should not be a blue "code" icon in one
+    // place and a generic page in another.
     let is_file = path.is_file();
     let icon = icon_text(
         commands,
         &fonts.phosphor,
-        if is_file { "file" } else { "folder" },
-        if is_file { value_text() } else { text_muted() },
+        crate::file_kind::icon_for(&path, !is_file),
+        if is_file {
+            crate::file_kind::color_for(&path)
+        } else {
+            text_muted()
+        },
         12.0,
     );
     let label = if editing {
@@ -432,8 +508,98 @@ fn folder_row(
             ))
             .id()
     };
-    commands.entity(row).add_children(&[icon, label]);
+    // Indent as guide lines rather than as padding: one fixed-width cell per
+    // level, each carrying a hairline on its left edge. A deep tree of similar
+    // names is otherwise a wall of text where nothing says which folder a row is
+    // inside, and the eye has to count pixels.
+    let mut kids: Vec<Entity> = (0..depth)
+        .map(|_| {
+            commands
+                .spawn((
+                    Node {
+                        width: Val::Px(INDENT),
+                        height: Val::Percent(100.0),
+                        flex_shrink: 0.0,
+                        border: UiRect::left(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BorderColor::all(rgb(border()).with_alpha(0.55)),
+                ))
+                .id()
+        })
+        .collect();
+
+    // The caret sits in the icon's gutter whether or not there is one to draw,
+    // so names line up down a level regardless of which folders have contents.
+    let caret = commands
+        .spawn((
+            Node {
+                width: Val::Px(12.0),
+                height: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            Interaction::default(),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            FolderPickCaret { path: path.clone(), picker },
+        ))
+        .id();
+    if has_children {
+        let p = path.clone();
+        let glyph = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 9.0);
+        crate::reactive::tracked::bind_with(
+            commands,
+            glyph,
+            move |w| {
+                w.get_resource::<FolderPickCollapsed>()
+                    .is_some_and(|c| c.0.contains(&p))
+            },
+            |w, e, collapsed: &bool| {
+                let want = if *collapsed { "caret-right" } else { "caret-down" };
+                if let Some(g) = crate::font::icon_glyph(want) {
+                    if let Some(mut t) = w.get_mut::<Text>(e) {
+                        let s = g.to_string();
+                        if t.as_str() != s {
+                            **t = s;
+                        }
+                    }
+                }
+            },
+        );
+        commands.entity(caret).add_child(glyph);
+    }
+    kids.push(caret);
+
+    kids.push(icon);
+    kids.push(label);
+    commands.entity(row).add_children(&kids);
     row
+}
+
+/// Click a caret → fold that folder. The picker rebuilds its rows, which is how
+/// every other change to this tree is applied too (see `refresh_rows`).
+pub(crate) fn folder_pick_caret_click(
+    q: Query<(&Interaction, &FolderPickCaret), Changed<Interaction>>,
+    mut collapsed: ResMut<FolderPickCollapsed>,
+    fonts: Option<Res<EmberFonts>>,
+    children: Query<&Children>,
+    trees: Query<&FolderPickerTree>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    for (interaction, caret) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if !collapsed.0.remove(&caret.path) {
+            collapsed.0.insert(caret.path.clone());
+        }
+        if let Ok(spec) = trees.get(caret.picker) {
+            refresh_rows(&mut commands, &fonts, &children, caret.picker, spec, None, &collapsed.0);
+        }
+    }
 }
 
 /// The name field a freshly created row wears in place of its label: pre-filled
@@ -496,6 +662,7 @@ pub(crate) fn folder_new_click(
     mut trees: Query<&mut FolderPickerTree>,
     children: Query<&Children>,
     fonts: Option<Res<EmberFonts>>,
+    collapsed: Res<FolderPickCollapsed>,
     mut pick: ResMut<FolderPick>,
     mut commands: Commands,
 ) {
@@ -537,7 +704,7 @@ pub(crate) fn folder_new_click(
             .unwrap_or(1);
         tree.max_depth = tree.max_depth.max(below_root.saturating_sub(1));
 
-        refresh_rows(&mut commands, fonts, &children, btn.0, &tree, Some(&path));
+        refresh_rows(&mut commands, fonts, &children, btn.0, &tree, Some(&path), &collapsed.0);
         pick.0 = Some(path);
     }
 }
@@ -555,6 +722,7 @@ pub(crate) fn folder_rename_keys(
     trees: Query<&FolderPickerTree>,
     children: Query<&Children>,
     fonts: Option<Res<EmberFonts>>,
+    collapsed: Res<FolderPickCollapsed>,
     mut pick: ResMut<FolderPick>,
     mut commands: Commands,
 ) {
@@ -627,7 +795,7 @@ pub(crate) fn folder_rename_keys(
 
     // Rebuild with no field open — the rename reorders the tree, and a blur
     // commit has to close the row it just left behind either way.
-    refresh_rows(&mut commands, fonts, &children, field.picker, tree, None);
+    refresh_rows(&mut commands, fonts, &children, field.picker, tree, None, &collapsed.0);
     consume(&mut keys, enter, escape);
 }
 

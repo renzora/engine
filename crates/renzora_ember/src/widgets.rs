@@ -269,6 +269,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<scroll_area::ScrollbarBusy>();
         app.init_resource::<scroll_area::ScrollConfig>();
         app.init_resource::<folder_picker::FolderPick>();
+        app.init_resource::<folder_picker::FolderPickCollapsed>();
         app.init_resource::<overflow_row::RowDrag>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
@@ -410,6 +411,7 @@ impl Plugin for WidgetsPlugin {
                     audio_player::audio_player_apply,
                     folder_picker::folder_pick_click,
                     folder_picker::folder_new_click,
+                    folder_picker::folder_pick_caret_click,
                     // After the keyed lists that fill these strips: a row built
                     // this frame must be folded (or not) before the layout that
                     // would otherwise draw it in a strip it doesn't fit in.

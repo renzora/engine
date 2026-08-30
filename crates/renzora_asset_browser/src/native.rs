@@ -2199,99 +2199,23 @@ fn folder_color(name: &str) -> (u8, u8, u8) {
     }
 }
 
-/// A theme is a `.toml`, identified either by its manifest filename
-/// `theme.toml` (nested form, `themes/<Name>/theme.toml`) or by living anywhere
-/// under a `themes/` folder (flat form, `themes/<Name>.toml`). Either way the
-/// browser gives it its own icon/label instead of the generic TOML one.
-fn is_theme_file(path: &Path) -> bool {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if name.eq_ignore_ascii_case("theme.toml") {
-        return true;
-    }
-    let is_toml = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("toml"));
-    is_toml
-        && path.ancestors().skip(1).any(|a| {
-            a.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("themes"))
-        })
-}
-
 /// Accent color + human-readable type label for a file, by extension. Drives the
-/// tile's type subtitle and bottom accent strip (mirrors Unreal's "Blueprint
-/// Class" subtitle + colored underline). Folders are handled separately.
+/// tile's type subtitle and bottom accent strip. Folders are handled separately.
+///
+/// The table itself lives in `renzora_ember::file_kind` — the folder picker
+/// lists files now and needs the same answers, and it cannot reach a crate that
+/// depends on it. Two tables would have drifted the first time an extension was
+/// added to one of them.
 fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
-    if is_theme_file(path) {
-        return ((255, 170, 210), "Theme");
-    }
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    match ext.as_str() {
-        "ttf" | "otf" | "woff" | "woff2" => ((140, 200, 255), "Font"),
-        "material" => ((0, 200, 130), "Material"),
-        "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
-        "lua" => ((120, 170, 255), "Lua Script"),
-        "wgsl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
-        "rs" => ((230, 140, 90), "Rust Source"),
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => {
-            ((150, 210, 120), "Texture")
-        }
-        "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
-        "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
-        "particle" => ((230, 160, 90), "Particle"),
-        "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
-        "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
-        "html" => ((230, 120, 90), "UI Template"),
-        "" => ((150, 155, 170), "File"),
-        other => ((150, 155, 170), uppercase_ext(other)),
-    }
-}
-
-/// Leak a small set of uppercased extension labels for unknown types so the
-/// subtitle can read e.g. "TXT" / "JSON". Bounded: only the handful of distinct
-/// unknown extensions actually present in a project are ever leaked.
-fn uppercase_ext(ext: &str) -> &'static str {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
-    let mut map = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
-    if let Some(s) = map.get(ext) {
-        return s;
-    }
-    let leaked: &'static str = Box::leak(ext.to_uppercase().into_boxed_str());
-    map.insert(ext.to_string(), leaked);
-    leaked
+    renzora_ember::file_kind::type_info(path)
 }
 
 fn icon_for(path: &Path, is_dir: bool) -> &'static str {
-    if is_dir {
-        return "folder";
-    }
-    if is_theme_file(path) {
-        return "swatches";
-    }
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    match ext.as_str() {
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => "image",
-        "ttf" | "otf" | "woff" | "woff2" => "text-aa",
-        "glb" | "gltf" | "obj" | "fbx" => "cube",
-        "material" => "palette",
-        "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
-        "lua" | "rs" | "py" | "js" | "ts" => "code",
-        "scene" | "bsn" | "ron" | "scn" => "film-slate",
-        "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
-        "particle" => "sparkle",
-        "ply" | "gcloud" | "sog" | "ssog" => "cloud",
-        "blueprint" | "bp" => "blueprint",
-        "html" => "browser",
-        "toml" => "brackets-curly",
-        _ => "file",
-    }
+    renzora_ember::file_kind::icon_for(path, is_dir)
 }
+
+
+
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
