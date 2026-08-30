@@ -335,6 +335,30 @@ ShellStatusSegment::new("download-simple", format!("Installing {name} — {size}
 
 `Busy` animates in its own system, so it costs no rebuilds. A `Fraction` is quantized to whole percent before the status bar hashes the row, so a continuously moving value rebuilds the segment at most a hundred times rather than every frame.
 
+### A top-bar button
+
+```rust
+use renzora::core::{RenzoraShellExt, ShellActionInvoked, ShellActionItem};
+
+app.register_shell_action(ShellActionItem {
+    id: "my_plugin.open",
+    icon: "storefront",
+    label: Some(|| "My Thing".to_string()),
+    color: Some([167, 130, 245]),
+    tooltip: || "Open My Thing".to_string(),
+    order: 0,
+});
+
+// …and read the press wherever you like:
+fn open_my_thing(mut invoked: MessageReader<ShellActionInvoked>) {
+    if invoked.read().any(|m| m.0 == "my_plugin.open") { /* … */ }
+}
+```
+
+Buttons land at the right end of the top bar, beside the update chip. Nothing but the **id** crosses the boundary — no callback, no type — so a plugin the shell has never linked can put a control in the chrome, and anything else that should open the same thing writes the same message. That is how the Assets panel's *Import → Search Marketplace* row opens the marketplace overlay without either crate knowing the other exists.
+
+`label` and `tooltip` are functions rather than strings because registration happens during `App` assembly, long before the chrome is built and before the user has had a chance to change language. `color` tints the glyph and the button's fill; leave it `None` for the quiet icon-only treatment the gear gets, and set it when the button is somewhere to *go* rather than a toggle. Pick a hue no other chip is using — two tinted pills of the same colour side by side read as one control in two halves.
+
 ### Viewport toolbar and strips
 
 Three registration points in `renzora_ember::toolbar`, all free functions taking a `Fn(&mut Commands, &EmberFonts) -> Entity`:

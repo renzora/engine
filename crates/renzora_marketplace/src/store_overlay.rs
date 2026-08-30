@@ -41,9 +41,17 @@ pub(crate) fn register(app: &mut App) {
     app.register_shell_action(renzora::ShellActionItem {
         id: ACTION_ID,
         icon: "storefront",
-        // A function, not a string: registration happens during `App` assembly,
+        // Labelled and tinted. As a bare glyph beside the gear it was one more
+        // small grey icon in a row of small grey icons — invisible for a door
+        // into the whole catalogue.
+        //
+        // Functions, not strings: registration happens during `App` assembly,
         // long before the chrome is built and before the user has had a chance
         // to change language.
+        label: Some(|| renzora::lang::t_or("marketplace.title", "Marketplace")),
+        // Violet, deliberately not the update chip's blue — two tinted pills of
+        // the same hue side by side read as one control in two halves.
+        color: Some([167, 130, 245]),
         tooltip: || renzora::lang::t_or("marketplace.title", "Marketplace"),
         order: 0,
     });

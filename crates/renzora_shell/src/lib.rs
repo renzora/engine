@@ -4863,7 +4863,32 @@ fn build_status_bar(
         .id();
     renzora_ember::reactive::tracked::keyed_list(commands, right_content, status_snapshot_right);
 
-    commands.entity(bar).add_children(&[left_content, lang_picker, dropup, right_content]);
+    // Engine name + version, at the far right of the status bar.
+    //
+    // Somewhere it is *always* on screen, which the About modal is not — the
+    // question "which build is this" comes up when reporting a bug or checking
+    // whether an update landed, and both are moments where hunting through a
+    // menu is friction. The status bar's right side already holds passive facts
+    // (frame time, memory, GPU), so it costs no new furniture.
+    //
+    // `version::display()` rather than the bare constant: it says `r1-alpha7
+    // (dev)` for a local build and the plain tag for a release, so a screenshot
+    // of the bar answers "is this a build you shipped?" as well.
+    let version = commands
+        .spawn((
+            Text::new(format!("Renzora {}", renzora::version::display())),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_shrink: 0.0, ..default() },
+            renzora_ember::widgets::HoverTooltip::new(renzora::version::display()),
+            Name::new("status-version"),
+        ))
+        .id();
+
+    commands
+        .entity(bar)
+        .add_children(&[left_content, lang_picker, dropup, right_content, version]);
     bar
 }
 
@@ -5261,13 +5286,9 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     // viewport action. This bar is on screen in every workspace. The document
     // tabs used to fill the rest of this zone; they now sit at the top of the
     // viewport panel (see [`build_doc_tabs`]).
-    let hamburger = hamburger_menu_item(commands);
+    let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
-    // Plugin-contributed icon buttons, right of the gear. The Marketplace's is
-    // the first: it is a place you go, not a panel you dock, so it wants a door
-    // in the chrome rather than a tab in a workspace.
-    let actions = build_shell_actions(commands);
     let play = build_play_group(commands, font);
     // The document tabs, for anyone who'd rather not spend a row of the window
     // on them — hidden unless Settings has them set to Dropdown, in which case
@@ -5275,7 +5296,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     let docs = build_doc_tab_menu_group(commands, fonts, font);
     commands
         .entity(left)
-        .add_children(&[hamburger, session, settings, actions, play, docs]);
+        .add_children(&[hamburger, session, settings, play, docs]);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
@@ -5469,7 +5490,14 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     // Updates — this is a shortcut to it, not a second way of doing it.
     let update_chip = build_update_chip(commands, font);
 
-    commands.entity(right).add_children(&[update_chip, window]);
+    // Plugin-contributed buttons — the Marketplace's is the first. It lived by
+    // the gear, as one more small grey glyph among the session controls, which
+    // is the last place anyone looks for somewhere to *go*. Over here it is a
+    // labelled, tinted chip beside the update chip: the two of them are the
+    // bar's "things that are waiting for you" corner.
+    let actions = build_shell_actions(commands);
+
+    commands.entity(right).add_children(&[actions, update_chip, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar
@@ -7365,16 +7393,34 @@ fn build_shell_actions(commands: &mut Commands) -> Entity {
         ))
         .id();
     commands.queue(move |world: &mut World| {
-        let items: Vec<(&'static str, &'static str, String, i32)> = world
+        struct Item {
+            id: &'static str,
+            icon: &'static str,
+            label: Option<String>,
+            color: Option<[u8; 3]>,
+            tooltip: String,
+        }
+        let items: Vec<Item> = world
             .get_resource::<renzora::ShellActionRegistry>()
             .map(|reg| {
-                let mut v: Vec<_> = reg
+                let mut v: Vec<(i32, Item)> = reg
                     .items
                     .iter()
-                    .map(|i| (i.id, i.icon, (i.tooltip)(), i.order))
+                    .map(|i| {
+                        (
+                            i.order,
+                            Item {
+                                id: i.id,
+                                icon: i.icon,
+                                label: i.label.map(|f| f()),
+                                color: i.color,
+                                tooltip: (i.tooltip)(),
+                            },
+                        )
+                    })
                     .collect();
-                v.sort_by_key(|i| i.3);
-                v
+                v.sort_by_key(|(order, _)| *order);
+                v.into_iter().map(|(_, item)| item).collect()
             })
             .unwrap_or_default();
         if items.is_empty() {
@@ -7388,38 +7434,92 @@ fn build_shell_actions(commands: &mut Commands) -> Entity {
             let mut commands = Commands::new(&mut queue, world);
             let kids: Vec<Entity> = items
                 .into_iter()
-                .map(|(id, icon, tooltip, _)| {
-                    let btn = renzora_ember::font::icon_text(
-                        &mut commands,
-                        &fonts.phosphor,
-                        icon,
-                        text_muted(),
-                        14.0,
-                    );
-                    commands.entity(btn).insert((
-                        Node {
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::Center,
-                            padding: UiRect::axes(Val::Px(5.0), Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(4.0)),
-                            ..default()
-                        },
-                        Interaction::default(),
-                        ShellActionBtn(id),
-                        renzora_ember::widgets::HoverTooltip::new(tooltip),
-                        renzora_ember::cursor_icon::HoverCursor(
-                            bevy::window::SystemCursorIcon::Pointer,
-                        ),
-                        Name::new(format!("top-action:{id}")),
-                    ));
-                    btn
-                })
+                .map(|item| shell_action_button(&mut commands, &fonts, item.id, item.icon, item.label, item.color, item.tooltip))
                 .collect();
             commands.entity(row).add_children(&kids);
         }
         queue.apply(world);
     });
     row
+}
+
+/// One plugin-contributed top-bar button.
+///
+/// A tinted pill with a coloured glyph and a label when the item asks for them,
+/// and the same quiet icon-only treatment as the gear when it does not. The
+/// tint is what makes a *destination* legible in a bar of toggles — an
+/// unlabelled grey glyph beside four other grey glyphs is not somewhere anyone
+/// finds by looking.
+#[allow(clippy::too_many_arguments)]
+fn shell_action_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    id: &'static str,
+    icon: &'static str,
+    label: Option<String>,
+    color: Option<[u8; 3]>,
+    tooltip: String,
+) -> Entity {
+    let hue = color.map(|c| (c[0], c[1], c[2]));
+    let btn = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(if label.is_some() { 8.0 } else { 5.0 }), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            ShellActionBtn(id),
+            renzora_ember::widgets::HoverTooltip::new(tooltip),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new(format!("top-action:{id}")),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
+        let hot = matches!(
+            w.get::<Interaction>(btn),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        );
+        match hue {
+            Some((r, g, b)) => Color::srgba(
+                r as f32 / 255.0,
+                g as f32 / 255.0,
+                b as f32 / 255.0,
+                if hot { 0.34 } else { 0.20 },
+            ),
+            None if hot => rgb(renzora_ember::theme::hover_bg()),
+            None => Color::NONE,
+        }
+    });
+
+    let ic = renzora_ember::font::icon_text(
+        commands,
+        &fonts.phosphor,
+        icon,
+        hue.unwrap_or_else(text_muted),
+        14.0,
+    );
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let mut kids = vec![ic];
+    if let Some(label) = label {
+        kids.push(
+            commands
+                .spawn((
+                    Text::new(label),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(text_primary())),
+                    bevy::ui::FocusPolicy::Pass,
+                    bevy::text::TextLayout::no_wrap(),
+                ))
+                .id(),
+        );
+    }
+    commands.entity(btn).add_children(&kids);
+    btn
 }
 
 /// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered
@@ -7523,14 +7623,18 @@ struct OpenTopMenu {
 /// The hamburger that replaced the File/Edit/View/Help titles: one top-bar
 /// button opening a single dropdown, with those four now submenu rows inside it.
 ///
-/// It's icon-only on purpose — the point of collapsing four titles into one was
-/// to give the left zone back to the account name and the bell, so a label here
-/// would spend most of the width we just reclaimed.
-fn hamburger_menu_item(commands: &mut Commands) -> Entity {
+/// It carries a **Menu** label. It was icon-only to give the left zone back to
+/// the account name and the notification bell — both of which went with the
+/// social features, so the width it was saving is no longer wanted by anything,
+/// and four menus collapsed behind a wordless glyph is a lot to ask a new user
+/// to guess.
+fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let item = commands
         .spawn((
             Node {
-                padding: UiRect::axes(Val::Px(7.0), Val::Px(4.0)),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(4.0)),
@@ -7549,7 +7653,17 @@ fn hamburger_menu_item(commands: &mut Commands) -> Entity {
         _ => Color::NONE,
     });
     let icon = glyph(commands, "list", text_muted(), 15.0);
-    commands.entity(item).add_child(icon);
+    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t_or("menu.label", "Menu")),
+            ui_font(font, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(item).add_children(&[icon, label]);
     item
 }
 

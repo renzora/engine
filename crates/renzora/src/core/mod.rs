@@ -531,9 +531,18 @@ pub struct ShellActionItem {
     pub id: &'static str,
     /// Phosphor icon NAME (kebab-case), resolved by the shell.
     pub icon: &'static str,
-    /// The tooltip, as a function rather than a string: it is built when the
-    /// bar is built, which may be long after registration and after the user
-    /// has changed language.
+    /// The visible label, as a function rather than a string: it is built when
+    /// the bar is built, which may be long after registration and after the
+    /// user has changed language. `None` for an icon-only button.
+    pub label: Option<fn() -> String>,
+    /// Tint for the icon and the button's fill, as `rgb`. `None` takes the
+    /// shell's muted default — the quiet treatment every other top-bar icon
+    /// gets. Give it a colour when the button is somewhere to *go* rather than
+    /// a toggle, and pick one no other chip in the bar is using: two tinted
+    /// pills of the same hue side by side read as one control in two halves.
+    pub color: Option<[u8; 3]>,
+    /// The tooltip, as a function rather than a string, for the same reason as
+    /// `label`.
     pub tooltip: fn() -> String,
     /// Left-to-right order among the contributed buttons. Ties keep
     /// registration order.
