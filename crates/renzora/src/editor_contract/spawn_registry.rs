@@ -154,6 +154,19 @@ impl ComponentIconRegistry {
         world: &bevy::ecs::world::World,
         entity: bevy::ecs::entity::Entity,
     ) -> Option<(&'static str, [u8; 3])> {
+        // A despawned entity is a legitimate argument, not a bug to panic on.
+        //
+        // Callers hold entity ids across frames — a selection, a cached tree row
+        // — and anything can despawn between the id being taken and the icon
+        // being asked for. Saving a `.html` in the code editor does exactly
+        // that: the template rebuild despawns every node under the canvas, and
+        // the very next frame something asks what icon the entity it is still
+        // pointing at should have. `world.entity()` panicked; this returns
+        // `None`, which every caller already handles because an unregistered
+        // component returns it too.
+        let Ok(er) = world.get_entity(entity) else {
+            return None;
+        };
         // Check dynamic icons first (for things like per-widget-type icons)
         for entry in &self.entries {
             if let Some(dynamic_fn) = entry.dynamic_icon_fn {
@@ -168,7 +181,6 @@ impl ComponentIconRegistry {
                 continue; // already checked above
             }
             if let Some(component_id) = world.components().get_id(entry.type_id) {
-                let er = world.entity(entity);
                 if er.contains_id(component_id) {
                     return Some((entry.icon, entry.color));
                 }
@@ -185,9 +197,12 @@ impl ComponentIconRegistry {
         world: &bevy::ecs::world::World,
         entity: bevy::ecs::entity::Entity,
     ) -> Option<&'static str> {
+        // Same reasoning as `entity_icon`: a dead entity answers `None`.
+        let Ok(er) = world.get_entity(entity) else {
+            return None;
+        };
         for entry in &self.entries {
             if let Some(component_id) = world.components().get_id(entry.type_id) {
-                let er = world.entity(entity);
                 if er.contains_id(component_id) {
                     return Some(entry.name);
                 }

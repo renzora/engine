@@ -246,6 +246,37 @@ pub enum EditorState {
 /// have no ordering relationship with the reactive driver, so bumping here
 /// makes the latency a predictable single frame instead of "whichever way the
 /// scheduler happened to interleave them this time".
+/// Drop selected entities that no longer exist.
+///
+/// An entity id in the selection outlives the entity itself the moment anything
+/// despawns it, and the next consumer to call `World::entity` on it panics —
+/// which is how saving a `.html` in the code editor took the editor down:
+/// rebuilding a UI template despawns every node under the canvas, one of which
+/// was selected, and the panic surfaced a frame later inside
+/// `ComponentIconRegistry::entity_icon`, a long way from the despawn.
+///
+/// Central rather than at each despawn site. Every one of them has this problem
+/// — deleting from the hierarchy, a scene reload, a model swap, a template
+/// rebuild — and only this one place has to be right. `Query<Entity>` with no
+/// filter is the aliveness test: `get` is `Ok` exactly when the entity exists.
+///
+/// The dead are removed and the living kept, rather than clearing outright:
+/// deleting one of five selected objects should leave the other four selected.
+fn prune_dead_selection(selection: Res<EditorSelection>, alive: Query<Entity>) {
+    let current = selection.get_all();
+    if current.is_empty() {
+        return;
+    }
+    let live: Vec<Entity> = current
+        .iter()
+        .copied()
+        .filter(|e| alive.get(*e).is_ok())
+        .collect();
+    if live.len() != current.len() {
+        selection.set_multiple(live);
+    }
+}
+
 fn sync_selection_change_tick(mut selection: ResMut<EditorSelection>, mut last: Local<u64>) {
     let version = selection.version();
     if version != *last {
@@ -356,6 +387,9 @@ impl Plugin for RenzoraEditorPlugin {
         // reactive UI in every editor state, and a missed bump shows up as a
         // stale highlight rather than as an error.
         app.add_systems(PreUpdate, sync_selection_change_tick);
+        // Before anything reads the selection this frame — a dead id in it is a
+        // panic waiting for the first consumer that calls `World::entity`.
+        app.add_systems(PreUpdate, prune_dead_selection.before(sync_selection_change_tick));
 
         app.add_systems(
             Update,

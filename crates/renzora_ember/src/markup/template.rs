@@ -110,6 +110,14 @@ fn finalize_pending_templates(
         if let Ok(kids) = children_q.get(entity) {
             for child in kids.iter() {
                 if has_node.get(child).is_ok() {
+                    // This despawn is what invalidates an editor selection
+                    // pointing at a markup node — saving a `.html` rebuilds the
+                    // whole subtree. It is *not* cleared here: this crate ships
+                    // in games and does not have the editor contract, so
+                    // `EditorSelection` is not reachable. The editor prunes dead
+                    // ids centrally instead — see `prune_dead_selection` in
+                    // `renzora_editor_framework`, which covers every despawn
+                    // rather than only this one.
                     commands.entity(child).despawn();
                 }
             }
