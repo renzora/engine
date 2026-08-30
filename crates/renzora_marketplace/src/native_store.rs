@@ -50,6 +50,28 @@ const ICON_RADIUS: f32 = 9.0;
 const CARD_PAD: f32 = 7.0;
 /// = `ICON_RADIUS + CARD_PAD`. See [`ICON_RADIUS`].
 const CARD_RADIUS: f32 = ICON_RADIUS + CARD_PAD;
+/// Characters of an asset name a card shows before eliding. Derived from
+/// `CARD_W` minus its padding at the name's 12.5px size — an estimate, backed by
+/// a hard clip (see `asset_card`).
+const NAME_CHARS: usize = 17;
+
+/// Shorten `s` to at most `max` characters, ending in an ellipsis.
+///
+/// Counts `char`s rather than bytes: an asset name is user-entered and routinely
+/// carries accents, CJK or emoji, and slicing a `String` by byte index in the
+/// middle of one of those panics.
+fn elide(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    // Trailing space before the ellipsis reads as a typo.
+    while out.ends_with(' ') {
+        out.pop();
+    }
+    out.push('…');
+    out
+}
 /// How many cards a home category shelf shows before "See all".
 ///
 /// Ten rather than six because the cards are a fixed width now: six of them
@@ -345,17 +367,16 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
 
-    // ── Toolbar: search, and who you are. That's all ─────────────────────────
+    // ── Toolbar: search, and who you are ─────────────────────────────────────
     //
-    // It used to carry the sort and both filter dropdowns as well, plus a loose
-    // asset count and a magnifier button — seven controls across the top of a
-    // storefront whose default view is a set of per-category top-lists that
-    // *none of those three dropdowns affect*. They sat there doing nothing on
-    // the view you land on, and they were most of the bar's weight.
+    // It sits at the top of the *right* column, not across the whole panel. A
+    // full-width search bar spanning the sidebar as well implied it searched
+    // that too, and stretched a pill to a length no control wants to be; over
+    // the grid, it is exactly as wide as the thing it searches.
     //
-    // They moved down to the browse view, where they apply (see `filters`).
-    // What is left is the one control that works everywhere and the account,
-    // which is the top-right corner every store puts identity in.
+    // The sort and both filter dropdowns used to be up here too. They are in
+    // the sidebar now, with the categories — everything that narrows the list
+    // in one column, the list in the other.
     let toolbar = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(10.0), row_gap: Val::Px(6.0), flex_shrink: 0.0, padding: UiRect::vertical(Val::Px(4.0)), ..default() })
         .id();
@@ -386,33 +407,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(toolbar)
         .add_children(&[search_row, account_bar]);
-
-    // ── Browse filters: sort, rating, price, count ───────────────────────────
-    //
-    // Shown only when there is a flat grid for them to act on. On the storefront
-    // home they filtered nothing.
-    let filters = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(8.0), row_gap: Val::Px(6.0), flex_shrink: 0.0, ..default() })
-        .id();
-    let sort_labels: Vec<&str> = SORTS.iter().map(|(_, l)| *l).collect();
-    // Default selection mirrors `HubStoreData::default().sort` (popular).
-    let default_sort = SORTS.iter().position(|(v, _)| *v == "popular").unwrap_or(0);
-    let sort = dropdown(commands, fonts, &sort_labels, default_sort);
-    commands.entity(sort).insert(StoreSortDropdown);
-    let rating_labels: Vec<&str> = RATINGS.iter().map(|(_, l)| *l).collect();
-    let rating = dropdown(commands, fonts, &rating_labels, 0);
-    commands.entity(rating).insert(StoreRatingDropdown);
-    let price_labels: Vec<&str> = PRICES.iter().map(|(_, l)| *l).collect();
-    let price = dropdown(commands, fonts, &price_labels, 0);
-    commands.entity(price).insert(StorePriceDropdown);
-    let fgap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    // The count belongs with the filters: it is what they produced.
-    let total = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())))).id();
-    bind_text(commands, total, |w| format!("{} assets", w.resource::<HubStoreData>().total));
-    commands
-        .entity(filters)
-        .add_children(&[sort, rating, price, fgap, total]);
-    bind_display(commands, filters, |w| !w.resource::<HubStoreData>().is_home());
 
     // Status / error.
     let status = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(RED)), Node { flex_shrink: 0.0, ..default() })).id();
@@ -449,13 +443,10 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, browse, |w| !w.resource::<HubStoreData>().is_home());
     commands.entity(browse).add_children(&[grid_scroll, pager]);
 
-    // The filters sit at the top of the *right* column, over the grid they act
-    // on — not across the whole panel, where they would sit above the category
-    // list as well and read as filtering that too.
-    commands.entity(right).add_children(&[filters, home, browse]);
+    commands.entity(right).add_children(&[toolbar, home, browse]);
 
     commands.entity(split).add_children(&[sidebar, right]);
-    commands.entity(root).add_children(&[toolbar, status, banner, split]);
+    commands.entity(root).add_children(&[status, banner, split]);
     root
 }
 
@@ -567,10 +558,7 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 ///
 /// The account header and Upload Asset used to sit above it — see
 /// [`build_account_bar`] for why they are in the toolbar instead.
-/// `_fonts` is unused now the caption is gone — the rows build their own text
-/// from the keyed list. Kept in the signature because every `build_*` here takes
-/// it, and a sidebar that grows one label back should not change shape.
-fn build_sidebar(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
+fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // A surface, not a floating column of text.
     //
     // With the stripes and the caption gone the list had nothing left holding it
@@ -590,10 +578,6 @@ fn build_sidebar(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // No "Categories" caption. A column of category names under a search box, in
-    // a store, is not ambiguous, and the caption was a row of chrome bought with
-    // vertical space the list itself wanted.
-    //
     // Natural-height column (sums its rows) so the scroll viewport overflows and
     // scrolls; with flex_grow the rows would squash to fit instead.
     let cats = commands
@@ -601,9 +585,80 @@ fn build_sidebar(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, cats, categories_snapshot);
     let cats_scroll = renzora_ember::widgets::scroll_view(commands, cats);
+    // The category list takes whatever height is left; the sort and filters
+    // below it are fixed. Otherwise eleven categories push the filters off the
+    // bottom of a short window and there is no way to reach them.
+    commands.entity(cats_scroll).entry::<Node>().and_modify(|mut n| {
+        n.flex_grow = 1.0;
+        n.min_height = Val::Px(0.0);
+    });
 
-    commands.entity(col).add_children(&[cats_scroll]);
+    // ── Sort and filters ─────────────────────────────────────────────────────
+    //
+    // Down here with the categories rather than across the top, because they are
+    // the same kind of thing: everything that narrows the list in one column,
+    // the list itself in the other. Full-width stacked, so three controls of
+    // different label lengths line up instead of making a ragged row.
+    let sep = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Px(1.0), flex_shrink: 0.0, margin: UiRect::vertical(Val::Px(6.0)), ..default() },
+            BackgroundColor(rgb(border())),
+        ))
+        .id();
+
+    let sort_labels: Vec<&str> = SORTS.iter().map(|(_, l)| *l).collect();
+    // Default selection mirrors `HubStoreData::default().sort` (popular).
+    let default_sort = SORTS.iter().position(|(v, _)| *v == "popular").unwrap_or(0);
+    let sort = dropdown(commands, fonts, &sort_labels, default_sort);
+    commands.entity(sort).insert(StoreSortDropdown);
+    let rating_labels: Vec<&str> = RATINGS.iter().map(|(_, l)| *l).collect();
+    let rating = dropdown(commands, fonts, &rating_labels, 0);
+    commands.entity(rating).insert(StoreRatingDropdown);
+    let price_labels: Vec<&str> = PRICES.iter().map(|(_, l)| *l).collect();
+    let price = dropdown(commands, fonts, &price_labels, 0);
+    commands.entity(price).insert(StorePriceDropdown);
+    for d in [sort, rating, price] {
+        commands.entity(d).entry::<Node>().and_modify(|mut n| {
+            n.width = Val::Percent(100.0);
+            n.flex_shrink = 0.0;
+        });
+    }
+
+    let filters = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), flex_shrink: 0.0, ..default() })
+        .id();
+    let count = commands
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { margin: UiRect::top(Val::Px(2.0)), ..default() }))
+        .id();
+    // The count is what the filters produced, so it lives with them.
+    bind_text(commands, count, |w| {
+        let d = w.resource::<HubStoreData>();
+        if d.is_home() { String::new() } else { format!("{} assets", d.total) }
+    });
+    let sort_l = section_label(commands, fonts, "Sort");
+    let rating_l = section_label(commands, fonts, "Rating");
+    let price_l = section_label(commands, fonts, "Price");
+    commands
+        .entity(filters)
+        .add_children(&[sort_l, sort, rating_l, rating, price_l, price, count]);
+
+    let cats_label = section_label(commands, fonts, "Categories");
+    commands
+        .entity(col)
+        .add_children(&[cats_label, cats_scroll, sep, filters]);
     col
+}
+
+/// A small muted heading over one block of the filter column.
+fn section_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+    commands
+        .spawn((
+            Text::new(text.to_string()),
+            ui_font(&fonts.ui, 9.5),
+            TextColor(rgb(text_muted())),
+            Node { margin: UiRect::left(Val::Px(2.0)), flex_shrink: 0.0, ..default() },
+        ))
+        .id()
 }
 
 /// The theme-preview banner — shown while a theme is being previewed live.
@@ -971,25 +1026,37 @@ fn asset_card(
     let info = commands
         .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, FocusPolicy::Pass))
         .id();
-    // `width: 100%` is what makes `no_wrap` + `clip` actually truncate. Without
-    // it the node takes the text's intrinsic width, so there is nothing for the
-    // clip to clip against: a long name ran straight out past the card's right
-    // edge, and — worse — its min-content width fought the card's own, which is
-    // what left "Simple Pixel Banana Leaf" rendering as a card with no artwork
-    // at all.
+    // Two mechanisms, because neither is enough on its own.
+    //
+    // The ellipsis is what you actually see: `elide` cuts the string and adds
+    // "…", so a long name ends in a way that looks deliberate. The clipping
+    // *wrapper* is the backstop — `Overflow::clip` clips a node's CHILDREN, not
+    // the glyphs the node draws itself, so a `Text` with `no_wrap` and `clip`
+    // still painted straight over its neighbours (which is exactly what the
+    // Music shelf looked like). Putting the text inside a clipping box makes it
+    // a child, and then the clip applies.
+    //
+    // The budget is a character count, not a measurement: the font is
+    // proportional, so this cuts a line of capitals early and a line of
+    // lowercase late. That is fine — the clip catches anything the estimate
+    // lets through, and the tooltip has the whole name.
+    let name_box = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), overflow: Overflow::clip(), ..default() },
+            FocusPolicy::Pass,
+            renzora_ember::widgets::HoverTooltip::new(a.name.clone()),
+        ))
+        .id();
     let name = commands
         .spawn((
-            Text::new(a.name.clone()),
+            Text::new(elide(&a.name, NAME_CHARS)),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
             FocusPolicy::Pass,
-            Node { width: Val::Percent(100.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();
-    commands
-        .entity(name)
-        .insert(renzora_ember::widgets::HoverTooltip::new(a.name.clone()));
+    commands.entity(name_box).add_child(name);
 
     // The meta line: what it costs on the left, how many people took it on the
     // right. Both are facts you compare cards by, which is what earns a
@@ -1017,7 +1084,7 @@ fn asset_card(
         let (label, colour) = if free {
             ("Free".to_string(), GREEN)
         } else {
-            (format!("{} cr", a.price_credits), GOLD)
+            (format!("{} credits", a.price_credits), GOLD)
         };
         sub_kids.push(
             commands
@@ -1035,7 +1102,7 @@ fn asset_card(
             .id(),
     );
     commands.entity(sub).add_children(&sub_kids);
-    commands.entity(info).add_children(&[name, sub]);
+    commands.entity(info).add_children(&[name_box, sub]);
 
     // The action sits *on* the artwork and appears under the cursor, rather than
     // occupying a permanent row on every card. One-click install survives for
@@ -1128,7 +1195,6 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     // point above the card names, so a page of shelves read as one long list
     // with occasional bold rows in it rather than as sections.
     let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
-    let spacer = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
     // A filled pill, not accent-coloured text. As text it was the same weight
     // and nearly the same colour as a link in a body of prose, floating at the
     // right end of a header with nothing to say it was pressable; the pill
@@ -1156,7 +1222,12 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     let see_ic = icon_text(commands, &fonts.phosphor, "arrow-right", (255, 255, 255), 11.0);
     commands.entity(see_ic).insert(FocusPolicy::Pass);
     commands.entity(see).add_children(&[see_t, see_ic]);
-    commands.entity(header).add_children(&[title, spacer, see]);
+    // Beside the title, not banished to the far right of the row. It belongs to
+    // *that* category — at the opposite end of a full-width header it read as a
+    // control for the panel, and on a wide window it was a hundred millimetres
+    // of empty space away from the word it acts on.
+    let after = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
+    commands.entity(header).add_children(&[title, see, after]);
 
     // The same wrapping grid the browse view uses, with the same gaps — because
     // it *is* the browse view, showing one category's top few. It was a
