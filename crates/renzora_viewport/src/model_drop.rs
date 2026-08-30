@@ -165,6 +165,42 @@ impl ModelDragPreviewState {
     }
 }
 
+/// The provisional box shown at the cursor while a dragged model's GLB is
+/// still loading.
+///
+/// # Why a box and not the model
+///
+/// Because the model does not exist yet, and cannot be made to. Bevy's glTF
+/// loader decodes **every texture inline** before it publishes the `Gltf` asset
+/// — the loop is unconditional, and `load_materials: RenderAssetUsages::empty()`
+/// only skips building the `StandardMaterial`s afterwards. So there is no
+/// setting that yields geometry-without-textures early, and loading the same
+/// path a second time with different settings poisons the image cache for the
+/// first (see `track_model_drag_preview`). An untextured preview of the real
+/// mesh would need a forked loader.
+///
+/// What was actually wrong was the silence: on a large GLB the cursor carried
+/// nothing at all for several seconds, so the drag looked like it had not
+/// registered. A box that appears on the first frame, sits where the model will
+/// sit, and is replaced by the real thing the moment it loads fixes that much
+/// without pretending to be the model — which is why it is deliberately
+/// translucent and unlit rather than a convincing grey solid.
+///
+/// Carried as a component rather than a field on `ModelDragPreviewState`
+/// because that resource's `clear()` nulls its entity fields without
+/// despawning, and the callers between them handle the despawn. A marker is
+/// queryable from anywhere and cannot be orphaned by a `clear()` that forgot it.
+#[derive(Component)]
+pub struct ModelDragPlaceholder;
+
+/// Side of the placeholder box, in metres. One metre is a guess — the model's
+/// real size is inside the file we are still waiting for — but it is the guess
+/// that is wrong by the least across props, characters and furniture, and it
+/// gives the eye a scale reference for where the drop will land. It is
+/// centred on its own origin, so it is lifted by half of this to sit *on* the
+/// placement point rather than half through it.
+const PLACEHOLDER_SIZE: f32 = 1.0;
+
 /// Marker: animation discovery has been attempted for this entity (hit or
 /// miss). Prevents `auto_discover_animations` from re-scanning the
 /// filesystem on every frame for models that have no `.anim` files.
@@ -325,10 +361,13 @@ pub fn native_model_drop(
     if !mouse.just_released(MouseButton::Left) {
         return;
     }
-    // Only in-project drags spawn a preview ghost to promote.
-    let Some(entity) = state.ghost_root else {
+    // Only in-project drags get this far: an out-of-project one never gets an
+    // asset path or a handle, and falls through to the copy-into-project
+    // pipeline. `ghost_root` is the loaded preview; a handle with no ghost is a
+    // drag whose GLB is still decoding behind the placeholder box.
+    if state.ghost_root.is_none() && state.mesh_handle.is_none() {
         return;
-    };
+    }
 
     // Released over the focused viewport? Recompute from the live cursor rather
     // than trusting `cursor_in_viewport`, which `track_model_drag_preview` may
@@ -353,13 +392,36 @@ pub fn native_model_drop(
     // again) but leave `origin_path` set so `track_model_drag_preview` skips
     // re-initializing for the payload that may linger one extra frame.
     let bottom_align_target = state.bottom_align_target();
+    let placement = state.placement_translation();
     let asset_path = state.asset_path.take();
     let gltf_handle = state.mesh_handle.take();
-    state.ghost_root = None;
-    state.name = None;
+    let ghost_root = state.ghost_root.take();
+    let name = state.name.take();
     state.cursor_in_viewport = false;
 
     let (Some(asset_path), Some(gltf_handle)) = (asset_path, gltf_handle) else {
+        return;
+    };
+
+    // Dropped while the GLB was still decoding — there is no entity to promote,
+    // only the placeholder box, which `cleanup_model_drag_ghost` is about to
+    // remove. Hand the load off to the pending queue with the position the box
+    // was standing at, so the model arrives where it was dropped.
+    //
+    // Before the placeholder existed this case looked like nothing happening,
+    // and it was: the drop returned early on a missing ghost and the drag was
+    // silently thrown away. Showing a box you can drop made that visible.
+    let Some(entity) = ghost_root else {
+        let name = name.unwrap_or_else(|| "Model".to_string());
+        commands.queue(move |world: &mut World| {
+            world.resource_mut::<PendingGltfLoads>().loads.push(PendingLoad {
+                handle: gltf_handle,
+                name,
+                asset_path,
+                spawn_position: placement,
+                bottom_align_target,
+            });
+        });
         return;
     };
 
@@ -881,6 +943,7 @@ pub fn track_model_drag_preview(
     camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
     parent_query: Query<&ChildOf>,
+    placeholders: Query<Entity, With<ModelDragPlaceholder>>,
 ) {
     // No payload (or wrong kind) → leave any existing ghost alone; cleanup
     // runs in its own system once the resource is removed.
@@ -920,10 +983,12 @@ pub fn track_model_drag_preview(
         // declare `KHR_materials_pbrSpecularGlossiness`).
         glb_compat::ensure_loadable(&payload.path);
 
-        // Load with default settings — same Gltf the dropped entity will use,
-        // so the preview shows real materials (matching Godot's drag-feel).
-        // Loading the same path twice with different `GltfLoaderSettings`
-        // would poison Bevy's image cache.
+        // Load with default settings — the same `Gltf` the dropped entity will
+        // use, so the preview shows the real materials and the drop changes
+        // nothing about how the model looks. Loading the same path twice with
+        // different `GltfLoaderSettings` would poison Bevy's image cache, which
+        // is why there is no faster mesh-only load running alongside this one;
+        // see `ModelDragPlaceholder` for what fills the wait instead.
         let handle: Handle<Gltf> = asset_server.load(&asset_path);
 
         state.asset_path = Some(asset_path);
@@ -976,8 +1041,9 @@ pub fn track_model_drag_preview(
     // rule applies, so it has to be re-tested every frame of the drag rather
     // than latched — dragging off the edge of a table has to fall back to the
     // ground plane the moment the cursor leaves it.
-    let ghost_root = state.ghost_root;
-    state.surface_hit = cast_to_scene_surface(&mut mesh_ray_cast, ray, ghost_root, &parent_query);
+    let mut exclude: Vec<Entity> = state.ghost_root.into_iter().collect();
+    exclude.extend(&placeholders);
+    state.surface_hit = cast_to_scene_surface(&mut mesh_ray_cast, ray, &exclude, &parent_query);
 }
 
 /// First hit of `ray` against scene geometry, skipping the drag preview's own
@@ -985,11 +1051,15 @@ pub fn track_model_drag_preview(
 ///
 /// The preview follows the cursor, so its own geometry sits directly under the
 /// ray every frame — without the exclusion the model would read as standing on
-/// itself and climb away from the cursor.
+/// itself and climb away from the cursor. `preview_roots` is a list because the
+/// preview is *two* things over the life of a drag: the loading placeholder and
+/// then the real model. Only one exists at a time, but both have to be excluded
+/// while they do, and the placeholder is a separate root rather than a
+/// descendant of the model that has not loaded yet.
 fn cast_to_scene_surface(
     mesh_ray_cast: &mut MeshRayCast,
     ray: Ray3d,
-    preview_root: Option<Entity>,
+    preview_roots: &[Entity],
     parent_query: &Query<&ChildOf>,
 ) -> Option<Vec3> {
     // `early_exit_test` off: the nearest hit is usually the preview itself, and
@@ -1002,10 +1072,10 @@ fn cast_to_scene_surface(
         },
     );
 
-    for (hit_entity, hit) in hits.iter() {
-        if let Some(root) = preview_root {
-            if *hit_entity == root || is_descendant_of(*hit_entity, root, parent_query) {
-                continue;
+    'hits: for (hit_entity, hit) in hits.iter() {
+        for root in preview_roots {
+            if hit_entity == root || is_descendant_of(*hit_entity, *root, parent_query) {
+                continue 'hits;
             }
         }
         return Some(hit.point);
@@ -1047,9 +1117,17 @@ pub fn update_model_drag_ghost(
     aabb_query: Query<(&Aabb, &GlobalTransform)>,
     mesh_query: Query<(), With<Mesh3d>>,
     global_query: Query<&GlobalTransform>,
+    placeholders: Query<Entity, With<ModelDragPlaceholder>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut placeholder_assets: Local<Option<(Handle<Mesh>, Handle<StandardMaterial>)>>,
 ) {
     // Already spawned → just sync transform + visibility.
     if let Some(root) = state.ghost_root {
+        // The real model is here; the stand-in has done its job.
+        for entity in &placeholders {
+            commands.entity(entity).despawn();
+        }
         // Measure how far the geometry hangs below the root origin, once — a
         // GLB is free to put its origin anywhere, and a model whose origin sits
         // at the centre (or at the top of a hanging prop) would otherwise be
@@ -1082,14 +1160,56 @@ pub fn update_model_drag_ghost(
     // Not spawned yet — wait until cursor is in viewport AND the gltf is
     // loaded enough to spawn its scene.
     if !state.cursor_in_viewport {
+        for entity in &placeholders {
+            commands.entity(entity).despawn();
+        }
         return;
     }
     let Some(handle) = state.mesh_handle.as_ref() else {
         return;
     };
     let Some(gltf) = gltf_assets.get(handle) else {
+        // Still decoding. Put a stand-in where the model will land so the drag
+        // has a visible subject from the first frame — see
+        // `ModelDragPlaceholder` for why it can't be the model itself.
+        let at = state.placement_translation() + Vec3::Y * PLACEHOLDER_SIZE * 0.5;
+        if let Some(entity) = placeholders.iter().next() {
+            if let Ok(mut tf) = transform_query.get_mut(entity) {
+                tf.translation = at;
+            }
+        } else {
+            let (mesh, material) = placeholder_assets
+                .get_or_insert_with(|| {
+                    (
+                        meshes.add(Cuboid::from_length(PLACEHOLDER_SIZE)),
+                        materials.add(StandardMaterial {
+                            base_color: Color::srgba(0.35, 0.62, 0.95, 0.35),
+                            alpha_mode: AlphaMode::Blend,
+                            // Unlit and translucent so it reads as "something is
+                            // coming", not as a grey box someone dropped.
+                            unlit: true,
+                            ..default()
+                        }),
+                    )
+                })
+                .clone();
+            commands.spawn((
+                Name::new("Model Preview"),
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_translation(at),
+                ModelDragPlaceholder,
+                // Editor-internal: out of the hierarchy, and out of a saved
+                // scene if the user saves mid-drag.
+                renzora::core::HideInHierarchy,
+            ));
+        }
         return;
     };
+    // Loaded. The stand-in is replaced by the real scene below.
+    for entity in &placeholders {
+        commands.entity(entity).despawn();
+    }
     let Some(scene) = gltf
         .default_scene
         .clone()
@@ -1134,11 +1254,17 @@ pub fn cleanup_model_drag_ghost(
     mut commands: Commands,
     mut state: ResMut<ModelDragPreviewState>,
     payload: Option<Res<AssetDragPayload>>,
+    placeholders: Query<Entity, With<ModelDragPlaceholder>>,
 ) {
     if payload.is_some() {
         return;
     }
     if let Some(entity) = state.ghost_root.take() {
+        commands.entity(entity).despawn();
+    }
+    // Also the stand-in, which outlives a drag that ended before the GLB
+    // finished loading — the drop path promotes the ghost and never sees one.
+    for entity in &placeholders {
         commands.entity(entity).despawn();
     }
     state.clear();

@@ -164,6 +164,13 @@ follows it until you let go. What you're placing is already the final entity;
 releasing over the viewport commits it in place rather than despawning the
 preview and spawning something new.
 
+A big model takes a moment to load, and until it does you get a translucent
+blue box at the cursor instead — a marker for where the drop will land, replaced
+by the model the instant it's ready. It is not the model in grey: a glTF's
+textures are decoded before any of its geometry becomes available, so there is
+no earlier point at which the mesh could be shown. Drop while the box is still
+up and the model arrives in that spot when it finishes loading.
+
 Where it lands depends on what's under the cursor:
 
 - **Over something** — another model, a terrain, a floor — the model is
