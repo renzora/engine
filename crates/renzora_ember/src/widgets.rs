@@ -117,6 +117,7 @@ mod node_graph;
 mod overflow_row;
 mod overflow_strip;
 mod overlay;
+mod toolbar;
 mod markdown;
 mod rich_text;
 mod scroll_area;
@@ -225,6 +226,10 @@ pub use node_graph::*;
 pub use markdown::*;
 pub use rich_text::*;
 pub use overflow_row::{arrange_row, arrange_row_items, ArrangeKey, ArrangeOrder, ArrangeRow};
+pub use toolbar::{
+    toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_separator, TOOLBAR_BTN, TOOLBAR_ICON,
+    TOOLBAR_RADIUS,
+};
 pub use overflow_strip::{
     overflow_strip, overflow_strip_gap, OverflowBudget, OverflowEntry, OverflowKeep, OverflowStrip,
 };

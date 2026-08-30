@@ -4,11 +4,13 @@
 use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{drag_value, DragRange};
+use renzora_ember::widgets::{
+    drag_value, toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_separator, DragRange,
+};
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
@@ -33,14 +35,10 @@ pub(crate) fn register(app: &mut App) {
 }
 
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let bar = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::horizontal(Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() },
-            BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb(border())),
-            Name::new("ui-canvas-toolbar"),
-        ))
-        .id();
+    // Same strip the viewport builds — see `renzora_ember::widgets::toolbar`.
+    // It used to be a fixed-height non-wrapping row on `header_bg` with 22×20
+    // buttons, which was a second, quietly different toolbar design.
+    let bar = toolbar_bar(commands, "ui-canvas-toolbar");
 
     // Align + distribute.
     let aligns = [
@@ -53,9 +51,18 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("arrows-out-line-horizontal", CanvasTbBtn::DistH),
         ("arrows-out-line-vertical", CanvasTbBtn::DistV),
     ];
-    let mut kids: Vec<Entity> = aligns.iter().map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0).collect();
+    // Grouped, not flat: the six align buttons plus the two distribute buttons
+    // are one control, and a group also never gets split down the middle when
+    // the bar wraps to a second line.
+    let align_group = toolbar_group(commands, "ui-align-group");
+    let align_kids: Vec<Entity> = aligns
+        .iter()
+        .map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0)
+        .collect();
+    commands.entity(align_group).add_children(&align_kids);
+    let mut kids: Vec<Entity> = vec![align_group];
 
-    kids.push(vsep(commands));
+    kids.push(toolbar_separator(commands));
 
     // Grid + snap toggles.
     let (grid, grid_ic) = icon_btn(commands, fonts, "grid-four", CanvasTbBtn::ToggleGrid);
@@ -67,8 +74,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let on = w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0);
         rgb(if on { accent() } else { text_muted() })
     });
-    kids.push(grid);
-    kids.push(snap);
     // Snap-amount (grid size) scrub field.
     let snap_amt = drag_value(commands, &fonts.ui, "", value_text(), 10.0, 1.0);
     commands.entity(snap_amt).insert(DragRange { min: 1.0, max: 256.0 });
@@ -77,10 +82,13 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             s.grid_size = v.max(1.0);
         }
     });
-    kids.push(snap_amt);
-    kids.push(backdrop);
+    let view_group = toolbar_group(commands, "ui-view-group");
+    commands
+        .entity(view_group)
+        .add_children(&[grid, snap, snap_amt, backdrop]);
+    kids.push(view_group);
 
-    kids.push(commands.spawn(Node { flex_grow: 1.0, ..default() }).id());
+    kids.push(commands.spawn(Node { flex_grow: 1.0, min_width: Val::Px(8.0), ..default() }).id());
 
     // Resolution readout (left of the zoom cluster).
     let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
@@ -88,31 +96,32 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
     });
     kids.push(res);
-    kids.push(vsep(commands));
+    kids.push(toolbar_separator(commands));
 
     // Zoom cluster.
-    kids.push(icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0);
+    let zoom_out = icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0;
     let zoom_lbl = commands
         .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { min_width: Val::Px(40.0), justify_content: JustifyContent::Center, ..default() }, Interaction::default(), CanvasTbBtn::ZoomReset))
         .id();
     bind_text(commands, zoom_lbl, |w| format!("{:.0}%", w.get_resource::<NativeCanvasState>().map(|s| s.zoom).unwrap_or(1.0) * 100.0));
-    kids.push(zoom_lbl);
-    kids.push(icon_btn(commands, fonts, "magnifying-glass-plus", CanvasTbBtn::ZoomIn).0);
+    let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", CanvasTbBtn::ZoomIn).0;
+    let zoom_group = toolbar_group(commands, "ui-zoom-group");
+    commands
+        .entity(zoom_group)
+        .add_children(&[zoom_out, zoom_lbl, zoom_in]);
+    kids.push(zoom_group);
 
     commands.entity(bar).add_children(&kids);
     bar
 }
 
-fn vsep(commands: &mut Commands) -> Entity {
-    commands.spawn((Node { width: Val::Px(1.0), height: Val::Px(16.0), margin: UiRect::horizontal(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(border())))).id()
-}
-
+/// A toolbar button carrying the marker that says what pressing it does. The
+/// chrome — size, radius, icon scale — is the shared one, so this only adds the
+/// behaviour. Icons start muted; the toggles rebind their colour below.
 fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: CanvasTbBtn) -> (Entity, Entity) {
-    let btn = commands
-        .spawn((Node { width: Val::Px(22.0), height: Val::Px(20.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 13.0);
-    commands.entity(btn).add_child(ic);
+    let (btn, ic) = toolbar_icon_button(commands, fonts, icon);
+    commands.entity(btn).insert(marker);
+    commands.entity(ic).insert(TextColor(rgb(text_muted())));
     (btn, ic)
 }
 

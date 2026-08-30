@@ -27,11 +27,11 @@ use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
     drag_value, drag_value_flat, dropdown_compact, icon_popup_trigger, popup_anchor, popup_panel,
-    popup_panel_aligned, scroll_area, toggle_switch, DragRange, EmberDropdownOption, OverlaySurface,
-    Popup, PopupAlign,
+    popup_panel_aligned, scroll_area, toggle_switch, DragRange, EmberDropdownOption, Popup,
+    PopupAlign,
 };
 use renzora_ember::theme::{
-    border, divider, hover_bg, panel_bg, rgb, tab_active, text_muted, text_primary, value_text,
+    border, hover_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
@@ -284,37 +284,14 @@ pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Ent
 /// [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
 /// tool never bleeds into picking / box-select underneath).
 pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
-    // A wrapping row, filling left to right: a group that doesn't fit on a line
-    // moves down whole rather than being squeezed or hidden behind an overflow
-    // menu. It sits *above* the rendered scene rather than over it, so a
-    // two-line toolbar costs the view nothing.
-    let bar = renzora_ember::widgets::arrange_row(commands, "vp-toolbar");
-    commands.entity(bar).insert((
-        Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::FlexStart,
-            align_content: AlignContent::FlexStart,
-            flex_wrap: FlexWrap::Wrap,
-            column_gap: Val::Px(2.0),
-            row_gap: Val::Px(2.0),
-            padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
-            flex_shrink: 0.0,
-            // Closed off underneath, the same 1px rule the context bars below it
-            // carry. Without it the strip and whichever bar follows it — a
-            // terrain bar, or the scene itself — meet with nothing between them,
-            // and a two-row toolbar in particular reads as an indeterminate slab
-            // of chrome rather than as one band that ends here.
-            border: UiRect::bottom(Val::Px(1.0)),
-            ..default()
-        },
-        BackgroundColor(side_toolbar_bg()),
-        BorderColor::all(rgb(divider())),
-        bevy::ui::RelativeCursorPosition::default(),
-        OverlaySurface,
-        Name::new("vp-side-toolbar"),
-    ));
+    // The shared editor toolbar strip — see `renzora_ember::widgets::toolbar`
+    // for what it is and why the numbers live there rather than here. It sits
+    // *above* the rendered scene rather than over it, so a two-line toolbar
+    // costs the view nothing.
+    let bar = renzora_ember::widgets::toolbar_bar(commands, "vp-toolbar");
+    commands
+        .entity(bar)
+        .insert(Name::new("vp-side-toolbar"));
 
     // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
     // Populated from ToolbarRegistry by a deferred system (predicates need
@@ -449,20 +426,8 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
         });
     }
 
-    // Track the live theme (the static BackgroundColor above only covers the
-    // first frame). The closing rule needs the same treatment, and there is no
-    // `bind_border`, so it goes through the generic binding.
-    renzora_ember::reactive::tracked::bind_bg(commands, bar, |_| side_toolbar_bg());
-    renzora_ember::reactive::tracked::bind_with(
-        commands,
-        bar,
-        |_: &Rx| rgb(divider()),
-        |world, target, c: &Color| {
-            if let Some(mut b) = world.get_mut::<BorderColor>(target) {
-                *b = BorderColor::all(*c);
-            }
-        },
-    );
+    // Theme tracking for the strip's own background and closing rule now lives
+    // in `toolbar_bar`, so the UI editor's toolbar gets it too.
     bar
 }
 
@@ -499,11 +464,6 @@ fn sync_toolbar_order(
     }
 }
 
-/// The side toolbar's solid panel fill — the theme's panel colour, so the
-/// strip reads as part of the editor chrome (same as the header strip).
-fn side_toolbar_bg() -> Color {
-    rgb(panel_bg())
-}
 
 /// The Grid row of the 2D Overlays dropdown: label, the cell-size input, then
 /// the on/off switch. Unlike the other rows (plain `toggle_row!`), the grid
