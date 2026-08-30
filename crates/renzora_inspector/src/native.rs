@@ -2495,25 +2495,33 @@ fn build_asset_field(
         .id();
     commands.entity(drop_box).add_child(path_text);
 
-    let clear = commands
-        .spawn((
-            Text::new("\u{2715}"), // ✕
-            ui_font(&fonts.ui, 11.0),
-            TextColor(c(renzora_ember::theme::text_muted())),
-            Node {
-                padding: UiRect::horizontal(Val::Px(2.0)),
-                ..default()
-            },
-            Interaction::default(),
-            AssetClearBtn {
-                get_fn: get_fn.clone(),
-                set_fn: set_fn.clone(),
-                entity,
-                field_name,
-            },
-            Name::new("asset-clear"),
-        ))
-        .id();
+    // The clear button, as a Phosphor `x` rather than a literal `\u{2715}`
+    // (MULTIPLICATION X) set in the UI font. The UI font has no glyph at that
+    // codepoint, so it rendered as a tofu box — a blank square sitting where a
+    // "remove this template" control should be, next to the revert arrow. The
+    // neighbouring "+" survived only because it is ASCII.
+    let clear = renzora_ember::font::icon_text(
+        commands,
+        &fonts.phosphor,
+        "x",
+        renzora_ember::theme::text_muted(),
+        11.0,
+    );
+    commands.entity(clear).insert((
+        Node {
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(2.0)),
+            ..default()
+        },
+        Interaction::default(),
+        AssetClearBtn {
+            get_fn: get_fn.clone(),
+            set_fn: set_fn.clone(),
+            entity,
+            field_name,
+        },
+        Name::new("asset-clear"),
+    ));
 
     let row = commands
         .spawn((
