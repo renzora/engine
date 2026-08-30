@@ -1,15 +1,20 @@
-//! The canvas toolbar: align + distribute (left), grid + snap toggles, and the
-//! zoom cluster (right).
+//! The canvas toolbar: three draggable groups — align + distribute, the view
+//! toggles (grid, the snap pill, backdrop), and zoom.
+//!
+//! Built from the shared strip in `renzora_ember::widgets::toolbar`, so it is
+//! the same chrome the viewport's toolbar uses: same bar, same button metrics,
+//! same pill for a toggle fused to the number it governs, and the same
+//! grip-per-group that lets the user reorder them.
 
 use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    drag_value, toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_separator, DragRange,
+    arrange_row_items, toolbar_bar, toolbar_group, toolbar_icon_button, toolbar_pill,
 };
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
@@ -30,8 +35,48 @@ pub(crate) enum CanvasTbBtn {
     DistV,
 }
 
+/// Marks this panel's toolbar row, so `sync_toolbar_order` knows which
+/// `ArrangeOrder` to save. There is one UI editor, but the marker keeps the
+/// lookup honest if that ever stops being true.
+#[derive(Component)]
+struct UiToolbarRow;
+
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, toolbar_click.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        (toolbar_click, sync_toolbar_order).run_if(in_state(SplashState::Editor)),
+    );
+}
+
+/// Mirror the row's live group order into the user's editor preferences, and
+/// seed it from there on the first frame.
+///
+/// The drag itself is generic — `arrange_row` maintains `ArrangeOrder` — but
+/// persisting it is the host panel's job, exactly as the viewport persists its
+/// own into `ViewportSettings`. Without this the toolbar rearranges and then
+/// forgets, which is worse than not being rearrangeable.
+fn sync_toolbar_order(
+    mut rows: Query<&mut renzora_ember::widgets::ArrangeOrder, With<UiToolbarRow>>,
+    mut saved: Local<Option<Vec<String>>>,
+) {
+    let Ok(mut order) = rows.single_mut() else {
+        return;
+    };
+    // An empty order means "not arranged yet" — take the saved one rather than
+    // clobbering it with the default.
+    if order.0.is_empty() {
+        let disk = saved.get_or_insert_with(renzora::core::load_ui_toolbar_order);
+        if !disk.is_empty() {
+            order.0 = disk.clone();
+        }
+        return;
+    }
+    if saved.as_deref() != Some(order.0.as_slice()) {
+        *saved = Some(order.0.clone());
+        if let Err(err) = renzora::core::save_ui_toolbar_order(&order.0) {
+            warn!("ui toolbar: could not save group order — {err}");
+        }
+    }
 }
 
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -39,6 +84,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // It used to be a fixed-height non-wrapping row on `header_bg` with 22×20
     // buttons, which was a second, quietly different toolbar design.
     let bar = toolbar_bar(commands, "ui-canvas-toolbar");
+    commands.entity(bar).insert(UiToolbarRow);
 
     // Align + distribute.
     let aligns = [
@@ -62,43 +108,53 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(align_group).add_children(&align_kids);
     let mut kids: Vec<Entity> = vec![align_group];
 
-    kids.push(toolbar_separator(commands));
-
-    // Grid + snap toggles.
+    // Grid + backdrop are plain toggles; snap is a pill, because "snap" and
+    // "by how much" are one idea. As a separate icon and a separate boxed field
+    // they read as two unrelated widgets that happen to be adjacent — which is
+    // exactly how this toolbar looked next to the viewport's snap pills.
     let (grid, grid_ic) = icon_btn(commands, fonts, "grid-four", CanvasTbBtn::ToggleGrid);
     bind_text_color(commands, grid_ic, |w| toggle_color(w, |s| s.show_grid));
-    let (snap, snap_ic) = icon_btn(commands, fonts, "magnet-straight", CanvasTbBtn::ToggleSnap);
-    bind_text_color(commands, snap_ic, |w| toggle_color(w, |s| s.snap_enabled));
     let (backdrop, backdrop_ic) = icon_btn(commands, fonts, "image", CanvasTbBtn::ToggleBackdrop);
     bind_text_color(commands, backdrop_ic, |w| {
         let on = w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0);
         rgb(if on { accent() } else { text_muted() })
     });
-    // Snap-amount (grid size) scrub field.
-    let snap_amt = drag_value(commands, &fonts.ui, "", value_text(), 10.0, 1.0);
-    commands.entity(snap_amt).insert(DragRange { min: 1.0, max: 256.0 });
-    bind_2way(commands, snap_amt, |w| w.get_resource::<NativeCanvasState>().map(|s| s.grid_size).unwrap_or(10.0), |w, v: &f32| {
+
+    let snap = toolbar_pill(commands, fonts, "magnet-straight", 1.0, 256.0, 1.0);
+    commands.entity(snap.toggle).insert(CanvasTbBtn::ToggleSnap);
+    commands
+        .entity(snap.value)
+        .insert(renzora_ember::widgets::DragSnap(1.0));
+    bind_text_color(commands, snap.icon, |w| toggle_color(w, |s| s.snap_enabled));
+    // The pill fills when snapping is on, the same read as the viewport's.
+    bind_bg(commands, snap.root, |w| {
+        let on = w.get_resource::<NativeCanvasState>().is_some_and(|s| s.snap_enabled);
+        rgb(if on { accent() } else { hover_bg() })
+    });
+    bind_2way(commands, snap.value, |w| w.get_resource::<NativeCanvasState>().map(|s| s.grid_size).unwrap_or(10.0), |w, v: &f32| {
         if let Some(mut s) = w.get_resource_mut::<NativeCanvasState>() {
             s.grid_size = v.max(1.0);
         }
     });
+
     let view_group = toolbar_group(commands, "ui-view-group");
     commands
         .entity(view_group)
-        .add_children(&[grid, snap, snap_amt, backdrop]);
+        .add_children(&[grid, snap.root, backdrop]);
     kids.push(view_group);
 
-    kids.push(commands.spawn(Node { flex_grow: 1.0, min_width: Val::Px(8.0), ..default() }).id());
-
-    // Resolution readout (left of the zoom cluster).
-    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    // Zoom cluster, with the canvas resolution read out beside it.
+    //
+    // Left-aligned in the flow rather than pushed right by a spacer. A spacer
+    // fights drag-to-arrange — a group you drag past it lands on the far side
+    // and stays there — and the viewport's strip is fully left-aligned for the
+    // same reason.
+    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { margin: UiRect::horizontal(Val::Px(4.0)), ..default() })).id();
     bind_text(commands, res, |w| {
         w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
     });
-    kids.push(res);
-    kids.push(toolbar_separator(commands));
 
-    // Zoom cluster.
+
     let zoom_out = icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0;
     let zoom_lbl = commands
         .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { min_width: Val::Px(40.0), justify_content: JustifyContent::Center, ..default() }, Interaction::default(), CanvasTbBtn::ZoomReset))
@@ -108,10 +164,15 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let zoom_group = toolbar_group(commands, "ui-zoom-group");
     commands
         .entity(zoom_group)
-        .add_children(&[zoom_out, zoom_lbl, zoom_in]);
+        .add_children(&[res, zoom_out, zoom_lbl, zoom_in]);
     kids.push(zoom_group);
 
-    commands.entity(bar).add_children(&kids);
+    // Each group gets a grip and a saved position, exactly like the viewport's.
+    // The grips double as the dividers between groups, which is why there are no
+    // explicit separators left in here.
+    let keys = ["ui-align", "ui-view", "ui-zoom"];
+    let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
+    arrange_row_items(commands, fonts, bar, &entries);
     bar
 }
 

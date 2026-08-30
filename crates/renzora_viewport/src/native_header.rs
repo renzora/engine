@@ -1741,73 +1741,19 @@ fn snap_pair(
     get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, value_text(), 13.0);
-    let toggle = commands
-        .spawn((
-            Node {
-                width: Val::Px(22.0),
-                height: Val::Px(BTN_H),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            which,
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("vp-snap-toggle"),
-        ))
-        .id();
-    commands.entity(toggle).add_child(glyph);
-
-    // Divider between the toggle and the number, so the two halves of the pill
-    // read as separate hit areas.
-    let divider = commands
-        .spawn((
-            Node {
-                width: Val::Px(1.0),
-                height: Val::Px(14.0),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(border())),
-            Name::new("vp-snap-divider"),
-        ))
-        .id();
-
-    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), min, step);
-    commands.entity(dv).insert((
-        DragRange { min, max },
-        // Whole-number steps: the model quantizes to 1, so the readout never
-        // shows decimals and every scrub/wheel/typed value lands on an integer.
-        renzora_ember::widgets::DragSnap(1.0),
-    ));
-    // Narrower number cell than the widget's 44px default — these live in the
-    // viewport toolbar where width is precious and the values are 1–3 digits.
+    // The pill chrome is shared with the UI editor's toolbar — see
+    // `renzora_ember::widgets::toolbar`. Only the wiring is viewport-specific:
+    // which setting the toggle flips, and what the number is bound to.
+    let pill = renzora_ember::widgets::toolbar_pill(commands, fonts, icon, min, max, step);
+    commands.entity(pill.toggle).insert(which);
+    commands.entity(pill.root).insert(SnapPillOf(which));
+    // Whole-number steps: the model quantizes to 1, so the readout never shows
+    // decimals and every scrub/wheel/typed value lands on an integer.
     commands
-        .entity(dv)
-        .entry::<Node>()
-        .and_modify(|mut n| n.min_width = Val::Px(32.0));
-    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
-
-    let row = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(2.0),
-                padding: UiRect::horizontal(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(hover_bg())),
-            SnapPillOf(which),
-            Name::new("vp-snap-pair"),
-        ))
-        .id();
-    commands.entity(row).add_children(&[toggle, divider, dv]);
-    row
+        .entity(pill.value)
+        .insert(renzora_ember::widgets::DragSnap(1.0));
+    bind_2way(commands, pill.value, get, move |w, v: &f32| set(w, *v));
+    pill.root
 }
 
 /// A camera icon + scrubbable move-speed (3D fly-cam).

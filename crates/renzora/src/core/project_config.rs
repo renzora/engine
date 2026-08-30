@@ -320,6 +320,13 @@ struct EditorPrefFile {
     /// the `plugins/tracy` profiler bridge does exactly this). Generic host flag.
     #[serde(default)]
     dev_mode: bool,
+    /// Group order of the UI editor's toolbar, by [`ArrangeKey`] — the same
+    /// drag-to-arrange the viewport toolbar has. The viewport keeps its order in
+    /// `ViewportSettings`; the UI editor has no per-panel settings blob of its
+    /// own, and a toolbar you can rearrange but that forgets on restart is worse
+    /// than one you cannot.
+    #[serde(default)]
+    ui_toolbar_order: Vec<String>,
     /// Plugins the user has turned off, by [`renzora::PluginEntry::id`].
     ///
     /// Read by BOTH loaders before they open anything, which is why it lives
@@ -450,6 +457,7 @@ impl Default for EditorPrefFile {
     fn default() -> Self {
         Self {
             ui_scale: 1.0,
+            ui_toolbar_order: Vec::new(),
             stats_system_monitor_ms: default_system_monitor_ms(),
             stats_render_stats_ms: default_render_stats_ms(),
             stats_ecs_stats_ms: default_ecs_stats_ms(),
@@ -960,6 +968,50 @@ pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
     prefs.dev_mode = dev_mode;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
+}
+
+/// Saved group order for the UI editor's toolbar. Empty means "never
+/// rearranged" — the caller keeps its build order rather than clearing it.
+pub fn load_ui_toolbar_order() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.ui_toolbar_order)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the UI editor's toolbar order (read-modify-write, so other prefs
+/// survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_ui_toolbar_order(order: &[String]) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.ui_toolbar_order = order.to_vec();
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn save_ui_toolbar_order(_order: &[String]) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Plugins the user has turned off, by id (a native plugin's directory name, or

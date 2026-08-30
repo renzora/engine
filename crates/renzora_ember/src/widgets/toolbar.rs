@@ -19,9 +19,11 @@
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
+use bevy::window::SystemCursorIcon;
 
+use crate::cursor_icon::HoverCursor;
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{border, divider, panel_bg, rgb, text_primary};
+use crate::theme::{border, divider, hover_bg, panel_bg, rgb, text_primary, value_text};
 use crate::widgets::{arrange_row, OverlaySurface};
 
 /// Edge length of a square toolbar button.
@@ -120,6 +122,110 @@ pub fn toolbar_separator(commands: &mut Commands) -> Entity {
             Name::new("toolbar-sep"),
         ))
         .id()
+}
+
+/// Height of the inline controls that sit in a toolbar next to the square
+/// buttons — pills, dropdowns, scrub fields. Shorter than [`TOOLBAR_BTN`] so a
+/// row of them reads as one band rather than as stacked boxes.
+pub const TOOLBAR_INLINE_H: f32 = 22.0;
+
+/// The parts of a [`toolbar_pill`], so the caller can attach its own markers and
+/// bindings without the widget having to know what the pill controls.
+pub struct ToolbarPill {
+    /// The pill itself. Bind its background to reflect the on/off state.
+    pub root: Entity,
+    /// The icon half — the clickable toggle. Put the marker component here.
+    pub toggle: Entity,
+    /// The glyph inside the toggle. Bind its colour to the on/off state.
+    pub icon: Entity,
+    /// The number half, a flat `drag_value`. Bind it two-way to the setting.
+    pub value: Entity,
+}
+
+/// A toggle fused to the number it governs: `[icon│value]` in one pill.
+///
+/// Two halves in one control because they are one idea — "snap, by this much".
+/// Split into a separate icon button and a separate boxed field they read as two
+/// unrelated widgets that happen to be adjacent, which is what the UI editor's
+/// toolbar looked like before it used this.
+///
+/// The divider is what keeps the two hit areas legible; without it the pill
+/// looks like a single button that mysteriously scrubs on one end.
+pub fn toolbar_pill(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    min: f32,
+    max: f32,
+    step: f32,
+) -> ToolbarPill {
+    let glyph = icon_text(commands, &fonts.phosphor, icon, value_text(), 13.0);
+    let toggle = commands
+        .spawn((
+            Node {
+                width: Val::Px(22.0),
+                height: Val::Px(TOOLBAR_INLINE_H),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(TOOLBAR_RADIUS)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("toolbar-pill-toggle"),
+        ))
+        .id();
+    commands.entity(toggle).add_child(glyph);
+
+    let divider_bar = commands
+        .spawn((
+            Node {
+                width: Val::Px(1.0),
+                height: Val::Px(14.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(border())),
+            Name::new("toolbar-pill-divider"),
+        ))
+        .id();
+
+    let value = crate::widgets::drag_value_flat(commands, &fonts.ui, "", value_text(), min, step);
+    commands
+        .entity(value)
+        .insert(crate::widgets::DragRange { min, max });
+    // Narrower than the widget's 44px default: toolbar width is precious and
+    // these values are one to four characters.
+    commands
+        .entity(value)
+        .entry::<Node>()
+        .and_modify(|mut n| n.min_width = Val::Px(32.0));
+
+    let root = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                padding: UiRect::horizontal(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(TOOLBAR_RADIUS)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(hover_bg())),
+            Name::new("toolbar-pill"),
+        ))
+        .id();
+    commands
+        .entity(root)
+        .add_children(&[toggle, divider_bar, value]);
+    ToolbarPill {
+        root,
+        toggle,
+        icon: glyph,
+        value,
+    }
 }
 
 /// A plain icon button at toolbar size. Returns `(button, icon)` — the caller
