@@ -450,15 +450,28 @@ fn heal_nested_ui_canvases(
 ///
 /// Writing only on a mismatch matters — an unconditional assignment would dirty
 /// `Node` every frame and re-run layout for the whole UI tree.
-fn heal_canvas_root_geometry(mut canvases: Query<&mut Node, With<UiCanvas>>) {
+fn heal_canvas_root_geometry(
+    mut canvases: Query<(Entity, &mut Node), With<UiCanvas>>,
+    mut corrected: Local<bevy::platform::collections::HashSet<Entity>>,
+) {
     let want = components::canvas_root_node();
-    for mut node in &mut canvases {
+    for (entity, mut node) in &mut canvases {
         if node.position_type != want.position_type
             || node.left != want.left
             || node.top != want.top
             || node.width != want.width
             || node.height != want.height
         {
+            // Said once per canvas. A canvas that settles corrects at most once
+            // (on load, from a saved `Node`); one that keeps reappearing here is
+            // being fought by something else every frame, and that is worth
+            // seeing rather than silently winning the race half the time.
+            if corrected.insert(entity) {
+                debug!(
+                    "canvas {entity}: corrected root geometry from {:?} {:?}x{:?}",
+                    node.position_type, node.width, node.height
+                );
+            }
             node.position_type = want.position_type;
             node.left = want.left;
             node.top = want.top;
