@@ -297,6 +297,8 @@ renzora_plugin::no_std_runtime!();
 
 It also emits no-op stubs for `rust_eh_personality` and `_Unwind_Resume`. The precompiled `core`/`alloc` in the sysroot are built with unwinding, and their objects can leave those symbols undefined in the cdylib even with `panic = "abort"` in the profile. That is harmless at link time but fatal at load time — `dlopen` resolves eagerly and the host does not (and must not) export them — so without the stubs, every `no_std` plugin failed to load with `undefined symbol: rust_eh_personality`. With `panic = "abort"` neither stub can ever actually run; they exist purely so the dynamic linker finds a definition.
 
+On macOS the crate also names `libSystem` for the link. Dropping `std` drops the only thing carrying the `#[link]` for libc, so rustc drives the linker with `-nodefaultlibs` and nothing supplies `malloc`, `free`, `abort` or `memcpy`. Linux never notices — `ld` allows a shared object to leave symbols undefined and lets the loader find them in the host process — but `ld64` resolves a dylib up front, so before this the build simply failed with a list of undefined C runtime symbols. Nothing about a plugin changes; the dependency was always there, it is just written down now.
+
 The macro expands to nothing when emitting those items would be wrong — under `std`, and under `static_link` where the host binary already provides both — so it is safe to leave in place whatever way the plugin ends up being linked.
 
 Everything else is unchanged: same `add!`, same exports (`renzora_plugin_init`, `renzora_plugin_scope`), same loader path. The engine cannot tell the difference.

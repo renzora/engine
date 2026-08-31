@@ -17,6 +17,24 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
 
+// Name the C library on Apple targets so the link actually finds these.
+//
+// A `no_std` crate graph pulls in no `std`, and `std` is the only thing that
+// carries the `#[link]` for libc — so rustc drives the linker with
+// `-nodefaultlibs` and nothing supplies `malloc`, `free`, `abort`, `memcpy` or
+// `dyld_stub_binder`. On Linux that goes unnoticed at build time, because ld
+// permits undefined symbols in a shared object and leaves them for the loader
+// to resolve out of the host process (which has libc mapped already). ld64 does
+// not: a dylib must resolve everything up front, so an unadorned `no_std`
+// plugin fails to *link* on macOS with a list of undefined C runtime symbols
+// rather than failing later at `dlopen`.
+//
+// `System` is the whole C runtime on Apple platforms, so one entry covers the
+// allocator below, `abort`, and the `memcpy`/stub-binder references the
+// codegen backend leaves behind. It is the same library the host is already
+// running on — this asks the linker to write down a dependency the process has
+// taken regardless, not to add one.
+#[cfg_attr(target_vendor = "apple", link(name = "System"))]
 extern "C" {
     fn malloc(size: usize) -> *mut u8;
     fn realloc(ptr: *mut u8, size: usize) -> *mut u8;
