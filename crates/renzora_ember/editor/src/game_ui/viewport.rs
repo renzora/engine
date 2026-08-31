@@ -13,6 +13,28 @@ use crate::game_ui::canvas::UiCanvasPreviewEnabled;
 use crate::game_ui::canvas_render::UiCanvasRender;
 use crate::game_ui::NativeCanvasState;
 
+/// The empty state's "Create one" button.
+#[derive(Component)]
+pub(crate) struct CreateCanvasBtn;
+
+/// Spawn a canvas and select it, so the inspector opens on the UI Template slot
+/// — which is the next thing to fill and the whole reason the entity exists.
+pub(crate) fn create_canvas_click(
+    q: Query<&Interaction, (With<CreateCanvasBtn>, Changed<Interaction>)>,
+    cmds: Option<Res<renzora::EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    cmds.push(|world: &mut World| {
+        let canvas = super::register::spawn_ui_canvas(world);
+        if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
+            sel.set(Some(canvas));
+        }
+    });
+}
+
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let area = commands
         .spawn((
@@ -31,14 +53,64 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // this node when it lands *outside* the frame.
             Interaction::default(),
             crate::game_ui::interaction::CanvasBackground,
+            crate::game_ui::ruler::RulerArea,
+            // The rulers' cursor markers measure against this node, so the
+            // reading is valid over the whole canvas area — not just the frame.
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("ui-canvas-viewport"),
         ))
         .id();
 
-    // "No canvas" note.
+    // The empty state: what is missing, and the one thing to do about it.
+    //
+    // It was a line of grey text and nothing else — a dead end in the panel you
+    // had just gone to the trouble of opening. The panel knows exactly what is
+    // wrong and exactly how to fix it, so it should offer to.
     let note = commands
-        .spawn((Text::new("No UI canvas in the scene"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted()))))
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(10.0),
+                ..default()
+            },
+            Name::new("ui-canvas-empty"),
+        ))
         .id();
+    let note_text = commands
+        .spawn((
+            Text::new("No UI canvas in the scene"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let create = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            CreateCanvasBtn,
+            Name::new("ui-canvas-create"),
+        ))
+        .id();
+    let create_label = commands
+        .spawn((
+            Text::new("Create one"),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(Color::WHITE),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(create).add_child(create_label);
+    commands.entity(note).add_children(&[note_text, create]);
     bind_display(commands, note, |w| w.get_resource::<NativeCanvasState>().is_none_or(|s| s.active_canvas.is_none()));
 
     // The design frame — sized to reference resolution × zoom.
@@ -55,39 +127,51 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_display(commands, frame, |w| w.get_resource::<NativeCanvasState>().is_some_and(|s| s.active_canvas.is_some()));
-    bind_with(
-        commands,
-        frame,
-        |w| {
-            let s = w.get_resource::<NativeCanvasState>();
-            let zoom = s.map(|s| s.zoom).unwrap_or(1.0);
-            let (cw, ch) = s.map(|s| (s.canvas_width, s.canvas_height)).unwrap_or((1280.0, 720.0));
-            (cw * zoom, ch * zoom)
-        },
-        |w, e, (fw, fh): &(f32, f32)| {
-            if let Some(mut n) = w.get_mut::<Node>(e) {
-                let (pw, ph) = (Val::Px(*fw), Val::Px(*fh));
-                if n.width != pw {
-                    n.width = pw;
-                }
-                if n.height != ph {
-                    n.height = ph;
-                }
-            }
-        },
-    );
+    // The frame's size is *not* bound here. It is written by `nav::apply_view`,
+    // alongside the pan offset, so a zoom's move and resize land on the same
+    // frame — see that function. As a `bind_with` it ran in `run_reactions`,
+    // unordered against `apply_view`, and the split showed up as a twitch on
+    // every scroll. The `Node` above carries the un-zoomed size as the starting
+    // value; `apply_view` corrects it on the first tick.
 
     // Scene backdrop: the editor-camera render (the same slot-0 image the
     // viewport shows — 3D, or 2D when UI view was entered from the 2D view)
     // behind the UI, toggled by UiCanvasPreviewEnabled (default on).
     let backdrop = commands
         .spawn((
-            ImageNode::default(),
+            // `Stretch`: the render target's aspect follows the viewport
+            // panel's, which is not the canvas's reference aspect, and the
+            // default mode letterboxed it inside the frame — a scene backdrop
+            // with black bars down both sides reads as part of the UI.
+            ImageNode { image_mode: bevy::ui::widget::NodeImageMode::Stretch, ..default() },
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             Name::new("ui-canvas-backdrop"),
         ))
         .id();
-    bind_display(commands, backdrop, |w| w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0));
+    // Two conditions, and the second is not a preference.
+    //
+    // An undocked viewport slot shrinks its render target to 64×64 — the always-
+    // on atmosphere/IBL pass has to keep running, and shrinking it is what makes
+    // that nearly free (see `UNDOCKED_TARGET_SIZE` in `renzora_viewport`). So in
+    // a workspace with no viewport panel, the "scene behind your UI" is a 64px
+    // square smeared across a 1280×720 frame: small, blurry, and the wrong
+    // aspect. It is not a preview of anything.
+    //
+    // The backdrop is therefore only shown when a viewport is also on screen —
+    // which is the arrangement where it earns its keep anyway, since you are
+    // then placing a HUD over a scene you can see rendered properly next to it.
+    bind_display(commands, backdrop, |w| {
+        let wanted = w
+            .get_resource::<UiCanvasPreviewEnabled>()
+            .is_none_or(|r| r.0);
+        wanted
+            && renzora_ember::dock::panel_visible_anywhere(
+                "viewport",
+                w.get_resource::<renzora_ember::dock::Dock>(),
+                w.get_resource::<renzora_ember::dock::FixedDock>(),
+                w.get_resource::<renzora_ember::dock::DockWindows>(),
+            )
+    });
     bind_with(
         commands,
         backdrop,
@@ -122,9 +206,18 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     // Editing overlay (selection box + handles + hit layer) over the image.
-    let overlay = crate::game_ui::overlay::build(commands);
+    let overlay = crate::game_ui::overlay::build(commands, fonts);
     commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
-    commands.entity(area).add_children(&[note, frame]);
+    // Rulers before the shelf, so the shelf floats over them rather than being
+    // clipped by the strip it sits beside.
+    let rulers = crate::game_ui::ruler::build(commands, fonts);
+    let shelf = crate::game_ui::palette::build_shelf(commands, fonts);
+    // Scrollbars last: they hug the bottom and right edges and must sit over
+    // whatever the frame's overflow puts there.
+    let scrollbars = crate::game_ui::scroll::build(commands);
+    commands
+        .entity(area)
+        .add_children(&[note, frame, rulers, shelf, scrollbars]);
     area
 }

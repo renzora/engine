@@ -15,6 +15,32 @@
 
 use bevy::prelude::*;
 
+// The shared contract image. Linked for its side effect ONLY — nothing here
+// calls into it, and `renzora` is still imported normally everywhere. Its
+// presence in the link graph is what makes rustc resolve `renzora`'s code to one
+// dylib rather than embedding a private copy in each binary and each plugin,
+// which is what keeps the contract crate's process-global statics (translations,
+// the Problems and Console buffers, the asset loader) singular. See
+// `crates/renzora_dylib/src/lib.rs` for why a second copy fails silently.
+//
+// It lives here rather than in either `main.rs` because both binaries depend on
+// this crate and only one of them has a feature table to gate on.
+#[cfg(feature = "dynamic_linking")]
+extern crate renzora_dylib;
+
+// The same, for the UI framework. Linked for its side effect only: its presence
+// is what makes rustc resolve `renzora_ember` to one dylib, so a native plugin
+// drawing a panel shares the editor's theme palette, stylesheet, UI font scale
+// and viewport-toolbar lists instead of getting a private set that fails
+// silently. See `crates/renzora_ember_dylib/src/lib.rs`.
+//
+// Gated on `ui` as well because that is what makes `renzora_ember` present at
+// all; the `dynamic_linking` feature pulls the dependency, and this line is what
+// keeps a hand-built combination without `ui` compiling rather than failing to
+// resolve the crate.
+#[cfg(all(feature = "dynamic_linking", feature = "ui"))]
+extern crate renzora_ember_dylib;
+
 pub use renzora;
 
 // Re-exported for the binaries: `src/main.rs` reaches the crash hook and the
@@ -24,10 +50,18 @@ pub use renzora;
 // a plugin crate no longer needs a link edge for its own sake.
 pub use renzora_engine;
 pub use renzora_network;
+// The same, for the first-run setup the binary runs before Bevy starts. It
+// moved out of the editor executable when the editor became a loadable image
+// and there was only one binary left to run it.
+#[cfg(not(target_arch = "wasm32"))]
+pub use renzora_native_plugin;
 
 // Always compiled now. Whether it's added is decided at RUNTIME by the
 // `is_editor` arg to `add_engine_plugins` (the editor renders to its own
 // offscreen image, so viewport stretch only applies to a shipped game).
+/// Loading the editor image beside the executable — see the module docs for why
+/// one binary can be both the editor and the game.
+pub mod editor_image;
 mod plugins;
 mod render_scale;
 mod viewport_stretch;

@@ -103,7 +103,17 @@ impl Plugin for GameUiPlugin {
         // that after any reparent — drag, undo-restore, scene load, or script.
         // See the systems below for why the leak is otherwise invisible-yet-
         // destructive (an orphaned widget renders into the editor's own UI).
-        app.add_systems(Update, (heal_orphaned_ui_widgets, heal_nested_ui_canvases));
+        // …and a canvas root must keep the geometry of the surface it *is* —
+        // see `heal_canvas_root_geometry`, which is what repairs a scene that
+        // already has a collapsed canvas saved in it.
+        app.add_systems(
+            Update,
+            (
+                heal_orphaned_ui_widgets,
+                heal_nested_ui_canvases,
+                heal_canvas_root_geometry,
+            ),
+        );
 
         // Visibility-mode binding: same dual-path setup as the reparent
         // logic. The Changed system handles inspector edits to the
@@ -420,22 +430,105 @@ fn heal_nested_ui_canvases(
     }
 }
 
+/// Force every canvas root back to full-target geometry.
+///
+/// The canvas root's rect is not authorable — see [`canvas_root_node`] — but it
+/// is an ordinary `Node`, so every tool that writes a `Node` could reach it. The
+/// UI editor's move/resize did: the canvas root carries `UiWidget` once its
+/// template has built, which put it in the canvas editor's hit-test alongside the
+/// markup nodes it contains, and one drag rewrote it to
+/// `left: 107.8%, top: 29.2%, width: 0%, height: 0%`.
+///
+/// A canvas at zero size is not a visible mistake. It has no border and no
+/// background, so there is nothing on screen to look wrong — the template
+/// underneath still loads, still builds its children, still reports a sensible
+/// `content_size`, and simply lays all of it out inside a zero-by-zero box. The
+/// UI editor renders an empty black rectangle and the file looks broken. That is
+/// the whole reason this is an invariant re-established every frame rather than a
+/// guard at the one call site that happened to violate it: an error you cannot
+/// see is one you cannot be trusted to avoid.
+///
+/// Writing only on a mismatch matters — an unconditional assignment would dirty
+/// `Node` every frame and re-run layout for the whole UI tree.
+fn heal_canvas_root_geometry(
+    mut canvases: Query<(Entity, &UiCanvas, &mut Node)>,
+    mut corrected: Local<bevy::platform::collections::HashSet<Entity>>,
+) {
+    for (entity, canvas, mut node) in &mut canvases {
+        // Per-canvas, not one constant: in `Fit` the correct rect *is* that
+        // canvas's reference resolution, so editing Ref Width in the inspector
+        // has to move the box with it.
+        let want = components::canvas_root_node(canvas);
+        if node.position_type != want.position_type
+            || node.left != want.left
+            || node.top != want.top
+            || node.width != want.width
+            || node.height != want.height
+            || node.margin != want.margin
+        {
+            // Said once per canvas. A canvas that settles corrects at most once
+            // (on load, from a saved `Node`); one that keeps reappearing here is
+            // being fought by something else every frame, and that is worth
+            // seeing rather than silently winning the race half the time.
+            if corrected.insert(entity) {
+                debug!(
+                    "canvas {entity}: corrected root geometry from {:?} {:?}x{:?}",
+                    node.position_type, node.width, node.height
+                );
+            }
+            node.position_type = want.position_type;
+            node.left = want.left;
+            node.top = want.top;
+            node.width = want.width;
+            node.height = want.height;
+            node.margin = want.margin;
+        }
+    }
+}
+
+// The "Game UI" switch is implemented by *routing*, not by visibility — see
+// `sync_ui_canvas_target_camera` in the editor crate. A version of it here set
+// `Visibility::Hidden` on every canvas when the switch was off, which is the
+// mistake that system's own doc warns about: force-hiding canvases pollutes
+// saved scenes and breaks shipped runtime visibility, and it would have blanked
+// the UI editor panel along with the viewport.
+
 // ── Canvas scaler ───────────────────────────────────────────────────────────
 
 /// Scales `Val::Px` values (text size, padding, border-radius) uniformly so
 /// they stay proportional to the viewport.
+///
+/// This is the half of canvas scaling that makes text crisp: shrinking the
+/// design box with a transform would resample glyphs, whereas moving
+/// [`UiScale`](bevy::ui::UiScale) re-rasterizes them at their true size. The
+/// other half — whether the canvas *is* the reference box or fills the window —
+/// is [`components::canvas_root_node`].
+///
+/// `UiScale` is one global for the whole app, so with several screen canvases
+/// at different reference resolutions only one of them can be honoured. We take
+/// the highest `sort_order` (the author's own statement of which canvas is on
+/// top), tie-broken by entity so it doesn't flip between frames on archetype
+/// order. World canvases are excluded outright: their reference resolution is
+/// an offscreen target size, and letting one set the screen's scale meant a
+/// 512×512 wall panel could shrink the entire HUD.
 fn update_ui_scale(
-    canvases: Query<&UiCanvas>,
+    canvases: Query<(Entity, &UiCanvas)>,
     render_target: Option<Res<renzora::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut ui_scale: ResMut<bevy::ui::UiScale>,
 ) {
-    let (ref_w, ref_h) = canvases
+    let primary = canvases
         .iter()
-        .next()
-        .map(|c| (c.reference_width, c.reference_height))
-        .unwrap_or((1280.0, 720.0));
+        .filter(|(_, c)| !c.is_world())
+        .max_by_key(|(e, c)| (c.sort_order, std::cmp::Reverse(*e)));
+
+    let Some((_, canvas)) = primary else {
+        // No screen canvas — leave the scale alone rather than snapping it,
+        // so a scene that has yet to spawn its UI doesn't flash at 1.0.
+        return;
+    };
+    let (ref_w, ref_h) = (canvas.reference_width, canvas.reference_height);
 
     if ref_w <= 0.0 || ref_h <= 0.0 {
         return;
@@ -465,8 +558,12 @@ fn update_ui_scale(
         return;
     }
 
-    let scale = (actual_w / ref_w).min(actual_h / ref_h);
-    ui_scale.0 = scale;
+    let scale = canvas.scale_mode().scale_for(ref_w, ref_h, actual_w, actual_h);
+    // Guard the write: `UiScale` is change-detected and a dirty one re-lays out
+    // the whole tree, which on a still window is every frame for nothing.
+    if (ui_scale.0 - scale).abs() > f32::EPSILON {
+        ui_scale.0 = scale;
+    }
 }
 
 // ── Image rehydration ───────────────────────────────────────────────────────

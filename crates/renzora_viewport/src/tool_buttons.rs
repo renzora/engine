@@ -23,10 +23,12 @@ use renzora_ember::font::{icon_glyph, EmberFonts};
 use renzora_ember::theme::{border, rgb, text_primary};
 use renzora_theme::ThemeManager;
 
-/// Tool buttons float over the scene, so they can afford a bigger hit target
-/// than the header widgets.
-pub(crate) const SIDE_BTN: f32 = 28.0;
-pub(crate) const SIDE_ICON: f32 = 15.0;
+/// Toolbar button metrics. Aliases rather than their own numbers: the UI editor
+/// builds the same strip, and when both crates held their own copy they drifted
+/// into two visibly different toolbars. One definition, in
+/// `renzora_ember::widgets::toolbar`.
+pub(crate) use renzora_ember::widgets::TOOLBAR_BTN as SIDE_BTN;
+pub(crate) use renzora_ember::widgets::TOOLBAR_ICON as SIDE_ICON;
 
 /// A registry-backed tool button: carries the predicates/activator so the
 /// per-frame systems can highlight, show/hide, and fire it.
@@ -117,18 +119,9 @@ pub(crate) fn tool_button(
 
 /// A vertical rule between sections of the horizontal tool strip.
 pub(crate) fn tool_separator(commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            Node {
-                width: Val::Px(1.0),
-                height: Val::Px(20.0),
-                margin: UiRect::horizontal(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(border())),
-            Name::new("vp-tool-sep"),
-        ))
-        .id()
+    let sep = renzora_ember::widgets::toolbar_separator(commands);
+    commands.entity(sep).insert(Name::new("vp-tool-sep"));
+    sep
 }
 
 /// A horizontal rule between groups of the vertical shelf. Full-width so it

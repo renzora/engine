@@ -76,7 +76,8 @@ pub fn menu_submenu(
     icon: &str,
     label: &str,
 ) -> (Entity, Entity) {
-    menu_submenu_styled(commands, fonts, icon, label, text_muted())
+    let (row, content, _) = menu_submenu_parts(commands, fonts, icon, label, text_muted());
+    (row, content)
 }
 
 /// [`menu_submenu`] with an explicit icon color — for menus that color-code
@@ -88,6 +89,25 @@ pub fn menu_submenu_styled(
     label: &str,
     icon_color: (u8, u8, u8),
 ) -> (Entity, Entity) {
+    let (row, content, _) = menu_submenu_parts(commands, fonts, icon, label, icon_color);
+    (row, content)
+}
+
+/// [`menu_submenu_styled`] that also hands back the floating **panel**, for a
+/// caller that needs to restyle it.
+///
+/// The panel is a private detail for every other caller — it is positioned,
+/// shown and hidden entirely by `submenu_reveal`, and a menu should not have to
+/// think about it. The hamburger's dropdown is the exception: it is a small
+/// panel rather than a context menu, and its submenus have to match it or the
+/// second level looks like a different application.
+pub fn menu_submenu_parts(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+) -> (Entity, Entity, Entity) {
     let row = commands
         .spawn((
             Node {
@@ -154,8 +174,9 @@ pub fn menu_submenu_styled(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            // Above the 9000 of the menu root it belongs to.
-            GlobalZIndex(9100),
+            // Above the 9700 of the menu root it belongs to, and still below the
+            // crash overlay (9800). Moves with it — see the note on `screen_menu`.
+            GlobalZIndex(9750),
             OverlaySurface,
             // Spawn-time (not via an `Added` pass) for the same reason the menu
             // root does it: a menu torn down the same frame would leave the
@@ -171,7 +192,7 @@ pub fn menu_submenu_styled(
         .id();
     commands.entity(panel).add_child(scroller);
     commands.entity(row).insert(SubmenuRow { panel });
-    (row, content)
+    (row, content, panel)
 }
 
 /// True while the cursor sits over a *visible* submenu panel — the signal

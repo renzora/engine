@@ -7,7 +7,11 @@ Need a chair, a sound effect, or a ready-made script for your game? The Renzora 
 You can shop the same catalog in two places:
 
 - **On the website** — visit [renzora.com/marketplace](/marketplace) to browse, preview, buy, and read reviews.
-- **Inside the editor** — open the **Marketplace** tab to browse, preview, and install without ever leaving your project.
+- **Inside the editor** — click the **storefront icon** in the top bar, just right of the gear. The marketplace opens over your work, so you can browse, preview, and install without leaving your project or giving up a panel to it.
+
+The Assets panel's **Import** button has a **Search Marketplace…** row that opens the same thing — "I need a tree" is one question whether the answer is on your disk or in the store.
+
+Press **Escape**, click outside it, or click the storefront icon again to close it. It's an overlay rather than a dock panel because browsing is somewhere you go and come back from: the grid wants the whole window, and you don't want it competing for space with the viewport it exists to fill.
 
 ![The in-editor Marketplace: a left column with your account and categories, a search/sort toolbar, and a grid of asset cards each with a download button.](/assets/previews/marketplace.png)
 
@@ -15,7 +19,7 @@ You can shop the same catalog in two places:
 
 ## The left column
 
-Down the left side of the Marketplace tab you'll find:
+Down the left side of the marketplace you'll find:
 
 - Your **account** — "Signed in as …" and your current **credit balance**, or a **Sign In** button when you're signed out.
 - **Upload Asset** — a shortcut for publishing your own work (coming soon).

@@ -163,6 +163,12 @@ where
     //   `uncompiled`, `tags`, …) the value ultimately landed in.
     xnode.open_tag_close = span_of(xml.open_tag_close, base);
     xnode.content_span = xml.value.map(|v| span_of(v, base));
+    // Both are zero-length markers, so the element's range runs from one
+    // `start` to the other.
+    xnode.element = Span {
+        start: span_of(xml.elem_start, base).start,
+        end: span_of(xml.elem_end, base).start,
+    };
 
     xnode.content_id = xml
         .value
@@ -227,6 +233,12 @@ struct Xml<'a> {
     /// open tag. Used by the editor as the insertion point for *new*
     /// attributes — span derived via `span_of` in `from_raw_xml`.
     open_tag_close: &'a [u8],
+    /// Zero-length slices at the `<` that opens this element and at the byte
+    /// just past its `/>` or `</name>`. Together they bound the element's whole
+    /// source text, which is what the editor needs to *move* a node rather than
+    /// just patch an attribute inside one.
+    elem_start: &'a [u8],
+    elem_end: &'a [u8],
 }
 
 struct XmlAttr<'a> {
@@ -258,6 +270,11 @@ where
 
     not(tag("</"))(input)?;
 
+    // Captured before the `<` is consumed, so it points at the element's first
+    // byte. Comments and leading whitespace have already been trimmed, so the
+    // span covers the element itself and nothing around it.
+    let elem_start: &[u8] = &input[..0];
+
     let (input, (prefix, start_name)) = preceded(
         tag("<"),
         preceded(multispace0, tuple((parse_prefix0, take_snake))),
@@ -275,6 +292,7 @@ where
     ))(input)?;
 
     if is_empty {
+        let elem_end: &[u8] = &input[..0];
         return Ok((
             input,
             Xml {
@@ -284,6 +302,8 @@ where
                 value: None,
                 children: vec![],
                 open_tag_close,
+                elem_start,
+                elem_end,
             },
         ));
     }
@@ -305,6 +325,7 @@ where
             err,
         )));
     }
+    let elem_end: &[u8] = &input[..0];
     Ok((
         input,
         Xml {
@@ -314,6 +335,8 @@ where
             value,
             children,
             open_tag_close,
+            elem_start,
+            elem_end,
         },
     ))
 }
@@ -1571,13 +1594,25 @@ where
             multispace0,
             alt((
                 map(tag("auto"), |_| Val::Auto),
-                map(tag("0"), |_| Val::Px(0.)),
                 map(tuple((float, tag("px"))), |(val, _)| Val::Px(val)),
                 map(tuple((float, tag("%"))), |(val, _)| Val::Percent(val)),
                 map(tuple((float, tag("vw"))), |(val, _)| Val::Vw(val)),
                 map(tuple((float, tag("vh"))), |(val, _)| Val::Vh(val)),
                 map(tuple((float, tag("vmin"))), |(val, _)| Val::VMin(val)),
                 map(tuple((float, tag("vmax"))), |(val, _)| Val::VMax(val)),
+                // Bare `0`, the one length CSS lets you write without a unit.
+                // It has to come *last*: `alt` takes the first branch that
+                // matches, and `tag("0")` matches the leading `0` of `0px`
+                // while consuming only that digit. It used to sit second, so
+                // `parse_val("0px")` returned `Px(0)` and left `px` behind —
+                // harmless on its own, fatal inside a multi-value shorthand.
+                // `padding="0 0 0 88px"` parsed; `padding="0px 0px 0px 88px"`
+                // left `px …` for the next value, failed the four-value branch,
+                // fell through `alt` to the single-value one and came out as
+                // `UiRect::all(0)`. So the padding vanished, and a
+                // `margin="10px 0px 0px 0px"` meant to add a gap above a button
+                // became a 10px margin on all four sides instead.
+                map(tag("0"), |_| Val::Px(0.)),
             )),
             multispace0,
         ),
@@ -1884,9 +1919,29 @@ mod tests {
     #[test_case("20px", Val::Px(20.))]
     #[test_case("20vmin", Val::VMin(20.))]
     #[test_case("20vmax", Val::VMax(20.))]
+    #[test_case("0px", Val::Px(0.))]
+    #[test_case("0%", Val::Percent(0.))]
     fn test_value(input: &str, expected: Val) {
         let result = parse_val::<nom::error::Error<_>>(input.as_bytes());
         assert_eq!(Ok(("".as_bytes(), expected)), result);
+    }
+
+    /// A zero with a unit has to consume its unit, or every value after it in a
+    /// shorthand is parsed against leftover `px`. `alt` then falls back to the
+    /// one-value branch and the whole rect silently becomes `all(0)` — the
+    /// failure is a layout that looks plausible, not a parse error.
+    #[test_case("0px 0px 0px 88px", UiRect { top: Val::Px(0.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(88.) })]
+    #[test_case("0 0 0 88px", UiRect { top: Val::Px(0.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(88.) })]
+    #[test_case("10px 0px 0px 0px", UiRect { top: Val::Px(10.), right: Val::Px(0.), bottom: Val::Px(0.), left: Val::Px(0.) })]
+    // Note the two-value form is **not** CSS's `vertical horizontal`: this
+    // parser reads it as `horizontal vertical`. Left as-is deliberately — every
+    // template in the tree is already written against it, and flipping it would
+    // reflow all of them silently. Pinned here so the difference is on the record.
+    #[test_case("14px 18px", UiRect::axes(Val::Px(14.), Val::Px(18.)))]
+    #[test_case("0px", UiRect::all(Val::Px(0.)))]
+    fn test_ui_rect_zero_with_unit(input: &str, expected: UiRect) {
+        let result = parse_ui_rect::<VerboseHtmlError>(input.as_bytes());
+        assert_eq!(expected, result.expect("should parse").1);
     }
 
     #[test_case("auto", GridPlacement::auto())]
@@ -2122,5 +2177,57 @@ mod tests {
         // Text content span.
         let cs = root.content_span.expect("text has content span");
         assert_eq!(&template.source[cs.as_range()], b"#");
+
+        // The whole element, `<` to past `</text>`. Cutting exactly this range
+        // out of the source has to leave valid markup behind, which is what
+        // moving a node in the file relies on.
+        assert_eq!(
+            &template.source[root.element.as_range()],
+            br##"<text font_size="12" font_color="#8A93A2">#</text>"##
+        );
+    }
+
+    /// Element spans for a nested tree: children, self-closing tags, and
+    /// siblings separated by whitespace and comments. A move splices at these
+    /// boundaries, so an off-by-one here corrupts the file.
+    #[test]
+    fn test_element_spans_nested() {
+        struct NullAdaptor;
+        impl AssetLoadAdaptor for NullAdaptor {
+            fn load<'a, A: bevy::asset::Asset>(
+                &mut self,
+                _path: impl Into<bevy::asset::AssetPath<'a>>,
+            ) -> bevy::asset::Handle<A> {
+                bevy::asset::Handle::default()
+            }
+        }
+
+        let src = br##"<template><node id="root"><text>a</text>
+    <!-- a comment --> <image src="x.png" />
+    <button on_press="go"><text>b</text></button></node></template>"##;
+        let mut adapter = NullAdaptor;
+        let (_, template) =
+            parse_template::<VerboseHtmlError>(src, &mut adapter).expect("parse ok");
+
+        let root = &template.root[0];
+        let at = |n: &XNode| String::from_utf8(template.source[n.element.as_range()].to_vec()).unwrap();
+
+        assert!(at(root).starts_with(r##"<node id="root">"##));
+        assert!(at(root).ends_with("</node>"));
+
+        assert_eq!(root.children.len(), 3);
+        assert_eq!(at(&root.children[0]), "<text>a</text>");
+        // A self-closing tag ends just past `/>`, and the comment before it is
+        // *not* part of the element.
+        assert_eq!(at(&root.children[1]), r##"<image src="x.png" />"##);
+        assert_eq!(
+            at(&root.children[2]),
+            r##"<button on_press="go"><text>b</text></button>"##
+        );
+        // A child's span sits strictly inside its parent's.
+        for child in &root.children {
+            assert!(child.element.start > root.element.start);
+            assert!(child.element.end < root.element.end);
+        }
     }
 }

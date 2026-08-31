@@ -221,6 +221,113 @@ pub fn spawn_download(platform: Platform, release: ReleaseInfo) -> DownloadTask 
     }
 }
 
+/// Spawn a background download of the engine SOURCE for this release.
+///
+/// A lean export recompiles the engine, so it needs the source — which a
+/// canonical editor download does not ship. Rather than making lean builds a
+/// contributors-only feature, the source rides the release as one more asset and
+/// installs into `~/.renzora/src/<version>/`, exactly as a runtime template
+/// installs into `~/.renzora/templates/<version>/<platform>/`.
+///
+/// Reuses [`DownloadTask`] so the modal's existing progress rendering works
+/// unchanged. `platform` is carried only so the UI can key the status line it
+/// already has; the archive itself is platform-independent.
+pub fn spawn_source_download(platform: Platform, release: ReleaseInfo) -> DownloadTask {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(DownloadProgress::Fetching("Resolving release...".into()));
+        match download_and_install_source(&release, &tx) {
+            Ok(msg) => {
+                let _ = tx.send(DownloadProgress::Done(msg));
+            }
+            Err(e) => {
+                let _ = tx.send(DownloadProgress::Error(e));
+            }
+        }
+    });
+    DownloadTask { platform, rx: Mutex::new(rx) }
+}
+
+fn download_and_install_source(
+    release: &ReleaseInfo,
+    tx: &mpsc::Sender<DownloadProgress>,
+) -> Result<String, String> {
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name == templates::SOURCE_ASSET)
+        .ok_or_else(|| {
+            format!(
+                "{} has no {} — this release was published without the engine source, \
+                 so a lean build needs a source checkout instead.",
+                release.tag_name,
+                templates::SOURCE_ASSET
+            )
+        })?;
+
+    let bytes = fetch_verified(asset, tx)?;
+
+    let dest = templates::user_source_dir().ok_or_else(|| {
+        "No home directory to install into (neither HOME nor USERPROFILE is set).".to_string()
+    })?;
+
+    // Replace rather than merge, for the same reason a template is replaced: a
+    // half-updated source tree would compile into a binary that matches neither
+    // version, and the failure would surface as a mismatched `TypeId` at run
+    // time rather than a compile error.
+    if dest.exists() {
+        std::fs::remove_dir_all(&dest)
+            .map_err(|e| format!("Failed to clear {}: {e}", dest.display()))?;
+    }
+    std::fs::create_dir_all(&dest)
+        .map_err(|e| format!("Failed to create {}: {e}", dest.display()))?;
+
+    let _ = tx.send(DownloadProgress::Fetching(format!("Extracting into {}...", dest.display())));
+    let cursor = std::io::Cursor::new(&bytes);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Bad zip: {e}"))?;
+    archive.extract(&dest).map_err(|e| format!("Extract failed: {e}"))?;
+
+    Ok(format!("Installed engine source from {}", release.tag_name))
+}
+
+/// Download an asset and check it against the digest the release published.
+///
+/// Verify BEFORE writing anything: a truncated or tampered archive becomes a
+/// binary handed to someone's players, so a mismatch aborts rather than
+/// installing and hoping.
+fn fetch_verified(
+    asset: &AssetRef,
+    tx: &mpsc::Sender<DownloadProgress>,
+) -> Result<Vec<u8>, String> {
+    let _ = tx.send(DownloadProgress::Fetching(format!(
+        "Downloading {} ({:.1} MB)...",
+        asset.name,
+        asset.size as f64 / 1_000_000.0
+    )));
+
+    let response = renzora_net::Request::get(&asset.url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .map_err(|e| format!("Download failed: {e}"))?;
+    if !response.is_ok() {
+        return Err(format!("Download failed: HTTP {}", response.status));
+    }
+    let bytes = response.body;
+
+    let actual = hex(&Sha256::digest(&bytes));
+    if let Some(expected) = &asset.sha256 {
+        if &actual != expected {
+            return Err(format!(
+                "Checksum mismatch for {} — expected {expected}, got {actual}. \
+                 Nothing was installed.",
+                asset.name
+            ));
+        }
+        let _ = tx.send(DownloadProgress::Fetching("Checksum OK".into()));
+    }
+    Ok(bytes)
+}
+
 fn download_and_install(
     platform: Platform,
     release: &ReleaseInfo,

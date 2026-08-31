@@ -1,0 +1,26 @@
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependencies below exist so rust-analyzer can
+# resolve `renzora::` / `renzora_ember::` while you author; the real build is
+# `cargo renzora`.
+[workspace]
+
+[package]
+name = "gamepad"
+version = "0.1.0"
+edition = "2021"
+description = "Live gamepad diagnostics — sticks, triggers and buttons per connected pad."
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+renzora_ember = { path = "../../crates/renzora_ember" }
+
+# Nothing third-party, so cargo is never invoked and the build stays offline.

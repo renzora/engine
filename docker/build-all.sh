@@ -10,6 +10,23 @@
 # The dedicated server is not a separate target — it's the runtime launched
 # with `--server`.
 #
+# ── What this script produces: runtimes, not desktop editors ─────────────────
+# The output of a desktop lane is a RUNTIME — the game binary that
+# `renzora_export` uses as that platform's export template. The editor binary is
+# compiled and then not staged, because an editor carries a plugin SDK and an
+# SDK cannot be cross-built: its proc-macro dylibs are artifacts of the machine
+# running the compiler, so a Linux container can only ever produce Linux ones.
+# See the long note in `build_desktop`.
+#
+# So the three ways to build divide cleanly:
+#
+#   cargo renzora     your own platform, complete, editor and SDK included
+#   this script       runtimes / export templates, every platform, no editor
+#   CI native lanes   the published editors, one runner per platform
+#
+# The wasm lane is the exception that proves it: a wasm editor has no SDK and
+# compiles no Rust at runtime, so it is still built here.
+#
 # ── Per-platform toolchain images ────────────────────────────────────────────
 # The toolchain is split into one image per platform (base + linux
 # / windows / macos / ios / android / wasm).
@@ -77,6 +94,13 @@ mkdir -p "$OUTPUT_DIR"
 # is its own cargo workspace with its own tuned `[profile.dist]`, and their
 # outputs are kilobytes — nothing to gain, a target-dir rename to lose.
 PROFILE="${RENZORA_PROFILE:-release}"
+# Exported so anything this script shells out to selects the same profile by
+# name instead of falling back to its own default. That mattered acutely while
+# the SDK was staged here — an unexported value had a `release` lane invoke an
+# xtask that rebuilt the entire workspace under `dist` and then described a
+# compilation no shipped binary came from — and it is kept because agreeing on
+# one profile is cheap and disagreeing is expensive.
+export RENZORA_PROFILE="$PROFILE"
 echo "=== engine profile: $PROFILE ==="
 
 # The native linux lane builds the container's own arch (full toolchain, mold,
@@ -161,8 +185,51 @@ copy_shared_libs() {
     local OUT="$2"
     local EXT="$3"
     local HOST_BIN="$4"
+    local RUST_TARGET="${5:-native}"
 
     mkdir -p "$OUT/plugins"
+
+    # ── std, the toolchain's own shared runtime ──────────────────────────────
+    #
+    # A `copy_std` helper used to do this and was deleted when Bevy went static,
+    # on the reasoning that with nothing sharing a Bevy there was nothing left to
+    # share a std with either. That reasoning expired: `dynamic_linking` is back
+    # in the default features, so `-C prefer-dynamic` applies again and BOTH
+    # executables import `std-<hash>.$EXT`.
+    #
+    # Missing it does not degrade gracefully. The OS loader refuses the binary
+    # before `main` with a dialog naming the file and nothing else:
+    #
+    #     The code execution cannot proceed because std-<hash>.dll was not found
+    #
+    # Read out of the binary's own import strings, for the same reason
+    # `bevy_dylib` is below: the hash is derived from the toolchain, so globbing
+    # the sysroot or hardcoding a name ships the wrong one the moment the pin in
+    # `rust-toolchain.toml` moves. `--print target-libdir` is asked for the
+    # TARGET's sysroot, which for a cross build is not the host's.
+    local STD_WANT=""
+    [ -n "$HOST_BIN" ] && [ -f "$HOST_BIN" ] && \
+        STD_WANT=$(grep -aoE "(lib)?std-[0-9a-f]+\.$EXT" "$HOST_BIN" 2>/dev/null | head -1)
+    if [ -n "$STD_WANT" ]; then
+        local LIBDIR="" STD_SRC="" cand
+        if [ "$RUST_TARGET" = "native" ]; then
+            LIBDIR=$(rustc --print target-libdir 2>/dev/null || true)
+        else
+            LIBDIR=$(rustc --print target-libdir --target "$RUST_TARGET" 2>/dev/null || true)
+        fi
+        for cand in "$LIBDIR/$STD_WANT" "$SRC/deps/$STD_WANT" "$SRC/$STD_WANT"; do
+            [ -n "$cand" ] && [ -f "$cand" ] && { STD_SRC="$cand"; break; }
+        done
+        if [ -n "$STD_SRC" ]; then
+            cp "$STD_SRC" "$OUT/"
+            echo "    staged $STD_WANT"
+        else
+            # Loud, because the alternative is an artifact that looks complete and
+            # cannot start on any machine.
+            echo "WARN: $HOST_BIN imports $STD_WANT but it was not found (looked in ${LIBDIR:-<no libdir>})"
+            echo "      the shipped binary will refuse to launch"
+        fi
+    fi
 
     # bevy_dylib — copy the EXACT one the host binary imports, NOT just the
     # newest by mtime. deps/ accumulates one bevy_dylib-<hash> per feature
@@ -184,17 +251,22 @@ copy_shared_libs() {
     # NOTE: `renzora_postprocess` is no longer here — its framework folded
     # into `renzora` (module `renzora::postprocess`), so it ships inside
     # renzora.{dll,so,dylib} and emits no dylib of its own.
-    # NOTE: as of the static-Bevy split, none of these files are produced any
-    # more. `renzora` is `crate-type = ["rlib"]`, `renzora_editor` likewise, and
-    # `bevy/dynamic_linking` is no longer in `renzora_app`'s default features —
-    # so there is no bevy_dylib, no renzora.dll, and no editor bundle cdylib. The
-    # removable editor is a removable *executable* now (`renzora-editor`, staged
-    # in build_desktop). The loop is kept only so a stale dylib left in a warm
-    # cargo cache from before the change still lands beside the exe rather than
-    # being swept into plugins/ below.
+    # NOTE: the "static-Bevy split removed all of these" note that used to sit
+    # here has been out of date since native plugins landed. `dynamic_linking` is
+    # back in `renzora_app`'s default features, so a desktop build produces
+    # `bevy_dylib` (handled above), `renzora_dylib` and `renzora_ember_dylib`
+    # again — and the executables IMPORT them. Missing one does not degrade
+    # gracefully: the OS loader refuses the binary before `main`, with a dialog
+    # naming a filename and nothing else.
+    #
+    # `librenzora.$EXT` / `librenzora_editor.$EXT` stay in the list only so a
+    # stale dylib left in a warm cargo cache from before that change lands beside
+    # the exe rather than being swept into plugins/ below.
     for f in \
-        "$SRC/librenzora.$EXT"         "$SRC/renzora.$EXT" \
-        "$SRC/librenzora_editor.$EXT"  "$SRC/renzora_editor.$EXT"; do
+        "$SRC/librenzora_dylib.$EXT"        "$SRC/renzora_dylib.$EXT" \
+        "$SRC/librenzora_ember_dylib.$EXT"  "$SRC/renzora_ember_dylib.$EXT" \
+        "$SRC/librenzora.$EXT"              "$SRC/renzora.$EXT" \
+        "$SRC/librenzora_editor.$EXT"       "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -206,6 +278,12 @@ copy_shared_libs() {
         [ -f "$f" ] || continue
         local base=$(basename "$f")
         [[ "$base" == *bevy_dylib* ]] && continue
+        # The two shared engine images, staged beside the exe just above. Swept
+        # into plugins/ they would be ~37 MB of duplicate dead weight AND get
+        # `dlopen`'d by the C-ABI loader looking for an entry point they do not
+        # export.
+        [[ "$base" == *renzora_dylib* ]] && continue
+        [[ "$base" == *renzora_ember_dylib* ]] && continue
         [[ "$base" == *libstd-* ]] && continue
         [[ "$base" == *renzora_macros* ]] && continue
         [[ "$base" == librenzora."$EXT" ]] && continue
@@ -254,6 +332,31 @@ copy_shared_libs() {
 # a reason to sink the whole engine build. A plugin that fails is named in the
 # summary and simply absent from the artifact. Silence would be the bug: an empty
 # `plugins/` looked exactly like a successful build for months.
+#
+# **Except for a plugin that depends on nothing.** Best-effort was the right call
+# for the reason above and the wrong one for everything else: it is scoped to
+# third-party code that can fail to cross-compile, and a plugin whose only
+# dependency is `renzora_plugin` has no such excuse. When one of those stops
+# building it is our bug, on every platform at once.
+#
+# Losing that distinction cost 25 days. All 59 `no_std` plugins stopped linking
+# on macOS the moment they stopped linking `std` (which is what carries the
+# `#[link]` for libc), and this loop reported `8 built, 59 failed` on both macOS
+# slices of every nightly while the job stayed green and the artifact shipped
+# without a single post-process effect. `plugin_has_third_party_deps` is what
+# separates "a dependency did not cross-compile" from "we broke the plugins".
+plugin_has_third_party_deps() {
+    awk '
+        /^\[dependencies\]/ { deps = 1; next }
+        /^\[/               { deps = 0 }
+        deps && /^[A-Za-z0-9_-]+[[:space:]]*=/ {
+            split($0, f, /[[:space:]]*=/)
+            if (f[1] != "renzora_plugin") { found = 1 }
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$1"
+}
+
 build_plugins() {
     local RUST_TARGET="$1" PLATFORM="$2" EXT="$3"
     [ -d plugins ] || return 0
@@ -265,10 +368,25 @@ build_plugins() {
     fi
 
     echo "=== Building C-ABI plugins for $PLATFORM ==="
-    local dir name log built=0 failed=()
+    local dir name log built=0 failed=() fatal=()
     for dir in plugins/*/; do
         [ -f "$dir/Cargo.toml" ] || continue
         name=$(basename "$dir")
+        # NATIVE plugins are skipped here, and running cargo on one would be
+        # actively harmful rather than merely wrong. `crate-type = ["dylib"]`
+        # means it links the real Bevy — and `plugins/` is outside the engine
+        # workspace, so cargo would resolve it a FRESH Bevy from crates.io. That
+        # is a ten-minute build per plugin whose output has different `TypeId`s
+        # from the engine: it loads, runs, and corrupts the World.
+        #
+        # The only sound way to build one is against the artifacts the engine was
+        # actually built from, which is what the staged SDK holds and what
+        # `xtask/src/native_plugin.rs` does. The quoted `"dylib"` is matched
+        # rather than the bare word because `"cdylib"` also ends in `dylib`.
+        if grep -q 'crate-type.*"dylib"' "$dir/Cargo.toml"; then
+            echo "    skipping '$name' (native plugin — built against the SDK, not by cargo)"
+            continue
+        fi
         log=$(mktemp)
         if ( cd "$dir" && cargo build --profile dist "${TARGET_FLAG[@]}" ) > "$log" 2>&1; then
             built=$((built + 1))
@@ -278,6 +396,9 @@ build_plugins() {
             # person to reproduce a 67-plugin build by hand.
             echo "WARN: plugin '$name' failed to build for $PLATFORM:"
             tail -15 "$log" | sed 's/^/    /'
+            if ! plugin_has_third_party_deps "$dir/Cargo.toml"; then
+                fatal+=("$name")
+            fi
         fi
         rm -f "$log"
     done
@@ -303,6 +424,13 @@ build_plugins() {
     echo "=== $PLATFORM plugins: $built built, ${#failed[@]} failed, $staged staged ==="
     if [ ${#failed[@]} -gt 0 ]; then
         echo "    not shipped: ${failed[*]}"
+    fi
+    # Only the dependency-free ones sink the build; a third-party dependency that
+    # will not cross-compile is still a warning, which is what best-effort was for.
+    if [ ${#fatal[@]} -gt 0 ]; then
+        echo "ERROR: plugins with no third-party dependencies failed to build for $PLATFORM: ${fatal[*]}"
+        echo "       These build everywhere or nowhere — treat this as a broken plugin API, not a toolchain gap."
+        return 1
     fi
     return 0
 }
@@ -341,13 +469,13 @@ build_updater() {
     return 0
 }
 
-# NOTE: there was a `copy_std` helper here that shipped the toolchain's
-# `std-<hash>.{dll,so,dylib}` beside the binaries. It existed because the images
-# set `-C prefer-dynamic`, a leftover from the shared-`bevy_dylib` era. With Bevy
-# static there is nothing left to share a std with — the editor and the runtime
-# are separate processes, and a C-ABI plugin links no std of ours — so the flag
-# bought nothing and cost a *toolchain-versioned import under a hashed filename*
-# in every shipped binary. Both flag and helper are gone; std links statically.
+# NOTE: staging `std-<hash>.{dll,so,dylib}` lives in `copy_shared_libs` above.
+# It was deleted from here when Bevy went static, on the reasoning that nothing
+# was left to share a std with. `dynamic_linking` is back in the default features
+# and brings `-C prefer-dynamic` with it, so the executables import a hashed std
+# again and it has to ship. The cost that argument named — a toolchain-versioned
+# import under a hashed filename — is real and is simply the price of the shared
+# images.
 
 # ── Compress the staged executables with UPX ─────────────────────────────────
 # Usage: compress_binaries <platform-name> <exe-suffix>
@@ -492,23 +620,44 @@ build_desktop() {
     mkdir -p "$OUT"
 
     # ── The binaries ─────────────────────────────────────────────────────────
-    # There are TWO executables and the editor lane must stage BOTH:
+    # The workspace has two executables:
     #
     #   renzora         the runtime / shipped game (package `renzora_app`)
     #   renzora-editor  the editor              (package `renzora_editor_app`)
     #
-    # This used to copy `renzora` alone and call it the editor, which was right
-    # only while the editor was a `dlopen`'d cdylib bundle sitting beside one
-    # dual-purpose exe. Static Bevy ended that: a cdylib bundle would link its
-    # own copy of Bevy, hence its own `World` type, so the editor became a
-    # separate binary — and this script never learned. The result was that every
-    # desktop artefact shipped the RUNTIME under the name `renzora` and no editor
-    # at all, while `cargo build --workspace` had happily compiled one.
+    # This script stages the RUNTIME only. It never ships an editor.
     #
-    # They also have to ship together, not just both exist: external-runtime play
-    # mode launches `<exe_dir>/renzora[.exe]` as a child process
-    # (`renzora_viewport::external_runtime`), so an editor staged on its own
-    # cannot start a game.
+    # `renzora-editor` is compiled here (the lane builds `--workspace`) and then
+    # deliberately left behind, because a container cannot produce a *usable*
+    # editor for anything but its own Linux architecture, and it should not
+    # produce a half-usable one for everything else.
+    #
+    # The reason is the plugin SDK. An editor compiles native plugins and Rust
+    # scripts on the machine it runs on, so it ships the metadata and the
+    # proc-macro dylibs `rustc` needs. Proc macros run *inside* the compiler, so
+    # they are built for the host — and cross-compiling here means that host is
+    # Linux. Ship that to a Windows or macOS user and their `rustc` cannot load
+    # half of it: `can't find crate for bevy_derive`, and with it every name
+    # behind `bevy::prelude`. Nor can the mismatch be patched afterwards; each
+    # `.rmeta` records the hash of what it was compiled against, so the metadata
+    # and the proc macros have to come out of one build on one machine whose own
+    # platform is the platform being built for.
+    #
+    # That is not fixable in a cross-compiler, so the job moved instead:
+    #
+    #   cargo renzora     your own platform, complete, with a working SDK
+    #   this script       runtime templates, any platform, no editor
+    #   CI native lanes   editors, one runner per platform
+    #
+    # Nothing is lost. A game needs no SDK — it ships plugins already compiled —
+    # so cross-built runtimes are correct, which is exactly what the export
+    # templates in `renzora_export` are. And the editor for the machine you are
+    # sitting at never wanted a container in the first place.
+    #
+    # The bundle wrappers below already expect this: `AppRun` and the `.app`'s
+    # CFBundleExecutable both fall back to `renzora` when no editor binary is
+    # present, so an AppImage/.app still forms and `TemplateManager::scan` still
+    # finds the runtime inside it.
     local SUF=""
     [ "$EXT" = "dll" ] && SUF=".exe"
 
@@ -516,11 +665,6 @@ build_desktop() {
     case "$FEATURE" in
         editor)
             stage_bin "$SRC/renzora$SUF" "$OUT/renzora$SUF" || true
-            # Warn rather than fail: the tree is still a usable game build, and a
-            # silent omission here is exactly how the artefacts went editor-less
-            # unnoticed. Loud beats absent.
-            stage_bin "$SRC/renzora-editor$SUF" "$OUT/renzora-editor$SUF" \
-                || echo "WARN: renzora-editor$SUF missing from $SRC — staged a runtime-only tree"
             HOST_BIN="$OUT/renzora$SUF"
             ;;
         runtime)
@@ -530,9 +674,17 @@ build_desktop() {
             ;;
     esac
 
-    copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN"
+    # The triple matters: `std-<hash>` must come from the TARGET's sysroot, which
+    # for a cross build is not the host's.
+    copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN" "$RUST_TARGET"
     return 0
 }
+
+# The plugin SDK is deliberately absent from this script. It used to be staged
+# and packed here, which is how cross-built editors came to ship an SDK whose
+# proc macros were for the wrong operating system. Staging it belongs where it
+# can be correct: `cargo renzora` for the machine you are on, and the native
+# per-platform CI lanes for everything published. See `build_desktop`.
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────
 # The C-ABI plugins are built here rather than in a lane of their own because
@@ -542,10 +694,42 @@ build_desktop() {
 # with everything else.
 build_one() {
     local PLATFORM="$1" FEATURE="$2"
+
+    # ── Windows cannot ship `release`, whoever asked for it ──────────────────
+    #
+    # A PE export ordinal is 16 bits, so a DLL exports at most 65,535 symbols —
+    # a property of the file format that no linker flag gets past. `bevy_dylib`
+    # lands either side of it on optimisation level alone:
+    #
+    #     opt-level = 2      41,958   links
+    #     opt-level = "s"   269,482   rust-lld: too many exported symbols
+    #
+    # `"s"` inlines far less, so generic instantiations that `2` folds into
+    # their callers survive as separate functions, and a Rust `dylib` exports
+    # every one. `[profile.release]` is the size-optimised one, so a Windows
+    # lane built with it does not link at all.
+    #
+    # This is decided HERE, next to the platform, rather than by each caller
+    # passing `RENZORA_PROFILE=dist`. The CI workflow did pass it and was fine;
+    # `renzora build windows` does not, fell through to the `release` default,
+    # and hit the cap — a constraint of the target reached the script only by
+    # every entry point happening to remember it. `local -x` scopes the
+    # override to this call, so a multi-platform run still builds Linux and
+    # macOS at `release`, which have no such ceiling.
+    case "$PLATFORM" in
+        windows-*)
+            if [ "$PROFILE" != "dist" ]; then
+                echo "    windows: profile $PROFILE -> dist (PE exports are 16-bit; bevy_dylib needs it)"
+            fi
+            local PROFILE="dist"
+            local -x RENZORA_PROFILE="dist"
+            ;;
+    esac
+
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            build_plugins native "$LINUX_PLATFORM" "so"
+            build_plugins native "$LINUX_PLATFORM" "so" || return 1
             build_updater native "$LINUX_PLATFORM" ""
             compress_binaries "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
@@ -553,26 +737,26 @@ build_one() {
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so"
+            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
             build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" ""
             compress_binaries "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll"
+            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll" || return 1
             build_updater x86_64-pc-windows-msvc "windows-x64" ".exe"
             compress_binaries "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
-            build_plugins x86_64-apple-darwin "macos-x64" "dylib"
+            build_plugins x86_64-apple-darwin "macos-x64" "dylib" || return 1
             build_updater x86_64-apple-darwin "macos-x64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
-            build_plugins aarch64-apple-darwin "macos-arm64" "dylib"
+            build_plugins aarch64-apple-darwin "macos-arm64" "dylib" || return 1
             build_updater aarch64-apple-darwin "macos-arm64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-arm64" ""
@@ -834,7 +1018,14 @@ build_wasm() {
     # the in-viewport path needs no subprocess, and the Window/VR targets that
     # would need one are hidden on wasm.
     echo "=== Building WASM Editor ==="
+    # `--features wasm` gates the binary target itself. On native the editor is a
+    # loadable image beside one executable, so this package's `[[bin]]` would be
+    # a redundant second exe — and an unlinkable one, since `renzora_editor` is
+    # now both rlib and dylib and a binary linking the rlib gives rustc two
+    # formats to choose between. wasm has no dynamic linking, so the editor there
+    # stays a separate bundle and asks for the target explicitly.
     cargo build --profile "$PROFILE" -p renzora_editor_app --bin renzora-editor \
+        --features wasm \
         --target wasm32-unknown-unknown --target-dir target/wasm-editor || return 1
     local EDITOR_WASM
     EDITOR_WASM=$(find "target/wasm-editor/wasm32-unknown-unknown/$PROFILE" -name "renzora-editor.wasm" 2>/dev/null | head -1)

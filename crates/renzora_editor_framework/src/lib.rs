@@ -5,7 +5,6 @@
 
 pub mod bevy_inspectors;
 pub mod camera;
-pub mod commands;
 pub mod entity_icons;
 pub mod material_thumbnail_registry;
 // The bridge that answers a C-ABI plugin's file-dialog request. Native-only
@@ -21,7 +20,6 @@ pub mod settings;
 // Re-export full UI API so downstream crates can use `renzora_editor_framework::DockTree` etc.
 pub use renzora_ui::*;
 
-pub use commands::EditorCommands;
 // Editor CONTRACT moved into `renzora` core (Operation Merge fold). Re-exported
 // here at the SAME `renzora_editor_framework::*` paths so this crate's own framework code
 // and the bundle-side panels keep resolving `renzora_editor_framework::FieldDef` /
@@ -183,19 +181,12 @@ pub enum HierarchyFilter {
 
 // (spawn-registry types re-exported from `renzora` at the top of this file)
 
-/// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
-#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GizmoMode {
-    /// Select mode — click to select, drag for box/marquee selection.
-    #[default]
-    Select,
-    Translate,
-    Rotate,
-    Scale,
-    /// A plugin tool is driving viewport input. Built-in picking + box
-    /// selection skip themselves when they see this.
-    None,
-}
+/// The tool-mode vocabulary moved to the **contract crate**, next to the
+/// `ToolbarRegistry` and `ToolEntry` that already lived there — an editing tool
+/// shipped as a plugin needs `ActiveTool::None` to make the built-in picking and
+/// gizmo systems disengage, and `EditorCommands` to write to the world from a
+/// panel that renders with `&World`. Re-exported so existing paths still resolve.
+pub use renzora::{ActiveTool, EditorCommands, GizmoMode};
 
 /// Reference frame the transform gizmo operates in — shared so the gizmo and
 /// the viewport toolbar toggle agree.
@@ -224,78 +215,6 @@ impl GizmoSpace {
     }
 }
 
-/// Unified active tool — replaces scattered `GizmoMode`, `TerrainToolState`, `FoliageToolState`.
-///
-/// Only one tool is active at a time. The viewport toolbar sets this directly.
-/// Downstream crates read this to decide whether their systems should run.
-#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum ActiveTool {
-    #[default]
-    Select,
-    Translate,
-    Rotate,
-    Scale,
-    TerrainSculpt,
-    TerrainPaint,
-    FoliagePaint,
-    /// Grow/shrink the terrain's chunk grid by clicking ghost tiles in the
-    /// scene. Deliberately *not* one of [`ActiveTool::is_terrain`]'s brush
-    /// tools: it edits the grid, never the heightmap, so the undo-stroke
-    /// systems that record height edits must stay disengaged while it's on.
-    TerrainRegion,
-    /// Place a rectangle on the terrain and fill it with procedural mountains.
-    /// Like [`ActiveTool::TerrainRegion`] it is deliberately *not* one of
-    /// [`ActiveTool::is_terrain`]'s brush tools — it commits one edit on a
-    /// button press rather than accumulating a stroke, so it records its own
-    /// undo entry and must not arm the per-stroke capture.
-    TerrainGenerate,
-    /// No built-in tool active. Plugins that own their own input mode (mesh
-    /// draw, brush tools, etc.) set this so the gizmo + select-click systems
-    /// disengage while the plugin is driving.
-    None,
-}
-
-impl ActiveTool {
-    /// Returns the equivalent `GizmoMode` if this is a gizmo tool, `None` for terrain/foliage tools.
-    pub fn gizmo_mode(&self) -> Option<GizmoMode> {
-        match self {
-            Self::Select => Some(GizmoMode::Select),
-            Self::Translate => Some(GizmoMode::Translate),
-            Self::Rotate => Some(GizmoMode::Rotate),
-            Self::Scale => Some(GizmoMode::Scale),
-            _ => None,
-        }
-    }
-
-    /// A terrain *brush* is active — the tools that write heights or splat
-    /// weights. Gates the undo-stroke capture, so [`ActiveTool::TerrainRegion`]
-    /// is excluded on purpose (it resizes the grid, it doesn't paint).
-    pub fn is_terrain(&self) -> bool {
-        matches!(self, Self::TerrainSculpt | Self::TerrainPaint)
-    }
-
-    /// A brush that paints onto a terrain — heights, splat weights or foliage.
-    ///
-    /// These are the tools that take over the scroll wheel to size their brush,
-    /// so the camera checks this before treating a scroll as dolly-zoom. Keep
-    /// [`ActiveTool::TerrainRegion`] out of it: it has no radius to size, and
-    /// including it would leave the wheel doing nothing at all while that tool
-    /// is active.
-    pub fn is_terrain_or_foliage(&self) -> bool {
-        matches!(
-            self,
-            Self::TerrainSculpt | Self::TerrainPaint | Self::FoliagePaint
-        )
-    }
-
-    /// Any tool that is meaningless without a terrain selected — the brushes
-    /// plus the region tool. Used to decide when to fall back to `Select`
-    /// because the selection moved off the terrain.
-    pub fn needs_terrain_selection(&self) -> bool {
-        self.is_terrain_or_foliage()
-            || matches!(self, Self::TerrainRegion | Self::TerrainGenerate)
-    }
-}
 
 use bevy::prelude::*;
 use renzora_theme::ThemeManager;
@@ -327,6 +246,37 @@ pub enum EditorState {
 /// have no ordering relationship with the reactive driver, so bumping here
 /// makes the latency a predictable single frame instead of "whichever way the
 /// scheduler happened to interleave them this time".
+/// Drop selected entities that no longer exist.
+///
+/// An entity id in the selection outlives the entity itself the moment anything
+/// despawns it, and the next consumer to call `World::entity` on it panics —
+/// which is how saving a `.html` in the code editor took the editor down:
+/// rebuilding a UI template despawns every node under the canvas, one of which
+/// was selected, and the panic surfaced a frame later inside
+/// `ComponentIconRegistry::entity_icon`, a long way from the despawn.
+///
+/// Central rather than at each despawn site. Every one of them has this problem
+/// — deleting from the hierarchy, a scene reload, a model swap, a template
+/// rebuild — and only this one place has to be right. `Query<Entity>` with no
+/// filter is the aliveness test: `get` is `Ok` exactly when the entity exists.
+///
+/// The dead are removed and the living kept, rather than clearing outright:
+/// deleting one of five selected objects should leave the other four selected.
+fn prune_dead_selection(selection: Res<EditorSelection>, alive: Query<Entity>) {
+    let current = selection.get_all();
+    if current.is_empty() {
+        return;
+    }
+    let live: Vec<Entity> = current
+        .iter()
+        .copied()
+        .filter(|e| alive.get(*e).is_ok())
+        .collect();
+    if live.len() != current.len() {
+        selection.set_multiple(live);
+    }
+}
+
 fn sync_selection_change_tick(mut selection: ResMut<EditorSelection>, mut last: Local<u64>) {
     let version = selection.version();
     if version != *last {
@@ -437,6 +387,9 @@ impl Plugin for RenzoraEditorPlugin {
         // reactive UI in every editor state, and a missed bump shows up as a
         // stale highlight rather than as an error.
         app.add_systems(PreUpdate, sync_selection_change_tick);
+        // Before anything reads the selection this frame — a dead id in it is a
+        // panic waiting for the first consumer that calls `World::entity`.
+        app.add_systems(PreUpdate, prune_dead_selection.before(sync_selection_change_tick));
 
         app.add_systems(
             Update,
@@ -481,6 +434,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
+            .init_resource::<renzora::SpawnCategoryScope>()
             .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
             .init_resource::<AutoSelectFirstHierarchyEntity>()
@@ -1141,10 +1095,21 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
     // Sync EditorContext + route to the appropriate (asset-mode or scene-mode) layout.
     sync_context_and_layout_for_active_tab(world);
 
-    if matches!(kind, DocTabKind::Script | DocTabKind::Shader) {
-        world.insert_resource(renzora::core::OpenCodeEditorFile {
-            path: path.to_path_buf(),
-        });
+    match kind {
+        DocTabKind::Script | DocTabKind::Shader => {
+            world.insert_resource(renzora::core::OpenCodeEditorFile {
+                path: path.to_path_buf(),
+            });
+        }
+        // A UI template opens on the canvas, not in the text editor. The code
+        // editor is tabbed beside the viewport in the UI workspace, so the
+        // markup is one click away for anyone who wants it.
+        DocTabKind::Ui => {
+            world.insert_resource(renzora::core::OpenUiTemplateFile {
+                path: path.to_path_buf(),
+            });
+        }
+        _ => {}
     }
 }
 
@@ -1181,7 +1146,9 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
-        "lua" | "js" | "ts" | "py" | "html" => DocTabKind::Script,
+        "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        // See the note on the copy of this table in `renzora_asset_browser`.
+        "html" => DocTabKind::Ui,
         "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })

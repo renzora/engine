@@ -44,12 +44,10 @@ struct PaletteTabBtn(PaletteTab);
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<PaletteHandlers>();
-    app.init_resource::<crate::PaletteRemote>();
     app.add_systems(
         Update,
         (
             manage_palette,
-            crate::remote_search,
             rebuild_palette,
             focus_palette_search,
             palette_keys,
@@ -256,7 +254,10 @@ fn rebuild_palette(world: &mut World) {
         let st = world.resource::<CommandPaletteState>();
         (st.tab, st.query.clone())
     };
-    let mut generation = 0;
+    // Always 0 now. It used to be bumped by the remote tabs so a landed search
+    // re-signatured the list; the local tabs rebuild from the query alone. Kept
+    // in the signature so the rebuild key keeps its shape.
+    let generation = 0;
     let items = match tab {
         PaletteTab::Commands | PaletteTab::Settings => {
             let toolbar = world.resource::<ToolbarRegistry>().clone();
@@ -269,23 +270,6 @@ fn rebuild_palette(world: &mut World) {
             filter_items(all, &query)
         }
         PaletteTab::Entities => crate::collect_entity_items(world, &query),
-        // Remote tabs render whatever the async search has cached; a hint row
-        // stands in while it loads (or before the query is long enough).
-        _ => {
-            let remote = world.resource::<crate::PaletteRemote>();
-            generation = remote.generation;
-            if remote.loading {
-                vec![hint_item("Searching…")]
-            } else if remote.results.is_empty() {
-                if query.trim().chars().count() < crate::min_query_len(tab) {
-                    vec![hint_item(&format!("Type to search {}…", tab.label().to_lowercase()))]
-                } else {
-                    Vec::new() // falls through to the shared "No matches" row
-                }
-            } else {
-                remote.results.iter().map(|h| h.item()).collect()
-            }
-        }
     };
 
     // Clamp selection + refresh handlers.

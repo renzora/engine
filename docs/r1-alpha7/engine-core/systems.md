@@ -67,7 +67,7 @@ Because a `Runtime` plugin's systems run inside the editor viewport too, your ga
 |-------|--------|-------|------|
 | 1 | `RuntimePlugin` | `renzora_engine` | VFS, asset reader, scene I/O, autoload |
 | 2 | `InputPlugin` | `renzora_input` | input mapping |
-| 3 | `ScriptingPlugin` | `renzora_scripting` | Lua + Rhai backends |
+| 3 | `ScriptingPlugin` | `renzora_scripting` | Hooks and command queue; language backends are plugins |
 | 4 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |
 | 5 | `ViewportStretchPlugin` | `renzora_runtime` | pixel-art scaling — **game builds only** (`!is_editor`) |
 | 6+ | every `Runtime`-scope `add!` plugin | various | fanned out via `for_each_static_plugin(Runtime)` |

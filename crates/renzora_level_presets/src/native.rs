@@ -25,7 +25,10 @@ use renzora::SplashState;
 use crate::state::{LevelCommand, LevelPreset, LevelPresetsState};
 
 const TILE: f32 = 88.0;
-const ICON_AREA: f32 = 60.0;
+/// Height of the icon block on a card. It was 60px around a 26px glyph, which
+/// is where most of the card's emptiness came from — two thirds of a tall card
+/// was blank, and eleven of them filled the panel with gaps.
+const ICON_AREA: f32 = 34.0;
 
 pub struct NativeLevelPresets;
 
@@ -95,7 +98,43 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, count, |w| {
         w.resource::<LevelPresetsState>().has_active_level
     });
-    commands.entity(header).add_children(&[title, count]);
+    // Clear lives in the header, right-aligned. It was down in the scale row,
+    // which put a destructive action next to a value field for no reason —
+    // Clear acts on the level named by the title and the count beside it, so
+    // that is the row it belongs on.
+    let header_gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    let clear = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(close_red())),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ClearBtn,
+            Name::new("level-presets-clear"),
+        ))
+        .id();
+    let clear_lbl = commands
+        .spawn((
+            Text::new("Clear"),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    commands.entity(clear).add_child(clear_lbl);
+    bind_display(commands, clear, |w| {
+        w.resource::<LevelPresetsState>().has_active_level
+    });
+    commands
+        .entity(header)
+        .add_children(&[title, count, header_gap, clear]);
 
     // ── Scale field + Clear button ───────────────────────────────────────────
     let scale_row = commands
@@ -137,39 +176,18 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    // Clear button — only visible when there's an active level.
-    let clear = commands
+    // What Scale actually does — the field on its own says a number, not what
+    // the number is for.
+    let scale_hint = commands
         .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(close_red())),
-            Interaction::default(),
-            ClearBtn,
-            Name::new("level-presets-clear"),
+            Text::new("Multiplies the template's size when it spawns"),
+            ui_font(&fonts.ui, 9.5),
+            TextColor(rgb(placeholder())),
         ))
         .id();
-    let clear_lbl = commands
-        .spawn((
-            Text::new("Clear"),
-            ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    commands.entity(clear).add_child(clear_lbl);
-    bind_display(commands, clear, |w| {
-        w.resource::<LevelPresetsState>().has_active_level
-    });
     commands
         .entity(scale_row)
-        .add_children(&[scale_lbl, scale_dv, gap, clear]);
+        .add_children(&[scale_lbl, scale_dv, scale_hint]);
 
     // ── Card grid (scrolls) + footer description/note ────────────────────────
     let grid = commands
@@ -185,46 +203,66 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, grid, cards_snapshot);
 
-    // Description of the currently-selected preset.
+    // ── Pinned detail for the selected template ──────────────────────────────
+    //
+    // This used to be two loose lines of text at the bottom of the *scrolled*
+    // column, under the cards. Which meant the description of the template you
+    // had just clicked was somewhere below the fold, and the static note under
+    // it read as a caption for whichever card happened to be last. Pinned
+    // outside the scroll and given a surface of its own, it is a panel about
+    // the selection — always visible, always about the card that is lit up.
+    let detail_name = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    bind_text(commands, detail_name, |w| {
+        w.resource::<LevelPresetsState>().selected.label().to_string()
+    });
     let desc = commands
         .spawn((
             Text::new(""),
-            ui_font(&fonts.ui, 9.5),
+            ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::top(Val::Px(6.0)),
-                ..default()
-            },
         ))
         .id();
     bind_text(commands, desc, |w| {
         w.resource::<LevelPresetsState>().selected.description().to_string()
     });
-
     let note = commands
         .spawn((
             Text::new("Spawns meshes, lights, and a camera as scene entities"),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(placeholder())),
-            Node {
-                margin: UiRect::top(Val::Px(4.0)),
-                ..default()
-            },
         ))
         .id();
-
-    // Inner scroll column holding the grid + footer text.
-    let scroll_col = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            ..default()
-        })
+    let detail = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(section_bg())),
+            Name::new("level-presets-detail"),
+        ))
         .id();
-    commands.entity(scroll_col).add_children(&[grid, desc, note]);
-    let scroll = renzora_ember::widgets::scroll_view(commands, scroll_col);
+    commands
+        .entity(detail)
+        .add_children(&[detail_name, desc, note]);
 
-    commands.entity(root).add_children(&[header, scale_row, scroll]);
+    // The grid scrolls; the detail below it does not.
+    let scroll = renzora_ember::widgets::scroll_view(commands, grid);
+
+    commands
+        .entity(root)
+        .add_children(&[header, scale_row, scroll, detail]);
     root
 }
 
@@ -260,6 +298,7 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(Color::NONE),
             Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             PresetCard(preset),
             Name::new(format!("preset:{}", preset.label())),
         ))
@@ -300,12 +339,13 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
         if hot { rgb(accent()) } else { rgb(text_primary()) }
     });
 
-    // Label.
+    // Label. `text_primary` rather than muted: on a grid of eleven cards whose
+    // icons are generic glyphs, the name is what you actually read.
     let label = commands
         .spawn((
             Text::new(preset.label()),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(text_muted())),
+            TextColor(rgb(text_primary())),
             bevy::text::TextLayout::justify(bevy::text::Justify::Center),
         ))
         .id();

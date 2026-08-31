@@ -14,6 +14,37 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+# The SDF glyph-mesh machinery (`renzora::text_mesh`): coverage→SDF conversion,
+# strip packing, and the `SdfTextMaterial` shared by `renzora_ember`'s
+# world-space UI emitter and the `text3d` native plugin. It is here rather than
+# in its own crate because a native plugin can only reach `bevy`, `renzora` and
+# `renzora_ember`, and two copies of `SdfTextMaterial` would be two `TypeId`s
+# and two `MaterialPlugin` registrations.
+#
+# Gated because it is the ONLY thing in this crate that touches `bevy::text`,
+# and a lean export with the UI capability off strips `bevy_text` from Bevy's
+# feature set — an always-on module would fail that build. Enabled by
+# `renzora_ember`, which is itself dropped in exactly that configuration.
+text_mesh = []
+# The infinite ground grid's components (`renzora::grid`). The renderer stays in
+# `renzora_grid` — only the vocabulary is here, so a native plugin can put a
+# ground plane under its own preview without linking a crate it cannot reach.
+# Gated like `text_mesh` so a lean build that draws no grid compiles none of it.
+grid = []
+# `AudioLink` (`renzora::audio`) — the engine side of the audio boundary, so any
+# plugin can play a sound. The backend is still a `dlopen`'d audio plugin and the
+# mixer/timeline/emitters are still `renzora_audio`; only the link is here.
+audio = []
+# Compile the project's Rust scripts INTO the binary instead of loading each as
+# a dylib. Changes only what `script!` emits: without it the entry point is
+# `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is
+# dropped so many scripts can be linked into one binary without fifty definitions
+# of `renzora_script_update` colliding.
+#
+# Set by the lean exporter on its throwaway workspace copy, never in the dev
+# tree. Cargo compiles `renzora` once per build and unifies features across it,
+# which is exactly what makes one flag here apply to every script in the build.
+static_scripts = []
 # Enables the editor CONTRACT (Operation Merge fold): the thin, boundary-
 # crossing editor types — `EditorSelection`, the inspector/spawn/toolbar/
 # shortcut registries, `AppEditorExt`, the field macros, `Inspectable`/
@@ -60,6 +91,17 @@ antialiasing = ["render_3d"]
 # plugins that don't use that crate).
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
+# The HTTP request/event vocabulary for `net`. The `net` feature is `["std"]` and
+# nothing else — no bevy, no libloading — and `renzora_plugin` does not depend on
+# this crate, so there is no cycle. The actual client stays behind the C-ABI
+# boundary in `plugins/http`; see `src/net.rs` for why the queue has to be here.
+# `audio` is the same arrangement one subsystem over: the play/stop request
+# vocabulary for `src/audio.rs`, with the actual backend behind the C-ABI
+# boundary in an audio plugin. Both features are `["std"]` and nothing else.
+renzora_plugin = { path = "../renzora_plugin", default-features = false, features = ["net", "audio"] }
+# `Request::json` / `Response::json`. Came across with `net`; every caller was
+# already hand-rolling the same encode/decode a line later.
+serde_json = "1"
 toml = "0.8"
 ron = "0.8"
 # NOT a real dependency — a transitive-feature fix. naga is already pulled in by

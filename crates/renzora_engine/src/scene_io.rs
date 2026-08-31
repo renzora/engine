@@ -1139,10 +1139,59 @@ pub(crate) fn prune_leaked_ui(scene: &mut DynamicScene) -> usize {
     before - scene.entities.len()
 }
 
+// Scenes currently being loaded on this thread, outermost first.
+//
+// Recorded by `load_scene` rather than by the instance expander, which is the
+// whole point: the expander only ever knew about *nested* loads, so a scene
+// holding a `SceneInstance` of **itself** was never on the stack when its own
+// instance was checked. It expanded once, and the inner pass — by then on the
+// stack — was correctly skipped. Not an infinite loop, so nothing crashed: the
+// scene simply loaded twice, every entity in it duplicated, and the second
+// camera made the clouds plugin flip between two sources every frame.
+thread_local! {
+    static LOADING_STACK: std::cell::RefCell<Vec<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Whether `path` is already being loaded further up the stack.
+fn loading_stack_contains(path: &Path) -> bool {
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    LOADING_STACK.with(|s| s.borrow().iter().any(|p| p == &abs))
+}
+
+/// Pops the loading stack however [`load_scene`] returns — it has several early
+/// exits, and a stack that leaks an entry makes every later load of that scene
+/// look like a cycle.
+struct LoadingStackGuard;
+
+impl Drop for LoadingStackGuard {
+    fn drop(&mut self) {
+        LOADING_STACK.with(|s| {
+            s.borrow_mut().pop();
+        });
+    }
+}
+
 /// Load a scene from a RON file into the world.
 ///
 /// Tries the Vfs (rpak archive) first, then falls back to disk.
+///
+/// Declines to load a scene that is already being loaded further up the stack,
+/// which is what stops a scene instancing itself from loading twice.
 pub fn load_scene(world: &mut World, path: &Path) {
+    if loading_stack_contains(path) {
+        warn!(
+            "[scene] {} instances itself (directly or through a cycle) — skipping the inner load",
+            path.display()
+        );
+        return;
+    }
+    LOADING_STACK.with(|s| {
+        s.borrow_mut()
+            .push(path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+    });
+    let _stack_guard = LoadingStackGuard;
+
     console_info(
         "Scene",
         format!("=== Loading scene from {} ===", path.display()),
@@ -1390,13 +1439,6 @@ pub fn load_scene(world: &mut World, path: &Path) {
 ///
 /// Re-runnable: already-expanded instances (any with children) are skipped.
 pub fn expand_scene_instances(world: &mut World) {
-    // Re-entrancy guard: if expand recursively triggers another load of a
-    // scene that's already in the expand stack, bail out to avoid infinite
-    // recursion on cyclic SceneInstance references.
-    thread_local! {
-        static EXPAND_STACK: std::cell::RefCell<Vec<std::path::PathBuf>> =
-            const { std::cell::RefCell::new(Vec::new()) };
-    }
 
     let project_root = world
         .get_resource::<CurrentProject>()
@@ -1428,8 +1470,9 @@ pub fn expand_scene_instances(world: &mut World) {
                 continue;
             };
             let abs = root.join(&inst.source);
-            // Skip if this path is already being expanded up the stack (cycle).
-            let in_stack = EXPAND_STACK.with(|s| s.borrow().iter().any(|p| p == &abs));
+            // Skip if this scene is already being loaded further up the stack —
+            // a cycle, including the case where a scene instances *itself*.
+            let in_stack = loading_stack_contains(&abs);
             if in_stack {
                 console_warn(
                     "Scene",
@@ -1445,8 +1488,10 @@ pub fn expand_scene_instances(world: &mut World) {
     }
 
     for (instance_entity, source_path) in to_expand {
-        EXPAND_STACK.with(|s| s.borrow_mut().push(source_path.clone()));
-
+        // No push here — `load_scene` records what it is loading, which is what
+        // makes a self-referencing instance detectable. Pushing here as well
+        // would put the path on the stack before `load_scene` checked it, and
+        // every nested instance would look like a cycle.
         let existing_roots: std::collections::HashSet<Entity> = {
             let mut q = world.query_filtered::<Entity, (With<Name>, Without<ChildOf>)>();
             q.iter(world).collect()
@@ -1467,10 +1512,6 @@ pub fn expand_scene_instances(world: &mut World) {
         for root in new_roots {
             world.entity_mut(root).insert(ChildOf(instance_entity));
         }
-
-        EXPAND_STACK.with(|s| {
-            s.borrow_mut().pop();
-        });
     }
 }
 
@@ -1633,6 +1674,32 @@ pub fn spawn_scene_instance(
     parent: Option<Entity>,
     transform: Transform,
 ) -> Option<Entity> {
+    // Refuse a cycle here, not only at the drop handlers.
+    //
+    // Three call sites check `would_create_reference_cycle` before calling this
+    // — the hierarchy's context menu, the hierarchy drop and the viewport drop —
+    // and any fourth way in gets no check at all. That is how a scene ended up
+    // holding an instance of itself: it loaded twice on every open, duplicating
+    // every entity including the camera, and nothing crashed because the loader
+    // caught the *inner* recursion. A guard three callers have to remember is
+    // one a fourth will not.
+    let host_and_root = world
+        .get_resource::<CurrentProject>()
+        .map(|p| (p.main_scene_path(), p.path.clone()));
+    if let Some((host, root)) = host_and_root {
+        let cycles = world.resource_scope(|_w, mut cache: Mut<SceneReferenceCache>| {
+            would_create_reference_cycle(&mut cache, &root, &host, source_path)
+        });
+        if cycles {
+            warn!(
+                "[scene] refusing to instance {} into {} — it would form a reference cycle",
+                source_path.display(),
+                host.display()
+            );
+            return None;
+        }
+    }
+
     // Convert to asset-relative for portable storage.
     let relative = world
         .get_resource::<CurrentProject>()?

@@ -1,0 +1,43 @@
+[package]
+name = "renzora_ember_dylib"
+version = "0.1.0"
+edition = "2021"
+description = "One shared copy of `renzora_ember`, for the editor and every native plugin to link."
+
+# The same trick as `renzora_dylib`, one layer up. It holds no code of its own —
+# it exists so `renzora_ember`'s compiled form is a single image that the two
+# executables and every native plugin link against, rather than a copy embedded
+# in each.
+#
+# Measured, with a plugin that registers one panel: 32.2 MB when ember is linked
+# as an rlib, 0.09 MB when it resolves to this image. Size is the visible half
+# and not the important one — see `src/lib.rs`.
+[lib]
+crate-type = ["dylib"]
+
+[features]
+# Mirrors `renzora_ember`'s own gate so this crate never widens it. `renzora_ember`
+# is depended on with `default-features = false` below and `renzora_runtime`
+# forwards its `game_ui` to BOTH the rlib dep and this one — if it forwarded to
+# only one, cargo would resolve two ember units with different feature sets and
+# the shared image would be built from the wrong one.
+game_ui = ["renzora_ember/game_ui"]
+
+[dependencies]
+renzora_ember = { path = "../renzora_ember", default-features = false }
+# Not for its API — this crate calls nothing in it. Its presence in THIS crate's
+# link graph is what makes `renzora` resolve to the shared image while ember is
+# being compiled into this one. Without it, ember's `renzora` dependency
+# resolves to the plain rlib and gets swallowed here, so the shared-contract
+# image and this one each hold a copy of the translation table and the Console
+# buffer.
+#
+# rustc refuses that arrangement outright rather than shipping it, which is the
+# only reason it was ever a five-minute problem: `error: cannot satisfy
+# dependencies so 'toml' only shows up once`, naming `toml`, `ron`, `base64` and
+# the rest of the contract crate's dependency closure — every crate that would
+# have ended up in two dylibs at once.
+renzora_dylib = { path = "../renzora_dylib" }
+
+[lints]
+workspace = true

@@ -11,6 +11,7 @@ pub mod animation; // .anim clip format + property keyframes
 pub mod blockout_grid; // the generated "no material yet" grid textures
 pub mod components; // shared ECS components + entity-tag markers
 pub mod entity_id; // canonical unique snake_case entity ids (Name)
+pub mod plugin_inventory; // what plugins were found on disk, and their state
 pub mod project_config; // project.toml model + editor preferences
 pub mod sprite_anim; // multi-sheet sprites (SpriteImages) for 2D animation
 pub mod streaming; // world-streaming gate + camera-position helpers
@@ -19,6 +20,7 @@ pub use blockout_grid::*;
 pub use project_config::*;
 pub use components::*;
 pub use entity_id::*;
+pub use plugin_inventory::*;
 pub use sprite_anim::*;
 pub use streaming::*;
 
@@ -447,13 +449,30 @@ pub struct ShellPanelInfo {
     pub category: String,
 }
 
+/// A progress bar drawn inside a status-bar segment, after its text.
+///
+/// Two kinds, because the honest answer is often "we don't know". A download
+/// whose server sent no `Content-Length` has no fraction, and inventing one —
+/// a curve that creeps toward 90% and waits — is a lie the bar tells for the
+/// whole of the wait. [`Busy`](Self::Busy) says "working" and animates, which
+/// is the true statement; the segment's *text* carries whatever real number
+/// there is (bytes so far, files written).
+#[derive(Clone, Copy, PartialEq)]
+pub enum ShellStatusBar {
+    /// Work in progress with no known total: an animated sweep.
+    Busy,
+    /// A known fraction, 0..=1.
+    Fraction(f32),
+}
+
 /// One drawn piece of a bevy_ui status-bar item: an optional phosphor icon
-/// (name *or* raw glyph) + text + color.
+/// (name *or* raw glyph) + text + color, and optionally a progress bar.
 #[derive(Clone)]
 pub struct ShellStatusSegment {
     pub icon: String,
     pub text: String,
     pub color: [u8; 3],
+    pub bar: Option<ShellStatusBar>,
 }
 
 impl ShellStatusSegment {
@@ -462,7 +481,14 @@ impl ShellStatusSegment {
             icon: icon.into(),
             text: text.into(),
             color,
+            bar: None,
         }
+    }
+
+    /// Draw a progress bar after the text.
+    pub fn bar(mut self, bar: ShellStatusBar) -> Self {
+        self.bar = Some(bar);
+        self
     }
 }
 
@@ -488,6 +514,101 @@ pub struct ShellStatusItem {
 #[derive(Resource, Default)]
 pub struct ShellStatusRegistry {
     pub items: Vec<ShellStatusItem>,
+}
+
+/// An icon button a plugin contributes to the top bar, to the right of the
+/// built-in controls.
+///
+/// The shell owns the chrome and the plugin owns the thing the button opens, so
+/// neither can hold both halves: this is the seam. The shell draws whatever is
+/// registered and reports presses through [`ShellActionPressed`]; the plugin
+/// reads its own id there and does whatever it likes. No callback crosses the
+/// boundary, which is what lets a plugin that links no shell code put a button
+/// in the shell.
+pub struct ShellActionItem {
+    /// Stable, unique. This is the string a plugin looks for in
+    /// [`ShellActionPressed`].
+    pub id: &'static str,
+    /// Phosphor icon NAME (kebab-case), resolved by the shell.
+    pub icon: &'static str,
+    /// The visible label, as a function rather than a string: it is built when
+    /// the bar is built, which may be long after registration and after the
+    /// user has changed language. `None` for an icon-only button.
+    pub label: Option<fn() -> String>,
+    /// Tint for the icon and the button's fill, as `rgb`. `None` takes the
+    /// shell's muted default — the quiet treatment every other top-bar icon
+    /// gets. Give it a colour when the button is somewhere to *go* rather than
+    /// a toggle, and pick one no other chip in the bar is using: two tinted
+    /// pills of the same hue side by side read as one control in two halves.
+    pub color: Option<[u8; 3]>,
+    /// The tooltip, as a function rather than a string, for the same reason as
+    /// `label`.
+    pub tooltip: fn() -> String,
+    /// Left-to-right order among the contributed buttons. Ties keep
+    /// registration order.
+    pub order: i32,
+}
+
+/// Registry of plugin-contributed top-bar buttons. Any plugin can push to it;
+/// the shell renders them beside the gear.
+#[derive(Resource, Default)]
+pub struct ShellActionRegistry {
+    pub items: Vec<ShellActionItem>,
+}
+
+/// A shell action was invoked.
+///
+/// The top bar's button writes this, but it is deliberately not *only* the top
+/// bar's: anything that should open the same thing writes the same id, which is
+/// how the asset browser's Import button reaches the Marketplace without either
+/// crate knowing about the other. The plugin that registered the id reads the
+/// message and does the work.
+#[derive(bevy::prelude::Message, Clone, Copy)]
+pub struct ShellActionInvoked(pub &'static str);
+
+impl ShellActionInvoked {
+    /// Invoke a shell action from an exclusive system.
+    ///
+    /// A no-op when nothing has registered the id — the message type is only
+    /// added by `register_shell_action`, so an editor built without the plugin
+    /// that owns this action simply has nowhere to send it, which is the right
+    /// outcome and not an error.
+    pub fn invoke(world: &mut bevy::prelude::World, id: &'static str) {
+        if let Some(mut messages) =
+            world.get_resource_mut::<bevy::ecs::message::Messages<Self>>()
+        {
+            messages.write(Self(id));
+        }
+    }
+}
+
+/// The Marketplace overlay's action id.
+///
+/// Here rather than in the plugin that owns it because the asset browser's
+/// Import menu opens the same thing, and neither crate should depend on the
+/// other to agree on a string.
+pub const ACTION_MARKETPLACE: &str = "marketplace.open";
+
+/// Relaunch this executable with the same arguments and exit.
+///
+/// Here in the contract crate because more than one thing needs it and none of
+/// them should own it: first-run setup restarts after building plugins, and
+/// installing a plugin from the marketplace has to restart to load it — plugins
+/// are opened once, during `App` assembly, so a new one on disk is not a new one
+/// in the process.
+///
+/// The replacement is spawned **detached** rather than waited on. This process
+/// is finished, and holding it open to parent the new one would leave a
+/// redundant entry in the task list for the whole of the next session. It also
+/// matters on Windows, where a plugin file cannot be replaced while a process
+/// holds it open: the successor starts as this one is leaving.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn restart_process() -> ! {
+    if let Ok(exe) = std::env::current_exe() {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let _ = std::process::Command::new(exe).args(args).spawn();
+    }
+    std::process::exit(0)
 }
 
 /// Overrides the status bar's left-hand **"Ready"** label. The host owns the
@@ -520,6 +641,10 @@ pub trait RenzoraShellExt {
 
     /// Register a status-bar item.
     fn register_shell_status_item(&mut self, item: ShellStatusItem) -> &mut Self;
+
+    /// Register a top-bar icon button. Pressing it writes a
+    /// [`ShellActionInvoked`] carrying the id.
+    fn register_shell_action(&mut self, item: ShellActionItem) -> &mut Self;
 }
 
 impl RenzoraShellExt for bevy::app::App {
@@ -546,6 +671,16 @@ impl RenzoraShellExt for bevy::app::App {
         self.init_resource::<ShellStatusRegistry>();
         self.world_mut()
             .resource_mut::<ShellStatusRegistry>()
+            .items
+            .push(item);
+        self
+    }
+
+    fn register_shell_action(&mut self, item: ShellActionItem) -> &mut Self {
+        self.init_resource::<ShellActionRegistry>();
+        self.add_message::<ShellActionInvoked>();
+        self.world_mut()
+            .resource_mut::<ShellActionRegistry>()
             .items
             .push(item);
         self
@@ -1096,6 +1231,18 @@ pub struct OpenCodeEditorFile {
     pub path: std::path::PathBuf,
 }
 
+/// One-shot: request the UI editor to open a `.html` template on a canvas.
+///
+/// The counterpart to [`OpenCodeEditorFile`] for the visual editor. Consumed by
+/// `renzora_viewport`, which spawns (or re-selects) a `UiCanvas` carrying the
+/// template and selects it — the same thing dropping the file on the viewport
+/// does, which is what made this reachable at all before the UI workspace
+/// existed.
+#[derive(Resource)]
+pub struct OpenUiTemplateFile {
+    pub path: std::path::PathBuf,
+}
+
 /// One-shot: request the command palette to toggle open/closed.
 ///
 /// Inserted by the title-bar search button; consumed by `renzora_command_palette`.
@@ -1196,7 +1343,7 @@ pub fn open_project(
 
 /// Lightweight auth info resource that the auth plugin keeps in sync.
 /// The editor reads this to display sign-in state in the title bar without
-/// depending on the full `renzora_auth` crate.
+/// depending on the `marketplace` plugin that owns the session.
 #[derive(Resource, Default, Clone)]
 pub struct AuthBridge {
     /// Whether the auth sign-in window is currently open.
@@ -1218,67 +1365,12 @@ pub struct AuthToggleWindowRequest;
 #[derive(Resource)]
 pub struct AuthSignOutRequest;
 
-// ── Social bridge ────────────────────────────────────────────────────────────
-
-/// Connection state of the social live WebSocket (renzora.com `/api/ws/live`).
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SocialWsState {
-    #[default]
-    Disconnected,
-    Connecting,
-    Connected,
-}
-
-/// Deep-link target for opening a social panel with context (e.g. clicking a
-/// notification opens the right panel focused on the right thing).
-#[derive(Clone, Debug)]
-pub enum SocialPanelRequest {
-    Friends,
-    /// Friends panel, Requests tab.
-    FriendRequests,
-    Chat { conversation_id: Option<String> },
-    Notifications,
-    /// The community feed; `post_id` deep-links to one post (a mention/comment
-    /// notification), which the panel expands and highlights on arrival.
-    Feed { post_id: Option<String> },
-    Forum { thread_slug: Option<String> },
-    Profile { username: Option<String> },
-    Teams,
-    Learn,
-}
-
-/// Lightweight social state kept in sync by `renzora_social`. The shell status
-/// bar and other crates read this without depending on the social crate.
-#[derive(Resource)]
-pub struct SocialBridge {
-    pub ws_state: SocialWsState,
-    pub unread_notifications: u32,
-    pub unread_messages: u32,
-    pub friends_online: u32,
-    /// Whether the shell shows the notification bell in the top bar
-    /// (user preference from Settings → Social & Privacy).
-    pub notify_button_enabled: bool,
-    /// Set by any crate to open a social panel; consumed by `renzora_social`.
-    pub open_panel_request: Option<SocialPanelRequest>,
-    /// Set by the shell's bell button (logical screen x,y of the button's
-    /// bottom-left); consumed by `renzora_social`, which toggles the
-    /// notifications dropdown there.
-    pub notify_dropdown_request: Option<(f32, f32)>,
-}
-
-impl Default for SocialBridge {
-    fn default() -> Self {
-        Self {
-            ws_state: SocialWsState::default(),
-            unread_notifications: 0,
-            unread_messages: 0,
-            friends_online: 0,
-            notify_button_enabled: true,
-            open_panel_request: None,
-            notify_dropdown_request: None,
-        }
-    }
-}
+// The social bridge lived here — `SocialWsState`, `SocialPanelRequest` and the
+// `SocialBridge` resource carrying unread counts, the live-WebSocket state and
+// the notification-dropdown request. All of it went with the social features:
+// there is no feed, no messages, no friends and no notification bell to bridge
+// to. `AuthBridge` above stays, because signing in is still how you publish and
+// purchase — it is now the only account state the shell reads.
 
 // ============================================================================
 // PropertyValue (shared between scripting and blueprints)

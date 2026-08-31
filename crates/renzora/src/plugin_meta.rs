@@ -80,3 +80,210 @@ macro_rules! add {
         };
     };
 }
+
+/// Declare a **native plugin**: a Bevy plugin shipped as Rust source and
+/// compiled on the machine that installs it.
+///
+/// The counterpart to [`add!`]. `add!` declares a crate compiled INTO the
+/// engine; this declares one installed into `<exe dir>/plugins/` and rebuilt
+/// whenever the engine moves under it. Both are ordinary Bevy plugins with full
+/// `&mut World` access — unlike a C-ABI plugin, which links no Bevy and reaches
+/// the engine through a fixed function table. All three are "plugins" to a user;
+/// the difference is only in how they are built and where they can run.
+///
+/// ```ignore
+/// use bevy::prelude::*;
+///
+/// pub struct SpinThing;
+/// impl Plugin for SpinThing {
+///     fn build(&self, app: &mut App) { app.add_systems(Update, spin); }
+/// }
+///
+/// renzora::plugin!(SpinThing);
+/// ```
+///
+/// Takes an expression, not just a type, so a plugin needing configuration can
+/// write `renzora::plugin!(SpinThing::new(4))` rather than contorting itself
+/// into a `Default` impl.
+///
+/// # Why this exists rather than the four lines it expands to
+///
+/// The loader finds a plugin by asking the OS for one symbol *by name*. Every
+/// way of writing that by hand fails identically — the library loads, the symbol
+/// is absent, and it is **skipped in silence**, because a library without the
+/// entry point is not an error, it is simply not a plugin:
+///
+/// * a typo in `renzora_native_plugin_ctor`
+/// * a missing `#[unsafe(no_mangle)]`, which leaves the symbol mangled with an
+///   unpredictable hash
+/// * a wrong return type, which is worse than silent: the loader calls it as
+///   `fn() -> Box<dyn Plugin>` regardless and reads whatever is in the return
+///   register as a boxed trait object
+///
+/// The macro fixes the name and the signature, so none of the three is reachable.
+/// # Scope
+///
+/// `renzora::plugin!(MyThing, Runtime)` declares a plugin that also belongs in a
+/// shipped game; `Editor` (the default) keeps it to the editor.
+///
+/// A runtime native plugin works for the same reason the editor's does: an
+/// exported game built by the copy-based modes ships the very `bevy_dylib` and
+/// `renzora_dylib` the plugin was compiled against, so the `World` on both sides
+/// of the boundary is one type. It is the *lean* export that cannot host one —
+/// that binary links Bevy statically and shares no image, which is the same
+/// reason a Rust script has to be compiled into it instead.
+///
+/// `Editor` is the default because that is what every native plugin written so
+/// far is, and because the cost of guessing wrong points the safe way: an
+/// editor-scoped plugin merely does not appear in a game, while a
+/// runtime-scoped one that should not have shipped is in the player's hands.
+#[macro_export]
+macro_rules! plugin {
+    ($plugin:expr) => {
+        $crate::plugin!($plugin, Editor);
+    };
+    ($plugin:expr, $scope:ident) => {
+        /// The one symbol the loader looks up. Unmangled so it can be found by
+        /// string; see [`plugin!`] for why hand-writing this is a trap.
+        #[unsafe(no_mangle)]
+        pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
+            ::std::boxed::Box::new($plugin)
+        }
+
+        /// Where this plugin may load, as a byte the loader reads by symbol.
+        ///
+        /// A plain `u8` rather than an enum, because this crosses a `dlopen`
+        /// boundary: a `#[repr(Rust)]` enum has no guaranteed layout, and the
+        /// loader would be reading whichever bytes the compiler happened to
+        /// choose. The absence of the symbol reads as `Editor`, so a plugin
+        /// built before this existed keeps its old behaviour rather than
+        /// silently appearing in someone's game.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn renzora_native_plugin_scope() -> u8 {
+            $crate::NativePluginScope::$scope as u8
+        }
+    };
+}
+
+/// Where a native plugin is allowed to load.
+///
+/// The native counterpart to the C-ABI `renzora_plugin::sys::PluginScope`, kept
+/// separate because the two cross different boundaries and neither should be
+/// able to drift into the other's ABI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum NativePluginScope {
+    /// Editor only. The default, and what every native plugin was before scopes
+    /// existed.
+    #[default]
+    Editor = 0,
+    /// Also loaded by a shipped game — see [`plugin!`] for what makes that sound.
+    Runtime = 1,
+}
+
+impl NativePluginScope {
+    /// Decode the byte the `renzora_native_plugin_scope` symbol returns.
+    ///
+    /// Anything unrecognised is `Editor`: a plugin built against a newer engine
+    /// that grew a third scope should stay out of a game this one ships, rather
+    /// than being admitted on the strength of a byte this build cannot read.
+    pub fn from_byte(b: u8) -> Self {
+        match b {
+            1 => Self::Runtime,
+            _ => Self::Editor,
+        }
+    }
+}
+
+/// Declare a **Rust script**: per-entity native code, compiled from the
+/// project's `scripts/` directory.
+///
+/// ```ignore
+/// use bevy::prelude::*;
+/// use renzora::ScriptCtx;
+///
+/// fn update(ctx: &mut ScriptCtx) {
+///     let dt = ctx.delta();
+///     if let Some(mut t) = ctx.get_mut::<Transform>() {
+///         t.rotate_y(dt);
+///     }
+/// }
+///
+/// renzora::script!(update);
+/// ```
+///
+/// Attach it by dropping the file into an entity's **Scripts** component, the
+/// same way a `.lua` script attaches — routing is by file extension.
+///
+/// [`ScriptCtx`](crate::ScriptCtx) is the script's own entity plus the world:
+/// `get`/`get_mut`/`insert` act on itself with no argument, and `ctx.world()`
+/// hands back the whole `&mut World`. Nothing is withheld — spawning
+/// hierarchies, building UI, querying everything, swapping assets are all one
+/// call away.
+///
+/// A script is a [native plugin](plugin!) with a per-entity convention on top,
+/// built by the same compiler against the same SDK. The limits are therefore the
+/// plugin limits: no hot unload, and nothing in a statically linked build.
+///
+/// Takes a path, so the function may be named anything and live anywhere in the
+/// file — `renzora::script!(behaviour::update)` is fine.
+#[macro_export]
+macro_rules! script {
+    ($f:path) => {
+        $crate::__script_entry!($f);
+    };
+}
+
+/// The entry point [`script!`] emits, with the export attribute the current link
+/// mode needs.
+///
+/// Split out for the same reason `renzora_plugin`'s `__plugin_scope_entry!` is:
+/// a `#[cfg(feature = ...)]` written inside `script!`'s expansion would be
+/// evaluated when the **script** is compiled, against the script's own manifest,
+/// where `static_scripts` does not exist and never will. Defining the two
+/// variants here evaluates the cfg where the feature actually lives — on
+/// `renzora`, which cargo compiles once per build and whose features are unified
+/// across it.
+#[doc(hidden)]
+#[cfg(not(feature = "static_scripts"))]
+#[macro_export]
+macro_rules! __script_entry {
+    ($f:path) => {
+        /// The one symbol the dispatcher looks up. See [`script!`].
+        ///
+        /// The context is built here rather than by the dispatcher so the
+        /// boundary stays one plain function pointer — nothing with a lifetime
+        /// crosses it.
+        #[unsafe(no_mangle)]
+        pub fn renzora_script_update(
+            world: &mut $crate::bevy::ecs::world::World,
+            entity: $crate::bevy::ecs::entity::Entity,
+        ) {
+            let mut ctx = $crate::ScriptCtx::new(world, entity);
+            $f(&mut ctx)
+        }
+    };
+}
+
+/// Linked-in variant: no `#[no_mangle]`, so every script in a project can be
+/// compiled into one binary.
+///
+/// Without this, fifty scripts would define fifty `renzora_script_update`
+/// symbols and the exported game would not link. Each script is a module of the
+/// generated aggregator crate, so the un-mangled functions do not collide — the
+/// aggregator names them by path (`script_0::renzora_script_update`) instead of
+/// looking them up by symbol.
+#[doc(hidden)]
+#[cfg(feature = "static_scripts")]
+#[macro_export]
+macro_rules! __script_entry {
+    ($f:path) => {
+        pub fn renzora_script_update(
+            world: &mut $crate::bevy::ecs::world::World,
+            entity: $crate::bevy::ecs::entity::Entity,
+        ) {
+            let mut ctx = $crate::ScriptCtx::new(world, entity);
+            $f(&mut ctx)
+        }
+    };
+}

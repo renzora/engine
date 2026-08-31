@@ -7,13 +7,14 @@ edition = "2021"
 # A PCM decoder, for drawing a waveform rather than playing one. OFF by default:
 # playback decoding lives in the audio backend plugin, and a shipped game should
 # carry no decoders at all. Only the editor-side crates that draw pictures of
-# audio files (`renzora_daw`, `renzora_hub`) turn it on, and both are stripped
-# from exports.
+# audio files (`renzora_hub`) turn it on, and it is stripped from exports.
 decode = ["dep:symphonia"]
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `audio` for `AudioLink` and the handle types — this crate drives the boundary
+# but no longer defines it, so a plugin can play a sound without linking here.
+renzora = { path = "../renzora", default-features = false, features = ["audio"] }
 serde = { version = "1", features = ["derive"] }
 # The audio boundary. `host` for the resource the plugin loader fills in when a
 # backend registers; `audio` for the request/reply vocabulary both sides compile.

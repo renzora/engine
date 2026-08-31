@@ -1,14 +1,24 @@
-//! The canvas toolbar: align + distribute (left), grid + snap toggles, and the
-//! zoom cluster (right).
+//! The canvas toolbar: three draggable groups — align + distribute, the view
+//! toggles (grid, the snap pill, backdrop), and zoom.
+//!
+//! Built from the shared strip in `renzora_ember::widgets::toolbar`, so it is
+//! the same chrome the viewport's toolbar uses: same bar, same button metrics,
+//! same pill for a toggle fused to the number it governs, and the same
+//! grip-per-group that lets the user reorder them.
 
 use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
+use bevy::ui::FocusPolicy;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{drag_value, DragRange};
+use renzora_ember::widgets::{
+    arrange_row_items, icon_popup_trigger, popup_anchor, popup_panel, settings_check_row,
+    settings_section, settings_separator, toggle_switch, toolbar_bar, toolbar_group,
+    toolbar_icon_button, toolbar_pill, toolbar_separator, HoverTooltip,
+};
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
@@ -26,21 +36,60 @@ pub(crate) enum CanvasTbBtn {
     Align(AlignAction),
     DistH,
     DistV,
+    /// Flip the selection between laid out by its parent and placed by hand.
+    ToggleFreePosition,
 }
 
+/// Marks this panel's toolbar row, so `sync_toolbar_order` knows which
+/// `ArrangeOrder` to save. There is one UI editor, but the marker keeps the
+/// lookup honest if that ever stops being true.
+#[derive(Component)]
+struct UiToolbarRow;
+
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, toolbar_click.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        (toolbar_click, sync_toolbar_order).run_if(in_state(SplashState::Editor)),
+    );
+}
+
+/// Mirror the row's live group order into the user's editor preferences, and
+/// seed it from there on the first frame.
+///
+/// The drag itself is generic — `arrange_row` maintains `ArrangeOrder` — but
+/// persisting it is the host panel's job, exactly as the viewport persists its
+/// own into `ViewportSettings`. Without this the toolbar rearranges and then
+/// forgets, which is worse than not being rearrangeable.
+fn sync_toolbar_order(
+    mut rows: Query<&mut renzora_ember::widgets::ArrangeOrder, With<UiToolbarRow>>,
+    mut saved: Local<Option<Vec<String>>>,
+) {
+    let Ok(mut order) = rows.single_mut() else {
+        return;
+    };
+    // An empty order means "not arranged yet" — take the saved one rather than
+    // clobbering it with the default.
+    if order.0.is_empty() {
+        let disk = saved.get_or_insert_with(renzora::core::load_ui_toolbar_order);
+        if !disk.is_empty() {
+            order.0 = disk.clone();
+        }
+        return;
+    }
+    if saved.as_deref() != Some(order.0.as_slice()) {
+        *saved = Some(order.0.clone());
+        if let Err(err) = renzora::core::save_ui_toolbar_order(&order.0) {
+            warn!("ui toolbar: could not save group order — {err}");
+        }
+    }
 }
 
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let bar = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::horizontal(Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() },
-            BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb(border())),
-            Name::new("ui-canvas-toolbar"),
-        ))
-        .id();
+    // Same strip the viewport builds — see `renzora_ember::widgets::toolbar`.
+    // It used to be a fixed-height non-wrapping row on `header_bg` with 22×20
+    // buttons, which was a second, quietly different toolbar design.
+    let bar = toolbar_bar(commands, "ui-canvas-toolbar");
+    commands.entity(bar).insert(UiToolbarRow);
 
     // Align + distribute.
     let aligns = [
@@ -52,68 +101,339 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("align-bottom", CanvasTbBtn::Align(AlignAction::Bottom)),
         ("arrows-out-line-horizontal", CanvasTbBtn::DistH),
         ("arrows-out-line-vertical", CanvasTbBtn::DistV),
+        // Flow ↔ free. Sits with align because it is the same question — where
+        // does this node sit — asked at the level above.
+        ("push-pin", CanvasTbBtn::ToggleFreePosition),
     ];
-    let mut kids: Vec<Entity> = aligns.iter().map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0).collect();
+    // Grouped, not flat: the six align buttons plus the two distribute buttons
+    // are one control, and a group also never gets split down the middle when
+    // the bar wraps to a second line.
+    let align_group = toolbar_group(commands, "ui-align-group");
+    let align_kids: Vec<Entity> = aligns
+        .iter()
+        .map(|(icon, btn)| icon_btn(commands, fonts, icon, *btn).0)
+        .collect();
+    commands.entity(align_group).add_children(&align_kids);
 
-    kids.push(vsep(commands));
+    let mut kids: Vec<Entity> = vec![align_group];
 
-    // Grid + snap toggles.
+    // Grid is a plain toggle; snap is a pill, because "snap" and "by how much"
+    // are one idea. As a separate icon and a separate boxed field they read as
+    // two unrelated widgets that happen to be adjacent — which is exactly how
+    // this toolbar looked next to the viewport's snap pills.
     let (grid, grid_ic) = icon_btn(commands, fonts, "grid-four", CanvasTbBtn::ToggleGrid);
     bind_text_color(commands, grid_ic, |w| toggle_color(w, |s| s.show_grid));
-    let (snap, snap_ic) = icon_btn(commands, fonts, "magnet-straight", CanvasTbBtn::ToggleSnap);
-    bind_text_color(commands, snap_ic, |w| toggle_color(w, |s| s.snap_enabled));
-    let (backdrop, backdrop_ic) = icon_btn(commands, fonts, "image", CanvasTbBtn::ToggleBackdrop);
-    bind_text_color(commands, backdrop_ic, |w| {
-        let on = w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0);
-        rgb(if on { accent() } else { text_muted() })
+
+    // `arrows-out-cardinal`, the glyph the viewport's translate-snap pill uses.
+    // Both mean "snap movement to a step", so they should not be a magnet in one
+    // panel and a move cursor in the other.
+    let snap = toolbar_pill(commands, fonts, "arrows-out-cardinal", 1.0, 256.0, 1.0);
+    commands.entity(snap.toggle).insert(CanvasTbBtn::ToggleSnap);
+    commands
+        .entity(snap.value)
+        .insert(renzora_ember::widgets::DragSnap(1.0));
+    // On, the pill fills with the accent — so the glyph has to become the colour
+    // that reads *on* that fill, not the accent itself. Tinting it accent made
+    // it vanish into the pill, so the icon looked missing exactly while the
+    // control was doing something.
+    bind_text_color(commands, snap.icon, |w| {
+        let on = w
+            .get_resource::<NativeCanvasState>()
+            .is_some_and(|s| s.snap_enabled);
+        if on {
+            Color::WHITE
+        } else {
+            rgb(text_muted())
+        }
     });
-    kids.push(grid);
-    kids.push(snap);
-    // Snap-amount (grid size) scrub field.
-    let snap_amt = drag_value(commands, &fonts.ui, "", value_text(), 10.0, 1.0);
-    commands.entity(snap_amt).insert(DragRange { min: 1.0, max: 256.0 });
-    bind_2way(commands, snap_amt, |w| w.get_resource::<NativeCanvasState>().map(|s| s.grid_size).unwrap_or(10.0), |w, v: &f32| {
+    // The pill fills when snapping is on, the same read as the viewport's.
+    bind_bg(commands, snap.root, |w| {
+        let on = w.get_resource::<NativeCanvasState>().is_some_and(|s| s.snap_enabled);
+        rgb(if on { accent() } else { hover_bg() })
+    });
+    bind_2way(commands, snap.value, |w| w.get_resource::<NativeCanvasState>().map(|s| s.grid_size).unwrap_or(10.0), |w, v: &f32| {
         if let Some(mut s) = w.get_resource_mut::<NativeCanvasState>() {
             s.grid_size = v.max(1.0);
         }
     });
-    kids.push(snap_amt);
-    kids.push(backdrop);
 
-    kids.push(commands.spawn(Node { flex_grow: 1.0, ..default() }).id());
+    let overlays = overlays_dropdown(commands, fonts);
 
-    // Resolution readout (left of the zoom cluster).
-    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    let view_group = toolbar_group(commands, "ui-view-group");
+    commands
+        .entity(view_group)
+        .add_children(&[grid, snap.root, overlays]);
+    kids.push(view_group);
+
+    // Zoom cluster, with the canvas resolution read out beside it. Pinned right
+    // with the backdrop switch rather than placed in the arrange row — see the
+    // right-hand group below for why those two live outside it.
+    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { margin: UiRect::horizontal(Val::Px(4.0)), ..default() })).id();
     bind_text(commands, res, |w| {
         w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
     });
-    kids.push(res);
-    kids.push(vsep(commands));
 
-    // Zoom cluster.
-    kids.push(icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0);
+
+    let zoom_out = icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0;
     let zoom_lbl = commands
         .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { min_width: Val::Px(40.0), justify_content: JustifyContent::Center, ..default() }, Interaction::default(), CanvasTbBtn::ZoomReset))
         .id();
     bind_text(commands, zoom_lbl, |w| format!("{:.0}%", w.get_resource::<NativeCanvasState>().map(|s| s.zoom).unwrap_or(1.0) * 100.0));
-    kids.push(zoom_lbl);
-    kids.push(icon_btn(commands, fonts, "magnifying-glass-plus", CanvasTbBtn::ZoomIn).0);
+    let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", CanvasTbBtn::ZoomIn).0;
+    let zoom_group = toolbar_group(commands, "ui-zoom-group");
+    commands
+        .entity(zoom_group)
+        .add_children(&[res, zoom_out, zoom_lbl, zoom_in]);
 
-    commands.entity(bar).add_children(&kids);
+    // Each group gets a grip and a saved position, exactly like the viewport's.
+    // The grips double as the dividers between groups, which is why there are no
+    // explicit separators left in here.
+    let keys = ["ui-align", "ui-view"];
+    let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
+    arrange_row_items(commands, fonts, bar, &entries);
+
+    // Zoom and the scene backdrop, pinned to the right edge rather than placed
+    // in the arrange row.
+    //
+    // Neither is an editing tool. Zoom changes how you are *looking* at the
+    // canvas and the backdrop says what is behind it — both properties of the
+    // view, not of the UI being built, so they belong away from the tools that
+    // change the template.
+    //
+    // Absolutely positioned rather than pushed right by a spacer: a spacer
+    // fights drag-to-arrange, since a group dragged past it lands on the far
+    // side and stays there. The cost is that these two do not rearrange, which
+    // is the right trade for controls whose place is the point.
+    let icon = icon_text(commands, &fonts.phosphor, "video-camera", text_muted(), 14.0);
+    commands.entity(icon).insert(FocusPolicy::Pass);
+    let backdrop = toggle_switch(commands, false);
+    commands
+        .entity(backdrop)
+        .insert(HoverTooltip::new("Scene backdrop"));
+    bind_2way(
+        commands,
+        backdrop,
+        |w: &Rx| {
+            w.get_resource::<UiCanvasPreviewEnabled>()
+                .is_none_or(|r| r.0)
+        },
+        |w: &mut World, v: &bool| {
+            if let Some(mut r) = w.get_resource_mut::<UiCanvasPreviewEnabled>() {
+                r.0 = *v;
+            }
+        },
+    );
+    let backdrop_group = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(6.0),
+                top: Val::Px(2.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            Name::new("ui-view-controls"),
+        ))
+        .id();
+    // Backdrop stays outermost: zoom is used constantly and the backdrop rarely,
+    // so the one you reach for often should not be the one at the very edge.
+    let sep = toolbar_separator(commands);
+    commands
+        .entity(backdrop_group)
+        .add_children(&[zoom_group, sep, icon, backdrop]);
+    commands.entity(bar).add_child(backdrop_group);
     bar
 }
 
-fn vsep(commands: &mut Commands) -> Entity {
-    commands.spawn((Node { width: Val::Px(1.0), height: Val::Px(16.0), margin: UiRect::horizontal(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(border())))).id()
+/// The **Overlays** popup — one switch per thing the editor draws over the
+/// canvas, in the same shape as the viewport's Gizmos dropdown.
+///
+/// A popup rather than a plain dropdown because these are independent switches,
+/// not one choice among several: you can want the hover outline without the
+/// container box, or the boxes without their names. A dropdown would have forced
+/// them into a single ranked list of combinations.
+fn overlays_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    macro_rules! canvas_switch {
+        ($label:expr, $field:ident) => {
+            settings_check_row(
+                commands,
+                fonts,
+                $label,
+                |w: &Rx| {
+                    w.get_resource::<NativeCanvasState>()
+                        .map(|s| s.$field)
+                        .unwrap_or(false)
+                },
+                |w: &mut World, v: bool| {
+                    if let Some(mut s) = w.get_resource_mut::<NativeCanvasState>() {
+                        s.$field = v;
+                    }
+                },
+            )
+        };
+    }
+
+    let kids = vec![
+        settings_section(commands, fonts, "Highlight"),
+        canvas_switch!("Hovered node", hover_outline),
+        canvas_switch!("Parent container", hover_group),
+        settings_separator(commands),
+        settings_section(commands, fonts, "Labels"),
+        canvas_switch!("Node names", show_names),
+        settings_separator(commands),
+        settings_section(commands, fonts, "Guides"),
+        canvas_switch!("Rulers", show_rulers),
+    ];
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
+    popup_anchor(commands, trigger, panel)
 }
 
+/// A toolbar button carrying the marker that says what pressing it does. The
+/// chrome — size, radius, icon scale — is the shared one, so this only adds the
+/// behaviour. Icons start muted; the toggles rebind their colour below.
 fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: CanvasTbBtn) -> (Entity, Entity) {
-    let btn = commands
-        .spawn((Node { width: Val::Px(22.0), height: Val::Px(20.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 13.0);
-    commands.entity(btn).add_child(ic);
+    let (btn, ic) = toolbar_icon_button(commands, fonts, icon);
+    commands.entity(btn).insert(marker);
+    commands.entity(ic).insert(TextColor(rgb(text_muted())));
     (btn, ic)
+}
+
+/// Whether `e` is the node a template builds onto — the one whose parent is the
+/// canvas itself, which the geometry snapshot excludes.
+fn is_template_root(state: &NativeCanvasState, e: Entity) -> bool {
+    state
+        .widgets
+        .iter()
+        .find(|g| g.entity == e)
+        .is_some_and(|g| g.parent == state.active_canvas)
+}
+
+/// Flip a node between flow layout and free placement.
+///
+/// Free placement is `position: absolute` — the node leaves its parent's flow
+/// and is placed by coordinates, which is also what switches the canvas drag
+/// from reordering to moving. It was only reachable by typing the attribute,
+/// which made "just put it where I want" the one thing the editor could not do.
+///
+/// Going free pins the node where it already sits, so the flip does not also
+/// move it. Going back to flow clears the offsets, or the node keeps a
+/// `left`/`top` its new layout does not expect.
+fn set_free_position(world: &mut World, entity: Entity, was_flow: bool, x: f32, y: f32, parent: (f32, f32, f32, f32)) {
+    let (px, py, pw, ph) = (parent.0, parent.1, parent.2.max(1.0), parent.3.max(1.0));
+    if was_flow {
+        let left = format!("{:.2}%", (x - px) / pw * 100.0);
+        let top = format!("{:.2}%", (y - py) / ph * 100.0);
+        if let Some(mut node) = world.get_mut::<Node>(entity) {
+            node.position_type = PositionType::Absolute;
+            node.left = Val::Percent((x - px) / pw * 100.0);
+            node.top = Val::Percent((y - py) / ph * 100.0);
+        }
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "position", "absolute");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "left", &left);
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "top", &top);
+    } else {
+        if let Some(mut node) = world.get_mut::<Node>(entity) {
+            node.position_type = PositionType::Relative;
+            node.left = Val::Auto;
+            node.top = Val::Auto;
+        }
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "position", "relative");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "left", "auto");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "top", "auto");
+    }
+}
+
+/// Align a node that its parent lays out, by writing the flexbox attribute that
+/// expresses it — and writing it to the `.html`, so it survives the rebuild.
+fn align_in_flow(world: &mut World, entity: Entity, action: AlignAction) {
+    let Some(parent) = world.get::<ChildOf>(entity).map(|c| c.parent()) else {
+        return;
+    };
+    let parent_is_row = world
+        .get::<Node>(parent)
+        .map(|n| {
+            matches!(
+                n.flex_direction,
+                FlexDirection::Row | FlexDirection::RowReverse
+            )
+        })
+        .unwrap_or(true);
+    // The parent is read for its axis and nothing else — the alignment itself is
+    // written entirely on the selected node, which is the whole point of the
+    // auto-margin approach.
+    match action.flow_attr(parent_is_row) {
+        crate::game_ui::align::FlowAlign::Own(attr, value) => {
+            // Live first so it reads immediately, then the file — the attribute
+            // writeback deliberately does not rebuild, because it has already
+            // updated the entity in place.
+            if let Some(mut node) = world.get_mut::<Node>(entity) {
+                node.align_self = match value {
+                    "center" => AlignSelf::Center,
+                    "end" => AlignSelf::FlexEnd,
+                    _ => AlignSelf::FlexStart,
+                };
+            }
+            // The markup spells these `flex_start` / `flex_end`; bare `start`
+            // and `end` are different values in bevy's layout and not the ones
+            // these controls mean.
+            let markup_value = match value {
+                "start" => "flex_start",
+                "end" => "flex_end",
+                other => other,
+            };
+            renzora_ember::markup::writeback::write_attr_to_markup(
+                world,
+                entity,
+                attr,
+                markup_value,
+            );
+        }
+        crate::game_ui::align::FlowAlign::Margin(edge) => {
+            let (lead, trail) = crate::game_ui::align::margin_pair(edge);
+            let to_val = |v: Option<f32>| v.map(Val::Px).unwrap_or(Val::Auto);
+            // The perpendicular margins are left exactly as the author set them
+            // — this control is about one axis, and rewriting all four would
+            // quietly discard spacing it was never asked about.
+            let mut rect = world
+                .get::<Node>(entity)
+                .map(|n| n.margin)
+                .unwrap_or_default();
+            if parent_is_row {
+                rect.left = to_val(lead);
+                rect.right = to_val(trail);
+            } else {
+                rect.top = to_val(lead);
+                rect.bottom = to_val(trail);
+            }
+            if let Some(mut node) = world.get_mut::<Node>(entity) {
+                node.margin = rect;
+            }
+            let m = format!(
+                "{} {} {} {}",
+                val_markup(rect.top),
+                val_markup(rect.right),
+                val_markup(rect.bottom),
+                val_markup(rect.left)
+            );
+            renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "margin", &m);
+        }
+    }
+}
+
+/// A `Val` as the markup spells it. Anything the parser cannot express (a
+/// viewport unit in a margin, say) falls back to `0` rather than writing a value
+/// that would fail to parse on the next load.
+fn val_markup(v: Val) -> String {
+    match v {
+        Val::Auto => "auto".to_string(),
+        Val::Px(p) => format!("{p:.0}px"),
+        Val::Percent(p) => format!("{p:.2}%"),
+        _ => "0".to_string(),
+    }
 }
 
 fn toggle_color(w: &Rx, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
@@ -147,8 +467,46 @@ fn toolbar_click(
             CanvasTbBtn::Align(action) => {
                 let geoms = selected_geoms(&state, &selection);
                 let (rw, rh) = (state.canvas_width.max(1.0), state.canvas_height.max(1.0));
-                for (e, nx, ny) in compute_align(&geoms, *action) {
+                // Two different operations wearing one button, because they are
+                // the same *intent*. A free node aligns by moving; a node in
+                // flow aligns by telling flexbox where it sits, since nudging
+                // `left`/`top` on a flex child is simply ignored — which is why
+                // these buttons did nothing on most of a template.
+                let flow: Vec<Entity> = geoms
+                    .iter()
+                    .filter(|g| g.in_flow)
+                    .map(|g| g.entity)
+                    .collect();
+                let free = compute_align(
+                    &geoms.iter().filter(|g| !g.in_flow).cloned().collect::<Vec<_>>(),
+                    *action,
+                );
+                for (e, nx, ny) in free {
                     commands.queue(move |w: &mut World| set_pos(w, e, Some(nx), Some(ny), rw, rh));
+                }
+                let act = *action;
+                for e in flow {
+                    commands.queue(move |w: &mut World| align_in_flow(w, e, act));
+                }
+            }
+            CanvasTbBtn::ToggleFreePosition => {
+                for g in selected_geoms(&state, &selection) {
+                    let (e, was_flow) = (g.entity, g.in_flow);
+                    // The template root is the surface the rest sits on — it
+                    // fills the canvas by definition, and there is no outer box
+                    // for it to be placed within. Flipping it to `relative`
+                    // hands its size to a flex parent that has no other
+                    // children, which is not free placement, just a root that
+                    // has stopped covering the canvas.
+                    if is_template_root(&state, e) {
+                        continue;
+                    }
+                    // Pin at where it already is, so flipping to free placement
+                    // does not also move it. Percentages of the parent, matching
+                    // what the drag writes.
+                    let p = crate::game_ui::interaction::parent_box(&state, e);
+                    let (x, y) = (g.x, g.y);
+                    commands.queue(move |w: &mut World| set_free_position(w, e, was_flow, x, y, p));
                 }
             }
             CanvasTbBtn::DistH => {

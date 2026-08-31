@@ -9,6 +9,9 @@ renzora_editor_framework = { path = "../renzora_editor_framework" }
 # For the starter graph a new `.blueprint` is created with — owned by the
 # blueprint crate so this and the Hierarchy's Create menu write the same file.
 renzora_blueprint = { path = "../renzora_blueprint" }
+# For `starter_lua` — the crate that runs Lua owns what a new one looks like,
+# the same way `renzora_blueprint` owns the starter graph.
+renzora_scripting = { path = "../renzora_scripting" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }

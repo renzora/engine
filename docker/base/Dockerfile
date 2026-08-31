@@ -54,6 +54,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
     file \
+    # Compressing the staged plugin SDK into `sdk.tar.zst` inside the build lane,
+    # so the ~1.9 GB tree never travels as loose files. Without it the lane
+    # uploads an artifact several times larger and the packaging job compresses
+    # the same bytes again later.
+    zstd \
     wget \
     gnupg \
     lsb-release \
@@ -75,19 +80,66 @@ RUN rustup target add \
 # cross-compile. This is the one heavyweight layer the cross toolchains share, so
 # it lives in the base to avoid building it three times (windows/macos/ios). It
 # changes only on an LLVM bump.
-RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
-    chmod +x /tmp/llvm.sh && \
-    /tmp/llvm.sh 19 && \
-    apt-get install -y --no-install-recommends llvm-19-dev && \
-    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100 && \
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 && \
-    update-alternatives --install /usr/bin/clang-cl clang-cl /usr/bin/clang-cl-19 100 && \
-    update-alternatives --install /usr/bin/lld-link lld-link /usr/bin/lld-link-19 100 && \
-    update-alternatives --install /usr/bin/llvm-lib llvm-lib /usr/bin/llvm-lib-19 100 && \
-    update-alternatives --install /usr/bin/llvm-rc llvm-rc /usr/bin/llvm-rc-19 100 && \
-    ln -sf /usr/bin/ld64.lld-19 /usr/local/bin/ld64.lld && \
-    ln -sf /usr/bin/ld.lld-19 /usr/local/bin/ld.lld && \
-    rm /tmp/llvm.sh && \
+#
+# ── Why the apt source is written out instead of running `llvm.sh` ───────────
+# This used to `wget https://apt.llvm.org/llvm.sh` and run it. That script is
+# fetched UNPINNED at build time, so the image depended on whatever upstream
+# happened to be serving that day — and upstream dropped Debian 12:
+#
+#     [error] Distribution 'debian' in version '12 (bookworm)' is not
+#             supported by this script.
+#
+# The image had not actually re-run that layer in a long time (every rebuild hit
+# the registry buildx cache), so the breakage sat invisible until an unrelated
+# edit above invalidated the cache and the layer executed for real.
+#
+# All the script does is add this apt source and install the packages, so doing
+# it directly removes the dependency on a moving remote script without changing
+# what lands in the image. The distro codename is now explicit, which is also
+# what has to change on a base-image bump.
+RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" \
+      > /etc/apt/sources.list.d/llvm.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      clang-19 \
+      lld-19 \
+      llvm-19-dev && \
+    # Everything below points into LLVM's own install prefix rather than at
+    # `/usr/bin/<tool>-19`. Those versioned symlinks are created by the packaging
+    # for SOME tools and not others, and which ones depends on the package set —
+    # `clang-cl-19` in particular does not exist under `--no-install-recommends`,
+    # which is what broke this layer the first time it ran for real:
+    #
+    #     update-alternatives: error: alternative path /usr/bin/clang-cl-19
+    #                                 doesn't exist
+    #
+    # `/usr/lib/llvm-19/bin/` is where LLVM installs every tool unconditionally,
+    # so it does not depend on which convenience symlinks a given release ships.
+    #
+    # The `ls` is deliberate and stays: this layer is only exercised on a cache
+    # miss, so when it does break it tends to be a long time later and for a
+    # reason nobody can guess. Printing the inventory means the log answers "what
+    # is actually in there" without another round trip.
+    ls -1 /usr/lib/llvm-19/bin/ && \
+    # `clang-cl` is the one tool the packages do not lay down. Confirmed from the
+    # listing above: the prefix has clang, clang++, clang-cpp, lld, lld-link,
+    # llvm-lib, llvm-rc, ld.lld, ld64.lld — and no clang-cl.
+    #
+    # It is not a separate program. clang picks its driver from `argv[0]`, so
+    # `clang-cl` IS clang under another name, which is how upstream ships it and
+    # why making the link here is not a workaround. The MSVC cross-build needs it
+    # by that name (see docker/windows/Dockerfile).
+    ln -sf /usr/lib/llvm-19/bin/clang /usr/lib/llvm-19/bin/clang-cl && \
+    update-alternatives --install /usr/bin/clang clang /usr/lib/llvm-19/bin/clang 100 && \
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/lib/llvm-19/bin/clang++ 100 && \
+    update-alternatives --install /usr/bin/clang-cl clang-cl /usr/lib/llvm-19/bin/clang-cl 100 && \
+    update-alternatives --install /usr/bin/lld-link lld-link /usr/lib/llvm-19/bin/lld-link 100 && \
+    update-alternatives --install /usr/bin/llvm-lib llvm-lib /usr/lib/llvm-19/bin/llvm-lib 100 && \
+    update-alternatives --install /usr/bin/llvm-rc llvm-rc /usr/lib/llvm-19/bin/llvm-rc 100 && \
+    ln -sf /usr/lib/llvm-19/bin/ld64.lld /usr/local/bin/ld64.lld && \
+    ln -sf /usr/lib/llvm-19/bin/ld.lld /usr/local/bin/ld.lld && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Shared build env (sourced by bash before every RUN, and by build-all.sh) ──

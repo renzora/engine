@@ -44,7 +44,7 @@ my-game/
 └── plugins/          # optional drop-in plugins
 ```
 
-You'll add more folders as you grow — `assets/` for models, textures, and sounds, and `scripts/` for your `.lua` and `.rhai` files. Your starting scene, `scenes/main.ron`, is valid but empty:
+You'll add more folders as you grow — `assets/` for models, textures, and sounds, and `scripts/` for your `.lua` files. Your starting scene, `scenes/main.ron`, is valid but empty:
 
 ```ron
 (
@@ -97,7 +97,7 @@ At the top you'll see the **entity header** — the cube's icon, its ID, its lab
 
 ## Make it move
 
-A little script will make the cube spin. Scripts are plain text files, and Renzora picks the language by the file extension — `.lua` runs Lua, `.rhai` runs Rhai. (Rhai also works in web exports, where Lua doesn't.)
+A little script will make the cube spin. Scripts are plain text files, and Renzora picks the language by the file extension — `.lua` runs Lua, `.rs` compiles a Rust script.
 
 Create a file at `scripts/spin.lua`:
 
@@ -135,4 +135,4 @@ Press **`Ctrl+S`** to save. Your scene is written to a `.ron` file in the `scene
 
 - [Editor Overview](/docs/r1-alpha7/getting-started/editor-overview) — a tour of every panel.
 - [Core Concepts](/docs/r1-alpha7/getting-started/concepts) — how scenes, entities, and scripts fit together.
-- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — Lua, Rhai, and visual Blueprints.
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — Lua, Rust scripts, and visual Blueprints.

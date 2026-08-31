@@ -1,469 +1,2019 @@
-//! Chat with a local or hosted LLM, in an editor panel.
+//! AI Chat panel — talk to a local [Ollama] server (or any OpenAI-compatible
+//! endpoint) from inside the editor.
 //!
-//! The C-ABI port of `crates/renzora_ai_chat`, and the first panel plugin that
-//! needed every part of the boundary at once: a streaming HTTP reply, a panel
-//! whose contents change every frame while a reply arrives, a native folder
-//! picker, and a text input the plugin can actually read.
+//! Adds an "AI Chat" dockable panel: pick a provider and model, type a
+//! prompt, and the reply streams in token by token. Requests run on a worker
+//! thread so the editor never blocks; deltas arrive through a channel and a
+//! per-frame system appends them to the conversation.
 //!
-//! ## How it differs from the in-tree version
+//! Providers are presets over three wire protocols:
+//!   - **Ollama** (default, local) — `/api/chat` NDJSON streaming, models
+//!     from `/api/tags`, no key needed.
+//!   - **OpenAI-style SSE** — OpenAI, Grok (xAI), DeepSeek, Gemini (via
+//!     Google's `/v1beta/openai` compatibility layer), OpenRouter, and any
+//!     custom `/v1` server (LM Studio, llama.cpp). Bearer API key.
+//!   - **Anthropic Messages API** — Claude, via `/v1/messages` SSE streaming
+//!     (`x-api-key` + `anthropic-version` headers), models from `/v1/models`.
 //!
-//! The engine crate builds its UI imperatively with `renzora_ember` — `button()`,
-//! `scroll_view_pinned()`, `markdown_view()` — and keeps it live with reactive
-//! bindings that read `&World`. A plugin has neither: it gets typed queries, not
-//! a `World`, and it cannot call ember's constructors. So the UI here is
-//! **declarative and rebuilt**: state changes, the plugin re-renders its BSN, and
-//! `set_panel_content` hands the whole thing over. For a transcript that is
-//! arguably the simpler design; for a panel with thirty independent bindings it
-//! would not be.
+//! Editor-scope distribution plugin: never loads in an exported game, and
+//! deleting `librenzora_ai_chat.{dll,so,dylib}` from `plugins/` removes the
+//! feature entirely.
 //!
-//! ## The shape of a turn
-//!
-//! 1. Every keystroke fires [`ACT_INPUT`] carrying the box's contents, which the
-//!    plugin caches. It cannot ask a widget what it holds — this is the only way
-//!    the text arrives.
-//! 2. Send fires [`ACT_SEND`]: the draft becomes a user message and a streaming
-//!    POST goes out.
-//! 3. [`pump`] polls for chunks each frame, splits NDJSON lines out of them, and
-//!    appends the deltas.
-//! 4. Anything that changed the state marks it dirty, and `pump` re-renders.
-//!
-//! Note what is NOT here: a worker thread, a channel, or a runtime. The host owns
-//! the client and the plugin polls, which is what makes this file free of
-//! everything except `std` string handling.
+//! [Ollama]: https://ollama.com
 
-use renzora_plugin::dialog::{DialogCommands, Dialogs};
-use renzora_plugin::http::{Http, HttpCommands};
-use renzora_plugin::panel::PanelCommands;
-use renzora_plugin::prelude::*;
+use std::hash::{Hash, Hasher};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Mutex;
 
-mod state;
-use state::{with, Role, PRESETS};
+use bevy::prelude::*;
 
-/// Panel id. Prefixed, because ids are global across every loaded plugin.
-const PANEL_ID: &str = "ai_chat";
+use renzora::core::RenzoraShellExt;
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::panel::RegisterPanelContent;
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, keyed_list};
+use renzora_ember::settings_sections::RegisterSettingsSection;
+use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
+use renzora_ember::widgets::{
+    bind_text_input, button, dropdown, markdown_view, password_input, scroll_view_pinned,
+    spinner, text_input, EmberTextInput,
+};
 
-// Action ids. Numbers rather than names because a plugin component's fields are
-// the closed set the ABI can describe, and `i32` is in it while `String` is not.
-pub const ACT_INPUT: u32 = 1;
-pub const ACT_SEND: u32 = 2;
-pub const ACT_STOP: u32 = 3;
-pub const ACT_PICK: u32 = 4;
-// Settings-section inputs. Each fires per keystroke carrying its contents.
-pub const ACT_SET_URL: u32 = 5;
-pub const ACT_SET_MODEL: u32 = 6;
-pub const ACT_SET_KEY: u32 = 7;
-pub const ACT_SET_PRESET: u32 = 8;
+/// Wire protocol — how to talk to the server. Several providers share the
+/// OpenAI shape, so presets map onto one of these three.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Protocol {
+    Ollama,
+    OpenAi,
+    Anthropic,
+}
 
-/// The settings section's own id. Distinct from the panel's, because ids are one
-/// namespace across both and `set_panel_content` resolves against it.
-const SETTINGS_ID: &str = "ai_chat_settings";
+/// A provider preset: label + protocol + default endpoints. The base URL is
+/// user-editable after selection; the paths are fixed per provider.
+struct Preset {
+    label: &'static str,
+    protocol: Protocol,
+    base_url: &'static str,
+    chat_path: &'static str,
+    models_path: &'static str,
+    /// Model to preselect when the fetched list contains it.
+    preferred_model: Option<&'static str>,
+}
 
-/// Tags pairing our requests with their answers. Scoped per service, so the
-/// dialog and the chat stream may not collide even though both are small
-/// integers — but keeping them distinct costs nothing and reads better in a log.
-const TAG_CHAT: u64 = 1;
-const TAG_FOLDER: u64 = 2;
+/// Grounding rules + hard API invariants sent with every request. The
+/// '[Engine docs: …]' blocks are retrieved per-query and so cover whatever
+/// the prompt happens to mention; the invariants below are the *closed sets*
+/// (the eleven lifecycle hooks, the Lua/Rhai split, read-only globals) that a
+/// vague query won't surface — without them, small local models invent
+/// plausible-looking hooks like `on_damage` and claim to have read pages
+/// they never saw. Keep this in sync with docs/r1-alphaN/scripting/*.md.
+const SYSTEM_PROMPT: &str = "You are the Renzora Engine assistant, embedded in the Renzora \
+editor. Renzora is a Bevy-based game engine. You help users write gameplay \
+scripts (Lua/Rhai), game/editor UI (HUI '.html' markup), and Rust plugins. \
+\
+GROUNDING. You cannot browse the web. '[Engine docs: …]' blocks are excerpts \
+from the official Renzora manual — treat them as authoritative and prefer \
+them over your own assumptions. '[Fetched page: <url>]' blocks are the real \
+content of that page; base any statement about the page strictly on them. If \
+a block says it could not be fetched or looks like an empty app shell, say so \
+and do not guess. Never invent documentation, APIs, file names, or facts. If \
+the provided context does not cover something, say so plainly. Prefer short, \
+correct answers over long, speculative ones. \
+\
+SCRIPTING MODEL — the most common source of mistakes. Renzora scripts are \
+PER-ENTITY. There is NO entity object, no 'self', no component classes, no \
+queries, no ECS API. The API is plain GLOBAL functions (translate, \
+set_position, rotate, apply_impulse, set_velocity, …), read-only per-frame \
+GLOBALS (delta, elapsed, position_x/y/z, rotation_*, input_x, input_y, \
+mouse_*, gamepad_*, is_colliding, self_entity_id, self_entity_name, \
+self_health, …), and optional lifecycle hooks you define. Transform globals \
+(position_x, rotation_y, …) are READ-ONLY inputs refreshed each frame — \
+assigning to them does nothing; move via translate/set_position or physics. \
+\
+LIFECYCLE HOOKS ARE A CLOSED SET. The engine only ever calls these free \
+functions: props, on_ready, on_update, on_ui(name,args,entity), \
+on_rpc(name,args,from), on_http(callback,status,body), on_player_joined(id), \
+on_player_left(id), on_scene_loaded(path), on_scene_load_failed(path,error), \
+on_event(name,args). \
+The two scene hooks reach only scripts that SURVIVE the load — put them on a \
+global (autoload) scene, since the outgoing scene's scripts are despawned \
+mid-load. ANY OTHER 'on_*' function — on_start, on_collision, \
+on_destroy, on_damage, on_spawn, on_hit, etc. — is NEVER called by the \
+engine; do not present one as a hook. Use on_ready for setup, read the \
+is_colliding global for overlap, and note that collision EVENTS exist only as \
+Blueprint nodes. \
+\
+LUA vs RHAI. File extension picks the backend: '.lua' → Lua (full API, \
+native/mobile only, NOT web), '.rhai' → Rhai (a subset that also runs on \
+web). Rhai supports ONLY the props, on_ready, and on_update hooks and ~45 of \
+Lua's ~70 functions; it has NO input functions, networking, HTTP, action(), \
+component reflection, or child-transform functions. UI scripting — action(), \
+set_on/get_on, on_ui — is LUA-ONLY (Rhai may only feed values into '{{ }}' \
+bindings). Syntax differs: local vs let; '{k=v}' vs '#{k:v}'; nil vs (); '..' \
+vs '+'; '~=' vs '!='; 1-based vs 0-based arrays; 'end' vs '}'; and/or/not vs \
+&&/||/!. Match the syntax to the file's language. \
+\
+COMPONENT REFLECTION. Read/write registered component fields by a \
+'Component.field' path: get(path)/set(path,v) on self, \
+get_on(name,path)/set_on(name,path,v) on a named entity, plus \
+has_component/get_component. Engine state is mirrored read-only the same way: \
+get('PhysicsReadState.grounded'), get('NavReadState.*'), \
+get('AnimatorReadState.*'). \
+\
+action() ESCAPE HATCH. action(name, args) — and action_on(target,name,args) \
+— fires verbs that have no dedicated function: 40+ 'ui_*' widget verbs, \
+'hui_*' markup verbs (hui_spawn, hui_despawn, hui_hide, hui_show), \
+net_connect/net_disconnect, play_audio_player, quit. \
+\
+EVENTS. emit(name, args) broadcasts to every script's on_event(name,args) and \
+to Rust observers; delivery is NEXT FRAME, so a script never sees its own \
+emit in the same hook. Prefer emit when the sender should not know who \
+listens; prefer set_on/get_on when addressing a known entity by id. \
+Networking connect is action('net_connect', {address=…, port=…}), NOT a bare \
+function. \
+\
+HUI MARKUP ('.html' game UI). A UI file has one <template>. Tags: <node>, \
+<text>, <image src>, <button>, <input>, <icon name>. '{{ }}' bindings re-read \
+every frame: '{{ var }}' (script var on the same entity), '{{ Name.var }}' \
+(var on the entity named Name), '{{ Name }}' (entity name). \
+show='{{ condition }}' toggles visibility (and/or/not, comparisons). Buttons \
+route via on_press/on_enter/on_exit names into the Lua on_ui hook. \
+vector='gauge|bars|line|wave|speedometer' draws widgets. Drive widgets with \
+'ui_*' verbs by name, or set_on('health_fill','UiBarFill.value', frac) for a \
+field with no verb. ui_set_color values are 0.0–1.0 floats, not 0–255. \
+\
+PLUGINS. A Renzora plugin is a Rust crate that registers a Bevy Plugin via \
+renzora::add!(), compiled in statically or shipped as a dylib in the \
+engine's plugins/ folder. \
+\
+CODE RULES. Use ONLY functions, hooks, globals, tags, and verbs that appear \
+in the provided '[Engine docs: …]' blocks or in the invariants above. If you \
+need something that is not documented, say it is not documented instead of \
+inventing it. Keep examples minimal and runnable.";
 
-/// Handle a click, or a keystroke in the prompt box.
-///
-/// Runs on the editor's own UI systems, so a panic here would abort the process
-/// — the host's thunk carries a guard, which is why this can be ordinary code.
-fn on_action(action: Action) {
-    // Both copied out before `commands` is moved: `name()` and `text()` borrow
-    // `action`, and the sink is a field of it.
-    let id: u32 = action.name().parse().unwrap_or(0);
-    let typed = action.text().to_string();
-    let action_value = action.value;
-    let mut commands = action.commands;
+const PRESETS: &[Preset] = &[
+    Preset {
+        label: "Ollama (local)",
+        protocol: Protocol::Ollama,
+        base_url: "http://localhost:11434",
+        chat_path: "/api/chat",
+        models_path: "/api/tags",
+        preferred_model: None,
+    },
+    Preset {
+        label: "Claude (Anthropic)",
+        protocol: Protocol::Anthropic,
+        base_url: "https://api.anthropic.com",
+        chat_path: "/v1/messages",
+        models_path: "/v1/models",
+        preferred_model: Some("claude-opus-4-8"),
+    },
+    Preset {
+        label: "OpenAI",
+        protocol: Protocol::OpenAi,
+        base_url: "https://api.openai.com",
+        chat_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        preferred_model: None,
+    },
+    Preset {
+        label: "Grok (xAI)",
+        protocol: Protocol::OpenAi,
+        base_url: "https://api.x.ai",
+        chat_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        preferred_model: None,
+    },
+    Preset {
+        label: "DeepSeek",
+        protocol: Protocol::OpenAi,
+        base_url: "https://api.deepseek.com",
+        chat_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        preferred_model: None,
+    },
+    Preset {
+        label: "Gemini (Google)",
+        protocol: Protocol::OpenAi,
+        // Google's OpenAI-compatibility layer; the native Gemini API has a
+        // different shape, but this endpoint speaks plain OpenAI SSE.
+        base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+        chat_path: "/chat/completions",
+        models_path: "/models",
+        preferred_model: None,
+    },
+    Preset {
+        label: "OpenRouter",
+        protocol: Protocol::OpenAi,
+        base_url: "https://openrouter.ai/api",
+        chat_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        preferred_model: None,
+    },
+    Preset {
+        label: "Custom (OpenAI-compatible)",
+        protocol: Protocol::OpenAi,
+        base_url: "http://localhost:1234",
+        chat_path: "/v1/chat/completions",
+        models_path: "/v1/models",
+        preferred_model: None,
+    },
+];
 
-    if id == ACT_INPUT {
-        // The whole reason `PanelAction::text` exists. Without it the plugin can
-        // render a prompt box and never learn a thing about what is in it.
-        // No dirty flag: the prompt box already shows what was typed, and
-        // re-rendering it from here would fight the widget for the caret.
-        with(|s| s.draft = typed);
-        return;
-    }
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Role {
+    User,
+    Assistant,
+}
 
-    if id == ACT_SEND {
-        let body = with(|s| {
-            let draft = s.draft.trim().to_string();
-            if draft.is_empty() || s.streaming {
-                return None;
-            }
-            s.say(Role::User, draft);
-            s.draft.clear();
-            s.streaming = true;
-            s.carry.clear();
-            s.status = "Thinking...".to_string();
-            // Start the assistant's row now, empty, so the first delta appends
-            // to it rather than the transcript jumping when it arrives.
-            s.messages.push((Role::Assistant, String::new()));
-            s.panel_dirty = true;
-            Some((s.chat_url(), s.request_body(), s.auth_headers()))
-        });
-        if let Some((url, body, headers)) = body {
-            // `http_with` rather than `http_post_stream`: an empty header set
-            // falls through to the plain payload, so Ollama pays nothing for
-            // this and Anthropic becomes reachable.
-            commands.http_with(
-                renzora_plugin::http::HttpOp::PostStream,
-                TAG_CHAT,
-                &url,
-                Some(&body),
-                &headers,
-            );
+#[derive(Clone)]
+struct ChatMsg {
+    role: Role,
+    content: String,
+    /// Fetched-page text attached to this (user) message. Sent to the model
+    /// with the message but not displayed in the conversation.
+    context: Option<String>,
+}
+
+enum StreamEvent {
+    Delta(String),
+    Done,
+    Error(String),
+    /// Progress note ("Fetching https://…") shown in the status line.
+    Status(String),
+    /// Fetched-page context to attach to the last user message, so
+    /// follow-up turns keep the grounding.
+    Context(String),
+}
+
+/// The connection settings persisted across editor runs, stored at
+/// `~/.config/renzora/ai_chat.json` (APPDATA on Windows). Note the API key
+/// is stored in plain text, like most local dev tooling — the file lives in
+/// the user's own config directory.
+// Derived against the engine's serde, reached through the contract crate. A
+// plugin's own `serde = "1"` would be a different crate, and this plugin then
+// declares no third-party dependencies at all — so cargo is never invoked and
+// the build stays offline.
+#[derive(Clone, PartialEq, Default, renzora::serde::Serialize, renzora::serde::Deserialize)]
+#[serde(crate = "renzora::serde")]
+struct AiChatConfig {
+    preset: usize,
+    base_url: String,
+    api_key: String,
+    docs_path: String,
+    model: String,
+}
+
+impl AiChatConfig {
+    fn from_chat(c: &AiChat) -> Self {
+        Self {
+            preset: c.preset,
+            base_url: c.base_url.clone(),
+            api_key: c.api_key.clone(),
+            docs_path: c.docs_path.clone(),
+            model: c.model.clone(),
         }
-        return;
     }
 
-    if id == ACT_STOP {
-        // Honest about what this does: the request is the host's and there is no
-        // cancel in the ABI, so the bytes keep arriving. Clearing `streaming`
-        // makes `pump` drop them on the floor and stops the transcript growing,
-        // which is what the button appears to promise. A real cancel would be a
-        // new op on the http service.
-        with(|s| {
-            s.streaming = false;
-            s.status = "Stopped".to_string();
-            s.panel_dirty = true;
-        });
-        return;
+    fn apply(self, c: &mut AiChat) {
+        c.preset = self.preset.min(PRESETS.len() - 1);
+        if !self.base_url.is_empty() {
+            c.base_url = self.base_url;
+        }
+        c.api_key = self.api_key;
+        if !self.docs_path.is_empty() {
+            c.docs_path = self.docs_path;
+        }
+        c.model = self.model;
     }
+}
 
-    if id == ACT_PICK {
-        commands.pick_folder(TAG_FOLDER, "Choose a documentation folder");
-        return;
-    }
-
-    // The settings inputs. Each writes its field and persists, because there is
-    // no OK button to hang a save on — a section is always live, the way the
-    // rest of the editor's settings are.
-    //
-    // Saving on every keystroke is a file write per character, which is fine for
-    // a four-line config and is what makes closing the overlay mid-edit keep
-    // what was typed.
-    if id == ACT_SET_PRESET {
-        // A dropdown reports its selection in `value`, not `text` — text is for
-        // widgets that hold a string, and a dropdown holds an index.
-        let idx = action_value.max(0.0) as usize;
-        with(|s| {
-            let idx = idx.min(PRESETS.len() - 1);
-            if s.preset != idx {
-                s.preset = idx;
-                // Follow the preset's own server root. Keeping a URL from the
-                // previous provider would point Anthropic's path at Ollama's
-                // host and fail in a way that reads as a broken key.
-                s.base_url = PRESETS[idx].base_url.to_string();
-                s.save();
-                // Both surfaces: the Server URL field cannot show its own new
-                // value, since the change came from the dropdown beside it. A
-                // pick also closes the dropdown, so there is no focus to lose.
-                s.panel_dirty = true;
-                s.settings_dirty = true;
-            }
-        });
-        return;
-    }
-
-    let field = match id {
-        ACT_SET_URL => Some(0),
-        ACT_SET_MODEL => Some(1),
-        ACT_SET_KEY => Some(2),
-        _ => None,
+fn config_path() -> Option<std::path::PathBuf> {
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").map(std::path::PathBuf::from)?
+    } else {
+        std::path::PathBuf::from(std::env::var_os("HOME")?).join(".config")
     };
-    if let Some(field) = field {
-        with(|s| {
-            // Compare before assigning. A redraw re-renders the input with its
-            // current value, which the widget reports back as a change — so an
-            // unguarded assignment here would mark dirty, redraw, report again,
-            // and settle into a permanent loop with a file write per frame.
-            let slot = match field {
-                0 => &mut s.base_url,
-                1 => &mut s.model,
-                _ => &mut s.api_key,
-            };
-            if *slot == typed {
-                return;
-            }
-            *slot = typed;
-            s.save();
-            // ONLY the chat panel. The settings field is already showing what
-            // was typed — re-sending its markup would respawn the input under
-            // the caret and drop focus mid-word, which is precisely the bug this
-            // split exists to avoid. Nothing in the settings section depends on
-            // these values except the fields themselves.
-            s.panel_dirty = true;
-        });
+    Some(base.join("renzora").join("ai_chat.json"))
+}
+
+fn load_config() -> Option<AiChatConfig> {
+    renzora::serde_json::from_str(&std::fs::read_to_string(config_path()?).ok()?).ok()
+}
+
+fn save_config(cfg: &AiChatConfig) {
+    let Some(path) = config_path() else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(json) = renzora::serde_json::to_string_pretty(cfg) {
+        let _ = std::fs::write(path, json);
     }
 }
 
-/// Per-frame: collect stream chunks and dialog answers, then redraw if anything
-/// moved.
-///
-/// One system rather than three because they share the state lock and the redraw
-/// — and because ordering between them would otherwise be a thing to get wrong,
-/// with no `before`/`after` available to a plugin to fix it with.
-fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
-    // A stream delivers several chunks in one frame. Taking one per frame would
-    // make a fast reply arrive in slow motion.
-    while let Some(chunk) = http.poll_stream(TAG_CHAT) {
-        let stop = with(|s| {
-            if !s.streaming {
-                // Stopped, or a leftover from a previous turn. Keep draining so
-                // the queue does not grow, but write nothing.
-                return chunk.is_last();
-            }
-            if chunk.is_error() {
-                s.say(Role::System, format!("stream failed: {}", chunk.data));
-                s.streaming = false;
-                s.status = "Failed".to_string();
-                return true;
-            }
-            s.carry.push_str(&chunk.data);
-            // Chunks are transport-sized, so a JSON line can span two of them and
-            // two lines can share one. Only complete lines are parsed; the tail
-            // waits for the next chunk.
-            while let Some(nl) = s.carry.find('\n') {
-                let line: String = s.carry.drain(..=nl).collect();
-                if let Some(delta) = extract_content(&line) {
-                    if !delta.is_empty() {
-                        s.push_delta(&delta);
-                    }
-                }
-                if line.contains("\"done\":true") {
-                    s.streaming = false;
-                    s.status = "Ready".to_string();
-                    s.panel_dirty = true;
-                }
-            }
-            if chunk.is_last() {
-                // The connection ended. If `done` never arrived the reply is
-                // truncated, and saying so beats leaving a half sentence looking
-                // deliberate.
-                if s.streaming {
-                    s.streaming = false;
-                    s.status = "Ready".to_string();
-                    s.panel_dirty = true;
-                }
-                return true;
-            }
-            false
-        });
-        if stop {
-            break;
+/// Debounced save of the connection settings whenever they change. The
+/// resource also changes every frame while a reply streams, so the dirty
+/// flag + value comparison keep writes to actual config edits.
+fn persist_settings(
+    chat: Res<AiChat>,
+    time: Res<Time>,
+    mut pending: Local<bool>,
+    mut last_saved: Local<Option<AiChatConfig>>,
+    mut last_save_at: Local<f64>,
+) {
+    if chat.is_changed() {
+        *pending = true;
+    }
+    let now = time.elapsed_secs_f64();
+    if !*pending || now - *last_save_at < 1.0 {
+        return;
+    }
+    let cfg = AiChatConfig::from_chat(&chat);
+    if last_saved.as_ref() != Some(&cfg) {
+        save_config(&cfg);
+        *last_saved = Some(cfg);
+    }
+    *pending = false;
+    *last_save_at = now;
+}
+
+/// Conversation + connection + in-flight request state. Receivers are
+/// wrapped in `Mutex` only because `Resource` needs `Sync`; each is read
+/// from one system.
+#[derive(Resource)]
+struct AiChat {
+    /// Index into [`PRESETS`].
+    preset: usize,
+    base_url: String,
+    api_key: String,
+    /// Local folder of markdown docs used for retrieval grounding.
+    docs_path: String,
+    model: String,
+    models: Vec<String>,
+    messages: Vec<ChatMsg>,
+    stream: Option<Mutex<Receiver<StreamEvent>>>,
+    models_rx: Option<Mutex<Receiver<Result<Vec<String>, String>>>>,
+    status: String,
+}
+
+impl Default for AiChat {
+    fn default() -> Self {
+        Self {
+            preset: 0,
+            base_url: PRESETS[0].base_url.to_string(),
+            api_key: String::new(),
+            docs_path: if std::path::Path::new("docs").is_dir() {
+                "docs".to_string()
+            } else {
+                String::new()
+            },
+            model: String::new(),
+            models: Vec::new(),
+            messages: Vec::new(),
+            stream: None,
+            models_rx: None,
+            status: "Connecting…".to_string(),
         }
     }
-
-    if let Some(outcome) = dialogs.poll(TAG_FOLDER) {
-        with(|s| {
-            match outcome.path() {
-                Some(path) => {
-                    s.status = "Docs folder set".to_string();
-                    s.docs_folder = Some(path.to_string());
-                    s.save();
-                }
-                // Cancelling is an ordinary outcome. Saying nothing at all would
-                // leave the status stuck on whatever preceded it.
-                None => s.status = "Ready".to_string(),
-            }
-            // The folder shows on both surfaces, and neither can know it changed.
-            s.panel_dirty = true;
-            s.settings_dirty = true;
-        });
-    }
-
-    // Redraw last, so everything above lands in one update rather than one per
-    // source. The host compares markup before parsing, so a spurious call is a
-    // string compare — but building the string is not free, hence the flag.
-    // Each surface is sent only when its OWN content changed. Sending both
-    // together was simpler and cost the caret: every keystroke in a settings
-    // field respawned that field.
-    let (panel, settings) = with(|s| {
-        let p = s.panel_dirty.then(|| s.markup());
-        let g = s.settings_dirty.then(|| s.settings_markup());
-        s.panel_dirty = false;
-        s.settings_dirty = false;
-        (p, g)
-    });
-    if let Some(panel) = panel {
-        commands.set_panel_content(PANEL_ID, &panel);
-    }
-    if let Some(settings) = settings {
-        commands.set_panel_content(SETTINGS_ID, &settings);
-    }
 }
 
-/// Pull `"content":"…"` out of one NDJSON line.
-///
-/// **Not a JSON parser**, and deliberately so: a plugin has no serde, and adding
-/// one would be the only dependency in the crate. Ollama's chat stream is one
-/// flat object per line with a known shape, so finding the key and unescaping the
-/// string is enough. It handles the escapes a model's output actually contains —
-/// quotes, backslashes, newlines — and passes `\uXXXX` through unresolved, which
-/// shows up as literal text rather than as corruption.
-///
-/// If this plugin ever speaks to an API whose framing is not this simple, the
-/// answer is a real parser, not more special cases here.
-fn extract_content(line: &str) -> Option<String> {
-    let key = "\"content\":\"";
-    let start = line.find(key)? + key.len();
-    let bytes = line.as_bytes();
-    let mut out = String::new();
-    let mut i = start;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'"' => return Some(out),
-            b'\\' if i + 1 < bytes.len() => {
-                i += 1;
-                match bytes[i] {
-                    b'n' => out.push('\n'),
-                    b't' => out.push('\t'),
-                    b'r' => {}
-                    b'"' => out.push('"'),
-                    b'\\' => out.push('\\'),
-                    b'u' => {
-                        // Left as written. Resolving it properly means decoding
-                        // surrogate pairs, and getting that subtly wrong is worse
-                        // than showing the escape.
-                        out.push_str("\\u");
-                    }
-                    other => out.push(other as char),
-                }
-                i += 1;
-            }
-            _ => {
-                // Step by whole characters: a multi-byte codepoint indexed by
-                // byte would be split into replacement characters.
-                let rest = &line[i..];
-                let c = rest.chars().next()?;
-                out.push(c);
-                i += c.len_utf8();
-            }
-        }
-    }
-    // No closing quote: the line was truncated, which the caller's line-splitting
-    // should have prevented. Dropping it beats emitting half a token.
-    None
-}
+#[derive(Component)]
+struct SendBtn;
+#[derive(Component)]
+struct ClearBtn;
+#[derive(Component)]
+struct RefreshBtn;
+#[derive(Component)]
+struct PromptInput;
+/// The animated dots inside the thinking bubble.
+#[derive(Component)]
+struct ThinkingDots;
+/// "Choose…" button next to the docs-folder setting.
+#[derive(Component)]
+struct DocsBrowseBtn;
 
+#[derive(Default)]
 pub struct AiChatPlugin;
 
 impl Plugin for AiChatPlugin {
     fn build(&self, app: &mut App) {
-        // The initial markup is the empty state's. Everything after this comes
-        // through `set_panel_content`.
-        // Load before rendering, so the first frame shows the saved endpoint
-        // rather than the default and then flicking to it.
-        let (initial, settings) = with(|s| {
-            s.load();
-            (s.markup(), s.settings_markup())
-        });
-        app.add_panel(
-            Panel::new(PANEL_ID, "AI Chat", Scene(Box::leak(initial.into_boxed_str())))
-                .icon("chat-circle-dots")
-                .category("Plugins")
-                .on_action(on_action),
-        )
-        .add_settings_section(
-            Panel::new(
-                SETTINGS_ID,
-                "AI Chat",
-                Scene(Box::leak(settings.into_boxed_str())),
+        info!("[editor] AiChatPlugin (AI Chat panel)");
+        let mut chat = AiChat::default();
+        if let Some(cfg) = load_config() {
+            cfg.apply(&mut chat);
+        }
+        app.insert_resource(chat);
+        app.register_shell_panel("ai_chat", "AI Chat", "robot", "AI");
+        let mut panel = app.register_panel_content("ai_chat", false, build_panel);
+        // Connection config lives in Settings → Plugins, not the chat panel.
+        panel
+            .app()
+            .register_settings_section("ai_chat", "AI Chat", "robot", build_settings);
+        // Split deliberately: the panel's own interactions are visibility-gated,
+        // but three of these must keep running with the chat tab hidden.
+        //
+        //  * `drain_models` / `drain_stream` consume in-flight async responses. A
+        //    reply that arrives while you are on another tab has to be drained, or
+        //    the request stalls (and its task is held) until you happen to look.
+        //  * `persist_settings` backs the connection config, which lives in
+        //    **Settings → Plugins**, not this panel (see the note above) — gating
+        //    it on the chat tab would stop settings saving whenever the Settings
+        //    panel is open and the chat one isn't. Which is always.
+        panel
+            .systems(
+                Update,
+                (refresh_click, docs_browse_click, send_prompt, animate_thinking)
+                    .run_if(in_state(renzora::SplashState::Editor)),
             )
-            .icon("robot")
-            .on_action(on_action),
-        )
-        .add_systems(Update, pump);
+            .always(
+                Update,
+                (drain_models, drain_stream, persist_settings)
+                    .run_if(in_state(renzora::SplashState::Editor)),
+            );
     }
 }
 
-renzora_plugin::add!(AiChatPlugin, Editor);
+// ── Panel UI ─────────────────────────────────────────────────────────────────
+
+fn build_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let root = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            padding: UiRect::all(Val::Px(8.0)),
+            row_gap: Val::Px(6.0),
+            min_height: Val::Px(0.0),
+            ..default()
+        })
+        .id();
+
+    // Status line — shows "Thinking…" while a reply streams.
+    let status = commands
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
+        .id();
+    bind_text(commands, status, |w| {
+        w.get_resource::<AiChat>()
+            .map(|c| c.status.clone())
+            .unwrap_or_default()
+    });
+
+    // Model row: dropdown (rebuilt when the model list changes) + actions.
+    // Provider/URL/key live in Settings → Plugins → AI Chat.
+    let model_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(6.0),
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .id();
+    let model_slot = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            ..default()
+        })
+        .id();
+    keyed_list(commands, model_slot, model_dropdown_snapshot);
+    let refresh = button(commands, &fonts.ui, "Refresh");
+    commands.entity(refresh).insert(RefreshBtn);
+    let clear = button(commands, &fonts.ui, "Clear");
+    commands.entity(clear).insert(ClearBtn);
+    commands
+        .entity(model_row)
+        .add_children(&[model_slot, refresh, clear]);
+
+    // Prompt row.
+    let prompt_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(6.0),
+            align_items: AlignItems::Center,
+            width: Val::Percent(100.0),
+            ..default()
+        })
+        .id();
+    let prompt = text_input(commands, &fonts.ui, "Type a message...", "");
+    commands.entity(prompt).insert(PromptInput);
+    grow(commands, prompt, 1.0);
+    // Send ⇄ Stop toggle: while a reply streams, the button turns red,
+    // shows a spinner, and a click cancels generation.
+    let send = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            SendBtn,
+            Name::new("send-stop"),
+        ))
+        .id();
+    fn streaming(w: &Rx) -> bool {
+        w.get_resource::<AiChat>().is_some_and(|c| c.stream.is_some())
+    }
+    bind_bg(commands, send, |w| {
+        if streaming(w) {
+            rgb((170, 70, 70))
+        } else {
+            rgb(tab_active())
+        }
+    });
+    let spin = spinner(commands);
+    bind_display(commands, spin, streaming);
+    let send_label = commands
+        .spawn((Text::new("Send"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
+        .id();
+    bind_text(commands, send_label, |w| {
+        if streaming(w) { "Stop".to_string() } else { "Send".to_string() }
+    });
+    commands.entity(send).add_children(&[spin, send_label]);
+    commands.entity(prompt_row).add_children(&[prompt, send]);
+
+    // Conversation — keyed by message index, rebuilt when content changes
+    // (which, while streaming, is every frame for the last row). Lives in a
+    // bottom-pinned scroll view: it follows new content while the user is at
+    // the bottom, releases when they scroll up, and re-follows at the bottom.
+    let messages = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            width: Val::Percent(100.0),
+            ..default()
+        })
+        .id();
+    renzora_ember::virtual_scroll::virtual_scroll(commands, messages, 6, message_snapshot);
+    // The thinking bubble sits after the list rows: the keyed list inserts
+    // its rows at index 0, so this extra child stays last.
+    let thinking = thinking_bubble(commands, fonts);
+    commands.entity(messages).add_child(thinking);
+    let messages_scroll = scroll_view_pinned(commands, messages);
+
+    let hint = commands
+        .spawn((
+            Text::new(
+                "Provider, server URL and API key live in Settings → Plugins \
+                 → AI Chat (Ollama local, or Claude / OpenAI / Grok / DeepSeek \
+                 / Gemini / OpenRouter with an API key). Paste a URL in your \
+                 message and the page is fetched and given to the model as \
+                 real context. Prompts and fetched pages go only to the \
+                 server configured there.",
+            ),
+            ui_font(&fonts.ui, 9.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    bind_display(commands, hint, |w| {
+        w.get_resource::<AiChat>()
+            .is_some_and(|c| c.messages.is_empty())
+    });
+
+    commands
+        .entity(root)
+        .add_children(&[status, model_row, hint, messages_scroll, prompt_row]);
+
+    // Initial model list fetch once the panel exists.
+    commands.queue(start_models_fetch);
+    root
+}
+
+/// "AI is typing" bubble — robot icon + animated dots, visible while a reply
+/// streams. The dots are driven by [`animate_thinking`].
+fn thinking_bubble(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            align_self: AlignSelf::FlexStart,
+            ..default()
+        })
+        .id();
+    commands
+        .entity(row)
+        .insert(BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)));
+    bind_display(commands, row, |w| {
+        w.get_resource::<AiChat>().is_some_and(|c| c.stream.is_some())
+    });
+    let icon = icon_text(commands, &fonts.phosphor, "robot", (120, 210, 120), 12.0);
+    let dots = commands
+        .spawn((
+            Text::new("·"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            ThinkingDots,
+        ))
+        .id();
+    commands.entity(row).add_children(&[icon, dots]);
+    row
+}
+
+/// Cycle the thinking-bubble dots (`·` → `··` → `···`).
+fn animate_thinking(time: Res<Time>, mut dots: Query<&mut Text, With<ThinkingDots>>) {
+    let phase = (time.elapsed_secs() * 2.5) as usize % 3;
+    let s = ["·", "··", "···"][phase];
+    for mut t in &mut dots {
+        if t.0 != s {
+            t.0 = s.to_string();
+        }
+    }
+}
+
+/// Settings → Plugins → AI Chat: provider, server URL, API key. Inputs are
+/// two-way-bound to [`AiChat`], so the panel always reads current values.
+fn build_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            ..default()
+        })
+        .id();
+
+    let provider_row = settings_row(commands, fonts, "Provider");
+    let labels: Vec<&str> = PRESETS.iter().map(|p| p.label).collect();
+    let provider = dropdown(commands, fonts, &labels, 0);
+    // Selecting a provider resets the URL to its default and refreshes the
+    // model list (the API key is kept — switching back and forth shouldn't
+    // wipe it; each provider needs its own key pasted in anyway).
+    bind_2way(
+        commands,
+        provider,
+        |w| w.get_resource::<AiChat>().map(|c| c.preset).unwrap_or(0),
+        |w, idx| {
+            if let Some(mut c) = w.get_resource_mut::<AiChat>() {
+                let idx = (*idx).min(PRESETS.len() - 1);
+                c.preset = idx;
+                c.base_url = PRESETS[idx].base_url.to_string();
+                c.models = Vec::new();
+                c.model = String::new();
+            }
+            start_models_fetch(w);
+        },
+    );
+    commands.entity(provider_row).add_child(provider);
+
+    let url_row = settings_row(commands, fonts, "Server URL");
+    let url = text_input(commands, &fonts.ui, "server URL", PRESETS[0].base_url);
+    grow(commands, url, 1.0);
+    bind_text_input(
+        commands,
+        url,
+        |w| {
+            w.get_resource::<AiChat>()
+                .map(|c| c.base_url.clone())
+                .unwrap_or_default()
+        },
+        |w, v| {
+            if let Some(mut c) = w.get_resource_mut::<AiChat>() {
+                let v = v.trim().trim_end_matches('/');
+                c.base_url = if v.is_empty() {
+                    PRESETS[c.preset].base_url.to_string()
+                } else {
+                    v.to_string()
+                };
+            }
+        },
+    );
+    commands.entity(url_row).add_child(url);
+
+    let key_row = settings_row(commands, fonts, "API key");
+    let key = password_input(commands, &fonts.ui, "optional", "");
+    grow(commands, key, 1.0);
+    bind_text_input(
+        commands,
+        key,
+        |w| {
+            w.get_resource::<AiChat>()
+                .map(|c| c.api_key.clone())
+                .unwrap_or_default()
+        },
+        |w, v| {
+            if let Some(mut c) = w.get_resource_mut::<AiChat>() {
+                c.api_key = v.trim().to_string();
+            }
+        },
+    );
+    commands.entity(key_row).add_child(key);
+
+    let docs_row = settings_row(commands, fonts, "Docs folder");
+    let docs = text_input(commands, &fonts.ui, "local folder of markdown docs (optional)", "");
+    grow(commands, docs, 1.0);
+    bind_text_input(
+        commands,
+        docs,
+        |w| {
+            w.get_resource::<AiChat>()
+                .map(|c| c.docs_path.clone())
+                .unwrap_or_default()
+        },
+        |w, v| {
+            if let Some(mut c) = w.get_resource_mut::<AiChat>() {
+                c.docs_path = v.trim().to_string();
+            }
+        },
+    );
+    commands.entity(docs_row).add_child(docs);
+    let browse = button(commands, &fonts.ui, "Choose…");
+    commands.entity(browse).insert(DocsBrowseBtn);
+    commands.entity(docs_row).add_child(browse);
+
+    let note = commands
+        .spawn((
+            Text::new(
+                "Used by the AI Chat panel. Ollama runs locally and needs no \
+                 key; cloud providers (Claude, OpenAI, Grok, DeepSeek, Gemini, \
+                 OpenRouter) need that provider's API key. Selecting a \
+                 provider resets the URL to its default. The key is kept in \
+                 memory only and is sent solely to the configured server. \
+                 Point 'Docs folder' at a local copy of the engine manual \
+                 (markdown): each prompt then includes the most relevant \
+                 excerpts, which beats fetching a script-rendered docs site. \
+                 Refresh the model list from the panel after changing these.",
+            ),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+            Node {
+                margin: UiRect::top(Val::Px(4.0)),
+                ..default()
+            },
+        ))
+        .id();
+
+    commands
+        .entity(col)
+        .add_children(&[provider_row, url_row, key_row, docs_row, note]);
+    col
+}
+
+fn settings_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            width: Val::Percent(100.0),
+            ..default()
+        })
+        .id();
+    let l = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            Node {
+                width: Val::Px(90.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(row).add_child(l);
+    row
+}
+
+/// Adjust a widget's `Node` in place — replacing it would wipe the widget's
+/// own padding/border styling.
+fn grow(commands: &mut Commands, entity: Entity, factor: f32) {
+    commands.entity(entity).queue(move |mut e: EntityWorldMut| {
+        if let Some(mut n) = e.get_mut::<Node>() {
+            n.flex_grow = factor;
+        }
+    });
+}
+
+/// One-item keyed list whose hash is the model list: when the available
+/// models change, the dropdown is rebuilt with fresh options and a fresh
+/// two-way binding (index ↔ `AiChat::model`).
+fn model_dropdown_snapshot(world: &Rx) -> KeyedSnapshot {
+    let (models, current) = world
+        .get_resource::<AiChat>()
+        .map(|c| (c.models.clone(), c.model.clone()))
+        .unwrap_or_default();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    models.hash(&mut h);
+    let items = vec![(0u64, h.finish())];
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |commands, fonts, _| {
+            if models.is_empty() {
+                return commands
+                    .spawn((
+                        Text::new("no models — check URL, then Refresh"),
+                        ui_font(&fonts.ui, 11.0),
+                        TextColor(rgb(text_muted())),
+                    ))
+                    .id();
+            }
+            let opts: Vec<&str> = models.iter().map(String::as_str).collect();
+            let sel = models.iter().position(|m| *m == current).unwrap_or(0);
+            let dd = dropdown(commands, fonts, &opts, sel);
+            let read_models = models.clone();
+            let write_models = models.clone();
+            bind_2way(
+                commands,
+                dd,
+                move |w| {
+                    w.get_resource::<AiChat>()
+                        .and_then(|c| read_models.iter().position(|m| *m == c.model))
+                        .unwrap_or(0)
+                },
+                move |w, idx: &usize| {
+                    if let Some(mut c) = w.get_resource_mut::<AiChat>() {
+                        if let Some(m) = write_models.get(*idx) {
+                            c.model = m.clone();
+                        }
+                    }
+                },
+            );
+            dd
+        }),
+    }
+}
+
+fn message_snapshot(world: &Rx) -> KeyedSnapshot {
+    let messages: Vec<ChatMsg> = world
+        .get_resource::<AiChat>()
+        .map(|c| c.messages.clone())
+        .unwrap_or_default();
+    let items = messages
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            m.role.hash(&mut h);
+            m.content.hash(&mut h);
+            (i as u64, h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |commands, fonts, i| message_row(commands, fonts, &messages[i])),
+    }
+}
+
+fn message_row(commands: &mut Commands, fonts: &EmberFonts, msg: &ChatMsg) -> Entity {
+    let (icon, label, color) = match msg.role {
+        Role::User => ("user-circle", "You", accent()),
+        Role::Assistant => ("robot", "AI", (120, 210, 120)),
+    };
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Percent(100.0),
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    let who = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            ..default()
+        })
+        .id();
+    let ico = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
+    let name = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.0), TextColor(rgb(color))))
+        .id();
+    commands.entity(who).add_children(&[ico, name]);
+
+    // The assistant speaks markdown (headings, lists, code blocks); user
+    // prompts render verbatim.
+    let body = match msg.role {
+        Role::Assistant if !msg.content.is_empty() => {
+            markdown_view(commands, fonts, &msg.content)
+        }
+        _ => commands
+            .spawn((
+                Text::new(if msg.content.is_empty() { "…" } else { &msg.content }),
+                ui_font(&fonts.ui, 11.5),
+                TextColor(rgb(text_primary())),
+            ))
+            .id(),
+    };
+    commands.entity(row).add_children(&[who, body]);
+    row
+}
+
+// ── Model list fetching ──────────────────────────────────────────────────────
+
+/// "Choose…" next to the docs-folder input → native folder picker. The
+/// input reflects the new value through its binding.
+fn docs_browse_click(
+    buttons: Query<&Interaction, (With<DocsBrowseBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if buttons.iter().any(|i| *i == Interaction::Pressed) {
+        // Web: no picker to open. `pick_folder` is synchronous and rfd's web
+        // backend has no folder support at all — the browser's equivalent is
+        // the async `showDirectoryPicker()`. The button is inert until the web
+        // build carries a directory-handle path; the text field still accepts a
+        // typed path, which is the only way to set this on the web for now.
+        #[cfg(not(target_arch = "wasm32"))]
+        commands.queue(|world: &mut World| {
+            let Some(folder) = rfd::FileDialog::new()
+                .set_title("Select the engine docs folder")
+                .pick_folder()
+            else {
+                return;
+            };
+            if let Some(mut chat) = world.get_resource_mut::<AiChat>() {
+                chat.docs_path = folder.display().to_string();
+            }
+        });
+    }
+}
+
+fn refresh_click(
+    buttons: Query<&Interaction, (With<RefreshBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if buttons.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(start_models_fetch);
+    }
+}
+
+/// Fetch the provider's model list on a worker thread (connection settings
+/// are kept current by the Settings-section bindings).
+fn start_models_fetch(world: &mut World) {
+    let Some(mut chat) = world.get_resource_mut::<AiChat>() else {
+        return;
+    };
+    let (preset, url, key) = (chat.preset, chat.base_url.clone(), chat.api_key.clone());
+    let (tx, rx) = channel();
+    chat.models_rx = Some(Mutex::new(rx));
+    chat.status = format!("Loading models from {url}…");
+    std::thread::Builder::new()
+        .name("ai-chat-models".into())
+        .spawn(move || {
+            let _ = tx.send(fetch_models(&PRESETS[preset], &url, &key));
+        })
+        .ok();
+}
+
+fn drain_models(mut chat: ResMut<AiChat>) {
+    let chat = &mut *chat;
+    let Some(rx) = &chat.models_rx else { return };
+    let result = match rx.lock().ok().and_then(|rx| rx.try_recv().ok()) {
+        Some(r) => r,
+        None => return,
+    };
+    chat.models_rx = None;
+    match result {
+        Ok(models) => {
+            chat.status = format!(
+                "{} model{} at {}",
+                models.len(),
+                if models.len() == 1 { "" } else { "s" },
+                chat.base_url
+            );
+            if !models.contains(&chat.model) {
+                let preferred = PRESETS[chat.preset]
+                    .preferred_model
+                    .map(str::to_string)
+                    .filter(|m| models.contains(m));
+                chat.model = preferred.or_else(|| models.first().cloned()).unwrap_or_default();
+            }
+            chat.models = models;
+        }
+        Err(e) => {
+            chat.models = Vec::new();
+            chat.model = String::new();
+            chat.status = e;
+        }
+    }
+}
+
+fn fetch_models(preset: &Preset, url: &str, key: &str) -> Result<Vec<String>, String> {
+    let endpoint = format!("{url}{}", preset.models_path);
+    let req = authorize(renzora::net::Request::get(&endpoint), preset.protocol, key);
+    let res = req
+        .send()
+        .map_err(|e| format!("Can't reach {endpoint}: {e}"))?;
+    let body = res.text();
+    if res.status >= 400 {
+        return Err(format!(
+            "HTTP {} from {endpoint}: {}",
+            res.status,
+            api_error_message(&body)
+        ));
+    }
+    let value: renzora::serde_json::Value =
+        renzora::serde_json::from_str(&body).map_err(|e| format!("Bad JSON from {endpoint}: {e}"))?;
+    let list = match preset.protocol {
+        Protocol::Ollama => value["models"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m["name"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // OpenAI-style and Anthropic both return `{"data": [{"id": ...}]}`.
+        Protocol::OpenAi | Protocol::Anthropic => value["data"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m["id"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    Ok(list)
+}
+
+// ── Send / receive ───────────────────────────────────────────────────────────
+
+/// Starts a request on Send-click or when the prompt ends with a newline
+/// (the input widget inserts `\n` on Enter — used here as "submit").
+fn send_prompt(
+    send: Query<&Interaction, (With<SendBtn>, Changed<Interaction>)>,
+    clear: Query<&Interaction, (With<ClearBtn>, Changed<Interaction>)>,
+    mut inputs: Query<(&mut EmberTextInput, Has<PromptInput>)>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
+    mut chat: ResMut<AiChat>,
+) {
+    if clear.iter().any(|i| *i == Interaction::Pressed) && chat.stream.is_none() {
+        chat.messages.clear();
+    }
+
+    let pressed = send.iter().any(|i| *i == Interaction::Pressed);
+    if chat.stream.is_some() {
+        if pressed {
+            // Stop: dropping the receiver makes the worker thread abort on
+            // its next send. Keep whatever already streamed in.
+            chat.stream = None;
+            if chat.messages.last().is_some_and(|m| m.content.is_empty()) {
+                chat.messages.pop();
+            }
+            chat.status = "Stopped.".to_string();
+        }
+        // Don't queue submissions mid-stream; just strip Enter's newline so
+        // it can't auto-send once the stream ends.
+        for (mut input, is_prompt) in &mut inputs {
+            if is_prompt && input.value.ends_with('\n') {
+                input.value.pop();
+            }
+        }
+        return;
+    }
+
+    let mut submit = pressed;
+    let mut prompt = None;
+    for (mut input, is_prompt) in &mut inputs {
+        if !is_prompt {
+            continue;
+        }
+        if input.value.ends_with('\n') {
+            submit = true;
+            input.value.pop();
+        }
+        if submit {
+            let text = input.value.trim().to_string();
+            if !text.is_empty() {
+                prompt = Some(text);
+                input.value.clear();
+                // The widget only redraws its display text on keystrokes /
+                // external-binding changes — reset it to the placeholder
+                // ourselves so the sent prompt doesn't linger in the box.
+                if let Ok((mut t, mut c)) = texts.get_mut(input.text_entity) {
+                    t.0 = input.placeholder.clone();
+                    c.0 = rgb(text_muted());
+                }
+            }
+        }
+    }
+
+    let Some(prompt) = prompt else { return };
+    if chat.model.is_empty() {
+        chat.status = "Pick a model first (Refresh to load the list).".to_string();
+        chat.messages.push(ChatMsg {
+            role: Role::User,
+            content: prompt,
+            context: None,
+        });
+        return;
+    }
+
+    // URLs in the prompt get fetched on the worker thread and injected as
+    // grounding context before the request is sent.
+    let urls = extract_urls(&prompt);
+    let query = prompt.clone();
+    chat.messages.push(ChatMsg {
+        role: Role::User,
+        content: prompt,
+        context: None,
+    });
+    // History snapshot for the request — fetched-page context rides along
+    // with its message; the empty Assistant message added after is the
+    // streaming target, not part of the payload.
+    let history: Vec<(&'static str, String)> = chat
+        .messages
+        .iter()
+        .map(|m| {
+            let content = match &m.context {
+                Some(ctx) => format!("{}\n\n{ctx}", m.content),
+                None => m.content.clone(),
+            };
+            (
+                match m.role {
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                },
+                content,
+            )
+        })
+        .collect();
+    chat.messages.push(ChatMsg {
+        role: Role::Assistant,
+        content: String::new(),
+        context: None,
+    });
+
+    let (tx, rx) = channel();
+    chat.stream = Some(Mutex::new(rx));
+    let job = RequestJob {
+        preset: chat.preset,
+        base_url: chat.base_url.clone(),
+        api_key: chat.api_key.clone(),
+        model: chat.model.clone(),
+        query,
+        history,
+        urls,
+        docs_path: chat.docs_path.clone(),
+    };
+    std::thread::Builder::new()
+        .name("ai-chat".into())
+        .spawn(move || run_request(job, tx))
+        .ok();
+}
+
+/// Everything the worker thread needs for one chat request.
+struct RequestJob {
+    preset: usize,
+    base_url: String,
+    api_key: String,
+    model: String,
+    /// The user's raw prompt — used to score docs chunks and crawled links.
+    query: String,
+    history: Vec<(&'static str, String)>,
+    urls: Vec<String>,
+    docs_path: String,
+}
+
+/// Applies streamed deltas to the in-progress assistant message.
+fn drain_stream(mut chat: ResMut<AiChat>) {
+    let chat = &mut *chat;
+    let Some(stream) = &chat.stream else { return };
+
+    let mut finished: Option<Option<String>> = None; // Some(err?) when done
+    let mut deltas = String::new();
+    let mut status = None;
+    let mut context = None;
+    {
+        let Ok(rx) = stream.lock() else { return };
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                StreamEvent::Delta(d) => deltas.push_str(&d),
+                StreamEvent::Done => finished = Some(None),
+                StreamEvent::Error(e) => finished = Some(Some(e)),
+                StreamEvent::Status(st) => status = Some(st),
+                StreamEvent::Context(ctx) => context = Some(ctx),
+            }
+        }
+    }
+    if let Some(st) = status {
+        chat.status = st;
+    }
+    if let Some(ctx) = context {
+        // Attach to the message being answered so follow-up turns keep the
+        // grounding (the last user message — the streaming target sits after).
+        if let Some(m) = chat.messages.iter_mut().rev().find(|m| m.role == Role::User) {
+            m.context = Some(ctx);
+        }
+    }
+
+    if !deltas.is_empty() {
+        if let Some(last) = chat.messages.last_mut() {
+            last.content.push_str(&deltas);
+        }
+    }
+    if let Some(error) = finished {
+        chat.stream = None;
+        match error {
+            None => {
+                let docs_note = if chat.docs_path.is_empty() {
+                    " · ungrounded — set a docs folder in Settings → Plugins → AI Chat"
+                } else {
+                    ""
+                };
+                chat.status = format!(
+                    "{} · {}{docs_note}",
+                    chat.model,
+                    chat.base_url.trim_start_matches("http://")
+                );
+            }
+            Some(e) => {
+                chat.status = e;
+                // Drop the empty streaming target so the failed exchange
+                // doesn't leave a dangling "…" bubble.
+                if chat.messages.last().is_some_and(|m| m.content.is_empty()) {
+                    chat.messages.pop();
+                }
+            }
+        }
+    }
+}
+
+/// Worker thread: streaming chat request, provider-specific wire format.
+fn run_request(mut job: RequestJob, tx: Sender<StreamEvent>) {
+    let preset = &PRESETS[job.preset];
+    // Ground the request: local docs excerpts first (authoritative), then any
+    // URLs from the prompt (plus a shallow crawl of related same-site links).
+    // Failures are reported INTO the context so the model knows the page was
+    // not seen (instead of inventing it).
+    let mut context = String::new();
+
+    if !job.docs_path.is_empty() {
+        let _ = tx.send(StreamEvent::Status("Searching engine docs…".to_string()));
+        if resolve_docs_root(&job.docs_path).is_none() {
+            let _ = tx.send(StreamEvent::Status(format!(
+                "Docs folder '{}' not found — check Settings → Plugins → AI Chat",
+                job.docs_path
+            )));
+        } else {
+            let excerpts = retrieve_docs(&job.docs_path, &job.query);
+            let _ = tx.send(StreamEvent::Status(format!(
+                "Grounding with {} docs excerpt{}…",
+                excerpts.len(),
+                if excerpts.len() == 1 { "" } else { "s" }
+            )));
+            for (label, text) in excerpts {
+                context.push_str(&format!("[Engine docs: {label}]\n{text}\n\n"));
+            }
+        }
+    }
+
+    for page_url in &job.urls {
+        let _ = tx.send(StreamEvent::Status(format!("Fetching {page_url}…")));
+        match fetch_raw(page_url) {
+            Ok(html) => {
+                let mut text = clamp_text(html_to_text(&html), PAGE_CHAR_BUDGET);
+                if text.len() < 200 {
+                    // App-shell detection: tell the model the truth about
+                    // script-rendered pages instead of letting it guess.
+                    text.push_str(
+                        "\n[This page appears to be script-rendered (an empty app \
+shell); its real content is not visible to a plain fetch.]",
+                    );
+                }
+                context.push_str(&format!("[Fetched page: {page_url}]\n{text}\n\n"));
+
+                // Shallow crawl: follow up to 3 same-site links whose label
+                // or URL relates to the prompt.
+                for link in related_links(&html, page_url, &job.query, 3) {
+                    let _ = tx.send(StreamEvent::Status(format!("Fetching {link}…")));
+                    if let Ok(linked) = fetch_raw(&link) {
+                        let text = clamp_text(html_to_text(&linked), CRAWL_CHAR_BUDGET);
+                        if text.len() >= 200 {
+                            context.push_str(&format!("[Fetched page: {link}]\n{text}\n\n"));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                context.push_str(&format!(
+                    "[Could not fetch {page_url}: {e}. You have NOT seen this page.]\n\n"
+                ));
+            }
+        }
+    }
+
+    if !context.is_empty() {
+        let context = context.trim_end().to_string();
+        if let Some(last) = job.history.iter_mut().rev().find(|(role, _)| *role == "user") {
+            last.1 = format!("{}\n\n{context}", last.1);
+        }
+        // Persist on the stored message so follow-up turns keep the grounding.
+        let _ = tx.send(StreamEvent::Context(context));
+        let _ = tx.send(StreamEvent::Status("Thinking…".to_string()));
+    }
+
+    let (model, key, history) = (job.model, job.api_key, job.history);
+    let url = job.base_url;
+
+    let messages: Vec<renzora::serde_json::Value> = history
+        .iter()
+        .map(|(role, content)| renzora::serde_json::json!({ "role": role, "content": content }))
+        .collect();
+    let endpoint = format!("{url}{}", preset.chat_path);
+    let payload = match preset.protocol {
+        Protocol::Ollama => renzora::serde_json::json!({
+            "model": model,
+            "stream": true,
+            // System prompt rides as the first message; raise Ollama's
+            // default context window (often only ~4K tokens — silent
+            // truncation of long chats is a major hallucination source).
+            "messages": with_system(messages),
+            "options": { "num_ctx": 16384 },
+        }),
+        Protocol::OpenAi => renzora::serde_json::json!({
+            "model": model,
+            "stream": true,
+            "messages": with_system(messages),
+        }),
+        // The Messages API requires max_tokens and takes the system prompt
+        // as a top-level field, not a message role.
+        Protocol::Anthropic => renzora::serde_json::json!({
+            "model": model,
+            "max_tokens": 8192,
+            "stream": true,
+            "system": SYSTEM_PROMPT,
+            "messages": messages,
+        }),
+    };
+
+    let req = authorize(
+        renzora::net::Request::post(&endpoint)
+            .body("application/json", payload.to_string())
+            // A model can think for a long time before its first token, and the
+            // default would cut a slow local Ollama off mid-answer.
+            .timeout(std::time::Duration::from_secs(10 * 60)),
+        preset.protocol,
+        &key,
+    );
+    let mut stream = match req.send_stream() {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = tx.send(StreamEvent::Error(format!(
+                "Can't reach {endpoint} ({e}). Is the server running?"
+            )));
+            return;
+        }
+    };
+
+    // Surface the server's own error message (e.g. Ollama's "model not found")
+    // instead of a bare status code. The status only exists once the first piece
+    // has arrived, so this reads one and then decides -- and on an error it keeps
+    // reading, because the message is in the body.
+    let Some(first) = stream.next() else {
+        let _ = tx.send(match stream.error() {
+            Some(e) => StreamEvent::Error(format!("Can't reach {endpoint} ({e}).")),
+            None => StreamEvent::Done,
+        });
+        return;
+    };
+    if first.status >= 400 {
+        let mut body = first.text();
+        for chunk in &mut stream {
+            body.push_str(&chunk.text());
+        }
+        let _ = tx.send(StreamEvent::Error(format!(
+            "HTTP {}: {}",
+            first.status,
+            api_error_message(&body)
+        )));
+        return;
+    }
+
+    // Chunks are whatever each read returned, so a frame can straddle two of
+    // them: the transport is deliberately dumb about framing (see the boundary
+    // docs) because NDJSON and SSE end a frame differently, and reassembling
+    // lines is what that leaves the consumer to do. It has to be done -- a token
+    // split across a chunk boundary would otherwise be dropped silently.
+    let mut pending = String::new();
+    let mut finished = false;
+    let mut chunks = std::iter::once(first).chain(&mut stream);
+    loop {
+        match chunks.next() {
+            Some(chunk) => pending.push_str(&chunk.text()),
+            // End of stream. A server that omits the newline after its last
+            // frame would otherwise have that frame silently dropped, so the
+            // separator is supplied here and the remainder parsed as a line.
+            None if pending.is_empty() => break,
+            None => pending.push(LF),
+        }
+        while let Some(newline) = pending.find(LF) {
+            let line: String = pending.drain(..=newline).collect();
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // OpenAI-style SSE frames are `data: {json}` / `data: [DONE]`;
+            // Ollama is bare NDJSON. Normalize to the JSON part.
+            let json_part = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
+            if json_part == "[DONE]" {
+                finished = true;
+                break;
+            }
+            let Ok(value) = renzora::serde_json::from_str::<renzora::serde_json::Value>(json_part) else {
+                continue;
+            };
+            if let Some(err) = value["error"].as_str() {
+                let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
+                return;
+            }
+            if let Some(err) = value["error"]["message"].as_str() {
+                let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
+                return;
+            }
+            let delta = match preset.protocol {
+                Protocol::Ollama => value["message"]["content"].as_str(),
+                Protocol::OpenAi => value["choices"][0]["delta"]["content"].as_str(),
+                // Messages API: `content_block_delta` frames carry `text_delta`s.
+                Protocol::Anthropic => value["delta"]["text"].as_str(),
+            };
+            if let Some(delta) = delta {
+                if !delta.is_empty() && tx.send(StreamEvent::Delta(delta.to_string())).is_err() {
+                    return; // panel gone; stop streaming
+                }
+            }
+            // End-of-turn: Ollama sets `done`; Anthropic emits `message_stop`
+            // (OpenAI-style streams end with `data: [DONE]`, handled above).
+            if value["done"].as_bool() == Some(true)
+                || value["type"].as_str() == Some("message_stop")
+            {
+                finished = true;
+                break;
+            }
+        }
+        if finished {
+            break;
+        }
+    }
+    // A stream that died halfway delivers what it got and then stops, which is
+    // indistinguishable from a clean finish unless we ask. Only worth reporting
+    // when the protocol did not already say it was done.
+    if !finished {
+        if let Some(e) = stream.error() {
+            let _ = tx.send(StreamEvent::Error(format!("Stream ended early: {e}")));
+            return;
+        }
+    }
+    let _ = tx.send(StreamEvent::Done);
+}
+
+/// Prepend the system prompt as the first chat message (Ollama / OpenAI
+/// style; Anthropic takes it as a top-level field instead).
+fn with_system(mut messages: Vec<renzora::serde_json::Value>) -> Vec<renzora::serde_json::Value> {
+    messages.insert(
+        0,
+        renzora::serde_json::json!({ "role": "system", "content": SYSTEM_PROMPT }),
+    );
+    messages
+}
+
+/// Pull plausible http(s) URLs out of a prompt (max 3, surrounding
+/// punctuation trimmed).
+fn extract_urls(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(|token| {
+            let start = token.find("http://").or_else(|| token.find("https://"))?;
+            let url = token[start..].trim_end_matches(['.', ',', ';', ':', ')', ']', '>', '"', '\''])
+                ;
+            (url.len() > 10).then(|| url.to_string())
+        })
+        .take(3)
+        .collect()
+}
+
+/// Per-page character budget for fetched context. Small local models often
+/// run with limited context windows; this keeps one page from eating it all.
+const PAGE_CHAR_BUDGET: usize = 9000;
+
+/// Per crawled-link character budget (smaller than the primary page's).
+const CRAWL_CHAR_BUDGET: usize = 5000;
+/// Total character budget for local-docs excerpts.
+const DOCS_CHAR_BUDGET: usize = 9000;
+
+/// Fetch a URL's raw body (HTML).
+fn fetch_raw(url: &str) -> Result<String, String> {
+    let res = renzora::net::Request::get(url)
+        .header("User-Agent", "renzora-ai-chat/0.1")
+        // A crawled page feeds a context budget of a few thousand characters,
+        // so there is no reason to accept a body orders of magnitude larger.
+        .max_bytes(8 * 1024 * 1024)
+        .send()
+        .map_err(|e| format!("{e}"))?;
+    if res.status >= 400 {
+        return Err(format!("HTTP {}", res.status));
+    }
+    Ok(res.text())
+}
+
+/// Truncate on a char boundary and say so — a silently cut page is another
+/// way to make the model fill gaps with guesses.
+fn clamp_text(mut text: String, budget: usize) -> String {
+    if text.len() > budget {
+        let mut cut = budget;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        text.push_str("\n[…page truncated…]");
+    }
+    text
+}
+
+/// Same-site links from `html` ranked by how much their URL relates to the
+/// prompt; top `max`, query-relevant only.
+fn related_links(html: &str, base: &str, query: &str, max: usize) -> Vec<String> {
+    let origin = {
+        let Some(scheme_end) = base.find("://") else { return Vec::new() };
+        match base[scheme_end + 3..].find('/') {
+            Some(host_end) => &base[..scheme_end + 3 + host_end],
+            None => base,
+        }
+    };
+    let terms = query_terms(query);
+    if terms.is_empty() {
+        return Vec::new();
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut scored: Vec<(usize, String)> = Vec::new();
+    let mut rest = html;
+    while let Some(idx) = rest.find("href=") {
+        rest = &rest[idx + 5..];
+        let Some(quote) = rest.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+            continue;
+        };
+        let Some(end) = rest[1..].find(quote) else { continue };
+        let href = &rest[1..1 + end];
+        rest = &rest[1 + end..];
+
+        let url = if href.starts_with(origin) {
+            href.to_string()
+        } else if href.starts_with('/') && !href.starts_with("//") {
+            format!("{origin}{href}")
+        } else {
+            continue; // off-site, fragment, mailto, relative — skip
+        };
+        let url = url.split('#').next().unwrap_or(&url).to_string();
+        if url == base || !seen.insert(url.clone()) {
+            continue;
+        }
+        let lc = url.to_lowercase();
+        let score = terms.iter().filter(|t| lc.contains(*t)).count();
+        if score > 0 {
+            scored.push((score, url));
+        }
+    }
+    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+    scored.into_iter().take(max).map(|(_, u)| u).collect()
+}
+
+// ── Local docs retrieval ─────────────────────────────────────────────────────
+
+/// Pull the most relevant manual excerpts for `query` from the docs folder.
+/// Reads the tree fresh per request — the manual is a couple of MB, and
+/// statelessness beats cache invalidation here.
+fn retrieve_docs(path: &str, query: &str) -> Vec<(String, String)> {
+    let Some(root) = resolve_docs_root(path) else {
+        return Vec::new();
+    };
+    let terms = query_terms(query);
+    if terms.is_empty() {
+        return Vec::new();
+    }
+
+    // Collect heading-bounded chunks from every markdown file.
+    struct Chunk {
+        label: String,
+        text: String,
+        score: f32,
+    }
+    let mut chunks: Vec<Chunk> = Vec::new();
+    let mut dirs = vec![root.clone()];
+    let mut files_seen = 0usize;
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if p.is_dir() {
+                if !name.starts_with('.') && name != "node_modules" {
+                    dirs.push(p);
+                }
+                continue;
+            }
+            if files_seen > 600 {
+                break;
+            }
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(ext, "md" | "mdx" | "markdown" | "txt") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&p) else { continue };
+            files_seen += 1;
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .display()
+                .to_string();
+
+            let mut heading = String::new();
+            let mut cur = String::new();
+            let flush = |heading: &str, cur: &mut String, chunks: &mut Vec<Chunk>| {
+                let text = cur.trim();
+                if text.len() > 40 {
+                    let text_lc = text.to_lowercase();
+                    let heading_lc = heading.to_lowercase();
+                    let path_lc = rel.to_lowercase();
+                    let mut hits = 0usize;
+                    let mut matched_terms = 0usize;
+                    for t in &terms {
+                        let mut term_hits = 0usize;
+                        for v in term_variants(t) {
+                            term_hits = term_hits.max(text_lc.matches(v.as_str()).count().min(4));
+                            if heading_lc.contains(v.as_str()) {
+                                term_hits += 4;
+                            }
+                            // Reference files are named after their topic
+                            // (api/scripting.md, scripting/lua.md) — a path
+                            // match is a strong relevance signal.
+                            if path_lc.contains(v.as_str()) {
+                                term_hits += 3;
+                            }
+                        }
+                        if term_hits > 0 {
+                            matched_terms += 1;
+                        }
+                        hits += term_hits;
+                    }
+                    // Distinct-term coverage dominates raw repetition.
+                    let hits = hits * matched_terms * matched_terms;
+                    if hits > 0 {
+                        chunks.push(Chunk {
+                            label: if heading.is_empty() {
+                                rel.clone()
+                            } else {
+                                format!("{rel} § {heading}")
+                            },
+                            score: hits as f32 / (text.len() as f32).sqrt(),
+                            text: text.to_string(),
+                        });
+                    }
+                }
+                cur.clear();
+            };
+            let mut in_fence = false;
+            for line in content.lines() {
+                if line.trim_start().starts_with("```") {
+                    in_fence = !in_fence;
+                }
+                if !in_fence {
+                    if let Some(h) = line.strip_prefix('#') {
+                        flush(&heading, &mut cur, &mut chunks);
+                        heading = h.trim_start_matches('#').trim().to_string();
+                    }
+                }
+                cur.push_str(line);
+                cur.push('\n');
+                if cur.len() > 2200 && !in_fence {
+                    flush(&heading, &mut cur, &mut chunks);
+                }
+            }
+            flush(&heading, &mut cur, &mut chunks);
+        }
+    }
+
+    chunks.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let mut out = Vec::new();
+    let mut budget = DOCS_CHAR_BUDGET;
+    for chunk in chunks.into_iter().take(5) {
+        if chunk.text.len() > budget {
+            break;
+        }
+        budget -= chunk.text.len();
+        out.push((chunk.label, chunk.text));
+    }
+    out
+}
+
+/// Resolve the docs root, descending into the right version folder: honors
+/// `_versions.json` (`status: "current"`, else `default`), otherwise picks
+/// the newest version-looking subfolder (natural sort, so alpha10 > alpha9),
+/// otherwise uses the folder as-is. Relative paths resolve against the
+/// editor's working directory.
+fn resolve_docs_root(path: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::PathBuf::from(path);
+    let p = if p.is_absolute() {
+        p
+    } else {
+        std::env::current_dir().ok()?.join(p)
+    };
+    if !p.is_dir() {
+        return None;
+    }
+    if let Ok(manifest) = std::fs::read_to_string(p.join("_versions.json")) {
+        if let Ok(v) = renzora::serde_json::from_str::<renzora::serde_json::Value>(&manifest) {
+            let current = v["versions"]
+                .as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|e| e["status"].as_str() == Some("current"))
+                        .and_then(|e| e["id"].as_str())
+                })
+                .or_else(|| v["default"].as_str());
+            if let Some(id) = current {
+                let vp = p.join(id);
+                if vp.is_dir() {
+                    return Some(vp);
+                }
+            }
+        }
+    }
+    let mut versions: Vec<String> = std::fs::read_dir(&p)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| {
+            !n.starts_with('.')
+                && n.chars().any(|c| c.is_ascii_digit())
+                && (n.starts_with('r') || n.starts_with('v') || n.contains("alpha") || n.contains("beta"))
+        })
+        .collect();
+    if versions.is_empty() {
+        return Some(p);
+    }
+    versions.sort_by(|a, b| natural_cmp(a, b));
+    versions.last().map(|v| p.join(v))
+}
+
+/// Compare strings with digit runs compared numerically (`alpha10 > alpha9`).
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (ab, bb) = (a.as_bytes(), b.as_bytes());
+    let (mut i, mut j) = (0, 0);
+    while i < ab.len() && j < bb.len() {
+        if ab[i].is_ascii_digit() && bb[j].is_ascii_digit() {
+            let (mut x, mut y) = (0u64, 0u64);
+            while i < ab.len() && ab[i].is_ascii_digit() {
+                x = x * 10 + (ab[i] - b'0') as u64;
+                i += 1;
+            }
+            while j < bb.len() && bb[j].is_ascii_digit() {
+                y = y * 10 + (bb[j] - b'0') as u64;
+                j += 1;
+            }
+            match x.cmp(&y) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
+        } else {
+            match ab[i].cmp(&bb[j]) {
+                std::cmp::Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+                ord => return ord,
+            }
+        }
+    }
+    a.len().cmp(&b.len())
+}
+
+/// Stemmed alternatives for a term, so "rotates"/"rotating" match "rotate".
+fn term_variants(term: &str) -> Vec<String> {
+    let mut out = vec![term.to_string()];
+    for suffix in ["ing", "es", "ed", "s"] {
+        if let Some(stem) = term.strip_suffix(suffix) {
+            if stem.len() >= 3 {
+                out.push(stem.to_string());
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Meaningful query words for scoring docs chunks and crawl links.
+fn query_terms(query: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "the", "and", "for", "with", "what", "how", "this", "that", "you", "your", "can",
+        "are", "does", "about", "from", "into", "look", "like", "need", "want", "please",
+        "tell", "scan", "website", "page", "http", "https", "com", "docs", "renzora",
+    ];
+    let mut out: Vec<String> = Vec::new();
+    for word in query
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+    {
+        if word.len() >= 3 && !STOP.contains(&word) && !out.iter().any(|w| w == word) {
+            out.push(word.to_string());
+        }
+    }
+    out
+}
+
+/// Crude HTML → text: drops tags plus `<script>`/`<style>` contents, turns
+/// block-element boundaries into newlines, decodes common entities, and
+/// collapses blank runs. Not a real parser — good enough for docs pages.
+fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 4);
+    let mut rest = html;
+    let mut skip_until: Option<&str> = None;
+    while let Some(open) = rest.find('<') {
+        if skip_until.is_none() {
+            out.push_str(&rest[..open]);
+        }
+        rest = &rest[open..];
+        let Some(close) = rest.find('>') else { break };
+        let tag = rest[1..close].trim_start_matches('/').to_ascii_lowercase();
+        let tag_name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        if let Some(until) = skip_until {
+            if rest.starts_with("</") && tag_name == until {
+                skip_until = None;
+            }
+        } else if tag_name == "script" || tag_name == "style" {
+            skip_until = Some(if tag_name == "script" { "script" } else { "style" });
+        } else if matches!(
+            tag_name.as_str(),
+            "p" | "br" | "div" | "li" | "tr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "section" | "article" | "pre"
+        ) {
+            out.push('\n');
+        }
+        rest = &rest[close + 1..];
+    }
+    if skip_until.is_none() {
+        out.push_str(rest);
+    }
+    let decoded = out
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ");
+    // Collapse whitespace: trim lines, drop runs of blank lines.
+    let mut text = String::with_capacity(decoded.len());
+    let mut blank_run = 0;
+    for line in decoded.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+        text.push_str(line);
+        text.push('\n');
+    }
+    text.trim().to_string()
+}
+
+/// The line separator streamed frames are split on. NDJSON and SSE both end
+/// a frame with it; a bare `\r` is left on the line and trimmed off there.
+const LF: char = '\n';
+
+/// Attach the protocol's auth headers. Anthropic uses `x-api-key` + a
+/// pinned `anthropic-version`; everything else is a Bearer token.
+fn authorize(
+    req: renzora::net::Request,
+    protocol: Protocol,
+    key: &str,
+) -> renzora::net::Request {
+    match protocol {
+        Protocol::Anthropic => req
+            .header("x-api-key", key)
+            .header("anthropic-version", "2023-06-01"),
+        _ if !key.is_empty() => req.header("Authorization", &format!("Bearer {key}")),
+        _ => req,
+    }
+}
+
+/// Extract the human-readable message from an API error body:
+/// Ollama uses `{"error": "..."}`; OpenAI-compatible servers use
+/// `{"error": {"message": "..."}}`. Falls back to the (truncated) raw body.
+fn api_error_message(body: &str) -> String {
+    if let Ok(v) = renzora::serde_json::from_str::<renzora::serde_json::Value>(body) {
+        if let Some(msg) = v["error"].as_str() {
+            return msg.to_string();
+        }
+        if let Some(msg) = v["error"]["message"].as_str() {
+            return msg.to_string();
+        }
+    }
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        "(no error body)".to_string()
+    } else {
+        trimmed.chars().take(300).collect()
+    }
+}
+
+// `Editor` — this is an editor panel and has no business in a shipped game.
+// That is also `plugin!`'s default, but stated explicitly: the default differs
+// from `add!`'s, and a scope that reads as an accident is worth spelling out.
+renzora::plugin!(AiChatPlugin, Editor);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The happy path plus the escapes a model's prose actually contains.
     #[test]
-    fn extracts_a_delta() {
-        assert_eq!(
-            extract_content(r#"{"message":{"content":"Hello"},"done":false}"#),
-            Some("Hello".to_string())
+    fn urls_extracted_and_trimmed() {
+        let urls = extract_urls(
+            "look at https://renzora.com/docs/r1-alpha5, then (http://localhost:8080/x) please",
         );
         assert_eq!(
-            extract_content(r#"{"content":"a \"quote\" and a \\ and\nline"}"#),
-            Some("a \"quote\" and a \\ and\nline".to_string())
+            urls,
+            vec![
+                "https://renzora.com/docs/r1-alpha5".to_string(),
+                "http://localhost:8080/x".to_string(),
+            ]
         );
-        // An empty delta is legitimate — Ollama's final frame carries one — and
-        // must come back as Some(""), not None, or the done-detection below it
-        // would be skipped.
-        assert_eq!(
-            extract_content(r#"{"content":"","done":true}"#),
-            Some(String::new())
+        assert!(extract_urls("no links here").is_empty());
+    }
+
+    #[test]
+    fn natural_sort_orders_versions() {
+        let mut v = vec!["r1-alpha10", "r1-alpha5", "r1-alpha9"];
+        v.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(v, vec!["r1-alpha5", "r1-alpha9", "r1-alpha10"]);
+    }
+
+    #[test]
+    fn related_links_same_site_and_scored() {
+        let html = r#"<a href="/docs/r1/scripting/lua">Lua</a>
+            <a href="https://renzora.com/docs/r1/scripting/rhai">Rhai</a>
+            <a href="https://other.site/scripting">x</a>
+            <a href="/pricing">pricing</a>"#;
+        let links = related_links(html, "https://renzora.com/docs/r1", "lua scripting", 3);
+        assert!(links.contains(&"https://renzora.com/docs/r1/scripting/lua".to_string()));
+        assert!(links.contains(&"https://renzora.com/docs/r1/scripting/rhai".to_string()));
+        assert!(!links.iter().any(|l| l.contains("other.site") || l.contains("pricing")));
+    }
+
+    #[test]
+    fn docs_retrieval_finds_manual_sections() {
+        // The engine repo ships the manual under docs/<version>/ with a
+        // _versions.json marking the current version.
+        let docs = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs");
+        let root = resolve_docs_root(docs).expect("docs root resolves");
+        // Read the expected version out of `_versions.json` rather than
+        // hardcoding it — this previously pinned "r1-alpha5" and silently rotted
+        // when the manual moved to alpha6.
+        let manifest = std::fs::read_to_string(std::path::Path::new(docs).join("_versions.json"))
+            .expect("_versions.json readable");
+        let parsed: renzora::serde_json::Value =
+            renzora::serde_json::from_str(&manifest).expect("_versions.json parses");
+        let current = parsed["versions"]
+            .as_array()
+            .and_then(|vs| {
+                vs.iter()
+                    .find(|v| v["status"] == "current")
+                    .and_then(|v| v["id"].as_str())
+            })
+            .expect("a version marked current");
+        assert!(
+            root.ends_with(current),
+            "honors _versions.json current ({current}): {root:?}"
         );
-        assert_eq!(extract_content(r#"{"done":true}"#), None);
+        let hits = retrieve_docs(docs, "how do lua lifecycle hooks work in scripts");
+        assert!(!hits.is_empty(), "lua docs should match");
+        assert!(hits.iter().any(|(label, _)| label.contains("scripting")), "{hits:?}");
     }
 
-    /// A multi-byte codepoint must not be split. Indexing the line by byte and
-    /// pushing `bytes[i] as char` would turn every emoji into three replacement
-    /// characters, which is exactly the sort of thing that looks like a model
-    /// problem rather than a plugin one.
     #[test]
-    fn survives_multibyte_content() {
-        assert_eq!(
-            extract_content(r#"{"content":"héllo 🌍 ok"}"#),
-            Some("héllo 🌍 ok".to_string())
+    fn code_gen_query_retrieves_api_reference() {
+        // The exact failure mode seen in the wild: "rotates" must stem to
+        // match the api reference's `rotate(x, y, z)` table.
+        let docs = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs");
+        let hits = retrieve_docs(docs, "write me a lua script that rotates a cube");
+        assert!(
+            hits.iter().any(|(label, text)| label.contains("api/scripting")
+                || text.contains("rotate(")),
+            "API reference should be retrieved: {:?}",
+            hits.iter().map(|(l, _)| l).collect::<Vec<_>>()
         );
     }
 
-    /// A truncated line yields nothing rather than half a token — the caller
-    /// only ever passes complete lines, so reaching this means something else
-    /// went wrong and emitting garbage would hide it.
     #[test]
-    fn refuses_an_unterminated_string() {
-        assert_eq!(extract_content(r#"{"content":"half a sen"#), None);
-    }
-
-    /// The two escapers look alike and are not the same grammar. A literal
-    /// newline is legal in neither, and a BSN one would end the string early and
-    /// fail the whole panel parse — which shows up as a panel that silently
-    /// stops updating, not as an error.
-    #[test]
-    fn escapers_do_not_emit_raw_control_characters() {
-        let nasty = "say \"hi\"\n\tand \\ that\u{1}";
-        let j = state::json_escape(nasty);
-        assert!(!j.contains('\n') && !j.contains('\t'));
-        assert!(j.contains("\\\"") && j.contains("\\\\") && j.contains("\\u0001"));
-
-        let b = state::bsn_escape(nasty);
-        assert!(!b.contains('\n'));
-        assert!(b.contains("\\\"") && b.contains("\\\\"));
-    }
-
-    /// A request must not carry the plugin's own notices back to the model as if
-    /// it had said them.
-    #[test]
-    fn system_rows_are_not_sent() {
-        let mut s = state::State::default();
-        s.say(Role::User, "hi");
-        s.say(Role::System, "stream failed: boom");
-        s.say(Role::Assistant, "hello");
-        let body = s.request_body();
-        assert!(body.contains("\"content\":\"hi\""));
-        assert!(body.contains("\"content\":\"hello\""));
-        assert!(!body.contains("boom"), "a System row reached the request");
-    }
-
-    /// The transcript must not gain a row per token.
-    #[test]
-    fn deltas_append_to_one_row() {
-        let mut s = state::State::default();
-        s.streaming = true;
-        s.push_delta("Hel");
-        s.push_delta("lo");
-        s.push_delta(" there");
-        assert_eq!(s.messages.len(), 1);
-        assert_eq!(s.messages[0].1, "Hello there");
+    fn html_reduces_to_text() {
+        let html = r#"<html><head><style>.x{color:red}</style>
+            <script>var a = "<p>not text</p>";</script></head>
+            <body><h1>Title</h1><p>Hello &amp; welcome.</p>
+            <ul><li>one</li><li>two</li></ul></body></html>"#;
+        let text = html_to_text(html);
+        assert!(text.contains("Title"));
+        assert!(text.contains("Hello & welcome."));
+        assert!(text.contains("one"));
+        assert!(!text.contains("color:red"));
+        assert!(!text.contains("not text"));
     }
 }

@@ -85,10 +85,17 @@ canonical about. A plugin built with any rustc on any machine loads into an
 engine built with any other. That removed the last reason an ordinary user needed
 the container, and it is why this section now reads the way it does.
 
-That sharing is now gone **entirely**, not just for third-party plugins:
-in-workspace plugins are statically linked `rlib`s wired in by a build-time
-generator, so no plugin anywhere needs a canonical build environment. §3 covers
-both paths.
+In-workspace plugins are statically linked `rlib`s wired in by a build-time
+generator, so they need no canonical build environment either.
+
+**Native plugins (§3) bring the shared images back, and solve the same problem a
+different way.** One of those *does* link the real Bevy and the real contract
+crate, so it is bound to one engine build exactly as a distribution plugin used
+to be. The difference is that it ships as **source** and is compiled on the
+machine that installs it, against a **staged SDK** cut from the engine sitting
+right there. There is no environment to match because the plugin is always built
+in the environment it will run in — and when the engine moves, the recorded stamp
+stops matching and the plugin quietly rebuilds itself. §3 covers all three paths.
 
 ### NEVER build the `dev` (debug) profile — one `target/` profile directory only
 
@@ -189,13 +196,23 @@ clippy green; the vendored crates must stay excluded.
 
 ---
 
-## 3. Plugin ABI — one C symbol, no Bevy
+## 3. Plugin mechanisms — three of them, for three deployments
 
-**Nothing is `dlopen`'d against Bevy any more.** This section used to describe a
-shared `bevy_dylib`, a `plugin_bevy_hash()` export and a `World` `TypeId` gate
-enforced by a `dynamic_plugin_loader` crate. All of that is gone: the crate was
-deleted, `add!` emits no FFI, and in-workspace plugins like `renzora_lumen` are
-plain `rlib`s. Two unrelated mechanisms replaced it.
+There is no single plugin ABI. The old `plugin_bevy_hash()` export and the
+`World` `TypeId` gate enforced by a `dynamic_plugin_loader` crate are gone — the
+crate was deleted and `add!` emits no FFI. What replaced it is **three unrelated
+mechanisms**, and the first question about any plugin is which one it is.
+
+| | Crate type | Links Bevy | Access | Ships in |
+|---|---|---|---|---|
+| **In-workspace** | `rlib` + `add!` | statically, at build | full `&mut World` | the engine binary |
+| **Native** | `dylib` in `plugins/<name>/` | the shared images | full `&mut World` | the editor, as source |
+| **C-ABI** | `cdylib` in `plugins/` | not at all | a function table | a shipped game |
+
+A native plugin extends the **editor**; a C-ABI plugin ships inside the **game**.
+Neither replaces the other, and the reason is structural — a lean export is fully
+static with no shared images, and wasm/mobile have no dylibs at all, so there is
+nothing there for a native plugin to bind to.
 
 ### In-workspace plugins are statically linked, via a build-time generator
 
@@ -227,7 +244,7 @@ A `plugins/*` cdylib exports exactly **one** required symbol,
 nothing from the host — the whole interface is passed *in* as a function table.
 No Bevy, no `TypeId`, no shared dylib, so a plugin built with any rustc on any
 machine loads into an engine built with any other. This is what removed the last
-reason an ordinary user needed the container (§2).
+reason an ordinary user needed the container for *this* kind of plugin (§2).
 
 Compatibility is negotiated in two layers, both in `crates/renzora_plugin/src/sys`:
 
@@ -248,6 +265,48 @@ function pointer a plugin registered points into that image, a retired system is
 still *in* the schedule merely returning early, and dropping the handle has
 deadlocked in `FreeLibrary` here before. A reload therefore leaks one image; a
 restart reclaims it.
+
+### Native plugins are Bevy plugins shipped as source, built against a staged SDK
+
+A `plugins/<name>/` **directory** holding `src/lib.rs` and a `crate-type =
+["dylib"]` manifest. It exports one symbol, `renzora_native_plugin_ctor`
+(`fn() -> Box<dyn Plugin>`, written by `renzora::plugin!`), and it links the real
+Bevy and the real contract crate — so it takes `&mut World`, calls
+`app.add_systems`, and sees the same `Transform` the engine does.
+
+That is sound **only** because of the shared images. `dynamic_linking` is in the
+default feature set and pulls three: `bevy_dylib`, `renzora_dylib` and
+`renzora_ember_dylib`. All three are process-global-state problems, not merely
+size ones — the contract crate owns the translation table, the Problems and
+Console buffers and the asset loader; ember owns the theme palette, the
+stylesheet, the UI font scale and the viewport-toolbar lists. A privately linked
+copy of either gives a plugin its own set and every one of them then fails
+**silently**. The loader declines to load anything at all when
+`dynamic_linking` is off, because there is no runtime check available.
+
+- `crates/renzora_native_plugin` — the loader. Scans directories (the C-ABI
+  loader scans loose library files, so the two never collide), rebuilds what is
+  stale, `ManuallyDrop`s every image.
+- `crates/renzora_plugin_build` — the compiler driver. Invokes `rustc` directly,
+  not cargo: a plugin is one crate whose dependencies are already compiled, so
+  there is no graph to resolve and nothing to get `-C metadata` wrong.
+- `xtask/src/sdk.rs` — stages `dist/<platform>/sdk/` on every build. The file
+  list comes from `cargo --message-format=json`, **never** a directory scan;
+  `deps/` holds many `-C metadata` variants of the same crate and name-matching
+  produces a set that looks complete and fails to compile.
+
+**The stamp is a content hash**, recorded beside a built plugin and compared on
+load. It has to be: cargo derives a `-C metadata` filename hash from the build
+*configuration*, never from source, so an earlier filename-based stamp did not
+move when `crates/renzora` changed — and Rust mangles symbols from a crate's
+stable id rather than its contents, so nothing downstream caught it either.
+
+Never run `cargo build` inside a native plugin directory. `plugins/` is outside
+the workspace, so cargo resolves it a fresh Bevy from crates.io; the result
+builds, loads, and corrupts the World.
+
+Rust **scripts** (`crates/renzora_rust_script`) are the same mechanism with a
+per-entity convention on top — same driver, same SDK, same loading. See §7.
 
 ### `trace_tracy` still stays out of the normal build
 
@@ -299,15 +358,30 @@ profiling build that re-adds `trace_tracy`.
   plugins. The lean pattern is `renzora_<name>` (runtime, in the binary) +
   `renzora_<name>/editor/` (`renzora_<name>_editor`, linked only by the editor
   bundle).
-- **The editor is a separate executable**, not a loadable bundle. `renzora`
-  (package `renzora_app`) is the runtime / shipped game; `renzora-editor`
-  (package `renzora_editor_app`) is the editor, which statically links
-  `renzora_editor` as an `rlib`. It stopped being a `dlopen`'d `cdylib` when Bevy
-  went static — a cdylib linking static Bevy would carry a *second* copy of Bevy,
-  and therefore a second `World` type. "Remove the editor" is now "ship only the
-  other file". Both must be staged **together**: external-runtime play mode
-  spawns `<exe_dir>/renzora[.exe]` as a child process
-  (`renzora_viewport::external_runtime`).
+- **One binary; the editor is a loadable image.** `renzora` (package
+  `renzora_app`) is the runtime *and* the editor: it looks for
+  `renzora_editor.<dll|so|dylib>` beside itself at startup and installs it if it
+  is there. Present → the binary is the editor; absent → the same binary is the
+  shipped game, so "remove the editor" is deleting one file. See
+  `renzora_runtime::editor_image`.
+
+  It was a second executable for exactly as long as Bevy was statically linked,
+  when a loadable editor would have carried its own copy of Bevy and therefore
+  its own `World` type. `dynamic_linking` is back on by default, so that
+  constraint is gone.
+
+  **A loadable image must have every shared image in its link graph** —
+  `renzora_editor` depends on `renzora_dylib` and `renzora_ember_dylib` for their
+  side effect only. Without them it embeds a private copy of the contract crate,
+  gets its own translation table, Console buffer and theme palette, and every one
+  of them fails **silently**: the whole UI renders raw keys (`menu.file`,
+  `common.settings`) with nothing logged, because a missing translation is not an
+  error. Crates that hold no process-global state may be duplicated freely — a
+  `TypeId` comes from a crate's stable id, not from which artifact swallowed it.
+
+  `renzora_editor_app` survives for **wasm only** (`required-features = ["wasm"]`),
+  which has no dynamic linking and builds the editor into a second `.wasm`
+  bundle.
 - **Building also builds the runtime** by design — an editor build always
   produces the runtime too. Don't propose editor-only scoping of a build.
 
@@ -355,6 +429,16 @@ Scripts live in `<project>/scripts/*.lua`, attach via `ScriptComponent`, and run
 through hooks: `on_ready`, `on_update`, `on_rpc`, `on_ui`, `on_draw`,
 `on_animation_event`, `on_http`, `on_player_joined`, `on_player_left`. Hooks are
 selected by op code across the boundary, so adding a tenth is not an ABI break.
+
+**`.rs` is the exception, and it deliberately bypasses that model.**
+`crates/renzora_rust_script` compiles a `<project>/scripts/*.rs` into a native
+plugin (§3) and calls it once per frame per entity with `&mut World`. It splits
+the two jobs a backend usually does together: `RustScriptBackend` **claims** the
+extension so the Scripts component accepts one and the execution loop does not
+flag it as broken, and `dispatch` **runs** it from an exclusive system. It
+returns no `ScriptCommand`s because there genuinely are none — the whole reason
+to write Rust is the `&mut World` no command vocabulary can stand in for. Gated
+on play mode exactly like Lua; recompiles on save, off the main thread.
 
 **When writing scripts, refer to the scripting API first**
 (`docs/r1-alpha7/scripting/` + `docs/r1-alpha7/api/scripting.md`, and
@@ -462,7 +546,12 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 | `crates/renzora/src/plugin_meta.rs` | `add!` + `PluginScope`; what the build generator parses |
 | `crates/renzora_runtime/src/plugins.rs`, `crates/renzora_editor/src/plugins.rs` | **Generated + committed.** The static plugin lists the `add!` generator writes; CI fails if regenerating them diffs |
 | `crates/renzora_plugin/src/sys/mod.rs` | The C-ABI: `INIT_SYMBOL`, `VERSION_MAJOR`/`MINOR`, `INTERFACE_PREFIX_HASHES`, and the version history |
-| `crates/renzora_plugin/src/host/loader.rs` | The plugin loader: symbol-dispatched, never drops a `Library` |
+| `crates/renzora_plugin/src/host/loader.rs` | The C-ABI plugin loader: symbol-dispatched, never drops a `Library` |
+| `crates/renzora_native_plugin/` | The **native** plugin loader: scans `plugins/<name>/` directories, rebuilds stale ones, `ManuallyDrop`s every image |
+| `crates/renzora_plugin_build/` | The compiler driver — reads `sdk/manifest.json` and invokes `rustc` directly. Shared by the loader and by xtask |
+| `crates/renzora_dylib/`, `crates/renzora_ember_dylib/` | The shared **contract** and **UI** images. Hold no code of their own; they exist so the process-global statics in `renzora` / `renzora_ember` are singular |
+| `crates/renzora_rust_script/` | `.rs` scripts — a native plugin per script, dispatched per entity with `&mut World` |
+| `xtask/src/sdk.rs`, `xtask/src/native_plugin.rs` | Stage the plugin SDK; build the repo's own native plugins the way a user's machine builds an installed one |
 | `crates/renzora_scripting/` | Scripting system: hooks, commands, context, declarative `ScriptExtension` |
 | `crates/renzora_plugin/src/script/` | The language-backend boundary (codec, contexts, `Backend`) |
 | `plugins/lua/` | The Lua interpreter, as a standalone plugin |

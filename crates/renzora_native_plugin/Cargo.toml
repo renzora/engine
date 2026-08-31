@@ -1,0 +1,36 @@
+[package]
+name = "renzora_native_plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Loads native plugins — Bevy plugins shipped as Rust source, rebuilt when the engine moves."
+
+[features]
+# Loading is only SOUND when the host links the shared `bevy_dylib` and
+# `renzora_dylib`. The boundary is a plain Rust `fn() -> Box<dyn Plugin>` with
+# no handshake, so if the host has its own statically linked Bevy, the plugin's
+# `App` and the host's `App` are different types and handing one to the other is
+# memory corruption — it surfaces as nonsense like "Requested resource Schedules
+# does not exist in the World", from a `World` that plainly has one.
+#
+# This is also why the C-ABI mechanism is still needed: a lean export drops
+# `dynamic_linking`, so a shipped game has no shared images for a native plugin
+# to link against. The two serve different deployments — a native plugin extends
+# the editor, a C-ABI plugin ships inside the game.
+#
+# Forwarded from `renzora_runtime`'s `dynamic_linking`, which is the same switch
+# that puts the shared images in the build. So a lean export (static, no dylibs)
+# gets a loader that declines rather than one that corrupts.
+dynamic_linking = []
+
+[dependencies]
+bevy = { workspace = true }
+# The contract crate. Reached through the shared `renzora_dylib` at run time
+# like everything else — this is a plain dependency edge, not a second copy.
+renzora = { path = "../renzora", default-features = false }
+# Reads the SDK manifest and drives rustc. No Bevy in it, so the compile path
+# stays testable without booting an engine.
+renzora_plugin_build = { path = "../renzora_plugin_build" }
+libloading = "0.8"
+
+[lints]
+workspace = true

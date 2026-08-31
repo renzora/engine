@@ -309,7 +309,6 @@ pub fn scene_layout() -> DockTree {
                         "timeline".into(),
                         "mixer".into(),
                         "shape_library".into(),
-                        "record".into(),
                     ],
                     active_tab: 0,
                 },
@@ -325,9 +324,20 @@ pub fn scene_layout() -> DockTree {
     )
 }
 
-/// Hub: the Marketplace as one full panel.
+/// Hub: the account surfaces that are panels.
+///
+/// The store is no longer one of them — browsing opens as an overlay from the
+/// top bar's storefront icon, so a workspace pointing at `hub_store` would open
+/// on a panel that no longer exists.
 fn layout_hub() -> DockTree {
-    DockTree::leaf("hub_store")
+    DockTree::horizontal(
+        DockTree::leaf("asset_uploader"),
+        DockTree::Leaf {
+            tabs: vec!["hub_library".into(), "social_wallet".into()],
+            active_tab: 0,
+        },
+        0.6,
+    )
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector

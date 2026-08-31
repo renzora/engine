@@ -108,37 +108,45 @@ The runtime crate is statically linked / registered everywhere; the nested `edit
 
 Some editor-only features (e.g. `renzora_hierarchy`, `renzora_inspector`, `renzora_blueprint_editor`) are standalone top-level crates rather than `/editor` subcrates — they have no runtime half at all.
 
-## Two kinds of plugin crate
+## Three kinds of plugin
 
-| Kind | Crate type | How it ships |
-|------|-----------|--------------|
-| **Workspace plugin** | `rlib` | Statically linked into the binary or the editor bundle; registers via its `inventory` constructor at process start. |
-| **Distribution plugin** | `cdylib` with a default-on `dlopen` feature | dlopen'd at startup, or hot-loaded when dropped into `<exe>/plugins/`. Exactly **one** `renzora::add!` per cdylib. |
+| Kind | Lives in | Crate type | Links Bevy | Ships in |
+|------|----------|-----------|------------|----------|
+| **Workspace** | `crates/renzora_<name>/` | `rlib` + `renzora::add!` | statically, at build time | the engine binary |
+| **Native** | `plugins/<name>/` | `dylib` + `renzora::plugin!` | against the shared images | the editor, **as source** |
+| **C-ABI** | `plugins/<name>/` | `cdylib`, exports `renzora_plugin_init` | not at all | a shipped game |
 
-Most feature crates are plain rlibs. The `dlopen` feature (gated `#[cfg(feature = "dlopen")]`) emits the `extern "C"` symbols — `plugin_create`, `plugin_scope`, `plugin_bevy_hash` — that the loader checks for ABI compatibility before loading. See [Building Plugins](/docs/r1-alpha7/extending/plugins).
+A workspace plugin's `add!` line is read *as text* at build time by a generator
+that writes the committed `crates/renzora_{runtime,editor}/src/plugins.rs` lists
+— there is no runtime registry and no FFI, just a linker symbol in a generated
+`add_plugins` call.
 
-## Crate categories at a glance
+The two kinds under `plugins/` are told apart by their manifest, not their
+location: the native loader scans for directories whose crate type is `dylib`,
+the C-ABI loader for compiled libraries exporting `renzora_plugin_init`. A native
+plugin gets the real `&mut World` and the real `Transform`, because it is
+compiled on the installing machine against a **staged SDK** cut from the engine
+sitting beside it; a C-ABI plugin takes a function table instead, links nothing,
+and therefore loads into any build from any toolchain.
 
-The 164 top-level crates break down roughly as follows:
+The older `dlopen` feature and its `plugin_create` / `plugin_scope` /
+`plugin_bevy_hash` exports are **gone**, along with the `dynamic_plugin_loader`
+crate that checked them. See [Building Plugins](/docs/r1-alpha7/extending/plugins)
+and [Native Plugins](/docs/r1-alpha7/extending/native-plugins).
 
-| Count | Category | Examples |
-|------:|----------|----------|
-| 57 | Post-process effects | bloom_effect, crt, ascii, dof, motion_blur, vignette, dream, toon |
-| 37 | Editor panels / tools | hierarchy, inspector, viewport, gizmo, material_editor, debugger |
-| 18 | Rendering / GI | lumen, rt, lighting, shader, skybox, atmosphere, ssao, ssr, oit |
-| 8 | Editor framework | editor, editor_framework, shell, ui, theme, keybindings, undo |
-| 8 | Gameplay / sim | physics, cloth, water, navmesh, hanabi, terrain, animation |
-| 7 | Asset / scene / import | import, asset_registry, rmip, rpak, scene, shape_library, preview |
-| 6 | Vendored Bevy | bevy_hanabi, bevy_hui, bevy_mod_outline, bevy_silk, vleue_navigator, bevy_oxr |
-| 4 | Engine runtime | runtime, engine, dynamic_plugin_loader, input |
-| 3 | Support / misc | spline, hot_demo, test_component |
-| 3 | Core / SDK | renzora, macros, postprocess (re-export shim) |
-| 3 | Scripting | scripting (Lua + Rhai), blueprint |
-| 3 | Platform | android, ios, xr |
-| 2 | UI / markup | ember (markup + widgets + dock), game_ui |
-| 2 | Dead / experimental | mcp_server_plugin, websocket_plugin (orphaned — outside the globs) |
-| 1 | Audio / media | audio (plugin) |
-| 1 | Networking | network (Lightyear 0.26) |
+## Where the code actually lives
+
+Two directories hold nearly all of it, and the split is the plugin table above:
+
+| Directory | Contents |
+|-----------|----------|
+| `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_mod_outline`, `bevy_silk`, `bevy_oxr`, `vleue_navigator`). Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
+| `plugins/` | **66** C-ABI cdylibs — most of them post-process effects, plus `lua`, `http` and `tracy` — and **11** native plugins (`ai_chat`, `auto_exposure`, `clouds`, `gamepad`, `mesh_draw`, `night_stars`, `pool_water`, `procedural_tree`, `spline`, `text3d`, `vignette`). |
+
+Those counts move every release; treat them as a sense of scale, not an
+inventory. The direction of travel is out of `crates/` and into `plugins/`: an
+optional feature belongs in a plugin the marketplace can install, so the static
+binary carries only what a game genuinely cannot boot without.
 
 A few naming notes that trip people up reading the tree:
 

@@ -31,7 +31,7 @@ The **Help** submenu holds links to the documentation, YouTube, Discord, and the
 The tabs in the center of the top bar are **workspaces**. Each one is a ready-made layout tuned for a job, so the right tools are already in front of you:
 
 - **Scene** — build and arrange your level (this is the default).
-- **Scripting** — write Lua or Rhai code.
+- **Scripting** — write Lua or Rust code.
 - **Blueprints** — visual node-based scripting, no typing required.
 - **Animation** — clips, state machines, and timelines.
 - **Materials** — design how surfaces look with a node graph.
@@ -123,7 +123,7 @@ What you can do here:
 - To rename a file or folder inline, press **`F2`**, **click its name** while it's already selected, or pick **Rename** from the right-click menu. The whole name starts highlighted, so typing (or `Delete`) replaces it; press `Enter` to confirm or `Esc` to cancel.
   - **Extensions stay out of your way.** Tiles, list rows and the tree all label a file by its name alone — `main.bsn` reads as **main** — because the icon, its accent colour and the type label already tell you what it is. The rename field is seeded the same way, and the extension is put back when you confirm, so renaming `rock.png` to `boulder` gives you `boulder.png`.
   - Write an extension explicitly to change the type (`boulder.jpg`), or end the name with a dot (`boulder.`) to drop it entirely. Folder names are left exactly as typed — a dot in a folder name is part of the name. Search still matches the real file name, so typing `png` finds every PNG.
-- Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles. The **Add** menu (and the right-click menu) creates a **Material**, **Blueprint**, **Lua Script**, **Rhai Script**, **Particle**, **Template** (HTML markup UI), or **Scene (BSN)** — each row color-coded to match its file type's accent on the tiles.
+- Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles. The **Add** menu (and the right-click menu) creates a **Material**, **Blueprint**, **Lua Script**, **Particle**, **Template** (HTML markup UI), or **Scene (BSN)** — each row color-coded to match its file type's accent on the tiles.
 - **Import** opens a short menu with two choices, because no operating-system dialog can select files *and* folders in one pass:
   - **Import Files…** — the multi-select file picker, filtered to every extension the importer accepts.
   - **Import Folder…** — the folder picker. The chosen directory is walked recursively for importable files, and its subfolder tree is recreated under the destination, so a `props/` folder with `crates/` and `barrels/` inside it arrives with those subfolders intact. A folder holding nothing importable says so instead of silently doing nothing.

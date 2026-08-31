@@ -19,11 +19,22 @@
 //! - `viewport.rs`— the rendered-canvas image + zoomed design frame
 //! - `toolbar.rs` — zoom / grid / snap controls
 //!
-//! NOT YET REGISTERED: the plugin sets up state + the toolbar, but does not call
-//! `register_panel_content("ui_canvas", ...)` until the selection + interaction
-//! layer (`overlay.rs` / `interaction.rs`: click/marquee select, drag-move,
-//! resize, rotate, align/distribute) lands — so the egui panel stays active and
-//! direct-manipulation editing isn't lost mid-port. Flip it on in `build_panel`.
+//! # Its own panel
+//!
+//! Registered as the `ui_canvas` dock panel. It spent a while mounted *inside*
+//! the viewport panel instead, revealed by `ViewportView::Ui` — a stopgap from
+//! before `overlay.rs` / `interaction.rs` existed, when the egui panel was still
+//! the real editor and this could not yet stand alone.
+//!
+//! The cost of that arrangement was that opening a UI took the 3D view away:
+//! one surface, two jobs, and whichever you were not doing vanished. As a panel
+//! it docks anywhere, sits beside the viewport if you want both, and the
+//! viewport goes back to being 3D-or-2D and nothing else.
+//!
+//! It still shows the scene behind the canvas — `viewport.rs` reads the shared
+//! `renzora::ViewportRenderTarget` image, which is contract state any panel may
+//! sample. Borrowing the picture never required living inside the panel that
+//! draws it.
 
 #![allow(dead_code)]
 
@@ -41,7 +52,10 @@ mod inspectors;
 mod interaction;
 mod nav;
 mod overlay;
+mod palette;
 mod register;
+mod ruler;
+mod scroll;
 pub mod spawn_ext;
 mod toolbar;
 mod ui_inspector;
@@ -68,6 +82,28 @@ pub(crate) struct NativeCanvasState {
     /// `(press, current)` corners. `None` when not box-selecting. The overlay
     /// draws it; release selects the widgets it fully encloses.
     pub marquee: Option<(Vec2, Vec2)>,
+    /// Where a flow drag would drop, recomputed each frame while one is in
+    /// progress. The overlay outlines `parent` and draws the insertion line;
+    /// releasing applies it. `None` whenever no flow drag is running.
+    pub drop: Option<geometry::DropTarget>,
+    /// Every slot in the drop target's container, drawn faintly beside the
+    /// active one. Cleared with `drop`.
+    pub drop_slots: geometry::DropSlots,
+    /// The widget under the cursor, recomputed every frame. Only needed for the
+    /// hover name badge — the click path does its own hit-test at press time,
+    /// because what a press hits depends on the current selection.
+    pub hovered: Option<Entity>,
+    /// Outline the node under the cursor, without needing a click.
+    pub hover_outline: bool,
+    /// Also outline the container the cursor is inside — the node's parent.
+    /// Reading which group you are in is most of what is hard about a nested
+    /// template, and it is the same box the drop target draws during a drag.
+    pub hover_group: bool,
+    /// Put a node's name on the boxes above. Off leaves the outlines, which are
+    /// still useful once you know the tree.
+    pub show_names: bool,
+    /// Design-space rulers along the top and left of the canvas.
+    pub show_rulers: bool,
 }
 
 impl Default for NativeCanvasState {
@@ -83,6 +119,13 @@ impl Default for NativeCanvasState {
             canvas_height: 720.0,
             widgets: Vec::new(),
             marquee: None,
+            drop: None,
+            drop_slots: geometry::DropSlots::default(),
+            hovered: None,
+            hover_outline: true,
+            hover_group: true,
+            show_names: true,
+            show_rulers: true,
         }
     }
 }
@@ -105,18 +148,62 @@ impl Plugin for GameUiEditorPlugin {
         // panel-systems-ungated: game-UI runtime, not editor chrome — not tied to a panel's visibility
         app.add_systems(
             Update,
-            geometry::snapshot_widgets.run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
+            // Chained: `track_hover` hit-tests the snapshot, so it has to read
+            // the one taken this frame rather than last frame's.
+            // After `sync_active_canvas`: the snapshot only collects widgets
+            // under the active canvas, so it has to read this frame's answer or
+            // switching canvases lags a frame behind the selection.
+            (geometry::snapshot_widgets, geometry::track_hover).chain().after(sync_active_canvas).run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
         );
         toolbar::register(app);
         overlay::register(app);
         interaction::register(app);
         nav::register(app);
+        ruler::register(app);
+        scroll::register(app);
+        palette::register(app);
         inspectors::register(app);
-        // The editor lives in the viewport's "UI" mode (there's no separate
-        // ui_canvas dock tab) — `renzora_viewport` mounts `build_ui_canvas`
-        // there. The interaction/overlay systems above run wherever the hit
-        // layer is mounted, so the in-viewport editor is fully live.
+        // The panel. `false` — it owns its own scrolling (the canvas area pans
+        // and zooms rather than scrolls).
+        //
+        // Registered here rather than by the shell because the shell's static
+        // panel table is for panels the shell itself knows how to draw; this one
+        // belongs to the crate that draws it, which is also what lets an editor
+        // built without this plugin simply not offer it.
+        use renzora::core::RenzoraShellExt;
+        use renzora_ember::panel::RegisterPanelContent;
+        // "UI Editor", not "UI Canvas": the panel is the place you edit a UI.
+        // The *canvas* is the entity in the scene that mounts a template, and
+        // two things with the same name would be one thing in the user's head.
+        // The id stays `ui_canvas` — it is in saved layouts.
+        app.register_shell_panel("ui_canvas", "UI Editor", "browser", "Scene");
+        app.register_panel_content("ui_canvas", false, |commands, fonts| {
+            build_ui_canvas(commands, fonts)
+        })
+        // Panel-gated, chained off the registration so the id is written once.
+        // `create_canvas_click` drives the empty-state "create a canvas" button
+        // *inside* this panel — with the panel hidden the button does not exist,
+        // so there is nothing for it to do but cost a frame.
+        .systems(
+            Update,
+            viewport::create_canvas_click.run_if(in_state(SplashState::Editor)),
+        );
     }
+}
+
+/// Is the UI canvas panel on screen?
+///
+/// `renzora_viewport` asks, so it can run the offscreen UI render camera only
+/// while something is showing its output. That used to be
+/// `view == ViewportView::Ui`, which is exactly the coupling the panel exists to
+/// undo.
+pub fn canvas_panel_visible(world: &World) -> bool {
+    renzora_ember::dock::panel_visible_anywhere(
+        "ui_canvas",
+        world.get_resource::<renzora_ember::dock::Dock>(),
+        world.get_resource::<renzora_ember::dock::FixedDock>(),
+        world.get_resource::<renzora_ember::dock::DockWindows>(),
+    )
 }
 
 renzora::add!(GameUiEditorPlugin, Editor);
@@ -138,7 +225,37 @@ pub fn build_ui_canvas(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Track the active canvas + mirror its reference resolution, like the egui
 /// panel did at the top of `ui()`.
-fn sync_active_canvas(mut state: ResMut<NativeCanvasState>, canvases: Query<(Entity, &UiCanvas)>) {
+fn sync_active_canvas(
+    mut state: ResMut<NativeCanvasState>,
+    canvases: Query<(Entity, &UiCanvas)>,
+    selection: Option<Res<renzora::EditorSelection>>,
+    parents: Query<&ChildOf>,
+) {
+    // The selection decides which canvas is being edited.
+    //
+    // Without this the editor picked the first canvas it found and kept it,
+    // which is fine until a scene has two — drop a second template and you get a
+    // second canvas, whose nodes are then invisible to `snapshot_widgets`. They
+    // rendered, but nothing could select, drag, align or delete them, because
+    // every one of those reads a snapshot taken under the *active* canvas only.
+    //
+    // Selecting anything under a canvas — the canvas itself, or a node inside
+    // its template — makes that canvas active, so "the one I am working on" and
+    // "the one the tools act on" cannot disagree.
+    let selected_canvas = selection.and_then(|s| s.get()).and_then(|mut e| {
+        for _ in 0..256 {
+            if canvases.get(e).is_ok() {
+                return Some(e);
+            }
+            e = parents.get(e).ok()?.parent();
+        }
+        None
+    });
+    if let Some(canvas) = selected_canvas {
+        if state.active_canvas != Some(canvas) {
+            state.active_canvas = Some(canvas);
+        }
+    }
     let still_valid = state.active_canvas.is_some_and(|a| canvases.get(a).is_ok());
     if !still_valid {
         state.active_canvas = canvases.iter().next().map(|(e, _)| e);

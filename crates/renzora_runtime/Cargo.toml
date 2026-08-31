@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "night_stars", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -26,6 +26,45 @@ crash_dialog = ["renzora_engine/crash_dialog"]
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
 # pull the OpenXR stack unless explicitly asked.
 xr = ["dep:renzora_xr"]
+# Link the shared contract image. Forwarded from `renzora_app`'s
+# `dynamic_linking` (in ITS default set) and landing here rather than there
+# because both binaries depend on this crate and only one of them has a feature
+# table — see the root manifest.
+#
+# NOT in this crate's `default`: the lean exporter builds with
+# `--no-default-features --features runtime`, and a static single binary must not
+# import a dylib. Leaving it out here means "static" needs no extra step — the
+# feature simply never arrives.
+#
+# It also arms the native-plugin loader. Those link the shared images, so loading
+# one into a statically linked host is memory corruption with no diagnostic —
+# gating both on one switch is what makes that combination unreachable rather
+# than merely discouraged. It is also why the C-ABI mechanism stays: a lean
+# export has no shared images for a native plugin to link against.
+dynamic_linking = [
+    "dep:renzora_dylib",
+    # The UI half of the same idea. A native plugin that draws a panel links
+    # `renzora_ember`, and ember keeps the theme palette, the stylesheet, the UI
+    # font scale and the viewport-toolbar lists in process-global statics — so a
+    # privately linked copy gives the plugin its own theme and its own toolbar
+    # nobody reads. See `crates/renzora_ember_dylib/src/lib.rs`.
+    #
+    # Pulled here rather than from `ui` (which is what makes `renzora_ember`
+    # optional) because cargo cannot express "this dep, only when two features
+    # are both on". That is harmless in practice: `dynamic_linking` is only ever
+    # enabled for a full editor/dev build, where `ui` is on via `default`. The
+    # `extern crate` in `src/lib.rs` still requires both, so a hand-built
+    # `--no-default-features --features runtime,dynamic_linking` compiles rather
+    # than failing to resolve.
+    "dep:renzora_ember_dylib",
+    "renzora_native_plugin/dynamic_linking",
+    "renzora_rust_script/dynamic_linking",
+]
+# The static counterpart: Rust scripts compiled into the binary rather than
+# loaded as dylibs. Set only by the lean exporter — see `static_scripts` in the
+# root manifest. Forwarded, because the crate that consumes the generated table
+# is `renzora_rust_script`.
+static_scripts = ["renzora_rust_script/static_scripts"]
 # Throwaway PROFILING build. The binary (`renzora_app`) enables `bevy/trace` +
 # `bevy/trace_tracy` alongside this; that alone gives per-system + render-node CPU
 # zones and the Tracy layer/frame-mark, but Bevy only emits GPU-pass zones when a
@@ -111,11 +150,7 @@ ragdoll = ["dep:renzora_ragdoll"]
 # this instead.
 parkour = ["dep:renzora_parkour"]
 light2d = ["dep:renzora_light2d"]
-text3d = ["dep:renzora_text3d"]
-vignette = ["dep:renzora_vignette"]
 forward_decal = ["dep:renzora_forward_decal"]
-pool_water = ["dep:renzora_pool_water"]
-procedural_tree = ["dep:renzora_procedural_tree"]
 navmesh = ["dep:renzora_navmesh"]
 particles = ["dep:renzora_hanabi"]
 # 2D tilemap runtime (chunked quad-mesh renderer). Content is 2D, so a pure-3D
@@ -128,7 +163,6 @@ sprite_anim = ["dep:renzora_sprite_anim"]
 # `renzora_navmesh?/terrain`: enable navmesh's terrain-obstacle support only when
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
 terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
-spline = ["dep:renzora_spline"]
 water = ["dep:renzora_water"]
 audio = ["dep:renzora_audio", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
@@ -136,7 +170,12 @@ blueprint = ["scripting", "dep:renzora_blueprint", "renzora_scripting?/blueprint
 # Pulls `scripting`: ember's markup runtime binds `.html` fields to script
 # values, so game UI without the scripting layer wouldn't compile. Pulls `ui` for
 # the obvious reason — markup renders through bevy_ui.
-game_ui = ["ui", "scripting", "renzora_ember/game_ui"]
+#
+# Forwarded to the shared image as well as the rlib. Both edges are needed: they
+# are two dependency entries on the same crate, and enabling the feature on only
+# one would leave cargo resolving ember with a union that does not match what the
+# dylib was built from.
+game_ui = ["ui", "scripting", "renzora_ember/game_ui", "renzora_ember_dylib?/game_ui"]
 # The UI layer: `renzora_ember` (the widget/theme framework) and, through the
 # exporter, bevy_ui + bevy_text + bevy_ui_render + bevy_ui_widgets. Dropping it
 # takes the whole text-shaping stack (parley, swash, harfrust, fontique, skrifa,
@@ -159,15 +198,12 @@ motion_blur = ["dep:renzora_motion_blur"]
 distance_fog = ["dep:renzora_distance_fog"]
 volumetric_fog = ["dep:renzora_volumetric_fog"]
 lens_distortion = ["dep:renzora_lens_distortion"]
-auto_exposure = ["dep:renzora_auto_exposure"]
 oit = ["dep:renzora_oit"]
 antialiasing = ["dep:renzora_antialiasing", "renzora/antialiasing"]
 # Sky / environment visuals, likewise one per crate rather than one `sky` bundle.
 atmosphere = ["dep:renzora_atmosphere"]
 environment_map = ["dep:renzora_environment_map"]
 skybox = ["dep:renzora_skybox"]
-clouds = ["dep:renzora_clouds"]
-night_stars = ["dep:renzora_night_stars"]
 
 [dependencies]
 # Former dlopen'd distribution plugins, now statically linked.
@@ -189,11 +225,7 @@ renzora_gaussian_splatting = { path = "../renzora_gaussian_splatting", optional 
 renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }
 renzora_light2d = { path = "../renzora_light2d", optional = true }
-renzora_text3d = { path = "../renzora_text3d", optional = true }
-renzora_vignette = { path = "../renzora_vignette", optional = true }
 renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
-renzora_pool_water = { path = "../renzora_pool_water", optional = true }
-renzora_procedural_tree = { path = "../renzora_procedural_tree", optional = true }
 
 bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from
@@ -215,6 +247,22 @@ wgpu = { version = "29", default-features = false }
 # `animation` features below forward to it. Normal builds keep them via `default`.
 renzora_engine = { path = "../renzora_engine", default-features = false }
 renzora = { path = "../renzora", default-features = false }
+# The same contract crate again, as one shared dylib. Nothing calls into it —
+# `renzora_dylib` re-exports `renzora` and is linked purely so the compiled code
+# lives in ONE image. Without it every plugin embeds a private copy of the four
+# process-global statics in the contract crate (the translation table, the
+# Problems and Console buffers, the asset loader), and each one then fails
+# silently: `t()` returns raw keys, logs and warnings land in buffers nobody
+# drains, asset reads find no loader. See `crates/renzora_dylib/src/lib.rs`.
+renzora_dylib = { path = "../renzora_dylib", optional = true }
+# And ember as one shared dylib, for the same reason one layer up: a native
+# plugin that registers a panel links ember, and ember's theme palette,
+# stylesheet, UI font scale and viewport-toolbar lists are process-global
+# statics. A privately linked copy leaves the plugin's panel painted in the
+# default palette while the editor around it is on the user's theme, and its
+# toolbar contributions pushed into a list nothing reads — silently, in both
+# cases. See `crates/renzora_ember_dylib/src/lib.rs`.
+renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false, optional = true }
 # `default-features = false`: the backends + blueprint + script_http are switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
@@ -230,7 +278,6 @@ renzora_input = { path = "../renzora_input" }
 renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
-renzora_spline = { path = "../renzora_spline", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water", optional = true }
 renzora_animation = { path = "../renzora_animation", optional = true }
@@ -266,7 +313,6 @@ renzora_antialiasing = { path = "../renzora_antialiasing", optional = true }
 renzora_ssao = { path = "../renzora_ssao", optional = true }
 renzora_ssr = { path = "../renzora_ssr", optional = true }
 renzora_lens_distortion = { path = "../renzora_lens_distortion", optional = true }
-renzora_auto_exposure = { path = "../renzora_auto_exposure", optional = true }
 renzora_oit = { path = "../renzora_oit", optional = true }
 renzora_dof = { path = "../renzora_dof", optional = true }
 renzora_motion_blur = { path = "../renzora_motion_blur", optional = true }
@@ -277,8 +323,6 @@ renzora_volumetric_fog = { path = "../renzora_volumetric_fog", optional = true }
 renzora_atmosphere = { path = "../renzora_atmosphere", optional = true }
 renzora_environment_map = { path = "../renzora_environment_map", optional = true }
 renzora_skybox = { path = "../renzora_skybox", optional = true }
-renzora_clouds = { path = "../renzora_clouds", optional = true }
-renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 
 # ── generated by `cargo renzora sync` — declared plugin crates ──
 # Discovered from their `renzora::add!` lines. Plain, non-optional
@@ -291,8 +335,18 @@ renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_native_plugin = { path = "../renzora_native_plugin" }
 renzora_net = { path = "../renzora_net" }
+renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──
+
+# Loading the editor image beside the executable — see `src/editor_image.rs`.
+# Target-scoped because wasm has no dynamic linking at all: there the editor is
+# compiled into its own bundle and installed by a direct call, so pulling
+# libloading in would be a dependency that cannot work on that target.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libloading = "0.8"
+
 [lints]
 workspace = true

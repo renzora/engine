@@ -10,6 +10,13 @@ renzora_ember = { path = "../renzora_ember" }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_import = { path = "../renzora_import" }
 renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+# For `PREBUILT_MANIFEST` — the index a copy-based export writes and the runtime
+# reads. Named once here rather than spelled out in both crates, because a
+# mismatch would be a game that ships scripts it never loads and says nothing.
+renzora_rust_script = { path = "../renzora_rust_script" }
+# For `read_scope` — asking a built plugin library whether it belongs in a game,
+# rather than parsing the source for an answer that describes a different build.
+renzora_native_plugin = { path = "../renzora_native_plugin" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 # Edit the export copy's Cargo.toml (strip Bevy features) while preserving the

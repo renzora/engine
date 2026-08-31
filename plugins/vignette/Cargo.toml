@@ -1,0 +1,30 @@
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependency below exists so rust-analyzer can
+# resolve `renzora::` while you author; the real build is `cargo renzora`, which
+# compiles this against the artifacts the engine was actually built from.
+[workspace]
+
+[package]
+name = "vignette"
+version = "0.1.0"
+edition = "2021"
+description = "Screen-edge darkening — a thin wrapper around Bevy's built-in Vignette."
+
+[lib]
+# `dylib` is what makes this a NATIVE plugin rather than a C-ABI one: it shares
+# Rust types with the host. `cdylib` would be the C ABI, which links no Bevy.
+crate-type = ["dylib"]
+
+[dependencies]
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+
+# NOTE: no `serde` entry. Cargo would resolve a second copy, distinct from the
+# one the engine's Bevy was built against, and deriving `Serialize` on a struct
+# holding a `Vec3` then fails to compile. Use `renzora::serde` instead — the
+# contract crate re-exports the engine's copy for exactly this reason.

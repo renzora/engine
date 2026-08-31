@@ -1,48 +1,54 @@
 # Scripting API
 
-The authoritative reference for every global, function, lifecycle hook, and `action()` verb exposed to Lua and Rhai scripts.
+The authoritative reference for every global, function, lifecycle hook, and `action()` verb exposed to scripts.
 
-This page documents the surface registered by `crates/renzora_scripting` plus the functions injected by domain crates. For a guided introduction see [Lua](/docs/r1-alpha7/scripting/lua) and the [Scripting Overview](/docs/r1-alpha7/scripting/overview).
+This page documents the surface registered by `crates/renzora_scripting` plus the functions declared by domain crates. For a guided introduction see [Lua](/docs/r1-alpha7/scripting/lua) and the [Scripting Overview](/docs/r1-alpha7/scripting/overview).
 
 ## How the API is dispatched
 
-The scripting core is language-agnostic. A `ScriptEngine` resource holds a list of `ScriptBackend`s and routes each script to one **by file extension**:
+The scripting core is language-agnostic. `crates/renzora_scripting` owns the hooks, the command vocabulary, the context and the queue that applies commands to the world — and contains no interpreter. A `ScriptEngine` resource holds a list of backends and routes each script to one **by file extension**:
 
-| Extension | Backend | Availability |
-|-----------|---------|--------------|
-| `.lua` | Lua (mlua 0.10, Lua 5.4, vendored) | Native desktop + mobile only — **not** on the web (wasm) build |
-| `.rhai` | Rhai (rhai 1.21, pure Rust) | Everywhere, **including wasm** |
+| Extension | Backend | Where it comes from |
+|-----------|---------|---------------------|
+| `.lua` | Lua (mlua, Lua 5.4, vendored) | `plugins/lua` — a standalone C-ABI plugin |
+| `.rs` | Rust | `crates/renzora_rust_script` — compiled to a native plugin per script |
 
-Both backends are compiled into the shipping runtime (`renzora_scripting` default features = `["lua", "rhai"]`). Every callable in this reference is one of two things:
+Which language a game can be scripted in is decided by **which plugin is present**, not by how the engine was compiled. Removing `plugins/lua` removes Lua; adding a backend plugin adds a language. Two languages coexist in one project.
 
-- A **registered function** — a Rust closure exposed to the VM that pushes a `ScriptCommand` onto a per-frame queue, applied after the hook returns.
+> **Rhai has been removed.** Earlier releases shipped a second `.rhai` backend that was a subset of the Lua surface. It is gone: there is no `.rhai` backend, no Rhai crate, and no "both backends" distinction. Everything on this page is the Lua surface. If you have `.rhai` scripts, port them to Lua — the function names are almost all identical, and the [syntax differences](#porting-from-rhai) are listed at the end.
+
+Every callable here is one of two things:
+
+- A **registered function** — a closure exposed to the VM that pushes a `ScriptCommand` onto a per-frame queue, applied after the hook returns.
 - A **context global** — a value written fresh into the VM before each hook. Globals are inputs; assigning to them has no effect.
 
-A `ScriptComponent` is never inserted automatically — attach one in the inspector (**Add Component → Scripts**) or by dropping a script file onto the entity's row in the hierarchy, and the component appears with the script already on it. Authored game UI is the one exception: `renzora_ember::game_ui` gives every `UiWidget`/`UiCanvas` a `ScriptComponent` so `<input bind="Entity.var">` has something to resolve against (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script_path)` and reused across frames.
-
-> Rhai is a deliberate **subset** of the Lua surface. Each function below is tagged **Both** (registered in Lua and Rhai) or **Lua** (Lua only). Rhai also supports only three lifecycle hooks. See [Rhai subset](#rhai-subset) at the end.
+A `ScriptComponent` is never inserted automatically. Attach a script from the inspector's **Scripts** section — shown on every entity, so there is nothing to add first — or by dropping a script file onto the entity's row in the hierarchy, and the component appears with the script already on it. Removing the last script removes the component again, so the always-visible section costs nothing on an entity you never scripted. Authored game UI is the one exception: `renzora_ember::game_ui` gives every `UiWidget`/`UiCanvas` a `ScriptComponent` so `<input bind="Entity.var">` has something to resolve against. One Lua VM is cached per `(entity, script_path)` and reused across frames.
 
 ## Lifecycle hooks
 
 Define any of these free functions; the engine calls the ones that exist. None are required.
 
-| Hook | Fires when | Backends |
-|------|-----------|----------|
-| `props()` | Once on load — returns a table of editable Inspector properties | Both |
-| `on_ready()` | Once, the first frame the script runs | Both |
-| `on_update()` | Every frame | Both |
-| `on_rpc(name, args, from)` | A networked RPC arrived. `from` is the sender's peer id (`0` for relayed messages) | Lua |
-| `on_ui(name, args, entity)` | A markup UI event fired. `entity` is the firing node's `Entity::to_bits()` as a **u64 integer**, not a handle | Lua |
-| `on_http(callback, status, body)` | An HTTP response returned. `status` is the HTTP code; **`status == 0` means the request failed** and `body` holds the error text | Lua |
-| `on_player_joined(id)` | A player connected (**server/host only**) | Lua |
-| `on_player_left(id)` | A player disconnected (server/host only) | Lua |
-| `on_scene_loaded(path)` | A scene finished loading. Only scripts that **survive** the load hear this — see below | Lua |
-| `on_scene_load_failed(path, error)` | A scene load failed. `error` is the reason | Lua |
-| `on_event(name, args)` | A broadcast game event was emitted, by any script, blueprint or Rust system | Lua |
+| Hook | Fires when |
+|------|-----------|
+| `props()` | Once on load — returns a table of editable Inspector properties |
+| `on_ready()` | Once, the first frame the script runs |
+| `on_update()` | Every frame |
+| `on_draw(g)` | Every frame, for an entity with a [canvas surface](#on_draw--the-2d-canvas) |
+| `on_rpc(name, args, from)` | A networked RPC arrived. `from` is the sender's peer id (`0` for relayed messages) |
+| `on_ui(name, args, entity)` | A markup UI event fired. `entity` is the firing node's `Entity::to_bits()` as a **u64 integer**, not a handle |
+| `on_animation_event(name, entity)` | Playback crossed a named clip marker |
+| `on_http(callback, status, body)` | An HTTP response returned. `status` is the HTTP code; **`status == 0` means the request failed** and `body` holds the error text |
+| `on_player_joined(id)` | A player connected (**server/host only**) |
+| `on_player_left(id)` | A player disconnected (server/host only) |
+| `on_scene_loaded(path)` | A scene finished loading. Only scripts that **survive** the load hear this — see below |
+| `on_scene_load_failed(path, error)` | A scene load failed. `error` is the reason |
+| `on_event(name, args)` | A broadcast game event was emitted, by any script, blueprint or Rust system |
+
+Hooks are selected by op code across the plugin boundary rather than by name, so adding a hook is not an ABI break.
 
 > **The scene hooks only reach `Persistent` scripts.** A scene load despawns the outgoing scene's entities partway through, so a script that lives in the scene being replaced is already gone when its successor arrives. Put scene-transition logic on a global scene (see [Global scenes](../engine-core/resources#cross-scene-state)) — that is the entire reason a loading screen has to live outside the scene it is covering.
 
-> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup and read the `is_colliding` global for overlap state. Collision *events* exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes. Rhai scripts get `props`, `on_ready`, and `on_update` only — the other hooks fall through to no-ops.
+> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup and read the `is_colliding` global for overlap state. Collision *events* exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes.
 
 ### props()
 
@@ -63,7 +69,44 @@ end
 - The widget type is **inferred from the value** (`ScriptValue`: Float, Int, Bool, String, Entity, Vec2, Vec3, Color). A `type` key is ignored, and `min`/`max` are not read.
 - Declared properties become read/write globals inside every hook. After each hook the engine reads them back, so changes persist and can bind into UI with `{{ Entity.speed }}`.
 
-In Rhai use a map literal: `#{ speed: #{ value: 5.0, hint: "..." } }`.
+## on_draw — the 2D canvas
+
+`on_draw(g)` is an immediate-mode 2D drawing pass, and the one hook that is not called for every scripted entity: it runs only for an entity that owns a **canvas surface**, and is sized to it.
+
+A canvas is a markup node with the `canvas` attribute:
+
+```html
+<node canvas width="300px" height="300px" />
+```
+
+The script attached to that node's binding host then paints into it:
+
+```lua
+function on_draw(g)
+    local cx, cy = g.width / 2, g.height / 2
+    g.circle(cx, cy, 100, "#1b1b22")
+    g.arc(cx, cy, 92, -90, -90 + 270 * fuel, "#ffb347", 8)
+    g.text(cx, cy + 6, string.format("%d%%", fuel * 100), 22, "#ffffff")
+end
+```
+
+`g` carries `g.width` and `g.height` — the surface's size in pixels — plus the shape methods below. **Call them with dot syntax** (`g.circle(...)`, not `g:circle(...)`): they take no `self`.
+
+| Method | Arguments |
+|---|---|
+| `g.line(x1, y1, x2, y2, color [, thickness])` | thickness defaults to 2 |
+| `g.arc(cx, cy, r, start, end, color [, thickness])` | angles in **degrees**, 0 = +x, clockwise |
+| `g.circle(cx, cy, r, color)` | filled |
+| `g.rect(x, y, w, h, color)` | filled |
+| `g.triangle(x1, y1, x2, y2, x3, y3, color)` | filled |
+| `g.poly(points, color)` | filled polygon |
+| `g.text(x, y, text, size, color)` | baseline-anchored at `(x, y)`, centred horizontally on `x` |
+
+Coordinates are the canvas's local pixels, **top-left origin, y-down** — screen convention, not the y-up of the 3D scene. Colours are `#rrggbb` / `#rrggbbaa` hex **strings**, not tables.
+
+The list is rebuilt from scratch every frame and reconciled into a pool of existing SDF shape entities parented under the canvas node — reused in place rather than respawned, and z-ordered by draw index, so a needle drawn after its dial sits on top. That means `on_draw` is cheap to call every frame and you should not try to cache anything yourself; just describe the picture.
+
+This is the right tool for a gauge, a minimap, a radar, a health arc, a custom graph — anything that is drawing rather than layout. For a HUD made of *widgets*, use [Game UI](/docs/r1-alpha7/scripting/game-ui) markup instead.
 
 ## Context globals
 
@@ -111,24 +154,22 @@ Written fresh before each hook. Read them — do not assign.
 | `gamepad_select`, `gamepad_start` | bool | Menu buttons |
 | `gamepad_dpad_up` / `down` / `left` / `right` | bool | D-pad |
 
-The flat `gamepad_*` globals mirror the **first connected pad**. Every pad is addressable by stable slot id (0 = first) through the multi-gamepad query functions, available in **both** backends:
+The flat `gamepad_*` globals mirror the **first connected pad**. Every pad is addressable by stable slot id (0 = first):
 
-| Function | Lua | Rhai | Description |
-|----------|-----|------|-------------|
-| Pad count | `gamepad_count()` | `gamepad_count` global | Connected pads |
-| Connected | `gamepad_connected(pad)` | `gamepad_connected(gamepads, pad)` | Pad id present |
-| Axis | `gamepad_axis(pad, axis)` | `gamepad_axis(gamepads, pad, axis)` | `"left_x"`, `"right_y"`, `"left_trigger"`, … |
-| Sticks | `gamepad_left_stick(pad)` / `gamepad_right_stick(pad)` → `x, y` | index `gamepads` directly | Two return values in Lua |
-| Button held | `gamepad_button(pad, button)` | `gamepad_button(gamepads, pad, button)` | `"south"`, `"l1"`, `"dpad_up"`, … |
-| Button just pressed | `gamepad_button_just_pressed(pad, button)` | `gamepad_button_just_pressed(gamepads, pad, button)` | Down this frame |
+| Function | Description |
+|----------|-------------|
+| `gamepad_count()` | Connected pads |
+| `gamepad_connected(pad)` | Pad id present |
+| `gamepad_axis(pad, axis)` | `"left_x"`, `"right_y"`, `"left_trigger"`, … |
+| `gamepad_left_stick(pad)` / `gamepad_right_stick(pad)` | Returns two values, `x, y` |
+| `gamepad_button(pad, button)` | `"south"`, `"l1"`, `"dpad_up"`, … |
+| `gamepad_button_just_pressed(pad, button)` | Down this frame |
 
-Rhai also receives a `gamepads` array in scope (one map per pad with `id`, the axis fields, and `buttons` / `just_pressed` maps) which can be indexed or iterated directly. See [Input Handling — Multiple gamepads](/docs/r1-alpha7/scripting/input#multiple-gamepads).
-
-> All of the globals above are available in **both** backends except the mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, `project_width`/`project_height`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
+See [Input Handling — Multiple gamepads](/docs/r1-alpha7/scripting/input#multiple-gamepads).
 
 ## Transform
 
-Transform writes are queued and applied after the hook returns. **Both backends.**
+Transform writes are queued and applied after the hook returns.
 
 | Function | Description |
 |----------|-------------|
@@ -163,11 +204,11 @@ function on_update()
 end
 ```
 
-`goto_camera_preset(name)` moves the script's **own** entity to the matching preset's stored translation + rotation (it's a transform write, applied after the hook returns). It's a no-op with a console warning if the entity has no `CameraPresets` or no preset matches `name`. Both backends. To read the list generically, use component reflection (`get("CameraPresets...")`).
+`goto_camera_preset(name)` moves the script's **own** entity to the matching preset's stored translation + rotation (it's a transform write, applied after the hook returns). It's a no-op with a console warning if the entity has no `CameraPresets` or no preset matches `name`. To read the list generically, use component reflection (`get("CameraPresets...")`).
 
 ## Field of view
 
-FOV lives inside Bevy's `Projection` **enum**, which the generic `get`/`set` reflect paths cannot address — so it gets two declared functions instead. Both are degrees, matching the inspector's FOV field. Both backends.
+FOV lives inside Bevy's `Projection` **enum**, which the generic `get`/`set` reflect paths cannot address — so it gets two declared functions instead. Both are degrees, matching the inspector's FOV field.
 
 | Function | Description |
 |----------|-------------|
@@ -191,7 +232,7 @@ end
 
 ## Component reflection
 
-Read or write any registered component field by a `"Component.field"` (dot-separated) path. The setters and `get`/`get_on` are in **both** backends; the bulk/component helpers are **Lua only**.
+Read or write any registered component field by a `"Component.field"` (dot-separated) path.
 
 ```lua
 function on_update()
@@ -203,24 +244,24 @@ function on_update()
 end
 ```
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `get(path)` | Both | Read a field on this entity (`nil` if missing) |
-| `get_on(name, path)` | Both | Read a field on a named entity |
-| `set(path, value)` | Both | Write a field on this entity |
-| `set_on(name, path, value)` | Both | Write a field on a named entity |
-| `get_component(type)` | Lua | Read all fields of a component as a table |
-| `get_component_on(name, type)` | Lua | Same, on a named entity |
-| `get_components()` | Lua | List reflected component names on self |
-| `get_components_on(name)` | Lua | List component names on a named entity |
-| `has_component(type)` | Lua | Test for a component on self |
-| `has_component_on(name, type)` | Lua | Test for a component on a named entity |
+| Function | Description |
+|----------|-------------|
+| `get(path)` | Read a field on this entity (`nil` if missing) |
+| `get_on(name, path)` | Read a field on a named entity |
+| `set(path, value)` | Write a field on this entity |
+| `set_on(name, path, value)` | Write a field on a named entity |
+| `get_component(type)` | Read all fields of a component as a table |
+| `get_component_on(name, type)` | Same, on a named entity |
+| `get_components()` | List reflected component names on self |
+| `get_components_on(name)` | List component names on a named entity |
+| `has_component(type)` | Test for a component on self |
+| `has_component_on(name, type)` | Test for a component on a named entity |
 
-Engine subsystems expose **read-only mirror components** through the same path mechanism: `get("PhysicsReadState.grounded")`, `get("NavReadState.*")`, `get("AnimatorReadState.*")`.
+Engine subsystems expose **read-only mirror components** through the same path mechanism: `get("PhysicsReadState.grounded")`, `get("NavReadState.*")`, `get("AnimatorReadState.*")`, `get("ParkourReadState.*")`, `get("WindState.speed")`.
 
 ## Input
 
-**Lua only.** The quickest inputs are the `input_x`/`input_y` and `gamepad_*` globals above; for named actions and raw keys use these functions:
+The quickest inputs are the `input_x`/`input_y` and `gamepad_*` globals above; for named actions and raw keys use these functions:
 
 ```lua
 function on_update()
@@ -242,24 +283,18 @@ end
 | `input_axis_1d(action)` | 1D axis value for a mapped action |
 | `input_axis_2d(action)` | 2D axis — returns `x, y` |
 
-> Rhai registers `is_key_pressed`/`is_key_just_pressed`/`is_key_just_released` (taking the key map as the first argument) and the multi-gamepad helpers above (taking the `gamepads` array), but has no axis or action-map helpers. Treat action-mapped input as a Lua-only feature.
-
 ## Audio
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `play_sound(path [, volume [, bus]])` | Both¹ | One-shot SFX (default bus `"Sfx"`) |
-| `play_sound_looping(path, volume)` | Both | Looping SFX |
-| `play_music(path [, volume [, fade_in]])` | Both¹ | Background music (bus `"Music"`) |
-| `stop_music([fade_out])` | Both | Stop music with optional fade |
-| `stop_all_sounds()` | Both | Stop everything |
-| `play_audio([entity])` | Lua | Fire a one-shot from an entity's `AudioPlayer` (random clip + jitter); no arg = self |
-
-¹ In Rhai, `play_sound`/`play_music` take only the `path`; use `play_sound_at_volume(path, volume)` for a volume.
+| Function | Description |
+|----------|-------------|
+| `play_sound(path [, volume [, bus]])` | One-shot SFX (default bus `"Sfx"`) |
+| `play_sound_looping(path, volume)` | Looping SFX |
+| `play_music(path [, volume [, fade_in]])` | Background music (bus `"Music"`) |
+| `stop_music([fade_out])` | Stop music with optional fade |
+| `stop_all_sounds()` | Stop everything |
+| `play_audio([entity])` | Fire a one-shot from an entity's `AudioPlayer` (random clip + jitter); no arg = self |
 
 ## Animation
-
-**Both backends.**
 
 | Function | Description |
 |----------|-------------|
@@ -274,29 +309,27 @@ end
 | `crossfade_animation(name, duration [, looping])` | Smoothly transition to a clip |
 | `set_anim_param(name, value)` | Set a float state-machine parameter |
 | `set_anim_bool(name, value)` | Set a bool state-machine parameter |
-| `trigger_anim(name)` | Fire a one-shot trigger parameter |
+| `trigger_anim(name)` / `set_anim_trigger(name)` | Fire a one-shot trigger parameter |
 | `set_layer_weight(layer, weight)` | Set an animation layer's blend weight |
+| `get_animation_length(name)` | Clip length in seconds |
 
 **2D sprite animations too.** [Sprite-sheet clips](../editor/sprite-animation.md) are ordinary property clips (a `SpriteSheet.frame` track), so the same calls drive them: `play_animation("run")` works whether "run" is a bone clip or a sprite clip — the entity has one animator either way.
 
-**Lua-only hook:** `on_animation_event(name, entity)` fires when playback crosses a named clip marker (see [Animation → Event markers](../editor/animation.md#event-markers)).
-
-> Rhai takes only `play_animation(name)`. When `renzora_animation` is active its [extension](#extension-functions) re-registers `set_anim_param`/`set_anim_bool` (routing through `ScriptAction`) and adds `set_anim_trigger` + `get_animation_length`.
+`on_animation_event(name, entity)` fires when playback crosses a named clip marker (see [Animation → Event markers](../editor/animation.md#event-markers)). Markers fire in play mode and in exported games, and loop-wrap is handled.
 
 ## Physics
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `apply_force(x, y, z)` | Both | Continuous force — call every frame |
-| `apply_impulse(x, y, z)` | Both | One-time velocity change |
-| `set_velocity(x, y, z)` | Both | Override linear velocity |
-| `set_gravity_scale(scale)` | Lua | Per-body gravity multiplier |
-
-> When `renzora_physics` is active it adds `move_controller` (collide-and-slide) and re-routes `apply_force`/`apply_impulse`/`set_linear_velocity` through its own action handlers — see [Extension functions](#extension-functions).
+| Function | Description |
+|----------|-------------|
+| `apply_force(x, y, z)` | Continuous force — call every frame |
+| `apply_impulse(x, y, z)` | One-time velocity change |
+| `set_velocity(x, y, z)` | Override linear velocity |
+| `set_gravity_scale(scale)` | Per-body gravity multiplier |
+| `move_controller(x, y, z)` | Collide-and-slide character movement (needs `renzora_physics`) |
 
 ## Parkour
 
-**Lua.** Provided by `renzora_parkour`. These **replace** `move_controller` for the entity: the parkour controller owns gravity, ground contact and collision itself, because a ledge hang and a rope swing are positions it has to set rather than forces it can ask for. Driving one entity with both fights over its `Transform`.
+Provided by `renzora_parkour`. These **replace** `move_controller` for the entity: the parkour controller owns gravity, ground contact and collision itself, because a ledge hang and a rope swing are positions it has to set rather than forces it can ask for. Driving one entity with both fights over its `Transform`.
 
 | Function | Description |
 |----------|-------------|
@@ -308,48 +341,60 @@ end
 
 Reads go through reflection: `get("ParkourReadState.state")`, `.event`, `.grounded`, `.speed`, `.traversing`, `.can_vault`, `.can_mantle`, `.can_grab`, `.near_ladder`, `.ledge_height`. See [Parkour & Traversal](../scripting/parkour.md).
 
+## Navigation
+
+Provided by `renzora_navmesh`.
+
+| Function | Description |
+|----------|-------------|
+| `nav_set_destination(x, y, z)` | Path to a world point |
+| `nav_clear_destination()` | Drop the current path |
+| `nav_stop()` | Stop moving, keep the path |
+
 ## Spawning & scenes
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `spawn_entity(name)` | Both | Create a new empty named entity |
-| `spawn_primitive(name, kind, x, y, z [, r, g, b])` | Lua | Spawn a `ShapeRegistry` primitive (`"cube"`, `"sphere"`, …) with optional tint |
-| `despawn_self()` | Both | Despawn the scripted entity |
-| `despawn_by_prefix(prefix)` | Lua | Despawn every entity whose `Name` starts with `prefix` |
-| `load_scene(path)` | Lua | Load a scene by path |
+| Function | Description |
+|----------|-------------|
+| `spawn_entity(name)` | Create a new empty named entity |
+| `spawn_primitive(name, kind, x, y, z [, r, g, b])` | Spawn a `ShapeRegistry` primitive (`"cube"`, `"sphere"`, …) with optional tint |
+| `despawn_self()` | Despawn the scripted entity |
+| `despawn_by_prefix(prefix)` | Despawn every entity whose `Name` starts with `prefix` |
+| `load_scene(path)` | Load a scene by path |
 
 ## Visibility, material & debug draw
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `set_visibility(visible)` | Both | Show / hide this entity |
-| `set_material_color(r, g, b [, a])` | Lua | Set the base color (0..1 floats) |
-| `screen_shake(intensity, duration)` | Both | Trigger a camera shake |
-| `draw_line(sx, sy, sz, ex, ey, ez [, duration])` | Lua | Draw a red debug line |
-| `print_log(msg)` | Both | Write to the engine console at Info level |
-| `print(...)` | Both | Standard-library print |
+| Function | Description |
+|----------|-------------|
+| `set_visibility(visible)` | Show / hide this entity |
+| `set_material_color(r, g, b [, a])` | Set the base color (0..1 floats) |
+| `screen_shake(intensity, duration)` | Trigger a camera shake |
+| `draw_line(sx, sy, sz, ex, ey, ez [, duration])` | Draw a red debug line **in the 3D scene** |
+| `print_log(msg)` | Write to the engine console at Info level |
+| `print(...)` | Standard-library print |
+
+`draw_line` here is a world-space debug line and is unrelated to `g.line` in [`on_draw`](#on_draw--the-2d-canvas), which is 2D screen drawing on a canvas.
 
 ## Cursor & environment
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `lock_cursor()` | Both | Grab and hide the cursor |
-| `unlock_cursor()` | Both | Release the cursor |
-| `set_sun_angles(azimuth, elevation)` | Both | Position the sun (degrees) |
-| `set_fog(enabled, start, end)` | Both | Toggle and range distance fog |
+| Function | Description |
+|----------|-------------|
+| `lock_cursor()` | Grab and hide the cursor |
+| `unlock_cursor()` | Release the cursor |
+| `set_sun_angles(azimuth, elevation)` | Position the sun (degrees) |
+| `set_fog(enabled, start, end)` | Toggle and range distance fog |
+| `set_wind(speed, direction)` | Speed in m/s, direction in degrees the wind travels *toward* |
+| `set_wind_gusts(strength, frequency, turbulence)` | Gust shaping |
 
 ## Timers
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `start_timer(name, duration [, repeat])` | Both² | Start a timer; finished names appear in `timers_finished` |
-| `stop_timer(name)` | Both | Cancel a timer |
-
-² In Rhai, `start_timer(name, duration)` is one-shot; use `start_timer_repeat(name, duration)` for repeating.
+| Function | Description |
+|----------|-------------|
+| `start_timer(name, duration [, repeat])` | Start a timer; finished names appear in `timers_finished` |
+| `stop_timer(name)` | Cancel a timer |
 
 ## Networking
 
-**Lua only.** Built on the engine's Lightyear layer (native only). See [Multiplayer](/docs/r1-alpha7/multiplayer/overview).
+Native only. See [Multiplayer](/docs/r1-alpha7/multiplayer/overview).
 
 | Function | Description |
 |----------|-------------|
@@ -373,7 +418,7 @@ end
 
 ## HTTP
 
-**Lua only.** Requests are asynchronous (native only); responses arrive at `on_http` on a later frame, tagged by the callback name.
+Requests are asynchronous (native only); responses arrive at `on_http` on a later frame, tagged by the callback name.
 
 > **Needs a network backend plugin** (`plugins/http`). The engine has no HTTP client of its own — see [Network backends](../extending/network-backends.md). With none present a request answers immediately with `status == 0` and an error body, rather than hanging.
 
@@ -395,18 +440,18 @@ end
 |----------|-------------|
 | `http_get(url [, callback])` | Fire a GET (callback defaults to `"get"`) |
 | `http_post(url, body [, callback])` | POST a JSON body string (callback defaults to `"post"`) |
+| `json_parse(str)` | Decode a JSON string into a table/value (`nil` on error) |
 
 An HTTP error status is **not** a failure here: a 404 arrives at `on_http` with `status == 404` and whatever body the server sent, which is how you read an API's own error message. Only `status == 0` means the request never reached a server, and `body` is then the transport error.
-| `json_parse(str)` | Decode a JSON string into a table/value (`nil` on error) |
 
 ## Assets
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `asset_progress()` | Both | Returns a table `{ state, total_files, loaded_files, total_bytes, loaded_bytes, fraction, current_path, elapsed_secs }`, or `nil` when idle |
-| `is_loading()` | Both | Convenience: `state == "loading"` |
-| `is_loaded()` | Both | Convenience: `state == "done"` |
-| `scene_load_state()` | Lua | Returns `{ phase, current_path, progress }`, or `nil` before any scene load has been observed. `phase` is `"idle"` / `"loading"` / `"ready"` / `"failed"` |
+| Function | Description |
+|----------|-------------|
+| `asset_progress()` | Returns a table `{ state, total_files, loaded_files, total_bytes, loaded_bytes, fraction, current_path, elapsed_secs }`, or `nil` when idle |
+| `is_loading()` | Convenience: `state == "loading"` |
+| `is_loaded()` | Convenience: `state == "done"` |
+| `scene_load_state()` | Returns `{ phase, current_path, progress }`, or `nil` before any scene load has been observed. `phase` is `"idle"` / `"loading"` / `"ready"` / `"failed"` |
 
 > **These two measure different things and a loading screen usually needs both.** `scene_load_state()` tracks the *scene* — parsed off-thread, spawned across frames by the streamer, reaching `ready` when the last entity lands. `asset_progress()` tracks how many of that scene's **models** have finished loading, which keeps running after the scene is fully spawned. Wait only on `scene_load_state()` and you will uncover a world whose meshes are still popping in.
 >
@@ -414,13 +459,15 @@ An HTTP error status is **not** a failure here: a 404 arrives at `on_http` with 
 
 ## Events
 
-| Function | Backends | Description |
-|----------|----------|-------------|
-| `emit(name, args)` | Lua | Broadcast an event; every script's `on_event(name, args)` fires next frame, as do Rust observers of `renzora::GameEvent` |
+| Function | Description |
+|----------|-------------|
+| `emit(name, args)` | Broadcast an event; every script's `on_event(name, args)` fires next frame, as do Rust observers of `renzora::GameEvent` |
 
 Delivery is deferred by one frame, so a script never sees its own emit within the same hook — dispatching inline would re-enter the VM mid-call and let a handler that emits recurse unbounded. An event with no listeners is a normal outcome, unlike an unclaimed `action()` name.
 
-From Rust, listen with an observer and send by queueing:
+An event is the right shape when the sender should not have to know who cares. `set_on("music", …)` is right when you know exactly what you are talking to; "the boss died" may interest a quest tracker, an achievement check and a save trigger, and the boss should not have to know that any of them exist.
+
+From Rust, listen with an observer:
 
 ```rust
 app.add_observer(|trigger: On<renzora::GameEvent>| {
@@ -430,7 +477,7 @@ app.add_observer(|trigger: On<renzora::GameEvent>| {
 
 ## Math helpers
 
-**Both backends.** `vec2`/`vec3` return a table (`{ x, y }` / `{ x, y, z }`).
+`vec2`/`vec3` return a table (`{ x, y }` / `{ x, y, z }`).
 
 | Function | Description |
 |----------|-------------|
@@ -441,7 +488,7 @@ app.add_observer(|trigger: On<renzora::GameEvent>| {
 
 ## The action() catalog
 
-`action(name, args)` fires a generic `ScriptAction` event observed by domain crates — the escape hatch for verbs with no dedicated function. `action_on(target, name, args)` targets a named entity. **Both are Lua only.**
+`action(name, args)` fires a generic `ScriptAction` event observed by domain crates — the escape hatch for verbs with no dedicated function. `action_on(target, name, args)` targets a named entity.
 
 ```lua
 action("ui_set_text", { name = "score_label", text = "Score: 100" })
@@ -461,61 +508,80 @@ Verbs that are actually observed in the current code:
 | Parkour (`renzora_parkour`) | `parkour_move`, `parkour_sprint`, `parkour_jump`, `parkour_action`, `parkour_release` |
 | Navmesh (`renzora_navmesh`) | `nav_set_destination`, `nav_clear_destination` |
 | Wind (`renzora_wind`) | `set_wind`, `set_wind_gusts` |
+| Animation (`renzora_animation`) | `set_anim_param`, `set_anim_bool`, `set_anim_trigger` |
+| Ragdoll (`renzora_ragdoll`) | `enable_ragdoll`, `disable_ragdoll` |
+| Camera (`renzora_engine`) | `set_fov` |
+
+Tweens also run through `action()`: `tween_position`, `tween_rotation` (Euler degrees), `tween_scale`. Easing defaults to `ease_in_out` if the name is unrecognized.
 
 > For widget *data* (a slider value, a bar fill), prefer reflection: `set_on("VolumeSlider", "SliderData.value", 0.5)`. There is **no** cross-scene variable store: `global_set` / `global_get` were removed along with the lifecycle graph that backed them, and a replacement is being designed.
 
-## Extension functions
+## How domain functions get declared
 
-Domain crates inject extra functions into the VM when their plugin is active. They register **after** the base API, so they can shadow base functions. (Lua; Rhai gets `move_controller`-family equivalents only where the crate registers them.)
+The functions in the Physics, Parkour, Navigation, Animation and Wind sections are not built into the interpreter. Each domain crate *declares* them through the `ScriptExtension` trait, and every language backend builds them from that declaration:
 
-| Plugin | Functions |
-|--------|-----------|
-| `renzora_physics` | `move_controller(x, y, z)` (collide-and-slide), plus re-registered `apply_force(x, y, z)`, `apply_impulse(x, y, z)`, `set_linear_velocity(x, y, z)` (routed through `ScriptAction`) |
-| `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
-| `renzora_parkour` | `parkour_move(x, y, z)`, `parkour_sprint(on)`, `parkour_jump()`, `parkour_action()`, `parkour_release()` — the traversal controller, which replaces `move_controller` on that entity. See [Parkour & Traversal](../scripting/parkour.md). |
-| `renzora_animation` | `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `set_anim_trigger(name)`, `get_animation_length(name)` |
-| `renzora_engine` (camera) | `set_fov(degrees)`, `camera_fov()` |
-| `renzora_wind` | `set_wind(speed, direction)`, `set_wind_gusts(strength, frequency, turbulence)` — speed in m/s, direction in degrees the wind travels *toward*. Reads go through reflection: `get("WindState.speed")`. See [Wind](../rendering/wind.md). |
+```rust
+impl ScriptExtension for MyScriptExtension {
+    fn name(&self) -> &str { "combat" }
+    fn bindings(&self) -> Vec<Binding> {
+        vec![Bind::action("deal_damage", "deal_damage")
+            .arg("amount", ParamKind::Float)
+            .build()]
+    }
+}
+```
+
+The trait is purely declarative — the crate says what a function is called and what arguments it takes, and links no interpreter at all. That is why adding a language does not mean re-implementing the domain vocabulary, and why a new domain function appears in every language at once.
+
+Core, engine-wide primitives (`set_position`, `play_sound`, `spawn_entity`, the reflection `set`/`get`/`set_on`, …) live in the language plugin's own `register_api()` instead. See [Script API Bindings](../extending/script-bindings.md) for how to add one, and [Script Backends](../extending/script-backends.md) for how to add a language.
 
 ## Capabilities not exposed as functions
 
-The `ScriptCommand` enum (`command.rs`) defines many engine verbs that have **no named function binding**. They are reachable from text scripts only via `action()`/extensions, if at all — calling them by name will fail:
+The `ScriptCommand` enum (`command.rs`) defines engine verbs that have **no named function binding**. They are reachable from text scripts only via `action()`/extensions, if at all — calling them by name will fail:
 
-`apply_torque`, `set_angular_velocity`, `Raycast`, `tween` / `tween_position` / `tween_rotation` / `tween_scale`, all particle ops (`particle_play`/`burst`/`set_rate`/…), health (`set_health`, `damage`, `heal`, `kill`, `revive`, `set_invincible`), `camera_follow` / `set_camera_target` / `set_camera_zoom`, `spawn_prefab` / `unload_scene`, sprite animation, debug draws (`draw_ray` / `draw_sphere` / `draw_box` / `draw_point`), and `set_light_intensity` / `set_light_color`.
+`apply_torque`, `set_angular_velocity`, `Raycast`, all particle ops (`particle_play`/`burst`/`set_rate`/…), health (`set_health`, `damage`, `heal`, `kill`, `revive`, `set_invincible`), `camera_follow` / `set_camera_target` / `set_camera_zoom`, `spawn_prefab` / `unload_scene`, debug draws (`draw_ray` / `draw_sphere` / `draw_box` / `draw_point`), and `set_light_intensity` / `set_light_color`.
 
-> Do not document these as available globals — the old API draft invented names such as `rpc_send`, `is_server`, `get_network_id`, `raycast_down`, `find_entity_by_name`, and `terrain_get_height` that **do not exist** in the engine. (That list used to include `set_camera_fov`; field of view is now reachable, as `set_fov` / `camera_fov` — see [Field of view](#field-of-view).)
+> Do not document these as available globals — an old API draft invented names such as `rpc_send`, `is_server`, `get_network_id`, `raycast_down`, `find_entity_by_name`, and `terrain_get_height` that **do not exist** in the engine.
+
+## Rust scripts
+
+A `<project>/scripts/*.rs` file is not this API at all. It is compiled into a [native plugin](../extending/native-plugins.md) and called once per frame per entity with `&mut World` — full Bevy, no command vocabulary, no queue.
+
+`RustScriptBackend` claims the `.rs` extension so the Scripts component accepts one and the execution loop does not flag it as broken, but it returns no `ScriptCommand`s, because there genuinely are none: the whole reason to write Rust is the `&mut World` that no command vocabulary can stand in for. Gated on play mode exactly like Lua; recompiles on save, off the main thread. See [Rust Scripts](../scripting/rust-scripts.md).
 
 ## Blueprints
 
-Visual [Blueprints](/docs/r1-alpha7/scripting/blueprints) (`.blueprint` / `.bp`, JSON-serialized `BlueprintGraph`) are a separate system. At runtime they are **interpreted directly** by `renzora_blueprint` — walking the graph and emitting the same `ScriptAction` / transform / character commands as text scripts — not compiled to Lua. (The editor's `compile_to_lua` bake to `scripts/bp_<name>.lua` is an export action, not the live path.) Blueprints expose collision, timer, and message *events* (`event/on_collision_enter`, `event/on_timer`, `event/on_message`, …) that text scripts do not have.
+Visual [Blueprints](/docs/r1-alpha7/scripting/blueprints) (`.blueprint` / `.bp`, JSON-serialized `BlueprintGraph`) **compile to Lua** and run through the script VM. There is no live graph interpreter — compilation is the single execution path, the way Unreal compiles its Blueprints to bytecode, so a blueprint and a hand-written script are the same thing by the time they execute.
 
-## Rhai subset
+Two consequences worth knowing. A blueprint reaches the engine through exactly the vocabulary on this page, so anything outside the node palette has to be written in Lua. And a blueprint **needs the Lua backend present**: remove `plugins/lua` and blueprints stop running too.
 
-Rhai (`.rhai`) is a first-class backend for the web build, but a **subset** of the Lua surface (roughly 45 vs Lua's ~70 functions) supporting only the `props`, `on_ready`, and `on_update` hooks. Compared to Lua, Rhai has **no**:
+Blueprints do expose collision, timer, and message *events* (`event/on_collision_enter`, `event/on_timer`, `event/on_message`, …) that text scripts have no hook for.
 
-- Action-map / axis input helpers (only raw `is_key_*` taking a key-map argument, and the `gamepad_*` multi-pad queries taking the `gamepads` array)
-- Networking (`rpc`, `net_*`) or HTTP (`http_*`, `json_parse`)
-- `action` / `action_on`
-- Bulk reflection (`get_component*`, `has_component*`) — `get`/`set`/`get_on`/`set_on` are present
-- `play_audio`, `set_gravity_scale`, `set_material_color`, `draw_line`
-- `spawn_primitive`, `despawn_by_prefix`, `load_scene`
+## Porting from Rhai
 
-Syntax also differs:
+`.rhai` scripts no longer run. The function names carry over almost unchanged — every Rhai function was a subset of the Lua surface — so porting is mostly syntax:
 
-| Feature | Lua | Rhai |
-|---------|-----|------|
-| Local variable | `local x = 5` | `let x = 5` |
-| Map / table | `{ key = value }` | `#{ key: value }` |
-| Nil / empty | `nil` | `()` |
-| String concat | `..` | `+` |
-| Not equal | `~=` | `!=` |
-| Array index | 1-based | 0-based |
-| Block end | `end` | `}` |
-| Logical ops | `and` / `or` / `not` | `&&` / `\|\|` / `!` |
+| Feature | Rhai | Lua |
+|---------|------|-----|
+| Local variable | `let x = 5` | `local x = 5` |
+| Map / table | `#{ key: value }` | `{ key = value }` |
+| Nil / empty | `()` | `nil` |
+| String concat | `+` | `..` |
+| Not equal | `!=` | `~=` |
+| Array index | 0-based | 1-based |
+| Block end | `}` | `end` |
+| Logical ops | `&&` / `\|\|` / `!` | `and` / `or` / `not` |
+
+Two renames to watch for: Rhai's `play_sound_at_volume(path, volume)` is Lua's `play_sound(path, volume)`, and `start_timer_repeat(name, duration)` is `start_timer(name, duration, true)`. Rhai's key/gamepad helpers took a leading map or array argument (`is_key_pressed(keys, "Space")`); the Lua ones do not (`is_key_pressed("Space")`).
+
+Everything Rhai could not do — `action()`, networking, HTTP, bulk reflection, `on_draw`, and every hook past `on_update` — is available once ported.
 
 ## See also
 
-- [Lua](/docs/r1-alpha7/scripting/lua) — guided introduction to the full backend
+- [Lua](/docs/r1-alpha7/scripting/lua) — guided introduction to the backend
+- [Rust Scripts](/docs/r1-alpha7/scripting/rust-scripts) — `&mut World` per entity
 - [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints) — node graphs interpreted at runtime
 - [Input Handling](/docs/r1-alpha7/scripting/input) — the action map and key names
 - [Game UI](/docs/r1-alpha7/scripting/game-ui) — markup, `ui_*` verbs, and bindings
+- [Script API Bindings](/docs/r1-alpha7/extending/script-bindings) — declaring a new function from a domain crate
+- [Script Backends](/docs/r1-alpha7/extending/script-backends) — adding a language

@@ -20,11 +20,12 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::reactive::Bound;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    button, checkbox, folder_new_button, folder_picker, menu_item_styled, menu_submenu_styled, overlay_sized,
-    text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
+    checkbox, folder_new_button, folder_picker_files, menu_item_styled, menu_submenu_styled,
+    overlay_sized, text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
 };
 use renzora_scripting::ScriptComponent;
 
@@ -39,6 +40,11 @@ const PICKER_DEPTH: usize = 2;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CreateKind {
     Script,
+    /// A `.rs` script — `renzora_rust_script` compiles it to a native plugin and
+    /// calls it with `&mut World` once per frame per entity. Routing is by file
+    /// extension, so it attaches through the same `ScriptComponent` as Lua and
+    /// the two coexist on one entity.
+    RustScript,
     Blueprint,
     Material,
     Particle,
@@ -47,8 +53,9 @@ pub(crate) enum CreateKind {
 }
 
 impl CreateKind {
-    const ALL: [CreateKind; 6] = [
+    const ALL: [CreateKind; 7] = [
         CreateKind::Script,
+        CreateKind::RustScript,
         CreateKind::Blueprint,
         CreateKind::Material,
         CreateKind::Particle,
@@ -59,6 +66,7 @@ impl CreateKind {
     fn label(self) -> String {
         match self {
             CreateKind::Script => renzora::lang::t("assets.new.lua"),
+            CreateKind::RustScript => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             CreateKind::Blueprint => renzora::lang::t("assets.new.blueprint"),
             CreateKind::Material => renzora::lang::t("assets.new.material"),
             CreateKind::Particle => renzora::lang::t("assets.new.particle"),
@@ -67,10 +75,24 @@ impl CreateKind {
         }
     }
 
+    /// Worth offering on a UI entity.
+    ///
+    /// A canvas or a widget can carry scripts and can be given a template; a
+    /// material, a particle system, a blueprint or a nested scene are things you
+    /// attach to a *scene* entity, and offering them on a canvas is offering
+    /// something that will not do anything.
+    fn on_ui(self) -> bool {
+        matches!(
+            self,
+            CreateKind::Script | CreateKind::RustScript | CreateKind::Template
+        )
+    }
+
     /// Default file name (without extension) the name field starts with.
     fn stem(self) -> &'static str {
         match self {
             CreateKind::Script => "new_script",
+            CreateKind::RustScript => "new_script",
             CreateKind::Blueprint => "NewBlueprint",
             CreateKind::Material => "NewMaterial",
             CreateKind::Particle => "NewParticle",
@@ -82,6 +104,7 @@ impl CreateKind {
     fn ext(self) -> &'static str {
         match self {
             CreateKind::Script => "lua",
+            CreateKind::RustScript => "rs",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "material",
             CreateKind::Particle => "particle",
@@ -92,16 +115,24 @@ impl CreateKind {
 
     /// Starter contents — byte-identical to what the assets panel writes, so a
     /// file created here opens in exactly the same state as one created there.
-    fn content(self) -> String {
+    ///
+    /// `boilerplate` (Settings → *Boilerplate in new files*) chooses between a
+    /// commented starter that shows the shape of the thing and the bare minimum
+    /// that works. **Minimum is not empty**: a `.rs` without `renzora::script!`
+    /// exports no entry point and a `.html` without a `<template>` root does not
+    /// parse, so the skeleton those need is always written. The switch decides
+    /// whether there is anything inside it.
+    fn content(self, boilerplate: bool) -> String {
         match self {
-            CreateKind::Script => "-- New Lua script\n".to_string(),
+            CreateKind::Script => renzora_scripting::starter_lua(boilerplate),
+            CreateKind::RustScript => renzora_scripting::starter_rust(boilerplate),
             // Not `{}`: a blueprint with no event node is a dead canvas, so new
             // files start with On Ready + On Update already placed. Owned by
             // the blueprint crate so both create paths write the same graph.
             CreateKind::Blueprint => renzora_blueprint::starter_blueprint_json(),
             CreateKind::Material => "{}".to_string(),
             CreateKind::Particle => "(name: \"New Particle\")".to_string(),
-            CreateKind::Template => "<template>\n    <node></node>\n</template>\n".to_string(),
+            CreateKind::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             CreateKind::Scene => "// renzora interim bsn v1\n".to_string(),
         }
@@ -112,7 +143,7 @@ impl CreateKind {
     /// the marketplace installs into.
     fn default_dir(self) -> &'static str {
         match self {
-            CreateKind::Script => "scripts",
+            CreateKind::Script | CreateKind::RustScript => "scripts",
             CreateKind::Blueprint => "blueprints",
             CreateKind::Material => "materials",
             CreateKind::Particle => "particles",
@@ -124,6 +155,7 @@ impl CreateKind {
     fn icon(self) -> &'static str {
         match self {
             CreateKind::Script | CreateKind::Template => "code",
+            CreateKind::RustScript => "gear-six",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "palette",
             CreateKind::Particle => "sparkle",
@@ -134,6 +166,8 @@ impl CreateKind {
     fn color(self) -> (u8, u8, u8) {
         match self {
             CreateKind::Script => (120, 170, 255),
+            // Rust's orange, so the two script kinds are one glance apart.
+            CreateKind::RustScript => (222, 130, 80),
             CreateKind::Blueprint => (100, 180, 255),
             CreateKind::Material => (0, 200, 130),
             CreateKind::Particle => (230, 160, 90),
@@ -143,11 +177,55 @@ impl CreateKind {
     }
 
     /// Whether the entity can carry this asset. Scripts and blueprints both run
-    /// through `ScriptComponent`; the rest are project files with no direct
-    /// entity attachment, so their overlay omits the attach row entirely.
+    /// through `ScriptComponent`; a template goes into a canvas's
+    /// `HtmlTemplatePath` (see [`Self::attach_to`]). The rest are project files
+    /// with no direct entity attachment, so their overlay omits the row.
     fn attachable(self) -> bool {
-        matches!(self, CreateKind::Script | CreateKind::Blueprint)
+        matches!(
+            self,
+            CreateKind::Script
+                | CreateKind::RustScript
+                | CreateKind::Blueprint
+                | CreateKind::Template
+        )
     }
+
+    /// Put the freshly-created file on `entity`.
+    ///
+    /// Templates were `attachable() == false`, so "Attach ▸ UI Template" on a
+    /// canvas wrote the file, said it was done, and left the canvas empty — the
+    /// one row in that menu whose whole name is *attach* was the one that did
+    /// not. Two attachment mechanisms, one per kind, rather than one that only
+    /// knew about scripts.
+    fn attach_to(self, em: &mut bevy::ecs::world::EntityWorldMut, rel: PathBuf) {
+        if matches!(self, CreateKind::Template) {
+            // Insert, not modify: the binding observer fires on insert and is
+            // what builds the markup under the canvas.
+            em.insert(renzora_ember::markup::HtmlTemplatePath(
+                rel.to_string_lossy().replace('\\', "/"),
+            ));
+            return;
+        }
+        match em.get_mut::<ScriptComponent>() {
+            Some(mut sc) => {
+                sc.add_file_script(rel);
+            }
+            None => {
+                em.insert(ScriptComponent::from_file(rel));
+            }
+        }
+    }
+}
+
+/// Is the picker currently pointing at a file rather than a folder?
+///
+/// Drives the overlay's three reactive bits — the name row hides, the label
+/// above the picker changes, and Confirm says "Attach" — so that one overlay
+/// reads as two modes without having a mode.
+fn file_selected(w: &renzora_ember::reactive::Rx) -> bool {
+    w.get_resource::<FolderPick>()
+        .and_then(|p| p.0.clone())
+        .is_some_and(|p| p.is_file())
 }
 
 /// The overlay awaiting confirmation. Lives only while it's on screen — Escape,
@@ -184,7 +262,14 @@ pub(crate) fn register(app: &mut App) {
 
 /// The "Attach" row for the entity context menu: one hover submenu listing every
 /// kind. Returns the row to push into the menu's children.
-pub(crate) fn create_submenu(commands: &mut Commands, fonts: &EmberFonts, target: Entity) -> Entity {
+/// `is_ui` narrows the list to what a canvas or widget can actually carry — see
+/// [`CreateKind::on_ui`].
+pub(crate) fn create_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    target: Entity,
+    is_ui: bool,
+) -> Entity {
     let (row, content) = menu_submenu_styled(
         commands,
         fonts,
@@ -194,6 +279,7 @@ pub(crate) fn create_submenu(commands: &mut Commands, fonts: &EmberFonts, target
     );
     let items: Vec<Entity> = CreateKind::ALL
         .iter()
+        .filter(|k| !is_ui || k.on_ui())
         .map(|&kind| {
             menu_item_styled(
                 commands,
@@ -250,17 +336,37 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
     );
 
     let name_input = text_input(&mut commands, &fonts.ui, kind.stem(), kind.stem());
-    let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH);
-    let mut kids = vec![
-        field_row(
-            &mut commands,
-            &fonts,
-            &renzora::lang::t("hierarchy.create.name"),
-            name_input,
-        ),
-        section_label(&mut commands, &fonts, &renzora::lang::t("hierarchy.create.destination")),
-        picker,
-    ];
+    // The picker lists matching **files** as well as folders, which is what
+    // makes one overlay do both jobs. "Attach" means attach, and it used to only
+    // ever create — you could not point it at the script you already had.
+    //
+    // No mode switch: what you click decides. Pick a folder and the name field
+    // applies, so Confirm creates a file there; pick a file and there is nothing
+    // to name, so Confirm attaches that one. The name row and the button's label
+    // follow the selection.
+    let ext = kind.ext();
+    let picker =
+        folder_picker_files(&mut commands, &fonts, &root, &default_dest, PICKER_DEPTH, &[ext]);
+    let name_row = field_row(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t("hierarchy.create.name"),
+        name_input,
+    );
+    bind_display(&mut commands, name_row, |w| !file_selected(w));
+    let dest_label = section_label(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t("hierarchy.create.destination"),
+    );
+    bind_text(&mut commands, dest_label, |w| {
+        if file_selected(w) {
+            renzora::lang::t_or("hierarchy.create.pick_existing", "Attach an existing file")
+        } else {
+            renzora::lang::t("hierarchy.create.destination")
+        }
+    });
+    let mut kids = vec![name_row, dest_label, picker];
 
     let attach = kind.attachable().then(|| {
         let cb = checkbox(&mut commands, true);
@@ -287,10 +393,28 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
     // controls, not two. It floats at the row's left edge (absolute, out of
     // flow), so Cancel and Create lay out untouched.
     let new_folder = folder_new_button(&mut commands, &fonts, picker);
-    let cancel = button(&mut commands, &fonts.ui, &renzora::lang::t("common.cancel"));
+    let cancel = renzora_ember::widgets::button(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t("common.cancel"),
+    );
     commands.entity(cancel).insert(CreateCancelBtn);
-    let confirm = button(&mut commands, &fonts.ui, &renzora::lang::t("hierarchy.create.confirm"));
+    let (confirm, confirm_label) = renzora_ember::widgets::button_parts(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t("hierarchy.create.confirm"),
+    );
     commands.entity(confirm).insert(CreateConfirmBtn);
+    // The button says which of the two things it is about to do. A "Create"
+    // button that attaches an existing file is the kind of small lie that costs
+    // someone a duplicated asset.
+    bind_text(&mut commands, confirm_label, |w| {
+        if file_selected(w) {
+            renzora::lang::t_or("hierarchy.create.confirm_attach", "Attach")
+        } else {
+            renzora::lang::t("hierarchy.create.confirm")
+        }
+    });
     commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
     kids.push(buttons);
 
@@ -360,6 +484,7 @@ fn create_overlay_buttons(
     checks: Query<&Bound<bool>>,
     pick: Res<FolderPick>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     mut toasts: Option<ResMut<renzora_ui::Toasts>>,
     mut commands: Commands,
 ) {
@@ -375,6 +500,40 @@ fn create_overlay_buttons(
     }
 
     let kind = pending.kind;
+
+    // A file is selected → attach that one and write nothing. This is the whole
+    // "Attach means attach" half of the overlay; the create path below is
+    // unchanged.
+    if let Some(existing) = pick.path().filter(|p| p.is_file()).map(Path::to_path_buf) {
+        commands.entity(pending.overlay).despawn();
+        let target = pending.target;
+        let name = existing
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if let Some(root) = project.as_ref().map(|p| p.path.clone()) {
+            let rel = PathBuf::from(
+                existing
+                    .strip_prefix(&root)
+                    .unwrap_or(&existing)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+            commands.queue(move |w: &mut World| {
+                if let Ok(mut em) = w.get_entity_mut(target) {
+                    kind.attach_to(&mut em, rel);
+                }
+            });
+        }
+        if let Some(toasts) = toasts.as_mut() {
+            toasts.success(
+                renzora::lang::t("hierarchy.create.toast_attached").replace("{name}", &name),
+            );
+        }
+        commands.remove_resource::<PendingCreate>();
+        return;
+    }
+
     let typed = inputs
         .get(pending.name_input)
         .map(|i| i.value.trim().to_string())
@@ -391,7 +550,11 @@ fn create_overlay_buttons(
     commands.entity(pending.overlay).despawn();
 
     let path = unique_path(&dir, &stem, kind.ext());
-    if let Err(e) = std::fs::write(&path, kind.content()) {
+    // Defaults to boilerplate when settings are missing, matching
+    // `EditorSettings::default` — a first-run editor should show you the shape
+    // of the thing rather than an empty file.
+    let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
+    if let Err(e) = std::fs::write(&path, kind.content(boilerplate)) {
         if let Some(toasts) = toasts.as_mut() {
             toasts.error(format!("{}: {e}", path.display()));
         }
@@ -421,14 +584,7 @@ fn create_overlay_buttons(
                 // still written, there's just nothing left to attach it to.
                 return;
             };
-            match em.get_mut::<ScriptComponent>() {
-                Some(mut sc) => {
-                    sc.add_file_script(rel);
-                }
-                None => {
-                    em.insert(ScriptComponent::from_file(rel));
-                }
-            }
+            kind.attach_to(&mut em, rel);
         });
     }
 

@@ -11,7 +11,7 @@ Terrain is two crates working together:
 
 A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`TerrainChunkData`) per tile. Each chunk stores a square grid of heights normalized to `[0, 1]`; the chunk's `TerrainData` maps that range onto world `min_height..max_height`. Sculpting writes the chunk's `base_heights`; a composition pass adds any per-layer carve deltas to produce the final `heights` the mesh and collider read.
 
-> There is **no terrain scripting API**. Older docs showed `terrain_get_height(x, z)` / `terrain_set_height(x, z, h)` and globals like `position_x` — none of these exist in Lua or Rhai. Terrain is authored in the editor and serialized into the scene; runtime height queries are done with a standard mesh raycast.
+> There is **no terrain scripting API**. Older docs showed `terrain_get_height(x, z)` / `terrain_set_height(x, z, h)` and globals like `position_x` — none of these exist. Terrain is authored in the editor and serialized into the scene; runtime height queries are done with a standard mesh raycast.
 
 ## Creating terrain
 

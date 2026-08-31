@@ -1,6 +1,6 @@
 # Animation
 
-Renzora's animation system is built on Bevy's `AnimationGraph` and adds RON clip files, a **property-animation dopesheet** (keyframe any component field — rotation, scale, a light's azimuth, …), named **event markers**, state machines, blend trees, layers, and procedural tweens — all authored in the editor and driven from Lua or Rhai.
+Renzora's animation system is built on Bevy's `AnimationGraph` and adds RON clip files, a **property-animation dopesheet** (keyframe any component field — rotation, scale, a light's azimuth, …), named **event markers**, state machines, blend trees, layers, and procedural tweens — all authored in the editor and driven from scripts.
 
 > **Two animation layers in one clip.** A `.anim` file can carry **skeletal bone tracks** (imported from a model, played through Bevy's `AnimationPlayer`) *and* **property tracks** (authored on the dopesheet, sampled by a custom property sampler). They share the same clip slot, transport, and script controls. The skeletal half is covered first; [Property animation](#property-animation) covers the dopesheet.
 
@@ -292,16 +292,6 @@ function on_update()
 end
 ```
 
-The same script in Rhai (use `trigger_anim` — `set_anim_trigger` is a Lua-only alias):
-
-```rhai
-fn on_update() {
-    let speed = (input_x * input_x + input_y * input_y).sqrt();
-    set_anim_param("speed", speed);
-    set_anim_bool("grounded", true);
-}
-```
-
 ## Blend trees
 
 `BlendTree` lets a state blend multiple clips. A state references one with `motion: BlendTree("name")`. The tree itself is recursive:
@@ -340,23 +330,23 @@ end
 
 ## Playing animations from scripts
 
-These functions are registered in **both** Lua and Rhai. They act on the **entity the script is attached to** — there is no entity argument. Refer to clips by their slot `name`. They drive **both** the skeletal and the [property-animation](#property-animation) halves of a clip.
+These act on the **entity the script is attached to** — there is no entity argument. Refer to clips by their slot `name`. They drive **both** the skeletal and the [property-animation](#property-animation) halves of a clip.
 
-| Function | Lua | Rhai | Notes |
-|----------|-----|------|-------|
-| `play_animation(name [, looping [, speed]])` | ✅ | `play_animation(name)` | Lua `looping` defaults to `true`, `speed` to `1.0`. Rhai always loops. Plays the clip's bone **and** property tracks; works on skeleton-less entities. |
-| `crossfade_animation(name, duration [, looping])` | ✅ | `crossfade_animation(name, duration)` | Smoothly blend to a clip over `duration` seconds. |
-| `stop_animation()` | ✅ | ✅ | Stop the current clip (fully halts property playback too). |
-| `pause_animation()` / `resume_animation()` | ✅ | ✅ | Pause / resume playback. |
-| `set_animation_speed(speed)` | ✅ | ✅ | `1.0` = normal, `2.0` = double, negative = reverse. Affects property playback speed. |
-| `seek_animation(time)` | ✅ | ✅ | Jump playback to `time` seconds. |
-| `get_animation_time()` | ✅ | ✅ | Current property-playback time in seconds. |
-| `is_animation_playing()` | ✅ | ✅ | `true` unless paused or stopped. |
-| `set_anim_param(name, value)` | ✅ | ✅ | Set a state-machine float parameter. |
-| `set_anim_bool(name, value)` | ✅ | ✅ | Set a state-machine bool parameter. |
-| `trigger_anim(name)` | ✅ | ✅ | Fire a one-shot trigger. (`set_anim_trigger` is a Lua-only alias.) |
-| `set_layer_weight(layer_name, weight)` | ✅ | ✅ | Set a layer's blend weight. |
-| `get_animation_length(name)` | ✅ | ❌ | Clip length in seconds (`0` if not loaded). Lua only. |
+| Function | Notes |
+|----------|-------|
+| `play_animation(name [, looping [, speed]])` | `looping` defaults to `true`, `speed` to `1.0`. Plays the clip's bone **and** property tracks; works on skeleton-less entities. |
+| `crossfade_animation(name, duration [, looping])` | Smoothly blend to a clip over `duration` seconds. |
+| `stop_animation()` | Stop the current clip (fully halts property playback too). |
+| `pause_animation()` / `resume_animation()` | Pause / resume playback. |
+| `set_animation_speed(speed)` | `1.0` = normal, `2.0` = double, negative = reverse. Affects property playback speed. |
+| `seek_animation(time)` | Jump playback to `time` seconds. |
+| `get_animation_time()` | Current property-playback time in seconds. |
+| `is_animation_playing()` | `true` unless paused or stopped. |
+| `set_anim_param(name, value)` | Set a state-machine float parameter. |
+| `set_anim_bool(name, value)` | Set a state-machine bool parameter. |
+| `trigger_anim(name)` | Fire a one-shot trigger. (`set_anim_trigger` is an alias.) |
+| `set_layer_weight(layer_name, weight)` | Set a layer's blend weight. |
+| `get_animation_length(name)` | Clip length in seconds (`0` if not loaded). |
 
 ```lua
 function on_ready()
@@ -409,7 +399,7 @@ function on_animation_event(name, entity)
 end
 ```
 
-> `on_animation_event` is **Lua-only** (like `on_ui` / `on_rpc`); Rhai scripts don't receive it. Markers fire in play mode and in exported games, and loop-wrap is handled.
+> Markers fire in play mode and in exported games, and loop-wrap is handled.
 
 To react to a clip **ending** instead:
 
@@ -437,7 +427,7 @@ function on_ready()
 end
 ```
 
-> Tweens run through `action()`, which is **Lua-only** — Rhai has no `action()` verb. `tween_rotation` takes Euler angles in degrees. Easing defaults to `ease_in_out` if the name is unrecognized.
+> `tween_rotation` takes Euler angles in degrees. Easing defaults to `ease_in_out` if the name is unrecognized.
 
 Available easing names: `linear`, `ease_in`, `ease_out`, `ease_in_out`, `ease_in_quad`, `ease_out_quad`, `ease_in_out_quad`, `ease_in_cubic`, `ease_out_cubic`, `ease_in_out_cubic`, `ease_in_back`, `ease_out_back`, `ease_in_out_back`, `ease_in_elastic`, `ease_out_elastic`, `ease_in_bounce`, `ease_out_bounce`.
 
@@ -447,4 +437,3 @@ Available easing names: `linear`, `ease_in`, `ease_out`, `ease_in_out`, `ease_in
 - **Per-clip blends:** a clip slot's `blend_in` / `blend_out` override the animator's global `blend_duration` when transitioning into or out of that clip.
 - **Speed can be negative** to play a clip in reverse.
 - **Scripts on the dedicated server:** animation scripts also run headless on a `--server` build, so server-authoritative logic can drive the same parameters.
-- **Rhai is a subset of Lua.** The core playback functions above all work in Rhai, but `action()`-based tweens, `set_anim_trigger`, and `get_animation_length` are Lua-only, and Rhai supports only the `props` / `on_ready` / `on_update` hooks.

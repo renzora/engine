@@ -35,10 +35,10 @@ Joint translation (the point itself, not its bend) always stays rigid regardless
 
 ## Scripting
 
-| Function | Lua | Rhai | Effect |
-|---|---|---|---|
-| `enable_ragdoll()` | yes | — | Flips every bone of the script's entity to `RigidBody::Dynamic`, detaches the bones from the `AnimationPlayer`, and pauses the animator — the avian solver + joints take over. |
-| `disable_ragdoll()` | yes | — | Reconnects the bones to the `AnimationPlayer`, flips them back to `Kinematic`, and resumes the animator. |
+| Function | Effect |
+|---|---|
+| `enable_ragdoll()` | Flips every bone of the script's entity to `RigidBody::Dynamic`, detaches the bones from the `AnimationPlayer`, and pauses the animator — the avian solver + joints take over. |
+| `disable_ragdoll()` | Reconnects the bones to the `AnimationPlayer`, flips them back to `Kinematic`, and resumes the animator. |
 
 ```lua
 -- character.lua

@@ -121,7 +121,7 @@ fn seed_camera_effects(
             // scene used to carry on the World Environment). DOF / motion blur /
             // FXAA / SMAA / CAS / deband stay OFF by default — added per-camera.
             renzora_bloom_effect::BloomSettings::default(),
-            renzora_auto_exposure::AutoExposureSettings::default(),
+            renzora::AutoExposureSettings::default(),
             renzora_tonemapping::TonemappingSettings::default(),
             renzora_antialiasing::TaaSettings::default(),
             // Manual exposure (lens attribute, edited in the Camera section). The
@@ -145,7 +145,7 @@ fn strip_camera_effects_from_2d(
             With<Camera2d>,
             Or<(
                 With<renzora_bloom_effect::BloomSettings>,
-                With<renzora_auto_exposure::AutoExposureSettings>,
+                With<renzora::AutoExposureSettings>,
                 With<renzora_tonemapping::TonemappingSettings>,
                 With<renzora_antialiasing::TaaSettings>,
             )>,
@@ -155,7 +155,7 @@ fn strip_camera_effects_from_2d(
     for cam in &cams {
         commands.entity(cam).remove::<(
             renzora_bloom_effect::BloomSettings,
-            renzora_auto_exposure::AutoExposureSettings,
+            renzora::AutoExposureSettings,
             renzora_tonemapping::TonemappingSettings,
             renzora_antialiasing::TaaSettings,
         )>();
@@ -1421,7 +1421,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     // `App::add_plugins` panic. Users can still add it via the
     // inspector's "Add Component" overlay; the inspector entry is
     // registered by the dlopen path.
-    let night_stars = renzora_night_stars::NightStarsData {
+    let night_stars = renzora::NightStarsData {
         enabled: false,
         ..default()
     };
@@ -1456,7 +1456,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // ── Atmosphere / sky ─────────────────────────────────────
             (
                 renzora_atmosphere::AtmosphereComponentSettings::default(),
-                renzora_clouds::CloudsData::default(),
+                renzora::CloudsData::default(),
                 night_stars,
             ),
             // ── Screen-space reflections (still a WorldEnvironment effect) ──
@@ -1494,6 +1494,7 @@ fn register_lighting_presets(app: &mut App) {
         title: "New Environment",
         description: "Sun, atmosphere, fog, and a fresh terrain",
         icon: "tree-evergreen",
+        produces: &[],
         spawn_fn: |world: &mut World| {
             spawn_world_environment(world);
             renzora_terrain::mesh::spawn_terrain(world);

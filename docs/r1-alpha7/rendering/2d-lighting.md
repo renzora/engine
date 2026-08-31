@@ -74,7 +74,7 @@ camera config's `Normal Mode`.
 ## Scripting
 
 The components are reflection-registered, so the generic reflection accessors
-work from Lua/Rhai — e.g. `set(entity, "PointLight2d", "intensity", 4.0)` for a
+work from scripts — e.g. `set(entity, "PointLight2d", "intensity", 4.0)` for a
 flicker, or toggling `Occluder2dEnabled`. No dedicated script functions yet.
 
 ## Under the hood

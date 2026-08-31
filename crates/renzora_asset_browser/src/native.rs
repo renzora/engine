@@ -416,7 +416,11 @@ impl NewAsset {
             NewAsset::Bsn => "NewScene.bsn",
         }
     }
-    fn content(self) -> String {
+    /// `boilerplate` comes from `EditorSettings::new_file_boilerplate`; the
+    /// starters themselves are owned by the crates that consume the formats, so
+    /// a file made here is byte-identical to one made from the hierarchy's
+    /// Attach menu.
+    fn content(self, boilerplate: bool) -> String {
         match self {
             NewAsset::Folder => String::new(),
             NewAsset::Material => "{}".to_string(),
@@ -424,9 +428,9 @@ impl NewAsset {
             // event, so a new file starts with On Ready + On Update placed —
             // see `renzora_blueprint::starter`.
             NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
-            NewAsset::Lua => "-- New Lua script\n".to_string(),
+            NewAsset::Lua => renzora_scripting::starter_lua(boilerplate),
             NewAsset::Particle => "(name: \"New Particle\")".to_string(),
-            NewAsset::Template => "<template>\n    <node></node>\n</template>\n".to_string(),
+            NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             NewAsset::Bsn => "// renzora interim bsn v1\n".to_string(),
         }
@@ -692,7 +696,9 @@ fn create_asset_click(
     q: Query<(&Interaction, &NewAssetBtn), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
+    let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
     for (interaction, btn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -705,7 +711,7 @@ fn create_asset_click(
         let ok = if kind.is_folder() {
             std::fs::create_dir_all(&path).is_ok()
         } else {
-            std::fs::write(&path, kind.content()).is_ok()
+            std::fs::write(&path, kind.content(boilerplate)).is_ok()
         };
         if ok {
             state.selected = Some(path);
@@ -779,6 +785,26 @@ fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity>
             "folder-open",
             &renzora::lang::t("assets.import_folder"),
             |w| request_import(w, renzora::core::ImportPick::Folder),
+        ),
+        // The third way to get an asset into a project, beside the two local
+        // ones. It belongs in this menu because "I need a tree" is the same
+        // question whether the answer is on disk or in the store, and the store
+        // was otherwise only reachable from the top-bar workspace switcher.
+        //
+        // Opens the marketplace rather than importing anything: what arrives
+        // from it is chosen there and installed by its own overlay, which
+        // already asks where to put it.
+        //
+        // Through the shell-action message, not a panel id — the Marketplace is
+        // an overlay now, and this crate has never heard of the one that owns
+        // it. The id is the only thing that crosses, and it lives in the
+        // contract crate so both ends agree on the string.
+        menu_item(
+            commands,
+            fonts,
+            "storefront",
+            &renzora::lang::t("assets.search_marketplace"),
+            |w| renzora::ShellActionInvoked::invoke(w, renzora::ACTION_MARKETPLACE),
         ),
     ]
 }
@@ -1993,11 +2019,14 @@ fn create_asset(world: &mut World, kind: NewAsset) {
     let Some(folder) = folder else {
         return;
     };
+    let boilerplate = world
+        .get_resource::<renzora_editor_framework::EditorSettings>()
+        .is_none_or(|s| s.new_file_boilerplate);
     let path = unique_path(&folder, kind.filename(), kind.is_folder());
     let ok = if kind.is_folder() {
         std::fs::create_dir_all(&path).is_ok()
     } else {
-        std::fs::write(&path, kind.content()).is_ok()
+        std::fs::write(&path, kind.content(boilerplate)).is_ok()
     };
     if ok {
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
@@ -2170,99 +2199,23 @@ fn folder_color(name: &str) -> (u8, u8, u8) {
     }
 }
 
-/// A theme is a `.toml`, identified either by its manifest filename
-/// `theme.toml` (nested form, `themes/<Name>/theme.toml`) or by living anywhere
-/// under a `themes/` folder (flat form, `themes/<Name>.toml`). Either way the
-/// browser gives it its own icon/label instead of the generic TOML one.
-fn is_theme_file(path: &Path) -> bool {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if name.eq_ignore_ascii_case("theme.toml") {
-        return true;
-    }
-    let is_toml = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("toml"));
-    is_toml
-        && path.ancestors().skip(1).any(|a| {
-            a.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("themes"))
-        })
-}
-
 /// Accent color + human-readable type label for a file, by extension. Drives the
-/// tile's type subtitle and bottom accent strip (mirrors Unreal's "Blueprint
-/// Class" subtitle + colored underline). Folders are handled separately.
+/// tile's type subtitle and bottom accent strip. Folders are handled separately.
+///
+/// The table itself lives in `renzora_ember::file_kind` — the folder picker
+/// lists files now and needs the same answers, and it cannot reach a crate that
+/// depends on it. Two tables would have drifted the first time an extension was
+/// added to one of them.
 fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
-    if is_theme_file(path) {
-        return ((255, 170, 210), "Theme");
-    }
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    match ext.as_str() {
-        "ttf" | "otf" | "woff" | "woff2" => ((140, 200, 255), "Font"),
-        "material" => ((0, 200, 130), "Material"),
-        "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
-        "lua" => ((120, 170, 255), "Lua Script"),
-        "wgsl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
-        "rs" => ((230, 140, 90), "Rust Source"),
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => {
-            ((150, 210, 120), "Texture")
-        }
-        "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
-        "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
-        "particle" => ((230, 160, 90), "Particle"),
-        "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
-        "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
-        "html" => ((230, 120, 90), "Template"),
-        "" => ((150, 155, 170), "File"),
-        other => ((150, 155, 170), uppercase_ext(other)),
-    }
-}
-
-/// Leak a small set of uppercased extension labels for unknown types so the
-/// subtitle can read e.g. "TXT" / "JSON". Bounded: only the handful of distinct
-/// unknown extensions actually present in a project are ever leaked.
-fn uppercase_ext(ext: &str) -> &'static str {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
-    let mut map = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
-    if let Some(s) = map.get(ext) {
-        return s;
-    }
-    let leaked: &'static str = Box::leak(ext.to_uppercase().into_boxed_str());
-    map.insert(ext.to_string(), leaked);
-    leaked
+    renzora_ember::file_kind::type_info(path)
 }
 
 fn icon_for(path: &Path, is_dir: bool) -> &'static str {
-    if is_dir {
-        return "folder";
-    }
-    if is_theme_file(path) {
-        return "swatches";
-    }
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    match ext.as_str() {
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => "image",
-        "ttf" | "otf" | "woff" | "woff2" => "text-aa",
-        "glb" | "gltf" | "obj" | "fbx" => "cube",
-        "material" => "palette",
-        "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
-        "lua" | "rs" | "py" | "js" | "ts" => "code",
-        "scene" | "bsn" | "ron" | "scn" => "film-slate",
-        "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
-        "particle" => "sparkle",
-        "ply" | "gcloud" | "sog" | "ssog" => "cloud",
-        "blueprint" | "bp" => "blueprint",
-        "html" => "browser",
-        "toml" => "brackets-curly",
-        _ => "file",
-    }
+    renzora_ember::file_kind::icon_for(path, is_dir)
 }
+
+
+
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -2272,7 +2225,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
+                // A column: the toolbar spans the panel, and the
+                // tree|splitter|grid row sits under it (see `body`, below).
+                flex_direction: FlexDirection::Column,
                 min_width: Val::Px(0.0),
                 min_height: Val::Px(0.0),
                 ..default()
@@ -2803,14 +2758,38 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         zoom_box,
     ]);
 
-    commands.entity(content).add_children(&[toolbar, crumb_row, grid_scroll]);
+    commands.entity(content).add_children(&[crumb_row, grid_scroll]);
+
+    // The toolbar spans the whole panel, above the tree as well as the grid —
+    // so `root` is a column of [toolbar, body] and the tree|splitter|grid row is
+    // `body`. It used to be the grid column's first child, which made the
+    // panel's one bar of actions start halfway across and left a 180px notch of
+    // empty header above the folder tree.
+    let body = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Row,
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
+                ..default()
+            },
+            Name::new("assets-body"),
+        ))
+        .id();
+    commands.entity(body).add_children(&[tree_pane, splitter, content]);
 
     // Responsive: when the panel is too narrow, hide the grid + splitter so the
     // tree fills it as a file browser (see `responsive_layout` / `narrow`).
+    // The toolbar goes with them now that it is no longer inside `content` —
+    // the narrow layout has its own header in the tree pane (`narrow_header`),
+    // and showing both would be two search boxes and two Add buttons.
     bind_display(commands, content, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
     bind_display(commands, splitter, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
+    bind_display(commands, toolbar, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
 
-    commands.entity(root).add_children(&[tree_pane, splitter, content]);
+    commands.entity(root).add_children(&[toolbar, body]);
 
     // Drop-to-import highlight — an accent-bordered overlay shown only while an
     // OS file drag hovers the window (`FileDragHovering`, set by the importer).
@@ -4602,8 +4581,12 @@ fn opens_in_editor(path: &Path) -> bool {
     renzora_editor_framework::doc_kind_for_path(path).is_some() || is_editable_text(path)
 }
 
-/// Code-editor-backed kinds: scripts, shaders, HTML templates, and plain text.
-/// These open straight into `CodeEditorState` (no layout switch).
+/// Code-editor-backed kinds: scripts, shaders and plain text. These open
+/// straight into `CodeEditorState` (no layout switch).
+///
+/// A `.html` UI template is deliberately **not** one of them any more. It is
+/// `DocTabKind::Ui`, which opens the canvas — the code editor is tabbed beside
+/// it in the UI workspace for whoever wants the markup.
 fn is_code_kind(path: &Path) -> bool {
     use renzora_editor_framework::DocTabKind;
     matches!(
@@ -4633,6 +4616,9 @@ fn open_action(path: &Path) -> Option<(&'static str, String)> {
         Some(DocTabKind::Blueprint) => Some(("blueprint", renzora::lang::t("assets.open_in.blueprint_editor"))),
         Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
         Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
+        // Without this arm a `.html` fell through to `None` and lost its
+        // right-click **Open** entirely the moment it stopped being a `Script`.
+        Some(DocTabKind::Ui) => Some(("browser", renzora::lang::t_or("assets.open_in.ui_editor", "Open in UI Editor"))),
         _ if is_editable_text(path) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         _ => None,
     }

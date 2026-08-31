@@ -4,7 +4,9 @@ Write per-entity gameplay logic in Lua 5.4 — the full-featured scripting backe
 
 Renzora's scripting core is language-agnostic: the backend is chosen by file extension, and a `.lua` file runs on the **Lua** backend (mlua 0.10, Lua 5.4, vendored). Lua ships as a standalone plugin on every native build; it is **not** available on the web (wasm) target. It exposes the full API (~70 functions and all eight lifecycle hooks).
 
-Scripts live on a `ScriptComponent`, and an entity only gets one when you give it one — either by dragging a `.lua` file onto the entity's row in the hierarchy, or from the inspector's **Add Component → Scripts** entry. Both routes create the component if it isn't there yet, so there's no separate "add the component first" step. Authored game UI is the exception that gets one for free: `renzora_ember::game_ui` inserts it on every `UiWidget`/`UiCanvas` so `<input bind="Entity.var">` resolves (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script)` and persists across frames.
+Scripts live on a `ScriptComponent`. The inspector shows a **Scripts** section on *every* entity, so there is never an "add the component first" step — drop a `.lua` file on its drop zone, or pick one from the **+** menu, and the component is created for you. You can also drag a `.lua` straight onto the entity's row in the hierarchy. Removing the last script takes the component off again.
+
+That section is inherent to the entity rather than something you add, so **Scripts** does not appear in the **Add Component** list and has no header trash button. The component itself is still absent until a script is on it — the always-visible section is UI over that absence, which is what keeps it free (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). Authored game UI is the one thing that gets a component up front: `renzora_ember::game_ui` inserts it on every `UiWidget`/`UiCanvas` so `<input bind="Entity.var">` resolves. One Lua VM is cached per `(entity, script)` and persists across frames.
 
 ## Your first script
 
@@ -313,22 +315,16 @@ Some domain crates inject extra functions into the Lua VM when their plugin is a
 | `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
 | `renzora_animation` | `set_anim_param`, `set_anim_bool`, `set_anim_trigger`, `get_animation_length` |
 
-## Lua vs Rhai
+## Lua and the other backends
 
-You can mix `.lua` and `.rhai` scripts in one project; the backend is picked per file by extension. Lua and Rhai are **not** interchangeable — Rhai is a subset (~45 of Lua's ~70 functions, and only the `props`, `on_ready`, and `on_update` hooks). Rhai has no input, networking, HTTP, `action()`, component reflection, or child-transform functions. Choose Lua for full-featured native games; choose Rhai when you need scripts on the web build.
+The backend is picked per file by **extension**, so a project can hold more than one language at once. Today that means `.lua` and `.rs`:
 
-The languages also differ in syntax:
+- **`.lua`** — this page. The full scripting surface, interpreted, hot-reloaded on save.
+- **`.rs`** — a [Rust script](/docs/r1-alpha7/scripting/rust-scripts), compiled into a native plugin and handed `&mut World` once per frame per entity. No command vocabulary, because the reason to write Rust is the access no vocabulary can stand in for.
 
-| Feature | Lua | Rhai |
-|---------|-----|------|
-| Local variable | `local x = 5` | `let x = 5` |
-| Map / table | `{ key = value }` | `#{ key: value }` |
-| Nil / empty | `nil` | `()` |
-| String concat | `..` | `+` |
-| Not equal | `~=` | `!=` |
-| Array index | 1-based | 0-based |
-| Block end | `end` | `}` |
-| Logical ops | `and` / `or` / `not` | `&&` / `\|\|` / `!` |
+Lua comes from `plugins/lua`, a standalone C-ABI plugin. Which languages a project can use is decided by which backend plugins are present, not by how the engine was compiled — see [Script Backends](/docs/r1-alpha7/extending/script-backends) to add one.
+
+> **The `.rhai` backend has been removed.** If you have Rhai scripts, port them to Lua; the function names are nearly all the same, and [the syntax table](/docs/r1-alpha7/api/scripting#porting-from-rhai) covers the rest.
 
 ## What's next
 

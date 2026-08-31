@@ -184,11 +184,12 @@ Two things worth knowing about it:
 
 ## What is not covered yet
 
-**WebSockets.** `renzora_social`'s live connection still links `tungstenite`
-directly, which keeps rustls and ring in the engine's dependency graph. Moving it
-behind this boundary needs a `Send` op and `Open`/`Message`/`Close` event kinds —
-both append-only, so no ABI break — and is what would finally take the TLS stack
-out of the engine entirely.
+**WebSockets.** Nothing in the engine opens one any more. The only live
+connection was the social layer's, and it was deleted along with the feed,
+messages and friends panels — which took `tungstenite`, rustls and ring out of
+the dependency graph with it. A backend that wants one still has nowhere to put
+it: adding a `Send` op with `Open`/`Message`/`Close` event kinds would be
+append-only and break no ABI, but there is no longer a caller asking for it.
 
 **Game replication.** `renzora_network` stays where it is, deliberately. It is
 per-frame, latency-critical and high-frequency; routing every packet through a

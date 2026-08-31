@@ -61,7 +61,6 @@ const SKIP_DIRS: &[&str] = &[
     "bevy_hanabi",
     "bevy_heavy",
     "bevy_hui",
-    "bevy_procedural_tree",
     "bevy_silk",
     "bevy_oxr",
     "bevy_transform_interpolation",

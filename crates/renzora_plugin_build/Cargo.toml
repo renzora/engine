@@ -1,0 +1,31 @@
+[package]
+name = "renzora_plugin_build"
+version = "0.1.0"
+edition = "2021"
+description = "Compile a native plugin from source against a staged Renzora SDK."
+
+# Not a Bevy plugin and deliberately not one: no `renzora::add!` line, no
+# systems, no `App`. It is a function library the editor's install flow calls,
+# the same shape as `renzora_export`.
+#
+# Bevy is not a dependency either, which is the point — the whole crate is
+# "read a manifest, build an argv, run rustc, write a stamp". Keeping it free of
+# the engine means it can be exercised without booting one.
+[dependencies]
+# The half `xtask` also needs: the rustc command line, the third-party
+# dependency build, and the JSON reader. Carries no dependencies of its own, so
+# xtask can share it without inheriting the four below.
+renzora_native_build = { path = "../renzora_native_build" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Unpacking the shipped `sdk.tar.zst`. `zstd` is already in the workspace
+# lockfile and `zstd-sys` is already compiled, so this adds no new C build — and
+# its decoder implements `Read`, which is what lets the tar reader chain straight
+# onto it instead of round-tripping a ~1.9 GB temporary file. See `unpack.rs` for
+# the measurements, including why the obvious `xz2` swap is not a speed-up.
+tar = "0.4"
+zstd = "0.13"
+
+[lints]
+workspace = true

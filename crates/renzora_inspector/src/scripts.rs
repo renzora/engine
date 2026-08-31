@@ -43,8 +43,13 @@ pub fn register(app: &mut App) {
         (
             // Ordered before `rebuild_scripts` so a project walk that lands this
             // frame is seen by the signature check immediately rather than a
-            // frame late. Only ticks while a script drawer is actually built —
-            // a project with no scripted entity selected never walks the disk.
+            // frame late. Only ticks while a script drawer is actually built,
+            // which since the Scripts section became inherent to every entity
+            // means "the inspector is open on some entity" rather than the
+            // narrower "a scripted entity is selected" it used to mean. That is
+            // still cheap: the walk is throttled to `SCAN_THROTTLE` and runs on
+            // the IO pool, so the drawer being universal costs one background
+            // directory scan every few seconds while the panel is open.
             refresh_script_index
                 .run_if(any_with_component::<ScriptsRoot>)
                 .before(rebuild_scripts),
@@ -297,6 +302,7 @@ fn refresh_script_index(
     mut index: ResMut<ScriptIndex>,
     project: Option<Res<renzora::core::CurrentProject>>,
     time: Res<Time>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     // Bind the poll result in its own statement before touching `index.task`
     // again: folding this into `if let Some(..) = index.task.as_mut().and_then(..)`
@@ -338,7 +344,11 @@ fn refresh_script_index(
     // `renzora_runtime::init_io_task_pool_with_large_stack` — the headroom a
     // deep recursive directory walk wants.
     let root = project.path.clone();
-    index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root) }));
+    // Asked of the engine rather than hardcoded, so a new language backend shows
+    // up in the picker without this file being edited. Owned because it crosses
+    // into the task.
+    let exts = script_extensions(engine.as_deref());
+    index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root, &exts) }));
 }
 
 /// Content hash of a scan result — see [`ScriptIndex::hash`].
@@ -699,11 +709,7 @@ fn script_remove_click(
         }
         let (entity, id) = (btn.entity, btn.script_id);
         cmds.push(move |w: &mut World| {
-            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                if let Some(idx) = sc.scripts.iter().position(|s| s.id == id) {
-                    sc.remove_script(idx);
-                }
-            }
+            detach_script(w, entity, id);
         });
     }
 }
@@ -844,9 +850,7 @@ fn build_add_bar(
             .get_resource::<renzora::core::CurrentProject>()
             .map(|p| make_rel(abs, p))
             .unwrap_or_else(|| abs.clone());
-        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-            sc.add_file_script(rel);
-        }
+        attach_file_script(w, entity, rel);
     });
     commands
         .entity(dd)
@@ -875,14 +879,32 @@ fn build_add_bar(
 /// `(display-relative-path, absolute-path)` pairs sorted by display path.
 ///
 /// Runs on the IO task pool, never the main thread — see [`ScriptIndex`].
-fn scan_scripts_at(root: &std::path::Path) -> Vec<(String, PathBuf)> {
+/// The extensions the editor treats as scripts.
+///
+/// From the registered backends when the engine exists, so adding a language is
+/// a backend registration and nothing else. The fallback is only for the moment
+/// before the engine is created — without it the picker would be empty on the
+/// first frame and the drop zone would reject everything.
+fn script_extensions(engine: Option<&renzora_scripting::ScriptEngine>) -> Vec<String> {
+    match engine {
+        Some(e) => e.script_extensions().into_iter().map(str::to_string).collect(),
+        None => ["lua", "blueprint", "bp"].iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+fn scan_scripts_at(root: &std::path::Path, exts: &[String]) -> Vec<(String, PathBuf)> {
     let mut out = Vec::new();
-    scan_scripts_inner(root, root, &mut out);
+    scan_scripts_inner(root, root, exts, &mut out);
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
 }
 
-fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, PathBuf)>) {
+fn scan_scripts_inner(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    exts: &[String],
+    out: &mut Vec<(String, PathBuf)>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -900,10 +922,12 @@ fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut V
             if matches!(name, "target" | "node_modules" | ".git") {
                 continue;
             }
-            scan_scripts_inner(&path, root, out);
+            scan_scripts_inner(&path, root, exts, out);
         } else {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext, "lua") {
+            // Was `matches!(ext, "lua")` — which meant the picker only ever
+            // listed Lua, even though the drop zone accepted three extensions.
+            if exts.iter().any(|e| e == ext) {
                 let display = path
                     .strip_prefix(root)
                     .unwrap_or(&path)
@@ -922,12 +946,55 @@ fn make_rel(abs: &std::path::Path, project: &renzora::core::CurrentProject) -> P
     PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
 }
 
+/// Attach a file script, creating the `ScriptComponent` if the entity has none.
+///
+/// The Scripts drawer is shown on *every* entity (`renzora_scripting_editor`'s
+/// `has_fn` is unconditionally true), so both add paths land here on entities
+/// that genuinely have no component yet — the drawer is UI over an absence until
+/// the first script arrives. Keeping the component absent while it would be
+/// empty is what keeps the always-visible drawer free: an empty one still
+/// serialises into every saved scene and still matches every query that drives
+/// execution and hot-reload.
+fn attach_file_script(world: &mut World, entity: Entity, rel: PathBuf) {
+    match world.get_mut::<ScriptComponent>(entity) {
+        Some(mut sc) => {
+            sc.add_file_script(rel);
+        }
+        None => {
+            world
+                .entity_mut(entity)
+                .insert(ScriptComponent::from_file(rel));
+        }
+    }
+}
+
+/// Remove one script entry, taking the whole `ScriptComponent` off the entity
+/// when that was the last one.
+///
+/// The mirror of [`attach_file_script`]: without this, removing every script
+/// would leave a materialised-but-empty component behind, which is exactly the
+/// state the always-visible drawer is designed never to create. The drawer
+/// itself doesn't notice — it renders the same add-bar empty state either way.
+fn detach_script(world: &mut World, entity: Entity, script_id: u32) {
+    let Some(mut sc) = world.get_mut::<ScriptComponent>(entity) else {
+        return;
+    };
+    let Some(idx) = sc.scripts.iter().position(|s| s.id == script_id) else {
+        return;
+    };
+    sc.remove_script(idx);
+    if sc.scripts.is_empty() {
+        world.entity_mut(entity).remove::<ScriptComponent>();
+    }
+}
+
 fn add_script_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
     zones: Query<(&bevy::ui::RelativeCursorPosition, &AddScriptDropZone)>,
     cmds: Option<Res<EditorCommands>>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
         return;
@@ -935,7 +1002,9 @@ fn add_script_drop(
     let (Some(payload), Some(cmds)) = (payload, cmds) else {
         return;
     };
-    if !payload.is_detached || !payload.matches_extensions(&["lua", "blueprint", "bp"]) {
+    let exts = script_extensions(engine.as_deref());
+    let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
+    if !payload.is_detached || !payload.matches_extensions(&exts) {
         return;
     }
     for (rcp, zone) in &zones {
@@ -948,9 +1017,7 @@ fn add_script_drop(
             .unwrap_or_else(|| payload.path.clone());
         let entity = zone.entity;
         cmds.push(move |w: &mut World| {
-            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                sc.add_file_script(rel.clone());
-            }
+            attach_file_script(w, entity, rel.clone());
         });
         break;
     }
@@ -960,13 +1027,17 @@ fn add_script_drop(
 fn add_script_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<AddScriptDropZone>>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
+    // Must agree with `add_script_drop` exactly: a zone that highlights but
+    // refuses the drop, or accepts a drop it never highlighted, is worse than one
+    // that consistently says no.
+    let exts = script_extensions(engine.as_deref());
+    let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
     for (rcp, mut bc) in &mut zones {
-        let active = payload.as_ref().is_some_and(|p| {
-            p.is_detached
-                && rcp.cursor_over
-                && p.matches_extensions(&["lua", "blueprint", "bp"])
-        });
+        let active = payload
+            .as_ref()
+            .is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(&exts));
         let want = BorderColor::all(if active {
             Color::srgb_u8(120, 140, 200)
         } else {

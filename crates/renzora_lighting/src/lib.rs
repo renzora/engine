@@ -5,65 +5,20 @@
 
 use bevy::light::SunDisk;
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // Sun component
 // ============================================================================
 
-/// A directional light positioned by azimuth and elevation angles.
+/// The `Sun` component now lives in the **contract crate**.
 ///
-/// This is a higher-level wrapper around Bevy's `DirectionalLight` that lets
-/// you control the sun position with intuitive angle parameters instead of
-/// raw quaternion rotation. A sync system automatically updates the
-/// `DirectionalLight` and `Transform` each frame.
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Default)]
-pub struct Sun {
-    /// Azimuth angle in degrees (0–360, compass direction of the sun).
-    pub azimuth: f32,
-    /// Elevation angle in degrees (−90 to 90, height above horizon).
-    pub elevation: f32,
-    /// Light color (RGB, 0–1 range).
-    pub color: Vec3,
-    /// Illuminance in lux.
-    pub illuminance: f32,
-    /// Whether this light casts shadows.
-    pub shadows_enabled: bool,
-    /// Whether this light casts screen-space **contact shadows** — small-scale
-    /// shadows where objects meet surfaces, filling in detail shadow maps miss.
-    /// Needs the camera's depth prepass + a `ContactShadows` component (the
-    /// editor/runtime cameras carry one). Bevy 0.19 built-in.
-    pub contact_shadows: bool,
-    /// Angular diameter of the sun disc in degrees (Earth's sun ≈ 0.53°).
-    pub angular_diameter: f32,
-    /// Brightness multiplier for the sun disk (0 = no disk, 1 = physical, >1 = overexposed).
-    pub sun_disk_intensity: f32,
-}
-
-impl Default for Sun {
-    fn default() -> Self {
-        Self {
-            azimuth: 90.0,
-            elevation: 25.0,
-            color: Vec3::new(1.0, 0.95, 0.88),
-            illuminance: 40_000.0,
-            shadows_enabled: true,
-            contact_shadows: false,
-            angular_diameter: 0.53,
-            sun_disk_intensity: 1.0,
-        }
-    }
-}
-
-impl Sun {
-    /// Compute the direction the light travels (away from the sun toward the scene).
-    pub fn direction(&self) -> Vec3 {
-        let az = self.azimuth.to_radians();
-        let el = self.elevation.to_radians();
-        Vec3::new(-el.cos() * az.sin(), -el.sin(), -el.cos() * az.cos())
-    }
-}
+/// Six crates read it, and one of them — the `night_stars` plugin, which fades
+/// the starfield by sun elevation — is loaded at runtime rather than linked, so
+/// a binary and a `dlopen`ed library both have to name the same type. Two
+/// definitions would compile and then simply never match each other's queries.
+///
+/// Re-exported here so every existing `renzora_lighting::Sun` path still works.
+pub use renzora::Sun;
 
 // ============================================================================
 // Sync system — keeps DirectionalLight + Transform in sync with Sun

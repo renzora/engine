@@ -111,7 +111,7 @@ To disconnect, call `action("net_disconnect")`.
 
 ## Server-side scripting
 
-Networking is exposed only to **Lua** scripts (native platforms). The Rhai backend has no networking surface at all. The full list of bare globals:
+Networking is exposed to scripts on native platforms only. The full list of bare globals:
 
 | Function | Returns / effect |
 |---|---|
@@ -188,7 +188,7 @@ Not yet implemented (do not assume these work):
 - Alternate transports (WebTransport / WebSocket) — UDP only.
 - Any real security on the handshake — **LAN / dev only**.
 
-> Several engine systems sound network-related but are **not** game multiplayer and do not use Lightyear: `renzora_auth` (editor-only renzora.com sign-in), the editor's MCP server (`mcp_server_plugin`, JSON-RPC on port 3000), and the editor's dev WebSocket server (`websocket_plugin`, port 8080). None of these are part of your game server.
+> Several engine systems sound network-related but are **not** game multiplayer and do not use Lightyear: `renzora_marketplace` (editor-only renzora.com sign-in), the editor's MCP server (`mcp_server_plugin`, JSON-RPC on port 3000), and the editor's dev WebSocket server (`websocket_plugin`, port 8080). None of these are part of your game server.
 
 ## Related
 

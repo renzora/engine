@@ -7,7 +7,9 @@
 use bevy::color::palettes::css;
 use bevy::prelude::*;
 
-use renzora_spline::SplinePath;
+// From the contract crate, so this gizmo draws the curve for a `SplinePath`
+// spawned by ANY plugin — not just the one that happens to be linked.
+use renzora::SplinePath;
 
 /// Samples per spline segment when drawing the smooth curve. 24 is smooth
 /// enough for most real spline lengths without flooding the gizmo buffer.

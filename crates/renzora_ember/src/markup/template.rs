@@ -110,12 +110,24 @@ fn finalize_pending_templates(
         if let Ok(kids) = children_q.get(entity) {
             for child in kids.iter() {
                 if has_node.get(child).is_ok() {
+                    // This despawn is what invalidates an editor selection
+                    // pointing at a markup node — saving a `.html` rebuilds the
+                    // whole subtree. It is *not* cleared here: this crate ships
+                    // in games and does not have the editor contract, so
+                    // `EditorSelection` is not reachable. The editor prunes dead
+                    // ids centrally instead — see `prune_dead_selection` in
+                    // `renzora_editor_framework`, which covers every despawn
+                    // rather than only this one.
                     commands.entity(child).despawn();
                 }
             }
         }
 
-        let child = commands.spawn_empty().id();
+        // Hidden from the hierarchy like every node the loader builds under it —
+        // see the note beside the `HideInHierarchy` insert in `loader.rs`. The
+        // wrapper needs its own because that marker does not cascade in the
+        // hierarchy panel.
+        let child = commands.spawn(renzora::HideInHierarchy).id();
         commands.entity(entity).add_child(child);
 
         info!(

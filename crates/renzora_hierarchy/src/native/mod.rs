@@ -100,7 +100,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             ))
             .id();
 
-        let add = renzora_ember::widgets::icon_label_button_collapsing(
+        let (add, add_label) = renzora_ember::widgets::icon_label_button_collapsing_parts(
             commands,
             fonts,
             "plus",
@@ -110,6 +110,16 @@ pub fn register_native_hierarchy(app: &mut App) {
         commands
             .entity(add)
             .insert((add_entity::HierAddEntity, Name::new("add-entity")));
+        // Scoped to UI, the only thing this button offers is a canvas — the
+        // spawn list is narrowed to the `ui` category — so "Add Entity"
+        // overpromises. Say what it does.
+        renzora_ember::reactive::tracked::bind_text(commands, add_label, |w| {
+            if crate::state::ui_scoped(w.untracked()) {
+                renzora::lang::t_or("hierarchy.new_canvas", "New Canvas")
+            } else {
+                renzora::lang::t("hierarchy.add_entity")
+            }
+        });
         let search = filter::build_search_box(commands, fonts);
         let funnel = filter::build_filter_funnel(commands, fonts);
         let header = commands
@@ -212,6 +222,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             filter::hier_filter_toggle,
             filter::hier_filter_clear,
             filter::hier_search_sync,
+            filter::hier_search_placeholder,
             rename::focus_rename_field,
             rename::rename_commit,
         )

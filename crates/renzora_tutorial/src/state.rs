@@ -21,7 +21,7 @@ use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+use renzora::core::viewport_types::ViewportSettings;
 use renzora::core::{CurrentProject, PlayModeState, TutorialRequested};
 use renzora::WorldEnvironment;
 use renzora_camera::OrbitCameraState;
@@ -112,7 +112,7 @@ pub struct Baseline {
     pub asset_file_count: usize,             // InstallAsset
     pub script_count: usize,                 // ScriptFile
     pub open_files_len: usize,               // CreateScript
-    pub in_ui_view: bool,                    // CreateUi
+    pub ui_panel_open: bool,                 // CreateUi
     pub was_playing: bool,                   // Play / Simulate / StopPlay
 }
 
@@ -211,10 +211,13 @@ impl Signals<'_, '_> {
             asset_file_count: self.project.as_ref().map(|p| count_assets(p)).unwrap_or(0),
             script_count: self.project.as_ref().map(|p| count_scripts(p)).unwrap_or(0),
             open_files_len: self.code.as_ref().map(|c| c.open_files.len()).unwrap_or(0),
-            in_ui_view: self
-                .viewport
+            // The UI editor used to be a *view* of the viewport, so this asked
+            // the viewport what it was showing. It is the `ui_canvas` panel now,
+            // so the question is whether that panel is in the dock.
+            ui_panel_open: self
+                .dock
                 .as_ref()
-                .is_some_and(|v| matches!(v.viewport_view, ViewportView::Ui)),
+                .is_some_and(|d| tree_contains(&d.tree, "ui_canvas")),
             was_playing: self
                 .play
                 .as_ref()
@@ -480,11 +483,11 @@ pub fn detect_step_done(mut state: ResMut<TutorialState>, signals: Signals) {
         // Was running when the step began, isn't now.
         StepKind::StopPlay => b.was_playing && !playing,
 
-        // The viewport switched into the UI authoring view.
+        // The UI Canvas panel was opened.
         StepKind::CreateUi => signals
-            .viewport
+            .dock
             .as_ref()
-            .map(|vp| matches!(vp.viewport_view, ViewportView::Ui) && !b.in_ui_view)
+            .map(|d| tree_contains(&d.tree, "ui_canvas") && !b.ui_panel_open)
             .unwrap_or(false),
     };
 

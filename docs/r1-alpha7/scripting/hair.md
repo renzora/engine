@@ -43,10 +43,10 @@ For a full head of hair, put the component on a **scalp mesh** (a low-poly cap c
 
 ## Scripting
 
-| Function | Lua | Rhai | Effect |
-|---|---|---|---|
-| `enable_hair()` | yes | — | Turns the sway on for the script's entity (`Hair.simulate = true`). |
-| `disable_hair()` | yes | — | Turns it off; strands settle back to the grown shape. |
+| Function | Effect |
+|---|---|
+| `enable_hair()` | Turns the sway on for the script's entity (`Hair.simulate = true`). |
+| `disable_hair()` | Turns it off; strands settle back to the grown shape. |
 
 ```lua
 -- character.lua

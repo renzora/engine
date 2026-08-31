@@ -257,6 +257,69 @@ fn would_cycle(world: &World, entity: Entity, new_parent: Entity) -> bool {
 
 /// Apply a drop — reparent (`AsChild`) or reorder (`Before`/`After`), recording
 /// an undoable `Reorder` compound. Guarded against cycles and editor-UI nodes.
+/// Reorder markup rows by rewriting the `.html`, which is the only edit that
+/// survives the next rebuild.
+///
+/// The tree's three drop zones map straight onto the writeback's "insert before
+/// this sibling, or append":
+///
+/// - `AsChild`  → into `target`, last.
+/// - `Before`   → into `target`'s parent, ahead of `target`.
+/// - `After`    → into `target`'s parent, ahead of whatever follows `target`
+///   (or last, when nothing does).
+///
+/// One entity only. A multi-row drag would need each move applied against the
+/// file state the previous one left behind, and every span after a splice has
+/// shifted — so the honest thing is to move the first and leave the rest, rather
+/// than write three moves computed against stale offsets.
+fn apply_markup_drop(
+    world: &mut World,
+    drag_entities: &[Entity],
+    target: Entity,
+    zone: TreeDropZone,
+) {
+    let Some(&entity) = drag_entities.first() else {
+        return;
+    };
+    // Dropping a node into itself or its own subtree is not a move.
+    if target == entity || is_descendant_of(world, target, entity) {
+        return;
+    }
+    let parent_of = |w: &World, e: Entity| w.get::<ChildOf>(e).map(|c| c.parent());
+    let (parent, before) = match zone {
+        TreeDropZone::AsChild => (target, None),
+        TreeDropZone::Before => match parent_of(world, target) {
+            Some(p) => (p, Some(target)),
+            None => return,
+        },
+        TreeDropZone::After => {
+            let Some(p) = parent_of(world, target) else {
+                return;
+            };
+            let next = world.get::<Children>(p).and_then(|kids| {
+                let i = kids.iter().position(|c| c == target)?;
+                kids.get(i + 1).copied()
+            });
+            (p, next)
+        }
+    };
+    renzora_ember::markup::writeback::move_node_in_markup(world, entity, parent, before);
+}
+
+/// Walk `ChildOf` upward from `e` looking for `ancestor`.
+fn is_descendant_of(world: &World, mut e: Entity, ancestor: Entity) -> bool {
+    for _ in 0..256 {
+        if e == ancestor {
+            return true;
+        }
+        match world.get::<ChildOf>(e) {
+            Some(c) => e = c.parent(),
+            None => return false,
+        }
+    }
+    false
+}
+
 fn apply_drop(
     cmds: &EditorCommands,
     drag_entities: Vec<Entity>,
@@ -264,6 +327,18 @@ fn apply_drop(
     zone: TreeDropZone,
 ) {
     cmds.push(move |world: &mut World| {
+        // A node built from a `.html` is reordered by rewriting the file, not by
+        // moving `ChildOf`. Its live tree is rebuilt from source on the next
+        // load or hot-reload, so a plain reparent here would look like it
+        // worked and then vanish — which is why these rows were hidden from the
+        // tree at all until it learned to edit the template behind them.
+        if drag_entities
+            .iter()
+            .any(|e| world.get::<renzora_ember::markup::provenance::MarkupSource>(*e).is_some())
+        {
+            apply_markup_drop(world, &drag_entities, target, zone);
+            return;
+        }
         // Snapshot old parents + every root order before mutating.
         let old_parents: Vec<(Entity, Option<Entity>)> = drag_entities
             .iter()

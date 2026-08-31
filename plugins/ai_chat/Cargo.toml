@@ -1,6 +1,13 @@
-# Declares its OWN workspace root. Without it cargo walks up, finds the engine's
-# Cargo.toml and uses that workspace's target dir and profiles — even though
-# `plugins` is in its `exclude` list, which only stops membership.
+# Native plugin: an ordinary Bevy plugin shipped as source and compiled against
+# the staged SDK on the machine that installs it.
+#
+# ⚠ Do NOT run `cargo build` here. `plugins/` is outside the engine workspace, so
+# cargo would resolve a SECOND Bevy from crates.io and the plugin that came out
+# would have different `TypeId`s from the engine — it would load, run, and
+# corrupt the World. The path dependencies below exist so rust-analyzer can
+# resolve `renzora::` / `renzora_ember::` while you author; the real build is
+# `cargo renzora`, which compiles this against the artifacts the engine was
+# actually built from.
 [workspace]
 
 [package]
@@ -10,16 +17,24 @@ edition = "2021"
 description = "Chat with a local or hosted LLM, in an editor panel."
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["dylib"]
 
-# One dependency, and it has none of its own. `http` for the streaming reply,
-# `dialog` for the docs-folder picker. NOT `no_std`: this plugin keeps its
-# conversation in a `Mutex` static and does a lot of string work, and it is the
-# case where 90 KB of std is noise.
 [dependencies]
-renzora_plugin = { path = "../../crates/renzora_plugin", features = ["http", "dialog"] }
+bevy = "0.19"
+renzora = { path = "../../crates/renzora" }
+renzora_ember = { path = "../../crates/renzora_ember" }
 
-[profile.dist]
-inherits = "release"
-opt-level = 2
-strip = "symbols"
+# HTTP is `renzora::net`, and `serde`/`serde_json` come from the contract crate's
+# re-exports — a plugin's own copies would be different crates from the ones the
+# engine's types are built against, and `Response::json::<T>()` would not accept
+# a `T` derived against them.
+#
+# Native folder picker for the docs-folder setting. In the workspace this sat
+# under `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]` because the
+# crate was compiled for wasm alongside everything else and rfd has no folder
+# picking there. A native plugin is never built for wasm — that target has no
+# dylibs to load — so the guard is dead weight here and the dependency is plain.
+#
+# This is the one thing cargo has to resolve for this plugin, so the first build
+# needs a network; everything after it is cached.
+rfd = "0.15"

@@ -15,6 +15,68 @@ pub(crate) enum AlignAction {
     Bottom,
 }
 
+impl AlignAction {
+    /// Whether this action acts along the horizontal axis.
+    fn horizontal(self) -> bool {
+        matches!(self, Self::Left | Self::CenterH | Self::Right)
+    }
+
+    /// `start` / `center` / `end`, the shared vocabulary of `align_self` and
+    /// `justify_content`.
+    fn edge(self) -> &'static str {
+        match self {
+            Self::Left | Self::Top => "start",
+            Self::CenterH | Self::CenterV => "center",
+            Self::Right | Self::Bottom => "end",
+        }
+    }
+
+    /// How to express this alignment on a node laid out by its parent's flex
+    /// flow, given whether that parent is a row.
+    ///
+    /// Nudging `left`/`top` — which is what aligning does to a free node — is
+    /// simply ignored on a flex child, so the buttons did nothing at all on the
+    /// nodes a template is mostly made of. Flexbox splits the job by axis:
+    ///
+    /// - **Cross axis** is the child's own business: `align_self` on the node.
+    /// - **Main axis** has no per-child property. `justify_content` on the
+    ///   parent is the obvious reach, and it is wrong here — it distributes
+    ///   *all* the children, so aligning one node moved its siblings with it.
+    ///   The per-item answer is an **auto margin** on the opposite side, which
+    ///   absorbs the free space and pushes only this node.
+    pub(crate) fn flow_attr(self, parent_is_row: bool) -> FlowAlign {
+        if self.horizontal() == parent_is_row {
+            FlowAlign::Margin(self.edge())
+        } else {
+            FlowAlign::Own("align_self", self.edge())
+        }
+    }
+}
+
+/// Where a flow alignment has to be written.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum FlowAlign {
+    /// On the node itself (`align_self`).
+    Own(&'static str, &'static str),
+    /// As auto margins on the node's main axis — `start`, `center` or `end`.
+    Margin(&'static str),
+}
+
+/// The two main-axis margins for an alignment: `(leading, trailing)`, where
+/// `None` means "auto" and `Some(v)` a fixed value.
+///
+/// Start pushes the free space to the trailing side, end to the leading side,
+/// centre splits it. Setting the aligned side to zero rather than leaving it is
+/// what lets a second press change the answer — an auto left over from a
+/// previous "end" would otherwise still be fighting.
+pub(crate) fn margin_pair(edge: &str) -> (Option<f32>, Option<f32>) {
+    match edge {
+        "center" => (None, None),
+        "end" => (None, Some(0.0)),
+        _ => (Some(0.0), None),
+    }
+}
+
 /// New (x, y) design-space top-left for each widget.
 pub(crate) fn compute_align(widgets: &[WidgetGeom], action: AlignAction) -> Vec<(Entity, f32, f32)> {
     if widgets.is_empty() {

@@ -35,7 +35,7 @@ pub struct ScriptError {
 /// Font size limits for zoom.
 const MIN_FONT_SIZE: f32 = 8.0;
 const MAX_FONT_SIZE: f32 = 40.0;
-const DEFAULT_FONT_SIZE: f32 = 16.0;
+const DEFAULT_FONT_SIZE: f32 = 13.0;
 
 /// Shared state resource for the code editor.
 #[derive(Clone, bevy::prelude::Resource)]

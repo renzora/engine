@@ -4,6 +4,11 @@
 # Shared build cache for the standalone plugin projects (plugins/.cargo/config.toml
 # points every one of them here so the common deps compile once).
 /plugins/target/
+# Native plugins compile into `<plugin>/build/` beside their source, and the
+# editor's loader will do exactly that in-place if someone runs it against a
+# source checkout. Derived output, and per-machine — the `-C metadata` hashes it
+# links are this build's.
+/plugins/*/build/
 updater/target/
 **/target/
 # Ignore sub-crate lockfiles (only the workspace root Cargo.lock is tracked).

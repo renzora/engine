@@ -27,6 +27,14 @@ pub enum DocTabKind {
     Blueprint,
     Script,
     Shader,
+    /// A `.html` UI template, edited on the canvas rather than as text.
+    ///
+    /// Deliberately **not** an asset kind. Asset mode exists for editors that
+    /// render straight from a file path with no entity involved; the UI editor
+    /// is the opposite — the template is carried by a `UiCanvas` entity, the
+    /// hierarchy shows its widgets, and the inspector edits the selection. It
+    /// behaves like a scene tab that happens to name a file.
+    Ui,
     Other,
 }
 
@@ -35,7 +43,7 @@ impl DocTabKind {
     /// tabs put the editor into Asset mode where panels load directly from
     /// the file path and entity selection is irrelevant.
     pub fn is_asset(self) -> bool {
-        !matches!(self, DocTabKind::Scene | DocTabKind::Other)
+        !matches!(self, DocTabKind::Scene | DocTabKind::Ui | DocTabKind::Other)
     }
 
     /// Named workspace layout that should activate when this tab is focused
@@ -49,6 +57,7 @@ impl DocTabKind {
             DocTabKind::Blueprint => Some("Blueprints"),
             DocTabKind::Script => Some("Scripting"),
             DocTabKind::Shader => Some("Shaders"),
+            DocTabKind::Ui => Some("UI"),
             DocTabKind::Other => None,
         }
     }
@@ -62,7 +71,9 @@ impl DocTabKind {
             DocTabKind::Script | DocTabKind::Shader => Some("Scripting-Asset"),
             DocTabKind::Blueprint => Some("Blueprints-Asset"),
             DocTabKind::Particle => Some("Particles-Asset"),
-            DocTabKind::Scene | DocTabKind::Other => None,
+            // `Ui` has no asset-mode layout because it is not an asset kind —
+            // see the variant's note.
+            DocTabKind::Scene | DocTabKind::Ui | DocTabKind::Other => None,
         }
     }
 
@@ -77,6 +88,7 @@ impl DocTabKind {
             DocTabKind::Blueprint => "blueprint",
             DocTabKind::Script => "script",
             DocTabKind::Shader => "shader",
+            DocTabKind::Ui => "ui",
             DocTabKind::Other => "other",
         }
     }
@@ -94,6 +106,7 @@ impl DocTabKind {
             "blueprint" => DocTabKind::Blueprint,
             "script" => DocTabKind::Script,
             "shader" => DocTabKind::Shader,
+            "ui" => DocTabKind::Ui,
             _ => DocTabKind::Other,
         }
     }
@@ -108,6 +121,7 @@ impl DocTabKind {
             DocTabKind::Blueprint => "blueprint",
             DocTabKind::Script => "code",
             DocTabKind::Shader => "graphics-card",
+            DocTabKind::Ui => "browser",
             DocTabKind::Other => "file",
         }
     }
@@ -130,6 +144,9 @@ impl DocTabKind {
             DocTabKind::Blueprint => (100, 180, 255),
             DocTabKind::Script => (120, 170, 255),
             DocTabKind::Shader => (220, 120, 255),
+            // The asset browser's own colour for a Template (`native.rs:2281`),
+            // which is the promise this doc-comment makes.
+            DocTabKind::Ui => (230, 120, 90),
             DocTabKind::Other => (150, 155, 170),
         }
     }

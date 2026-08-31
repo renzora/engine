@@ -45,12 +45,19 @@
 //! there waits for something that cannot happen until you return, and you get
 //! [`Error::NoPump`] after two seconds rather than a hang.
 
-mod api;
 mod pump;
 
 use bevy::prelude::*;
 
-pub use api::{fetch, fetch_stream, is_available, Chunk, Error, Request, Response, Stream};
+/// The request vocabulary and the submission queue now live in the **contract
+/// crate**, because the queue is a process-global `OnceLock` and a native plugin
+/// linking a private copy would get its own empty one — `is_available()` false,
+/// every request failing, nothing logged.
+///
+/// This crate keeps the half that cannot move: the frame pump that hands queued
+/// requests to whichever backend plugin is loaded. Re-exported so every existing
+/// `renzora_net::Request` path still resolves.
+pub use renzora::net::{fetch, fetch_stream, is_available, Chunk, Error, Request, Response, Stream};
 pub use pump::NetLink;
 
 /// Capabilities a backend may claim, re-exported so a caller checking one does

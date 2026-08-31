@@ -22,7 +22,23 @@ edition = "2021"
 # the dual-mode crates' Runtime/EditorAndRuntime plugins are installed by the
 # host, never by the bundle.
 [lib]
-crate-type = ["rlib"]
+# `dylib` as well as `rlib`, and the dylib is what ships.
+#
+# The whole editor is one loadable image beside the executable: present, the
+# binary is the editor; absent, the same binary is the game. That is what
+# `renzora_editor.dll` buys — "remove the editor" becomes deleting one file
+# rather than shipping a different executable.
+#
+# It is sound again because Bevy is a shared image once more. This was an
+# `rlib`-only crate for exactly as long as Bevy was statically linked, when a
+# loadable editor would have carried its own copy of Bevy and therefore its own
+# `World` type. `bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib` and
+# `renzora_runtime_dylib` now put every type this crosses the boundary with in
+# one place.
+#
+# `rlib` stays for wasm, which has no dynamic linking at all and keeps building
+# the editor into a second `.wasm` bundle.
+crate-type = ["rlib", "dylib"]
 
 [features]
 default = ["editor"]
@@ -45,25 +61,21 @@ editor = [
     "dep:renzora_shell",
     "dep:renzora_animation_editor",
     "dep:renzora_asset_browser",
-    "dep:renzora_auth",
     "dep:renzora_autosave",
     "dep:renzora_blueprint_editor",
     "dep:renzora_code_editor",
     "dep:renzora_command_palette",
     "dep:renzora_context_menu",
-    "dep:renzora_daw",
     "dep:renzora_debugger",
     "dep:renzora_export",
     "dep:renzora_foliage_editor",
-    "dep:renzora_gamepad",
     "dep:renzora_hierarchy",
     "dep:renzora_history",
-    "dep:renzora_hub",
     "dep:renzora_import_ui",
     "dep:renzora_inspector",
     "dep:renzora_level_presets",
+    "dep:renzora_marketplace",
     "dep:renzora_material_editor",
-    "dep:renzora_mesh_draw",
     "dep:renzora_mesh_edit",
     "dep:renzora_mixer",
     "dep:renzora_network_editor",
@@ -71,7 +83,6 @@ editor = [
     "dep:renzora_settings",
     "dep:renzora_shader_editor",
     "dep:renzora_shape_library",
-    "dep:renzora_social",
     "dep:renzora_system_monitor",
     "dep:renzora_terrain_editor",
     "dep:renzora_tilemap_editor",
@@ -84,7 +95,6 @@ editor = [
     # (`SystemCall::diagnostics`, ABI MINOR 4.8) rather than linking Bevy, so the
     # editor no longer compiles `tracy-client`'s C sources to ship a profiler
     # most builds never arm. Delete the dll and the feature is gone.
-    "dep:renzora_ai_chat",
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.
@@ -104,14 +114,9 @@ editor = [
     "dep:renzora_ssao_editor",
     "dep:renzora_ssr_editor",
     "dep:renzora_lens_distortion_editor",
-    "dep:renzora_auto_exposure_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
-    "dep:renzora_night_stars_editor",
-    "dep:renzora_clouds_editor",
-    "dep:renzora_procedural_tree_editor",
     "dep:renzora_forward_decal_editor",
-    "dep:renzora_pool_water_editor",
     "renzora_network/editor",
     "dep:renzora_water_editor",
     "dep:renzora_ember_editor",
@@ -120,6 +125,7 @@ editor = [
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false }
+
 
 # ── Editor-only crates (the `dep:` entries flipped on by `editor`) ───────────
 renzora_undo               = { path = "../renzora_undo", optional = true }
@@ -136,25 +142,21 @@ renzora_console            = { path = "../renzora_console", optional = true }
 renzora_shell              = { path = "../renzora_shell", optional = true }
 renzora_animation_editor   = { path = "../renzora_animation_editor", optional = true }
 renzora_asset_browser      = { path = "../renzora_asset_browser", optional = true }
-renzora_auth               = { path = "../renzora_auth", optional = true }
 renzora_autosave           = { path = "../renzora_autosave", optional = true }
 renzora_blueprint_editor   = { path = "../renzora_blueprint_editor", optional = true }
 renzora_code_editor        = { path = "../renzora_code_editor", optional = true }
 renzora_command_palette    = { path = "../renzora_command_palette", optional = true }
 renzora_context_menu       = { path = "../renzora_context_menu", optional = true }
-renzora_daw                = { path = "../renzora_daw", optional = true }
 renzora_debugger           = { path = "../renzora_debugger", optional = true }
 renzora_export             = { path = "../renzora_export", optional = true }
 renzora_foliage_editor     = { path = "../renzora_foliage_editor", optional = true }
-renzora_gamepad            = { path = "../renzora_gamepad", optional = true }
 renzora_hierarchy          = { path = "../renzora_hierarchy", optional = true }
 renzora_history            = { path = "../renzora_history", optional = true }
-renzora_hub                = { path = "../renzora_hub", optional = true }
 renzora_import_ui          = { path = "../renzora_import_ui", optional = true }
 renzora_inspector          = { path = "../renzora_inspector", optional = true }
 renzora_level_presets      = { path = "../renzora_level_presets", optional = true }
+renzora_marketplace        = { path = "../renzora_marketplace", optional = true }
 renzora_material_editor    = { path = "../renzora_material_editor", optional = true }
-renzora_mesh_draw          = { path = "../renzora_mesh_draw", optional = true }
 renzora_mesh_edit          = { path = "../renzora_mesh_edit", optional = true }
 renzora_mixer              = { path = "../renzora_mixer", optional = true }
 renzora_network_editor     = { path = "../renzora_network_editor", optional = true }
@@ -162,7 +164,6 @@ renzora_particle_editor    = { path = "../renzora_particle_editor", optional = t
 renzora_settings           = { path = "../renzora_settings", optional = true }
 renzora_shader_editor      = { path = "../renzora_shader_editor", optional = true }
 renzora_shape_library      = { path = "../renzora_shape_library", optional = true }
-renzora_social             = { path = "../renzora_social", optional = true }
 renzora_system_monitor     = { path = "../renzora_system_monitor", optional = true }
 renzora_terrain_editor     = { path = "../renzora_terrain_editor", optional = true }
 renzora_tilemap_editor     = { path = "../renzora_tilemap/editor", optional = true }
@@ -170,7 +171,6 @@ renzora_sprite_anim_editor = { path = "../renzora_sprite_anim/editor", optional 
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial           = { path = "../renzora_tutorial", optional = true }
-renzora_ai_chat            = { path = "../renzora_ai_chat", optional = true }
 renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
 # ── Dual-mode crates touched by the `editor` cascade above ───────────────────
@@ -217,22 +217,13 @@ renzora_ssr             = { path = "../renzora_ssr" }
 renzora_ssr_editor      = { path = "../renzora_ssr/editor", optional = true }
 renzora_lens_distortion = { path = "../renzora_lens_distortion" }
 renzora_lens_distortion_editor = { path = "../renzora_lens_distortion/editor", optional = true }
-renzora_auto_exposure   = { path = "../renzora_auto_exposure" }
-renzora_auto_exposure_editor = { path = "../renzora_auto_exposure/editor", optional = true }
 renzora_oit             = { path = "../renzora_oit" }
 renzora_oit_editor      = { path = "../renzora_oit/editor", optional = true }
 renzora_skybox          = { path = "../renzora_skybox" }
 renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
-renzora_night_stars     = { path = "../renzora_night_stars" }
-renzora_night_stars_editor = { path = "../renzora_night_stars/editor", optional = true }
-renzora_clouds          = { path = "../renzora_clouds" }
-renzora_clouds_editor   = { path = "../renzora_clouds/editor", optional = true }
-# Procedural tree: runtime generation ships as the `renzora_procedural_tree`
-# cdylib (dlopen'd from plugins/, so no dep here); only the editor companion
-# (Add-Entity preset + inspector) links into the editor bundle.
-renzora_procedural_tree_editor = { path = "../renzora_procedural_tree/editor", optional = true }
+# Procedural tree is a NATIVE plugin (`plugins/procedural_tree/`) — generator,
+# runtime glue and editor integration all live there, so neither half is linked.
 renzora_forward_decal_editor = { path = "../renzora_forward_decal/editor", optional = true }
-renzora_pool_water_editor   = { path = "../renzora_pool_water/editor", optional = true }
 renzora_network         = { path = "../renzora_network" }
 renzora_animation       = { path = "../renzora_animation" }
 renzora_water           = { path = "../renzora_water" }
@@ -257,5 +248,35 @@ renzora_parkour_editor = { path = "../renzora_parkour/editor" }
 renzora_update = { path = "../renzora_update" }
 renzora_wind_editor = { path = "../renzora_wind/editor" }
 # ── end generated ──
+
+# ── The shared images, for their side effect only ────────────────────────────
+#
+# This crate calls nothing in either. Their presence in ITS link graph is what
+# makes `renzora` and `renzora_ember` resolve to the one shared image rather than
+# being embedded here a second time — the rule every `*_dylib` already follows,
+# and one this crate needs for the same reason now that it is a loadable image
+# rather than an rlib the executable swallowed.
+#
+# Without them the editor gets a PRIVATE copy of the contract crate's
+# process-global statics, and every one of them fails silently. The translation
+# table is the visible one: the runtime loads the language packs into the shared
+# image's copy while the editor reads its own empty one, so the whole UI renders
+# raw keys —
+#
+#     menu.file    menu.edit    common.settings
+#
+# — and nothing is logged, because a missing translation is not an error. Ember's
+# theme palette, stylesheet and viewport-toolbar lists fail the same way one
+# layer up.
+#
+# Target-scoped rather than feature-gated: this is not a choice. On native the
+# editor is always a loadable image and always needs them; on wasm there is no
+# dynamic linking at all, the editor is compiled into its own bundle, and a
+# `dylib` dependency could not be satisfied. A feature would have to be turned on
+# by someone, and the only crate that depends on this one is now wasm-only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+renzora_dylib = { path = "../renzora_dylib" }
+renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false }
+
 [lints]
 workspace = true

@@ -544,9 +544,57 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
+        ("UI".into(), layout_ui()),
         ("Debug".into(), layout_debug()),
-        ("Hub".into(), layout_hub()),
+        ("Marketplace".into(), layout_marketplace()),
     ]
+}
+
+/// UI: Hierarchy | UI Editor + Code | Inspector.
+///
+/// The same three columns as Scene, and the same loop — select in the tree,
+/// drag on the canvas, set properties in the inspector (all ~24 of the `ui_*`
+/// inspector entries are already registered).
+///
+/// It is the **ordinary hierarchy panel**, narrowed to UI canvases by
+/// `sync_hierarchy_filter_to_workspace` in `lib.rs` — which keys off the UI
+/// editor being the visible surface, not off this workspace's name, so docking
+/// the UI editor anywhere gets the same behaviour and docking a viewport beside
+/// it here gets the scene back. A mesh in the list while you are laying out a
+/// menu is something you cannot do anything UI-shaped to, but that is an
+/// argument for filtering the tree, not for building a second one — the panel
+/// already has search, type filters, rename, drag-reparent and a context menu,
+/// and a UI-only copy would have had none of them.
+///
+/// The canvas is the **`ui_canvas` panel**, not the viewport in a special mode.
+/// It used to be the latter: mounted inside the viewport panel's slot 0 and
+/// revealed by a `ViewportView::Ui` that hid the rendered scene underneath it.
+/// Opening a UI therefore took the 3D view away, and gave it back only when you
+/// next selected something 3D — one surface doing two jobs, with whichever you
+/// were not doing hidden. Two panels means you can dock them side by side and
+/// watch a HUD against the scene it sits over.
+///
+/// `code_editor` is tabbed with the canvas because a `.html` template has a
+/// text form worth reaching; `scenes` is not tabbed beside the hierarchy the way
+/// Scene does it, since the document here is a template rather than a scene.
+fn layout_ui() -> DockTree {
+    // Widgets sit *under* the hierarchy rather than tabbed with it. Tabbed, the
+    // two hid each other — and you want them at the same time, since adding a
+    // widget is the thing that changes the tree. Stacked costs no canvas width,
+    // which a third column would.
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("ui_palette"),
+            0.55,
+        ),
+        DockTree::horizontal(
+            DockTree::tabs(&["ui_canvas", "code_editor"]),
+            DockTree::leaf("inspector"),
+            0.76,
+        ),
+        0.15,
+    )
 }
 
 /// Blueprints: NodeProperties | BlueprintGraph over Console.
@@ -737,7 +785,7 @@ pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         DockTree::tabs(&["hierarchy", "scenes"]),
         DockTree::horizontal(
-            DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
+            DockTree::tabs(&["viewport", "code_editor"]),
             DockTree::leaf("inspector"),
             0.78,
         ),
@@ -745,31 +793,23 @@ pub fn scene_layout() -> DockTree {
     )
 }
 
-/// Hub workspace: the community home. A left friends column | the main content
-/// tabs (feed, messages, docs, marketplace, become a creator, publish) | a right
-/// column with the wallet over the asset library. Notifications live in the
-/// top-bar bell dropdown, teams in the Friends panel's Teams tab, and profiles in
-/// a shared overlay, so none of them are panels here anymore; the forum was
-/// replaced by the feed.
-fn layout_hub() -> DockTree {
+/// Marketplace workspace: what you sell on the left, what you own on the right.
+///
+/// This was the "Hub" — a community home with friends down one side and feed,
+/// messages and docs across the middle. All of that is gone: the account exists
+/// to publish and purchase assets and nothing else.
+///
+/// The **store itself is not here** any more. Browsing is a place you go rather
+/// than a panel you keep, so it opens as an overlay from the storefront icon in
+/// the top bar (see `renzora_marketplace::store_overlay`). What is left is the
+/// half of an account you come back to: uploading, what you own, and what you
+/// can spend. `asset_uploader` carries both halves of selling — becoming a
+/// creator and uploading — so there is no separate onboarding tab to place.
+fn layout_marketplace() -> DockTree {
     DockTree::horizontal(
-        // Left: friends.
-        DockTree::leaf("social_friends"),
-        DockTree::horizontal(
-            // Center: the big content surfaces, in reading order.
-            DockTree::tabs(&[
-                "social_feed",
-                "social_chat",
-                "social_learn",
-                "hub_store",
-                "social_onboarding",
-                "asset_uploader",
-            ]),
-            // Right: wallet over the asset library.
-            DockTree::tabs(&["social_wallet", "hub_library"]),
-            0.62,
-        ),
-        0.18,
+        DockTree::leaf("asset_uploader"),
+        DockTree::tabs(&["hub_library", "social_wallet"]),
+        0.6,
     )
 }
 

@@ -8,6 +8,49 @@ use renzora_shader::material::graph::{MaterialDomain, MaterialGraph, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
+/// Pump until Bevy's shader libraries have finished streaming in.
+///
+/// The validator composes a material against the libraries Bevy registers as
+/// ASSETS, and those arrive over several frames through the shared IO task pool.
+/// Until they are all present the composer resolves no imports, so every
+/// material — healthy or not — comes back covered in
+/// `required import 'bevy_pbr::pbr_fragment' not found`.
+///
+/// That is not a subtle failure, it is an inverted one: a test asserting "the
+/// healthy material must be clean" sees a healthy material reporting errors, and
+/// a test asserting "repairing clears the report" sees the report survive the
+/// repair. Both read as the Problems panel being broken.
+///
+/// It only shows up where the pool is contended, which is CI and not a
+/// developer's machine — four tests in this file failed that way across three
+/// runs, each having independently guessed at a frame count in `pump`.
+///
+/// So the wait lives in the fixture, once, on the condition that actually has to
+/// hold. Waiting on "the library count stopped growing" is NOT enough: a partial
+/// set holds still just as convincingly as a complete one, which is how the same
+/// bug survived a first fix in `validate.rs`.
+fn wait_for_shader_libraries(app: &mut App) {
+    // `pbr_fragment` specifically, not just any library: it is the one the
+    // generated surface shaders import and the one CI reported missing.
+    const REQUIRED: [&str; 2] = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
+    let present = |app: &App| {
+        let shaders = app.world().resource::<Assets<Shader>>();
+        REQUIRED.iter().all(|want| {
+            shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == *want)
+        })
+    };
+    for _ in 0..500 {
+        if present(app) {
+            return;
+        }
+        app.update();
+    }
+    panic!(
+        "Bevy's shader libraries did not finish loading in 500 frames; every \
+         material would be reported broken for unresolved imports"
+    );
+}
+
 /// A graph whose only node is a `custom/code` snippet driving `base_color`.
 ///
 /// `custom/code` is the one node that still lets a user write arbitrary WGSL,
@@ -71,6 +114,8 @@ impl Fixture {
         // inserts this in a real app; a headless test has no runtime setup.
         app.insert_resource(renzora::EditorSession(is_editor));
 
+        wait_for_shader_libraries(&mut app);
+
         Self {
             app,
             dir,
@@ -131,6 +176,27 @@ impl Fixture {
     fn pump(&mut self) {
         for _ in 0..8 {
             self.app.update();
+        }
+    }
+
+    /// Pump until `done` holds, giving up after a budget.
+    ///
+    /// Eight frames is enough for anything that lands in a resource — the
+    /// resolver writes `ContentProblems` directly, so it is there the moment the
+    /// compile finishes. It is NOT enough for anything that has to travel
+    /// through the tracing layer into the Console buffer, which is a frame or
+    /// more behind and depends on how quickly the shader libraries streamed in.
+    ///
+    /// On a developer's machine the difference never shows; on a contended CI
+    /// runner it did, as an assertion that the console had heard nothing. Waiting
+    /// on the condition rather than on a frame count removes the guess: the fast
+    /// case still costs one frame, and the slow case is allowed to be slow.
+    fn pump_until(&mut self, mut done: impl FnMut() -> bool) {
+        for _ in 0..240 {
+            self.app.update();
+            if done() {
+                return;
+            }
         }
     }
 
@@ -269,18 +335,23 @@ fn a_broken_material_reaches_the_console() {
     let mut f = Fixture::new("console");
     f.write(BROKEN);
     f.spawn_user();
-    f.pump();
 
-    let entries = buffer.0.lock().unwrap();
-    assert!(
+    // The entry has to cross the tracing layer to reach the buffer, so this is
+    // the one assertion here that cannot rely on a fixed frame count. The guard
+    // is scoped inside the closure so the lock is released between frames — held
+    // across `app.update()` it would deadlock against the layer trying to append.
+    let reached_console = || {
+        let entries = buffer.0.lock().expect("console buffer");
         entries.iter().any(|e| {
             e.level == renzora::console_log::LogLevel::Error
                 && e.category == "Material"
                 && e.message.contains("t.material")
                 && e.message.contains("no_such_symbol")
-        }),
-        "no Material error in the console buffer"
-    );
+        })
+    };
+    f.pump_until(reached_console);
+
+    assert!(reached_console(), "no Material error in the console buffer");
 }
 
 /// The one the user asked for: a repaired material must stop being reported.

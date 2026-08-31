@@ -272,6 +272,27 @@ pub fn user_template_dir(platform: Platform) -> Option<PathBuf> {
     Some(user_templates_root()?.join(platform.dist_dir_name()))
 }
 
+/// Where a downloaded engine source checkout is installed.
+///
+/// Version-scoped like the templates, and for the same reason: a lean build
+/// recompiles the engine, so the source has to be the source this editor was
+/// built from. Two engine versions on one machine keep separate trees rather
+/// than one overwriting the other.
+///
+/// This exists so a canonical editor download — which ships binaries and no
+/// source — can still do a lean export. Someone with a checkout never touches
+/// it; `find_engine_source` prefers the checkout the editor is running from.
+pub fn user_source_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    Some(home.join(".renzora").join("src").join(renzora::version::ENGINE_VERSION))
+}
+
+/// The release asset holding the engine source, published beside the runtime
+/// templates. Not platform-scoped — source is source.
+pub const SOURCE_ASSET: &str = "engine-source.zip";
+
 /// Sidecar written beside a downloaded template recording which release it came
 /// from, so the UI can say "r1-alpha7-nightly-16aug26" rather than "installed".
 pub const TEMPLATE_STAMP: &str = "template.json";

@@ -35,10 +35,11 @@ You don't have to leave the engine to publish. The editor ships a **Publish** pa
 
 **Opening it:**
 
-- In the **Marketplace** panel's left column, click **Upload Asset**.
+- Switch to the **Marketplace** workspace — Publish is its left pane, with your Library and Wallet beside it.
+- Or in the marketplace overlay's toolbar, click **Upload Asset**.
 - Or open the **command palette** (`Ctrl`/`Cmd` + `P`) and run **Open Publish**.
 
-The panel docks like any other, so you can keep it beside the viewport while you prepare files. You must be **signed in** (sign in from the Marketplace panel first); publishing to a *paid* price also needs a connected payout account, exactly as on the web.
+Publish is a dock panel, unlike the store itself, and that's the point: uploading is work you come back to over several sittings, so you want it beside the viewport while you prepare files rather than over the top of it. You must be **signed in** (sign in from the marketplace overlay first); publishing to a *paid* price also needs a connected payout account, exactly as on the web.
 
 **How it differs from the website (only in mechanics, not in fields):**
 
@@ -110,7 +111,7 @@ Categories are defined server-side. The current set (with the recommended max si
 | Themes | `themes` | 20 MB | zip, rar, json |
 | Fonts | `fonts` | 20 MB | zip, rar, ttf, otf, woff, woff2 |
 
-> Accepting an upload format is not the same as the engine loading it at runtime. Renzora loads `.glb`/`.gltf`, `.png`/`.jpg`/`.hdr`, `.lua`/`.rhai`, `.ron`, `.material`, `.particle`, and `.ogg`/`.mp3`/`.wav`/`.flac` directly; other model formats convert to GLB at import, and `.exr` is **not** a supported runtime texture. See [Browsing & Installing](./browsing) for the full runtime-format note.
+> Accepting an upload format is not the same as the engine loading it at runtime. Renzora loads `.glb`/`.gltf`, `.png`/`.jpg`/`.hdr`, `.lua`, `.ron`, `.material`, `.particle`, and `.ogg`/`.mp3`/`.wav`/`.flac` directly (`.rhai` is still an accepted *upload* format but no longer runs — its backend was removed); other model formats convert to GLB at import, and `.exr` is **not** a supported runtime texture. See [Browsing & Installing](./browsing) for the full runtime-format note.
 
 ## Pricing
 

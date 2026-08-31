@@ -54,7 +54,7 @@ server = "run --profile dist --bin renzora -- --server"
 # been REMOVED. Building only the runtime is no longer a thing you need: the
 # runtime binary produced by `cargo dist` already contains no editor code,
 # because `renzora_app` does not depend on any editor crate.
-dist = "build --profile dist --workspace --bin renzora --bin renzora-editor"
+dist = "build --profile dist --workspace --exclude renzora-android --exclude renzora-ios"
 build-editor = "build --profile dist --workspace"
 build-all = "build --profile dist --workspace"
 build-plugins = "build --profile dist --workspace"

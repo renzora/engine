@@ -26,6 +26,7 @@ use widgets::{ModalSurface, OverlaySurface};
 
 pub mod cursor_icon;
 pub mod dock;
+pub mod file_kind;
 pub mod font;
 pub mod icons;
 pub mod inspector;

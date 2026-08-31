@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 
 use renzora::core::ShapeRegistry;
-use renzora_editor_framework::{InspectorRegistry, SpawnRegistry};
+use renzora_editor_framework::{EditorCommands, InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{search_overlay, SearchEntry};
 use renzora_undo::{execute, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoContext};
@@ -20,12 +20,20 @@ pub(crate) struct HierAddEntity;
 
 /// Click "Add Entity" → open the search overlay with every spawnable preset /
 /// shape / component.
+///
+/// Except in the UI workspace, where the scope narrows that list to exactly one
+/// entry and the button says "New Canvas". A search overlay offering a single
+/// result is a step between the user and the thing they already asked for, so
+/// there the press spawns the canvas outright.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn hier_add_entity_open(
     q: Query<&Interaction, (With<HierAddEntity>, Changed<Interaction>)>,
     fonts: Option<Res<EmberFonts>>,
     spawn_reg: Option<Res<SpawnRegistry>>,
     shape_reg: Option<Res<ShapeRegistry>>,
     inspector_reg: Option<Res<InspectorRegistry>>,
+    scope: Option<Res<renzora::SpawnCategoryScope>>,
+    cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {
     if !q.iter().any(|i| *i == Interaction::Pressed) {
@@ -39,7 +47,16 @@ pub(crate) fn hier_add_entity_open(
         spawn_reg.as_deref(),
         shape_reg.as_deref(),
         inspector_reg.as_deref(),
+        scope.as_deref(),
     );
+    // One entry means the search has nothing to search. Run it and be done.
+    if entries.len() == 1 {
+        if let Some(cmds) = cmds {
+            let action = entries.into_iter().next().expect("len checked").action;
+            cmds.push(move |w: &mut World| action(w));
+        }
+        return;
+    }
     search_overlay(&mut commands, &fonts, &renzora::lang::t("hierarchy.add.title"), entries);
 }
 
@@ -49,11 +66,18 @@ pub(crate) fn spawn_entries(
     spawn_reg: Option<&SpawnRegistry>,
     shape_reg: Option<&ShapeRegistry>,
     inspector_reg: Option<&InspectorRegistry>,
+    scope: Option<&renzora::SpawnCategoryScope>,
 ) -> Vec<SearchEntry> {
     let mut entries: Vec<SearchEntry> = Vec::new();
+    // Matched on the **English** category, before localisation — the scope is
+    // declared in code and the display string is not.
+    let allows = |category: &str| scope.is_none_or(|s| s.allows(category));
 
     if let Some(reg) = spawn_reg {
         for p in reg.iter() {
+            if !allows(p.category) {
+                continue;
+            }
             let id = p.id.to_string();
             // Localize the preset name + category for display only — the spawn
             // still keys off `p.id`, and the category is consistent per English
@@ -81,6 +105,9 @@ pub(crate) fn spawn_entries(
 
     if let Some(reg) = shape_reg {
         for s in reg.iter() {
+            if !allows(s.category) {
+                continue;
+            }
             let (shape_id, name, color) = (s.id.to_string(), s.name.to_string(), s.default_color);
             let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(s.category)), s.category);
             entries.push(SearchEntry::new(
@@ -107,7 +134,7 @@ pub(crate) fn spawn_entries(
     if let Some(reg) = inspector_reg {
         const CATS: [&str; 4] = ["rendering", "post_process", "effects", "Audio"];
         for e in reg.iter() {
-            if e.add_fn.is_some() && CATS.contains(&e.category) {
+            if e.add_fn.is_some() && CATS.contains(&e.category) && allows(e.category) {
                 let (type_id, display_name) = (e.type_id.to_string(), e.display_name.to_string());
                 let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(e.category)), e.category);
                 entries.push(SearchEntry::new(

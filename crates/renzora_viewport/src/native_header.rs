@@ -27,11 +27,11 @@ use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
     drag_value, drag_value_flat, dropdown_compact, icon_popup_trigger, popup_anchor, popup_panel,
-    popup_panel_aligned, scroll_area, toggle_switch, DragRange, EmberDropdownOption, OverlaySurface,
-    Popup, PopupAlign,
+    popup_panel_aligned, scroll_area, toggle_switch, DragRange, EmberDropdownOption, Popup,
+    PopupAlign,
 };
 use renzora_ember::theme::{
-    border, divider, hover_bg, panel_bg, rgb, tab_active, text_muted, text_primary, value_text,
+    border, hover_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
@@ -284,37 +284,14 @@ pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Ent
 /// [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
 /// tool never bleeds into picking / box-select underneath).
 pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
-    // A wrapping row, filling left to right: a group that doesn't fit on a line
-    // moves down whole rather than being squeezed or hidden behind an overflow
-    // menu. It sits *above* the rendered scene rather than over it, so a
-    // two-line toolbar costs the view nothing.
-    let bar = renzora_ember::widgets::arrange_row(commands, "vp-toolbar");
-    commands.entity(bar).insert((
-        Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::FlexStart,
-            align_content: AlignContent::FlexStart,
-            flex_wrap: FlexWrap::Wrap,
-            column_gap: Val::Px(2.0),
-            row_gap: Val::Px(2.0),
-            padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
-            flex_shrink: 0.0,
-            // Closed off underneath, the same 1px rule the context bars below it
-            // carry. Without it the strip and whichever bar follows it — a
-            // terrain bar, or the scene itself — meet with nothing between them,
-            // and a two-row toolbar in particular reads as an indeterminate slab
-            // of chrome rather than as one band that ends here.
-            border: UiRect::bottom(Val::Px(1.0)),
-            ..default()
-        },
-        BackgroundColor(side_toolbar_bg()),
-        BorderColor::all(rgb(divider())),
-        bevy::ui::RelativeCursorPosition::default(),
-        OverlaySurface,
-        Name::new("vp-side-toolbar"),
-    ));
+    // The shared editor toolbar strip — see `renzora_ember::widgets::toolbar`
+    // for what it is and why the numbers live there rather than here. It sits
+    // *above* the rendered scene rather than over it, so a two-line toolbar
+    // costs the view nothing.
+    let bar = renzora_ember::widgets::toolbar_bar(commands, "vp-toolbar");
+    commands
+        .entity(bar)
+        .insert(Name::new("vp-side-toolbar"));
 
     // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
     // Populated from ToolbarRegistry by a deferred system (predicates need
@@ -449,20 +426,8 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
         });
     }
 
-    // Track the live theme (the static BackgroundColor above only covers the
-    // first frame). The closing rule needs the same treatment, and there is no
-    // `bind_border`, so it goes through the generic binding.
-    renzora_ember::reactive::tracked::bind_bg(commands, bar, |_| side_toolbar_bg());
-    renzora_ember::reactive::tracked::bind_with(
-        commands,
-        bar,
-        |_: &Rx| rgb(divider()),
-        |world, target, c: &Color| {
-            if let Some(mut b) = world.get_mut::<BorderColor>(target) {
-                *b = BorderColor::all(*c);
-            }
-        },
-    );
+    // Theme tracking for the strip's own background and closing rule now lives
+    // in `toolbar_bar`, so the UI editor's toolbar gets it too.
     bar
 }
 
@@ -499,11 +464,6 @@ fn sync_toolbar_order(
     }
 }
 
-/// The side toolbar's solid panel fill — the theme's panel colour, so the
-/// strip reads as part of the editor chrome (same as the header strip).
-fn side_toolbar_bg() -> Color {
-    rgb(panel_bg())
-}
 
 /// The Grid row of the 2D Overlays dropdown: label, the cell-size input, then
 /// the on/off switch. Unlike the other rows (plain `toggle_row!`), the grid
@@ -1110,13 +1070,20 @@ fn action_appearance(
             if m.can_redo { m.primary } else { m.muted },
             m.can_redo,
         ),
-        // Save is the one action whose enabled state means "you have work you
-        // could lose", so it gets amber rather than the neutral `primary` the
-        // other enabled buttons use — the unsaved tab is the thing to notice.
+        // Save is never disabled — only tinted.
+        //
+        // Amber when there is known unsaved work, muted otherwise, but always
+        // clickable. `can_save` tracks the editor's own dirty flag, and plenty
+        // of real edits do not reach it: a UI template edit writes an `.html`,
+        // a script writes a `.rs`, and neither marks the *scene* dirty. The
+        // button then looked broken — the user had visibly changed something
+        // and the control that saves was greyed out. Saving when nothing
+        // changed costs a file write; refusing to save when something did is
+        // the failure worth avoiding.
         HeaderAction::Save => (
             "floppy-disk",
             if m.can_save { m.warning } else { m.muted },
-            m.can_save,
+            true,
         ),
         HeaderAction::Maximize => (
             if this_maximized { "arrows-in" } else { "arrows-out" },
@@ -1270,6 +1237,14 @@ fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     ));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
+    // The game's own UI, not an editor overlay — but it belongs here because
+    // from the viewport's point of view it is one more thing drawn over the
+    // scene, and this is where you come to turn those off.
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t_or("viewport.gizmos.game_ui", "Game UI"),
+        show_game_ui
+    ));
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.rigging")));
@@ -1781,73 +1756,19 @@ fn snap_pair(
     get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, value_text(), 13.0);
-    let toggle = commands
-        .spawn((
-            Node {
-                width: Val::Px(22.0),
-                height: Val::Px(BTN_H),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            which,
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("vp-snap-toggle"),
-        ))
-        .id();
-    commands.entity(toggle).add_child(glyph);
-
-    // Divider between the toggle and the number, so the two halves of the pill
-    // read as separate hit areas.
-    let divider = commands
-        .spawn((
-            Node {
-                width: Val::Px(1.0),
-                height: Val::Px(14.0),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(border())),
-            Name::new("vp-snap-divider"),
-        ))
-        .id();
-
-    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), min, step);
-    commands.entity(dv).insert((
-        DragRange { min, max },
-        // Whole-number steps: the model quantizes to 1, so the readout never
-        // shows decimals and every scrub/wheel/typed value lands on an integer.
-        renzora_ember::widgets::DragSnap(1.0),
-    ));
-    // Narrower number cell than the widget's 44px default — these live in the
-    // viewport toolbar where width is precious and the values are 1–3 digits.
+    // The pill chrome is shared with the UI editor's toolbar — see
+    // `renzora_ember::widgets::toolbar`. Only the wiring is viewport-specific:
+    // which setting the toggle flips, and what the number is bound to.
+    let pill = renzora_ember::widgets::toolbar_pill(commands, fonts, icon, min, max, step);
+    commands.entity(pill.toggle).insert(which);
+    commands.entity(pill.root).insert(SnapPillOf(which));
+    // Whole-number steps: the model quantizes to 1, so the readout never shows
+    // decimals and every scrub/wheel/typed value lands on an integer.
     commands
-        .entity(dv)
-        .entry::<Node>()
-        .and_modify(|mut n| n.min_width = Val::Px(32.0));
-    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
-
-    let row = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(2.0),
-                padding: UiRect::horizontal(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(hover_bg())),
-            SnapPillOf(which),
-            Name::new("vp-snap-pair"),
-        ))
-        .id();
-    commands.entity(row).add_children(&[toggle, divider, dv]);
-    row
+        .entity(pill.value)
+        .insert(renzora_ember::widgets::DragSnap(1.0));
+    bind_2way(commands, pill.value, get, move |w, v: &f32| set(w, *v));
+    pill.root
 }
 
 /// A camera icon + scrubbable move-speed (3D fly-cam).

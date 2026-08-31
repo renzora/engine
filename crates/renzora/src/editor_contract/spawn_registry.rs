@@ -33,6 +33,30 @@ impl SpawnRegistry {
     }
 }
 
+/// Preset **categories** the Add Entity list is narrowed to, or `None` for all.
+///
+/// The companion to a scoped
+/// [`HierarchyFilter`](crate::core::HierarchyFilterScope) — a tree showing only
+/// UI canvases should not offer to spawn a point light, because the thing you
+/// spawned would not appear in the list you spawned it from. Categories rather
+/// than component names because that is what an `EntityPreset` already carries;
+/// matching is against the **English** category string, before localisation.
+///
+/// Read by the hierarchy's Add Entity overlay and its right-click quick-add,
+/// which share one entry builder, so setting this narrows both.
+#[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
+pub struct SpawnCategoryScope(pub Option<Vec<&'static str>>);
+
+impl SpawnCategoryScope {
+    /// Whether a preset in `category` should be offered.
+    pub fn allows(&self, category: &str) -> bool {
+        match &self.0 {
+            None => true,
+            Some(list) => list.contains(&category),
+        }
+    }
+}
+
 // ── Scene starters ──────────────────────────────────────────────────────────
 
 /// A one-click template that fills an empty scene with a useful starting
@@ -48,6 +72,17 @@ pub struct SceneStarter {
     pub title: &'static str,
     pub description: &'static str,
     pub icon: &'static str,
+    /// Component type names this starter produces, for matching against a
+    /// scoped [`HierarchyFilter`](crate::core::HierarchyFilterScope).
+    ///
+    /// Empty means "a whole scene" — a camera, a sun, terrain — and such a
+    /// starter is offered only when the hierarchy is unfiltered. When the tree
+    /// is narrowed (the UI workspace shows only `UiCanvas`), an empty list is
+    /// the picker's signal that this starter would build something the user
+    /// cannot even see from where they are standing: offering "New
+    /// Environment" to someone laying out a menu is an answer to a question
+    /// they did not ask.
+    pub produces: &'static [&'static str],
     pub spawn_fn: fn(&mut World),
 }
 
@@ -119,6 +154,19 @@ impl ComponentIconRegistry {
         world: &bevy::ecs::world::World,
         entity: bevy::ecs::entity::Entity,
     ) -> Option<(&'static str, [u8; 3])> {
+        // A despawned entity is a legitimate argument, not a bug to panic on.
+        //
+        // Callers hold entity ids across frames — a selection, a cached tree row
+        // — and anything can despawn between the id being taken and the icon
+        // being asked for. Saving a `.html` in the code editor does exactly
+        // that: the template rebuild despawns every node under the canvas, and
+        // the very next frame something asks what icon the entity it is still
+        // pointing at should have. `world.entity()` panicked; this returns
+        // `None`, which every caller already handles because an unregistered
+        // component returns it too.
+        let Ok(er) = world.get_entity(entity) else {
+            return None;
+        };
         // Check dynamic icons first (for things like per-widget-type icons)
         for entry in &self.entries {
             if let Some(dynamic_fn) = entry.dynamic_icon_fn {
@@ -133,7 +181,6 @@ impl ComponentIconRegistry {
                 continue; // already checked above
             }
             if let Some(component_id) = world.components().get_id(entry.type_id) {
-                let er = world.entity(entity);
                 if er.contains_id(component_id) {
                     return Some((entry.icon, entry.color));
                 }
@@ -150,9 +197,12 @@ impl ComponentIconRegistry {
         world: &bevy::ecs::world::World,
         entity: bevy::ecs::entity::Entity,
     ) -> Option<&'static str> {
+        // Same reasoning as `entity_icon`: a dead entity answers `None`.
+        let Ok(er) = world.get_entity(entity) else {
+            return None;
+        };
         for entry in &self.entries {
             if let Some(component_id) = world.components().get_id(entry.type_id) {
-                let er = world.entity(entity);
                 if er.contains_id(component_id) {
                     return Some(entry.name);
                 }

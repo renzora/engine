@@ -39,9 +39,10 @@ default = ["std"]
 # because a post-process effect is a shader plus two arithmetic systems. A
 # downloaded marketplace plugin should keep `std`.
 #
-# The four that do not: `lua` (needs `script`), `text3d` (`std::fs` for fonts),
-# `hair` (`HashMap` + a `Mutex` static), `wobble` (its `noise` dep pulls
-# `num-traits` with default features, and feature unification cannot subtract).
+# The three that do not: `lua` (needs `script`), `hair` (`HashMap` + a `Mutex`
+# static), `wobble` (its `noise` dep pulls `num-traits` with default features,
+# and feature unification cannot subtract). `text3d` was a fourth until it became
+# a native plugin and stopped going through this crate at all.
 std = []
 
 # Soft-float math for `no_std`. `f32::sqrt`, `sin_cos`, `sin`, `acos`, `powf`

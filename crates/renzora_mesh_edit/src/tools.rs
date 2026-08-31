@@ -68,9 +68,21 @@ pub struct PendingOps(pub Vec<ModelingOp>);
 
 // ── Tab: Scene ↔ Edit mode ─────────────────────────────────────────────────
 
-/// Shortcut handler (default `Tab`): Scene → Edit when a mesh entity is
-/// selected; Edit or Sculpt → back to Scene. Registered via
-/// `register_shortcut` so it's rebindable and respects text-input focus.
+/// Shortcut handler (default `Tab`): Scene → Edit, and Edit or Sculpt → back to
+/// Scene. Registered via `register_shortcut` so it's rebindable and respects
+/// text-input focus.
+///
+/// # Entering with nothing selected is allowed
+///
+/// It used to require a selected `Mesh3d`, which made Tab do nothing at all in
+/// the common case of arriving at the viewport and wanting to edit — you had to
+/// know to click a mesh first, and a key that silently does nothing reads as
+/// unbound rather than as refused.
+///
+/// The guard was also inconsistent with the mode it was guarding.
+/// `enter_edit_mode` has always handled an empty selection deliberately: it
+/// leaves Scene-mode picking active "so the user can click a mesh to edit".
+/// Edit-with-no-target is a supported state that only this key refused to reach.
 pub fn toggle_edit_mode(world: &mut World) {
     // No mesh editing while the game is running in the viewport.
     if world
@@ -79,14 +91,6 @@ pub fn toggle_edit_mode(world: &mut World) {
     {
         return;
     }
-    let selected_mesh = {
-        let Some(selection) = world.get_resource::<EditorSelection>() else {
-            return;
-        };
-        selection
-            .get()
-            .filter(|e| world.get::<Mesh3d>(*e).is_some())
-    };
     let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() else {
         return;
     };
@@ -95,9 +99,7 @@ pub fn toggle_edit_mode(world: &mut World) {
         return;
     }
     match settings.viewport_mode {
-        ViewportMode::Scene if selected_mesh.is_some() => {
-            settings.viewport_mode = ViewportMode::Edit;
-        }
+        ViewportMode::Scene => settings.viewport_mode = ViewportMode::Edit,
         ViewportMode::Edit | ViewportMode::Sculpt => {
             settings.viewport_mode = ViewportMode::Scene;
         }

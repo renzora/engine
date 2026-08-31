@@ -1,0 +1,29 @@
+[package]
+name = "renzora_dylib"
+version = "0.1.0"
+edition = "2021"
+description = "One shared copy of the `renzora` contract, for the host and every plugin to link."
+
+# The entire purpose of this crate. It holds no code of its own — it exists so
+# `renzora`'s compiled form can be a single image that the two executables and
+# every plugin dylib all link against, rather than a copy embedded in each.
+#
+# A separate crate rather than adding `dylib` to `renzora`'s own `crate-type`,
+# because `renzora` is the universal dependency: making it a dylib directly
+# would need `-C prefer-dynamic` workspace-wide to take effect, and the lean
+# export (a deliberately static single binary) would then have to fight it back
+# off. This way the dylib is pulled in by the two binaries under a feature, and
+# the lean export drops it by simply not enabling that feature.
+#
+# Mirrors `bevy_dylib`, which exists for exactly the same reason one layer down.
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+# The only dependency this crate will ever have. Boundary-crossing types are
+# required to live in `renzora` (CLAUDE.md §6.3) rather than in the crate that
+# defines them, so there is never a second crate whose code needs to be in here.
+renzora = { path = "../renzora" }
+
+[lints]
+workspace = true

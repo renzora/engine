@@ -20,7 +20,7 @@ use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue,
     InspectorEntry, ToolEntry, ToolSection,
 };
-use renzora_spline::SplinePath;
+use renzora::SplinePath;
 use renzora_terrain::data::TerrainData;
 
 use terrain_inspector::{sync_active_tool_system, TerrainInspectorTab};

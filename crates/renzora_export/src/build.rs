@@ -46,10 +46,75 @@ fn encoded_rustflags(platform: Platform) -> String {
     }
 }
 
+/// Drop `prefer-dynamic` from the export copy's cargo config, for a build that
+/// runs in a container.
+///
+/// The host path does this with `CARGO_ENCODED_RUSTFLAGS`, which cargo treats as
+/// a single highest-priority source and does not merge with any config file.
+/// That is exactly what makes it work natively — and exactly why it cannot be
+/// used in a container. The toolchain images supply the cross-linker's library
+/// search paths *as rustflags*:
+///
+/// ```toml
+/// [target.x86_64-pc-windows-msvc]
+/// linker = "lld-link"
+/// rustflags = ["-Lnative=/xwin/crt/lib/x86_64", …]
+/// ```
+///
+/// Setting the env var would replace those, and the link would fail on missing
+/// system libraries with nothing pointing at the cause. Editing the copy's own
+/// config instead leaves cargo free to merge the two files' `rustflags` arrays
+/// the way it normally does, so the image's paths survive.
+///
+/// Only the copy is touched — the dev tree is never edited (see
+/// [`sync_export_workspace`]).
+fn patch_cross_cargo_config(
+    ws: &Path,
+    platform: Platform,
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    let path = ws.join(".cargo").join("config.toml");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        // No config in the copy is fine: the image's own config then applies
+        // unopposed, which is already what we want.
+        return Ok(());
+    };
+
+    // Line-wise rather than a TOML round-trip: `prefer-dynamic` appears inside
+    // `rustflags` arrays whose other entries must survive verbatim, and dropping
+    // one array element is the whole edit.
+    let mut out = String::with_capacity(text.len());
+    let mut removed = 0usize;
+    for line in text.lines() {
+        if line.contains("prefer-dynamic") {
+            removed += 1;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    // A lean Windows binary also static-links the MSVC CRT, which the host path
+    // gets from `encoded_rustflags`. Appended as its own target section so it
+    // merges with the image's rustflags rather than replacing them.
+    if matches!(platform, Platform::WindowsX64) {
+        out.push_str(
+            "\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"target-feature=+crt-static\"]\n",
+        );
+    }
+
+    std::fs::write(&path, out)
+        .map_err(|e| format!("Could not patch {} for a container build: {e}", path.display()))?;
+    progress(format!("Prepared cargo config for a container build ({removed} dynamic-link flags removed)"));
+    Ok(())
+}
+
 /// The lean binary's filename under `target/dist-lean/`.
 fn bin_filename(platform: Platform) -> &'static str {
     match platform {
-        Platform::WindowsX64 => "renzora.exe",
+        // Both Windows arches now that a cross build can produce arm64 — the
+        // extension follows the target, not the machine doing the compiling.
+        Platform::WindowsX64 | Platform::WindowsArm64 => "renzora.exe",
         _ => "renzora",
     }
 }
@@ -63,6 +128,60 @@ fn bin_filename(platform: Platform) -> &'static str {
 /// sub-crate's `Cargo.toml` can't be mistaken for the root). Returns `None` for a
 /// canonical editor release with no source beside it — lean builds there will
 /// need the engine source fetched first (future work).
+/// The directory the running editor lives in — where a lean build looks for the
+/// engine source.
+///
+/// Deliberately NOT the target platform's runtime directory. That is the
+/// *template* dir, and for a cross-platform export it is the per-user download
+/// store (`~/.renzora/templates/<version>/<platform>/`), which has no engine
+/// source anywhere above it:
+///
+/// ```text
+/// Could not find the engine source to compile
+/// (searched up from ~/.renzora/templates/r1-alpha7/linux-x64)
+/// ```
+///
+/// That path was harmless while lean builds were host-only, because the host's
+/// template dir *is* `<engine>/dist/<platform>/`. Once a lean build could target
+/// another platform it stopped being true — and a lean build never reads the
+/// template anyway, since it recompiles the engine from source.
+pub fn editor_dir() -> Option<PathBuf> {
+    std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
+}
+
+/// The engine source a lean build compiles: the checkout the editor runs from
+/// if there is one, otherwise a downloaded copy under `~/.renzora/src/<version>/`.
+///
+/// The checkout wins deliberately. A contributor's tree is the one they are
+/// editing, and silently compiling a downloaded copy instead would produce a
+/// binary that did not contain their changes — the kind of wrong that looks like
+/// the build system lying.
+///
+/// The download exists so a canonical editor — binaries, no source — can still
+/// do a lean export. It is fetched on demand by
+/// [`crate::download::spawn_source_download`]; `None` here means neither is
+/// present, which the UI turns into a Download offer rather than a dead end.
+pub fn resolve_engine_source() -> Option<PathBuf> {
+    if let Some(checkout) = editor_dir().and_then(|d| find_engine_source(&d)) {
+        return Some(checkout);
+    }
+    let downloaded = crate::templates::user_source_dir()?;
+    // Verified by the same signature rather than mere existence: a half-extracted
+    // or emptied directory would otherwise be handed to cargo, which fails much
+    // later and much less clearly.
+    is_engine_source(&downloaded).then_some(downloaded)
+}
+
+/// Does this directory look like the engine workspace root?
+///
+/// `Cargo.toml` + `crates/` + `src/main.rs` together, so a sub-crate's manifest
+/// cannot be mistaken for the root.
+fn is_engine_source(dir: &Path) -> bool {
+    dir.join("Cargo.toml").is_file()
+        && dir.join("crates").is_dir()
+        && dir.join("src").join("main.rs").is_file()
+}
+
 pub fn find_engine_source(start: &Path) -> Option<PathBuf> {
     let mut dir = Some(start);
     while let Some(d) = dir {
@@ -89,13 +208,18 @@ pub fn find_engine_source(start: &Path) -> Option<PathBuf> {
 /// nothing to share with the host.
 ///
 /// Native cargo can only target the **host** triple; cross-OS builds are a hard
-/// Docker requirement (not yet wired here), so this rejects a non-host target
-/// rather than producing a wrong artifact.
+/// Same-OS targets compile natively with `toolchain`; a different OS compiles in
+/// that platform's toolchain container, because cargo can only target the host.
 #[allow(clippy::too_many_arguments)]
 pub fn build_lean(
     workspace_dir: &Path,
+    // The project being exported — where its `scripts/*.rs` are read from. Not
+    // the engine source, which `workspace_dir` points at.
+    project_dir: &Path,
     platform: Platform,
-    toolchain: &Toolchain,
+    // `None` for a cross build, which compiles in a container and needs no
+    // local Rust at all.
+    toolchain: Option<&Toolchain>,
     progress: &mut dyn FnMut(String),
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
@@ -103,13 +227,41 @@ pub fn build_lean(
     static_plugins: &[StaticPluginSrc],
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
-    if Platform::current() != Some(platform) {
-        return Err(format!(
-            "Cross-platform lean builds require Docker (not yet available). \
-             Build {} natively on a {} host, or use the copy-based export.",
-            platform.display_name(),
-            platform.display_name(),
-        ));
+    // ── Docker only for cross-OS; the host builds natively ───────────────────
+    //
+    // A container is a cross-compiler, and there is nothing to cross-compile for
+    // the machine you are sitting at. Native is also faster (no image pull, no
+    // bind mount) and needs no Docker install at all — so someone exporting for
+    // their own platform never has to have it.
+    //
+    // Checked up front, before the workspace sync copies the engine source —
+    // that takes long enough to look like the build had already started.
+    let cross = Platform::current() != Some(platform);
+    if cross {
+        if !crate::docker::lean_supported(platform) {
+            return Err(format!(
+                "No lean build is available for {} — it has no toolchain image.",
+                platform.display_name(),
+            ));
+        }
+        match crate::docker::probe() {
+            crate::docker::DockerStatus::Ready => {}
+            crate::docker::DockerStatus::NotInstalled => {
+                return Err(format!(
+                    "A lean build for {} is compiled in a container, so it needs Docker. \
+                     Install it from {} and try again.",
+                    platform.display_name(),
+                    crate::docker::INSTALL_URL,
+                ));
+            }
+            crate::docker::DockerStatus::NotRunning(why) => {
+                return Err(format!(
+                    "Docker is installed but not responding, so the {} build cannot start. \
+                     Start Docker Desktop and try again.\n{why}",
+                    platform.display_name(),
+                ));
+            }
+        }
     }
 
     if !workspace_dir.join("Cargo.toml").is_file() {
@@ -126,19 +278,54 @@ pub fn build_lean(
     // so the dev cache and locks are untouched and exports stay incremental
     // across runs.
     let ws = sync_export_workspace(workspace_dir, progress)?;
+    if cross {
+        patch_cross_cargo_config(&ws, platform, progress)?;
+    }
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
     patch_lean_profile(&ws, profile, progress)?;
     stage_static_plugins(workspace_dir, &ws, static_plugins, progress)?;
+    let has_scripts = stage_static_scripts(project_dir, &ws, progress)?;
     let mut features = String::from("runtime");
     if !static_plugins.is_empty() {
         features.push_str(",static_plugins");
     }
+    // Only when there is something to link. Turning it on with an empty table
+    // would compile the aggregator and the `renzora/static_scripts` variant of
+    // `script!` for nothing.
+    if has_scripts {
+        features.push_str(",static_scripts");
+    }
 
-    let mut cmd = toolchain.cargo_command();
-    cmd.current_dir(&ws)
-        .env("CARGO_ENCODED_RUSTFLAGS", encoded_rustflags(platform))
-        .args([
+    // Native cargo for the host; the toolchain container for anything else. The
+    // cargo arguments after this are identical either way — a container build is
+    // the same build, run somewhere that has the cross-linker.
+    let mut cmd = if cross {
+        let image = crate::docker::image_for(platform)
+            .ok_or_else(|| format!("No toolchain image for {}", platform.display_name()))?;
+        let image_ref = crate::docker::image_ref(workspace_dir, image).ok_or_else(|| {
+            format!(
+                "Could not read docker/base/Dockerfile and docker/{image}/Dockerfile under {} \
+                 to resolve the toolchain image tag.",
+                workspace_dir.display()
+            )
+        })?;
+        progress(format!("Building in {image_ref}"));
+        let mut c = crate::docker::build_command(&image_ref, &ws);
+        c.arg("cargo");
+        c
+    } else {
+        let tc = toolchain.ok_or(
+            "Internal error: a same-OS lean build was started without a Rust toolchain.",
+        )?;
+        let mut c = tc.cargo_command();
+        c.current_dir(&ws);
+        c
+    };
+    if !cross {
+        cmd.env("CARGO_ENCODED_RUSTFLAGS", encoded_rustflags(platform));
+    }
+    cmd.args([
             "build",
             "--profile",
             "dist-lean",
@@ -148,7 +335,14 @@ pub fn build_lean(
         ])
         .arg("--features")
         .arg(&features);
-    if matches!(platform, Platform::LinuxX64) {
+    if cross {
+        // `--target` selects the cross-linker, and nests the output under the
+        // triple — which the binary path below accounts for.
+        let triple = crate::docker::rust_triple(platform)
+            .ok_or_else(|| format!("No Rust target for {}", platform.display_name()))?;
+        cmd.args(["--target", triple]);
+    }
+    if !cross && matches!(platform, Platform::LinuxX64) {
         // The repo config pins linker=clang + `-fuse-ld=mold`; a provisioned
         // minimal toolchain may have neither. `cc` is present on essentially
         // every Linux dev host.
@@ -229,7 +423,15 @@ pub fn build_lean(
         ));
     }
 
-    let bin = ws.join("target").join("dist-lean").join(bin_filename(platform));
+    // `--target` nests the output under the triple; a host build has no
+    // `--target` and writes straight into `target/<profile>/`.
+    let bin = if cross {
+        let triple = crate::docker::rust_triple(platform)
+            .ok_or_else(|| format!("No Rust target for {}", platform.display_name()))?;
+        ws.join("target").join(triple).join("dist-lean").join(bin_filename(platform))
+    } else {
+        ws.join("target").join("dist-lean").join(bin_filename(platform))
+    };
     if !bin.is_file() {
         return Err(format!(
             "Lean build reported success but the binary is missing at {}",
@@ -798,6 +1000,461 @@ fn stage_static_plugins(
 /// Write only when the content differs, so an unchanged plugin selection does
 /// not touch the mtime and force cargo to rebuild the aggregator (and relink the
 /// whole binary) on every export.
+/// Generate the crate that compiles the project's `.rs` scripts into the binary.
+///
+/// A lean binary links Bevy statically, so there is no shared image for a script
+/// dylib to bind to — `RustScriptPlugin` refuses to register a backend and the
+/// exported game reports `No backend for Some("rs")`. Compiling the sources in
+/// removes the boundary rather than trying to make it safe: no library, no symbol
+/// lookup, no second `World` type, because the script is part of the same
+/// compilation as everything it touches.
+///
+/// Each script becomes a `#[path]` module of `renzora_static_scripts`, which is
+/// what keeps fifty of them from colliding. Two things would otherwise collide:
+///
+/// - `renzora::script!` emits `#[unsafe(no_mangle)] fn renzora_script_update`,
+///   and fifty of those do not link. The `renzora/static_scripts` feature that
+///   the generated manifest turns on drops the attribute; the aggregator then
+///   names each entry point by path instead of by symbol.
+/// - a script's own items (`#[derive(Component)] struct Spin`) would clash with
+///   another script's. Modules namespace them, so two scripts may both define a
+///   `Spin` and neither knows.
+///
+/// Returns whether anything was generated, so the caller only adds the feature
+/// when there is something to link.
+/// Ship the plugin SDK so the exported game can compile plugins of its own.
+///
+/// This is what "enable modding" buys. Without it a game loads only the
+/// prebuilt libraries the export staged; with it, a player can drop a native
+/// plugin's SOURCE into `plugins/` and the game builds it on next launch,
+/// exactly as the editor does — same compiler driver, same SDK, same loading.
+///
+/// Copied rather than repacked. A release ships `sdk.tar.zst` and unpacks it on
+/// first run, deleting the archive, so an editor that has been started once has
+/// only the extracted tree — and repacking 1.5 GB at `zstd -19` would add
+/// minutes to every export to save space in a directory the player never
+/// downloads over a network. Whichever form is present is what ships: the
+/// archive if the editor has not unpacked it yet, the tree otherwise, and the
+/// game's own first-run step handles the archive case.
+///
+/// Host platform only. An SDK is only correct on the platform it was built for —
+/// its proc-macro dylibs belong to whatever ran the compiler — so shipping this
+/// editor's SDK inside a game for another OS would hand a player a compiler that
+/// cannot run. That is the same rule that makes a cross-built editor unable to
+/// compile scripts.
+pub fn stage_modding_sdk(
+    editor_dir: &Path,
+    output_dir: &Path,
+    progress: &mut dyn FnMut(String),
+) -> Result<bool, String> {
+    // Somewhere to put a mod, even when the game shipped no plugins of its own.
+    // An empty directory is the instruction: a player who opens the folder can
+    // see where a plugin goes, where otherwise they would have to know to create
+    // it — and a game with modding enabled and no `plugins/` anywhere looks like
+    // modding was not enabled at all.
+    let plugins = output_dir.join("plugins");
+    std::fs::create_dir_all(&plugins)
+        .map_err(|e| format!("create {}: {e}", plugins.display()))?;
+
+    // The archive first: smaller, and the game unpacks it on first launch behind
+    // the same progress window the editor uses.
+    let archive = editor_dir.join("sdk.tar.zst");
+    if archive.is_file() {
+        std::fs::copy(&archive, output_dir.join("sdk.tar.zst"))
+            .map_err(|e| format!("copy sdk.tar.zst: {e}"))?;
+        progress("Shipped the plugin SDK (compressed) for modding".to_string());
+        return Ok(true);
+    }
+
+    let sdk = editor_dir.join("sdk");
+    if !sdk.join("manifest.json").is_file() {
+        progress(
+            "WARN: modding is on but this editor has no plugin SDK — the game will ship \
+             without one and can load only prebuilt plugins."
+                .to_string(),
+        );
+        return Ok(false);
+    }
+
+    progress("Copying the plugin SDK for modding (this is ~1.5 GB)…".to_string());
+    let copied = copy_dir(&sdk, &output_dir.join("sdk"))?;
+    progress(format!("Shipped the plugin SDK for modding ({copied} files)"));
+    Ok(true)
+}
+
+/// Recursive copy, returning how many files landed.
+fn copy_dir(from: &Path, to: &Path) -> Result<usize, String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("create {}: {e}", to.display()))?;
+    let mut count = 0;
+    let entries =
+        std::fs::read_dir(from).map_err(|e| format!("read {}: {e}", from.display()))?;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        let Some(name) = src.file_name() else { continue };
+        let dst = to.join(name);
+        if src.is_dir() {
+            count += copy_dir(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)
+                .map_err(|e| format!("copy {} → {}: {e}", src.display(), dst.display()))?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Ship the `Runtime`-scope native plugins the editor already built, beside a
+/// copy-based export.
+///
+/// A native plugin links the real Bevy, so it can only load into a host that
+/// shares the same image — which a copy-based export does, since it carries the
+/// very `bevy_dylib` and `renzora_dylib` the plugin was compiled against. (A
+/// lean export links Bevy statically and shares nothing, so it takes no native
+/// plugins at all.)
+///
+/// **Scope is read from the built library, not the source.** A
+/// `plugin!(.., Runtime)` in `src/lib.rs` describes what the source would build
+/// to; what ships is the library, and the two disagree whenever one was edited
+/// without rebuilding. Asking the artefact removes the discrepancy.
+///
+/// Only the library is staged — no `src/`, no stamp. The loader treats a
+/// directory holding a built library and nothing else as a plugin it can load
+/// but not rebuild, which is exactly a shipped game's situation. Shipping the
+/// source would put a plugin author's code inside every game that uses it to
+/// satisfy a marker nothing reads.
+///
+/// Host platform only, for the same reason as the scripts: these libraries are
+/// host-shaped.
+pub fn stage_runtime_native_plugins(
+    editor_dir: &Path,
+    output_dir: &Path,
+    lib_ext: &str,
+    // What the exporter's plugin picker has ticked. `None` means the picker
+    // never ran, in which case every eligible plugin ships — the behaviour
+    // before it listed native plugins at all.
+    selected: Option<&std::collections::HashSet<String>>,
+    progress: &mut dyn FnMut(String),
+) -> Result<usize, String> {
+    let src_root = editor_dir.join("plugins");
+
+    // A plugin switched off in Settings → Editor → Plugins must not ship. It is
+    // off because the user turned it off, and an export is the last moment that
+    // choice can still be honoured — after this it is in a player's hands with
+    // no switch at all.
+    let disabled = renzora::load_disabled_plugins();
+
+    let mut shipped: Vec<String> = Vec::new();
+    let mut skipped_editor: Vec<String> = Vec::new();
+    for plugin in renzora_native_plugin::installed(&src_root, lib_ext) {
+        let name = plugin.id;
+        if disabled.iter().any(|d| d == &name) {
+            continue;
+        }
+        // Unticked in the picker. Distinct from `disabled` above: that is "not
+        // in my editor", this is "not in this build".
+        if selected.is_some_and(|s| !s.contains(&name)) {
+            continue;
+        }
+        if plugin.scope != renzora::NativePluginScope::Runtime {
+            // Editor-only: belongs in no game, and worth saying so.
+            skipped_editor.push(name);
+            continue;
+        }
+
+        let dest = output_dir.join("plugins").join(&name).join("build");
+        std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+        let dest_lib = dest.join(format!("{}.{lib_ext}", name.replace('-', "_")));
+        std::fs::copy(&plugin.lib, &dest_lib)
+            .map_err(|e| format!("copy {} → {}: {e}", plugin.lib.display(), dest_lib.display()))?;
+        shipped.push(name);
+    }
+
+    if !shipped.is_empty() {
+        progress(format!(
+            "Shipped {} runtime native plugin(s): {}",
+            shipped.len(),
+            shipped.join(", ")
+        ));
+    }
+    // Said out loud, because "my plugin is missing from the build" is otherwise
+    // indistinguishable from a bug — and the fix is one word in the source.
+    if !skipped_editor.is_empty() {
+        progress(format!(
+            "{} native plugin(s) are editor-only and were not shipped ({}). Declare \
+             `renzora::plugin!(.., Runtime)` to include one in a game.",
+            skipped_editor.len(),
+            skipped_editor.join(", ")
+        ));
+    }
+    Ok(shipped.len())
+}
+
+/// Ship the script libraries the editor already built, beside a copy-based
+/// export.
+///
+/// A copy-based export carries the same `bevy_dylib` and `renzora_dylib` the
+/// editor compiled these against, so the `World` on both sides of the `dlopen`
+/// boundary is one type and they load exactly as they do in the editor. The
+/// player needs no SDK and no Rust toolchain — the compiling already happened.
+///
+/// Copies rather than recompiles. The editor builds every script on project open
+/// and again on save, so `<project>/.renzora/scripts/<stem>/` already holds a
+/// current library; building a second time would only produce the same bytes
+/// more slowly. A script that never compiled has nothing there and is reported
+/// rather than silently omitted.
+///
+/// **Host platform only.** These are host-shaped libraries, so they belong with
+/// an export for the machine that built them. Staging them into an export for
+/// another OS would ship a `.dll` to a Linux player — silently useless. A
+/// cross-platform copy export therefore has no Rust scripts, which is a real
+/// gap and the reason the lean path compiles them in instead.
+///
+/// Returns how many were staged.
+pub fn stage_prebuilt_scripts(
+    project_dir: &Path,
+    output_dir: &Path,
+    lib_ext: &str,
+    progress: &mut dyn FnMut(String),
+) -> Result<usize, String> {
+    let mut sources: Vec<PathBuf> = Vec::new();
+    collect_scripts(project_dir, &mut sources)?;
+    sources.sort();
+    if sources.is_empty() {
+        return Ok(0);
+    }
+
+    let dest = output_dir.join("scripts");
+    std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+
+    // Same dual-key scheme the compiled-in path uses, for the same reason: the
+    // dispatcher resolves by leaf, but leaves are not unique once scripts may
+    // live in any folder.
+    let mut leaf_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for src in &sources {
+        if let Some(leaf) = src.file_name().and_then(|n| n.to_str()) {
+            *leaf_counts.entry(leaf.to_string()).or_default() += 1;
+        }
+    }
+
+    let mut index = String::new();
+    let mut staged = 0usize;
+    let mut missing: Vec<String> = Vec::new();
+    for (i, src) in sources.iter().enumerate() {
+        let leaf = src.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+        let rel =
+            src.strip_prefix(project_dir).unwrap_or(src).to_string_lossy().replace('\\', "/");
+
+        // The editor writes a NEW file per rebuild (a mapped library cannot be
+        // overwritten on Windows), so the directory accumulates generations and
+        // the newest is the current one.
+        let build_dir = project_dir.join(".renzora").join("scripts").join(stem);
+        let newest = std::fs::read_dir(&build_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some(lib_ext))
+            .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
+
+        let Some(lib) = newest else {
+            missing.push(rel);
+            continue;
+        };
+
+        // Named by index, not by stem: two scripts in different folders may share
+        // a stem, and one would overwrite the other.
+        let file = format!("script_{i}.{lib_ext}");
+        std::fs::copy(&lib, dest.join(&file))
+            .map_err(|e| format!("copy {} → {}: {e}", lib.display(), file))?;
+        index.push_str(&format!("{rel}\t{file}\n"));
+        if leaf_counts.get(leaf).copied().unwrap_or(0) == 1 {
+            index.push_str(&format!("{leaf}\t{file}\n"));
+        }
+        staged += 1;
+    }
+
+    if !missing.is_empty() {
+        progress(format!(
+            "WARN: {} script(s) have no compiled library and were not shipped ({}). \
+             Open the project in the editor so they build, then export again.",
+            missing.len(),
+            missing.join(", ")
+        ));
+    }
+    if staged == 0 {
+        let _ = std::fs::remove_dir_all(&dest);
+        return Ok(0);
+    }
+    std::fs::write(dest.join(renzora_rust_script::PREBUILT_MANIFEST), index)
+        .map_err(|e| format!("write script index: {e}"))?;
+    progress(format!("Shipped {staged} compiled Rust script(s)"));
+    Ok(staged)
+}
+
+/// The project's scripts, as the EDITOR defines them.
+///
+/// Delegated rather than reimplemented. The two had their own scans for a while
+/// and disagreed — the editor read `<project>/scripts/` flat, this walked the
+/// whole tree — so a script in a subfolder was compiled into a lean export
+/// having never run in the editor once. Sharing the definition means an export
+/// can only ever ship what the editor would have built.
+fn collect_scripts(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    out.extend(renzora_rust_script::collect_project_scripts(dir));
+    Ok(())
+}
+
+fn stage_static_scripts(
+    project_dir: &Path,
+    copy_root: &Path,
+    progress: &mut dyn FnMut(String),
+) -> Result<bool, String> {
+    let crate_dir = copy_root.join("crates").join("renzora_static_scripts");
+
+    // The WHOLE project, recursively — not just `scripts/`. A script is attached
+    // by path, and nothing requires that path to live in one directory: a project
+    // may keep them beside the scenes that use them, or grouped under
+    // `scripts/enemies/`. Scanning one folder would omit the rest and the export
+    // would build cleanly, ship, and report `No backend` for exactly the scripts
+    // that were somewhere else.
+    let mut sources: Vec<PathBuf> = Vec::new();
+    collect_scripts(project_dir, &mut sources)?;
+    // Sorted so a rebuild with no source change produces byte-identical output
+    // and `write_if_changed` keeps cargo from recompiling the crate.
+    sources.sort();
+
+    if sources.is_empty() {
+        return Ok(false);
+    }
+
+    std::fs::create_dir_all(crate_dir.join("src"))
+        .map_err(|e| format!("create {}: {e}", crate_dir.display()))?;
+
+    // Copied beside the generated lib rather than referenced where they live:
+    // a `#[path]` pointing outside the workspace works, but then the export's
+    // build depends on the project directory staying put mid-compile, and the
+    // throwaway copy stops being self-contained.
+    // Leaf names are no longer unique now the scan is recursive — a project may
+    // hold `enemies/spin.rs` and `props/spin.rs`. Count them so an ambiguous leaf
+    // can be left out of the table rather than silently resolving to whichever
+    // was written last.
+    let mut leaf_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for src in &sources {
+        if let Some(leaf) = src.file_name().and_then(|n| n.to_str()) {
+            *leaf_counts.entry(leaf.to_string()).or_default() += 1;
+        }
+    }
+
+    let mut mods = String::new();
+    let mut entries = String::new();
+    let mut ambiguous: Vec<String> = Vec::new();
+    for (i, src) in sources.iter().enumerate() {
+        let leaf = src
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("unreadable script name: {}", src.display()))?;
+        // Project-relative, forward-slashed: the spelling a `ScriptComponent`
+        // holds, and unique by construction where a leaf is not.
+        let rel = src
+            .strip_prefix(project_dir)
+            .unwrap_or(src)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        // Staged under an index, not its leaf, or two `spin.rs` would overwrite
+        // each other in `src/` and one script would silently become the other.
+        let staged_name = format!("script_{i}.rs");
+        let text = std::fs::read_to_string(src)
+            .map_err(|e| format!("read {}: {e}", src.display()))?;
+        write_if_changed(&crate_dir.join("src").join(&staged_name), &text)?;
+
+        mods.push_str(&format!("#[path = \"{staged_name}\"]\nmod script_{i};\n"));
+        // Registered under the relative path always…
+        entries.push_str(&format!(
+            "        (\"{rel}\", script_{i}::renzora_script_update as ScriptFn),\n"
+        ));
+        // …and under the bare leaf too when that is unambiguous, because the
+        // dispatcher resolves by leaf: a `ScriptComponent` entry may hold either
+        // spelling depending on how it was added. Registering both keys means
+        // neither lookup has to change.
+        if leaf_counts.get(leaf).copied().unwrap_or(0) == 1 {
+            entries.push_str(&format!(
+                "        (\"{leaf}\", script_{i}::renzora_script_update as ScriptFn),\n"
+            ));
+        } else if !ambiguous.contains(&leaf.to_string()) {
+            ambiguous.push(leaf.to_string());
+        }
+    }
+
+    // Named rather than silently dropped: a script attached by bare leaf that
+    // now resolves to nothing would otherwise look like the export lost it.
+    if !ambiguous.is_empty() {
+        progress(format!(
+            "Note: {} script name(s) appear in more than one folder ({}). Those are \
+             reachable only by their full project-relative path — attaching one by \
+             file name alone is ambiguous and will not resolve.",
+            ambiguous.len(),
+            ambiguous.join(", ")
+        ));
+    }
+
+    // A plain literal — nothing is substituted. The braces below are single now:
+    // they were doubled to escape them for `format!`, and reading them literally
+    // would have emitted `renzora = {{ path = … }}` into the manifest.
+    let manifest = String::from(
+        "# GENERATED by the lean exporter — see `renzora_export::build`.\n\
+         # The project's Rust scripts, compiled into this build's binary.\n\
+         [package]\n\
+         name = \"renzora_static_scripts\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\
+         \n\
+         [dependencies]\n\
+         # `static_scripts` drops `#[no_mangle]` from what `renzora::script!`\n\
+         # emits, so the scripts below can share one binary. Cargo unifies\n\
+         # features per package, so naming it once here applies it to all.\n\
+         renzora = { path = \"../renzora\", features = [\"static_scripts\"] }\n\
+         bevy = { workspace = true }\n\
+         \n\
+         [lints]\n\
+         workspace = true\n"
+    );
+    write_if_changed(&crate_dir.join("Cargo.toml"), &manifest)?;
+
+    let lib = format!(
+        "//! GENERATED by the lean exporter — see `renzora_export::build`.\n\
+         //!\n\
+         //! The project's Rust scripts, compiled into this binary. Overwritten on\n\
+         //! every lean export; edits here do not survive one.\n\
+         \n\
+         use bevy::ecs::entity::Entity;\n\
+         use bevy::ecs::world::World;\n\
+         \n\
+         pub type ScriptFn = fn(&mut World, Entity);\n\
+         \n\
+         {mods}\n\
+         /// Every script compiled in, as `(file name, entry point)`.\n\
+         pub fn scripts() -> Vec<(&'static str, ScriptFn)> {{\n\
+         \x20   vec![\n{entries}    ]\n\
+         }}\n"
+    );
+    write_if_changed(&crate_dir.join("src").join("lib.rs"), &lib)?;
+
+    progress(format!(
+        "Compiling {} Rust script(s) into the binary: {}",
+        sources.len(),
+        sources
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|n| n.to_str()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    Ok(true)
+}
+
 fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
     if std::fs::read_to_string(path).is_ok_and(|old| old == content) {
         return Ok(());
@@ -869,6 +1526,125 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The minimum that counts as a script: it calls `renzora::script!`, which
+    /// is what `collect_project_scripts` looks for.
+    const SCRIPT: &str = "fn update(_c: &mut ScriptCtx) {}\nrenzora::script!(update);\n";
+
+    /// A project with two scripts produces a module and a table entry for each,
+    /// and copies the sources beside the generated lib.
+    ///
+    /// The module-per-script is what keeps them from colliding: both may define
+    /// a `renzora_script_update` (the `no_mangle` is dropped under
+    /// `static_scripts`) and both may define their own `Spin` component.
+    #[test]
+    fn static_scripts_generate_a_module_and_entry_per_file() {
+        let project = std::env::temp_dir()
+            .join(format!("renzora_static_scripts_{}", std::process::id()));
+        let scripts = project.join("scripts");
+        std::fs::create_dir_all(&scripts).unwrap();
+        // Written out of order to prove the sort: `orbit` must come first, so a
+        // rebuild with no source change regenerates byte-identical output.
+        std::fs::write(scripts.join("spin.rs"), SCRIPT).unwrap();
+        std::fs::write(scripts.join("orbit.rs"), SCRIPT).unwrap();
+        // Not a script — must not be compiled in.
+        std::fs::write(scripts.join("notes.txt"), "ignore me").unwrap();
+        // Rust, but not a script: no `script!`, so nothing to call. Compiling it
+        // would fail on a file its author never called a script.
+        std::fs::write(scripts.join("helper.rs"), "pub fn helper() {}").unwrap();
+
+        let ws = project.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let staged = stage_static_scripts(&project, &ws, &mut |_| {}).unwrap();
+        assert!(staged, "two scripts is something to link");
+
+        let crate_dir = ws.join("crates").join("renzora_static_scripts");
+        let lib = std::fs::read_to_string(crate_dir.join("src").join("lib.rs")).unwrap();
+        assert!(lib.contains("#[path = \"script_0.rs\"]\nmod script_0;"), "{lib}");
+        assert!(lib.contains("#[path = \"script_1.rs\"]\nmod script_1;"), "{lib}");
+        // Both spellings: the relative path, and the leaf while it is unique.
+        assert!(lib.contains("(\"scripts/orbit.rs\", script_0::"), "{lib}");
+        assert!(lib.contains("(\"orbit.rs\", script_0::"), "{lib}");
+        assert!(lib.contains("(\"scripts/spin.rs\", script_1::"), "{lib}");
+        assert!(!lib.contains("notes"), "non-scripts must not be linked in: {lib}");
+
+        // Sources copied beside the generated lib under their index, so the
+        // export copy stays self-contained and two same-named scripts in
+        // different folders cannot overwrite each other.
+        assert_eq!(
+            std::fs::read_to_string(crate_dir.join("src").join("script_1.rs")).unwrap(),
+            SCRIPT
+        );
+        // Rust that is not a script stays out — a lean export compiles every
+        // collected file into the binary, so one non-script would fail the whole
+        // build rather than be skipped.
+        assert!(!lib.contains("helper"), "non-scripts must not be linked in: {lib}");
+
+        // The manifest must turn the feature on, or every script keeps its
+        // `#[no_mangle]` and the binary fails to link.
+        let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
+        assert!(manifest.contains("features = [\"static_scripts\"]"), "{manifest}");
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// Scripts are found anywhere in the project, build output is skipped, and a
+    /// name used in two folders stays reachable by path without either script
+    /// silently becoming the other.
+    #[test]
+    fn static_scripts_scan_the_whole_project() {
+        let project = std::env::temp_dir()
+            .join(format!("renzora_scan_project_{}", std::process::id()));
+        for sub in ["scripts", "enemies", "props", ".renzora/scripts", "target"] {
+            std::fs::create_dir_all(project.join(sub)).unwrap();
+        }
+        std::fs::write(project.join("scripts/orbit.rs"), SCRIPT).unwrap();
+        // Same leaf in two different folders — legal, and ambiguous by leaf.
+        std::fs::write(project.join("enemies/spin.rs"), SCRIPT).unwrap();
+        std::fs::write(project.join("props/spin.rs"), SCRIPT).unwrap();
+        // Build output must never be compiled in: `.renzora/` holds the editor's
+        // own staged copies, and `target/` is cargo's.
+        std::fs::write(project.join(".renzora/scripts/orbit.rs"), SCRIPT).unwrap();
+        std::fs::write(project.join("target/leftover.rs"), SCRIPT).unwrap();
+
+        let ws = project.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+
+        let lib = std::fs::read_to_string(
+            ws.join("crates/renzora_static_scripts/src/lib.rs"),
+        )
+        .unwrap();
+
+        // Found outside `scripts/`.
+        assert!(lib.contains("(\"enemies/spin.rs\""), "{lib}");
+        assert!(lib.contains("(\"props/spin.rs\""), "{lib}");
+        // Ambiguous leaf registered under neither bare name.
+        assert!(!lib.contains("(\"spin.rs\""), "ambiguous leaf must not resolve: {lib}");
+        // Unique leaf still gets its shorthand.
+        assert!(lib.contains("(\"orbit.rs\""), "{lib}");
+        // Build output excluded.
+        assert!(!lib.contains("leftover"), "{lib}");
+        assert!(!lib.contains(".renzora"), "{lib}");
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// A project with no scripts generates nothing, so the caller leaves the
+    /// feature off rather than compiling an empty aggregator.
+    #[test]
+    fn no_scripts_generates_nothing() {
+        let project = std::env::temp_dir()
+            .join(format!("renzora_no_scripts_{}", std::process::id()));
+        std::fs::create_dir_all(project.join("scripts")).unwrap();
+        let ws = project.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+
+        assert!(!stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+        assert!(!ws.join("crates").join("renzora_static_scripts").exists());
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
 
     /// The two lines of `[profile.dist-lean]` the patcher edits, as they appear
     /// in the real root manifest.

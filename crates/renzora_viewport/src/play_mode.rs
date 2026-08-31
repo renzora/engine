@@ -170,11 +170,18 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // and let the caller fall through to the in-editor path so Play still
     // does something.
     let Some(binary) = find_runtime_binary() else {
-        console_info(
+        // Same reasoning as the spawn failure below: no fallback into the
+        // editor's world. `find_runtime_binary` ends with the current
+        // executable, so this is close to unreachable — but "close to" is not a
+        // reason to leave the destructive path in.
+        console_error(
             "PlayMode",
-            "External play requested but runtime binary not found — falling back to in-editor play",
+            "External play requested but no runtime binary was found",
         );
-        return false;
+        if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
+            pm.request_play = false;
+        }
+        return true;
     };
 
     let project_path = world
@@ -223,10 +230,22 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
         Err(e) => {
             console_error(
                 "PlayMode",
-                format!("Failed to spawn runtime: {} — falling back", e),
+                format!("Failed to spawn the runtime: {e}"),
             );
-            // Don't eat the request; let in-editor play take over.
-            false
+            // Eat the request rather than fall through to in-editor play.
+            //
+            // The fallback used to look like resilience — Play always did
+            // *something*. What it actually did was load the scene into the
+            // editor's own world, so a failed external launch silently appended
+            // a second copy of every entity to the hierarchy the user was
+            // editing. Doing nothing and saying so is the better failure: the
+            // user picked "Window", and quietly running somewhere else is not a
+            // lesser version of that, it is a different thing that damages the
+            // scene.
+            if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
+                pm.request_play = false;
+            }
+            true
         }
     }
 }

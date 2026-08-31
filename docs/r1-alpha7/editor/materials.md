@@ -13,6 +13,10 @@ Your changes save automatically as you work, and the mesh updates live so you ca
 
 > Materials are saved as `.material` files (plain JSON). When you import a 3D model, every material on it is written out as a `.material` next to the model automatically — so you can open and edit any imported look as a node graph.
 
+Those extracted graphs are what the engine renders — in the editor viewport, in play mode, and in an exported game alike. The `.glb` itself holds no reference to them; the link is rebuilt each time a model spawns, by matching each mesh's authored material name to the `.material` of that name in the model's `materials/` folder. So **renaming a `.material` file breaks the link** and the mesh falls back to whatever the source file said. Edit the graph, not the filename.
+
+This matters most for models exported from the older `KHR_materials_pbrSpecularGlossiness` workflow — common on asset sites. The engine converts those to metal/rough on import, and the converted result lives *only* in the `.material`; the raw file has no usable colour or roughness for a modern renderer to read. Re-import a model if its look ever regresses to flat white.
+
 ## The node graph
 
 You build a material by dragging nodes out of the category menu and **wiring them together**: drag from a node's output dot (on its right edge) into another node's input dot (on its left edge). Anything you leave unconnected just uses the value typed into the node.
@@ -148,6 +152,15 @@ Once the object has a material, one row per PBR channel appears below the
 field — **Base Color**, **Normal**, **Roughness**, **Metallic**, **Ambient
 Occlusion**, **Emissive** and **Displacement**. There's no heading over them;
 each row names its own channel.
+
+Only **Base Color** is shown to start with. Underneath it is a footer that
+counts the rest — *"6 more textures · 4 assigned"* — and clicking it unfolds
+them; clicking it again folds them back. Seven rows is most of the drawer's
+height, and on a material with one map bound six of them are empty, so the
+collapsed state keeps the parameters and the components below Material in
+reach. The footer tells you how many of the hidden channels actually have a
+texture, so a fully-authored material doesn't look bare while it's folded. The
+choice sticks until you change it again, for every object you select.
 
 **Drag an image onto a row** (or click the row to browse for one) and it is
 wired into the material graph for you: the sampler node is created, connected to

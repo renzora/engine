@@ -215,7 +215,8 @@ impl Plugin for ShellPlugin {
                 #[cfg(target_arch = "wasm32")]
                 (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
-                settings_btn_click,
+                (settings_btn_click, shell_action_press),
+                sync_hierarchy_filter_to_workspace,
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -3264,8 +3265,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("camera_preview", "Camera Preview", "video-camera", "Scene"),
     // Audio
     ("mixer", "Mixer", "faders", "Audio"),
-    ("record", "Record", "record", "Audio"),
-    ("daw", "Record", "record", "Audio"),
     // Animation
     ("timeline", "Timeline", "film-strip", "Animation"),
     ("animation", "Animation", "play-circle", "Animation"),
@@ -3287,10 +3286,11 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Blueprint
     ("blueprint_graph", "Blueprint", "blueprint", "Blueprint"),
     ("blueprint_properties", "Blueprint Properties", "sliders-horizontal", "Blueprint"),
-    // Marketplace
-    ("hub_store", "Marketplace", "storefront", "Marketplace"),
-    ("hub_library", "Library", "books", "Marketplace"),
-    ("asset_uploader", "Publish", "upload-simple", "Marketplace"),
+    // The Marketplace panels (store, library, publish) and the wallet are NOT
+    // listed here. They belong to the `marketplace` plugin, which registers its
+    // own shell metadata the way any plugin does — so an install without it
+    // shows no Marketplace category at all, rather than three panels that open
+    // empty.
     // Network
     ("network_monitor", "Network", "broadcast", "Network"),
     ("network_entities", "Net Entities", "users-three", "Network"),
@@ -4864,7 +4864,32 @@ fn build_status_bar(
         .id();
     renzora_ember::reactive::tracked::keyed_list(commands, right_content, status_snapshot_right);
 
-    commands.entity(bar).add_children(&[left_content, lang_picker, dropup, right_content]);
+    // Engine name + version, at the far right of the status bar.
+    //
+    // Somewhere it is *always* on screen, which the About modal is not — the
+    // question "which build is this" comes up when reporting a bug or checking
+    // whether an update landed, and both are moments where hunting through a
+    // menu is friction. The status bar's right side already holds passive facts
+    // (frame time, memory, GPU), so it costs no new furniture.
+    //
+    // `version::display()` rather than the bare constant: it says `r1-alpha7
+    // (dev)` for a local build and the plain tag for a release, so a screenshot
+    // of the bar answers "is this a build you shipped?" as well.
+    let version = commands
+        .spawn((
+            Text::new(format!("Renzora {}", renzora::version::display())),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_shrink: 0.0, ..default() },
+            renzora_ember::widgets::HoverTooltip::new(renzora::version::display()),
+            Name::new("status-version"),
+        ))
+        .id();
+
+    commands
+        .entity(bar)
+        .add_children(&[left_content, lang_picker, dropup, right_content, version]);
     bar
 }
 
@@ -5108,7 +5133,22 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match r {
                 StatusRow::Label(t, c) => (0u8, t, c).hash(&mut h),
-                StatusRow::Seg(s) => (1u8, &s.icon, &s.text, s.color).hash(&mut h),
+                // The bar's *fraction* is quantized to whole percent before it
+                // reaches the hash. It changes continuously, and every change
+                // rebuilds the row — a raw f32 would despawn and respawn the
+                // segment on most frames of a long job. `Busy` is not hashed at
+                // all beyond its kind: it animates in place (see
+                // `progress_indeterminate`), so it never needs a rebuild.
+                StatusRow::Seg(s) => {
+                    let bar = match s.bar {
+                        None => (0u8, 0u8),
+                        Some(renzora::ShellStatusBar::Busy) => (1u8, 0u8),
+                        Some(renzora::ShellStatusBar::Fraction(f)) => {
+                            (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
+                        }
+                    };
+                    (1u8, &s.icon, &s.text, s.color, bar).hash(&mut h)
+                }
             }
             (k.finish(), h.finish())
         })
@@ -5183,6 +5223,18 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                     ))
                     .id(),
             );
+            // Sized for a 22px-tall bar: wide enough to read as progress,
+            // narrow enough that a background job doesn't push the rest of the
+            // status bar around.
+            match s.bar {
+                None => {}
+                Some(renzora::ShellStatusBar::Busy) => kids.push(
+                    renzora_ember::widgets::progress_indeterminate(commands, 70.0, 4.0),
+                ),
+                Some(renzora::ShellStatusBar::Fraction(f)) => {
+                    kids.push(renzora_ember::widgets::progress_sized(commands, f, 70.0, 4.0))
+                }
+            }
             commands.entity(r).add_children(&kids);
             r
         }
@@ -5235,7 +5287,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     // viewport action. This bar is on screen in every workspace. The document
     // tabs used to fill the rest of this zone; they now sit at the top of the
     // viewport panel (see [`build_doc_tabs`]).
-    let hamburger = hamburger_menu_item(commands);
+    let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
     let play = build_play_group(commands, font);
@@ -5439,7 +5491,14 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     // Updates — this is a shortcut to it, not a second way of doing it.
     let update_chip = build_update_chip(commands, font);
 
-    commands.entity(right).add_children(&[update_chip, window]);
+    // Plugin-contributed buttons — the Marketplace's is the first. It lived by
+    // the gear, as one more small grey glyph among the session controls, which
+    // is the last place anyone looks for somewhere to *go*. Over here it is a
+    // labelled, tinted chip beside the update chip: the two of them are the
+    // bar's "things that are waiting for you" corner.
+    let actions = build_shell_actions(commands);
+
+    commands.entity(right).add_children(&[actions, update_chip, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar
@@ -6447,6 +6506,71 @@ fn elide(s: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
+/// Narrow the hierarchy — and Add Entity — to UI canvases while the UI editor is
+/// the surface you are working on.
+///
+/// **Which surface is visible, not which workspace you are in.** Panels move:
+/// the UI editor can be docked into any workspace, the UI workspace can be
+/// renamed, and a workspace can hold both surfaces at once. Reading the panels
+/// answers the question directly instead of guessing from a label.
+///
+/// The rule is the obvious one. UI editor showing and no viewport → the tree is
+/// about UI. Viewport showing → it is about the scene, whether or not the UI
+/// editor is up beside it, because with both on screen you are working across
+/// them and hiding half the scene is the wrong answer. Neither → unchanged.
+///
+/// Only canvases, not their contents: a canvas's widgets come from its `.html`
+/// and are rebuilt from that file on every load, so the tree would be offering
+/// rows whose edits the next rebuild discards. They are already excluded — see
+/// the `HideInHierarchy` note in `markup/loader.rs`.
+///
+/// `HierarchyFilter` has existed for this since before the UI workspace did —
+/// its own doc gives "UI workspace only shows cameras + canvases" as the
+/// example. Nothing had ever set it. `SpawnCategoryScope` is its companion for
+/// Add Entity: a tree showing only UI canvases must not offer to spawn a point
+/// light, because the thing you spawned would not appear in the list you
+/// spawned it from.
+fn sync_hierarchy_filter_to_workspace(
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
+    filter: Option<ResMut<renzora_editor_framework::HierarchyFilter>>,
+    spawn_scope: Option<ResMut<renzora::SpawnCategoryScope>>,
+) {
+    let visible = |id: &str| {
+        renzora_ember::dock::panel_visible_anywhere(
+            id,
+            dock.as_deref(),
+            fixed.as_deref(),
+            wins.as_deref(),
+        )
+    };
+    let is_ui = visible("ui_canvas") && !visible("viewport");
+    if let Some(mut filter) = filter {
+        let desired = if is_ui {
+            renzora_editor_framework::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"])
+        } else {
+            renzora_editor_framework::HierarchyFilter::All
+        };
+        if *filter != desired {
+            *filter = desired;
+        }
+    }
+    if let Some(mut scope) = spawn_scope {
+        let desired = is_ui.then(|| vec!["ui"]);
+        if scope.0 != desired {
+            scope.0 = desired;
+        }
+    }
+}
+
+// `sync_viewport_view_to_workspace` lived here: it put the viewport into
+// `ViewportView::Ui` on entering the UI workspace and gave the previous view
+// back on the way out. It was the right fix while the UI editor was mounted
+// inside the viewport panel — and it stopped being needed the moment the editor
+// became the `ui_canvas` panel, which is what the UI workspace docks. The
+// workspace no longer has anything to say about what the viewport is looking at.
+
 /// Swap the dock to workspace `index`, saving the current layout into the active
 /// slot first. The ribbon highlight follows via the reactive rebuild (the
 /// snapshot keys on `layouts.active`). Shared by the ribbon + doc-tab clicks.
@@ -6702,20 +6826,32 @@ fn sync_workspace_to_active_doc(
     // double-click, because it has to happen *after* the workspace switch
     // above — done there, the code editor was added to the layout we were on
     // the way out of.
-    if matches!(
-        tab.kind,
-        renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader
-    ) {
-        if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
-            commands.insert_resource(renzora::core::OpenCodeEditorFile {
-                path: project.resolve_path(rel),
-            });
+    match tab.kind {
+        renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader => {
+            if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
+                commands.insert_resource(renzora::core::OpenCodeEditorFile {
+                    path: project.resolve_path(rel),
+                });
+            }
+            // Dirty either way: `focus_or_add_panel` returns false when the
+            // panel was already there, but it still moved that leaf's active
+            // tab, and the dock only repaints when flagged.
+            dock.tree.focus_or_add_panel("code_editor");
+            dirty.0 = true;
         }
-        // Dirty either way: `focus_or_add_panel` returns false when the panel
-        // was already there, but it still moved that leaf's active tab, and the
-        // dock only repaints when flagged.
-        dock.tree.focus_or_add_panel("code_editor");
-        dirty.0 = true;
+        // A UI template's document *is* a canvas, so returning to its tab
+        // re-selects that canvas and reveals the panel showing it — the same
+        // move, one panel over.
+        renzora_ui::DocTabKind::Ui => {
+            if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
+                commands.insert_resource(renzora::core::OpenUiTemplateFile {
+                    path: project.resolve_path(rel),
+                });
+            }
+            dock.tree.focus_or_add_panel("ui_canvas");
+            dirty.0 = true;
+        }
+        _ => {}
     }
 }
 
@@ -7309,6 +7445,174 @@ fn settings_button(commands: &mut Commands) -> Entity {
     gear
 }
 
+/// Marks a plugin-contributed top-bar button with the id it reports when
+/// pressed.
+#[derive(Component)]
+struct ShellActionBtn(&'static str);
+
+/// The row of plugin-contributed top-bar buttons.
+///
+/// Built once with the chrome, from whatever is in
+/// [`renzora::ShellActionRegistry`] at that moment — which is every plugin's
+/// registration, since plugins are added during `App` assembly and the chrome is
+/// built after the splash. A plugin that registers later gets its button on the
+/// next chrome rebuild (a theme or layout change), which is the same deal
+/// status-bar items and panels get.
+fn build_shell_actions(commands: &mut Commands) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                ..default()
+            },
+            Name::new("top-bar-actions"),
+        ))
+        .id();
+    commands.queue(move |world: &mut World| {
+        struct Item {
+            id: &'static str,
+            icon: &'static str,
+            label: Option<String>,
+            color: Option<[u8; 3]>,
+            tooltip: String,
+        }
+        let items: Vec<Item> = world
+            .get_resource::<renzora::ShellActionRegistry>()
+            .map(|reg| {
+                let mut v: Vec<(i32, Item)> = reg
+                    .items
+                    .iter()
+                    .map(|i| {
+                        (
+                            i.order,
+                            Item {
+                                id: i.id,
+                                icon: i.icon,
+                                label: i.label.map(|f| f()),
+                                color: i.color,
+                                tooltip: (i.tooltip)(),
+                            },
+                        )
+                    })
+                    .collect();
+                v.sort_by_key(|(order, _)| *order);
+                v.into_iter().map(|(_, item)| item).collect()
+            })
+            .unwrap_or_default();
+        if items.is_empty() {
+            return;
+        }
+        let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+            return;
+        };
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            let kids: Vec<Entity> = items
+                .into_iter()
+                .map(|item| shell_action_button(&mut commands, &fonts, item.id, item.icon, item.label, item.color, item.tooltip))
+                .collect();
+            commands.entity(row).add_children(&kids);
+        }
+        queue.apply(world);
+    });
+    row
+}
+
+/// One plugin-contributed top-bar button.
+///
+/// A tinted pill with a coloured glyph and a label when the item asks for them,
+/// and the same quiet icon-only treatment as the gear when it does not. The
+/// tint is what makes a *destination* legible in a bar of toggles — an
+/// unlabelled grey glyph beside four other grey glyphs is not somewhere anyone
+/// finds by looking.
+#[allow(clippy::too_many_arguments)]
+fn shell_action_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    id: &'static str,
+    icon: &'static str,
+    label: Option<String>,
+    color: Option<[u8; 3]>,
+    tooltip: String,
+) -> Entity {
+    let hue = color.map(|c| (c[0], c[1], c[2]));
+    let btn = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(if label.is_some() { 8.0 } else { 5.0 }), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            ShellActionBtn(id),
+            renzora_ember::widgets::HoverTooltip::new(tooltip),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new(format!("top-action:{id}")),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
+        let hot = matches!(
+            w.get::<Interaction>(btn),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        );
+        match hue {
+            Some((r, g, b)) => Color::srgba(
+                r as f32 / 255.0,
+                g as f32 / 255.0,
+                b as f32 / 255.0,
+                if hot { 0.34 } else { 0.20 },
+            ),
+            None if hot => rgb(renzora_ember::theme::hover_bg()),
+            None => Color::NONE,
+        }
+    });
+
+    let ic = renzora_ember::font::icon_text(
+        commands,
+        &fonts.phosphor,
+        icon,
+        hue.unwrap_or_else(text_muted),
+        14.0,
+    );
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let mut kids = vec![ic];
+    if let Some(label) = label {
+        kids.push(
+            commands
+                .spawn((
+                    Text::new(label),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(text_primary())),
+                    bevy::ui::FocusPolicy::Pass,
+                    bevy::text::TextLayout::no_wrap(),
+                ))
+                .id(),
+        );
+    }
+    commands.entity(btn).add_children(&kids);
+    btn
+}
+
+/// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered
+/// the id.
+fn shell_action_press(
+    q: Query<(&Interaction, &ShellActionBtn), Changed<Interaction>>,
+    mut invoked: MessageWriter<renzora::ShellActionInvoked>,
+) {
+    for (interaction, btn) in &q {
+        if *interaction == Interaction::Pressed {
+            invoked.write(renzora::ShellActionInvoked(btn.0));
+        }
+    }
+}
+
 /// Gear → toggle the Settings panel. Same toggle the hamburger's Settings row
 /// runs, so clicking either while it's open closes it.
 fn settings_btn_click(
@@ -7380,7 +7684,6 @@ enum TopMenuKind {
     Edit,
     View,
     Help,
-    Account,
 }
 
 #[derive(Component)]
@@ -7397,14 +7700,18 @@ struct OpenTopMenu {
 /// The hamburger that replaced the File/Edit/View/Help titles: one top-bar
 /// button opening a single dropdown, with those four now submenu rows inside it.
 ///
-/// It's icon-only on purpose — the point of collapsing four titles into one was
-/// to give the left zone back to the account name and the bell, so a label here
-/// would spend most of the width we just reclaimed.
-fn hamburger_menu_item(commands: &mut Commands) -> Entity {
+/// It carries a **Menu** label. It was icon-only to give the left zone back to
+/// the account name and the notification bell — both of which went with the
+/// social features, so the width it was saving is no longer wanted by anything,
+/// and four menus collapsed behind a wordless glyph is a lot to ask a new user
+/// to guess.
+fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let item = commands
         .spawn((
             Node {
-                padding: UiRect::axes(Val::Px(7.0), Val::Px(4.0)),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(4.0)),
@@ -7423,7 +7730,17 @@ fn hamburger_menu_item(commands: &mut Commands) -> Entity {
         _ => Color::NONE,
     });
     let icon = glyph(commands, "list", text_muted(), 15.0);
-    commands.entity(item).add_child(icon);
+    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t_or("menu.label", "Menu")),
+            ui_font(font, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(item).add_children(&[icon, label]);
     item
 }
 
@@ -7506,6 +7823,17 @@ fn spawn_top_menu(
     update_tag: Option<&str>,
 ) -> Entity {
     let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
+    // The hamburger's dropdown is a panel, not a context menu: 184px is right
+    // for a list of verbs and far too narrow for an identity block with a name
+    // and a line of description under it. Only this one menu is widened —
+    // `screen_menu`'s default is what every other menu in the editor wants.
+    if matches!(kind, TopMenuKind::Main) {
+        commands.entity(root).entry::<Node>().and_modify(|mut n| {
+            n.min_width = Val::Px(264.0);
+            n.padding = UiRect::all(Val::Px(6.0));
+            n.border_radius = BorderRadius::all(Val::Px(10.0));
+        });
+    }
     let kids = build_menu_items(commands, fonts, kind, account, update_tag);
     commands.entity(root).add_children(&kids);
     root
@@ -7630,6 +7958,143 @@ fn anchor_below(
 /// Build one menu's rows. `account` is the signed-in username (`None` = signed
 /// out) — the menu needs the name itself now, not just the fact of being signed
 /// in, because the hamburger's first row *is* the username.
+/// Open a menu row's padding out to panel proportions.
+///
+/// The hamburger's dropdown is the app's front door and wants air; every other
+/// menu in the editor is a context menu, where tight rows are right and a list
+/// of twenty verbs has to fit on screen. So the metrics stay where they are in
+/// `renzora_ember` and this widens the handful of rows that want it, rather than
+/// fattening every context menu in the editor to change one.
+///
+/// Separators are skipped rather than forbidden. A `menu_sep` is a 1px-tall
+/// node and vertical padding would turn it into a bar, but the lists this walks
+/// are built elsewhere and hand back rows and separators mixed together — so the
+/// check lives here, where it cannot be forgotten, instead of at each call site.
+fn spacious(commands: &mut Commands, row: Entity) -> Entity {
+    commands.entity(row).entry::<Node>().and_modify(|mut n| {
+        if n.height == Val::Px(1.0) {
+            // A separator: give it more air around it, nothing inside it.
+            n.margin = UiRect::vertical(Val::Px(5.0));
+            return;
+        }
+        n.padding = UiRect::axes(Val::Px(10.0), Val::Px(7.0));
+        n.column_gap = Val::Px(10.0);
+        n.border_radius = BorderRadius::all(Val::Px(6.0));
+    });
+    row
+}
+
+/// The identity block at the top of the hamburger menu: a round avatar chip, the
+/// account name, and what the account *is* underneath it.
+///
+/// Not a row — it has no action and no hover. Signing in is a row further down,
+/// where it belongs with the other verbs; a header that is sometimes a button is
+/// a header you have to test to understand.
+fn menu_account_header(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    account: Option<&str>,
+) -> Entity {
+    let block = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(9.0)),
+                ..default()
+            },
+            Name::new("menu-account-header"),
+        ))
+        .id();
+
+    // A circle with a glyph in it, not an image: the shell has no avatar cache
+    // — that lives with the marketplace plugin, which the shell must not depend
+    // on. A filled circle reads as an avatar slot either way.
+    let avatar = commands
+        .spawn((
+            Node {
+                width: Val::Px(34.0),
+                height: Val::Px(34.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(17.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
+        ))
+        .id();
+    let glyph_name = if account.is_some() { "user" } else { "user-circle-dashed" };
+    let av_ic = icon_text(commands, &fonts.phosphor, glyph_name, text_muted(), 17.0);
+    commands.entity(avatar).add_child(av_ic);
+
+    let text_col = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            row_gap: Val::Px(1.0),
+            ..default()
+        })
+        .id();
+    let (title, subtitle) = match account {
+        Some(name) => (name.to_string(), "renzora.com account".to_string()),
+        None => (
+            renzora::lang::t_or("auth.signed_out", "Not signed in"),
+            renzora::lang::t_or("auth.signed_out_hint", "Sign in to buy and publish").to_string(),
+        ),
+    };
+    let t = commands
+        .spawn((
+            Text::new(title),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    let s = commands
+        .spawn((
+            Text::new(subtitle),
+            ui_font(&fonts.ui, 10.5),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(text_col).add_children(&[t, s]);
+    commands.entity(block).add_children(&[avatar, text_col]);
+    block
+}
+
+/// A submenu row for the hamburger's panel, with its floating panel styled to
+/// match the dropdown it hangs off.
+///
+/// Without this the second level was a plain context menu: 184px wide, 6px
+/// corners, rows at context-menu pitch, opening off a 264px panel with 10px
+/// corners and rows at twice the height. One menu in two visual languages,
+/// depending how deep you had gone.
+fn panel_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    kids: Vec<Entity>,
+) -> Entity {
+    let (row, content, panel) =
+        renzora_ember::widgets::menu_submenu_parts(commands, fonts, icon, label, text_muted());
+    commands.entity(panel).entry::<Node>().and_modify(|mut n| {
+        n.min_width = Val::Px(230.0);
+        n.padding = UiRect::all(Val::Px(6.0));
+        n.border_radius = BorderRadius::all(Val::Px(10.0));
+    });
+    for kid in &kids {
+        spacious(commands, *kid);
+    }
+    commands.entity(content).add_children(&kids);
+    spacious(commands, row)
+}
+
 fn build_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -7640,49 +8105,65 @@ fn build_menu_items(
     // version instead of making you go and look.
     update_tag: Option<&str>,
 ) -> Vec<Entity> {
-    use renzora_ember::widgets::{menu_item, menu_sep, menu_submenu};
+    use renzora_ember::widgets::{menu_item, menu_sep};
     match kind {
         // The hamburger's own dropdown: the account, then four submenu rows,
         // each filled by recursing into the item list that used to be its own
         // top-bar title.
+        // ── The hamburger's own dropdown ─────────────────────────────────────
+        //
+        // Built as a small **panel**, not a context menu: an identity block, a
+        // way in to search, then the four submenus, then the two things reached
+        // often enough to be top-level, then the account action. A context menu
+        // is a list of verbs for the thing you right-clicked; this is the app's
+        // front door, and it was reading as the former — a wall of nine tight
+        // rows with the account buried among them.
+        //
+        // The rows are ember's ordinary menu rows with their padding opened up
+        // (`spacious`), rather than a second set of widgets. Everything about
+        // them — hover, click-to-close, submenu hover-open — is behaviour this
+        // menu wants unchanged; only the rhythm is different.
         TopMenuKind::Main => {
             let mut rows: Vec<Entity> = Vec::new();
-            // The signed-in username, which lost its top-bar slot to the
-            // document tabs. Signed out there's nothing to nest, so it's a plain
-            // "Sign In" row rather than a submenu holding one item. No reactive
-            // binding needed either way: the menu is rebuilt on every open, so
-            // the label is read fresh each time.
-            if let Some(name) = account {
-                let (row, content) = menu_submenu(commands, fonts, "user", name);
-                let kids = build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag);
-                commands.entity(content).add_children(&kids);
-                rows.push(row);
-            } else {
-                rows.extend(build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag));
+
+            rows.push(menu_account_header(commands, fonts, account));
+            rows.push(menu_sep(commands));
+
+            for (icon, label, sub) in [
+                ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
+                ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
+                ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
+                ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
+            ] {
+                let kids = build_menu_items(commands, fonts, sub, account, update_tag);
+                rows.push(panel_submenu(commands, fonts, icon, &label, kids));
             }
+
+            // Import, Export and Settings are top-level rather than buried at
+            // the bottom of File. Settings took the gear button's place when
+            // that left the top bar; the other two bracket a project's life and
+            // are reached far too often to sit two hovers deep.
             rows.push(menu_sep(commands));
-            rows.extend(
-                [
-                    ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
-                    ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
-                    ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
-                    ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
-                ]
-                .into_iter()
-                .map(|(icon, label, sub)| {
-                    let (row, content) = menu_submenu(commands, fonts, icon, &label);
-                    let kids = build_menu_items(commands, fonts, sub, account, update_tag);
-                    commands.entity(content).add_children(&kids);
-                    row
+            // Import is a submenu because no OS dialog picks files and folders
+            // in one pass — the same reason the Assets panel's Import button
+            // opens a two-row menu instead of a picker. See
+            // `renzora::core::ImportPick`.
+            let import_kids = vec![
+                menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| {
+                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
                 }),
-            );
-            // Export and Settings are top-level rather than buried at the bottom
-            // of File. Settings took the gear button's place when that left the
-            // top bar, and both are reached far too often to sit two hovers deep
-            // — exporting is the end of every project, not a File housekeeping
-            // chore.
-            rows.push(menu_sep(commands));
-            rows.push(menu_item(
+                menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| {
+                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
+                }),
+            ];
+            rows.push(panel_submenu(
+                commands,
+                fonts,
+                "download-simple",
+                &renzora::lang::t("assets.import"),
+                import_kids,
+            ));
+            let export = menu_item(
                 commands,
                 fonts,
                 "package",
@@ -7690,8 +8171,9 @@ fn build_menu_items(
                 |w| {
                     w.insert_resource(renzora::core::ExportRequested);
                 },
-            ));
-            rows.push(menu_item(
+            );
+            rows.push(spacious(commands, export));
+            let settings = menu_item(
                 commands,
                 fonts,
                 "gear",
@@ -7703,42 +8185,34 @@ fn build_menu_items(
                         s.show_settings = !s.show_settings;
                     }
                 },
-            ));
-            rows
-        }
-        TopMenuKind::Account => {
+            );
+            rows.push(spacious(commands, settings));
+
+            // The account actions last, on their own — the reference's Log Out
+            // position, and the right one: they are the only rows here that end
+            // a session rather than start a task.
+            rows.push(menu_sep(commands));
             if account.is_some() {
-                vec![
-                    // The notifications entry point. It used to be the top-bar
-                    // bell; that button is gone, and this is the only way in, so
-                    // the row opens the same dropdown `renzora_social` consumes
-                    // — anchored under the ☰ button rather than under a bell
-                    // that no longer exists.
-                    menu_item(commands, fonts, "bell", &renzora::lang::t_or("menu.account.notifications", "Notifications"), |w| {
-                        if let Some(mut b) = w.get_resource_mut::<renzora::core::SocialBridge>() {
-                            if b.notify_button_enabled {
-                                b.notify_dropdown_request = Some((8.0, 38.0));
-                            }
-                        }
-                    }),
-                    menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
-                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-                            dock.tree.focus_or_add_panel("hub_library");
-                        }
-                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
-                            d.0 = true;
-                        }
-                    }),
-                    menu_sep(commands),
-                    menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
-                        w.insert_resource(renzora::core::AuthSignOutRequest);
-                    }),
-                ]
+                let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
+                    if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                        dock.tree.focus_or_add_panel("hub_library");
+                    }
+                    if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                        d.0 = true;
+                    }
+                });
+                rows.push(spacious(commands, library));
+                let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
+                    w.insert_resource(renzora::core::AuthSignOutRequest);
+                });
+                rows.push(spacious(commands, out));
             } else {
-                vec![menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
+                let sign_in = menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
                     w.insert_resource(renzora::core::AuthToggleWindowRequest);
-                })]
+                });
+                rows.push(spacious(commands, sign_in));
             }
+            rows
         }
         TopMenuKind::File => vec![
             menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| {

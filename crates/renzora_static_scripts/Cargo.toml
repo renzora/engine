@@ -1,0 +1,36 @@
+# The project's Rust scripts, compiled into the binary.
+#
+# This checked-in copy is EMPTY and deliberately so — see `src/lib.rs`. The lean
+# exporter rewrites both this manifest and that file inside its throwaway copy of
+# the workspace (`target/export-src/`), adding one `#[path]` module per script in
+# the project's `scripts/` directory. The dev tree is never touched.
+#
+# It exists in the dev tree at all for the same reason `renzora_static_plugins`
+# does: cargo resolves every path dependency when it loads a workspace, so a
+# feature could not name a crate that only comes into existence during an export.
+[package]
+name = "renzora_static_scripts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ── No `static_scripts` here, and that is load-bearing ───────────────────────
+#
+# The GENERATED manifest (the one the exporter writes into `target/export-src/`)
+# enables `renzora/static_scripts`, because that is what drops `#[no_mangle]`
+# from `renzora::script!` so many scripts can share one binary. This checked-in
+# copy must not, because cargo unifies features across a build and every build
+# here is `--workspace`: naming it would compile `renzora` with the feature for
+# the WHOLE dev tree, and every script dylib the editor produces would export no
+# findable entry point. The symptom is not subtle and says nothing about
+# features:
+#
+#     [Script] spin.rs
+#     exports no entry point — did you forget `renzora::script!(update);`?
+#
+# `renzora_static_plugins` next door is written the same way for the same reason.
+renzora = { path = "../renzora" }
+bevy = { workspace = true }
+
+[lints]
+workspace = true

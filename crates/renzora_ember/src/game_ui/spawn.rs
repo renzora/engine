@@ -102,18 +102,12 @@ pub(crate) fn is_within_world_ui_root(world: &World, mut entity: Entity) -> bool
 /// with no canvas in the scene, and the wrapper the invariant healer parents an
 /// orphaned widget under. Kept in one place so canvas defaults never drift.
 pub(crate) fn spawn_root_canvas(world: &mut World) -> Entity {
-    world
-        .spawn((
-            Name::new("UI Canvas"),
-            UiCanvas::default(),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                ..default()
-            },
-        ))
-        .id()
+    // Geometry comes from `canvas_root_node`, not written out longhand here:
+    // this copy was the one that drifted when the canvas root stopped being a
+    // plain full-target box.
+    let canvas = UiCanvas::default();
+    let node = super::components::canvas_root_node(&canvas);
+    world.spawn((Name::new("UI Canvas"), canvas, node)).id()
 }
 
 /// Spawn a fresh screen [`UiCanvas`] whose template is `asset_path`, stored
@@ -131,13 +125,12 @@ pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::
     } else {
         asset_path.to_string_lossy().replace('\\', "/")
     };
-    let name = asset_path
+    let base = asset_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "UI Canvas".to_string());
-    world
+    let entity = world
         .spawn((
-            Name::new(name),
             UiCanvas::default(),
             HtmlTemplatePath(load_path),
             Node {
@@ -147,7 +140,14 @@ pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::
                 ..default()
             },
         ))
-        .id()
+        .id();
+    // Named after the template it mounts, then run through the engine's
+    // one-id-per-entity rule — dropping the same `.html` twice is a reasonable
+    // thing to do, and two rows called `main_menu` are two rows you cannot tell
+    // apart.
+    let id = renzora::unique_entity_name(world, &base, entity);
+    world.entity_mut(entity).insert(Name::new(id));
+    entity
 }
 
 pub fn spawn_widget(
@@ -377,6 +377,22 @@ pub fn spawn_html_template_at(
 }
 
 pub fn reapply_layout_from_parent(world: &mut World, entity: Entity) {
+    // A node built from markup authored its own layout in the `.html`, and this
+    // function exists to guess a layout for someone who *dragged* a widget — which
+    // cannot happen to a markup node, since they are all `HideInHierarchy` and
+    // never appear in the tree you drag in.
+    //
+    // Without the exemption `ParentLayout::Container` won, and it forces
+    // `position_type: Relative` and clears left/right/top/bottom to `Auto`. So
+    // every `position="absolute"` in a template was silently reverted the first
+    // frame after it built: a node pinned to `left: 88px; bottom: 34px` popped
+    // back into flex flow beside its sibling. The `Changed<ChildOf>` system is
+    // what catches them — a freshly spawned `ChildOf` reads as changed — so the
+    // "no `UiWidget` yet when the observers fire" ordering that `tag_built_nodes`
+    // relies on does not save markup here.
+    if world.get::<crate::markup::provenance::MarkupSource>(entity).is_some() {
+        return;
+    }
     let parent = world.get::<ChildOf>(entity).map(|co| co.parent());
     let (_, layout) = classify_parent(world, parent);
     apply_parent_layout(world, entity, layout);

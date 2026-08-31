@@ -360,6 +360,35 @@ graph, and `renzora_ember::game_ui`, which still inserts one on `UiWidget`/`UiCa
 so `<input bind="Entity.var">` resolves. If you spawn an entity outside those paths
 and need script variables on it, insert the component yourself.
 
+**The inspector's Scripts section is nonetheless shown on every entity, and that is
+not a regression of the above.** Its `has_fn` is unconditionally `true`, so the
+section is inherent to the entity the way 2D Lighting is inherent to a `Camera2d` —
+but the section is drawn over an *absent* component, and the add-bar inserts one only
+when a script actually lands (removing the last script removes it again). Attaching a
+script is among the most common things anyone does in the editor, and routing it
+through Add Component → search → drop was pure ceremony in front of the action; the
+fix for that is UI-side, and materialising an empty component on every entity to get
+it would give back every cost listed above **plus** a `scripts: []` entry serialised
+into every saved scene, since the component is registered for reflection. If you ever
+want the component genuinely universal, the prerequisite is a marker component that
+the executor, the hot-reload pass and the hierarchy's badge change-detection filter
+on, so the empty ones sit in archetypes those queries never visit.
+
+**Two costs that scaled with `ScriptComponent` count are also gone.**
+`check_script_hot_reload` iterated `&mut ScriptComponent` every 0.5 s, and
+`Mut::deref_mut` sets the change tick whether or not the write changes anything — so
+every component in the scene was marked `Changed` twice a second. `renzora_hierarchy`'s
+`AssetBadgeChanges` watches `Changed<ScriptComponent>` for its script badge, so that
+storm set `HierarchyDirty` and forced `build_entity_tree` — a full-world scan on an
+exclusive system — to run at 2 Hz forever with nothing changed. It now reads through
+the immutable `Deref` and bails before touching `DerefMut` unless something is
+genuinely stale. Separately, `scripts_should_run` scanned every `ScriptComponent` to
+answer "is any script previewing?", and Bevy evaluates a run condition per system
+rather than sharing the result — four systems gate on it, so that was four scans a
+frame. The answer now lands in a `ScriptsActive` resource computed once in
+`ScriptingSet::PreScript`, and the in-play case returns from `PlayModeState` without
+iterating anything.
+
 **`ghost_nodes` is deliberately off.** It's a `bevy_ui` feature that swaps
 `UiChildren` for a much slower implementation on the editor's hottest path.
 `update_children_recursively` calls `is_changed()` once per UI node per frame, and

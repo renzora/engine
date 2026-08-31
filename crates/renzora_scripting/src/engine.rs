@@ -70,6 +70,25 @@ impl ScriptEngine {
         self.backends.push(backend);
     }
 
+    /// Every file extension any registered backend claims, e.g. `["lua",
+    /// "blueprint", "bp", "rs"]`.
+    ///
+    /// The editor asks rather than hardcoding a list. Three places in the
+    /// inspector's Scripts panel used to carry their own copy of
+    /// `["lua", "blueprint", "bp"]` — the script scanner, the drag-drop filter,
+    /// and the drop-zone highlight — so adding a language meant finding all
+    /// three, and missing one produced a script that could be typed in but not
+    /// dropped, or dropped but never listed.
+    ///
+    /// Since a backend already declares its own extensions, this is the same
+    /// information without a second source to keep in step.
+    pub fn script_extensions(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self.backends.iter().flat_map(|b| b.extensions()).copied().collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
     /// Set scripts folder on all backends
     pub fn set_scripts_folder(&mut self, path: PathBuf) {
         self.scripts_folder = Some(path.clone());

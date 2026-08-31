@@ -27,7 +27,6 @@ members = [
     "crates/bevy_gaussian_splatting",
     "crates/bevy_hanabi",
     "crates/bevy_hui",
-    "crates/bevy_procedural_tree",
     "crates/bevy_silk",
     "crates/vleue_navigator",
     # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.32
@@ -314,13 +313,21 @@ path = "src/main.rs"
 [features]
 # `dynamic_linking` is in the DEFAULT set so every ordinary build — the editor,
 # `cargo renzora`, `cargo check`, the `--workspace` dist builds, the dedicated
-# server — links the shared `bevy_dylib`/`renzora` dylib and keeps the one frozen
-# plugin ABI (`plugin_bevy_hash`). It is a *feature* rather than an inline dep
-# flag so the lean release exporter can drop it with `--no-default-features
-# --features runtime`, producing a fully static single binary (static Bevy +
-# static std, no dylibs) — see `crates/renzora_export` and `[profile.dist-lean]`.
-# Dropping it does NOT move the dev/editor ABI: the default build is unchanged.
-default = ["runtime", "xr"]
+# server — links ONE shared `bevy_dylib` instead of baking a private copy of
+# Bevy into each binary. Two separate things need that sharing:
+#
+#   * Link time. Both binaries are ~200-270 MB statically, and relinking the
+#     whole of Bevy dominates every single build.
+#   * Type identity. Rust derives a type's `TypeId` from how it was compiled, so
+#     two independently-linked copies of Bevy disagree about what `Transform`
+#     is. One shared dylib means one answer, which is the whole prerequisite for
+#     a plugin ever holding `&mut World`.
+#
+# It is a *feature* rather than an inline dep flag so the lean release exporter
+# can drop it with `--no-default-features --features runtime`, producing a fully
+# static single binary (static Bevy + static std, no dylibs) — see
+# `crates/renzora_export` and `[profile.dist-lean]`.
+default = ["runtime", "xr", "dynamic_linking"]
 # One binary, always runtime-shaped. The editor is no longer a compile-time
 # feature: it ships as the `renzora_editor` cdylib loaded at startup
 # from beside the exe (Operation Merge). Present → the binary is the editor;
@@ -328,12 +335,28 @@ default = ["runtime", "xr"]
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
 runtime = ["dep:renzora_runtime"]
-# Shared-`bevy_dylib` dynamic linking. ON by default (above); the lean exporter
+# Shared dynamic linking, for BOTH shared images: `bevy_dylib` (Bevy) and
+# `renzora_dylib` (the contract crate). ON by default (above); the lean exporter
 # turns it OFF for a static release binary. Mobile/wasm lanes never enable it
 # (they build via `--no-default-features --features <wasm|…>` or their own
-# crates), so `bevy_dylib` — a dylib-only crate that can't link into an iOS
-# staticlib / Android cdylib / wasm — correctly stays out of those builds.
-dynamic_linking = ["bevy/dynamic_linking"]
+# crates), so these dylib-only crates — which can't link into an iOS staticlib /
+# Android cdylib / wasm — correctly stay out of those builds.
+#
+# Two things about the contract half are not obvious.
+#
+# It is a SEPARATE crate rather than `renzora` growing a `dylib` crate-type,
+# because `renzora_dylib` depends ON `renzora` — so `renzora` cannot depend back
+# on it without a cycle. Pulling the dylib into the link graph is enough on its
+# own: rustc computes the dependency format per final artifact, so once the
+# shared image is present every intermediate crate resolves `renzora` to it
+# rather than embedding a second copy.
+#
+# And it is forwarded through `renzora_runtime` rather than depended on here,
+# for the same reason `xr` is: BOTH binaries need it, and only `renzora_app` has
+# a feature table. A dependency declared here would reach the runtime binary and
+# silently miss `renzora_editor_app` — which has no `[features]` at all, but does
+# depend on `renzora_runtime`.
+dynamic_linking = ["bevy/dynamic_linking", "renzora_runtime?/dynamic_linking"]
 # OpenXR/VR boot mode: launching with `--vr` renders the game into a headset
 # (see `renzora_runtime::add_xr_rendering` / `renzora_xr`). In `default` so
 # every desktop build can be a VR runtime; the wasm/mobile lanes never enable
@@ -347,6 +370,28 @@ xr = ["renzora_runtime?/xr"]
 # extra — the checked-in crate returns an empty list — so turning it on by hand
 # is harmless and pointless. See `renzora_plugin::static_link`.
 static_plugins = ["dep:renzora_static_plugins"]
+# Compile the project's `.rs` scripts INTO the binary instead of loading each as
+# a dylib. Set only by the lean exporter, in the same throwaway workspace copy,
+# where it also fills in the otherwise-empty `renzora_static_scripts` crate.
+#
+# This is what makes Rust scripts work in an exported game at all. A lean binary
+# links Bevy statically, so there is no shared image for a script dylib to bind
+# to and `RustScriptPlugin` refuses to register a backend — an exported game
+# reports `No backend for Some("rs")`. Compiling the source in removes the
+# boundary instead of trying to make it safe.
+#
+# Forwarded only — the crate that needs the generated table is
+# `renzora_rust_script`.
+#
+# `renzora/static_scripts` is NOT named here or anywhere in the dev tree. It is
+# enabled solely by the manifest the exporter GENERATES for
+# `renzora_static_scripts` inside `target/export-src/`. That distinction is
+# load-bearing: cargo unifies features across a build and every build here is
+# `--workspace`, so naming it in a checked-in manifest would compile `renzora`
+# with the feature for the whole dev tree — dropping `#[no_mangle]` from
+# `script!` and leaving every script dylib the editor builds with no findable
+# entry point.
+static_scripts = ["renzora_runtime?/static_scripts"]
 # Throwaway PROFILING build — re-adds Bevy's Tracy instrumentation for a full
 # flame graph + per-system Statistics in Tracy. `bevy/trace` turns on the
 # per-system and render-node CPU spans (bevy_ecs gates system zones behind it, so
@@ -492,6 +537,31 @@ winres = "0.1"
 # (`cargo build --profile release --workspace`), which is the point of making it
 # a named profile rather than a pile of env overrides.
 
+# ── Windows ships THIS profile, not `release` ────────────────────────────────
+#
+# Not a preference — a format limit. A PE export ordinal is 16 bits, so a DLL
+# exports at most 65,535 symbols, and `bevy_dylib` lands either side of that
+# depending only on the optimisation level. Measured on this workspace:
+#
+#     opt-level = 2      41,958   links
+#     opt-level = "s"   269,482   rust-lld: too many exported symbols
+#
+# `"s"` inlines far less, so generic instantiations that `2` folds into their
+# callers survive as separate functions, and a Rust `dylib` exports every one.
+#
+# A per-package override on `bevy_dylib` does NOT fix it: that crate is a thin
+# re-export of `bevy_internal`, so the symbols come from the ~40 upstream `bevy_*`
+# crates and the level that matters is theirs. Setting `package."*"` would reach
+# them but that is most of the code, i.e. the size win itself.
+#
+# So Windows trades binary size for the shared-image plugin system, which needs
+# `bevy_dylib` to exist at all. `build_one` in `docker/build-all.sh` FORCES this
+# profile for any `windows-*` platform rather than trusting its caller to ask for
+# it — the constraint belongs to the target, and a caller that did not know
+# (`renzora build windows`, from the CLI) silently took the `release` default and
+# failed to link. The `windows-arm64` lane, which runs `cargo renzora` instead of
+# that script, still names it via `RENZORA_PROFILE`. Linux and macOS keep
+# `release`, having no such ceiling.
 [profile.dist]
 inherits = "release"
 # Fast to link. `opt-level = 2` and NO LTO — restated explicitly rather than

@@ -84,7 +84,19 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 | `Numpad 7` | Top (add `Ctrl` for Bottom) |
 | `Numpad 5` | Switch between perspective and flat (orthographic) |
 
-The viewport header also has a **3D / 2D / UI** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below), and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha7/scripting/game-ui).
+The viewport header also has a **3D / 2D** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below).
+
+There used to be a third option, **UI**, which turned this panel into the editor for your game's interface. That editor is the **UI Canvas** panel now — see the [UI workspace](#the-ui-workspace) below. The viewport shows a scene and nothing else.
+
+## The UI workspace
+
+Building your game's interface with the [renzora_ember markup system](/docs/r1-alpha7/scripting/game-ui) happens in the **UI** workspace: Hierarchy, the **UI Canvas** panel, and the Inspector, with the code editor tabbed beside the canvas for the `.html` behind it.
+
+Double-clicking a `.html` in the Assets panel goes there and puts that template on the canvas.
+
+It's a panel like any other, so you can dock it wherever you like — including beside the viewport, which is worth doing when you're placing a HUD over the scene it sits on. The canvas shows the live viewport render behind your UI (toggle it with the backdrop button in the canvas toolbar), so what you see behind the widgets is whatever the viewport is currently rendering.
+
+Before this it was a *mode* of the viewport, and opening a UI took the 3D view away until you next selected something 3D — one surface doing two jobs, with whichever you weren't doing hidden.
 
 ## The 2D view
 
@@ -163,6 +175,13 @@ model — full materials, not a grey placeholder — appears under your cursor a
 follows it until you let go. What you're placing is already the final entity;
 releasing over the viewport commits it in place rather than despawning the
 preview and spawning something new.
+
+A big model takes a moment to load, and until it does you get a translucent
+blue box at the cursor instead — a marker for where the drop will land, replaced
+by the model the instant it's ready. It is not the model in grey: a glTF's
+textures are decoded before any of its geometry becomes available, so there is
+no earlier point at which the mesh could be shown. Drop while the box is still
+up and the model arrives in that spot when it finishes loading.
 
 Where it lands depends on what's under the cursor:
 

@@ -83,6 +83,8 @@ mod pagination;
 // Data display.
 mod avatar;
 mod chip;
+pub mod clipboard;
+mod file_image;
 mod folder_picker;
 mod grid;
 mod image;
@@ -115,6 +117,8 @@ mod node_graph;
 mod overflow_row;
 mod overflow_strip;
 mod overlay;
+mod ruler;
+mod toolbar;
 mod markdown;
 mod rich_text;
 mod scroll_area;
@@ -195,6 +199,7 @@ pub use pagination::*;
 
 pub use avatar::*;
 pub use chip::*;
+pub use file_image::*;
 pub use folder_picker::*;
 pub use grid::*;
 pub use image::*;
@@ -222,6 +227,12 @@ pub use node_graph::*;
 pub use markdown::*;
 pub use rich_text::*;
 pub use overflow_row::{arrange_row, arrange_row_items, ArrangeKey, ArrangeOrder, ArrangeRow};
+pub use ruler::{fmt_coord, nice_step, ruler_step};
+pub use toolbar::{
+    settings_check_row, settings_section, settings_separator, toolbar_bar, toolbar_group,
+    toolbar_icon_button, toolbar_pill, toolbar_separator, ToolbarPill, TOOLBAR_BTN, TOOLBAR_ICON,
+    TOOLBAR_INLINE_H, TOOLBAR_RADIUS,
+};
 pub use overflow_strip::{
     overflow_strip, overflow_strip_gap, OverflowBudget, OverflowEntry, OverflowKeep, OverflowStrip,
 };
@@ -235,7 +246,7 @@ pub use drag_window::{drag_grip, DragHandle};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
-pub use submenu::{menu_submenu, menu_submenu_styled};
+pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_styled};
 pub use scene::{
     EmberButtonWidget, EmberCheckbox, EmberClip, EmberDropdown, EmberInput, EmberProgress,
     EmberSliderWidget, EmberTable, EmberTabs, EmberTimeline, EmberToggle, EmberTrack,
@@ -258,6 +269,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::WheelGesture>();
         app.init_resource::<drag_value::DragValueConfig>();
         app.init_resource::<drag_value::AnyDragValueEditing>();
+        app.init_resource::<file_image::FileImages>();
         app.init_resource::<markdown::MarkdownImages>();
         app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
@@ -265,6 +277,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<scroll_area::ScrollbarBusy>();
         app.init_resource::<scroll_area::ScrollConfig>();
         app.init_resource::<folder_picker::FolderPick>();
+        app.init_resource::<folder_picker::FolderPickCollapsed>();
         app.init_resource::<overflow_row::RowDrag>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
@@ -374,6 +387,7 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     spinner::spinner_anim,
+                    progress::progress_indeterminate_anim,
                     scroll_area::scroll_wheel,
                     scroll_area::scroll_arrow_keys,
                     scroll_area::scroll_middle_drag,
@@ -405,6 +419,7 @@ impl Plugin for WidgetsPlugin {
                     audio_player::audio_player_apply,
                     folder_picker::folder_pick_click,
                     folder_picker::folder_new_click,
+                    folder_picker::folder_pick_caret_click,
                     // After the keyed lists that fill these strips: a row built
                     // this frame must be folded (or not) before the layout that
                     // would otherwise draw it in a strip it doesn't fit in.
@@ -414,6 +429,11 @@ impl Plugin for WidgetsPlugin {
                     overflow_row::arrange_drag,
                     overflow_row::arrange_highlight,
                     overflow_row::arrange_apply_order,
+                    // Reads last frame's measured size, which is what makes it
+                    // safe to run here rather than after layout: hiding a grip
+                    // cannot change the width of the group beside it, so there
+                    // is nothing for the next frame to disagree with.
+                    overflow_row::hide_empty_group_grips,
                 ),
             ),
         );
@@ -443,6 +463,13 @@ impl Plugin for WidgetsPlugin {
         app.add_systems(
             Update,
             (markdown::markdown_link_click, markdown::markdown_images_sync),
+        );
+        // On-disk thumbnails: ask for whatever is on screen, then register what
+        // finished decoding. `request` before `poll` so a tile spawned this frame
+        // is in flight by the next one.
+        app.add_systems(
+            Update,
+            (file_image::request_file_images, file_image::poll_file_images).chain(),
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);

@@ -320,6 +320,25 @@ struct EditorPrefFile {
     /// the `plugins/tracy` profiler bridge does exactly this). Generic host flag.
     #[serde(default)]
     dev_mode: bool,
+    /// Group order of the UI editor's toolbar, by [`ArrangeKey`] — the same
+    /// drag-to-arrange the viewport toolbar has. The viewport keeps its order in
+    /// `ViewportSettings`; the UI editor has no per-panel settings blob of its
+    /// own, and a toolbar you can rearrange but that forgets on restart is worse
+    /// than one you cannot.
+    #[serde(default)]
+    ui_toolbar_order: Vec<String>,
+    /// Plugins the user has turned off, by [`renzora::PluginEntry::id`].
+    ///
+    /// Read by BOTH loaders before they open anything, which is why it lives
+    /// here rather than in a resource: they run while the `App` is still being
+    /// assembled, long before any settings resource exists. `load_dev_mode` set
+    /// the precedent — a plugin reading a preference straight off disk at
+    /// startup — and this is the same shape.
+    ///
+    /// Absent (the default) means every plugin is enabled, so an existing
+    /// `editor.toml` needs no migration.
+    #[serde(default)]
+    disabled_plugins: Vec<String>,
     /// Auto-save: periodically re-save the open scene. On by default.
     #[serde(default = "default_true")]
     autosave_enabled: bool,
@@ -336,7 +355,16 @@ struct EditorPrefFile {
     /// Play runs inside the editor viewport panel. Set from the Play button's
     /// target dropdown; per-user because it's a workflow preference, not a
     /// project property.
-    #[serde(default)]
+    /// Play launches the game as a separate process rather than inside the
+    /// editor's viewport.
+    ///
+    /// Defaults **on**. In-editor play shares the editor's `World`, so what it
+    /// spawns lands in the hierarchy the user is editing — and a game that
+    /// spawns anything at startup grows that hierarchy every time Play is
+    /// pressed. A separate process cannot touch the scene it was launched from,
+    /// which is the property that matters more than the convenience of playing
+    /// in a panel.
+    #[serde(default = "default_true")]
     play_runtime_window: bool,
     /// Where the open-document tabs are shown: `false` (default) is the strip
     /// under the top bar, `true` folds them into a dropdown in the top bar
@@ -438,6 +466,7 @@ impl Default for EditorPrefFile {
     fn default() -> Self {
         Self {
             ui_scale: 1.0,
+            ui_toolbar_order: Vec::new(),
             stats_system_monitor_ms: default_system_monitor_ms(),
             stats_render_stats_ms: default_render_stats_ms(),
             stats_ecs_stats_ms: default_ecs_stats_ms(),
@@ -447,10 +476,11 @@ impl Default for EditorPrefFile {
             status_show_rendering_mode: true,
             status_show_gpu_name: true,
             dev_mode: false,
+            disabled_plugins: Vec::new(),
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
-            play_runtime_window: false,
+            play_runtime_window: true,
             doc_tabs_dropdown: false,
             hierarchy_toggle_on_click: true,
             play_vr: false,
@@ -949,6 +979,99 @@ pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
     std::fs::write(&path, text)
 }
 
+/// Saved group order for the UI editor's toolbar. Empty means "never
+/// rearranged" — the caller keeps its build order rather than clearing it.
+pub fn load_ui_toolbar_order() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.ui_toolbar_order)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the UI editor's toolbar order (read-modify-write, so other prefs
+/// survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_ui_toolbar_order(order: &[String]) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.ui_toolbar_order = order.to_vec();
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn save_ui_toolbar_order(_order: &[String]) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Plugins the user has turned off, by id (a native plugin's directory name, or
+/// a C-ABI plugin's library stem with any `lib` prefix removed).
+///
+/// Read by both plugin loaders before they open anything. Empty by default, so
+/// an editor that has never been told otherwise loads everything it finds.
+pub fn load_disabled_plugins() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.disabled_plugins)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the disabled-plugin list (read-modify-write, so other prefs survive).
+///
+/// Sorted and de-duplicated on the way in. Not tidiness: this file is
+/// hand-editable and lives in a home directory that may be synced between
+/// machines, so a stable order is what stops a no-op toggle from showing up as a
+/// change.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_disabled_plugins(disabled: &[String]) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    let mut list: Vec<String> = disabled.to_vec();
+    list.sort();
+    list.dedup();
+    prefs.disabled_plugins = list;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
 /// Load the persisted Play-button target (default `false` = in-viewport play).
 /// The editor seeds `EditorSettings.external_play_window` from this at startup
 /// so the Play dropdown's choice survives restarts.
@@ -963,7 +1086,10 @@ pub fn load_play_runtime_window() -> bool {
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
             .map(|f| f.play_runtime_window)
-            .unwrap_or(false)
+            // No preferences file yet — external play, matching the field's own
+            // default. A fresh install should not start by mutating the scene it
+            // is playing.
+            .unwrap_or(true)
     }
 }
 

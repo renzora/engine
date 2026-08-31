@@ -621,10 +621,21 @@ impl ViewportMode {
     /// The modes the header's Mode dropdown offers for the given view:
     /// Sculpt is mesh sculpting (3D only), Erase is the tile eraser (2D
     /// only).
+    /// The modes a view offers, in dropdown order.
+    ///
+    /// 3D lists Select and Edit only. Sculpt and Paint were there and are not
+    /// any more: sculpting is moving out to a plugin, and 3D vertex painting
+    /// went with it — both are a brush over a mesh rather than something the
+    /// scene editor does. Until that plugin exists the modes are unreachable
+    /// from here, which is deliberate rather than an oversight.
+    ///
+    /// 2D keeps Paint and Erase. They look like the same two words but are the
+    /// tilemap brush and its eraser, which is most of what a 2D viewport is for
+    /// — dropping them would take tile editing with them.
     pub fn for_view(view: ViewportView) -> &'static [ViewportMode] {
         match view {
             ViewportView::Two => &[Self::Scene, Self::Edit, Self::Paint, Self::Erase],
-            _ => &[Self::Scene, Self::Edit, Self::Sculpt, Self::Paint],
+            _ => &[Self::Scene, Self::Edit],
         }
     }
     pub fn label(&self) -> &'static str {
@@ -638,25 +649,26 @@ impl ViewportMode {
     }
 }
 
-/// What kind of content the viewport is currently displaying. Switches the
-/// camera/projection preset and (for `Ui`) hands off rendering to the
-/// `ui_canvas` panel so UI authoring lives in the same surface as the 3D
-/// scene.
+/// What kind of content the viewport is currently displaying — the
+/// camera/projection preset it uses.
+///
+/// There was a third variant, `Ui`, which swapped the viewport's rendered image
+/// for the game-UI canvas editor mounted inside the panel. That editor is the
+/// `ui_canvas` dock panel now, so the viewport shows a scene and nothing else,
+/// and this enum is back to being about cameras.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ViewportView {
     #[default]
     Three,
     Two,
-    Ui,
 }
 
 impl ViewportView {
-    pub const ALL: &'static [ViewportView] = &[Self::Three, Self::Two, Self::Ui];
+    pub const ALL: &'static [ViewportView] = &[Self::Three, Self::Two];
     pub fn label(&self) -> &'static str {
         match self {
             Self::Three => "3D",
             Self::Two => "2D",
-            Self::Ui => "UI",
         }
     }
 }
@@ -916,6 +928,13 @@ pub struct ViewportSettings {
     pub show_stats: bool,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
+    /// Whether the game's own UI — every `UiCanvas` and the template under it —
+    /// draws over the editor viewport.
+    ///
+    /// On by default: a HUD is part of the scene and you usually want it where
+    /// you are placing things. Off is for when it is in the way, which a
+    /// fullscreen menu over the level you are editing reliably is.
+    pub show_game_ui: bool,
     /// Toggle for in-viewport entity name labels (drawn with Bevy's stroke-font
     /// text gizmos above each named scene entity). Off by default to avoid
     /// clutter — it's an opt-in debug/orientation overlay.
@@ -1015,6 +1034,7 @@ impl Default for ViewportSettings {
             show_axis_gizmo: true,
             show_stats: false,
             show_scene_icons: true,
+            show_game_ui: true,
             show_labels: false,
             label_size: 1.0,
             label_color: [217, 230, 255],
@@ -1119,6 +1139,8 @@ pub struct PersistedViewportSettings {
     pub show_stats: bool,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
+    #[serde(default = "default_true")]
+    pub show_game_ui: bool,
     #[serde(default)]
     pub show_labels: bool,
     #[serde(default = "default_label_size")]
@@ -1210,6 +1232,7 @@ impl PersistedViewportSettings {
             show_axis_gizmo: s.show_axis_gizmo,
             show_stats: s.show_stats,
             show_scene_icons: s.show_scene_icons,
+            show_game_ui: s.show_game_ui,
             show_labels: s.show_labels,
             label_size: s.label_size,
             label_color: s.label_color,
@@ -1284,6 +1307,7 @@ impl PersistedViewportSettings {
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_stats = self.show_stats;
         s.show_scene_icons = self.show_scene_icons;
+        s.show_game_ui = self.show_game_ui;
         s.show_labels = self.show_labels;
         s.label_size = self.label_size;
         s.label_color = self.label_color;
@@ -1432,6 +1456,7 @@ mod tests {
             // Defaults to true, so false is the non-default this test wants.
             gizmo_pivot_bottom: false,
             show_scene_icons: false,
+            show_game_ui: false,
             show_labels: true,
             label_size: 2.5,
             label_color: [10, 20, 30],

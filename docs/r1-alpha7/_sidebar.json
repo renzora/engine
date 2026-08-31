@@ -21,7 +21,6 @@
           "pages": [
             { "slug": "editor/scenes", "title": "Scenes & Hierarchy" },
             { "slug": "editor/panels-windows", "title": "Panels & Windows" },
-            { "slug": "editor/community", "title": "Community & Hub" },
             { "slug": "editor/inspector", "title": "Inspector" },
             { "slug": "editor/viewport", "title": "Viewport & Camera" },
             { "slug": "editor/vr", "title": "VR Preview" },
@@ -88,6 +87,7 @@
           "category": "Languages & API",
           "pages": [
             { "slug": "scripting/lua", "title": "Lua" },
+            { "slug": "scripting/rust-scripts", "title": "Rust Scripts" },
             { "slug": "api/scripting", "title": "Scripting API" },
             { "slug": "api/blueprint-nodes", "title": "Blueprint Node API" },
             { "slug": "api/material", "title": "Material API" },
@@ -134,6 +134,9 @@
           "category": "Extending",
           "pages": [
             { "slug": "extending/plugins", "title": "Building Plugins" },
+            { "slug": "extending/native-plugins", "title": "Native Plugins (full World)" },
+            { "slug": "extending/panels", "title": "Editor Panels from a Plugin" },
+            { "slug": "extending/editor-api", "title": "Editor Features from Code" },
             { "slug": "extending/standalone-plugins", "title": "Standalone Plugins (C ABI)" },
             { "slug": "extending/plugin-api-status", "title": "Plugin API Status" },
             { "slug": "extending/localization", "title": "Localization" },

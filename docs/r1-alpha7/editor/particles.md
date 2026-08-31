@@ -256,7 +256,7 @@ A good way to learn the system is to open one of these in the editor and read ho
 
 You drive a live effect through its `HanabiEffect` component fields — toggle `playing`, scale `rate_multiplier` / `scale_multiplier`, retint with `color_tint`, slow time with `time_scale`, or push `variable_overrides`. The engine also has an internal **command queue** (play / pause / stop / reset / burst / set-rate / set-scale / set-tint / set-variable) that the editor and scene systems use.
 
-> **In progress:** direct Lua/Rhai functions for particles (e.g. a `play_effect()` verb) are not wired up yet — control today is via the component fields above. Likewise, **custom particle textures** (`texture_path`) and **flipbook** sprite-sheet animation are supported in the file format but the runtime currently renders with the built-in soft-sprite and erosion-noise textures rather than loading custom sprites. These are format-ready for when the texture pipeline lands.
+> **In progress:** direct script functions for particles (e.g. a `play_effect()` verb) are not wired up yet — control today is via the component fields above. Likewise, **custom particle textures** (`texture_path`) and **flipbook** sprite-sheet animation are supported in the file format but the runtime currently renders with the built-in soft-sprite and erosion-noise textures rather than loading custom sprites. These are format-ready for when the texture pipeline lands.
 
 ## Tips
 

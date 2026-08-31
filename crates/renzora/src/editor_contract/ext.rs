@@ -131,6 +131,17 @@ impl AppEditorExt for App {
 
     fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self {
         self.init_resource::<ShortcutRegistry>();
+        // `KeyBindings` too, and not defensively-for-its-own-sake: a **native
+        // plugin** registers during the runtime phase, which is before
+        // `KeybindingsPlugin` runs, so the resource genuinely does not exist yet
+        // and `resource_mut` panicked the editor on startup. An in-workspace
+        // crate never saw it, because the `add!` generator ordered it after.
+        //
+        // Safe because `KeybindingsPlugin` uses `init_resource` as well and
+        // nothing anywhere replaces the resource wholesale — so whichever runs
+        // first creates it and the other is a no-op, and a plugin default seeded
+        // here survives.
+        self.init_resource::<crate::keybindings::KeyBindings>();
         // Seed KeyBindings.plugin_bindings with the default (no-op if user
         // has already customised this id), then store the entry so the
         // dispatcher + Settings UI can find it.

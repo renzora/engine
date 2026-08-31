@@ -121,16 +121,96 @@ type HierarchyCandidate = (
     )>,
 );
 
+/// Whether the tree should show the nodes a `.html` template built.
+///
+/// Only when it is scoped to `UiCanvas` — i.e. the UI workspace, where the
+/// hierarchy *is* the UI tree. Everywhere else these stay hidden, and that is
+/// not a preference: a template is rebuilt from its file on every load and
+/// hot-reload, so a scene tree offering them would let you select and reorder
+/// things the next rebuild silently discards.
+///
+/// The scene **saver** is unaffected either way — it cascades `HideInHierarchy`
+/// through `has_hidden_ancestor` on its own path, which is what stops a
+/// template being serialised into the `.bsn` and then thrown away on load.
+pub fn ui_scoped_for(filter: Option<&HierarchyFilter>) -> bool {
+    matches!(
+        filter,
+        Some(HierarchyFilter::OnlyWithComponents(names))
+            if names.contains(&"UiCanvas")
+    )
+}
+
+pub fn ui_scoped(world: &World) -> bool {
+    ui_scoped_for(world.get_resource::<HierarchyFilter>())
+}
+
+/// A display name for a markup node.
+///
+/// `name="..."` in the template becomes a Bevy `Name`, so a node the author
+/// bothered to name says so. The rest are anonymous, and a template is mostly
+/// anonymous `<node>`s — so fall back to the tag, inferred from the components
+/// the loader attached. An entity id would be technically accurate and useless.
+fn markup_label(world: &World, entity: Entity) -> String {
+    if let Some(name) = world.get::<Name>(entity) {
+        return name.as_str().to_string();
+    }
+    let has = |f: fn(&World, Entity) -> bool| f(world, entity);
+    if has(|w, e| w.get::<bevy::ui::widget::Text>(e).is_some()) {
+        // The text itself, trimmed — far more use than the word "text" six
+        // times in a row. Interpolation is already resolved by this point, so
+        // this is what is actually on screen.
+        if let Some(t) = world.get::<bevy::ui::widget::Text>(entity) {
+            let s = t.0.trim();
+            if !s.is_empty() {
+                let clipped: String = s.chars().take(24).collect();
+                return if clipped.len() < s.len() {
+                    format!("\"{clipped}…\"")
+                } else {
+                    format!("\"{clipped}\"")
+                };
+            }
+        }
+        return "text".to_string();
+    }
+    if has(|w, e| w.get::<bevy::ui::widget::Button>(e).is_some()) {
+        return "button".to_string();
+    }
+    if has(|w, e| w.get::<bevy::ui::widget::ImageNode>(e).is_some()) {
+        return "image".to_string();
+    }
+    "node".to_string()
+}
+
 /// Build the entity tree from the world.
 ///
 /// Takes `&mut World` only to build the candidate `QueryState` (which registers
 /// the component ids it needs); everything after that is read-only.
 pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -> Vec<EntityNode> {
     let mut candidates = world.query_filtered::<(Entity, &Name), HierarchyCandidate>();
+    // Markup nodes, revealed only under a UI-scoped filter — see
+    // `ui_scoped`. Built unconditionally because a `QueryState` has to
+    // register its component ids while the borrow is still mutable; iterating it
+    // is what's conditional.
+    let mut markup = world
+        .query_filtered::<Entity, (With<renzora_ember::markup::provenance::MarkupSource>, With<bevy::ui::Node>)>();
+    let show_markup = ui_scoped(world);
     let world: &World = world;
+
+    // One row per entity, as `(entity, label)`. Two sources, one body: markup
+    // nodes are excluded from `HierarchyCandidate` at the archetype level (they
+    // carry `HideInHierarchy`, and most have no `Name`), so they cannot come out
+    // of the same query — but everything downstream treats them identically.
+    let mut rows: Vec<(Entity, String)> = candidates
+        .iter(world)
+        .map(|(e, n)| (e, n.as_str().to_string()))
+        .collect();
+    if show_markup {
+        rows.extend(markup.iter(world).map(|e| (e, markup_label(world, e))));
+    }
+
     // Number every candidate *before* the filters below prune any — see
     // `HierarchySpawnSeq::sync`.
-    let all_candidates: Vec<Entity> = candidates.iter(world).map(|(e, _)| e).collect();
+    let all_candidates: Vec<Entity> = rows.iter().map(|(e, _)| *e).collect();
     spawn_seq.sync(&all_candidates);
     // Resolve hierarchy filter — map component type names to ComponentIds.
     let resolve_ids = |names: &Vec<&'static str>| -> Vec<bevy::ecs::component::ComponentId> {
@@ -178,7 +258,7 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
     let mut named_entities: HashSet<Entity> = HashSet::new();
 
     {
-        for (entity, name) in candidates.iter(world) {
+        for (entity, name) in rows.iter().map(|(e, n)| (*e, n)) {
             // Apply component filter: skip entities unless they or an ancestor
             // have one of the required components (so children of matching
             // entities still appear in the hierarchy).
@@ -238,7 +318,7 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
             // model root rather than appearing under invisible plumbing.
             // Callers that genuinely want to hide a whole subtree mark each
             // descendant individually (see `studio_preview` for the pattern).
-            let name_str = name.as_str().to_string();
+            let name_str = name.clone();
             let (icon, color) = entity_icon(world, entity);
             let type_name = world
                 .get_resource::<ComponentIconRegistry>()

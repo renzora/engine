@@ -26,7 +26,7 @@ use bevy::prelude::*;
 
 use renzora::core::viewport_types::ViewportSettings;
 use renzora::{IsolatedCamera, LumenLighting, LumenQuality, RenzoraShellExt, RtLighting, SplashState};
-use renzora_auto_exposure::AutoExposureSettings;
+use renzora::AutoExposureSettings;
 use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;

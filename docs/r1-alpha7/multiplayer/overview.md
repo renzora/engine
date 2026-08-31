@@ -85,7 +85,7 @@ See [State Replication](replication) for the details and current limitations.
 
 ## Scripting API
 
-Networking is exposed to **Lua only**. Rhai has no networking functions (it is a strict subset and omits `rpc`/`net_*`), so write multiplayer logic in `.lua` scripts.
+Networking is exposed to scripts on **native platforms only** — write multiplayer logic in `.lua` scripts.
 
 ### Status globals
 
@@ -201,6 +201,7 @@ To set expectations, these are defined but **stub-only or absent** in this alpha
 
 These run their own servers and are unrelated to Lightyear — don't confuse them with multiplayer:
 
-- **`renzora_auth`** — editor-only sign-in/register against the renzora.com API.
+- **`renzora_marketplace`** — editor-only sign-in/register against the
+  renzora.com API, for buying and publishing assets.
 - **`mcp_server_plugin`** — editor MCP server (JSON-RPC) for tooling.
 - **`websocket_plugin`** — editor dev WebSocket server for remote editor commands.

@@ -210,26 +210,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "clouds",
-        section: "sky",
-        label: "Clouds",
-        help: "Volumetric cloud rendering.",
-        bevy_features: &[],
-        runtime_features: &["clouds"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "night_stars",
-        section: "sky",
-        label: "Night stars",
-        help: "The star field for night skies.",
-        bevy_features: &[],
-        runtime_features: &["night_stars"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "localization",
         section: "systems",
         label: "Translation packs",
@@ -345,16 +325,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: Some("postfx"),
     },
     Capability {
-        id: "auto_exposure",
-        section: "postfx",
-        label: "Auto exposure",
-        help: "Adaptive eye-adjustment exposure.",
-        bevy_features: &[],
-        runtime_features: &["auto_exposure"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
         id: "oit",
         section: "postfx",
         label: "Order-independent transparency",
@@ -438,52 +408,12 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "text3d",
-        section: "render_3d",
-        label: "3D text",
-        help: "World-space extruded text meshes.",
-        bevy_features: &[],
-        runtime_features: &["text3d"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "vignette",
-        section: "postfx",
-        label: "Vignette",
-        help: "Screen-edge darkening.",
-        bevy_features: &[],
-        runtime_features: &["vignette"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
         id: "forward_decal",
         section: "render_3d",
         label: "Forward decals",
         help: "Projected decals on forward-rendered surfaces.",
         bevy_features: &[],
         runtime_features: &["forward_decal"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "pool_water",
-        section: "render_3d",
-        label: "Pool water",
-        help: "The animated pool-water material.",
-        bevy_features: &[],
-        runtime_features: &["pool_water"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "procedural_tree",
-        section: "render_3d",
-        label: "Procedural trees",
-        help: "Runtime tree mesh generation.",
-        bevy_features: &[],
-        runtime_features: &["procedural_tree"],
         default_on: true,
         group: None,
     },
@@ -514,16 +444,6 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "The terrain subsystem.",
         bevy_features: &[],
         runtime_features: &["terrain"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "spline",
-        section: "simulation",
-        label: "Splines",
-        help: "The spline subsystem.",
-        bevy_features: &[],
-        runtime_features: &["spline"],
         default_on: true,
         group: None,
     },
@@ -1013,29 +933,27 @@ pub fn disabled_bevy_features(state: &HashMap<String, bool>) -> Vec<String> {
 /// it here (not via a Cargo feature dep, which would force render_3d back ON).
 pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
     let mut out = collect_disabled(state, |c| c.runtime_features);
-    // 3D text is the one subsystem outside the UI tree that still needs
-    // `bevy_text`: `renzora_text_mesh` builds its glyph outlines from
-    // `bevy::text`'s font data. Verified by compiling a UI-stripped runtime —
-    // this was the only error. Not expressed as `group: Some("ui")` because
-    // extruded world-space text isn't a kind of UI, and nesting it there would
-    // read as though turning UI on were what enabled it.
-    if !state.get("ui").copied().unwrap_or(true) && !out.iter().any(|x| x == "text3d") {
-        out.push("text3d".to_string());
-    }
+    // 3D text used to need a special case here: it was the one subsystem outside
+    // the UI tree that still pulled `bevy_text`, so a UI-stripped runtime had to
+    // drop it too. It is a native plugin now, and the glyph machinery it shares
+    // with the UI emitter sits behind `renzora`'s `text_mesh` feature, which only
+    // `renzora_ember` turns on — and ember is already gone when UI is off. The
+    // dependency is expressed in the manifests now, so there is nothing to
+    // enforce here.
     let render_3d_on = state.get("render_3d").copied().unwrap_or(true);
     if !render_3d_on {
         // particles (bevy_hanabi) references bevy_pbr in its asset path — drop it
         // too in 2D (a dedicated 2D-particle path can re-add it later).
         for f in [
-            "terrain", "water", "spline", "particles",
+            "terrain", "water", "particles",
             // former `sky` bundle
-            "atmosphere", "environment_map", "skybox", "clouds", "night_stars",
+            "atmosphere", "environment_map", "skybox",
             // former `postfx` bundle
             "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
-            "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing",
+            "volumetric_fog", "lens_distortion", "oit", "antialiasing",
             // 3D-only extras that build on bevy_pbr
-            "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting", "text3d",
-            "forward_decal", "pool_water", "procedural_tree",
+            "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting",
+            "forward_decal",
         ] {
             if !out.iter().any(|x| x == f) {
                 out.push(f.to_string());

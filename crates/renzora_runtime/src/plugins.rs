@@ -26,16 +26,12 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_atmosphere::AtmospherePlugin::default());
     #[cfg(feature = "audio")]
     app.add_plugins(renzora_audio::AudioPlugin::default());
-    #[cfg(feature = "auto_exposure")]
-    app.add_plugins(renzora_auto_exposure::AutoExposurePlugin::default());
     #[cfg(feature = "bloom")]
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin::default());
     #[cfg(feature = "blueprint")]
     app.add_plugins(renzora_blueprint::BlueprintPlugin::default());
     #[cfg(feature = "cloth")]
     app.add_plugins(renzora_cloth::ClothPlugin::default());
-    #[cfg(feature = "clouds")]
-    app.add_plugins(renzora_clouds::CloudsPlugin::default());
     #[cfg(feature = "distance_fog")]
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin::default());
     #[cfg(feature = "dof")]
@@ -63,22 +59,18 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_lumen::LumenPlugin::default());
     #[cfg(feature = "motion_blur")]
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
+    app.add_plugins(renzora_native_plugin::NativePluginLoader::default());
     #[cfg(feature = "navmesh")]
     app.add_plugins(renzora_navmesh::NavMeshPlugin::default());
     app.add_plugins(renzora_net::NetPlugin::default());
     app.add_plugins(renzora_network::NetworkPlugin::default());
-    #[cfg(feature = "night_stars")]
-    app.add_plugins(renzora_night_stars::NightStarsPlugin::default());
     #[cfg(feature = "oit")]
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
-    #[cfg(feature = "pool_water")]
-    app.add_plugins(renzora_pool_water::PoolWaterPlugin::default());
-    #[cfg(feature = "procedural_tree")]
-    app.add_plugins(renzora_procedural_tree::ProceduralTreePlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
+    app.add_plugins(renzora_rust_script::RustScriptPlugin::default());
     #[cfg(feature = "shader_graph")]
     app.add_plugins(renzora_shader::ShaderPlugin::default());
     #[cfg(feature = "shader_graph")]
@@ -87,8 +79,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_skybox::SkyboxPlugin::default());
     #[cfg(feature = "solari")]
     app.add_plugins(renzora_solari::SolariPlugin::default());
-    #[cfg(feature = "spline")]
-    app.add_plugins(renzora_spline::SplinePlugin::default());
     #[cfg(feature = "sprite_anim")]
     app.add_plugins(renzora_sprite_anim::SpriteImagesPlugin::default());
     #[cfg(feature = "ssao")]
@@ -99,13 +89,9 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::foliage::FoliagePlugin::default());
-    #[cfg(feature = "text3d")]
-    app.add_plugins(renzora_text3d::Text3dPlugin::default());
     #[cfg(feature = "tilemap")]
     app.add_plugins(renzora_tilemap::TilemapPlugin::default());
     app.add_plugins(renzora_tonemapping::TonemappingPlugin::default());
-    #[cfg(feature = "vignette")]
-    app.add_plugins(renzora_vignette::VignettePlugin::default());
     #[cfg(feature = "volumetric_fog")]
     app.add_plugins(renzora_volumetric_fog::VolumetricFogPlugin::default());
     #[cfg(feature = "water")]
