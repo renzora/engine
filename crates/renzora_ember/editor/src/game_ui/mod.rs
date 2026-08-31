@@ -150,7 +150,10 @@ impl Plugin for GameUiEditorPlugin {
             Update,
             // Chained: `track_hover` hit-tests the snapshot, so it has to read
             // the one taken this frame rather than last frame's.
-            (geometry::snapshot_widgets, geometry::track_hover).chain().run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
+            // After `sync_active_canvas`: the snapshot only collects widgets
+            // under the active canvas, so it has to read this frame's answer or
+            // switching canvases lags a frame behind the selection.
+            (geometry::snapshot_widgets, geometry::track_hover).chain().after(sync_active_canvas).run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
         );
         toolbar::register(app);
         overlay::register(app);
@@ -219,7 +222,37 @@ pub fn build_ui_canvas(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Track the active canvas + mirror its reference resolution, like the egui
 /// panel did at the top of `ui()`.
-fn sync_active_canvas(mut state: ResMut<NativeCanvasState>, canvases: Query<(Entity, &UiCanvas)>) {
+fn sync_active_canvas(
+    mut state: ResMut<NativeCanvasState>,
+    canvases: Query<(Entity, &UiCanvas)>,
+    selection: Option<Res<renzora::EditorSelection>>,
+    parents: Query<&ChildOf>,
+) {
+    // The selection decides which canvas is being edited.
+    //
+    // Without this the editor picked the first canvas it found and kept it,
+    // which is fine until a scene has two — drop a second template and you get a
+    // second canvas, whose nodes are then invisible to `snapshot_widgets`. They
+    // rendered, but nothing could select, drag, align or delete them, because
+    // every one of those reads a snapshot taken under the *active* canvas only.
+    //
+    // Selecting anything under a canvas — the canvas itself, or a node inside
+    // its template — makes that canvas active, so "the one I am working on" and
+    // "the one the tools act on" cannot disagree.
+    let selected_canvas = selection.and_then(|s| s.get()).and_then(|mut e| {
+        for _ in 0..256 {
+            if canvases.get(e).is_ok() {
+                return Some(e);
+            }
+            e = parents.get(e).ok()?.parent();
+        }
+        None
+    });
+    if let Some(canvas) = selected_canvas {
+        if state.active_canvas != Some(canvas) {
+            state.active_canvas = Some(canvas);
+        }
+    }
     let still_valid = state.active_canvas.is_some_and(|a| canvases.get(a).is_ok());
     if !still_valid {
         state.active_canvas = canvases.iter().next().map(|(e, _)| e);
