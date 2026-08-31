@@ -355,7 +355,16 @@ struct EditorPrefFile {
     /// Play runs inside the editor viewport panel. Set from the Play button's
     /// target dropdown; per-user because it's a workflow preference, not a
     /// project property.
-    #[serde(default)]
+    /// Play launches the game as a separate process rather than inside the
+    /// editor's viewport.
+    ///
+    /// Defaults **on**. In-editor play shares the editor's `World`, so what it
+    /// spawns lands in the hierarchy the user is editing — and a game that
+    /// spawns anything at startup grows that hierarchy every time Play is
+    /// pressed. A separate process cannot touch the scene it was launched from,
+    /// which is the property that matters more than the convenience of playing
+    /// in a panel.
+    #[serde(default = "default_true")]
     play_runtime_window: bool,
     /// Where the open-document tabs are shown: `false` (default) is the strip
     /// under the top bar, `true` folds them into a dropdown in the top bar
@@ -471,7 +480,7 @@ impl Default for EditorPrefFile {
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
-            play_runtime_window: false,
+            play_runtime_window: true,
             doc_tabs_dropdown: false,
             hierarchy_toggle_on_click: true,
             play_vr: false,
@@ -1077,7 +1086,10 @@ pub fn load_play_runtime_window() -> bool {
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
             .map(|f| f.play_runtime_window)
-            .unwrap_or(false)
+            // No preferences file yet — external play, matching the field's own
+            // default. A fresh install should not start by mutating the scene it
+            // is playing.
+            .unwrap_or(true)
     }
 }
 
