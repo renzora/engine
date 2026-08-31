@@ -113,6 +113,62 @@ const DIR_LABELS: &[&str] = &["Row", "Column", "Row Rev", "Col Rev"];
 const JUSTIFY_LABELS: &[&str] = &["Start", "Center", "End", "Between", "Around", "Evenly"];
 const ALIGN_LABELS: &[&str] = &["Start", "Center", "End", "Stretch"];
 
+/// Write an attribute back to the `.html` the node came from.
+///
+/// Every `set_fn` here updates the live `Node` *and* calls this. Updating only
+/// the entity was the bug: the live tree is rebuilt from the file on every
+/// hot-reload, and a rebuild is what any drag, insert or delete triggers — so an
+/// inspector edit looked applied and then quietly reverted the next time you
+/// touched the canvas. `write_attr_to_markup` was written for exactly this and
+/// had no caller.
+///
+/// A no-op on anything without `MarkupSource`, so widgets spawned outside a
+/// template are unaffected.
+fn persist(world: &mut World, entity: Entity, attr: &str, value: &str) {
+    renzora_ember::markup::writeback::write_attr_to_markup(world, entity, attr, value);
+}
+
+/// The markup spelling of a [`DIR_LABELS`] index.
+fn markup_dir(i: u8) -> &'static str {
+    match i {
+        1 => "column",
+        2 => "row_reverse",
+        3 => "column_reverse",
+        _ => "row",
+    }
+}
+
+/// The markup spelling of a [`JUSTIFY_LABELS`] index.
+///
+/// The inspector says "Start"; the parser wants `flex_start`. `start` and `end`
+/// are separate, subtly different values in bevy's layout and not what these
+/// controls mean.
+fn markup_justify(i: u8) -> &'static str {
+    match i {
+        1 => "center",
+        2 => "flex_end",
+        3 => "space_between",
+        4 => "space_around",
+        5 => "space_evenly",
+        _ => "flex_start",
+    }
+}
+
+/// The markup spelling of an [`ALIGN_LABELS`] index.
+///
+/// Deliberately not shared with [`markup_justify`]: the two label lists agree
+/// for the first three and diverge at index 3, where align has `Stretch` and
+/// justify has `Between`. One mapping would have written `space_between` into
+/// an `align_items`.
+fn markup_align(i: u8) -> &'static str {
+    match i {
+        1 => "center",
+        2 => "flex_end",
+        3 => "stretch",
+        _ => "flex_start",
+    }
+}
+
 fn label_index(labels: &[&str], s: &str) -> u8 {
     labels.iter().position(|l| *l == s).unwrap_or(0) as u8
 }
@@ -149,9 +205,11 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
             set_fn: |w, e, v| {
                 if let FieldValue::Float(f) = v {
                     let (crw, _) = canvas_ref(w, e);
+                    let pct = f / crw * 100.0;
                     if let Some(mut n) = w.get_mut::<Node>(e) {
-                        n.left = Val::Percent(f / crw * 100.0);
+                        n.left = Val::Percent(pct);
                     }
+                    persist(w, e, "left", &format!("{pct:.2}%"));
                 }
             },
         },
@@ -165,9 +223,11 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
             set_fn: |w, e, v| {
                 if let FieldValue::Float(f) = v {
                     let (_, crh) = canvas_ref(w, e);
+                    let pct = f / crh * 100.0;
                     if let Some(mut n) = w.get_mut::<Node>(e) {
-                        n.top = Val::Percent(f / crh * 100.0);
+                        n.top = Val::Percent(pct);
                     }
+                    persist(w, e, "top", &format!("{pct:.2}%"));
                 }
             },
         },
@@ -181,9 +241,11 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
             set_fn: |w, e, v| {
                 if let FieldValue::Float(f) = v {
                     let (crw, _) = canvas_ref(w, e);
+                    let pct = f / crw * 100.0;
                     if let Some(mut n) = w.get_mut::<Node>(e) {
-                        n.width = Val::Percent(f / crw * 100.0);
+                        n.width = Val::Percent(pct);
                     }
+                    persist(w, e, "width", &format!("{pct:.2}%"));
                 }
             },
         },
@@ -197,9 +259,11 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
             set_fn: |w, e, v| {
                 if let FieldValue::Float(f) = v {
                     let (_, crh) = canvas_ref(w, e);
+                    let pct = f / crh * 100.0;
                     if let Some(mut n) = w.get_mut::<Node>(e) {
-                        n.height = Val::Percent(f / crh * 100.0);
+                        n.height = Val::Percent(pct);
                     }
+                    persist(w, e, "height", &format!("{pct:.2}%"));
                 }
             },
         },
@@ -212,8 +276,12 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
                 })
             },
             set_fn: |w, e, v| {
-                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
-                    n.flex_direction = u8_to_flex_direction(label_index(DIR_LABELS, &s));
+                if let FieldValue::Enum(s) = v {
+                    let i = label_index(DIR_LABELS, &s);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.flex_direction = u8_to_flex_direction(i);
+                    }
+                    persist(w, e, "flex_direction", markup_dir(i));
                 }
             },
         },
@@ -226,8 +294,12 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
                 })
             },
             set_fn: |w, e, v| {
-                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
-                    n.justify_content = u8_to_justify_content(label_index(JUSTIFY_LABELS, &s));
+                if let FieldValue::Enum(s) = v {
+                    let i = label_index(JUSTIFY_LABELS, &s);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.justify_content = u8_to_justify_content(i);
+                    }
+                    persist(w, e, "justify_content", markup_justify(i));
                 }
             },
         },
@@ -240,8 +312,12 @@ pub fn layout_fields() -> Vec<renzora::FieldDef> {
                 })
             },
             set_fn: |w, e, v| {
-                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
-                    n.align_items = u8_to_align_items(label_index(ALIGN_LABELS, &s));
+                if let FieldValue::Enum(s) = v {
+                    let i = label_index(ALIGN_LABELS, &s);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.align_items = u8_to_align_items(i);
+                    }
+                    persist(w, e, "align_items", markup_align(i));
                 }
             },
         },
@@ -277,8 +353,14 @@ pub fn text_fields() -> Vec<renzora::FieldDef> {
             field_type: FieldType::String,
             get_fn: |w, e| w.get::<bevy::ui::widget::Text>(e).map(|t| FieldValue::String(t.0.clone())),
             set_fn: |w, e, v| {
-                if let (FieldValue::String(s), Some(mut t)) = (v, w.get_mut::<bevy::ui::widget::Text>(e)) {
-                    t.0 = s;
+                if let FieldValue::String(s) = v {
+                    if let Some(mut t) = w.get_mut::<bevy::ui::widget::Text>(e) {
+                        t.0 = s.clone();
+                    }
+                    // …and into the `.html`, or the next rebuild restores the
+                    // old label. A rebuild is what any drag, insert or delete
+                    // triggers, so "edited then lost" was a matter of when.
+                    renzora_ember::markup::writeback::write_content_to_markup(w, e, &s);
                 }
             },
         },

@@ -20,7 +20,7 @@
 //! - **Atomic multi-attribute writes.** Each call writes one attribute.
 //!   Two inspector edits = two file writes. Fine in practice for now.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy_hui::prelude::{AttrSpan, HtmlTemplate, Span, XNode};
@@ -61,6 +61,9 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
         .get_resource::<renzora::core::CurrentProject>()
         .map(|cp| cp.path.clone());
 
+    // Scoped so the `Assets<HtmlTemplate>` borrow ends before the commit below,
+    // which needs `&mut World` to record the undo entry.
+    let Some((before_bytes, after_bytes)) = ({
     let mut templates = world.resource_mut::<Assets<HtmlTemplate>>();
     let Some(mut template) = templates.get_mut(&handle) else {
         warn!("renzora_hui writeback: HtmlTemplate not loaded for handle");
@@ -72,6 +75,8 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
     // `template.source` can be borrowed separately below. The deref_mut here
     // still flags the asset as changed.
     let template = &mut *template;
+    // Captured before any splice, so the undo entry has the file as it stood.
+    let before_bytes = template.source.clone();
 
     // Walk to the target XNode by descent.
     let Some(node) = walk_node_mut(&mut template.root, &path) else {
@@ -144,16 +149,92 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
     // disk location the editor's `EmbeddedAssetReader` would resolve to.
     // Falls back to treating `asset_path` as absolute when there's no
     // `CurrentProject` (headless test setups).
-    let disk_path: PathBuf = match project_root {
-        Some(root) => root.join(&asset_path),
-        None => PathBuf::from(&asset_path),
+    Some((before_bytes, template.source.clone()))
+    }) else {
+        return;
     };
-    if let Err(err) = std::fs::write(&disk_path, &template.source) {
-        warn!(
-            "renzora_hui writeback: failed to write {} — {err}",
-            disk_path.display()
-        );
-    }
+    commit_with(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        after_bytes,
+        "Edit UI attribute",
+        // No rebuild: the live entity was updated in place by whoever called
+        // this, and rebuilding would despawn the node being edited.
+        false,
+    );
+}
+
+/// Rewrite a node's text content — the bytes between `<text>` and `</text>`.
+///
+/// The counterpart to [`write_attr_to_markup`] for the one part of a node that
+/// is not an attribute. Editing a label was the single most common change a
+/// template needs and the only way to make it stick was the code editor.
+///
+/// Declines a node with no `content_span`: that is a self-closing or
+/// element-only tag, which has no text to replace — writing one would mean
+/// inventing a body, a different edit from changing the one that is there.
+pub fn write_content_to_markup(world: &mut World, entity: Entity, new_text: &str) {
+    let Some(source_ref) = world.get::<MarkupSource>(entity) else {
+        return;
+    };
+    let handle = source_ref.template_handle.clone();
+    let path: Vec<u32> = source_ref.node_path.clone();
+
+    let Some(asset_path) = world
+        .resource::<AssetServer>()
+        .get_path(&handle)
+        .map(|p| p.to_string())
+    else {
+        return;
+    };
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|cp| cp.path.clone());
+
+    let Some((before_bytes, after_bytes)) = ({
+        let mut templates = world.resource_mut::<Assets<HtmlTemplate>>();
+        let Some(mut template) = templates.get_mut(&handle) else {
+            return;
+        };
+        let template = &mut *template;
+        let before = template.source.clone();
+        let Some(node) = walk_node_mut(&mut template.root, &path) else {
+            return;
+        };
+        let Some(span) = node.content_span else {
+            warn!("ui text: this node has no text content to replace");
+            return;
+        };
+        if &template.source[span.as_range()] == new_text.as_bytes() {
+            return;
+        }
+        let delta = new_text.len() as i32 - span.len() as i32;
+        template.source.splice(span.as_range(), new_text.bytes());
+        // The content span itself moves (its end shifts by the delta), and so
+        // does everything after it — same bookkeeping an attribute edit does, so
+        // a second edit in the same session still targets the right bytes.
+        node.content_span = Some(Span {
+            start: span.start,
+            end: (span.end as i32 + delta).max(span.start as i32) as u32,
+        });
+        shift_spans_after(node, span.end, delta);
+        Some((before, template.source.clone()))
+    }) else {
+        return;
+    };
+    commit_with(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        after_bytes,
+        "Edit UI text",
+        // The caller already set the live `Text`; a rebuild would despawn the
+        // node mid-edit.
+        false,
+    );
 }
 
 /// Walk into `roots` by the index chain in `path`. Returns the addressed
@@ -405,7 +486,7 @@ pub fn move_node_in_markup(
         .get_resource::<renzora::core::CurrentProject>()
         .map(|cp| cp.path.clone());
 
-    let new_source = {
+    let (before_bytes, new_source) = {
         let templates = world.resource::<Assets<HtmlTemplate>>();
         let Some(template) = templates.get(&handle) else {
             return;
@@ -437,20 +518,19 @@ pub fn move_node_in_markup(
             }
         };
         match move_element(&template.source, element, dest) {
-            Some(bytes) => bytes,
+            Some(bytes) => (template.source.clone(), bytes),
             None => return,
         }
     };
 
-    let disk_path: PathBuf = match project_root {
-        Some(root) => root.join(&asset_path),
-        None => PathBuf::from(&asset_path),
-    };
-    if let Err(err) = std::fs::write(&disk_path, &new_source) {
-        warn!(
-            "renzora_hui move: failed to write {} — {err}",
-            disk_path.display()
-        );
+    if !commit(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        new_source,
+        "Move UI node",
+    ) {
         return;
     }
 
@@ -472,8 +552,6 @@ pub fn move_node_in_markup(
     if let Ok(mut em) = world.get_entity_mut(new_parent) {
         em.insert_children(live_index, &[entity]);
     }
-
-    request_rebuild(world, &asset_path);
 }
 
 /// Delete a markup node from its template.
@@ -508,7 +586,7 @@ pub fn remove_node_in_markup(world: &mut World, entity: Entity) -> bool {
         .get_resource::<renzora::core::CurrentProject>()
         .map(|cp| cp.path.clone());
 
-    let new_source = {
+    let (before_bytes, new_source) = {
         let templates = world.resource::<Assets<HtmlTemplate>>();
         let Some(template) = templates.get(&handle) else {
             warn!("ui delete: {asset_path} is not loaded");
@@ -519,24 +597,124 @@ pub fn remove_node_in_markup(world: &mut World, entity: Entity) -> bool {
             return false;
         };
         match remove_element(&template.source, node.element) {
-            Some(bytes) => bytes,
+            Some(bytes) => (template.source.clone(), bytes),
             None => return false,
         }
     };
+    commit(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        new_source,
+        "Delete UI node",
+    );
+    true
+}
 
+// ── Undo ────────────────────────────────────────────────────────────────────
+
+/// One markup edit, as the file before and after it.
+///
+/// A snapshot rather than an inverse operation, because every structural edit
+/// here already *is* a whole-file rewrite: `move_element`, `insert_element` and
+/// `remove_element` each produce a new `Vec<u8>` and hand it to `fs::write`. The
+/// inverse of "write these bytes" is "write those bytes", and expressing it any
+/// other way would mean maintaining a second, subtler description of each edit
+/// that could disagree with the first.
+///
+/// It costs a copy of the template per edit. Templates are a few kilobytes and
+/// this only happens on a deliberate action, which is a price worth paying to
+/// have Ctrl+Z work at all — without it a delete was unrecoverable, and delete
+/// is the one edit people expect to take back.
+struct MarkupEdit {
+    asset_path: String,
+    disk_path: PathBuf,
+    before: Vec<u8>,
+    after: Vec<u8>,
+    label: &'static str,
+}
+
+impl renzora::undo::UndoCommand for MarkupEdit {
+    fn label(&self) -> &str {
+        self.label
+    }
+    /// Also the redo path — `execute` runs on the initial push *and* on redo,
+    /// so writing `after` is correct in both cases.
+    fn execute(&mut self, world: &mut World) {
+        write_and_rebuild(world, &self.disk_path, &self.asset_path, &self.after);
+    }
+    fn undo(&mut self, world: &mut World) {
+        write_and_rebuild(world, &self.disk_path, &self.asset_path, &self.before);
+    }
+}
+
+fn write_and_rebuild(world: &mut World, disk: &Path, asset_path: &str, bytes: &[u8]) {
+    if let Err(err) = std::fs::write(disk, bytes) {
+        warn!("markup undo: failed to write {} — {err}", disk.display());
+        return;
+    }
+    request_rebuild(world, asset_path);
+}
+
+/// Apply a structural edit: write it, rebuild, and make it undoable.
+///
+/// The single exit for `move` / `insert` / `remove`, so none of them can forget
+/// one of the three.
+fn commit(
+    world: &mut World,
+    asset_path: &str,
+    project_root: Option<PathBuf>,
+    before: Vec<u8>,
+    after: Vec<u8>,
+    label: &'static str,
+) -> bool {
+    commit_with(world, asset_path, project_root, before, after, label, true)
+}
+
+/// [`commit`], with control over whether the live tree is rebuilt.
+///
+/// An attribute edit passes `false`: it has already updated the live entity in
+/// place, and rebuilding would despawn the node the user is mid-edit on. Undo
+/// and redo of that same edit *do* rebuild, because restoring the file is the
+/// only thing they do — see [`MarkupEdit`].
+fn commit_with(
+    world: &mut World,
+    asset_path: &str,
+    project_root: Option<PathBuf>,
+    before: Vec<u8>,
+    after: Vec<u8>,
+    label: &'static str,
+    rebuild: bool,
+) -> bool {
+    if before == after {
+        return true;
+    }
     let disk_path: PathBuf = match project_root {
-        Some(root) => root.join(&asset_path),
-        None => PathBuf::from(&asset_path),
+        Some(root) => root.join(asset_path),
+        None => PathBuf::from(asset_path),
     };
-    if let Err(err) = std::fs::write(&disk_path, &new_source) {
-        warn!(
-            "renzora_hui delete: failed to write {} — {err}",
-            disk_path.display()
-        );
+    if let Err(err) = std::fs::write(&disk_path, &after) {
+        warn!("markup edit: failed to write {} — {err}", disk_path.display());
         return false;
     }
-    info!("ui delete: removed a node from {asset_path}");
-    request_rebuild(world, &asset_path);
+    if rebuild {
+        info!("{label}: {asset_path}");
+        request_rebuild(world, asset_path);
+    }
+    // Recorded, not executed: the write above already happened, and `execute`
+    // would repeat it.
+    renzora::undo::record(
+        world,
+        renzora::undo::UndoContext::Scene,
+        Box::new(MarkupEdit {
+            asset_path: asset_path.to_string(),
+            disk_path,
+            before,
+            after,
+            label,
+        }),
+    );
     true
 }
 
@@ -603,7 +781,7 @@ pub fn insert_node_in_markup(
         .get_resource::<renzora::core::CurrentProject>()
         .map(|cp| cp.path.clone());
 
-    let new_source = {
+    let (before_bytes, new_source) = {
         let templates = world.resource::<Assets<HtmlTemplate>>();
         let Some(template) = templates.get(&handle) else {
             warn!("ui insert: {asset_path} is not loaded");
@@ -644,27 +822,21 @@ pub fn insert_node_in_markup(
             },
         };
         match insert_element(&template.source, dest, markup) {
-            Some(bytes) => bytes,
+            Some(bytes) => (template.source.clone(), bytes),
             None => {
                 warn!("ui insert: could not splice into {asset_path} at {dest:?}");
                 return;
             }
         }
     };
-
-    let disk_path: PathBuf = match project_root {
-        Some(root) => root.join(&asset_path),
-        None => PathBuf::from(&asset_path),
-    };
-    if let Err(err) = std::fs::write(&disk_path, &new_source) {
-        warn!(
-            "renzora_hui insert: failed to write {} — {err}",
-            disk_path.display()
-        );
-        return;
-    }
-    info!("ui insert: added to {asset_path}");
-    request_rebuild(world, &asset_path);
+    commit(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        new_source,
+        "Add UI node",
+    );
 }
 
 #[cfg(test)]
