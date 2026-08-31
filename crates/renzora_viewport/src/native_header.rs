@@ -1237,6 +1237,14 @@ fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     ));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
+    // The game's own UI, not an editor overlay — but it belongs here because
+    // from the viewport's point of view it is one more thing drawn over the
+    // scene, and this is where you come to turn those off.
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t_or("viewport.gizmos.game_ui", "Game UI"),
+        show_game_ui
+    ));
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.rigging")));
