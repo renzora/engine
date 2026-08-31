@@ -384,6 +384,9 @@ impl Sdk {
         // plugin. Nothing loads them, and on Windows they outweigh the plugin.
         // After success only: a failed build's leftovers are worth reading.
         native_build::rustc::prune_byproducts(out);
+        // Before the stamp is recorded, so a plugin is never marked built until
+        // it points at the images the host actually has mapped.
+        native_build::rustc::fixup_install_names(out);
         Ok(self.stamp())
     }
 }

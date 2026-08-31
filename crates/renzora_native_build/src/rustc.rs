@@ -209,6 +209,100 @@ pub fn prune_byproducts(out: &Path) {
     }
 }
 
+/// Rewrite the absolute install names macOS bakes into a freshly linked plugin,
+/// so it binds to the shared images the host already has mapped.
+///
+/// # Why a plugin that links the right dylib still gets the wrong one
+///
+/// Every other platform identifies a shared library by NAME. An ELF `DT_NEEDED`
+/// records a SONAME and `ld.so` reuses whatever is loaded under it; a PE import
+/// table records a bare filename and Windows reuses the loaded module. So a
+/// plugin linked against the SDK's copy of `bevy_dylib` and a host that loaded
+/// its own copy from the install directory converge on one image by accident of
+/// how the loader keys its table.
+///
+/// Mach-O records the dependency's **install name**, which for a cargo-built
+/// dylib is its absolute path in `target/`, and dyld keys images by the path a
+/// load command resolves to. The SDK stages those dylibs as hardlinks, so they
+/// carry the build tree's absolute id — and a plugin linked against them asks
+/// for `/…/target/dist/deps/libbevy_dylib-<hash>.dylib` while the host asks for
+/// `@rpath/libbevy_dylib-<hash>.dylib` beside the executable. Two paths, two
+/// images, two of every process-global static in 118 MB of Bevy.
+///
+/// That is not a subtle divergence. The task pools, the asset server's handles,
+/// the type registry and the contract crate's translation table and Console
+/// buffers all exist twice, and the plugin gets the half nobody initialised. It
+/// surfaces as `IoTaskPool has not been initialized` the first time a plugin
+/// loads an asset in `Plugin::finish` — a panic that accuses Bevy of an
+/// ordering bug the host does not have.
+///
+/// # The rewrite
+///
+/// Point every non-system dependency at `@rpath/<basename>` and let it resolve
+/// against the rpaths already in the process — the executable carries
+/// `@loader_path`, which is the directory holding the shared images, so the
+/// plugin lands on the identical file the host opened. No rpath is added to the
+/// plugin itself on purpose: dyld searches the whole loading chain including the
+/// main executable, and a `@loader_path/../..` of our own would encode how deep
+/// the artifact happens to sit, which differs between a plugin and a Rust
+/// script.
+///
+/// An absolute path outside `/usr/lib` and `/System` is worth rewriting whether
+/// or not it is one of ours: it names a directory on the machine that did the
+/// build, so it is already broken for anyone else and `@rpath` cannot be worse.
+///
+/// Best-effort, like [`prune_byproducts`] — a plugin that built is a plugin that
+/// works on the machine that built it, and the tools here ship with Xcode.
+#[cfg(target_os = "macos")]
+pub fn fixup_install_names(out: &Path) {
+    // Fully qualified rather than imported: a `use` at the top of the file would
+    // be unused on every other platform, and CI's clippy gate runs on Linux.
+    use std::process::Command;
+
+    let Ok(listing) = Command::new("otool").arg("-L").arg(out).output() else {
+        return;
+    };
+    let listing = String::from_utf8_lossy(&listing.stdout);
+    let mut changed = false;
+    // `skip(1)` drops the header naming the file. The entry that follows it is
+    // the library's OWN id, which `-change` cannot touch anyway (that is `-id`)
+    // — it is skipped so the loop does not spend a subprocess discovering that
+    // and then re-sign over a rewrite that never happened.
+    for line in listing.lines().skip(1) {
+        let dep = line.trim().split_whitespace().next().unwrap_or_default();
+        if !dep.starts_with('/')
+            || dep.starts_with("/usr/lib")
+            || dep.starts_with("/System")
+            || Path::new(dep) == out
+        {
+            continue;
+        }
+        let Some(base) = dep.rsplit('/').next() else {
+            continue;
+        };
+        let ok = Command::new("install_name_tool")
+            .args(["-change", dep, &format!("@rpath/{base}")])
+            .arg(out)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        changed |= ok;
+    }
+    // `install_name_tool` invalidates the ad-hoc signature the linker left, and
+    // arm64 macOS refuses to map an image whose signature does not match — so
+    // skipping this would trade a wrong-image bug for a plugin that does not
+    // load at all. Only when something was actually rewritten.
+    if changed {
+        let _ = Command::new("codesign").args(["-s", "-", "-f"]).arg(out).status();
+    }
+}
+
+/// Nothing to do: ELF and PE both resolve a dependency by name, so a plugin and
+/// its host share one image without help. See the macOS variant for what that
+/// costs when a platform keys images by path instead.
+#[cfg(not(target_os = "macos"))]
+pub fn fixup_install_names(_out: &Path) {}
+
 /// Empty the `.rustc` crate-metadata section out of a built PE plugin.
 ///
 /// `--crate-type dylib` embeds the crate's full metadata so another Rust crate

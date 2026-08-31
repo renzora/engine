@@ -266,6 +266,11 @@ fn build_one(src_dir: &Path, sdk: &Sdk, dist_root: &Path) -> bool {
     // byte-for-byte the layout a user's install has, and shipping the PDB here
     // but not there would make this path stop proving that.
     renzora_native_build::rustc::prune_byproducts(&lib);
+    // And the same install-name rewrite, for the same reason: `fixup_macos`
+    // sweeps the staged tree one directory deep, so it never reaches a native
+    // plugin at `plugins/<name>/build/`, and a plugin an editor compiles later
+    // is not in that tree at all when staging runs.
+    renzora_native_build::rustc::fixup_install_names(&lib);
     if let Err(e) = std::fs::write(&stamp_file, &sdk.stamp) {
         eprintln!("[xtask] {name}: writing stamp: {e}");
         return false;

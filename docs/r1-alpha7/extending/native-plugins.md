@@ -270,6 +270,10 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 **rustc's diagnostics name `renzora_dylib` and `renzora_ember_dylib`.** Those are the shared images' real crate names; the `--extern` alias hides them everywhere except error messages.
 
+**On macOS the build rewrites your plugin's install names, and it has to.** Linux and Windows identify a shared library by name — a SONAME, or a bare filename in an import table — so a plugin and its host land on one image no matter which copy each of them linked. Mach-O records the dependency's *install name*, and dyld keys images by the path that resolves to. The SDK stages the shared dylibs as hardlinks carrying the build tree's absolute path, so an untreated plugin asks for `/…/target/dist/deps/libbevy_dylib-<hash>.dylib` while the engine asks for `@rpath/libbevy_dylib-<hash>.dylib` beside itself: two paths, two images, and two of every process-global static in 118 MB of Bevy. The plugin gets the half nobody initialised, and the first symptom is a panic accusing Bevy of an ordering bug the engine does not have — `The IoTaskPool has not been initialized yet`, from a `Plugin::finish` that only loaded an asset.
+
+`rustc::fixup_install_names` runs after every link and points those at `@rpath`, which resolves against the executable's own rpath. You do not call it; it is worth knowing about because it is the reason a plugin you built by hand with a bare `rustc` will load and then behave as though the engine around it never started.
+
 ## Limits
 
 - **Nothing is ever unloaded.** Every system a plugin registered is a function pointer into its image, and a Bevy schedule holds those for the life of the `App`. Unmapping the image turns them into dangling pointers, so a reload leaks the old one (a few hundred KB) and a restart reclaims it.
