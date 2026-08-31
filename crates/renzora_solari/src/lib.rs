@@ -702,12 +702,20 @@ fn sync_shadow_map_suppression(
 ///
 /// Note this is global rather than per-camera, in the same way Solari's deferred
 /// renderer method is: while it's on, no camera renders shadow maps.
+///
+/// `Option` because the render-world copy of the resource does not exist on the
+/// very first extract: `ExtractResourcePlugin`'s `extract_resource` inserts it
+/// via `Commands`, which only apply at the end of the schedule, so no ordering
+/// within `ExtractSchedule` can make it visible that frame. Suppression is off
+/// by default, so treating the missing frame as "not suppressed" is exactly
+/// right — without the `Option`, Bevy skipped the system with a validation
+/// warning on every boot.
 fn suppress_shadow_maps(
-    suppress: Res<SuppressShadowMaps>,
+    suppress: Option<Res<SuppressShadowMaps>>,
     mut directional: Query<&mut ExtractedDirectionalLight>,
     mut point: Query<&mut ExtractedPointLight>,
 ) {
-    if !suppress.0 {
+    if !suppress.is_some_and(|s| s.0) {
         return;
     }
     for mut light in &mut directional {
