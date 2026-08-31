@@ -702,12 +702,17 @@ fn sync_shadow_map_suppression(
 ///
 /// Note this is global rather than per-camera, in the same way Solari's deferred
 /// renderer method is: while it's on, no camera renders shadow maps.
+/// `Option`, because the resource is *extracted* into the render world and this
+/// system runs in the same schedule that extracts it. On the frames before
+/// `ExtractResourcePlugin` has copied it across there is nothing to read, and a
+/// bare `Res` failed validation every one of those frames — a screenful of
+/// errors in a runtime session for a state that simply means "not yet".
 fn suppress_shadow_maps(
-    suppress: Res<SuppressShadowMaps>,
+    suppress: Option<Res<SuppressShadowMaps>>,
     mut directional: Query<&mut ExtractedDirectionalLight>,
     mut point: Query<&mut ExtractedPointLight>,
 ) {
-    if !suppress.0 {
+    if !suppress.is_some_and(|s| s.0) {
         return;
     }
     for mut light in &mut directional {
