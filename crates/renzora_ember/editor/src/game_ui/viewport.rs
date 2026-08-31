@@ -213,8 +213,11 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // clipped by the strip it sits beside.
     let rulers = crate::game_ui::ruler::build(commands, fonts);
     let shelf = crate::game_ui::palette::build_shelf(commands, fonts);
+    // Scrollbars last: they hug the bottom and right edges and must sit over
+    // whatever the frame's overflow puts there.
+    let scrollbars = crate::game_ui::scroll::build(commands);
     commands
         .entity(area)
-        .add_children(&[note, frame, rulers, shelf]);
+        .add_children(&[note, frame, rulers, shelf, scrollbars]);
     area
 }

@@ -9,7 +9,8 @@
 use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
-use renzora_ember::font::{ui_font, EmberFonts};
+use bevy::ui::FocusPolicy;
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
@@ -123,28 +124,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (grid, grid_ic) = icon_btn(commands, fonts, "grid-four", CanvasTbBtn::ToggleGrid);
     bind_text_color(commands, grid_ic, |w| toggle_color(w, |s| s.show_grid));
 
-    // The scene backdrop is a state, not an action, so it reads as a switch —
-    // the same control the Overlays popup uses for every other "is this drawn"
-    // question. As an icon button it was the odd one out, and its only "on"
-    // signal was a tint you had to already know to look for.
-    let backdrop = toggle_switch(commands, false);
-    commands
-        .entity(backdrop)
-        .insert(HoverTooltip::new("Scene backdrop"));
-    bind_2way(
-        commands,
-        backdrop,
-        |w: &Rx| {
-            w.get_resource::<UiCanvasPreviewEnabled>()
-                .is_none_or(|r| r.0)
-        },
-        |w: &mut World, v: &bool| {
-            if let Some(mut r) = w.get_resource_mut::<UiCanvasPreviewEnabled>() {
-                r.0 = *v;
-            }
-        },
-    );
-
     // `arrows-out-cardinal`, the glyph the viewport's translate-snap pill uses.
     // Both mean "snap movement to a step", so they should not be a magnet in one
     // panel and a move cursor in the other.
@@ -183,7 +162,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let view_group = toolbar_group(commands, "ui-view-group");
     commands
         .entity(view_group)
-        .add_children(&[grid, snap.root, backdrop, overlays]);
+        .add_children(&[grid, snap.root, overlays]);
     kids.push(view_group);
 
     // Zoom cluster, with the canvas resolution read out beside it.
@@ -216,6 +195,53 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let keys = ["ui-align", "ui-view", "ui-zoom"];
     let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
     arrange_row_items(commands, fonts, bar, &entries);
+
+    // The scene backdrop, pinned to the right edge rather than placed in the
+    // arrange row.
+    //
+    // It is not one of the editing tools — it says what is *behind* the canvas,
+    // which is a property of the view, not of the UI you are building. And it is
+    // absolutely positioned rather than pushed right by a spacer because a
+    // spacer fights drag-to-arrange: a group dragged past it lands on the far
+    // side and stays there.
+    let icon = icon_text(commands, &fonts.phosphor, "video-camera", text_muted(), 14.0);
+    commands.entity(icon).insert(FocusPolicy::Pass);
+    let backdrop = toggle_switch(commands, false);
+    commands
+        .entity(backdrop)
+        .insert(HoverTooltip::new("Scene backdrop"));
+    bind_2way(
+        commands,
+        backdrop,
+        |w: &Rx| {
+            w.get_resource::<UiCanvasPreviewEnabled>()
+                .is_none_or(|r| r.0)
+        },
+        |w: &mut World, v: &bool| {
+            if let Some(mut r) = w.get_resource_mut::<UiCanvasPreviewEnabled>() {
+                r.0 = *v;
+            }
+        },
+    );
+    let backdrop_group = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(6.0),
+                top: Val::Px(4.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            Name::new("ui-backdrop-group"),
+        ))
+        .id();
+    commands
+        .entity(backdrop_group)
+        .add_children(&[icon, backdrop]);
+    commands.entity(bar).add_child(backdrop_group);
     bar
 }
 

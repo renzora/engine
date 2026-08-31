@@ -55,6 +55,7 @@ mod overlay;
 mod palette;
 mod register;
 mod ruler;
+mod scroll;
 pub mod spawn_ext;
 mod toolbar;
 mod ui_inspector;
@@ -156,6 +157,7 @@ impl Plugin for GameUiEditorPlugin {
         interaction::register(app);
         nav::register(app);
         ruler::register(app);
+        scroll::register(app);
         palette::register(app);
         inspectors::register(app);
         app.add_systems(
