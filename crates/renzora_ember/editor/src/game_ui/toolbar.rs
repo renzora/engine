@@ -362,32 +362,78 @@ fn align_in_flow(world: &mut World, entity: Entity, action: AlignAction) {
             )
         })
         .unwrap_or(true);
-    let (target, attr, value) = match action.flow_attr(parent_is_row) {
-        crate::game_ui::align::FlowAlign::Own(a, v) => (entity, a, v),
-        crate::game_ui::align::FlowAlign::Parent(a, v) => (parent, a, v),
-    };
-    // Live first so it reads immediately, then the file — the attribute
-    // writeback deliberately does not rebuild, because it has already updated
-    // the entity in place.
-    if let Some(mut node) = world.get_mut::<Node>(target) {
-        match (attr, value) {
-            ("align_self", "start") => node.align_self = AlignSelf::FlexStart,
-            ("align_self", "center") => node.align_self = AlignSelf::Center,
-            ("align_self", "end") => node.align_self = AlignSelf::FlexEnd,
-            ("justify_content", "start") => node.justify_content = JustifyContent::FlexStart,
-            ("justify_content", "center") => node.justify_content = JustifyContent::Center,
-            ("justify_content", "end") => node.justify_content = JustifyContent::FlexEnd,
-            _ => {}
+    // The parent is read for its axis and nothing else — the alignment itself is
+    // written entirely on the selected node, which is the whole point of the
+    // auto-margin approach.
+    match action.flow_attr(parent_is_row) {
+        crate::game_ui::align::FlowAlign::Own(attr, value) => {
+            // Live first so it reads immediately, then the file — the attribute
+            // writeback deliberately does not rebuild, because it has already
+            // updated the entity in place.
+            if let Some(mut node) = world.get_mut::<Node>(entity) {
+                node.align_self = match value {
+                    "center" => AlignSelf::Center,
+                    "end" => AlignSelf::FlexEnd,
+                    _ => AlignSelf::FlexStart,
+                };
+            }
+            // The markup spells these `flex_start` / `flex_end`; bare `start`
+            // and `end` are different values in bevy's layout and not the ones
+            // these controls mean.
+            let markup_value = match value {
+                "start" => "flex_start",
+                "end" => "flex_end",
+                other => other,
+            };
+            renzora_ember::markup::writeback::write_attr_to_markup(
+                world,
+                entity,
+                attr,
+                markup_value,
+            );
+        }
+        crate::game_ui::align::FlowAlign::Margin(edge) => {
+            let (lead, trail) = crate::game_ui::align::margin_pair(edge);
+            let to_val = |v: Option<f32>| v.map(Val::Px).unwrap_or(Val::Auto);
+            // The perpendicular margins are left exactly as the author set them
+            // — this control is about one axis, and rewriting all four would
+            // quietly discard spacing it was never asked about.
+            let mut rect = world
+                .get::<Node>(entity)
+                .map(|n| n.margin)
+                .unwrap_or_default();
+            if parent_is_row {
+                rect.left = to_val(lead);
+                rect.right = to_val(trail);
+            } else {
+                rect.top = to_val(lead);
+                rect.bottom = to_val(trail);
+            }
+            if let Some(mut node) = world.get_mut::<Node>(entity) {
+                node.margin = rect;
+            }
+            let m = format!(
+                "{} {} {} {}",
+                val_markup(rect.top),
+                val_markup(rect.right),
+                val_markup(rect.bottom),
+                val_markup(rect.left)
+            );
+            renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "margin", &m);
         }
     }
-    // The markup spells these `flex_start` / `flex_end`; `start` and `end` are
-    // different values in bevy's parser and not the ones flex layout wants here.
-    let markup_value = match value {
-        "start" => "flex_start",
-        "end" => "flex_end",
-        other => other,
-    };
-    renzora_ember::markup::writeback::write_attr_to_markup(world, target, attr, markup_value);
+}
+
+/// A `Val` as the markup spells it. Anything the parser cannot express (a
+/// viewport unit in a margin, say) falls back to `0` rather than writing a value
+/// that would fail to parse on the next load.
+fn val_markup(v: Val) -> String {
+    match v {
+        Val::Auto => "auto".to_string(),
+        Val::Px(p) => format!("{p:.0}px"),
+        Val::Percent(p) => format!("{p:.2}%"),
+        _ => "0".to_string(),
+    }
 }
 
 fn toggle_color(w: &Rx, f: impl Fn(&NativeCanvasState) -> bool) -> Color {

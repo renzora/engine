@@ -36,16 +36,17 @@ impl AlignAction {
     ///
     /// Nudging `left`/`top` — which is what aligning does to a free node — is
     /// simply ignored on a flex child, so the buttons did nothing at all on the
-    /// nodes a template is mostly made of. Flexbox splits the job in two, and
-    /// which attribute applies depends on the axis:
+    /// nodes a template is mostly made of. Flexbox splits the job by axis:
     ///
     /// - **Cross axis** is the child's own business: `align_self` on the node.
-    /// - **Main axis** is the parent's distribution: `justify_content` on the
-    ///   parent, which moves *all* its children. That is flexbox's model, not a
-    ///   shortcut — there is no per-child main-axis alignment.
+    /// - **Main axis** has no per-child property. `justify_content` on the
+    ///   parent is the obvious reach, and it is wrong here — it distributes
+    ///   *all* the children, so aligning one node moved its siblings with it.
+    ///   The per-item answer is an **auto margin** on the opposite side, which
+    ///   absorbs the free space and pushes only this node.
     pub(crate) fn flow_attr(self, parent_is_row: bool) -> FlowAlign {
         if self.horizontal() == parent_is_row {
-            FlowAlign::Parent("justify_content", self.edge())
+            FlowAlign::Margin(self.edge())
         } else {
             FlowAlign::Own("align_self", self.edge())
         }
@@ -57,9 +58,23 @@ impl AlignAction {
 pub(crate) enum FlowAlign {
     /// On the node itself (`align_self`).
     Own(&'static str, &'static str),
-    /// On its parent (`justify_content`), because flexbox has no per-child
-    /// main-axis alignment.
-    Parent(&'static str, &'static str),
+    /// As auto margins on the node's main axis — `start`, `center` or `end`.
+    Margin(&'static str),
+}
+
+/// The two main-axis margins for an alignment: `(leading, trailing)`, where
+/// `None` means "auto" and `Some(v)` a fixed value.
+///
+/// Start pushes the free space to the trailing side, end to the leading side,
+/// centre splits it. Setting the aligned side to zero rather than leaving it is
+/// what lets a second press change the answer — an auto left over from a
+/// previous "end" would otherwise still be fighting.
+pub(crate) fn margin_pair(edge: &str) -> (Option<f32>, Option<f32>) {
+    match edge {
+        "center" => (None, None),
+        "end" => (None, Some(0.0)),
+        _ => (Some(0.0), None),
+    }
 }
 
 /// New (x, y) design-space top-left for each widget.
