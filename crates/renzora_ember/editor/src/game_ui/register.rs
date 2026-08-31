@@ -119,6 +119,27 @@ pub fn register_game_ui_editor(app: &mut App) {
             },
             renzora::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
             renzora::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
+            // How the reference resolution above maps onto a window that isn't
+            // that size. `fit` keeps the canvas exactly as composed here and
+            // letterboxes it; `expand` lets it re-flow to the window's aspect;
+            // `constant` leaves authored pixels alone. See `CanvasScaleMode`.
+            renzora::FieldDef {
+                name: "Scale Mode",
+                field_type: renzora::FieldType::Enum {
+                    options: &["fit", "expand", "constant"],
+                },
+                get_fn: |w, e| {
+                    w.get::<components::UiCanvas>(e)
+                        .map(|c| renzora::FieldValue::Enum(c.scale_mode.clone()))
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                        (v, w.get_mut::<components::UiCanvas>(e))
+                    {
+                        c.scale_mode = s;
+                    }
+                },
+            },
             // Screen (normal fullscreen UI) vs world (projected onto a plane in
             // the 3D scene, placed by the entity's Transform).
             renzora::FieldDef {
@@ -651,6 +672,10 @@ pub fn register_game_ui_editor(app: &mut App) {
         (
             ensure_ui_visibility_components,
             sync_ui_canvas_target_camera,
+            // After the routing decision it reads — a frame behind would show
+            // the unscaled canvas for one frame every time the Game UI toggle
+            // or the UI editor panel opens.
+            scale_canvas_for_viewport_preview,
             sync_canvas_sort_order_from_hierarchy,
             debug_ui_tree,
         )
@@ -810,6 +835,78 @@ fn sync_ui_canvas_target_camera(
     }
 }
 
+/// Scale a canvas that is being previewed *over the 3D viewport* down to fit
+/// it, the way the shipped game will.
+///
+/// The game does this with the global `UiScale`, which the editor can't touch:
+/// one resource drives every `bevy_ui` tree in the process, so moving it would
+/// resize the dock, the panels and the menu bar along with the preview. So the
+/// preview uses a per-entity `UiTransform` instead. It resamples rather than
+/// re-rasterizing, which is why the game doesn't do it this way — but this is a
+/// preview, and being the wrong *size* is a worse lie than being slightly soft.
+///
+/// Only canvases routed away from the UI editor's own camera need it. That
+/// target is resized to the canvas's reference resolution
+/// (`sync_render_target_to_reference`), so there the design box already fills
+/// it exactly and the identity transform is correct.
+fn scale_canvas_for_viewport_preview(
+    mut commands: Commands,
+    render: Option<Res<canvas_render::UiCanvasRender>>,
+    render_target: Option<Res<renzora::ViewportRenderTarget>>,
+    images: Res<Assets<Image>>,
+    canvases: Query<
+        (
+            Entity,
+            &UiCanvas,
+            Option<&bevy::ui::UiTargetCamera>,
+            Option<&bevy::ui::UiTransform>,
+        ),
+        Without<renzora::HideInHierarchy>,
+    >,
+) {
+    let offscreen = render.as_ref().map(|r| r.camera_entity);
+    let viewport_size = render_target
+        .as_ref()
+        .and_then(|rt| rt.image.as_ref())
+        .and_then(|h| images.get(h))
+        .map(|img| img.size())
+        .map(|s| Vec2::new(s.x as f32, s.y as f32));
+
+    for (entity, canvas, target_cam, existing) in &canvases {
+        if canvas.is_world() {
+            continue;
+        }
+        let on_ui_editor_camera = match (target_cam, offscreen) {
+            (Some(tc), Some(off)) => tc.entity() == off,
+            // Not routed anywhere yet — assume the editor's own target rather
+            // than scaling against a viewport it may never be shown in.
+            _ => true,
+        };
+
+        let want = if on_ui_editor_camera {
+            1.0
+        } else {
+            match viewport_size {
+                Some(size) if size.x > 0.0 && size.y > 0.0 => canvas.scale_mode().scale_for(
+                    canvas.reference_width.max(1.0),
+                    canvas.reference_height.max(1.0),
+                    size.x,
+                    size.y,
+                ),
+                _ => 1.0,
+            }
+        };
+
+        let current = existing.map(|t| t.scale.x).unwrap_or(1.0);
+        if (current - want).abs() <= f32::EPSILON {
+            continue;
+        }
+        let mut next = existing.copied().unwrap_or(bevy::ui::UiTransform::IDENTITY);
+        next.scale = Vec2::splat(want);
+        commands.entity(entity).insert(next);
+    }
+}
+
 fn debug_ui_tree(
     play_mode: Res<renzora::PlayModeState>,
     canvases: Query<
@@ -908,15 +1005,11 @@ fn drop_ui_attrs(world: &mut World, entity: Entity, attrs: &[&str]) {
 }
 
 pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
-    let entity = world
-        .spawn((
-            components::UiCanvas::default(),
-            // Not written out here: `heal_canvas_root_geometry` re-establishes
-            // exactly this every frame, and two copies of the definition is how
-            // they drift.
-            components::canvas_root_node(),
-        ))
-        .id();
+    let canvas = components::UiCanvas::default();
+    // Not written out here: `heal_canvas_root_geometry` re-establishes exactly
+    // this every frame, and two copies of the definition is how they drift.
+    let node = components::canvas_root_node(&canvas);
+    let entity = world.spawn((canvas, node)).id();
     // The engine's one-id-per-entity rule, applied here rather than left to the
     // caller. Spawning through Add Entity gets it for free —
     // `renzora_context_menu` re-ids every preset it spawns — but the "New UI

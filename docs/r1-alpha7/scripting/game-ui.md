@@ -184,6 +184,22 @@ When you add a canvas yourself — **Add Entity → UI Canvas**, or the **New UI
 
 **Widgets always live under a UI Canvas.** The canvas is what scopes its widgets to the game view; a widget outside one has nowhere to render. So the editor keeps that relationship intact for you: if you drag a widget out to the scene root (or under a non-UI entity), it's automatically re-homed under a fresh **UI Canvas** rather than escaping into the editor's own interface — you'll simply see a new canvas appear in the hierarchy holding it. Having more than one canvas is fine (a HUD and a pause menu, say). The reverse is also enforced: a canvas can't become a child of a widget — drop one there and it pops back to the top level.
 
+## Canvas scaling
+
+You design against a fixed size — **Ref Width** and **Ref Height** on the canvas, `1280 × 720` by default. Players don't have that window. **Scale Mode** decides what happens in between:
+
+| Mode | What it does |
+|---|---|
+| **Fit** (default) | Lays the canvas out at exactly the reference size and scales that whole box to fit the window, centred, with bars on the leftover axis. What you composed is what ships. |
+| **Expand** | Scales text and padding, but lets the canvas fill the window so the layout re-flows to the real aspect ratio. |
+| **Constant** | No scaling. One authored pixel is one screen pixel. |
+
+The difference only shows up once a canvas holds more than one thing. A single centred panel looks the same in every mode; a centred panel *and* a bottom-left dialogue box do not — under **Expand** each is resolved against the live window, so widening it walks them apart, while under **Fit** the whole design box moves as one piece.
+
+So: **Fit** for menus, dialogue, anything you laid out by eye. **Expand** for a HUD whose corners are meant to hug the screen edges however wide it gets. **Constant** for pixel-art UI that must not resample.
+
+Fit is what the UI editor shows you, which is why it's the default — the editor renders at the reference size, so the panel and the game agree. World UI Panels ignore the setting entirely: their surface *is* the reference resolution, so there's nothing to reconcile.
+
 ## UI in the 3D world
 
 A canvas draws its UI flat across the screen. A **World UI Panel** draws the same kind of `.html` template onto a flat surface *inside* the scene — a monitor on a wall, a control terminal you walk up to, a floating menu in VR. It's a real 3D object: it has a position and rotation, it's lit by the scene, and things can pass in front of it.

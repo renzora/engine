@@ -102,18 +102,12 @@ pub(crate) fn is_within_world_ui_root(world: &World, mut entity: Entity) -> bool
 /// with no canvas in the scene, and the wrapper the invariant healer parents an
 /// orphaned widget under. Kept in one place so canvas defaults never drift.
 pub(crate) fn spawn_root_canvas(world: &mut World) -> Entity {
-    world
-        .spawn((
-            Name::new("UI Canvas"),
-            UiCanvas::default(),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                ..default()
-            },
-        ))
-        .id()
+    // Geometry comes from `canvas_root_node`, not written out longhand here:
+    // this copy was the one that drifted when the canvas root stopped being a
+    // plain full-target box.
+    let canvas = UiCanvas::default();
+    let node = super::components::canvas_root_node(&canvas);
+    world.spawn((Name::new("UI Canvas"), canvas, node)).id()
 }
 
 /// Spawn a fresh screen [`UiCanvas`] whose template is `asset_path`, stored

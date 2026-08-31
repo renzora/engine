@@ -369,7 +369,7 @@ fn sync_world_ui_canvases(
                 )>();
                 commands
                     .entity(entity)
-                    .insert(super::components::canvas_root_node());
+                    .insert(super::components::canvas_root_node(canvas));
             }
             continue;
         }
