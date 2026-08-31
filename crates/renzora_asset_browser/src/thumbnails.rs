@@ -501,14 +501,19 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
             if name.starts_with('.') {
                 continue;
             }
-            match e.file_type() {
-                Ok(ft) if ft.is_dir() => {
-                    if depth < FOLDER_SCAN_DEPTH {
-                        subdirs.push(e.path());
-                    }
+            // An unreadable `file_type` is skipped, same as an unsupported one.
+            let Ok(ft) = e.file_type() else { continue };
+            // The depth guard is deliberately *inside* the directory branch
+            // rather than folded into it: a directory is never a thumbnail
+            // whether or not we descend, and a combined condition would let a
+            // folder named `textures.png` past the depth limit fall through to
+            // the image branch below.
+            if ft.is_dir() {
+                if depth < FOLDER_SCAN_DEPTH {
+                    subdirs.push(e.path());
                 }
-                Ok(_) if supports_thumbnail(&name) => images.push(e.path()),
-                _ => {}
+            } else if supports_thumbnail(&name) {
+                images.push(e.path());
             }
         }
         images.sort();
