@@ -15,6 +15,53 @@ pub(crate) enum AlignAction {
     Bottom,
 }
 
+impl AlignAction {
+    /// Whether this action acts along the horizontal axis.
+    fn horizontal(self) -> bool {
+        matches!(self, Self::Left | Self::CenterH | Self::Right)
+    }
+
+    /// `start` / `center` / `end`, the shared vocabulary of `align_self` and
+    /// `justify_content`.
+    fn edge(self) -> &'static str {
+        match self {
+            Self::Left | Self::Top => "start",
+            Self::CenterH | Self::CenterV => "center",
+            Self::Right | Self::Bottom => "end",
+        }
+    }
+
+    /// How to express this alignment on a node laid out by its parent's flex
+    /// flow, given whether that parent is a row.
+    ///
+    /// Nudging `left`/`top` — which is what aligning does to a free node — is
+    /// simply ignored on a flex child, so the buttons did nothing at all on the
+    /// nodes a template is mostly made of. Flexbox splits the job in two, and
+    /// which attribute applies depends on the axis:
+    ///
+    /// - **Cross axis** is the child's own business: `align_self` on the node.
+    /// - **Main axis** is the parent's distribution: `justify_content` on the
+    ///   parent, which moves *all* its children. That is flexbox's model, not a
+    ///   shortcut — there is no per-child main-axis alignment.
+    pub(crate) fn flow_attr(self, parent_is_row: bool) -> FlowAlign {
+        if self.horizontal() == parent_is_row {
+            FlowAlign::Parent("justify_content", self.edge())
+        } else {
+            FlowAlign::Own("align_self", self.edge())
+        }
+    }
+}
+
+/// Where a flow alignment has to be written.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum FlowAlign {
+    /// On the node itself (`align_self`).
+    Own(&'static str, &'static str),
+    /// On its parent (`justify_content`), because flexbox has no per-child
+    /// main-axis alignment.
+    Parent(&'static str, &'static str),
+}
+
 /// New (x, y) design-space top-left for each widget.
 pub(crate) fn compute_align(widgets: &[WidgetGeom], action: AlignAction) -> Vec<(Entity, f32, f32)> {
     if widgets.is_empty() {

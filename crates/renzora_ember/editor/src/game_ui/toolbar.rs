@@ -35,6 +35,8 @@ pub(crate) enum CanvasTbBtn {
     Align(AlignAction),
     DistH,
     DistV,
+    /// Flip the selection between laid out by its parent and placed by hand.
+    ToggleFreePosition,
 }
 
 /// Marks this panel's toolbar row, so `sync_toolbar_order` knows which
@@ -98,6 +100,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("align-bottom", CanvasTbBtn::Align(AlignAction::Bottom)),
         ("arrows-out-line-horizontal", CanvasTbBtn::DistH),
         ("arrows-out-line-vertical", CanvasTbBtn::DistV),
+        // Flow ↔ free. Sits with align because it is the same question — where
+        // does this node sit — asked at the level above.
+        ("push-pin", CanvasTbBtn::ToggleFreePosition),
     ];
     // Grouped, not flat: the six align buttons plus the two distribute buttons
     // are one control, and a group also never gets split down the middle when
@@ -268,6 +273,84 @@ fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: Can
     (btn, ic)
 }
 
+/// Flip a node between flow layout and free placement.
+///
+/// Free placement is `position: absolute` — the node leaves its parent's flow
+/// and is placed by coordinates, which is also what switches the canvas drag
+/// from reordering to moving. It was only reachable by typing the attribute,
+/// which made "just put it where I want" the one thing the editor could not do.
+///
+/// Going free pins the node where it already sits, so the flip does not also
+/// move it. Going back to flow clears the offsets, or the node keeps a
+/// `left`/`top` its new layout does not expect.
+fn set_free_position(world: &mut World, entity: Entity, was_flow: bool, x: f32, y: f32, parent: (f32, f32, f32, f32)) {
+    let (px, py, pw, ph) = (parent.0, parent.1, parent.2.max(1.0), parent.3.max(1.0));
+    if was_flow {
+        let left = format!("{:.2}%", (x - px) / pw * 100.0);
+        let top = format!("{:.2}%", (y - py) / ph * 100.0);
+        if let Some(mut node) = world.get_mut::<Node>(entity) {
+            node.position_type = PositionType::Absolute;
+            node.left = Val::Percent((x - px) / pw * 100.0);
+            node.top = Val::Percent((y - py) / ph * 100.0);
+        }
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "position", "absolute");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "left", &left);
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "top", &top);
+    } else {
+        if let Some(mut node) = world.get_mut::<Node>(entity) {
+            node.position_type = PositionType::Relative;
+            node.left = Val::Auto;
+            node.top = Val::Auto;
+        }
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "position", "relative");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "left", "auto");
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, "top", "auto");
+    }
+}
+
+/// Align a node that its parent lays out, by writing the flexbox attribute that
+/// expresses it — and writing it to the `.html`, so it survives the rebuild.
+fn align_in_flow(world: &mut World, entity: Entity, action: AlignAction) {
+    let Some(parent) = world.get::<ChildOf>(entity).map(|c| c.parent()) else {
+        return;
+    };
+    let parent_is_row = world
+        .get::<Node>(parent)
+        .map(|n| {
+            matches!(
+                n.flex_direction,
+                FlexDirection::Row | FlexDirection::RowReverse
+            )
+        })
+        .unwrap_or(true);
+    let (target, attr, value) = match action.flow_attr(parent_is_row) {
+        crate::game_ui::align::FlowAlign::Own(a, v) => (entity, a, v),
+        crate::game_ui::align::FlowAlign::Parent(a, v) => (parent, a, v),
+    };
+    // Live first so it reads immediately, then the file — the attribute
+    // writeback deliberately does not rebuild, because it has already updated
+    // the entity in place.
+    if let Some(mut node) = world.get_mut::<Node>(target) {
+        match (attr, value) {
+            ("align_self", "start") => node.align_self = AlignSelf::FlexStart,
+            ("align_self", "center") => node.align_self = AlignSelf::Center,
+            ("align_self", "end") => node.align_self = AlignSelf::FlexEnd,
+            ("justify_content", "start") => node.justify_content = JustifyContent::FlexStart,
+            ("justify_content", "center") => node.justify_content = JustifyContent::Center,
+            ("justify_content", "end") => node.justify_content = JustifyContent::FlexEnd,
+            _ => {}
+        }
+    }
+    // The markup spells these `flex_start` / `flex_end`; `start` and `end` are
+    // different values in bevy's parser and not the ones flex layout wants here.
+    let markup_value = match value {
+        "start" => "flex_start",
+        "end" => "flex_end",
+        other => other,
+    };
+    renzora_ember::markup::writeback::write_attr_to_markup(world, target, attr, markup_value);
+}
+
 fn toggle_color(w: &Rx, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
     let on = w.get_resource::<NativeCanvasState>().is_some_and(f);
     rgb(if on { accent() } else { text_muted() })
@@ -299,8 +382,37 @@ fn toolbar_click(
             CanvasTbBtn::Align(action) => {
                 let geoms = selected_geoms(&state, &selection);
                 let (rw, rh) = (state.canvas_width.max(1.0), state.canvas_height.max(1.0));
-                for (e, nx, ny) in compute_align(&geoms, *action) {
+                // Two different operations wearing one button, because they are
+                // the same *intent*. A free node aligns by moving; a node in
+                // flow aligns by telling flexbox where it sits, since nudging
+                // `left`/`top` on a flex child is simply ignored — which is why
+                // these buttons did nothing on most of a template.
+                let flow: Vec<Entity> = geoms
+                    .iter()
+                    .filter(|g| g.in_flow)
+                    .map(|g| g.entity)
+                    .collect();
+                let free = compute_align(
+                    &geoms.iter().filter(|g| !g.in_flow).cloned().collect::<Vec<_>>(),
+                    *action,
+                );
+                for (e, nx, ny) in free {
                     commands.queue(move |w: &mut World| set_pos(w, e, Some(nx), Some(ny), rw, rh));
+                }
+                let act = *action;
+                for e in flow {
+                    commands.queue(move |w: &mut World| align_in_flow(w, e, act));
+                }
+            }
+            CanvasTbBtn::ToggleFreePosition => {
+                for g in selected_geoms(&state, &selection) {
+                    let (e, was_flow) = (g.entity, g.in_flow);
+                    // Pin at where it already is, so flipping to free placement
+                    // does not also move it. Percentages of the parent, matching
+                    // what the drag writes.
+                    let p = crate::game_ui::interaction::parent_box(&state, e);
+                    let (x, y) = (g.x, g.y);
+                    commands.queue(move |w: &mut World| set_free_position(w, e, was_flow, x, y, p));
                 }
             }
             CanvasTbBtn::DistH => {

@@ -85,6 +85,9 @@ pub(crate) struct NativeCanvasState {
     /// progress. The overlay outlines `parent` and draws the insertion line;
     /// releasing applies it. `None` whenever no flow drag is running.
     pub drop: Option<geometry::DropTarget>,
+    /// Every slot in the drop target's container, drawn faintly beside the
+    /// active one. Cleared with `drop`.
+    pub drop_slots: geometry::DropSlots,
     /// The widget under the cursor, recomputed every frame. Only needed for the
     /// hover name badge — the click path does its own hit-test at press time,
     /// because what a press hits depends on the current selection.
@@ -116,6 +119,7 @@ impl Default for NativeCanvasState {
             widgets: Vec::new(),
             marquee: None,
             drop: None,
+            drop_slots: geometry::DropSlots::default(),
             hovered: None,
             hover_outline: true,
             hover_group: true,

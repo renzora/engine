@@ -87,7 +87,14 @@ pub(crate) struct CanvasHandle {
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
-        (position_sel_boxes, position_marquee, position_drop, position_sel_labels, position_hover)
+        (
+            position_sel_boxes,
+            position_marquee,
+            position_drop,
+            position_drop_slots,
+            position_sel_labels,
+            position_hover,
+        )
             // After the geometry snapshot so the box tracks the same frame's
             // widget sizes instead of trailing a frame behind during a resize.
             .after(crate::game_ui::geometry::snapshot_widgets)
@@ -198,10 +205,76 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
     commands.entity(hover_label).insert(HoverLabel);
     commands.entity(hover_box).add_child(hover_label);
 
+    // Faint ticks for every other slot in the target container. A fixed pool
+    // repositioned each frame — a drag is the worst moment to be spawning.
+    let mut slot_ticks: Vec<Entity> = Vec::with_capacity(DROP_SLOTS);
+    for _ in 0..DROP_SLOTS {
+        slot_ticks.push(
+            commands
+                .spawn((
+                    Node { position_type: PositionType::Absolute, ..default() },
+                    BackgroundColor(rgb(accent()).with_alpha(0.30)),
+                    FocusPolicy::Pass,
+                    Visibility::Hidden,
+                    DropSlotTick,
+                    Name::new("ui-canvas-dropslot"),
+                ))
+                .id(),
+        );
+    }
+    commands.entity(layer).add_children(&slot_ticks);
+
     commands
         .entity(layer)
         .add_children(&[boxes, marquee, hover_group, hover_box, drop_box, drop_line]);
     layer
+}
+
+/// How many slot ticks the overlay can show. A container with more children
+/// than this is one where the ticks would be a smear anyway.
+const DROP_SLOTS: usize = 24;
+
+/// One of the faint "you could also drop here" marks.
+#[derive(Component)]
+struct DropSlotTick;
+
+/// Show every slot in the drop target's container, faintly.
+///
+/// The active slot has its own solid line; these are the alternatives. Without
+/// them a container whose children are bunched at one end — a row with
+/// `justify_content: flex_end` — looks like it has a single fixed drop point at
+/// that end, when in fact the cursor picks between a slot before each child.
+fn position_drop_slots(
+    state: Res<NativeCanvasState>,
+    mut ticks: Query<(&mut Node, &mut Visibility), With<DropSlotTick>>,
+) {
+    let zoom = state.zoom;
+    let active = state.drop.map(|d| d.line);
+    let mut slots = state.drop_slots.0.iter();
+    for (mut node, mut vis) in &mut ticks {
+        // The active slot is drawn solid by `position_drop`; skip it here so the
+        // two do not stack into a brighter-than-intended line.
+        let next = slots
+            .by_ref()
+            .find(|s| active.is_none_or(|a| (a.0 - s.0).length_squared() > 0.5));
+        match next {
+            Some((a, b)) => {
+                let (min, max) = (a.min(*b), a.max(*b));
+                node.left = Val::Px(min.x * zoom - 0.5);
+                node.top = Val::Px(min.y * zoom - 0.5);
+                node.width = Val::Px((max.x - min.x) * zoom + 1.0);
+                node.height = Val::Px((max.y - min.y) * zoom + 1.0);
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
+    }
 }
 
 /// Outline of the node under the cursor.

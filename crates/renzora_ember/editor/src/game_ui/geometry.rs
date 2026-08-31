@@ -62,6 +62,15 @@ pub(crate) struct DropTarget {
     pub line: (Vec2, Vec2),
 }
 
+/// Every slot a drop could land in, for the overlay to show faintly.
+///
+/// Separate from [`DropTarget`] so that stays `Copy`. Without these only the
+/// *active* slot is drawn, and a container whose children are bunched at one
+/// end — a row with `justify_content: flex_end`, say — looks like it has a
+/// single fixed drop point at that end rather than a slot before each child.
+#[derive(Default)]
+pub(crate) struct DropSlots(pub Vec<(Vec2, Vec2)>);
+
 pub(crate) fn snapshot_widgets(
     mut state: ResMut<NativeCanvasState>,
     ui_scale: Option<Res<UiScale>>,
@@ -173,6 +182,16 @@ pub(crate) fn drop_target_at(
     dragged: Entity,
     cursor: Vec2,
 ) -> Option<DropTarget> {
+    drop_target_with_slots(widgets, parents, dragged, cursor).map(|(t, _)| t)
+}
+
+/// [`drop_target_at`], also returning every slot in the chosen container.
+pub(crate) fn drop_target_with_slots(
+    widgets: &[WidgetGeom],
+    parents: &Query<&ChildOf>,
+    dragged: Entity,
+    cursor: Vec2,
+) -> Option<(DropTarget, DropSlots)> {
     let contains = |g: &WidgetGeom| {
         cursor.x >= g.x && cursor.x <= g.x + g.width && cursor.y >= g.y && cursor.y <= g.y + g.height
     };
@@ -249,24 +268,45 @@ pub(crate) fn drop_target_at(
             }
         },
     };
-    let line = if parent.row {
-        (
-            Vec2::new(at, parent.y),
-            Vec2::new(at, parent.y + parent.height),
-        )
-    } else {
-        (
-            Vec2::new(parent.x, at),
-            Vec2::new(parent.x + parent.width, at),
-        )
+    let line_at = |at: f32| {
+        if parent.row {
+            (
+                Vec2::new(at, parent.y),
+                Vec2::new(at, parent.y + parent.height),
+            )
+        } else {
+            (
+                Vec2::new(parent.x, at),
+                Vec2::new(parent.x + parent.width, at),
+            )
+        }
     };
 
-    Some(DropTarget {
-        parent: parent.entity,
-        before: siblings.get(index).map(|g| g.entity),
-        parent_box: (parent.x, parent.y, parent.width, parent.height),
-        line,
-    })
+    // Every boundary between siblings, plus the two ends. Drawn faintly so the
+    // container's available slots are visible at a glance instead of having to
+    // be discovered by sweeping the cursor.
+    let leading = |g: &WidgetGeom| if parent.row { g.x } else { g.y };
+    let trailing = |g: &WidgetGeom| {
+        if parent.row {
+            g.x + g.width
+        } else {
+            g.y + g.height
+        }
+    };
+    let mut slots: Vec<(Vec2, Vec2)> = siblings.iter().map(|g| line_at(leading(g))).collect();
+    if let Some(last) = siblings.last() {
+        slots.push(line_at(trailing(last)));
+    }
+
+    Some((
+        DropTarget {
+            parent: parent.entity,
+            before: siblings.get(index).map(|g| g.entity),
+            parent_box: (parent.x, parent.y, parent.width, parent.height),
+            line: line_at(at),
+        },
+        DropSlots(slots),
+    ))
 }
 
 /// How many `ChildOf` steps `e` sits below `ancestor`. Returns 0 for the

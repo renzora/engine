@@ -177,12 +177,14 @@ fn canvas_interact(
         }
         state.marquee = None;
         state.drop = None;
+        state.drop_slots.0.clear();
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
         *active = None;
         state.marquee = None;
         state.drop = None;
+        state.drop_slots.0.clear();
         return;
     }
 
@@ -297,19 +299,14 @@ fn canvas_interact(
             // Recompute only — the drop is applied on release. Writing per frame
             // would rewrite the `.html` on every mouse move.
             let e = *entity;
-            state.drop = crate::game_ui::geometry::drop_target_at(&state.widgets, &parents, e, cursor);
+            set_drop(&mut state, e, cursor, &parents);
         }
         // A palette drag is not a `Mode`: it starts in another panel, so there
         // was no press here to promote. It rides the same drop target and the
         // same overlay, and only the release differs — inserting new markup
         // instead of moving existing markup.
         _ if palette_drag.0.is_some() => {
-            state.drop = crate::game_ui::geometry::drop_target_at(
-                &state.widgets,
-                &parents,
-                Entity::PLACEHOLDER,
-                cursor,
-            );
+            set_drop(&mut state, Entity::PLACEHOLDER, cursor, &parents);
         }
         Some(Mode::Resize { entity, handle, start_cursor, bbox }) => {
             let (l, t, r, b) = handle.sides();
@@ -335,6 +332,28 @@ fn canvas_interact(
     }
 }
 
+/// Recompute the drop target and the slots drawn beside it. One place, because
+/// they have to be set and cleared together — a stale slot list under a fresh
+/// target draws ticks for a container you are no longer over.
+fn set_drop(
+    state: &mut NativeCanvasState,
+    dragged: Entity,
+    cursor: Vec2,
+    parents: &Query<&ChildOf>,
+) {
+    match crate::game_ui::geometry::drop_target_with_slots(&state.widgets, parents, dragged, cursor)
+    {
+        Some((target, slots)) => {
+            state.drop = Some(target);
+            state.drop_slots = slots;
+        }
+        None => {
+            state.drop = None;
+            state.drop_slots.0.clear();
+        }
+    }
+}
+
 /// Whether `cursor` (design space) is inside entity `e`'s current geometry box.
 fn bbox_contains(state: &NativeCanvasState, e: Entity, cursor: Vec2) -> bool {
     state
@@ -348,6 +367,12 @@ fn bbox_contains(state: &NativeCanvasState, e: Entity, cursor: Vec2) -> bool {
 /// The design-space box of `e`'s parent — the basis a `Node` percentage resolves
 /// against. Falls back to the whole canvas when the parent isn't a tracked
 /// widget (i.e. the canvas root itself).
+/// [`parent_rect`], for callers outside this module (the toolbar's
+/// free-position toggle, which pins a node where it already sits).
+pub(crate) fn parent_box(state: &NativeCanvasState, e: Entity) -> Bbox {
+    parent_rect(state, e)
+}
+
 fn parent_rect(state: &NativeCanvasState, e: Entity) -> Bbox {
     let parent = state.widgets.iter().find(|g| g.entity == e).and_then(|g| g.parent);
     parent
