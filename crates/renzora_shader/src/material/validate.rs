@@ -45,6 +45,7 @@ impl std::fmt::Display for ValidationError {
 pub struct ShaderValidator {
     composer: Composer,
     library_count: usize,
+    unresolved: Vec<String>,
 }
 
 impl ShaderValidator {
@@ -55,12 +56,14 @@ impl ShaderValidator {
     pub fn new(shaders: &Assets<Shader>) -> Self {
         let by_path = importable_libraries(shaders);
         let mut composer = Composer::default();
+        let mut unresolved = Vec::new();
         for shader in by_path.values() {
-            add_module(&mut composer, &by_path, shader);
+            add_module(&mut composer, &by_path, shader, &mut unresolved);
         }
         Self {
             library_count: by_path.len(),
             composer,
+            unresolved,
         }
     }
 
@@ -72,6 +75,26 @@ impl ShaderValidator {
     /// [`library_count`] to notice they are holding a stale one.
     pub fn library_count(&self) -> usize {
         self.library_count
+    }
+
+    /// Whether a library actually made it into the composer.
+    ///
+    /// Deliberately not the same question as "is the asset loaded". A library
+    /// whose own imports have not arrived yet is a perfectly present `Shader`
+    /// asset that the composer *rejects*, and every material that imports it
+    /// then fails naming **it** rather than the dependency that was late. So
+    /// anything waiting on the library set has to ask this, not `Assets`.
+    pub fn has_module(&self, module: &str) -> bool {
+        self.composer.contains_module(module)
+    }
+
+    /// Libraries the composer refused, each as `module: reason`.
+    ///
+    /// Empty in a fully-loaded app. Non-empty means either a genuinely broken
+    /// library or — far more often — a validator built while assets were still
+    /// streaming in, which is what this exists to make visible.
+    pub fn unresolved_libraries(&self) -> &[String] {
+        &self.unresolved
     }
 
     /// Compile a [`CompileResult`]'s fragment shader, once per pipeline-define
@@ -285,19 +308,34 @@ pub fn library_count(shaders: &Assets<Shader>) -> usize {
     importable_libraries(shaders).len()
 }
 
-fn add_module(composer: &mut Composer, by_path: &HashMap<&ShaderImport, &Shader>, shader: &Shader) {
-    if composer.contains_module(&shader.import_path.module_name()) {
+fn add_module(
+    composer: &mut Composer,
+    by_path: &HashMap<&ShaderImport, &Shader>,
+    shader: &Shader,
+    unresolved: &mut Vec<String>,
+) {
+    let name = shader.import_path.module_name();
+    if composer.contains_module(&name) {
         return;
     }
     for import in &shader.imports {
         if let Some(dep) = by_path.get(import) {
-            add_module(composer, by_path, dep);
+            add_module(composer, by_path, dep, unresolved);
         }
     }
     // A library that fails to add is one this validator cannot resolve imports
     // through; the material that needs it then fails with that name in the
     // message, which is more useful than a panic here naming only the library.
-    let _ = composer.add_composable_module(shader.into());
+    //
+    // But it is recorded rather than discarded, because the failure and the
+    // symptom name different modules and that gap cost two CI investigations.
+    // When `mesh_view_bindings` has not streamed in yet, `pbr_fragment` is a
+    // present, valid asset that the composer refuses — and every material then
+    // reports `required import 'bevy_pbr::pbr_fragment' not found`, pointing at
+    // the library that is fine instead of the one that is missing.
+    if let Err(e) = composer.add_composable_module(shader.into()) {
+        unresolved.push(format!("{name}: {e}"));
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -334,32 +372,109 @@ mod tests {
             std::sync::OnceLock::new();
         let mutex = VALIDATOR.get_or_init(|| {
             let mut app = renzora_test_harness::headless_app();
-            // Pump until the library set stops growing (and is non-empty —
-            // frame one reports zero, which is "stable" too).
+            // Pump until every library the generated shaders import is *usable*.
+            // Two weaker conditions were tried here first, and both let CI flake:
+            //
+            // 1. "The set stopped growing." The libraries stream in over several
+            //    frames through the shared IO task pool, so a merely PARTIAL set
+            //    holds still for three frames just as convincingly as a complete
+            //    one.
+            //
+            // 2. "The library is loaded." Subtler, and the one that matters: a
+            //    library is only usable once **its own imports** have arrived too.
+            //    Until then it is a present, valid `Shader` asset that the
+            //    composer *rejects*. Ask `Assets` and `pbr_fragment` looks ready
+            //    while `mesh_view_bindings` is still in flight — the composer then
+            //    drops `pbr_fragment`, and all 152 node types fail with
+            //    `required import 'bevy_pbr::pbr_fragment' not found`, naming the
+            //    library that is fine instead of the one that is late. It reads
+            //    like 152 broken nodes rather than one unfinished load.
+            //
+            // So the wait condition is now the condition the tests actually depend
+            // on: the module is *in the composer*. That is only knowable by
+            // building one, hence the rebuild — throttled to at most one per three
+            // stable frames, and in practice satisfied on the first attempt.
+            let required = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
             let mut last = 0usize;
             let mut stable = 0;
+            let mut built: Option<ShaderValidator> = None;
             for _ in 0..500 {
                 app.update();
-                let n = importable_libraries(app.world().resource::<Assets<Shader>>()).len();
-                if n == last {
-                    stable += 1;
-                    if n > 0 && stable >= 3 {
-                        break;
-                    }
-                } else {
+                let n = library_count(app.world().resource::<Assets<Shader>>());
+                if n != last {
                     stable = 0;
                     last = n;
+                    continue;
                 }
+                stable += 1;
+                // `n > 0` because frame one reports zero, which is "stable" too.
+                if n == 0 || stable < 3 {
+                    continue;
+                }
+                let candidate = ShaderValidator::new(app.world().resource::<Assets<Shader>>());
+                if required.iter().all(|r| candidate.has_module(r)) {
+                    built = Some(candidate);
+                    break;
+                }
+                // Something is still arriving. Re-accumulate stability rather
+                // than pay for another full composer build next frame.
+                stable = 0;
             }
-            let shaders = app.world().resource::<Assets<Shader>>();
-            assert!(
-                shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == "bevy_pbr::pbr_functions"),
-                "bevy_pbr's shader libraries are missing; the composer would resolve no imports"
-            );
-            std::sync::Mutex::new(ShaderValidator::new(shaders))
+            let validator = built.unwrap_or_else(|| {
+                let v = ShaderValidator::new(app.world().resource::<Assets<Shader>>());
+                let missing: Vec<&str> = required
+                    .iter()
+                    .copied()
+                    .filter(|r| !v.has_module(r))
+                    .collect();
+                panic!(
+                    "bevy_pbr's shader libraries did not become usable in 500 frames.\n\
+                     missing from the composer: {missing:?}\n\
+                     refused by the composer ({} of {} libraries): {:#?}",
+                    v.unresolved_libraries().len(),
+                    v.library_count(),
+                    v.unresolved_libraries(),
+                )
+            });
+            std::sync::Mutex::new(validator)
         });
         // A panicking test poisons the lock; the validator itself is intact.
         mutex.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The libraries generated materials import are in the **composer**, not
+    /// merely loaded as assets.
+    ///
+    /// This is the distinction the wait loop turns on, asserted directly so a
+    /// regression says which library is missing instead of producing hundreds
+    /// of errors that all name the wrong one. A refused library is invisible at
+    /// the point of failure — it is dropped, and the error surfaces later on
+    /// whichever *material* imported it. When `mesh_view_bindings` was late in
+    /// CI, that came out as 456 identical `required import
+    /// 'bevy_pbr::pbr_fragment' not found` errors across 152 node types, none
+    /// of which mentioned `mesh_view_bindings` at all.
+    ///
+    /// Note it is only asserted of the modules materials actually import.
+    /// "Every library composes" is NOT true here and must not be asserted: a
+    /// headless PBR app legitimately refuses `bevy_sprite::mesh2d_functions`
+    /// and `bevy_pbr::ssr`, whose own imports belong to pipelines this app
+    /// never builds. That is also why the wait loop waits on the required
+    /// modules rather than on an empty refusal list — the latter would never
+    /// come true and every run would spin out to the frame cap.
+    #[test]
+    fn required_libraries_reach_the_composer() {
+        let validator = validator();
+        for module in ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"] {
+            assert!(
+                validator.has_module(module),
+                "{module} is not in the composer, so every material importing \
+                 it fails naming it whatever the real cause. Refused libraries \
+                 ({} of {}): {:#?}",
+                validator.unresolved_libraries().len(),
+                validator.library_count(),
+                validator.unresolved_libraries(),
+            );
+        }
     }
 
     #[test]
