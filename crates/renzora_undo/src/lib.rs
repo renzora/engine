@@ -764,6 +764,43 @@ pub fn delete_entities_with_undo(world: &mut World, entities: &[Entity]) {
 pub fn delete_entities_with_undo_reselect(world: &mut World, entities: &[Entity]) {
     use renzora_editor_framework::HierarchyOrder;
 
+    // Markup nodes are deleted from the `.html`, not from the world. Despawning
+    // one only removes it until the next rebuild — and a rebuild is exactly what
+    // the next insert or move triggers, so deleting and then editing brought
+    // every deleted node back. Handled here rather than at each Delete call site
+    // so the keypress, the context menu and anything else all agree.
+    //
+    // Not undoable: the file is the record, the same as for a move or an insert.
+    //
+    // One markup node per delete. Each removal rewrites the file, but the parsed
+    // template in memory is only replaced when the reload lands — so a second
+    // cut in the same call would be computed against spans that have already
+    // moved, and would take out the wrong bytes. Better to remove one and say so
+    // than to corrupt the template.
+    let is_markup = |w: &World, e: Entity| {
+        w.get::<renzora_ember::markup::provenance::MarkupSource>(e)
+            .is_some()
+    };
+    let markup: Vec<Entity> = entities.iter().copied().filter(|e| is_markup(world, *e)).collect();
+    let entities: Vec<Entity> = entities
+        .iter()
+        .copied()
+        .filter(|e| !is_markup(world, *e))
+        .collect();
+    if let Some(first) = markup.first() {
+        renzora_ember::markup::writeback::remove_node_in_markup(world, *first);
+        if markup.len() > 1 {
+            warn!(
+                "ui delete: removed one node; {} more were skipped — delete them one at a time so each edit sees the current file",
+                markup.len() - 1
+            );
+        }
+    }
+    if entities.is_empty() {
+        return;
+    }
+    let entities = &entities[..];
+
     // Snapshot the flat hierarchy order *before* deleting, plus where the deleted
     // block sits in it.
     let mut order: Vec<(u32, Entity)> = {

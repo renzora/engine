@@ -281,6 +281,23 @@ pub fn insert_element(source: &[u8], dest: Dest, markup: &str) -> Option<Vec<u8>
     Some(out)
 }
 
+/// Cut the element at `element` out of `source`, returning the new bytes.
+///
+/// The cut reaches back over the whitespace indenting the element, so removing
+/// a node does not leave the blank line it occupied. This is the same cut
+/// [`move_element`] makes; a move is this plus a re-insert.
+pub fn remove_element(source: &[u8], element: Span) -> Option<Vec<u8>> {
+    let (start, end) = (element.start as usize, element.end as usize);
+    if start >= end || end > source.len() {
+        return None;
+    }
+    let cut_start = line_lead_start(source, start);
+    let mut out = Vec::with_capacity(source.len());
+    out.extend_from_slice(&source[..cut_start]);
+    out.extend_from_slice(&source[end..]);
+    Some(out)
+}
+
 /// Move the element at `element` to `dest` within `source`, returning the new
 /// bytes. `None` when the span is malformed or the destination lies inside the
 /// element being moved (which is not a move).
@@ -457,6 +474,70 @@ pub fn move_node_in_markup(
     }
 
     request_rebuild(world, &asset_path);
+}
+
+/// Delete a markup node from its template.
+///
+/// Deleting the *entity* is not enough and is worse than doing nothing: the
+/// live tree is rebuilt from the file, so a despawned node reappears at the next
+/// rebuild — and since a rebuild is what an insert or a move triggers, editing
+/// after a delete resurrected everything that had been deleted.
+///
+/// Returns whether it removed anything, so the caller can tell a markup delete
+/// (the file is the record) from a scene delete (the undo stack is).
+pub fn remove_node_in_markup(world: &mut World, entity: Entity) -> bool {
+    let Some(src) = world.get::<MarkupSource>(entity) else {
+        return false;
+    };
+    let handle = src.template_handle.clone();
+    let node_path = src.node_path.clone();
+    // The template root is the template — deleting it would empty the file
+    // rather than remove a node, which is not what a Delete keypress means.
+    if node_path.is_empty() {
+        warn!("ui delete: the template root cannot be deleted; clear the UI Template slot instead");
+        return true;
+    }
+    let Some(asset_path) = world
+        .resource::<AssetServer>()
+        .get_path(&handle)
+        .map(|p| p.to_string())
+    else {
+        return false;
+    };
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|cp| cp.path.clone());
+
+    let new_source = {
+        let templates = world.resource::<Assets<HtmlTemplate>>();
+        let Some(template) = templates.get(&handle) else {
+            warn!("ui delete: {asset_path} is not loaded");
+            return false;
+        };
+        let Some(node) = walk_node(&template.root, &node_path) else {
+            warn!("ui delete: node_path {node_path:?} is not in {asset_path}");
+            return false;
+        };
+        match remove_element(&template.source, node.element) {
+            Some(bytes) => bytes,
+            None => return false,
+        }
+    };
+
+    let disk_path: PathBuf = match project_root {
+        Some(root) => root.join(&asset_path),
+        None => PathBuf::from(&asset_path),
+    };
+    if let Err(err) = std::fs::write(&disk_path, &new_source) {
+        warn!(
+            "renzora_hui delete: failed to write {} — {err}",
+            disk_path.display()
+        );
+        return false;
+    }
+    info!("ui delete: removed a node from {asset_path}");
+    request_rebuild(world, &asset_path);
+    true
 }
 
 /// Re-read a template from disk and let `hot_reload_templates` act on it.
@@ -703,6 +784,31 @@ mod tests {
         let selfclosed = "<node><box/></node>";
         let slash = selfclosed.find("/>").unwrap();
         assert_eq!(selfclosed.as_bytes()[slash], b'/');
+    }
+
+    /// A removal takes the line the element sat on with it, so deleting from a
+    /// list does not leave a gap where the node was.
+    #[test]
+    fn remove_takes_the_elements_line() {
+        let out = remove_element(TREE.as_bytes(), span_of(TREE, "<b/>")).expect("removes");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <a/>\n    <c/>\n</node>"
+        );
+    }
+
+    #[test]
+    fn remove_carries_children() {
+        let src = "<node>\n    <box>\n        <x/>\n    </box>\n    <a/>\n</node>";
+        let out = remove_element(
+            src.as_bytes(),
+            span_of(src, "<box>\n        <x/>\n    </box>"),
+        )
+        .expect("removes");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node>\n    <a/>\n</node>"
+        );
     }
 
     #[test]
