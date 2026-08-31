@@ -112,7 +112,6 @@ impl Plugin for GameUiPlugin {
                 heal_orphaned_ui_widgets,
                 heal_nested_ui_canvases,
                 heal_canvas_root_geometry,
-                apply_game_ui_visibility,
             ),
         );
 
@@ -482,35 +481,12 @@ fn heal_canvas_root_geometry(
     }
 }
 
-/// Hide or show every canvas from the editor viewport's "Game UI" switch.
-///
-/// Written on the canvas root, so the whole template goes with it, and only on a
-/// change — `apply_canvas_visibility` owns `Visibility` for the
-/// `visibility_mode` dropdown and reacts to `Changed<UiCanvas>`, so a writer
-/// that touched every canvas every frame would be fighting it constantly.
-///
-/// Editor-only by construction: `ViewportSettings` does not exist in a shipped
-/// game, so the game's UI is never hidden by a preference the player cannot see.
-fn apply_game_ui_visibility(
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
-    mut canvases: Query<&mut Visibility, With<UiCanvas>>,
-) {
-    let Some(settings) = settings else { return };
-    let want = if settings.show_game_ui {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    for mut vis in &mut canvases {
-        // Only overrule a canvas the switch itself put away. Leaving `Inherited`
-        // alone the rest of the time is what lets `visibility_mode`
-        // ("play_only", "editor_only") keep working while the switch is on.
-        let overrule = want == Visibility::Hidden || *vis == Visibility::Hidden;
-        if overrule && *vis != want {
-            *vis = want;
-        }
-    }
-}
+// The "Game UI" switch is implemented by *routing*, not by visibility — see
+// `sync_ui_canvas_target_camera` in the editor crate. A version of it here set
+// `Visibility::Hidden` on every canvas when the switch was off, which is the
+// mistake that system's own doc warns about: force-hiding canvases pollutes
+// saved scenes and breaks shipped runtime visibility, and it would have blanked
+// the UI editor panel along with the viewport.
 
 // ── Canvas scaler ───────────────────────────────────────────────────────────
 

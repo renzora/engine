@@ -703,10 +703,16 @@ fn ensure_ui_visibility_components(
 /// window: a canvas keeps a valid target at all times and merely switches it on
 /// a mode change.
 ///
-/// - **Edit mode** → the offscreen UI render camera (`UiCanvasRender`), whose
-///   image the canvas tab displays. (That camera is only *active* while the
-///   Viewport is in UI view, so in the 3D/2D viewport the canvas simply isn't
-///   drawn — never composited into the chrome.)
+/// - **Edit mode, UI editor open** → the offscreen UI render camera
+///   (`UiCanvasRender`), whose image the canvas tab displays.
+/// - **Edit mode, UI editor closed** → the editor viewport camera, when the
+///   viewport's `show_game_ui` switch is on, so the game's UI composites over
+///   the scene you are editing. Without this the switch appeared to do nothing:
+///   canvases were routed to an offscreen camera that is only *active* while the
+///   Viewport is in UI view, so in the 3D viewport they were simply never drawn,
+///   and toggling their `Visibility` changed nothing anyone could see.
+///   With the switch off they stay on the offscreen route, which is the same as
+///   not being drawn — no second mechanism needed to hide them.
 /// - **Play mode** → the editor viewport camera that renders the running game
 ///   into the viewport image, so the UI composites on top. A 2D game plays
 ///   through the editor 2D camera (the 3D editor camera is parked on a token
@@ -725,8 +731,13 @@ fn sync_ui_canvas_target_camera(
     editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
 ) {
-    let target = if play_mode.is_in_play_mode() {
+    let offscreen = render.as_ref().map(|r| r.camera_entity);
+    let viewport_cam = || {
         let game_is_2d = play_mode
             .active_game_camera
             .is_some_and(|e| kind_2d.get(e).is_ok());
@@ -735,8 +746,25 @@ fn sync_ui_canvas_target_camera(
         } else {
             editor_cam.iter().next()
         }
+    };
+    let target = if play_mode.is_in_play_mode() {
+        viewport_cam()
     } else {
-        render.as_ref().map(|r| r.camera_entity)
+        // The UI editor owns the canvases while it is on screen — it displays
+        // the offscreen render, so routing them elsewhere would blank the panel
+        // whose whole job is to show them.
+        let ui_editor_open = renzora_ember::dock::panel_visible_anywhere(
+            "ui_canvas",
+            dock.as_deref(),
+            fixed.as_deref(),
+            wins.as_deref(),
+        );
+        let show_over_scene = settings.is_some_and(|s| s.show_game_ui);
+        if !ui_editor_open && show_over_scene {
+            viewport_cam().or(offscreen)
+        } else {
+            offscreen
+        }
     };
 
     // No camera resolved yet (startup, or the render target not spawned) — leave
