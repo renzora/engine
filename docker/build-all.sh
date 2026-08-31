@@ -332,6 +332,31 @@ copy_shared_libs() {
 # a reason to sink the whole engine build. A plugin that fails is named in the
 # summary and simply absent from the artifact. Silence would be the bug: an empty
 # `plugins/` looked exactly like a successful build for months.
+#
+# **Except for a plugin that depends on nothing.** Best-effort was the right call
+# for the reason above and the wrong one for everything else: it is scoped to
+# third-party code that can fail to cross-compile, and a plugin whose only
+# dependency is `renzora_plugin` has no such excuse. When one of those stops
+# building it is our bug, on every platform at once.
+#
+# Losing that distinction cost 25 days. All 59 `no_std` plugins stopped linking
+# on macOS the moment they stopped linking `std` (which is what carries the
+# `#[link]` for libc), and this loop reported `8 built, 59 failed` on both macOS
+# slices of every nightly while the job stayed green and the artifact shipped
+# without a single post-process effect. `plugin_has_third_party_deps` is what
+# separates "a dependency did not cross-compile" from "we broke the plugins".
+plugin_has_third_party_deps() {
+    awk '
+        /^\[dependencies\]/ { deps = 1; next }
+        /^\[/               { deps = 0 }
+        deps && /^[A-Za-z0-9_-]+[[:space:]]*=/ {
+            split($0, f, /[[:space:]]*=/)
+            if (f[1] != "renzora_plugin") { found = 1 }
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$1"
+}
+
 build_plugins() {
     local RUST_TARGET="$1" PLATFORM="$2" EXT="$3"
     [ -d plugins ] || return 0
@@ -343,7 +368,7 @@ build_plugins() {
     fi
 
     echo "=== Building C-ABI plugins for $PLATFORM ==="
-    local dir name log built=0 failed=()
+    local dir name log built=0 failed=() fatal=()
     for dir in plugins/*/; do
         [ -f "$dir/Cargo.toml" ] || continue
         name=$(basename "$dir")
@@ -371,6 +396,9 @@ build_plugins() {
             # person to reproduce a 67-plugin build by hand.
             echo "WARN: plugin '$name' failed to build for $PLATFORM:"
             tail -15 "$log" | sed 's/^/    /'
+            if ! plugin_has_third_party_deps "$dir/Cargo.toml"; then
+                fatal+=("$name")
+            fi
         fi
         rm -f "$log"
     done
@@ -396,6 +424,13 @@ build_plugins() {
     echo "=== $PLATFORM plugins: $built built, ${#failed[@]} failed, $staged staged ==="
     if [ ${#failed[@]} -gt 0 ]; then
         echo "    not shipped: ${failed[*]}"
+    fi
+    # Only the dependency-free ones sink the build; a third-party dependency that
+    # will not cross-compile is still a warning, which is what best-effort was for.
+    if [ ${#fatal[@]} -gt 0 ]; then
+        echo "ERROR: plugins with no third-party dependencies failed to build for $PLATFORM: ${fatal[*]}"
+        echo "       These build everywhere or nowhere — treat this as a broken plugin API, not a toolchain gap."
+        return 1
     fi
     return 0
 }
@@ -694,7 +729,7 @@ build_one() {
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            build_plugins native "$LINUX_PLATFORM" "so"
+            build_plugins native "$LINUX_PLATFORM" "so" || return 1
             build_updater native "$LINUX_PLATFORM" ""
             compress_binaries "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
@@ -702,26 +737,26 @@ build_one() {
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so"
+            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
             build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" ""
             compress_binaries "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll"
+            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll" || return 1
             build_updater x86_64-pc-windows-msvc "windows-x64" ".exe"
             compress_binaries "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
-            build_plugins x86_64-apple-darwin "macos-x64" "dylib"
+            build_plugins x86_64-apple-darwin "macos-x64" "dylib" || return 1
             build_updater x86_64-apple-darwin "macos-x64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
-            build_plugins aarch64-apple-darwin "macos-arm64" "dylib"
+            build_plugins aarch64-apple-darwin "macos-arm64" "dylib" || return 1
             build_updater aarch64-apple-darwin "macos-arm64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-arm64" ""

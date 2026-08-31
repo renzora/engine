@@ -166,6 +166,72 @@ jobs:
       - name: Build the update sidecar
         run: cd tools/updater && cargo build --profile dist
 
+  # The same plugins again, on a real Mac, because the job above cannot see the
+  # class of bug that only macOS reports.
+  #
+  # Every other platform resolves a shared library by NAME and tolerates a hole
+  # until load time. `ld` lets a `.so` leave a symbol undefined and hands it to
+  # the loader; the PE import table names a bare DLL. macOS does neither: `ld64`
+  # resolves a dylib up front and dyld keys images by the path a load command
+  # resolves to. So a plugin can link clean on Linux and Windows and be
+  # structurally impossible on macOS, and nothing in an all-Linux gate is capable
+  # of noticing.
+  #
+  # That is not hypothetical. A `no_std` plugin links no libc — `std` carries the
+  # `#[link]` for it — so all 59 of them failed to link the moment they stopped
+  # linking `std`, on macOS only, for 25 days. Linux was fine (the loader found
+  # `malloc` in the host), CI was entirely Linux, and the cross-macOS lane
+  # reports a failed plugin as a warning, so the build stayed green while the
+  # artifact shipped 8 plugins out of 67.
+  #
+  # `cargo build`, not `cargo test`: a test target links a std harness and would
+  # go on passing while the shipped cdylib could not be produced. `--profile
+  # dist` for the same reason — it is the profile that sets `panic = "abort"`,
+  # without which a `no_std` plugin does not build at all.
+  plugins-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-plugins-macos
+          workspaces: plugins -> target
+
+      # rustup reads `rust-toolchain.toml`, so the runner installs the same
+      # 1.95.0 the container pins rather than whatever it shipped with.
+      - name: Install pinned toolchain
+        run: |
+          rustup show
+          rustc --version --verbose
+
+      - name: Link every standalone plugin
+        run: |
+          failed=""
+          for manifest in plugins/*/Cargo.toml; do
+            dir=$(dirname "$manifest")
+            # Native plugins are skipped here for the reason the Linux job spells
+            # out: cargo would resolve them a second Bevy from crates.io. They
+            # are covered on macOS by the nightly, which builds them against the
+            # staged SDK and then audits what they linked against.
+            if grep -q 'crate-type.*"dylib"' "$manifest"; then
+              continue
+            fi
+            echo "::group::$dir"
+            if ! (cd "$dir" && cargo build --profile dist); then
+              failed="$failed $dir"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::plugins failed to link on macOS:$failed"
+            exit 1
+          fi
+          echo "every plugin linked on macOS"
+
   # Tests that need a real graphics adapter — render-graph nodes, pipeline
   # specialization, materials, post-process passes.
   #

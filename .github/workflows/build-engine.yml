@@ -435,6 +435,48 @@ jobs:
         shell: bash
         run: cargo renzora dist --bundle
 
+      # The one check that needs a staged macOS tree, which is why it lives here
+      # and not in test.yml: a native plugin is compiled against the SDK *after*
+      # the engine is built, so nothing cheaper than a full build can produce one
+      # to look at.
+      #
+      # What it catches: dyld keys images by the path a load command resolves to,
+      # unlike `ld.so` (SONAME) and Windows (module name). The SDK stages the
+      # shared dylibs as hardlinks carrying the build tree's absolute install
+      # name, so a plugin that links them asks for `/…/target/dist/deps/…` while
+      # the host asks for `@rpath/…` beside the executable — two paths, two
+      # images, and two of every process-global static in 118 MB of Bevy. The
+      # plugin then gets the half nobody initialised, which surfaced as
+      # `IoTaskPool has not been initialized` from inside `Plugin::finish`.
+      #
+      # `rustc::fixup_install_names` rewrites those to `@rpath` after each link.
+      # This asserts it actually ran, on the real artifact, rather than trusting
+      # that both build paths remembered to call it. An absolute dependency
+      # outside `/usr/lib` and `/System` is wrong here whatever produced it — it
+      # names a directory on the machine that did the build.
+      - name: Audit plugin install names
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          out=dist/${{ matrix.dist_dir }}
+          bad=""
+          while IFS= read -r lib; do
+            deps=$(otool -L "$lib" | tail -n +3 \
+                   | awk '{print $1}' \
+                   | grep '^/' | grep -v '^/usr/lib' | grep -v '^/System' || true)
+            if [ -n "$deps" ]; then
+              echo "::group::$lib"
+              echo "$deps"
+              echo "::endgroup::"
+              bad="$bad $lib"
+            fi
+          done < <(find "$out/plugins" -name '*.dylib')
+          if [ -n "$bad" ]; then
+            echo "::error::plugins link absolute build-tree paths:$bad"
+            exit 1
+          fi
+          echo "every staged plugin resolves its dependencies through @rpath"
+
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
       # SDK's proc macros are artifacts of the machine that compiled them and a
