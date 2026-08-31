@@ -185,6 +185,114 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
     );
 }
 
+/// Start of the whitespace separating an attribute from what precedes it.
+///
+/// Unlike [`line_lead_start`] this also eats a newline that is *followed* by
+/// indentation, because that is how the inspector writes a new attribute — on
+/// its own line. Removing one without its line leaves a blank one behind; on an
+/// inline attribute it just takes the separating space.
+fn attr_lead_start(source: &[u8], at: usize) -> usize {
+    let mut i = at.min(source.len());
+    while i > 0 && matches!(source[i - 1], b' ' | b'\t' | b'\n' | b'\r') {
+        i -= 1;
+    }
+    // Keep one separator: an attribute removed from the middle of a tag must
+    // not weld its neighbours together.
+    if i < at {
+        i + 1
+    } else {
+        at
+    }
+}
+
+/// Delete an attribute from a node's open tag.
+///
+/// The missing half of [`write_attr_to_markup`]. Removing a UI component took
+/// the Bevy component off the entity and left `background="#141A24"` in the
+/// file, so the next rebuild — which any drag, insert or delete triggers —
+/// brought it straight back. Same shape as deleting a node and leaving the
+/// element behind.
+///
+/// A no-op if the node never had the attribute, so a caller can remove
+/// unconditionally without checking first.
+pub fn remove_attr_from_markup(world: &mut World, entity: Entity, attr_ident: &str) {
+    let Some(source_ref) = world.get::<MarkupSource>(entity) else {
+        return;
+    };
+    let handle = source_ref.template_handle.clone();
+    let path: Vec<u32> = source_ref.node_path.clone();
+
+    let Some(asset_path) = world
+        .resource::<AssetServer>()
+        .get_path(&handle)
+        .map(|p| p.to_string())
+    else {
+        return;
+    };
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|cp| cp.path.clone());
+
+    let Some((before_bytes, after_bytes)) = ({
+        let mut templates = world.resource_mut::<Assets<HtmlTemplate>>();
+        let Some(mut template) = templates.get_mut(&handle) else {
+            return;
+        };
+        let template = &mut *template;
+        let before = template.source.clone();
+
+        let Some(node) = walk_node_mut(&mut template.root, &path) else {
+            return;
+        };
+        let Some(idx) = node
+            .attr_spans
+            .iter()
+            .position(|a| a.key_ident == attr_ident)
+        else {
+            return;
+        };
+        let (key_start, value_end) = {
+            let a = &node.attr_spans[idx];
+            (a.key.start, a.value.end)
+        };
+        let span = Span {
+            start: key_start,
+            end: value_end,
+        };
+        // `key.start` .. past the closing quote. `value` is the *unquoted*
+        // range, so the quote sits at `value.end`.
+        let end = (span.end as usize + 1).min(template.source.len());
+        // Take the whitespace that separated it from the previous attribute
+        // too, or removing one leaves a double space — and an attribute the
+        // inspector itself wrote sits on its own line, which would leave a
+        // blank one.
+        let start = attr_lead_start(&template.source, span.start as usize);
+        if start >= end {
+            return;
+        }
+        let delta = -((end - start) as i32);
+        template.source.drain(start..end);
+        node.attr_spans.remove(idx);
+
+        for root in template.root.iter_mut() {
+            shift_spans_after(root, end as u32, delta);
+        }
+        Some((before, template.source.clone()))
+    }) else {
+        return;
+    };
+    commit_with(
+        world,
+        &asset_path,
+        project_root,
+        before_bytes,
+        after_bytes,
+        "Remove UI attribute",
+        // The caller already took the component off the live entity.
+        false,
+    );
+}
+
 /// Rewrite a node's text content — the bytes between `<text>` and `</text>`.
 ///
 /// The counterpart to [`write_attr_to_markup`] for the one part of a node that

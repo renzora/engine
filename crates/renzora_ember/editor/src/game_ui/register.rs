@@ -203,6 +203,13 @@ pub fn register_game_ui_editor(app: &mut App) {
     // Add Component overlay and removable via the trash icon. A text
     // label that doesn't want a border can drop UiStroke; a button
     // that wants a shadow can add UiBoxShadow. (Phase B.)
+    //
+    // Every `add_fn` and `remove_fn` below writes the `.html` as well as the
+    // entity. A component is only half of what these represent: the other half
+    // is the attribute the loader built it from, and the template is rebuilt
+    // from that file on the next hot-reload. Touching only the entity meant a
+    // removed component came back and an added one vanished, at whatever moment
+    // the next drag or insert happened to trigger a rebuild.
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_fill",
         display_name: "UI Fill",
@@ -213,9 +220,11 @@ pub fn register_game_ui_editor(app: &mut App) {
             world
                 .entity_mut(entity)
                 .insert(components::UiFill::Solid(Color::srgba(0.2, 0.2, 0.2, 1.0)));
+            set_ui_attrs(world, entity, &[("background", "#333333")]);
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<components::UiFill>();
+            drop_ui_attrs(world, entity, &["background", "gradient"]);
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -232,9 +241,15 @@ pub fn register_game_ui_editor(app: &mut App) {
                 Color::srgba(0.4, 0.4, 0.4, 1.0),
                 1.0,
             ));
+            set_ui_attrs(
+                world,
+                entity,
+                &[("border", "1px"), ("border_color", "#666666")],
+            );
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<components::UiStroke>();
+            drop_ui_attrs(world, entity, &["border", "border_color"]);
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -250,11 +265,13 @@ pub fn register_game_ui_editor(app: &mut App) {
             world
                 .entity_mut(entity)
                 .insert(components::UiBorderRadius::default());
+            set_ui_attrs(world, entity, &[("border_radius", "0")]);
         }),
         remove_fn: Some(|world, entity| {
             world
                 .entity_mut(entity)
                 .remove::<components::UiBorderRadius>();
+            drop_ui_attrs(world, entity, &["border_radius"]);
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -270,9 +287,11 @@ pub fn register_game_ui_editor(app: &mut App) {
             world
                 .entity_mut(entity)
                 .insert(components::UiTextStyle::default());
+            set_ui_attrs(world, entity, &[("font_size", "14")]);
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<components::UiTextStyle>();
+            drop_ui_attrs(world, entity, &["font_size", "font_color", "font"]);
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -288,9 +307,11 @@ pub fn register_game_ui_editor(app: &mut App) {
             world
                 .entity_mut(entity)
                 .insert(components::UiPadding::default());
+            set_ui_attrs(world, entity, &[("padding", "0")]);
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<components::UiPadding>();
+            drop_ui_attrs(world, entity, &["padding"]);
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -866,6 +887,26 @@ fn debug_ui_tree(
 /// Module-level (rather than nested in `register_ui_presets`) because three
 /// things create a canvas now: the Add Entity preset, the "New UI Canvas"
 /// starter, and the UI editor's own empty state.
+/// Write attributes onto the markup a node came from, alongside the component
+/// the inspector just inserted.
+///
+/// A no-op on anything without `MarkupSource`, so a widget spawned outside a
+/// template is unaffected.
+fn set_ui_attrs(world: &mut World, entity: Entity, attrs: &[(&str, &str)]) {
+    for (key, value) in attrs {
+        renzora_ember::markup::writeback::write_attr_to_markup(world, entity, key, value);
+    }
+}
+
+/// Delete attributes from the markup, alongside the component the inspector just
+/// removed. Removing an attribute a node never had is a no-op, so a component
+/// that maps to several can list them all without checking which are present.
+fn drop_ui_attrs(world: &mut World, entity: Entity, attrs: &[&str]) {
+    for key in attrs {
+        renzora_ember::markup::writeback::remove_attr_from_markup(world, entity, key);
+    }
+}
+
 pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
     let entity = world
         .spawn((
