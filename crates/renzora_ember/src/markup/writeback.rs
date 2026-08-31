@@ -456,16 +456,32 @@ pub fn move_node_in_markup(
         em.insert_children(live_index, &[entity]);
     }
 
-    // Registering the handle is what lets `hot_reload_templates` act on the
-    // `Modified` this write is about to produce — every other writeback
-    // deliberately does not, because it has already updated the live entity.
+    request_rebuild(world, &asset_path);
+}
+
+/// Re-read a template from disk and let `hot_reload_templates` act on it.
+///
+/// The registration has to come first: the markup plugin rebuilds only for
+/// `Modified` events whose asset id is in the request set, so that an inspector
+/// attribute writeback — which has already patched the live entity — does not
+/// despawn the node the user is mid-edit on.
+///
+/// The reload is the part that was missing. Marking the asset modified with
+/// `Assets::get_mut` fires a `Modified` too, but for the *stale in-memory* AST:
+/// the rebuild then re-ran from the old parse (so nothing on screen changed) and
+/// consumed the request, so the file watcher's later, genuine `Modified` was
+/// ignored. The write landed in the file and the editor never showed it.
+///
+/// `reload` re-reads and re-parses, so the event that arrives carries the bytes
+/// we just wrote.
+fn request_rebuild(world: &mut World, asset_path: &str) {
+    let server = world.resource::<AssetServer>().clone();
     if let Some(mut requests) =
         world.get_resource_mut::<crate::markup::template::TemplateReloadRequests>()
     {
-        let handle_id = handle.id();
-        requests.0.insert(handle_id);
+        requests.request(&server, asset_path);
     }
-    world.resource_mut::<Assets<HtmlTemplate>>().get_mut(&handle);
+    server.reload(asset_path.to_string());
 }
 
 /// Insert `markup` into the template as a child of `parent`, ahead of `before`
@@ -567,12 +583,7 @@ pub fn insert_node_in_markup(
         return;
     }
     info!("ui insert: added to {asset_path}");
-    if let Some(mut requests) =
-        world.get_resource_mut::<crate::markup::template::TemplateReloadRequests>()
-    {
-        requests.0.insert(handle.id());
-    }
-    world.resource_mut::<Assets<HtmlTemplate>>().get_mut(&handle);
+    request_rebuild(world, &asset_path);
 }
 
 #[cfg(test)]
