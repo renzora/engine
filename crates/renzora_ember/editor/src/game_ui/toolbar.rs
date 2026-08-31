@@ -17,7 +17,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     arrange_row_items, icon_popup_trigger, popup_anchor, popup_panel, settings_check_row,
     settings_section, settings_separator, toggle_switch, toolbar_bar, toolbar_group,
-    toolbar_icon_button, toolbar_pill, HoverTooltip,
+    toolbar_icon_button, toolbar_pill, toolbar_separator, HoverTooltip,
 };
 
 use crate::game_ui::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
@@ -165,12 +165,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .add_children(&[grid, snap.root, overlays]);
     kids.push(view_group);
 
-    // Zoom cluster, with the canvas resolution read out beside it.
-    //
-    // Left-aligned in the flow rather than pushed right by a spacer. A spacer
-    // fights drag-to-arrange — a group you drag past it lands on the far side
-    // and stays there — and the viewport's strip is fully left-aligned for the
-    // same reason.
+    // Zoom cluster, with the canvas resolution read out beside it. Pinned right
+    // with the backdrop switch rather than placed in the arrange row — see the
+    // right-hand group below for why those two live outside it.
     let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { margin: UiRect::horizontal(Val::Px(4.0)), ..default() })).id();
     bind_text(commands, res, |w| {
         w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
@@ -187,23 +184,26 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(zoom_group)
         .add_children(&[res, zoom_out, zoom_lbl, zoom_in]);
-    kids.push(zoom_group);
 
     // Each group gets a grip and a saved position, exactly like the viewport's.
     // The grips double as the dividers between groups, which is why there are no
     // explicit separators left in here.
-    let keys = ["ui-align", "ui-view", "ui-zoom"];
+    let keys = ["ui-align", "ui-view"];
     let entries: Vec<(Entity, &str)> = kids.iter().copied().zip(keys).collect();
     arrange_row_items(commands, fonts, bar, &entries);
 
-    // The scene backdrop, pinned to the right edge rather than placed in the
-    // arrange row.
+    // Zoom and the scene backdrop, pinned to the right edge rather than placed
+    // in the arrange row.
     //
-    // It is not one of the editing tools — it says what is *behind* the canvas,
-    // which is a property of the view, not of the UI you are building. And it is
-    // absolutely positioned rather than pushed right by a spacer because a
-    // spacer fights drag-to-arrange: a group dragged past it lands on the far
-    // side and stays there.
+    // Neither is an editing tool. Zoom changes how you are *looking* at the
+    // canvas and the backdrop says what is behind it — both properties of the
+    // view, not of the UI being built, so they belong away from the tools that
+    // change the template.
+    //
+    // Absolutely positioned rather than pushed right by a spacer: a spacer
+    // fights drag-to-arrange, since a group dragged past it lands on the far
+    // side and stays there. The cost is that these two do not rearrange, which
+    // is the right trade for controls whose place is the point.
     let icon = icon_text(commands, &fonts.phosphor, "video-camera", text_muted(), 14.0);
     commands.entity(icon).insert(FocusPolicy::Pass);
     let backdrop = toggle_switch(commands, false);
@@ -228,19 +228,22 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(6.0),
-                top: Val::Px(4.0),
+                top: Val::Px(2.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(6.0),
                 ..default()
             },
             FocusPolicy::Pass,
-            Name::new("ui-backdrop-group"),
+            Name::new("ui-view-controls"),
         ))
         .id();
+    // Backdrop stays outermost: zoom is used constantly and the backdrop rarely,
+    // so the one you reach for often should not be the one at the very edge.
+    let sep = toolbar_separator(commands);
     commands
         .entity(backdrop_group)
-        .add_children(&[icon, backdrop]);
+        .add_children(&[zoom_group, sep, icon, backdrop]);
     commands.entity(bar).add_child(backdrop_group);
     bar
 }
