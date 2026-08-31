@@ -75,22 +75,36 @@ pub(crate) fn snapshot_widgets(
     mut state: ResMut<NativeCanvasState>,
     ui_scale: Option<Res<UiScale>>,
     widgets: Query<(Entity, &UiWidget, &ComputedNode, &UiGlobalTransform, &Node, Option<&ChildOf>)>,
+    canvases: Query<(), With<renzora_ember::game_ui::UiCanvas>>,
     parents: Query<&ChildOf>,
 ) {
     state.widgets.clear();
-    let Some(active) = state.active_canvas else { return };
+    if state.active_canvas.is_none() {
+        return;
+    }
     let scale = ui_scale.map(|s| s.0).unwrap_or(1.0).max(0.001);
     for (entity, widget, cn, ugt, node, child_of) in &widgets {
-        // The canvas root is the surface, not something on it. It gets tagged
-        // `UiWidget` like every other node once its template builds, and
-        // `is_descendant_of` counts an entity as its own descendant, so without
-        // this it joined the hit-test — a click on empty canvas grabbed the root
-        // and a drag rewrote its `Node` to a zero-size box parked off-screen,
-        // which renders as a canvas that is simply blank. There is nothing to
-        // drag it *within*, so it is excluded rather than merely locked.
-        if entity == active || !is_descendant_of(&parents, entity, active) {
+        // Every canvas, not just the active one.
+        //
+        // Scoping this to the active canvas made a second template render but
+        // be untouchable: it covers the first, so clicks land on it, and it was
+        // not in the snapshot to be hit — the click found nothing and the canvas
+        // below could not be reached through it either. Collecting all of them
+        // means a click lands on whatever is actually under the cursor, and
+        // `sync_active_canvas` follows the resulting selection.
+        //
+        // The canvas root itself stays out. It gets tagged `UiWidget` like every
+        // other node once its template builds, and a click on empty canvas would
+        // otherwise grab the root — a drag then rewrote its `Node` to a
+        // zero-size box parked off-screen, which renders as a canvas that is
+        // simply blank. There is nothing to drag it *within*, so it is excluded
+        // rather than merely locked.
+        if canvases.contains(entity) {
             continue;
         }
+        let Some(canvas) = canvas_of(&parents, &canvases, entity) else {
+            continue;
+        };
         // Angle comes from the *global* transform, not the node's own
         // `UiTransform`. Rotation is inherited, so a `<text>` inside a rotated
         // `<button>` has no local rotation of its own — reading the local one
@@ -112,7 +126,10 @@ pub(crate) fn snapshot_widgets(
             rotation: angle,
             locked: widget.locked,
             parent: child_of.map(|c| c.parent()),
-            depth: depth_below(&parents, entity, active),
+            // Depth below *its own* canvas, so nodes from two canvases are
+            // ranked on the same scale and the deepest-wins hit-test still
+            // means "the innermost thing under the cursor".
+            depth: depth_below(&parents, entity, canvas),
             in_flow: node.position_type == PositionType::Relative,
             row: matches!(
                 node.flex_direction,
@@ -120,6 +137,22 @@ pub(crate) fn snapshot_widgets(
             ),
         });
     }
+}
+
+/// The `UiCanvas` an entity sits under, or `None` if it is not in one.
+pub(crate) fn canvas_of(
+    parents: &Query<&ChildOf>,
+    canvases: &Query<(), With<renzora_ember::game_ui::UiCanvas>>,
+    mut e: Entity,
+) -> Option<Entity> {
+    for _ in 0..256 {
+        let parent = parents.get(e).ok()?.parent();
+        if canvases.contains(parent) {
+            return Some(parent);
+        }
+        e = parent;
+    }
+    None
 }
 
 /// Walk `ChildOf` upward from `e` looking for `ancestor`.
