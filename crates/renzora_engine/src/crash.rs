@@ -181,21 +181,33 @@ fn chrono_lite_timestamp() -> String {
     let minutes = (remaining % 3600) / 60;
     let seconds = remaining % 60;
 
-    let years_since_1970 = days / 365;
-    let year = 1970 + years_since_1970;
-    let day_of_year = days % 365;
-    let month = (day_of_year / 30) + 1;
-    let day = (day_of_year % 30) + 1;
+    let (year, month, day) = civil_from_days(days as i64);
 
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
-        year,
-        month.min(12),
-        day.min(31),
-        hours,
-        minutes,
-        seconds
+        year, month, day, hours, minutes, seconds
     )
+}
+
+/// Days-since-epoch → (year, month, day), Gregorian.
+///
+/// The previous version approximated with 365-day years and 30-day months,
+/// which by 2026 put crash reports ~17 days in the future (14 leap days since
+/// 1970 plus month-length drift) — bad for a file whose whole job is telling
+/// you *when* something broke. This is Howard Hinnant's exact
+/// `civil_from_days` algorithm, still dependency-free for the same reason the
+/// caller is: the crash reporter must not pull in anything that can fail.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11], March-based
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 /// Save the crash report to a file.
@@ -379,7 +391,19 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_paths;
+    use super::{civil_from_days, sanitize_paths};
+
+    #[test]
+    fn civil_dates_are_exact() {
+        // Day numbers cross-checked against Python's datetime. The leap-year
+        // cases are the ones the old 365/30 approximation got wrong.
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(10956), (1999, 12, 31));
+        assert_eq!(civil_from_days(11016), (2000, 2, 29)); // 400-year leap rule
+        assert_eq!(civil_from_days(19782), (2024, 2, 29));
+        assert_eq!(civil_from_days(20695), (2026, 8, 30));
+        assert_eq!(civil_from_days(20818), (2026, 12, 31));
+    }
 
     #[test]
     fn scrubs_home_dirs() {
