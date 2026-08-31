@@ -24,10 +24,15 @@ pub(crate) struct WidgetGeom {
     pub rotation: f32,
     pub locked: bool,
     pub parent: Option<Entity>,
-    /// Steps from the active canvas: `0` is the template root, `1` its
-    /// children, and so on. The hit-test picks the deepest containing node —
-    /// see [`topmost_at`].
-    pub depth: u32,
+    /// Bevy's own back-to-front paint order for this node.
+    ///
+    /// The hit-test ranks on this rather than on tree depth. Depth answers
+    /// "how nested is it", which is only the same as "what is in front" inside
+    /// one tree — across two canvases a deeply nested node on the *back* canvas
+    /// outranked a shallow one on the front, so hovering the panel highlighted a
+    /// button hidden behind it. This is the order the renderer actually draws
+    /// in, so it settles both cases with one number.
+    pub stack: u32,
     /// Whether this node is laid out by its parent's flex flow, rather than
     /// pinned with `position: absolute`.
     ///
@@ -74,7 +79,15 @@ pub(crate) struct DropSlots(pub Vec<(Vec2, Vec2)>);
 pub(crate) fn snapshot_widgets(
     mut state: ResMut<NativeCanvasState>,
     ui_scale: Option<Res<UiScale>>,
-    widgets: Query<(Entity, &UiWidget, &ComputedNode, &UiGlobalTransform, &Node, Option<&ChildOf>)>,
+    widgets: Query<(
+        Entity,
+        &UiWidget,
+        &ComputedNode,
+        &UiGlobalTransform,
+        &Node,
+        &bevy::ui::ComputedStackIndex,
+        Option<&ChildOf>,
+    )>,
     canvases: Query<(), With<renzora_ember::game_ui::UiCanvas>>,
     parents: Query<&ChildOf>,
 ) {
@@ -83,7 +96,7 @@ pub(crate) fn snapshot_widgets(
         return;
     }
     let scale = ui_scale.map(|s| s.0).unwrap_or(1.0).max(0.001);
-    for (entity, widget, cn, ugt, node, child_of) in &widgets {
+    for (entity, widget, cn, ugt, node, stack, child_of) in &widgets {
         // Every canvas, not just the active one.
         //
         // Scoping this to the active canvas made a second template render but
@@ -102,9 +115,9 @@ pub(crate) fn snapshot_widgets(
         if canvases.contains(entity) {
             continue;
         }
-        let Some(canvas) = canvas_of(&parents, &canvases, entity) else {
+        if canvas_of(&parents, &canvases, entity).is_none() {
             continue;
-        };
+        }
         // Angle comes from the *global* transform, not the node's own
         // `UiTransform`. Rotation is inherited, so a `<text>` inside a rotated
         // `<button>` has no local rotation of its own — reading the local one
@@ -126,10 +139,7 @@ pub(crate) fn snapshot_widgets(
             rotation: angle,
             locked: widget.locked,
             parent: child_of.map(|c| c.parent()),
-            // Depth below *its own* canvas, so nodes from two canvases are
-            // ranked on the same scale and the deepest-wins hit-test still
-            // means "the innermost thing under the cursor".
-            depth: depth_below(&parents, entity, canvas),
+            stack: stack.0,
             in_flow: node.position_type == PositionType::Relative,
             row: matches!(
                 node.flex_direction,
@@ -235,7 +245,7 @@ pub(crate) fn drop_target_with_slots(
         .filter(|(_, g)| {
             contains(g) && g.entity != dragged && !is_descendant_of(parents, g.entity, dragged)
         })
-        .max_by_key(|(i, g)| (g.depth, *i))
+        .max_by_key(|(i, g)| (g.stack, *i))
         .map(|(_, g)| g)?;
 
     // A node with no children of its own cannot receive one, so aim at its
@@ -342,36 +352,21 @@ pub(crate) fn drop_target_with_slots(
     ))
 }
 
-/// How many `ChildOf` steps `e` sits below `ancestor`. Returns 0 for the
-/// ancestor itself, and for anything that never reaches it (the caller has
-/// already filtered those out with [`is_descendant_of`]).
-fn depth_below(parents: &Query<&ChildOf>, mut e: Entity, ancestor: Entity) -> u32 {
-    for step in 0..256 {
-        if e == ancestor {
-            return step;
-        }
-        match parents.get(e) {
-            Ok(c) => e = c.parent(),
-            Err(_) => return step,
-        }
-    }
-    256
-}
-
-/// The deepest non-locked widget whose AABB contains the design-space point.
+/// The frontmost non-locked widget whose AABB contains the design-space point.
 ///
-/// Depth decides it, not position in the array. This used to search the list in
-/// reverse on the assumption that later entries paint on top, but the list comes
-/// out of a Bevy query, so its order is by *archetype* — arbitrary with respect
-/// to the tree. The template root is a 100% × 100% node that contains every
-/// point, so whenever it happened to sort after a `<button>`, clicking that
-/// button selected the whole canvas instead. `<text>` and `<icon>` landed in
-/// different archetypes and kept working, which is what made it look like
-/// buttons specifically were unclickable.
+/// Ranked by [`ComputedStackIndex`](bevy::ui::ComputedStackIndex) — Bevy's own
+/// back-to-front paint order — so the hit is whatever is visibly on top.
 ///
-/// Deepest-wins is also what the markup loader already promises: clicking a
-/// `<text>` inside a `<panel>` should land on the text. Ties (siblings that
-/// overlap, both at the same depth) fall back to the later entry.
+/// Two earlier answers were both wrong. Searching the list in reverse assumed
+/// later entries paint on top, but the list comes out of a query ordered by
+/// *archetype*, which is arbitrary. Ranking by tree depth fixed that within one
+/// template and broke across two: a deeply nested node on the *back* canvas
+/// outranked a shallow one in front, so hovering a panel highlighted a button
+/// hidden behind it.
+///
+/// Paint order settles both, and it also gives the loader's promise for free —
+/// a child draws after its parent, so clicking a `<text>` inside a `<panel>`
+/// still lands on the text. Ties fall back to the later entry.
 pub(crate) fn topmost_at(widgets: &[WidgetGeom], px: f32, py: f32) -> Option<Entity> {
     widgets
         .iter()
@@ -379,6 +374,6 @@ pub(crate) fn topmost_at(widgets: &[WidgetGeom], px: f32, py: f32) -> Option<Ent
         .filter(|(_, g)| {
             !g.locked && px >= g.x && px <= g.x + g.width && py >= g.y && py <= g.y + g.height
         })
-        .max_by_key(|(i, g)| (g.depth, *i))
+        .max_by_key(|(i, g)| (g.stack, *i))
         .map(|(_, g)| g.entity)
 }
