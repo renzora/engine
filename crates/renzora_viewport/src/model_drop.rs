@@ -32,7 +32,6 @@ use std::path::PathBuf;
 
 use bevy::asset::LoadState;
 use bevy::camera::primitives::Aabb;
-use bevy::gltf::GltfMaterialName;
 use bevy::pbr::MeshMaterial3d;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
@@ -207,29 +206,13 @@ const PLACEHOLDER_SIZE: f32 = 1.0;
 #[derive(Component)]
 pub struct AnimationDiscoveryDone;
 
-/// Tracks a freshly-spawned GLTF model that still needs its mesh entities
-/// bound to `MaterialRef` components. Held on the `ImportedRoot` entity. The
-/// `Handle<Gltf>` keeps the asset alive long enough to read its
-/// `named_materials` map, which is how we recover the original material name
-/// for each `MeshMaterial3d<StandardMaterial>` handle the scene spawner
-/// attached.
-///
-/// The marker lives on the parent for the entire life of the model — the
-/// binder is idempotent (the query filter excludes already-bound meshes),
-/// so the descendant walk is free once everything has been bound, and any
-/// late-spawned mesh from Bevy's incremental scene spawner gets caught the
-/// frame it appears.
-#[derive(Component)]
-pub struct PendingMaterialBinding {
-    pub gltf_handle: Handle<Gltf>,
-}
-
-/// Marker: this mesh entity has already been processed by the material
-/// binder (it either got a `MaterialRef` or it has no extractable material).
-/// Prevents repeat work on subsequent frames while the binding is still
-/// pending for sibling meshes.
-#[derive(Component)]
-pub struct MaterialBindingDone;
+/// The material-binding markers and the binder itself now live in
+/// `renzora_engine` so a shipped game runs them too — see that module for why
+/// an editor-only binder made spec-glossiness models render as white metal in
+/// the runtime. Re-exported so this crate's existing paths keep working.
+pub use renzora_engine::material_binding::{
+    bind_material_refs, MaterialBindingDone, PendingMaterialBinding,
+};
 
 /// Commit a model drop at the given viewport-space pointer. Either promotes the
 /// live drag-preview entity in place, or for out-of-project drags with no preview
@@ -1307,96 +1290,6 @@ pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> 
 
 // ── Material binding ───────────────────────────────────────────────────────
 
-/// System: walks each `PendingMaterialBinding` model, finds its mesh
-/// descendants, and inserts a `MaterialRef` pointing at the per-material
-/// `.material` file the import pipeline wrote. The existing
-/// `MaterialResolverPlugin` then loads each file and swaps the GLB's
-/// `StandardMaterial` for the editable `GraphMaterial`.
-///
-/// Runs every frame for as long as the marker exists. Bevy's scene spawner
-/// populates large GLBs incrementally — Bistro / Audi can take dozens of
-/// frames to fully spawn, with new mesh entities appearing throughout.
-/// The earlier "found one mesh → done" logic was leaving most of those
-/// meshes unbinded, so we just keep going. The work is idempotent: the
-/// query filter excludes meshes that already carry `MaterialRef` /
-/// `MaterialBindingDone`, so a fully-bound model costs one descendant walk
-/// per frame and zero binds. The marker disappears when the parent is
-/// despawned.
-pub fn bind_material_refs(
-    mut commands: Commands,
-    pending_query: Query<(Entity, &PendingMaterialBinding, &MeshInstanceData)>,
-    children_query: Query<&Children>,
-    // Bevy 0.19: glTF materials became a separate `GltfMaterial` asset, so the
-    // mesh's `StandardMaterial` AssetId no longer matches `gltf.materials` ids.
-    // Bevy instead tags each mesh entity with `GltfMaterialName` (the authored
-    // material name), which we match directly — more robust than the old
-    // by-id map. `MeshMaterial3d` is kept only to detect "has a material".
-    mesh_mat_query: Query<
-        (&MeshMaterial3d<StandardMaterial>, Option<&GltfMaterialName>),
-        (
-            With<Mesh3d>,
-            Without<MaterialBindingDone>,
-            Without<renzora::MaterialRef>,
-        ),
-    >,
-    gltf_assets: Res<Assets<Gltf>>,
-) {
-    for (root_entity, pending, mesh_data) in pending_query.iter() {
-        if gltf_assets.get(&pending.gltf_handle).is_none() {
-            // GLB still loading. Wait — `PendingMaterialBinding` holds the
-            // handle so the asset is kept alive.
-            continue;
-        }
-
-        // Compute the materials directory relative to the project — the
-        // `.material` files live next to the GLB at `<model_dir>/materials/`.
-        // No `model_path` means there's nothing to bind to; the marker is
-        // useless on this entity, drop it.
-        let Some(model_path) = mesh_data.model_path.as_deref() else {
-            commands
-                .entity(root_entity)
-                .remove::<PendingMaterialBinding>();
-            continue;
-        };
-        let model_dir_rel = std::path::Path::new(model_path)
-            .parent()
-            .and_then(|p| p.to_str())
-            .map(|s| s.replace('\\', "/"))
-            .unwrap_or_default();
-        let materials_dir_rel = if model_dir_rel.is_empty() {
-            "materials".to_string()
-        } else {
-            format!("{}/materials", model_dir_rel)
-        };
-
-        // Walk descendants and bind any meshes that haven't been bound yet.
-        // The query filter ensures already-bound meshes are skipped; once
-        // every descendant has been processed this loop is effectively a
-        // no-op.
-        let mut stack: Vec<Entity> = vec![root_entity];
-        while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children_query.get(entity) {
-                stack.extend(kids.iter());
-            }
-            if let Ok((_mat, mat_name)) = mesh_mat_query.get(entity) {
-                if let Some(mat_name) = mat_name {
-                    // Bind to `<material name>.material` (the same name
-                    // `extract_glb_materials` used for the file).
-                    let safe = sanitize_material_name(&mat_name.0);
-                    let path = format!("{}/{}.material", materials_dir_rel, safe);
-                    commands
-                        .entity(entity)
-                        .insert((renzora::MaterialRef(path), MaterialBindingDone));
-                } else {
-                    // Mesh has a material but no authored GLTF name (unnamed
-                    // material). Mark done so we don't keep retrying it.
-                    commands.entity(entity).insert(MaterialBindingDone);
-                }
-            }
-        }
-    }
-}
-
 /// Observer: bring scene-loaded model instances onto the production
 /// material-binding path the moment Bevy finishes spawning the GLB
 /// hierarchy.
@@ -1418,6 +1311,12 @@ pub fn bind_material_refs(
 /// parent, skip if it already has `ImportedRoot` (drag-drop entities
 /// arrive with the marker pre-attached), and add the same trio of markers
 /// the drop handler does so the binder + flatten + resolver chain runs.
+///
+/// The material half of that walk is
+/// [`renzora_engine::material_binding::arm_material_binding`], shared with
+/// the game — a game has no flatten pass, but it needs its materials bound
+/// exactly as the editor does. This observer is the editor's registration;
+/// `RuntimePlugin` registers the material-only one when there's no editor.
 pub fn decorate_rehydrated_scene_on_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
@@ -1426,57 +1325,16 @@ pub fn decorate_rehydrated_scene_on_ready(
     mesh_instances: Query<&MeshInstanceData, Without<ImportedRoot>>,
 ) {
     let scene_root_entity = trigger.event().entity;
-    if scene_root_entity == Entity::PLACEHOLDER {
-        return;
-    }
-
-    // SceneRoot child → MeshInstanceData parent. If the SceneRoot bearer
-    // isn't a child (no ChildOf), this isn't a load-path scene — bail.
-    let Ok(child_of) = parents.get(scene_root_entity) else {
-        return;
-    };
-    let parent_entity = child_of.parent();
-
-    let Ok(mesh_instance) = mesh_instances.get(parent_entity) else {
-        return;
-    };
-
-    let Some(model_path) = mesh_instance.model_path.clone() else {
-        // No GLB to bind. Mark imported so the filter above keeps us out
-        // for any future SceneInstanceReady this entity might trigger.
-        commands.entity(parent_entity).try_insert(ImportedRoot);
-        return;
-    };
-
-    // Bevy hands back the same handle for a path we've already loaded;
-    // calling load again is just a refcount bump on the cached asset.
-    let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
-
-    commands
-        .entity(parent_entity)
-        .try_insert((ImportedRoot, PendingMaterialBinding { gltf_handle }));
-    commands
-        .entity(scene_root_entity)
-        .try_insert(PendingFlatten::default());
-}
-
-/// Sanitize a material name for use as a filename. Mirrors
-/// `renzora_shader::material::on_pbr_material_extracted` so binding paths
-/// agree with the writer.
-fn sanitize_material_name(name: &str) -> String {
-    let safe: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if safe.is_empty() {
-        "material".to_string()
-    } else {
-        safe
+    let armed = renzora_engine::material_binding::arm_material_binding(
+        scene_root_entity,
+        &mut commands,
+        &asset_server,
+        &parents,
+        &mesh_instances,
+    );
+    if armed.is_some() {
+        commands
+            .entity(scene_root_entity)
+            .try_insert(PendingFlatten::default());
     }
 }

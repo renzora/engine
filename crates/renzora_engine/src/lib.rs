@@ -15,6 +15,8 @@ pub mod crash;
 pub mod debug_log;
 #[cfg(feature = "render_3d")]
 pub mod graphics_quality;
+#[cfg(feature = "gltf")]
+pub mod material_binding;
 #[cfg(feature = "render_3d")]
 pub mod mesh_lod;
 pub mod named_entities;
@@ -584,6 +586,21 @@ impl Plugin for RuntimePlugin {
                 )
                     .run_if(not(resource_exists::<renzora::DedicatedServer>)),
             );
+
+            // Re-link spawned glTF meshes to the `.material` graphs the
+            // importer extracted. Editor-only until now, which meant a
+            // shipped game silently rendered the raw glTF material instead —
+            // invisible for a metal-rough model, and a scene of untextured
+            // white metal for a spec-glossiness one. See `material_binding`.
+            // The editor registers `renzora_viewport`'s equivalents, which
+            // additionally arm the hierarchy flatten pass.
+            #[cfg(feature = "gltf")]
+            app.add_observer(material_binding::bind_scene_models_on_ready)
+                .add_systems(
+                    Update,
+                    material_binding::bind_material_refs
+                        .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                );
         }
 
         // Distance LODs + texture tier streaming run in BOTH sessions — the

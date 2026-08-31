@@ -22,8 +22,11 @@ use std::collections::HashSet;
 
 /// Marker on the top-level entity of an imported model. The gizmo and
 /// animation tooling use this as the default "grab the whole thing" target.
-#[derive(Component, Debug, Clone, Copy)]
-pub struct ImportedRoot;
+///
+/// Defined in `renzora_engine` because the game needs it too — material
+/// binding is no longer editor-only. Re-exported here so the editor crates
+/// that grew up around `model_flatten::ImportedRoot` keep their import path.
+pub use renzora_engine::material_binding::ImportedRoot;
 
 /// Marker placed on a `SceneRoot` entity that still needs flattening once
 /// Bevy's scene spawner has populated its descendants. Removed by
