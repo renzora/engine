@@ -1070,13 +1070,20 @@ fn action_appearance(
             if m.can_redo { m.primary } else { m.muted },
             m.can_redo,
         ),
-        // Save is the one action whose enabled state means "you have work you
-        // could lose", so it gets amber rather than the neutral `primary` the
-        // other enabled buttons use — the unsaved tab is the thing to notice.
+        // Save is never disabled — only tinted.
+        //
+        // Amber when there is known unsaved work, muted otherwise, but always
+        // clickable. `can_save` tracks the editor's own dirty flag, and plenty
+        // of real edits do not reach it: a UI template edit writes an `.html`,
+        // a script writes a `.rs`, and neither marks the *scene* dirty. The
+        // button then looked broken — the user had visibly changed something
+        // and the control that saves was greyed out. Saving when nothing
+        // changed costs a file write; refusing to save when something did is
+        // the failure worth avoiding.
         HeaderAction::Save => (
             "floppy-disk",
             if m.can_save { m.warning } else { m.muted },
-            m.can_save,
+            true,
         ),
         HeaderAction::Maximize => (
             if this_maximized { "arrows-in" } else { "arrows-out" },

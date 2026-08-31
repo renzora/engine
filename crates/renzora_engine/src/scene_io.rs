@@ -1674,6 +1674,32 @@ pub fn spawn_scene_instance(
     parent: Option<Entity>,
     transform: Transform,
 ) -> Option<Entity> {
+    // Refuse a cycle here, not only at the drop handlers.
+    //
+    // Three call sites check `would_create_reference_cycle` before calling this
+    // — the hierarchy's context menu, the hierarchy drop and the viewport drop —
+    // and any fourth way in gets no check at all. That is how a scene ended up
+    // holding an instance of itself: it loaded twice on every open, duplicating
+    // every entity including the camera, and nothing crashed because the loader
+    // caught the *inner* recursion. A guard three callers have to remember is
+    // one a fourth will not.
+    let host_and_root = world
+        .get_resource::<CurrentProject>()
+        .map(|p| (p.main_scene_path(), p.path.clone()));
+    if let Some((host, root)) = host_and_root {
+        let cycles = world.resource_scope(|_w, mut cache: Mut<SceneReferenceCache>| {
+            would_create_reference_cycle(&mut cache, &root, &host, source_path)
+        });
+        if cycles {
+            warn!(
+                "[scene] refusing to instance {} into {} — it would form a reference cycle",
+                source_path.display(),
+                host.display()
+            );
+            return None;
+        }
+    }
+
     // Convert to asset-relative for portable storage.
     let relative = world
         .get_resource::<CurrentProject>()?
