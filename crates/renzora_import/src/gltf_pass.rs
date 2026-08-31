@@ -398,16 +398,16 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
         // diffuse + glossiness gives the user a recognizable starting point
         // they can refine in the material editor.
         //
-        // Detection: presence of the extension AND no explicit metalRough fields
-        // (everything reads as the glTF default) — that's the unambiguous
-        // "spec-gloss-only" case where we should override the metalRough
-        // defaults rather than respect them.
+        // Detection: presence of the extension AND a metal-rough block that says
+        // nothing beyond the glTF defaults — the unambiguous "spec-gloss-only"
+        // case where we should override those defaults rather than respect them.
+        // See `pbr_block_is_default`: "says nothing" is not the same as "is
+        // absent", and reading it as the latter is what left two scanned models
+        // rendering as mirrors.
         let spec_gloss = mat
             .get("extensions")
             .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
-        let pbr_block_empty = pbr
-            .map(|p| p.as_object().is_none_or(|o| o.is_empty()))
-            .unwrap_or(true);
+        let pbr_block_empty = pbr.map(pbr_block_is_default).unwrap_or(true);
 
         let mut roughness = roughness;
         let mut metallic = metallic;
@@ -1356,6 +1356,120 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     out
 }
 
+/// Whether a `pbrMetallicRoughness` block carries no information beyond the
+/// glTF defaults.
+///
+/// Used to tell "this material has no metal-rough data" from "this material is
+/// deliberately a rough metal", which decides whether a
+/// `KHR_materials_pbrSpecularGlossiness` material may override it.
+///
+/// The distinction is not whether the block is *present* but whether it says
+/// anything. This previously tested for a literally empty object, and most
+/// spec-gloss exporters do not write one — they write the defaults out in full:
+///
+/// ```json
+/// "pbrMetallicRoughness": {
+///   "baseColorFactor": [1,1,1,1], "metallicFactor": 1.0, "roughnessFactor": 1.0
+/// }
+/// ```
+///
+/// which is exactly "nothing", spelled at length. Reading that as authored
+/// intent left every surface of such a model fully metallic — no diffuse
+/// response at all, lit only by environment reflection, which renders a stone
+/// interior as a flat wash of the sky. Two Sketchfab scans did that; a
+/// conventional metal-rough model beside them was fine.
+fn pbr_block_is_default(pbr: &serde_json::Value) -> bool {
+    let Some(o) = pbr.as_object() else {
+        return true;
+    };
+    if o.is_empty() {
+        return true;
+    }
+    // A texture is information, whatever the factors say.
+    if o.contains_key("baseColorTexture") || o.contains_key("metallicRoughnessTexture") {
+        return false;
+    }
+    let is_default_f = |key: &str| {
+        o.get(key)
+            .map(|v| v.as_f64().is_some_and(|f| (f - 1.0).abs() < 1e-6))
+            .unwrap_or(true)
+    };
+    if !is_default_f("metallicFactor") || !is_default_f("roughnessFactor") {
+        return false;
+    }
+    let base_default = o
+        .get("baseColorFactor")
+        .map(|v| {
+            v.as_array().is_some_and(|a| {
+                a.len() == 4
+                    && a.iter()
+                        .all(|c| c.as_f64().is_some_and(|f| (f - 1.0).abs() < 1e-6))
+            })
+        })
+        .unwrap_or(true);
+    // Any other key (emissive strength, extensions on the block, …) is
+    // information we should not talk over.
+    let known = ["baseColorFactor", "metallicFactor", "roughnessFactor"];
+    base_default && o.keys().all(|k| known.contains(&k.as_str()))
+}
+
+#[cfg(test)]
+mod default_pbr_block_tests {
+    use super::pbr_block_is_default;
+    use serde_json::json;
+
+    /// The shape every spec-gloss exporter in the wild actually writes: the
+    /// defaults, spelled out. Reading this as authored intent is what made two
+    /// scanned models render as mirrors.
+    #[test]
+    fn explicit_defaults_say_nothing() {
+        assert!(pbr_block_is_default(&json!({
+            "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+            "metallicFactor": 1.0,
+            "roughnessFactor": 1.0
+        })));
+    }
+
+    #[test]
+    fn an_absent_or_empty_block_says_nothing() {
+        assert!(pbr_block_is_default(&json!({})));
+        assert!(pbr_block_is_default(&json!(null)));
+    }
+
+    /// A deliberately rough metal must survive: the whole point of the check is
+    /// to tell it apart from a placeholder.
+    #[test]
+    fn authored_values_are_respected() {
+        assert!(!pbr_block_is_default(&json!({ "metallicFactor": 0.0 })));
+        assert!(!pbr_block_is_default(&json!({ "roughnessFactor": 0.4 })));
+        assert!(!pbr_block_is_default(&json!({
+            "baseColorFactor": [0.8, 0.2, 0.2, 1.0]
+        })));
+    }
+
+    /// A texture is information whatever the factors say — a spec-gloss
+    /// override would throw it away.
+    #[test]
+    fn a_texture_counts_as_authored() {
+        assert!(!pbr_block_is_default(&json!({
+            "metallicFactor": 1.0,
+            "metallicRoughnessTexture": { "index": 0 }
+        })));
+        assert!(!pbr_block_is_default(&json!({
+            "baseColorTexture": { "index": 2 }
+        })));
+    }
+
+    /// Anything we do not recognise is information too. Better to leave a
+    /// material alone than to talk over a field this code has never seen.
+    #[test]
+    fn an_unknown_key_counts_as_authored() {
+        assert!(!pbr_block_is_default(&json!({
+            "metallicFactor": 1.0,
+            "extensions": { "SOMETHING_new": {} }
+        })));
+    }
+}
 
 #[cfg(test)]
 mod tests {
