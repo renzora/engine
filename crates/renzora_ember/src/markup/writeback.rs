@@ -528,7 +528,22 @@ pub fn insert_node_in_markup(
                 },
                 // An empty container has no sibling to anchor to, so land just
                 // past its open tag — the one position that is always inside it.
-                None => Dest::Before(parent_node.open_tag_close.start + 1),
+                //
+                // `open_tag_close` points at the *first* byte of `>` or `/>`, so
+                // stepping one past it is only inside the element when the tag
+                // ends in a plain `>`. On a self-closing tag that byte is the
+                // `/`, and inserting after it writes `<node/<child/>>` — a file
+                // that no longer parses. A self-closed element has no inside to
+                // put anything in; it would have to be rewritten as a pair
+                // first, which is a different edit.
+                None => {
+                    let at = parent_node.open_tag_close.start as usize;
+                    if template.source.get(at).copied() != Some(b'>') {
+                        warn!("ui insert: {asset_path} — cannot add a child to a self-closing tag");
+                        return;
+                    }
+                    Dest::Before(parent_node.open_tag_close.start + 1)
+                }
             },
         };
         match insert_element(&template.source, dest, markup) {
@@ -551,6 +566,7 @@ pub fn insert_node_in_markup(
         );
         return;
     }
+    info!("ui insert: added to {asset_path}");
     if let Some(mut requests) =
         world.get_resource_mut::<crate::markup::template::TemplateReloadRequests>()
     {
@@ -654,6 +670,28 @@ mod tests {
             String::from_utf8(out).unwrap(),
             "<node>\n    <a/>\n    <box>\n        <x/>\n    </box>\n</node>"
         );
+    }
+
+    /// The empty-container anchor, both ways round. `open_tag_close` points at
+    /// the *first* byte of the closer, so `+1` is inside the element only when
+    /// that closer is a plain `>`.
+    #[test]
+    fn empty_container_anchor_is_inside_only_for_a_paired_tag() {
+        let paired = "<node><box></box></node>";
+        let at = paired.find("></box>").unwrap() as u32; // the `>` of `<box>`
+        assert_eq!(paired.as_bytes()[at as usize], b'>');
+        let out = insert_element(paired.as_bytes(), Dest::Before(at + 1), "<x/>").expect("inserts");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "<node><box><x/></box></node>"
+        );
+
+        // The self-closing case is the one `insert_node_in_markup` refuses: the
+        // byte at `open_tag_close` is `/`, and stepping past it would land
+        // between the `/` and the `>`.
+        let selfclosed = "<node><box/></node>";
+        let slash = selfclosed.find("/>").unwrap();
+        assert_eq!(selfclosed.as_bytes()[slash], b'/');
     }
 
     #[test]
