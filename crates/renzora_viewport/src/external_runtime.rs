@@ -66,25 +66,29 @@ impl ExternalRuntime {
 
 /// Locate the runtime binary to launch for external play.
 ///
-/// The runtime is **`renzora[.exe]`** and the editor is **`renzora-editor[.exe]`**
-/// — two separate executables staged side by side. Once Bevy became statically
-/// linked the editor stopped being a loadable bundle the host could decline, so
-/// "runtime" is a different file rather than the same file told to behave.
+/// **The editor and the game are one executable again**, which is what this
+/// function has to answer to. It was written for the interval when they were
+/// two: Bevy was statically linked, a loadable editor would have carried its own
+/// copy and therefore its own `World` type, so the editor had to be
+/// `renzora-editor[.exe]` beside a separate `renzora[.exe]`. In that world,
+/// relaunching the current executable relaunched the *editor* — picking "Window"
+/// opened a second editor instead of the game — so the self-relaunch fallback
+/// was removed and this returned `None`.
 ///
-/// That is why this looks for `renzora` and why there is **no fall back to the
-/// current executable**. It used to end with `Some(exe)`, from when one binary
-/// booted either way and `--no-editor` was enough to make it a game. With a
-/// separate editor executable that fallback relaunches the *editor*: picking the
-/// "Window" play target opened a second editor window instead of the game, which
-/// is exactly what it was reported doing. Returning `None` instead makes the
-/// caller log and fall back to in-viewport play, which at least plays the game.
+/// `dynamic_linking` is back on and the editor is a loadable image again (see
+/// `renzora_runtime::editor_image`). There is one `renzora[.exe]`, and whether
+/// it is the editor is decided by `renzora_editor.dll` sitting beside it *and*
+/// the absence of `--no-editor`. So the current executable is now the correct
+/// answer, and returning `None` is what broke the Window play target: no binary
+/// was found, and Play quietly fell back to in-viewport.
 ///
-/// It also looks for the retired `renzora-runtime[.exe]`, so an older staged
-/// tree still works.
+/// A separately packaged runtime still wins when there is one — a split
+/// `editor/` + `runtime/` export has a real second binary and should use it.
 ///
-/// 1. `<exe_dir>/renzora[.exe]` — the normal staged layout.
-/// 2. `<exe_dir>/runtime/renzora[.exe]` — a split `editor/` + `runtime/` package.
-/// 3. `<exe_dir>/../runtime/renzora[.exe]` — the same, one level up.
+/// 1. `<exe_dir>/runtime/renzora[.exe]` — a split package.
+/// 2. `<exe_dir>/../runtime/renzora[.exe]` — the same, one level up.
+/// 3. The retired `renzora-runtime[.exe]` in either place, for older trees.
+/// 4. This executable, relaunched with `--no-editor`.
 pub fn find_runtime_binary() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
@@ -94,21 +98,23 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 
     for name in &names {
         let candidates = [
-            Some(exe_dir.join(name)),
             Some(exe_dir.join("runtime").join(name)),
             exe_dir.parent().map(|d| d.join("runtime").join(name)),
+            Some(exe_dir.join(name)),
         ];
         for candidate in candidates.into_iter().flatten() {
-            // Never hand back the binary we are already running. On a dev build
-            // the editor can sit in the same directory under a name that matches,
-            // and spawning ourselves is the bug this function had.
+            // Skip the running binary here — it is the fallback below, taken
+            // only once no separate runtime has been found.
             if candidate == exe || !candidate.exists() {
                 continue;
             }
             return Some(candidate);
         }
     }
-    None
+    // One binary: relaunch ourselves as a game. `--no-editor` is what makes that
+    // a game rather than a second editor — `main` checks for it before it will
+    // install the editor image.
+    Some(exe)
 }
 
 /// Spawn the runtime pointed at `project_path`. Returns the child handle
