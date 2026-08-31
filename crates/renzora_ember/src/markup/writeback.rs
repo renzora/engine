@@ -78,69 +78,88 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
     // Captured before any splice, so the undo entry has the file as it stood.
     let before_bytes = template.source.clone();
 
-    // Walk to the target XNode by descent.
-    let Some(node) = walk_node_mut(&mut template.root, &path) else {
-        warn!(
-            "renzora_hui writeback: node_path {:?} does not exist in template (asset changed under us?)",
-            path
-        );
-        return;
+    // Plan the edit against the target node, then apply the span bookkeeping to
+    // the whole template. Split in two because the fix-up must reach every node,
+    // not just this one — see the loop below.
+    let (after, delta, new_attr) = {
+        let Some(node) = walk_node_mut(&mut template.root, &path) else {
+            warn!(
+                "renzora_hui writeback: node_path {:?} does not exist in template (asset changed under us?)",
+                path
+            );
+            return;
+        };
+        let existing = node
+            .attr_spans
+            .iter()
+            .position(|a| a.key_ident == attr_ident);
+
+        match existing {
+            // Existing attribute → in-place value rewrite.
+            Some(idx) => {
+                let value_span = node.attr_spans[idx].value;
+                // No-op short-circuit. Cheaper than re-writing the file every
+                // keystroke when the user spins a DragValue back to where it was.
+                if &template.source[value_span.as_range()] == new_value.as_bytes() {
+                    return;
+                }
+                let delta = new_value.len() as i32 - value_span.len() as i32;
+                template
+                    .source
+                    .splice(value_span.as_range(), new_value.bytes());
+                // Everything *after* the replaced range moves; the range itself
+                // does not. Anchoring at `value_span.start` also moved the
+                // edited span's own start, so the next write to that attribute
+                // aimed at bytes that had shifted underneath it — which is how
+                // `left="auto"` came out as `lefauto"`.
+                (value_span.end, delta, None)
+            }
+            // Brand-new attribute → insert `\n    ident="value"` at the
+            // open-tag-close position. The linebreak and indent mimic a
+            // well-formatted file; we don't try to match the author's exact style.
+            None => {
+                let close = node.open_tag_close.start;
+                let insertion = format!("\n    {attr_ident}=\"{new_value}\"");
+                let delta = insertion.len() as i32;
+                template
+                    .source
+                    .splice((close as usize)..(close as usize), insertion.bytes());
+                let key_start = close + 1 /* \n */ + 4 /* indent */;
+                let key_end = key_start + attr_ident.len() as u32;
+                let value_start = key_end + 2 /* =" */;
+                let value_end = value_start + new_value.len() as u32;
+                // Recorded after the shift below, so it is not shifted itself —
+                // these offsets already describe the post-insert layout.
+                (
+                    close,
+                    delta,
+                    Some(AttrSpan {
+                        key_ident: attr_ident.to_string(),
+                        prefix: None,
+                        key: Span { start: key_start, end: key_end },
+                        value: Span { start: value_start, end: value_end },
+                    }),
+                )
+            }
+        }
     };
 
-    // Existing attribute → in-place value rewrite.
-    let existing_idx = node
-        .attr_spans
-        .iter()
-        .position(|a| a.key_ident == attr_ident);
-
-    if let Some(idx) = existing_idx {
-        let value_span = node.attr_spans[idx].value;
-        // No-op short-circuit. Cheaper than re-writing the file every keystroke
-        // when the user spins a DragValue back to its original value.
-        if &template.source[value_span.as_range()] == new_value.as_bytes() {
-            return;
+    // Fix up **every node in the template**, not just the edited one and its
+    // descendants.
+    //
+    // This was the corruption. `shift_spans_after` walks one subtree, so after
+    // an attribute edit every *other* node's spans were stale by the delta — and
+    // since an attribute edit deliberately does not rebuild, they stayed stale
+    // for the rest of the session. The next edit on a different node then
+    // spliced at an offset that had moved, which is how new attributes ended up
+    // inside `name="objectives"`, splitting it into `name="obj` … `ectives"`.
+    for root in template.root.iter_mut() {
+        shift_spans_after(root, after, delta);
+    }
+    if let Some(span) = new_attr {
+        if let Some(node) = walk_node_mut(&mut template.root, &path) {
+            node.attr_spans.push(span);
         }
-        let delta = new_value.len() as i32 - value_span.len() as i32;
-        // Patch bytes.
-        template
-            .source
-            .splice(value_span.as_range(), new_value.bytes());
-        // Fix up every span on this node and its descendants that starts at
-        // or after the patched range so the in-memory cache stays coherent.
-        let after = value_span.start;
-        shift_spans_after(node, after, delta);
-    } else {
-        // Brand-new attribute → insert `\n   attr_ident="new_value"` at the
-        // open-tag-close position. The leading space + linebreak mimic the
-        // surrounding indentation of an existing well-formatted file; we
-        // don't try to be clever about matching the user's exact style.
-        let close = node.open_tag_close.start;
-        let insertion = format!("\n    {attr_ident}=\"{new_value}\"");
-        let bytes = insertion.as_bytes();
-        let delta = bytes.len() as i32;
-        template
-            .source
-            .splice((close as usize)..(close as usize), bytes.iter().copied());
-        // Insertion shifts everything at `close` or after by `delta`. Because
-        // open_tag_close is at `close`, it itself moves; track it.
-        shift_spans_after(node, close, delta);
-        // Record the new attribute span pointing at the inserted bytes.
-        let key_start = close + 1 /* \n */ + 4 /* 4 spaces */;
-        let key_end = key_start + attr_ident.len() as u32;
-        let value_start = key_end + 2 /* =" */;
-        let value_end = value_start + new_value.len() as u32;
-        node.attr_spans.push(AttrSpan {
-            key_ident: attr_ident.to_string(),
-            prefix: None,
-            key: Span {
-                start: key_start,
-                end: key_end,
-            },
-            value: Span {
-                start: value_start,
-                end: value_end,
-            },
-        });
     }
 
     // Persist to disk. `asset_path` is what was passed to `AssetServer::load`
@@ -215,11 +234,18 @@ pub fn write_content_to_markup(world: &mut World, entity: Entity, new_text: &str
         // The content span itself moves (its end shifts by the delta), and so
         // does everything after it — same bookkeeping an attribute edit does, so
         // a second edit in the same session still targets the right bytes.
-        node.content_span = Some(Span {
-            start: span.start,
-            end: (span.end as i32 + delta).max(span.start as i32) as u32,
-        });
-        shift_spans_after(node, span.end, delta);
+        // Whole tree, for the same reason the attribute path does it: a
+        // subtree-only fix-up leaves every other node stale, and a text edit
+        // does not rebuild either.
+        for root in template.root.iter_mut() {
+            shift_spans_after(root, span.end, delta);
+        }
+        if let Some(node) = walk_node_mut(&mut template.root, &path) {
+            node.content_span = Some(Span {
+                start: span.start,
+                end: (span.end as i32 + delta).max(span.start as i32) as u32,
+            });
+        }
         Some((before, template.source.clone()))
     }) else {
         return;
