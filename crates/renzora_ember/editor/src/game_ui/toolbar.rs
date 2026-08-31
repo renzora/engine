@@ -302,6 +302,16 @@ fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: Can
     (btn, ic)
 }
 
+/// Whether `e` is the node a template builds onto — the one whose parent is the
+/// canvas itself, which the geometry snapshot excludes.
+fn is_template_root(state: &NativeCanvasState, e: Entity) -> bool {
+    state
+        .widgets
+        .iter()
+        .find(|g| g.entity == e)
+        .is_some_and(|g| g.parent == state.active_canvas)
+}
+
 /// Flip a node between flow layout and free placement.
 ///
 /// Free placement is `position: absolute` — the node leaves its parent's flow
@@ -436,6 +446,15 @@ fn toolbar_click(
             CanvasTbBtn::ToggleFreePosition => {
                 for g in selected_geoms(&state, &selection) {
                     let (e, was_flow) = (g.entity, g.in_flow);
+                    // The template root is the surface the rest sits on — it
+                    // fills the canvas by definition, and there is no outer box
+                    // for it to be placed within. Flipping it to `relative`
+                    // hands its size to a flex parent that has no other
+                    // children, which is not free placement, just a root that
+                    // has stopped covering the canvas.
+                    if is_template_root(&state, e) {
+                        continue;
+                    }
                     // Pin at where it already is, so flipping to free placement
                     // does not also move it. Percentages of the parent, matching
                     // what the drag writes.
