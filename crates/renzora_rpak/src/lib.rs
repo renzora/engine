@@ -31,7 +31,10 @@ pub use backend::{FileBackend, MmapBackend};
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
         mod pack;
-        pub use pack::{RpakPacker, pack_project, pack_project_with_progress, pack_project_filtered, SERVER_EXTENSIONS};
+        pub use pack::{
+            pack_project, pack_project_filtered, pack_project_with_progress,
+            pack_selected_with_progress, referenced_keys, RpakPacker, SERVER_EXTENSIONS,
+        };
     }
 }
 

@@ -399,6 +399,30 @@ where
         }
     }
 
+    // Rust scripts are entry points too, and they are the one kind that never
+    // enters the archive itself.
+    //
+    // A `.lua` script is packed (a scene names its path), so the BFS reaches it
+    // and follows the asset paths inside it. A `.rs` script is *compiled into
+    // the binary* by the lean exporter, so nothing packs it and nothing ever
+    // reads it — and every texture, sound or scene it loads by name went
+    // missing from the export. The symptom is a game that runs and then logs
+    // `Path not found: assets/sprites/z.png` once a frame, because the script
+    // asking for it shipped and the file did not.
+    //
+    // So they are scanned in place: their references are packed, they are not.
+    for script in rust_scripts(project_dir) {
+        let Ok(text) = std::fs::read_to_string(&script) else {
+            continue;
+        };
+        for reference in extract_quoted_asset_paths(&text) {
+            let key = normalize_archive_key(&reference);
+            if !visited.contains(&key) {
+                try_pack(&key, &mut packer, &mut visited, &mut queue, &mut on_packed);
+            }
+        }
+    }
+
     // BFS: for each queued file, scan for asset path references and pack them
     while let Some(file_key) = queue.pop_front() {
         let refs: Vec<String> = {
@@ -448,6 +472,87 @@ where
         }
     }
 
+    Ok(packer)
+}
+
+/// Every `.rs` script in the project, wherever it lives.
+///
+/// Recursive, and dot-directories are skipped: `.renzora/scripts/` holds staged
+/// copies of these same files, and `.git` holds whatever git holds.
+fn rust_scripts(project_dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![project_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let dot = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with('.'));
+                if !dot {
+                    stack.push(path);
+                }
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// The archive keys a normal export would pack, without keeping the bytes.
+///
+/// The export dialog's Files tab needs to show what *would* ship before anything
+/// is written, so it can present that as the default set of ticks. Implemented
+/// by running the real pack and throwing the archive away rather than by a
+/// parallel traversal: the two answers must agree exactly, and the surest way to
+/// guarantee that is for there to be only one of them.
+pub fn referenced_keys(project_dir: &Path) -> io::Result<Vec<String>> {
+    let mut keys = Vec::new();
+    pack_project_with_progress(project_dir, None, |key| keys.push(key.to_string()))?;
+    keys.sort();
+    Ok(keys)
+}
+
+/// Pack exactly `keys` — no dependency crawl, no entry points.
+///
+/// What the Files tab exports with once the author has touched it. The automatic
+/// crawl is a very good default and cannot be a complete one: a path a script
+/// builds at runtime (`format!("levels/{n}.bsn")`) is not a quoted literal
+/// anywhere, so nothing can find it. This is the override, and it is
+/// deliberately literal — the archive holds what the list showed, so a file that
+/// went missing can be fixed by ticking it and an export cannot silently include
+/// something the author unticked.
+///
+/// `project.toml` still has its `[editor]` section stripped: that is not a
+/// selection question, it is about not shipping editor preferences.
+pub fn pack_selected_with_progress<P>(
+    project_dir: &Path,
+    keys: &[String],
+    mut on_packed: P,
+) -> io::Result<RpakPacker>
+where
+    P: FnMut(&str),
+{
+    let mut packer = RpakPacker::new();
+    for key in keys {
+        let key = normalize_archive_key(key);
+        let path = project_dir.join(&key);
+        if !path.is_file() {
+            continue;
+        }
+        if key == "project.toml" {
+            let text = std::fs::read_to_string(&path)?;
+            packer.add_file(&key, strip_editor_section(&text).into_bytes());
+        } else {
+            packer.add_from_disk(project_dir, &path)?;
+        }
+        on_packed(&key);
+    }
     Ok(packer)
 }
 
@@ -1434,4 +1539,83 @@ mod tests {
         assert!(extract_glb_json(b"not a glb at all").is_none());
         assert!(extract_glb_json(&[0u8; 24]).is_none());
     }
+
+    /// A throwaway project directory, removed even if an assertion fails.
+    struct TempProject(PathBuf);
+
+    impl TempProject {
+        fn new(tag: &str, files: &[(&str, &str)]) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "renzora_pack_{tag}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            for (rel, body) in files {
+                let path = root.join(rel);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, body).unwrap();
+            }
+            Self(root)
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// An asset only a Rust script names still ships.
+    ///
+    /// `.rs` scripts are compiled into the exported binary rather than packed,
+    /// so nothing put them in the archive and the crawl never read them — every
+    /// texture, sound or scene loaded from one went missing, and the game said
+    /// so once a frame at runtime.
+    #[test]
+    fn a_rust_script_s_assets_are_packed() {
+        let p = TempProject::new(
+            "rs_refs",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                // Named nowhere but here.
+                ("scripts/idle.rs", "let h = server.load(\"assets/sprites/z.png\");\n"),
+                ("assets/sprites/z.png", "not really a png"),
+            ],
+        );
+        let keys = referenced_keys(&p.0).unwrap();
+        assert!(
+            keys.iter().any(|k| k == "assets/sprites/z.png"),
+            "script-only asset missing: {keys:?}"
+        );
+        // The script itself is not packed — it ships as compiled code.
+        assert!(!keys.iter().any(|k| k.ends_with(".rs")), "{keys:?}");
+    }
+
+    /// The explicit selection packs exactly what it is given, and nothing else.
+    #[test]
+    fn selected_pack_is_literal() {
+        let p = TempProject::new(
+            "selected",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n \"assets/a.png\"\n}\n"),
+                ("assets/a.png", "a"),
+                ("assets/b.png", "b"),
+            ],
+        );
+        // `a.png` is referenced and `b.png` is not, but the selection wins both
+        // ways: b in, a out.
+        let want = vec!["project.toml".to_string(), "assets/b.png".to_string()];
+        let mut packed = Vec::new();
+        let packer =
+            pack_selected_with_progress(&p.0, &want, |k| packed.push(k.to_string())).unwrap();
+        packed.sort();
+        assert_eq!(packed, vec!["assets/b.png".to_string(), "project.toml".to_string()]);
+        assert!(packer.get("assets/a.png").is_none());
+        // …and `project.toml` still loses its editor section.
+        assert!(packer.get("project.toml").is_some());
+    }
 }
+
