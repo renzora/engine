@@ -5,7 +5,7 @@ mod brush_gizmo;
 mod brush_layer_paint;
 mod generate_bar;
 mod generate_tool;
-mod native;
+mod panel;
 mod plane_terrain;
 mod region_tool;
 mod settings_overlay;
@@ -32,7 +32,7 @@ impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
         // Native (bevy_ui/ember) terrain tools panel (id "terrain_tools").
-        app.add_plugins(native::NativeTerrain);
+        app.add_plugins(panel::TerrainToolsPanel);
         app.register_inspector(terrain_data_entry())
             .register_inspector(terrain_layers_ui::terrain_layers_entry())
             .init_resource::<TerrainInspectorTab>()
