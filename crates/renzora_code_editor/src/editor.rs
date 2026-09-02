@@ -50,7 +50,7 @@ struct CodeTab(usize);
 #[derive(Component)]
 struct CodeTabClose(usize);
 
-pub fn register_native_code_editor(app: &mut App) {
+pub fn register(app: &mut App) {
     app.register_panel_content("code_editor", false, build)
         .systems(
         Update,

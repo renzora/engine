@@ -100,7 +100,7 @@ fn open_on_action(
             // are raised *from* this one and must land on top of it.
             commands.entity(root).insert(GlobalZIndex(9400));
             commands.entity(root).insert(StoreOverlayRoot);
-            let store = crate::native_store::build(&mut commands, &fonts);
+            let store = crate::store::build(&mut commands, &fonts);
             commands.entity(content).add_child(store);
         }
         queue.apply(world);

@@ -31,9 +31,9 @@ const LABEL_W: f32 = 84.0;
 const AXES: [(&str, (u8, u8, u8)); 3] =
     [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230))];
 
-pub struct NativeBlueprintProperties;
+pub struct BlueprintProperties;
 
-impl Plugin for NativeBlueprintProperties {
+impl Plugin for BlueprintProperties {
     fn build(&self, app: &mut App) {
         app.register_panel_content("blueprint_properties", true, build);
     }
@@ -216,7 +216,7 @@ fn input_pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_i
 /// value (via [`pin_value`]/[`set_pin`], keyed by `node_id`) so edits write
 /// straight into the graph and the field updates in place. Returns a container
 /// entity. Reused by the Properties panel and the inline on-node editors in
-/// `native_graph`.
+/// `graph`.
 pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &PinTemplate) -> Entity {
     let cell = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), justify_content: JustifyContent::FlexEnd, ..default() })

@@ -38,7 +38,7 @@ struct Row {
     is_error: bool,
 }
 
-pub fn register_native_problems(app: &mut App) {
+pub fn register(app: &mut App) {
     app.register_panel_content("problems", true, build)
         .systems(Update, problems_goto_click.run_if(in_state(SplashState::Editor)));
 }

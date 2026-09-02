@@ -269,9 +269,9 @@ struct ThemePreview {
     error: Option<String>,
 }
 
-pub struct NativeHubStore;
+pub struct StorePanel;
 
-impl Plugin for NativeHubStore {
+impl Plugin for StorePanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubStoreData>();
         app.init_resource::<ThemePreview>();

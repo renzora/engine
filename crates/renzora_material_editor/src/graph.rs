@@ -77,9 +77,9 @@ fn sample_variant_index(node_type: &str) -> Option<usize> {
     SAMPLE_VARIANTS.iter().position(|t| *t == node_type)
 }
 
-pub struct NativeMaterialGraph;
+pub struct MaterialGraphPanel;
 
-impl Plugin for NativeMaterialGraph {
+impl Plugin for MaterialGraphPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
         // Ctrl+S saves the graph through the shortcut registry: rebindable in

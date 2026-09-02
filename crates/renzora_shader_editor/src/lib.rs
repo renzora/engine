@@ -2,9 +2,9 @@
 
 mod code_panel;
 pub mod hot_reload;
-mod native_compiler_log;
-mod native_preview;
-mod native_properties;
+mod compiler_log;
+mod preview_panel;
+mod properties;
 pub mod preview;
 
 use bevy::prelude::*;
@@ -60,9 +60,9 @@ impl Plugin for ShaderEditorPlugin {
         info!("[editor] ShaderEditorPlugin");
         app.init_resource::<ShaderEditorState>();
         app.add_plugins(preview::ShaderPreviewPlugin);
-        app.add_plugins(native_preview::NativeShaderPreview);
-        app.add_plugins(native_compiler_log::NativeShaderCompilerLog);
-        app.add_plugins(native_properties::NativeShaderProperties);
+        app.add_plugins(preview_panel::ShaderPreviewPanel);
+        app.add_plugins(compiler_log::ShaderCompilerLog);
+        app.add_plugins(properties::ShaderProperties);
         app.add_plugins(hot_reload::WgslHotReloadPlugin);
     }
 }

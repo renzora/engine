@@ -3,7 +3,7 @@
 //!
 //! WORK IN PROGRESS: ported section by section. Not yet registered (the egui
 //! panel stays active) so the editor never loses sections mid-port; the final
-//! commit wires `NativeParticleEditor` in once every section is covered.
+//! commit wires `ParticleEditorPanel` in once every section is covered.
 //!
 //! Each field binds its get/set straight to `ParticleEditorState.current_effect`
 //! (marking `is_modified`), reusing ember's drag_value/bind_2way, checkbox,
@@ -37,9 +37,9 @@ const AXES3: [(&str, (u8, u8, u8)); 3] = [("X", (230, 90, 90)), ("Y", (90, 200, 
 
 type Action = Arc<dyn Fn(&mut World) + Send + Sync>;
 
-pub struct NativeParticleEditor;
+pub struct ParticleEditorPanel;
 
-impl Plugin for NativeParticleEditor {
+impl Plugin for ParticleEditorPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_editor", true, build);
         app.add_systems(

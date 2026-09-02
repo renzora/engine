@@ -22,9 +22,9 @@ use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_vie
 use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
 use renzora_hanabi::{load_effect_from_file, ParticleEditorState};
 
-pub struct NativeParticleGraph;
+pub struct ParticleGraphPanel;
 
-impl Plugin for NativeParticleGraph {
+impl Plugin for ParticleGraphPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_graph", false, build);
         app.add_systems(

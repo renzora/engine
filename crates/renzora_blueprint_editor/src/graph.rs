@@ -30,9 +30,9 @@ use crate::graph_editor::category_icon;
 use crate::graph_panel::{apply_blueprint_to_lua, load_blueprint_file, save_blueprint_file};
 use crate::BlueprintEditorState;
 
-pub struct NativeBlueprintGraph;
+pub struct BlueprintGraphPanel;
 
-impl Plugin for NativeBlueprintGraph {
+impl Plugin for BlueprintGraphPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("blueprint_graph", false, build);
         // Toolbar actions live in the shared strip (shown when the blueprint
@@ -284,7 +284,7 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                     if *connected || matches!(pin.pin_type, PinType::Exec | PinType::Any) {
                         None
                     } else {
-                        Some(crate::native_properties::pin_editor(c, f, *id, pin))
+                        Some(crate::properties::pin_editor(c, f, *id, pin))
                     }
                 })
                 .collect();

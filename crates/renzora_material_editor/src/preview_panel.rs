@@ -18,9 +18,9 @@ use renzora_ember::widgets::{menu_item, screen_menu, toggle_switch};
 use crate::preview::{MaterialPreviewImage, MaterialPreviewOrbit, MaterialPreviewSource, PreviewShape};
 use crate::MaterialEditorState;
 
-pub struct NativeMaterialPreview;
+pub struct MaterialPreviewPanel;
 
-impl Plugin for NativeMaterialPreview {
+impl Plugin for MaterialPreviewPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_preview", false, build)
             .systems(

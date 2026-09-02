@@ -1715,7 +1715,7 @@ fn tag_search(mut state: ResMut<Uploader>) {
 fn success_link_click(q: Query<&Interaction, (With<SuccessLinkBtn>, Changed<Interaction>)>, state: Res<Uploader>) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         if let Some(url) = &state.success_url {
-            crate::native_store::open_url(url);
+            crate::store::open_url(url);
         }
     }
 }

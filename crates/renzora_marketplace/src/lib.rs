@@ -52,8 +52,8 @@ mod item_overlay;
 mod lightbox;
 mod material_viewer;
 mod model_viewer;
-mod native_library;
-mod native_store;
+mod library;
+mod store;
 mod store_overlay;
 mod onboarding;
 mod thumbs;
@@ -105,8 +105,8 @@ impl Plugin for MarketplacePlugin {
         );
 
         // The panels.
-        app.add_plugins(native_store::NativeHubStore);
-        app.add_plugins(native_library::NativeHubLibrary);
+        app.add_plugins(store::StorePanel);
+        app.add_plugins(library::LibraryPanel);
         app.add_plugins(upload_panel::UploaderPanel);
         // Creator onboarding: state and systems only. Its UI is Publish's first
         // stage, not a panel of its own — see `onboarding::register`.
@@ -129,7 +129,7 @@ impl Plugin for MarketplacePlugin {
 fn sign_out_cleanup(
     session: Res<auth::AuthSession>,
     mut was_signed_in: Local<bool>,
-    mut library: ResMut<native_library::HubLibraryData>,
+    mut library: ResMut<library::HubLibraryData>,
     mut wallet: ResMut<wallet::WalletPanel>,
     mut onboarding: ResMut<onboarding::OnboardingPanel>,
 ) {

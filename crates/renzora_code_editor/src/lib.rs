@@ -1,6 +1,6 @@
 pub mod highlight;
-mod native_code_editor;
-mod native_problems;
+mod editor;
+mod problems;
 pub mod state;
 
 pub use state::*;
@@ -382,8 +382,8 @@ impl Plugin for CodeEditorPlugin {
 
         // Bevy-native (ember) code-editor panels for the bevy_ui shell. All
         // bind directly to the shared `CodeEditorState` resource.
-        native_code_editor::register_native_code_editor(app);
-        native_problems::register_native_problems(app);
+        editor::register(app);
+        problems::register(app);
     }
 }
 

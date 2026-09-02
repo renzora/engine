@@ -13,7 +13,7 @@
 //! *before* the card-open system so clicking one card while another detail is
 //! open swaps cleanly rather than the close eating the press.
 //!
-//! Networking mirrors `native_store`: every call is blocking on a worker thread,
+//! Networking mirrors `store`: every call is blocking on a worker thread,
 //! its result posted over a `crossbeam_channel` and drained in
 //! [`systems::poll_item`]. There is no async runtime here.
 //!
@@ -56,7 +56,7 @@ pub(crate) mod video;
 const HUE_STORE: (u8, u8, u8) = (226, 168, 74);
 /// Filled-star color (a slightly brighter gold than the hue for contrast).
 const GOLD: (u8, u8, u8) = (236, 194, 92);
-/// Free-asset "Get" accent (matches `native_store`'s free pill).
+/// Free-asset "Get" accent (matches `store`'s free pill).
 const GREEN: (u8, u8, u8) = (52, 180, 96);
 
 /// Audio previews are capped at 30 seconds — a teaser, not the full track.

@@ -1,5 +1,5 @@
 //! Scenes panel helpers — scene-file listing and open/create utilities shared by
-//! the native (ember) `scenes` panel in [`crate::native_scenes`].
+//! the `scenes` panel in [`crate::scenes`].
 
 use std::path::PathBuf;
 

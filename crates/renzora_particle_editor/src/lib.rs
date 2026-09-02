@@ -3,9 +3,9 @@
 //! Full-featured editor for bevy_hanabi particle effects with live preview.
 
 mod inspector;
-mod native_editor_panel;
-mod native_graph;
-mod native_preview_panel;
+mod editor_panel;
+mod graph;
+mod preview_panel;
 mod preview;
 
 use bevy::prelude::*;
@@ -19,9 +19,9 @@ impl Plugin for ParticleEditorPlugin {
         info!("[editor] ParticleEditorPlugin");
         inspector::register_inspector(app);
         app.add_plugins(preview::ParticlePreviewPlugin);
-        app.add_plugins(native_preview_panel::NativeParticlePreview);
-        app.add_plugins(native_editor_panel::NativeParticleEditor);
-        app.add_plugins(native_graph::NativeParticleGraph);
+        app.add_plugins(preview_panel::ParticlePreviewPanel);
+        app.add_plugins(editor_panel::ParticleEditorPanel);
+        app.add_plugins(graph::ParticleGraphPanel);
 
         app.init_resource::<PartUndoShadow>();
         app.add_systems(

@@ -15,9 +15,9 @@ use renzora_ember::widgets::{menu_item, screen_menu};
 use crate::preview::{PreviewMesh, ShaderPreviewImage};
 use crate::ShaderEditorState;
 
-pub struct NativeShaderPreview;
+pub struct ShaderPreviewPanel;
 
-impl Plugin for NativeShaderPreview {
+impl Plugin for ShaderPreviewPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("shader_preview", false, build)
             .systems(Update, mesh_combo_open.run_if(in_state(SplashState::Editor)));

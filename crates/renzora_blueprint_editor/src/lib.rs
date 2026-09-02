@@ -2,8 +2,8 @@
 
 mod graph_editor;
 mod graph_panel;
-mod native_graph;
-mod native_properties;
+mod graph;
+mod properties;
 
 use bevy::prelude::*;
 use renzora::{AppEditorExt, InspectorEntry};
@@ -41,8 +41,8 @@ impl Plugin for BlueprintEditorPlugin {
         info!("[editor] BlueprintEditorPlugin");
         app.init_resource::<BlueprintEditorState>();
         app.register_inspector(blueprint_graph_entry());
-        app.add_plugins(native_properties::NativeBlueprintProperties);
-        app.add_plugins(native_graph::NativeBlueprintGraph);
+        app.add_plugins(properties::BlueprintProperties);
+        app.add_plugins(graph::BlueprintGraphPanel);
     }
 }
 

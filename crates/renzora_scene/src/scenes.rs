@@ -19,9 +19,9 @@ use renzora_editor_framework::{EditorCommands, SplashState};
 
 use crate::panel::{list_scenes, open_scene, paths_equal, unique_scene_path, EMPTY_SCENE_RON};
 
-pub struct NativeScenesPanel;
+pub struct ScenesPanel;
 
-impl Plugin for NativeScenesPanel {
+impl Plugin for ScenesPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScenesState>();
         app.register_panel_content("scenes", true, build)

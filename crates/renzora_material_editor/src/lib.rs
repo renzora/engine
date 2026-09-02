@@ -4,12 +4,12 @@
 //! into the graph editor. Edits auto-save to disk.
 
 pub mod file_thumbnails;
-mod material_inspector;
-mod native_graph;
-mod native_inspector;
 mod drawer;
-mod native_preview;
+mod graph;
+mod inspector;
+mod material_inspector;
 mod pin_editors;
+mod preview_panel;
 pub mod preview;
 
 use bevy::prelude::*;
@@ -105,10 +105,10 @@ impl Plugin for MaterialEditorPlugin {
         app.add_plugins(preview::MaterialPreviewPlugin);
         app.add_plugins(file_thumbnails::MaterialFileThumbnailPlugin);
         app.add_plugins(pin_editors::MaterialPinEditors);
-        app.add_plugins(native_inspector::NativeMaterialInspector);
+        app.add_plugins(inspector::MaterialInspector);
         app.add_plugins(drawer::MaterialDrawer);
-        app.add_plugins(native_preview::NativeMaterialPreview);
-        app.add_plugins(native_graph::NativeMaterialGraph);
+        app.add_plugins(preview_panel::MaterialPreviewPanel);
+        app.add_plugins(graph::MaterialGraphPanel);
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());

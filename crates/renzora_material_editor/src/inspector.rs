@@ -50,9 +50,9 @@ fn category_icon(category: &str) -> &'static str {
 
 const LABEL_W: f32 = 88.0;
 
-pub struct NativeMaterialInspector;
+pub struct MaterialInspector;
 
-impl Plugin for NativeMaterialInspector {
+impl Plugin for MaterialInspector {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_inspector", true, build);
     }

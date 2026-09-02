@@ -1,5 +1,5 @@
 //! Blueprint file I/O + Lua-compile helpers shared by the native (ember)
-//! blueprint graph view in [`crate::native_graph`].
+//! blueprint graph view in [`crate::graph`].
 
 use bevy::prelude::*;
 

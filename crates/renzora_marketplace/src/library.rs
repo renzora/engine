@@ -85,9 +85,9 @@ impl HubLibraryData {
     }
 }
 
-pub struct NativeHubLibrary;
+pub struct LibraryPanel;
 
-impl Plugin for NativeHubLibrary {
+impl Plugin for LibraryPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubLibraryData>();
         app.register_shell_panel("hub_library", "Library", "books", "Marketplace");

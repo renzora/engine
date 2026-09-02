@@ -13,9 +13,9 @@ use renzora_ember::widgets::toggle_switch;
 
 use crate::preview::{ParticlePreviewImage, ParticlePreviewSettings};
 
-pub struct NativeParticlePreview;
+pub struct ParticlePreviewPanel;
 
-impl Plugin for NativeParticlePreview {
+impl Plugin for ParticlePreviewPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_preview", false, build);
     }

@@ -31,10 +31,10 @@ pub use tab_asset_cache::TabAssetCache;
 mod thumbnail;
 use thumbnail::PendingSceneThumbnail;
 
-mod native_diagnostics;
-mod native_scenes;
-use native_diagnostics::NativeSceneDiagnostics;
-use native_scenes::NativeScenesPanel;
+mod diagnostics;
+mod scenes;
+use diagnostics::SceneDiagnostics;
+use scenes::ScenesPanel;
 
 // Runtime warning capture now lives in the shared `renzora` dylib so the
 // capture layer (installed by the runtime binary) and this panel (in the
@@ -1532,7 +1532,7 @@ impl Plugin for ScenePlugin {
             // if it runs every frame regardless of visibility — so gate it on the
             // Scene Diagnostics panel actually being the active tab, and throttle
             // to 4 Hz while it is. When the panel is hidden it costs nothing; the
-            // snapshot it feeds is read by nothing else (see `native_diagnostics`).
+            // snapshot it feeds is read by nothing else (see `diagnostics`).
             .add_systems(
                 Update,
                 tab_asset_cache::update_scene_diag_snapshot
@@ -1542,8 +1542,8 @@ impl Plugin for ScenePlugin {
                         std::time::Duration::from_millis(250),
                     )),
             )
-            .add_plugins(NativeSceneDiagnostics)
-            .add_plugins(NativeScenesPanel)
+            .add_plugins(SceneDiagnostics)
+            .add_plugins(ScenesPanel)
             // When the user closes a tab, drop its strong handles so
             // the assets it pinned can evict (assuming no other tab
             // still references them).

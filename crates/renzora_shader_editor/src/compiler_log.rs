@@ -15,9 +15,9 @@ use renzora_ember::theme::*;
 
 use crate::ShaderEditorState;
 
-pub struct NativeShaderCompilerLog;
+pub struct ShaderCompilerLog;
 
-impl Plugin for NativeShaderCompilerLog {
+impl Plugin for ShaderCompilerLog {
     fn build(&self, app: &mut App) {
         app.register_panel_content("shader_compiler_log", true, build);
     }

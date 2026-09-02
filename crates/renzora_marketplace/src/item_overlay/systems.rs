@@ -173,7 +173,7 @@ pub(super) fn main_image_click(
 pub(super) fn video_thumb_click(q: Query<(&Interaction, &VideoBtn), Changed<Interaction>>) {
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
-            crate::native_store::open_url(&btn.0);
+            crate::store::open_url(&btn.0);
             break;
         }
     }

@@ -155,7 +155,7 @@ struct ModelPreviewGrid;
 
 // ── Public API (called from item_overlay) ─────────────────────────────────────
 
-/// True for the categories that get a 3D turntable. Mirrors `native_store`'s
+/// True for the categories that get a 3D turntable. Mirrors `store`'s
 /// category matcher (`contains("model") || contains("3d")` for models, plus
 /// animations) so the two views agree on what "a model" is.
 pub(crate) fn is_model_category(category: &str) -> bool {

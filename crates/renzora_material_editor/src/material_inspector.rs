@@ -40,7 +40,7 @@ pub fn material_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        // Native (bevy_ui) drawer registered via `register_native_inspector_ui`
+        // The bevy_ui drawer, registered via `register_native_inspector_ui`
         // (see `drawer`). No egui custom UI.
     }
 }

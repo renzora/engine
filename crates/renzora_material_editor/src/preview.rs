@@ -1,6 +1,6 @@
 //! Material preview — renders the compiled material on a preview shape with an
 //! orbit camera, displayed via render-to-texture. The panel chrome lives in the
-//! native (bevy_ui) `native_preview` module; this file owns the render plugin,
+//! `preview_panel` module; this file owns the render plugin,
 //! resources, and the shader/texture hot-swap systems.
 
 use std::marker::PhantomData;

@@ -24,9 +24,9 @@ const OK: (u8, u8, u8) = (120, 200, 120);
 const BAD: (u8, u8, u8) = (230, 110, 110);
 
 /// Registers the bevy-native Scene Diagnostics content.
-pub struct NativeSceneDiagnostics;
+pub struct SceneDiagnostics;
 
-impl Plugin for NativeSceneDiagnostics {
+impl Plugin for SceneDiagnostics {
     fn build(&self, app: &mut App) {
         app.register_panel_content("scene_diagnostics", true, build);
     }

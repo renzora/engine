@@ -4,7 +4,7 @@
 //! node itself**, directly under the pin they belong to.
 //!
 //! The same builder also fills the labelled rows of the "Material" panel
-//! ([`crate::native_inspector`]), which lists the selected node's pins with
+//! ([`crate::inspector`]), which lists the selected node's pins with
 //! their names and the node's description. Both views bind to the same pin
 //! value, so an edit in one shows up in the other; keeping one builder is what
 //! stops them drifting apart.
@@ -52,7 +52,7 @@ fn state<'w>(w: &Rx<'w>) -> Option<&'w MaterialEditorState> {
 
 /// Whether [`pin_editor`] produces anything for this pin type. `Sampler` has no
 /// editor (it's a plumbing pin), so callers that place editors on their own —
-/// the on-node inline editors in `native_graph` — can skip it rather than mount
+/// the on-node inline editors in `graph` — can skip it rather than mount
 /// an empty container that still takes a row of node height.
 pub(crate) fn has_pin_editor(pin_type: PinType) -> bool {
     !matches!(pin_type, PinType::Sampler)

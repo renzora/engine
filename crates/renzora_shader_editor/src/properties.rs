@@ -25,9 +25,9 @@ const LABEL_W: f32 = 96.0;
 const AXES: [(&str, (u8, u8, u8)); 4] =
     [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230)), ("W", (200, 200, 90))];
 
-pub struct NativeShaderProperties;
+pub struct ShaderProperties;
 
-impl Plugin for NativeShaderProperties {
+impl Plugin for ShaderProperties {
     fn build(&self, app: &mut App) {
         app.register_panel_content("shader_properties", true, build);
     }
