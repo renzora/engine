@@ -330,7 +330,7 @@ fn apply_orbit(
 
 fn rebuild_selected(world: &mut World) {
     let selected = world
-        .get_resource::<crate::native::ImportNav>()
+        .get_resource::<crate::window::ImportNav>()
         .and_then(|n| n.sel_material);
     let staged = world
         .get_resource::<crate::overlay::ImportOverlayState>()

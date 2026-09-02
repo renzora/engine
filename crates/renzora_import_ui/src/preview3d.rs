@@ -602,14 +602,14 @@ fn frame_model(
 fn isolate_selection(
     preview: Res<ImportPreview>,
     state: Option<Res<crate::overlay::ImportOverlayState>>,
-    nav: Option<Res<crate::native::ImportNav>>,
+    nav: Option<Res<crate::window::ImportNav>>,
     mut orbit: ResMut<ImportPreviewOrbit>,
     names: Query<&Name>,
     children_q: Query<&Children>,
     aabb_q: Query<(&Aabb, &GlobalTransform)>,
     mesh_q: Query<(), With<Mesh3d>>,
     mut visibility: Query<&mut Visibility>,
-    mut last: Local<Option<Option<crate::native::TreeItem>>>,
+    mut last: Local<Option<Option<crate::window::TreeItem>>>,
 ) {
     if preview.status != PreviewStatus::Ready {
         return;
@@ -630,7 +630,7 @@ fn isolate_selection(
     // the surface list clickable at all; for a transcoded model, where the
     // whole import is one node and one mesh, it is the only level with more
     // than one thing in it.
-    if let Some(crate::native::TreeItem::Prim(_, k)) = selection {
+    if let Some(crate::window::TreeItem::Prim(_, k)) = selection {
         let mut renderables = Vec::new();
         collect_renderables(root, &children_q, &mesh_q, &mut renderables);
         if let Some(&target) = renderables.get(k) {
@@ -655,8 +655,8 @@ fn isolate_selection(
     let wanted = selection.and_then(|item| {
         let stats = state.current().and_then(|s| s.stats.as_ref())?;
         match item {
-            crate::native::TreeItem::Node(i) => stats.node_list.get(i).map(|n| n.name.clone()),
-            crate::native::TreeItem::Mesh(m) | crate::native::TreeItem::Prim(m, _) => {
+            crate::window::TreeItem::Node(i) => stats.node_list.get(i).map(|n| n.name.clone()),
+            crate::window::TreeItem::Mesh(m) | crate::window::TreeItem::Prim(m, _) => {
                 stats.mesh_list.get(m).map(|m| m.name.clone())
             }
         }

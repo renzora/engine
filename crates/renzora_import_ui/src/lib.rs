@@ -9,7 +9,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod kinds;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod native;
+pub mod window;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod matpreview;
 #[cfg(not(target_arch = "wasm32"))]
@@ -33,7 +33,7 @@ impl Plugin for ImportPlugin {
             _app.init_resource::<overlay::ImportOverlayState>()
                 .init_resource::<renzora::core::FileDragHovering>()
                 .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain());
-            native::register(_app);
+            window::register(_app);
             preview3d::register(_app);
             matpreview::register(_app);
             // A left-side status-bar item showing live import progress. Its
@@ -181,8 +181,8 @@ fn import_orchestrate_system(world: &mut World) {
         // If the user cancels but files are already queued (e.g. from a prior
         // drop), we still surface the overlay so those aren't stranded.
         let picked = match pick {
-            renzora::core::ImportPick::Files => native::pick_and_queue_files(world),
-            renzora::core::ImportPick::Folder => native::pick_and_queue_folder(world),
+            renzora::core::ImportPick::Files => window::pick_and_queue_files(world),
+            renzora::core::ImportPick::Folder => window::pick_and_queue_folder(world),
         };
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()
