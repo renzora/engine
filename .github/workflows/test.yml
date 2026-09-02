@@ -166,6 +166,71 @@ jobs:
       - name: Build the update sidecar
         run: cd tools/updater && cargo build --profile dist
 
+  # The web target, which until now NOTHING in CI compiled for.
+  #
+  # That gap is not theoretical and it is not cheap. The native plugin system
+  # made `renzora_runtime` depend unconditionally on `renzora_native_plugin` and
+  # `renzora_rust_script`, and both were unbuildable for wasm32 — a C `zstd-sys`
+  # with no libc sysroot to compile against, a `libloading` with no wasm backend,
+  # and a `restart_process` that is `#[cfg(not(wasm32))]`. Every web build, game
+  # and editor alike, was broken by that merge and stayed broken, because the
+  # only wasm signal in the project was somebody running `cargo renzora wasm` by
+  # hand and the release wasm lane has never passed.
+  #
+  # `cargo check`, not `build`: this is guarding against a graph that cannot
+  # compile, which is the whole class of failure above, and a full wasm codegen
+  # of Bevy would cost more than the rest of this workflow combined. A link-level
+  # break would slip through, and that is the accepted trade — a target nothing
+  # checks is strictly worse than one checked cheaply.
+  #
+  # **The runtime only, deliberately.** `renzora_editor_app` — the web editor —
+  # does not currently compile for wasm, and not for one reason: the online stack
+  # (auth, account, billing, marketplace, publish) is `#[cfg]`'d off for wasm as
+  # documented, but its call sites in `renzora_marketplace` and
+  # `renzora_settings` never were, which is 41 errors before anything else is
+  # even reached. Restoring it is one dependency deep — `renzora_net` over
+  # `fetch` — and is its own piece of work, not a gate to bolt on here.
+  #
+  # Adding the step anyway would mean a permanently red job, and a red job that
+  # is expected to be red stops being read at all. It belongs here the day the
+  # editor lane builds; until then this guards the lane that ships to players.
+  wasm:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The base image carries the host toolchain only — nothing on a Linux
+      # build machine needed a wasm std until now.
+      - name: Install the wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-wasm
+
+      # `--no-default-features` drops `dynamic_linking` and `xr`, neither of
+      # which exists on wasm. This is the exact configuration the lean web export
+      # compiles, minus the capability stripping a project supplies.
+      - name: Check the web runtime
+        run: |
+          cargo check --bin renzora \
+            --no-default-features --features wasm \
+            --target wasm32-unknown-unknown
+
+      # When the editor lane builds again, the step is:
+      #
+      #   cargo check -p renzora_editor_app --bin renzora-editor \
+      #       --features wasm --target wasm32-unknown-unknown
+      #
+      # `--features wasm` is not optional there: the `[[bin]]` declares
+      # `required-features = ["wasm"]` so a native `--workspace` build does not
+      # produce a second, unlinkable executable, and naming a target whose
+      # required features are off is a hard cargo error rather than a silent skip.
+
   # The same plugins again, on a real Mac, because the job above cannot see the
   # class of bug that only macOS reports.
   #
