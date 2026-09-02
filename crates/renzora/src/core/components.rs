@@ -1008,6 +1008,24 @@ mod asset_path_changed_tests {
     }
 }
 
+#[cfg(test)]
+mod default_tests {
+    use super::{EntityGroup, PbrAlphaMode};
+
+    #[test]
+    fn entity_group_default_is_empty_string() {
+        // The `<for>` matcher short-circuits on empty groups; keep the default
+        // empty so an ungrouped entity is never accidentally a member.
+        let g = EntityGroup::default();
+        assert!(g.group.is_empty());
+    }
+
+    #[test]
+    fn pbr_alpha_mode_default_is_opaque() {
+        assert_eq!(PbrAlphaMode::default(), PbrAlphaMode::Opaque);
+    }
+}
+
 /// Serializable marker for an imported 3D model (GLTF/GLB).
 ///
 /// Stored on the parent entity; the actual `SceneRoot` is a child.
