@@ -499,7 +499,23 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
   edge case it handles, and what previously went wrong. Match that density and
   voice. Don't add narration that just restates the code.
 - **Module layout:** `lib.rs` (module doc + plugin), `systems.rs` (systems),
-  `native.rs` (bevy_ui / native editor UI). Types → systems → helpers.
+  and one module per thing the crate builds — `panel.rs`, `graph.rs`,
+  `inspector.rs`, `drawer.rs`. Types → systems → helpers.
+  **Name a module for what it is, never for what it is not.** Every editor
+  crate used to carry a `native.rs` / `native_*.rs`, from when each was a
+  bevy_ui port sitting beside an egui original; the originals are gone, so the
+  prefix distinguished a module from nothing. Same for a `Native*` type — it is
+  a `FoliagePanel`, not a `NativeFoliage`. The one place `native` still means
+  something is a `#[cfg(not(target_arch = "wasm32"))]` gate, and that is a
+  platform, not a UI toolkit.
+- **A file past about 1500 lines wants splitting**, into a directory of modules
+  named for the sections it already has — `foo.rs` becomes `foo/mod.rs` plus
+  siblings, with a flat `pub use` so every path a caller writes still resolves.
+  The exceptions are worth knowing: a **single exhaustive `match`** (the wire
+  codec in `renzora_plugin/src/script/command.rs`) is long because the compiler
+  is proving every variant is handled, and splitting it into per-group functions
+  would need a `_ =>` arm in each — turning a compile error into a silent
+  runtime one. Length there is the price of the proof, not a defect.
 - **Naming:** `PascalCase` types, `snake_case` fns/modules, `SCREAMING_SNAKE`
   consts. Crates are `renzora_<name>`.
 - Follow Bevy ECS idioms. Avoid `unwrap()` in production paths. Default rustfmt.
