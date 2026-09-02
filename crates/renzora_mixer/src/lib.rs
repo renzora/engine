@@ -19,16 +19,16 @@ impl Plugin for MixerPlugin {
 #[cfg(not(target_arch = "wasm32"))]
 mod inspectors;
 #[cfg(not(target_arch = "wasm32"))]
-mod native;
+mod strips;
 #[cfg(not(target_arch = "wasm32"))]
-mod native_strips;
+mod wiring;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Plugin for MixerPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] MixerPlugin");
-        native::build(app);
-        app.add_plugins(native_strips::NativeMixer);
+        wiring::build(app);
+        app.add_plugins(strips::MixerStrips);
     }
 }
 

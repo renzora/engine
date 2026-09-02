@@ -16,7 +16,7 @@ use renzora_editor_framework::{
     AppEditorExt, ShortcutEntry, ShortcutRegistry, SplashState, ToolEntry, ToolbarRegistry,
 };
 
-mod native;
+mod modal;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -83,8 +83,8 @@ impl Plugin for CommandPalettePlugin {
                 Update,
                 consume_toggle_request.run_if(in_state(SplashState::Editor)),
             );
-        // Native (bevy_ui) palette.
-        native::register(app);
+        // The palette modal itself.
+        modal::register(app);
     }
 }
 

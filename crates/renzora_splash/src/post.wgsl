@@ -138,7 +138,7 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     //
     // Scaled with darkness the way film grain actually behaves, and it doubles as
     // the dither that hides any residual banding from the volumetric raymarch
-    // (which runs without jitter — see `native_chamber.rs`).
+    // (which runs without jitter — see `chamber.rs`).
     //
     // The amplitude is deliberately low. The chamber is mostly near-black, and grain
     // scaled up for the shadows there covers most of the frame — at the old 0.055 it

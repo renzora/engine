@@ -1,10 +1,10 @@
 pub mod config;
 pub mod github;
+mod chamber;
+pub mod launcher;
 pub mod loading;
-mod native;
-mod native_chamber;
-mod native_loading;
-mod native_post;
+mod loading_ui;
+mod post;
 pub mod project;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
@@ -56,12 +56,12 @@ impl Plugin for SplashPlugin {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, apply_project_arg);
 
-        // Native (bevy_ui) splash + loading screen, the Light Chamber cinematic,
-        // and the post/transition chain that finishes and closes over it.
-        native::register(app);
-        native_loading::register(app);
-        native_chamber::register(app);
-        native_post::register(app);
+        // The launcher + loading screen, the Light Chamber cinematic, and the
+        // post/transition chain that finishes and closes over it.
+        launcher::register(app);
+        loading_ui::register(app);
+        chamber::register(app);
+        post::register(app);
     }
 }
 
@@ -122,7 +122,7 @@ fn handle_request_open_project(
 
 /// Startup: honor a `--project <path>` argument by opening that project and
 /// arming the splash to jump straight to Loading (skipping the UI). Inserts
-/// `CurrentProject` + `PendingProjectReopen`; `native_reopen` picks the marker
+/// `CurrentProject` + `PendingProjectReopen`; `reopen_last_project` picks the marker
 /// up on the first `Update` and transitions to `Loading`. No-op without the
 /// argument or on a failed open.
 #[cfg(not(target_arch = "wasm32"))]
@@ -151,7 +151,7 @@ fn apply_project_arg(mut commands: Commands) {
 pub struct PendingProjectReopen;
 
 /// While present, the splash plays the spectral iris closing over the cinematic;
-/// when its timer reaches [`APERTURE_DURATION`], `native::tick_aperture` transitions
+/// when its timer reaches [`APERTURE_DURATION`], `launcher::tick_aperture` transitions
 /// to Loading. Inserted by `enter_project` (a project was chosen from the launcher).
 #[derive(Resource, Default)]
 pub(crate) struct Aperture {

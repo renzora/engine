@@ -1,6 +1,6 @@
 //! Mixer plugin wiring — registers the audio component inspectors.
 //!
-//! The mixer panel itself is bevy_ui (ember) native; see [`crate::native_strips`].
+//! The mixer panel itself is bevy_ui (ember); see [`crate::strips`].
 
 use super::inspectors;
 

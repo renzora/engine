@@ -1,4 +1,4 @@
-// Spectral finishing pass for the Light Chamber render (see `native_chamber.rs`).
+// Spectral finishing pass for the Light Chamber render (see `chamber.rs`).
 //
 // The 3D pass mixes the iridescence *in the air* — three differently-hued keys
 // whose shafts overlap into secondaries. This pass does the part that only exists

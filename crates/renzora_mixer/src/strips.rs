@@ -276,9 +276,9 @@ struct BusRenameInput(usize);
 struct MixerRename(Option<usize>);
 
 /// Registers the bevy-native Mixer content + its bus-management systems.
-pub struct NativeMixer;
+pub struct MixerStrips;
 
-impl Plugin for NativeMixer {
+impl Plugin for MixerStrips {
     fn build(&self, app: &mut App) {
         app.init_resource::<MixerRename>()
             .init_resource::<MixerLayout>()

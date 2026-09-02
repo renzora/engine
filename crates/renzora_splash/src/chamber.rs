@@ -226,7 +226,7 @@ pub(crate) fn register(app: &mut App) {
 /// Build the scene on entering the splash, tear it down on leaving.
 ///
 /// Gated on the same integrated-GPU check as the post pass (see
-/// `native_post::gate_post_camera`): a volumetric raymarch with three shadowed
+/// `post::gate_post_camera`): a volumetric raymarch with three shadowed
 /// lights is exactly the workload an integrated adapter is worst at, and this is
 /// the first thing a user sees. Where the post camera merely stops *displaying*
 /// the cinematic, this stops *paying* for it — without the gate here the scene

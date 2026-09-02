@@ -547,7 +547,7 @@ fn gamepad_snapshot(world: &Rx) -> KeyedSnapshot {
 
 // ── Registration ────────────────────────────────────────────────────────────
 
-pub fn register_native_gamepad(app: &mut App) {
+pub fn register(app: &mut App) {
     use renzora::core::RenzoraShellExt;
     use renzora::SplashState;
     bevy::asset::embedded_asset!(app, "stick.wgsl");

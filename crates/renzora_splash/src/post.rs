@@ -1,6 +1,6 @@
 //! Real full-frame post-process for the splash.
 //!
-//! The splash background (the Light Chamber render — see `native_chamber.rs`) is
+//! The splash background (the Light Chamber render — see `chamber.rs`) is
 //! rendered to an offscreen image by a dedicated `Camera2d` (mirroring
 //! `renzora_game_ui_editor`'s `canvas_render`). A fullscreen [`PostView`] node on
 //! the main camera then samples that image through `post.wgsl`, which does the
@@ -140,7 +140,7 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 /// impression is a stuttering animation before the editor has even loaded. It is
 /// decorative, so it is not worth paying for; the splash UI itself is unaffected.
 ///
-/// `native_chamber::manage_chamber` gates the 3D scene on the same condition, so on
+/// `chamber::manage_chamber` gates the 3D scene on the same condition, so on
 /// an integrated adapter nothing is rendered *or* displayed.
 ///
 /// With the camera inactive the offscreen target simply keeps its initial clear

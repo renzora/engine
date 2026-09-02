@@ -13,7 +13,7 @@
 //! binaries with `plugins/` beside them — never mind that Linux ships one
 //! `.AppImage` and macOS one `.app`. Its UI was also egui, and the editor is
 //! bevy_ui now. So the shape of the swap ([`install`]) and the whole dialog
-//! ([`native`]) are new; the sidecar keeps the old one's structure and fixes its
+//! ([`dialog`]) are new; the sidecar keeps the old one's structure and fixes its
 //! macOS process-wait, which polled `/proc` on a system that has no `/proc`.
 //!
 //! # Channels
@@ -61,7 +61,7 @@ mod check;
 #[cfg(not(target_arch = "wasm32"))]
 mod install;
 #[cfg(not(target_arch = "wasm32"))]
-mod native;
+mod dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod version;
 
@@ -262,7 +262,7 @@ impl Plugin for UpdatePlugin {
                         poll_download,
                     ),
                 );
-            native::register(_app);
+            dialog::register(_app);
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Bevy-native (ember) splash launcher — an open, chrome-less project launcher
-//! floating over the Light Chamber cinematic (`native_chamber.rs`): a search field
+//! floating over the Light Chamber cinematic (`chamber.rs`): a search field
 //! at top-centre, the New/Open actions + a narrow recent-projects list in the
 //! middle, and the social links at bottom-centre. Window controls float in the
 //! top-right; the whole background is a drag handle.
@@ -155,7 +155,7 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<SplashFilter>().init_resource::<SplashFps>().add_systems(
         Update,
         (
-            native_reopen,
+            reopen_last_project,
             native_splash_poll.run_if(in_state(SplashState::Splash)),
             update_fps.run_if(in_state(SplashState::Splash)),
             // `manage_splash` is exclusive (`&mut World`) and ran every frame for
@@ -294,7 +294,7 @@ fn animate_recent_borders(
     }
 }
 
-fn native_reopen(
+fn reopen_last_project(
     mut commands: Commands,
     reopen: Option<Res<crate::PendingProjectReopen>>,
     mut next_state: ResMut<NextState<SplashState>>,
@@ -329,9 +329,9 @@ fn manage_splash(world: &mut World) {
         if world.get_resource::<EmberFonts>().is_none() {
             return;
         }
-        // The post camera (created at startup by native_post) must exist before we
+        // The post camera (created at startup by `post`) must exist before we
         // can route the background to it.
-        let Some(post_cam) = world.get_resource::<crate::native_post::SplashPost>().map(|p| p.camera)
+        let Some(post_cam) = world.get_resource::<crate::post::SplashPost>().map(|p| p.camera)
         else {
             return;
         };
@@ -354,7 +354,7 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
     // (the cinematic children are click-through) drags the borderless window.
     //
     // Its colour is what shows when the cinematic isn't running (integrated GPU —
-    // see `native_post::gate_post_camera`), so it has to stand on its own: a near
+    // see `post::gate_post_camera`), so it has to stand on its own: a near
     // black with a trace of blue in it, matching the chamber's unlit air.
     let root = commands
         .spawn((
@@ -391,13 +391,13 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
         ))
         .id();
     let chamber = commands
-        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_chamber::ChamberView, Name::new("splash-chamber")))
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::chamber::ChamberView, Name::new("splash-chamber")))
         .id();
     commands.entity(bg_host).add_child(chamber);
 
     // The post-processed background, shown on the main camera behind the UI.
     let post_view = commands
-        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_post::PostView, Name::new("splash-post")))
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::post::PostView, Name::new("splash-post")))
         .id();
 
     let layout = build_layout(commands, fonts);
@@ -410,7 +410,7 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
             fullscreen_abs(),
             GlobalZIndex(700),
             FocusPolicy::Pass,
-            crate::native_post::ApertureView,
+            crate::post::ApertureView,
             Name::new("splash-aperture"),
         ))
         .id();

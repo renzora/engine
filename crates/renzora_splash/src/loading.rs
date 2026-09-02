@@ -130,7 +130,7 @@ impl LoadingTasks {
 }
 
 /// Resource toggled by `renzora_scene::tick_editor_load_progress`.
-/// While `true`, the native editor loading overlay (`native_loading`) paints
+/// While `true`, the editor loading overlay (`loading_ui`) paints
 /// the modal over the editor; while `false` (the steady state) it is hidden.
 #[derive(Resource, Default)]
 pub struct EditorLoadingOverlayActive(pub bool);

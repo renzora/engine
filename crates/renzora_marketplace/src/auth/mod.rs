@@ -14,7 +14,7 @@ pub mod billing;
 pub mod client;
 pub mod marketplace;
 pub mod publish;
-mod native;
+mod modal;
 pub mod session;
 
 use bevy::prelude::*;
@@ -37,8 +37,8 @@ impl Plugin for AuthPlugin {
             .init_resource::<SessionRefresh>()
             .add_systems(Update, (start_session_refresh, apply_session_refresh))
             .add_systems(Update, auth_system);
-        // Native (bevy_ui) sign-in modal.
-        native::register(app);
+        // The sign-in modal.
+        modal::register(app);
     }
 }
 

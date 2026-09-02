@@ -3,7 +3,7 @@
 //! `renzora_navmesh` compiles lean (no `editor` cargo feature, no renzora_ui /
 //! renzora_ember). The editor-only pieces that used to live behind
 //! `#[cfg(feature = "editor")]` in the main crate moved here: the NavMesh
-//! inspector entries, the spawn preset, the native (ember) panel UI, and the
+//! inspector entries, the spawn preset, the panel UI, and the
 //! bake-to-disk workflow.
 //!
 //! [`NavMeshEditorPlugin`] registers via `renzora::add!(.., Editor)`. The editor
@@ -16,14 +16,14 @@ use bevy::prelude::*;
 
 mod editor_panel;
 mod inspectors;
-mod native;
+mod panel;
 pub mod persistence;
 
 use renzora::AppEditorExt;
 use renzora_navmesh::ShowAgentPathsOverride;
 
 /// Editor-scope companion to `renzora_navmesh::NavMeshPlugin`. Adds the NavMesh
-/// inspectors, the spawn preset, the native panel, and the bake workflow.
+/// inspectors, the spawn preset, the panel, and the bake workflow.
 #[derive(Default)]
 pub struct NavMeshEditorPlugin;
 
@@ -66,8 +66,8 @@ impl Plugin for NavMeshEditorPlugin {
         // and keep it in sync each frame.
         app.insert_resource(ShowAgentPathsOverride(true));
 
-        // Native (ember) panel content.
-        app.add_plugins(native::NativeNavmesh);
+        // The panel's content.
+        app.add_plugins(panel::NavmeshPanel);
         app.add_systems(
             Update,
             (

@@ -26,9 +26,9 @@ use vleue_navigator::prelude::NavMeshStatus;
 use crate::editor_panel::{NavMeshPanelMirror, NavMeshPanelState};
 
 /// Native plugin that registers the ember navmesh panel body.
-pub struct NativeNavmesh;
+pub struct NavmeshPanel;
 
-impl Plugin for NativeNavmesh {
+impl Plugin for NavmeshPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("navmesh", true, build)
             .systems(
