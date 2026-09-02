@@ -175,6 +175,24 @@ impl ExportPreset {
     /// (a Linux template brings `.so` plugins, and offering the editor's `.dll`s
     /// while exporting for Linux would list libraries the game cannot load).
     pub fn apply(&self, state: &mut ExportOverlayState) {
+        self.apply_inner(state, true);
+    }
+
+    /// Apply without claiming the user chose it.
+    ///
+    /// The modal auto-selects the first preset when it loads a project's list,
+    /// which is a starting point rather than a decision — so it must not pin the
+    /// feature toggles and stop the project scan from answering. The difference
+    /// is load-bearing: a preset's `capabilities` map is captured automatically
+    /// by [`ExportOverlayState::sync_active_preset`] on every close and every
+    /// export, so it holds the last state rather than an intention, and letting
+    /// it win meant every project that had ever been exported was pinned to
+    /// whatever that map happened to say.
+    pub fn apply_as_default(&self, state: &mut ExportOverlayState) {
+        self.apply_inner(state, false);
+    }
+
+    fn apply_inner(&self, state: &mut ExportOverlayState, pin: bool) {
         if state.platform != self.platform {
             state.plugins_scanned = false;
             state.plugins_scanned_for = None;
@@ -205,6 +223,11 @@ impl ExportPreset {
         for (id, on) in &self.capabilities {
             state.capabilities.insert(id.clone(), *on);
         }
+        // A preset the user deliberately switched to is their answer to the
+        // feature question, so the platform re-scan above must not re-derive it
+        // from the project a frame later. See `apply_as_default` for the case
+        // where it is not an answer at all.
+        state.choices_pinned = pin;
     }
 }
 
@@ -299,4 +322,37 @@ pub fn unique_name(base: &str, existing: &[ExportPreset]) -> String {
         .map(|n| format!("{base} {n}"))
         .find(|candidate| !existing.iter().any(|p| p.name == *candidate))
         .unwrap_or_else(|| base.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a preset the user deliberately switched to may pin the feature
+    /// toggles; the one the modal auto-selects on open may not.
+    ///
+    /// This is the whole reason a 2D project kept opening with the entire 3D
+    /// pipeline ticked after detection shipped: the project had a preset, the
+    /// modal selected it because it was first, that pinned the toggles, and the
+    /// scan never got to answer. The map it pinned to had been captured
+    /// automatically by `sync_active_preset`, so it was not a choice anyone made.
+    #[test]
+    fn only_a_deliberate_preset_switch_pins_the_feature_toggles() {
+        let mut preset = ExportPreset::new("Windows (x64)", Platform::WindowsX64);
+        preset.capabilities.insert("render_3d".into(), true);
+
+        let mut state = ExportOverlayState::default();
+        preset.apply_as_default(&mut state);
+        assert!(
+            !state.choices_pinned,
+            "auto-selecting the first preset must leave the scan free to answer"
+        );
+        // It still applies — the pin is about authority, not about whether the
+        // settings land.
+        assert_eq!(state.capabilities.get("render_3d"), Some(&true));
+
+        let mut state = ExportOverlayState::default();
+        preset.apply(&mut state);
+        assert!(state.choices_pinned, "a deliberate switch is an answer");
+    }
 }

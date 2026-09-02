@@ -23,6 +23,13 @@ toml = "0.8"
 # rest of the manifest. The copy is disposable, but format-preserving edits keep
 # diffs/debugging sane.
 toml_edit = "0.22"
+# Icon conversion (see `icon.rs`): decode whatever the author picked, emit a
+# multi-size `.ico` for the executable's resource table and a PNG for the rpak.
+# `default-features = false` matters — image's defaults would add `dds`, `ff`,
+# `pnm`, `qoi` and `rayon`, i.e. new crates in the graph. `ico` costs nothing
+# extra: it expands to `bmp` + `png`, which bevy_image already turns on, so this
+# is the ICO codec and no additional dependencies at all.
+image = { version = "0.25", default-features = false, features = ["ico"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

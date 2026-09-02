@@ -9,10 +9,29 @@
 //! * **Safe-leaf** (Solari, gizmos, remote assets, optional codecs): Bevy
 //!   features no core crate hard-depends on. Default OFF (auto-stripped), since
 //!   they're confidently unneeded.
-//! * **Structural subsystems** (audio, navmesh, networking, post-FX, sky, …):
-//!   `renzora_runtime` features, made optional in Wave 2. Default ON (kept) — a
-//!   game might use them via scripts the scan can't see, so the dev unchecks the
-//!   ones they know are unused rather than risk auto-stripping something needed.
+//! * **Structural subsystems** (audio, navmesh, post-FX, sky, terrain, …):
+//!   `renzora_runtime` features. Default ON *unless the project says otherwise*.
+//!
+//! # The defaults are read off the project
+//!
+//! [`scan_project`] walks the project once and reads its scenes, scripts and
+//! markup; [`defaults_from_scan`] turns that into the tick state the export
+//! dialog opens with. A `.bsn` scene names every component by its full Rust path,
+//! so "does this game use terrain" is answerable exactly, and the subsystems that
+//! are reachable only from a script are matched on their script-API names
+//! instead. See [`detection_types`].
+//!
+//! The structural subsystems used to default ON unconditionally, on the
+//! reasoning that a game might reach one from a script the scan could not see.
+//! That was the right call while the scan only looked at file extensions — but
+//! it meant a 2D game shipped the entire 3D pipeline unless its author walked
+//! the whole list by hand, which in practice nobody did. Reading the scenes is
+//! not guessing, and where the content genuinely cannot answer (no scenes at
+//! all; neither pipeline in evidence; which physics backend) the old default
+//! still stands. Those three holes are spelled out on [`defaults_from_scan`].
+//!
+//! Nothing here is final: every toggle is still a toggle, and the dialog is
+//! where the author overrides a call the scan got wrong.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -114,7 +133,12 @@ pub const CAPABILITIES: &[Capability] = &[
         // message box (crash.rs). Its call site is already gated on
         // `is_editor_process()`, so a game could never show it — it was simply
         // linked in regardless.
-        runtime_features: &["crash_dialog"],
+        //
+        // `editor_tools` is the same story one crate over: `renzora_ember`
+        // depended on `arboard` and on the `image` decoder stack (plus `moxcms`)
+        // for its code editor and file-browser thumbnails, non-optionally, so a
+        // shipped game carried both. Nothing a game renders goes through either.
+        runtime_features: &["crash_dialog", "editor_tools"],
         default_on: false,
         group: None,
     },
@@ -155,7 +179,12 @@ pub const CAPABILITIES: &[Capability] = &[
                the explicit bevy manifest — it used to be welded into the 2d/3d metas.) The \
                editor's transform gizmo is a separate crate, renzora_gizmo, and is unaffected.",
         bevy_features: &["bevy_gizmos", "bevy_gizmos_render"],
-        runtime_features: &[],
+        // Stripping the bevy features is only half of it: any crate that still
+        // declares a `Gizmos` system param then fails to compile on a type that
+        // no longer exists. `renzora_runtime`'s `gizmos` forwards to the crates
+        // that draw them (`renzora_light2d`'s selection outlines today), so the
+        // code goes at the same moment the capability does.
+        runtime_features: &["gizmos"],
         default_on: false,
         group: None,
     },
@@ -206,6 +235,21 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "Cubemap / procedural skybox background.",
         bevy_features: &[],
         runtime_features: &["skybox"],
+        default_on: true,
+        group: None,
+    },
+    Capability {
+        id: "networking",
+        section: "systems",
+        label: "Multiplayer (networking)",
+        help: "The from-scratch UDP transport, replication and script RPC, plus the \
+               `--server` / `--host` startup paths and the `bincode`/`serde_json` wire \
+               formats behind them. Off makes the game single-player: `--server` on such a \
+               build logs that it has no networking and starts as an ordinary client. \
+               Detected from replicated entities in a scene and from `rpc`/`net_*` calls in \
+               scripts.",
+        bevy_features: &[],
+        runtime_features: &["networking"],
         default_on: true,
         group: None,
     },
@@ -513,6 +557,11 @@ pub const CAPABILITIES: &[Capability] = &[
             "bevy_pbr",
             "bevy_mikktspace",
             "bevy_solari",
+            // Raycasting against 3D meshes. Named here as well as under the
+            // Picking capability, because a 2D game that keeps picking (sprite
+            // and UI hit-testing are the same framework) was still compiling the
+            // mesh backend for meshes it does not have.
+            "mesh_picking",
         ],
         runtime_features: &["render_3d"],
         default_on: true,
@@ -614,8 +663,21 @@ pub const CAPABILITIES: &[Capability] = &[
         id: "animation",
         section: "systems",
         label: "Skeletal animation",
-        help: "The skeletal/property animation subsystem.",
-        bevy_features: &[],
+        help: "The skeletal/property animation subsystem — `renzora_animation` (clips, state \
+               machines, the property dopesheet) and Bevy's `bevy_animation` under it, which \
+               brings `blake3` for its curve hashing. Off for a game that animates by moving \
+               transforms or swapping sprite frames.",
+        // `bevy_animation` used to be missing here, so the toggle stripped our
+        // half and left bevy's compiled into every export. It comes out cleanly
+        // now that `scene_io`'s three `bevy::animation` denies sit behind the
+        // matching `renzora_engine/animation` gate.
+        // `gltf_animation` is listed by the glTF capability too, and needs to be
+        // in both: it expands to `bevy_animation`, so leaving it behind while
+        // animation is off would pull the crate straight back in — the same
+        // child-re-enables-parent trap the nested capabilities exist to avoid.
+        // `collect_disabled` unions the OFF capabilities, so naming it twice
+        // means it goes when either one is unticked.
+        bevy_features: &["bevy_animation", "gltf_animation"],
         runtime_features: &["animation"],
         default_on: true,
         group: None,
@@ -783,8 +845,24 @@ pub const CAPABILITIES: &[Capability] = &[
 ];
 
 /// File extensions that imply a detectable capability is needed.
+///
+/// The coarse half of detection: "there is a `.glb` in here, so the glTF loader
+/// is wanted". [`detection_types`] is the fine half, which looks *inside* those
+/// files. A capability listed in either is decided by the scan; one listed in
+/// neither keeps its `default_on`.
 fn detection_extensions(id: &str) -> &'static [&'static str] {
     match id {
+        // Markup UI is a `.html` file, and it needs the UI layer under it. Listed
+        // as well as the type paths in `detection_types` because a template that
+        // no scene references yet is still a template the game means to show.
+        "ui" | "game_ui" => &["html"],
+        // Sprite/skeletal animation clips and state machines.
+        "animation" => &["anim", "animsm"],
+        // An authored effect asset is a clear intention even if no scene has
+        // placed one yet.
+        "particles" => &["particle"],
+        // Audio files a script may play without any scene naming an emitter.
+        "audio" => &["mp3", "ogg", "wav", "flac"],
         // Mirrors `image_extra`'s `bevy_features` — an extension listed here that has
         // no decoder behind it would flip the capability on for nothing.
         "image_extra" => &[
@@ -814,58 +892,485 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
     }
 }
 
-/// Default on/off per capability for a fresh export. Solari follows its plugin;
-/// codecs follow the project's asset files; everything else uses `default_on`.
-pub fn defaults(selected_plugins: &[String], project_root: Option<&Path>) -> HashMap<String, bool> {
-    let used_exts = project_root.map(used_extensions).unwrap_or_default();
-    let uses_http = project_root.map(project_uses_script_http).unwrap_or(false);
-    CAPABILITIES
-        .iter()
-        .map(|c| {
-            let on = match c.id {
-                "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
-                // Content scan (not an extension): the http verbs in any script file.
-                "script_http" => uses_http,
-                _ if !detection_extensions(c.id).is_empty() => detection_extensions(c.id)
-                    .iter()
-                    .any(|e| used_exts.contains(*e)),
-                _ => c.default_on,
-            };
-            (c.id.to_string(), on)
-        })
-        .collect()
+/// Text fragments that, found inside a scene or a script, mean the project
+/// actually uses a capability.
+///
+/// # Why substrings of type paths
+///
+/// A `.bsn` scene names every component by its full Rust path —
+/// `renzora_terrain::data::TerrainData`, `bevy_firefly::lights::PointLight2d` —
+/// so the defining crate is written out beside every single use. Matching
+/// `renzora_terrain::` therefore answers "does anything in this project have
+/// terrain on it" without this table having to know which of that crate's dozen
+/// components a scene happens to hold, and without going stale when one is
+/// renamed. Where a subsystem's serialized type lives in the contract crate
+/// instead (`SpriteSheet`, `GaussianSplat`), the bare type name is listed too.
+///
+/// # Script API names, and why they are here
+///
+/// A scene is not the whole story: a game can spawn its world from a script, and
+/// then the only trace of a subsystem is the function the script calls. Lua's
+/// `play_sound`, `apply_impulse` and `parkour_jump` name no type at all. So the
+/// scan reads scripts as well as scenes, and the entries below include the
+/// script-facing names for every subsystem that has one. Getting this wrong in
+/// the "keep it" direction costs a few hundred KB; getting it wrong the other
+/// way ships a game whose sound does not play, so the lists are deliberately
+/// generous and a subsystem with an ambiguous signal stays on.
+fn detection_types(id: &str) -> &'static [&'static str] {
+    match id {
+        // ── The two pipelines ────────────────────────────────────────────────
+        //
+        // Neither is ever inferred from the *absence* of the other: a project
+        // with no evidence for either (a menu-only prototype, say) keeps both,
+        // handled in `defaults_from_scan`. `MeshPrimitive` covers a scene built
+        // from engine primitives, `spawn_primitive`/`cube`/`sphere` the script
+        // that makes them at runtime.
+        "render_3d" => &[
+            "Mesh3d",
+            "Camera3d",
+            "MeshMaterial3d",
+            "StandardMaterial",
+            "MeshPrimitive",
+            "MeshInstanceData",
+            "PbrAdvanced",
+            "bevy_pbr::",
+            "bevy_solari::",
+            "spawn_primitive",
+        ],
+        "render_2d" => &[
+            "Camera2d",
+            "Mesh2d",
+            "MeshMaterial2d",
+            "Node2d",
+            "SpriteImagePath",
+            "SpriteCustomSize",
+            "YSort",
+            "bevy_sprite::",
+        ],
+
+        // ── 2D subsystems ────────────────────────────────────────────────────
+        "light2d" => &["bevy_firefly::", "renzora_light2d::"],
+        "tilemap" => &["renzora_tilemap::"],
+        // `renzora_sprite_anim` serializes nothing of its own — a sprite
+        // animation is a `.anim` clip (an extension, above) driving the contract
+        // crate's atlas components.
+        "sprite_anim" => &["SpriteSheet", "SpriteAtlasRegion", "renzora_sprite_anim::"],
+
+        // ── 3D subsystems ────────────────────────────────────────────────────
+        "terrain" => &["renzora_terrain::"],
+        "water" => &["renzora_water::"],
+        "lumen" => &["renzora_lumen::", "LumenLighting"],
+        "gaussian_splatting" => &[
+            "bevy_gaussian_splatting::",
+            "renzora_gaussian_splatting::",
+            "GaussianSplat",
+        ],
+        "forward_decal" => &["renzora_forward_decal::", "DecalSettings"],
+        "cloth" => &["renzora_cloth::", "bevy_silk::"],
+
+        // ── Sky ──────────────────────────────────────────────────────────────
+        "atmosphere" => &["renzora_atmosphere::", "set_sun_angles"],
+        "environment_map" => &["renzora_environment_map::", "ReflectionProbeSource"],
+        "skybox" => &["renzora_skybox::"],
+
+        // ── Post-processing ──────────────────────────────────────────────────
+        //
+        // One crate each, and each crate's settings component is what a camera
+        // carries when the effect is on, so the crate prefix is exact.
+        "bloom" => &["renzora_bloom_effect::"],
+        "ssao" => &["renzora_ssao::"],
+        "ssr" => &["renzora_ssr::"],
+        "dof" => &["renzora_dof::"],
+        "motion_blur" => &["renzora_motion_blur::"],
+        "distance_fog" => &["renzora_distance_fog::", "set_fog"],
+        "volumetric_fog" => &["renzora_volumetric_fog::"],
+        "lens_distortion" => &["renzora_lens_distortion::"],
+        "oit" => &["renzora_oit::"],
+        "antialiasing" => &["renzora_antialiasing::"],
+
+        // ── Simulation & gameplay ────────────────────────────────────────────
+        "particles" => &["renzora_hanabi::", "bevy_hanabi::"],
+        "navmesh" => &[
+            "renzora_navmesh::",
+            "vleue_navigator::",
+            "nav_set_destination",
+            "nav_clear_destination",
+            "nav_stop",
+        ],
+        "ragdoll" => &["renzora_ragdoll::", "enable_ragdoll"],
+        "parkour" => &[
+            "renzora_parkour::",
+            "parkour_move",
+            "parkour_sprint",
+            "parkour_jump",
+            "parkour_action",
+        ],
+        "animation" => &[
+            "renzora_animation::",
+            "bevy_animation::",
+            "play_animation",
+            "crossfade_animation",
+            "set_anim_param",
+            "set_anim_bool",
+            "set_anim_trigger",
+        ],
+        "audio" => &[
+            "renzora_audio::",
+            "AudioLink",
+            "AudioEmitting",
+            "play_sound",
+            "play_music",
+            "play_audio",
+        ],
+        // Physics is deliberately absent here: the two backends share one set of
+        // serialized components and one script API, so which dimension a project
+        // needs cannot be read off a name. `defaults_from_scan` decides it from
+        // the pipeline instead — see `PHYSICS_MARKERS`.
+
+        // ── Systems ──────────────────────────────────────────────────────────
+        //
+        // `net_` and `rpc` cover the script side in both languages; the component
+        // paths cover a scene that marks entities for replication. `on_rpc` and
+        // `on_player_joined` are hooks rather than calls, and a script that
+        // defines one is a script expecting a network, so they count too.
+        "networking" => &[
+            "renzora_network::",
+            "Networked",
+            "NetworkOwner",
+            "net_rpc",
+            // The call form, not the bare word: `rpc` alone is three letters
+            // that turn up inside unrelated identifiers and hex blobs.
+            "rpc(",
+            "net_is_",
+            "net_player_count",
+            "on_rpc",
+            "on_player_joined",
+            "on_player_left",
+            "ScriptHook::Rpc",
+        ],
+        "scripting" => &["renzora_scripting::", "ScriptComponent"],
+        // World-space picking only, and the needles are chosen carefully.
+        //
+        // `Pickable` and `PickingInteraction` are what this used to match, and
+        // they are useless as evidence: bevy_ui inserts both on *every* UI node
+        // as required components, so any project with a HUD saved hundreds of
+        // them into its scenes and the capability was on for everyone. What is
+        // actually being asked is "does this game raycast into the world", and
+        // the answer to that is an observer on a `Pointer<…>` event or a
+        // deliberate settings component. UI hit-testing is unaffected either
+        // way — it is `ui_picking`, which rides the UI capability.
+        "picking" => &["Pointer<", "MeshPickingSettings", "MeshRayCastSettings"],
+        // The three LUT-sampling tone curves, by the names a scene spells them.
+        // `TonemappingSettings` counts too: an entity that carries one has
+        // chosen a curve deliberately, and five of the eight need no tables —
+        // but keeping a few hundred KB of KTX2 is the cheap side of that guess.
+        //
+        // Under-detecting is survivable here in a way it is not elsewhere:
+        // `renzora_tonemapping::force_lutless_tonemapping` rewrites any
+        // LUT-sampling curve to a table-free one when the tables are gone, so
+        // the worst case is a slightly different picture, not a magenta screen.
+        "tonemapping_luts" => &[
+            "AgX",
+            "TonyMcMapface",
+            "BlenderFilmic",
+            "TonemappingSettings",
+        ],
+        // Translation, from the call rather than from the setting.
+        //
+        // There is no project-level language field to read — the active language
+        // is a per-user preference in `~/.renzora/editor.toml` — so the question
+        // becomes "does anything in this project ask for a translated string".
+        // The needles are the qualified call, never a bare `t(`: that matches
+        // `print(`, `expect(` and every other identifier ending in t, which is
+        // exactly the kind of needle that keeps a capability on for everyone.
+        //
+        // `scan_project` adds one more signal that is not a text match: a
+        // `languages/` directory of the project's own packs.
+        "localization" => &["lang::t(", "lang::t_or(", "renzora::lang"],
+        // `Gamepad` covers the components and the Rust script API; `gamepad_`
+        // covers Lua's, where every entry point is `gamepad_button`,
+        // `gamepad_left_stick` and so on.
+        "gamepad" => &["Gamepad", "gamepad_"],
+
+        // ── Interface ────────────────────────────────────────────────────────
+        "ui" => &["bevy_ui::", "renzora_ember::", "UiCanvas"],
+        "game_ui" => &["renzora_ember::game_ui", "UiCanvas", "HtmlTemplatePath"],
+
+        _ => &[],
+    }
 }
 
-/// Whether any `.lua`/`.rhai` script in the project calls `http_get`/`http_post`.
-/// Drives the `script_http` capability so the TLS stack is only built for games
-/// that actually make script HTTP requests.
-fn project_uses_script_http(root: &Path) -> bool {
+/// Names that mean "this project uses physics", without saying which dimension.
+///
+/// `renzora_physics` owns the serialized components for both backends
+/// (`PhysicsBodyData`, `CollisionShapeData`) and `auto_init_physics` picks
+/// avian2d or avian3d at runtime from whether the entity is a 2D one — so the
+/// scene genuinely does not record the answer. The avian paths are listed anyway
+/// for a scene that names one directly.
+const PHYSICS_MARKERS: &[&str] = &[
+    "renzora_physics::",
+    "avian2d::",
+    "avian3d::",
+    "apply_force",
+    "apply_impulse",
+    "set_linear_velocity",
+    "move_controller",
+    "is_colliding",
+    "set_gravity_scale",
+];
+
+/// File types whose *contents* the scan reads.
+///
+/// Scenes and prefabs first — they are what the detection is really about — plus
+/// the places a subsystem can be reached without appearing in a scene at all:
+/// scripts in either language, markup templates, and the authored assets
+/// (materials, blueprints, particle effects) that name the crate that loads them.
+/// Everything else is counted by extension only, so a project full of textures
+/// and audio costs one `read_dir` per folder and no file reads.
+const SCANNED_EXTENSIONS: &[&str] = &[
+    "bsn", "ron", "lua", "rs", "html", "material", "blueprint", "bp", "particle", "anim", "animsm",
+];
+
+/// One file may not exceed this when scanned. A scene is text and stays well
+/// under it; the cap is only here so a stray multi-megabyte file in a project
+/// folder cannot stall the export dialog on open.
+const MAX_SCANNED_FILE: u64 = 16 * 1024 * 1024;
+
+/// What one walk of the project learned.
+///
+/// Built once when the export overlay opens and shared by both consumers — the
+/// capability defaults and the plugin pre-selection — because they were each
+/// walking the whole project separately to ask almost the same question.
+pub struct ProjectScan {
+    /// Lowercased extensions present anywhere under the project.
+    extensions: std::collections::HashSet<String>,
+    /// Which of the needles it was given were found in a readable file.
+    found: std::collections::HashSet<String>,
+    /// Whether any scene or prefab was read.
+    ///
+    /// Load-bearing: with no scene there is no evidence of anything, and turning
+    /// every undetected subsystem off would strip a working game down to
+    /// nothing. The callers fall back to plain defaults when this is false.
+    pub saw_scene: bool,
+    /// Every file in the project, as a forward-slashed project-relative path.
+    ///
+    /// Collected here because this walk already visits every one of them, so the
+    /// export dialog's Files tab costs no extra traversal. Sorted, so the tree it
+    /// builds is stable between openings.
+    pub files: Vec<String>,
+    /// Lowercased directory names seen anywhere under the project.
+    ///
+    /// For the signals a file's *contents* cannot carry. A `languages/` folder
+    /// of the project's own translation packs is the one that needs it: nothing
+    /// inside those `.toml` files says what they are, and the folder name is the
+    /// contract the loader itself goes by.
+    dirs: std::collections::HashSet<String>,
+}
+
+impl ProjectScan {
+    /// Was `needle` found anywhere?
+    pub fn saw(&self, needle: &str) -> bool {
+        self.found.contains(needle)
+    }
+
+    fn saw_any(&self, needles: &[&str]) -> bool {
+        needles.iter().any(|n| self.found.contains(*n))
+    }
+
+    /// Is there a directory of this name (case-insensitively) in the project?
+    pub fn saw_dir(&self, name: &str) -> bool {
+        self.dirs.contains(&name.to_ascii_lowercase())
+    }
+}
+
+/// Walk `root` once, recording extensions and which needles appear in its
+/// scenes, scripts and markup.
+///
+/// `extra` is for needles only the caller knows — the plugin picker passes one
+/// crate prefix per installed plugin. They are searched in the same pass, so
+/// adding a caller costs no extra traversal.
+pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
+    // The static half of the needle set, gathered once so the per-file loop is a
+    // flat scan rather than a walk of the capability table per file.
+    let mut needles: Vec<&str> = Vec::new();
+    for c in CAPABILITIES {
+        needles.extend(detection_types(c.id));
+    }
+    needles.extend(PHYSICS_MARKERS);
+    // The http verbs, which used to be their own full walk of the project.
+    needles.extend(["http_get", "http_post"]);
+    needles.sort_unstable();
+    needles.dedup();
+
+    let mut scan = ProjectScan {
+        extensions: Default::default(),
+        found: Default::default(),
+        saw_scene: false,
+        files: Vec::new(),
+        dirs: Default::default(),
+    };
+
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         for entry in rd.flatten() {
             let path = entry.path();
             if path.is_dir() {
+                // Dot-directories are the editor's own state (`.editor`,
+                // `.cache`, `.renzora`) and version control. `.renzora/scripts`
+                // in particular holds staged copies of the project's scripts,
+                // which would be scanned twice for no gain.
                 let dot = path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.starts_with('.'));
                 if !dot {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        scan.dirs.insert(name.to_ascii_lowercase());
+                    }
                     stack.push(path);
                 }
-            } else if matches!(
-                path.extension().and_then(|e| e.to_str()),
-                Some("lua")
-            ) {
-                if let Ok(src) = std::fs::read_to_string(&path) {
-                    if src.contains("http_get") || src.contains("http_post") {
-                        return true;
-                    }
+                continue;
+            }
+            if let Ok(rel) = path.strip_prefix(root) {
+                scan.files.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else { continue };
+            let ext = ext.to_ascii_lowercase();
+            let scanned = SCANNED_EXTENSIONS.contains(&ext.as_str());
+            scan.extensions.insert(ext.clone());
+            if !scanned {
+                continue;
+            }
+            if entry.metadata().map(|m| m.len()).unwrap_or(0) > MAX_SCANNED_FILE {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            if ext == "bsn" || ext == "ron" {
+                scan.saw_scene = true;
+            }
+            for n in &needles {
+                if !scan.found.contains(*n) && text.contains(*n) {
+                    scan.found.insert((*n).to_string());
+                }
+            }
+            for n in extra {
+                if !scan.found.contains(n) && text.contains(n.as_str()) {
+                    scan.found.insert(n.clone());
                 }
             }
         }
     }
-    false
+    scan.files.sort();
+    scan
+}
+
+/// Default on/off per capability for a fresh export, from an existing scan.
+///
+/// # What the scan is allowed to decide
+///
+/// Every capability with a [`detection_extensions`] or [`detection_types`] entry
+/// is answered by the project's own content: terrain is on because something in
+/// a scene carries a terrain component, audio is on because a scene has an
+/// emitter or a script calls `play_sound`. Everything else keeps its
+/// `default_on`, which is the honest answer when nothing in the project can
+/// distinguish the two cases.
+///
+/// This used to be extensions only, so the structural subsystems — the ones
+/// worth megabytes — all defaulted ON and a 2D game shipped the whole 3D
+/// pipeline unless its author went through the list by hand. The comment at the
+/// top of this file still describes that policy as deliberate, and it was, for
+/// as long as the alternative was guessing. Reading the scenes is not guessing.
+///
+/// # Where it refuses to decide
+///
+/// Three deliberate holes, each one a case where "no evidence" is not the same
+/// as "not used":
+///
+/// * **No scene at all** ([`ProjectScan::saw_scene`]) — an empty or
+///   just-created project says nothing about anything, so everything falls back
+///   to `default_on`.
+/// * **Neither pipeline detected** — a project whose scenes are pure UI has
+///   evidence for no renderer, and turning both off would ship a game that
+///   cannot draw. Both stay on.
+/// * **Physics** — the two backends share their serialized components and their
+///   script API, so the scan can see *that* physics is used and never *which*.
+///   It follows the pipeline instead.
+pub fn defaults_from_scan(
+    selected_plugins: &[String],
+    scan: Option<&ProjectScan>,
+) -> HashMap<String, bool> {
+    let Some(scan) = scan.filter(|s| s.saw_scene) else {
+        // Nothing to go on: reproduce the pre-scan behaviour exactly.
+        return CAPABILITIES
+            .iter()
+            .map(|c| {
+                let on = match c.id {
+                    "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                    _ => c.default_on,
+                };
+                (c.id.to_string(), on)
+            })
+            .collect();
+    };
+
+    let detected = |id: &str| -> Option<bool> {
+        let exts = detection_extensions(id);
+        let types = detection_types(id);
+        if exts.is_empty() && types.is_empty() {
+            return None;
+        }
+        Some(
+            exts.iter().any(|e| scan.extensions.contains(*e))
+                || types.iter().any(|t| scan.saw(t)),
+        )
+    };
+
+    // Resolved first: physics and several others are answered in terms of them.
+    let mut three_d = detected("render_3d").unwrap_or(true);
+    let mut two_d = detected("render_2d").unwrap_or(true);
+    if !three_d && !two_d {
+        three_d = true;
+        two_d = true;
+    }
+    let physics = scan.saw_any(PHYSICS_MARKERS);
+    // The post-process stack as a whole is exactly "any of its effects", so it is
+    // answered by its children rather than by markers of its own — there is no
+    // such thing as a scene that uses post-processing but no effect.
+    let any_postfx = CAPABILITIES
+        .iter()
+        .filter(|c| c.group == Some("postfx"))
+        .any(|c| detected(c.id).unwrap_or(c.default_on));
+
+    let mut state: HashMap<String, bool> = CAPABILITIES
+        .iter()
+        .map(|c| {
+            let on = match c.id {
+                // Follows its plugin, not the content: Solari is hardware
+                // ray-tracing, and a scene that would use it looks like any
+                // other lit scene.
+                "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                "render_3d" => three_d,
+                "render_2d" => two_d,
+                "postfx" => any_postfx,
+                // A named backend wins outright; otherwise physics rides the
+                // pipeline, because that is what `auto_init_physics` does at
+                // runtime when it picks a backend for an entity.
+                "physics_3d" => scan.saw("avian3d::") || (physics && three_d),
+                "physics_2d" => scan.saw("avian2d::") || (physics && two_d),
+                "script_http" => scan.saw("http_get") || scan.saw("http_post"),
+                // A project shipping its own packs wants the runtime that loads
+                // them, whether or not its own code calls `t()`.
+                "localization" => {
+                    detected("localization").unwrap_or(true) || scan.saw_dir("languages")
+                }
+                _ => detected(c.id).unwrap_or(c.default_on),
+            };
+            (c.id.to_string(), on)
+        })
+        .collect();
+    enforce_dependencies(&mut state);
+    state
 }
 
 /// Whether the export copy's `dist-lean` profile should be patched to
@@ -906,23 +1411,15 @@ pub fn lean_profile(state: &HashMap<String, bool>) -> crate::build::LeanProfile 
 
 /// Bevy features to strip from the export copy (union of OFF capabilities).
 ///
-/// Mirrors [`disabled_runtime_features`]'s render_3d rule on the Bevy side: the
-/// anti-aliasing crate is part of the 3D pipeline, so dropping 3D must take it
-/// too. Without this, a 2D export strips `renzora_antialiasing` but still
-/// compiles `bevy_anti_alias` and embeds the SMAA lookup textures.
+/// The render_3d cascade used to be re-listed here as three literal Bevy feature
+/// names. It isn't any more: [`enforce_dependencies`] turns `antialiasing` and
+/// `postfx` off with `render_3d`, and those two capabilities already name
+/// `bevy_anti_alias` + `smaa_luts` and `bevy_post_process`, so the same set falls
+/// out of the union. One rule, one place, and the Features tab agrees with it.
 pub fn disabled_bevy_features(state: &HashMap<String, bool>) -> Vec<String> {
-    let mut out = collect_disabled(state, |c| c.bevy_features);
-    if !state.get("render_3d").copied().unwrap_or(true) {
-        // `bevy_post_process` too: the six effect crates that use it are all
-        // force-stripped with 3D (see `disabled_runtime_features`), so nothing is
-        // left to need bevy's built-in stack.
-        for f in ["bevy_anti_alias", "smaa_luts", "bevy_post_process"] {
-            if !out.iter().any(|x| x == f) {
-                out.push(f.to_string());
-            }
-        }
-    }
-    out
+    let mut state = state.clone();
+    enforce_dependencies(&mut state);
+    collect_disabled(&state, |c| c.bevy_features)
 }
 
 /// `renzora_runtime` `default` features to strip from the export copy.
@@ -932,7 +1429,6 @@ pub fn disabled_bevy_features(state: &HashMap<String, bool>) -> Vec<String> {
 /// off they MUST be stripped too — otherwise the 2D build fails to compile. We do
 /// it here (not via a Cargo feature dep, which would force render_3d back ON).
 pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
-    let mut out = collect_disabled(state, |c| c.runtime_features);
     // 3D text used to need a special case here: it was the one subsystem outside
     // the UI tree that still pulled `bevy_text`, so a UI-stripped runtime had to
     // drop it too. It is a native plugin now, and the glyph machinery it shares
@@ -940,27 +1436,92 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
     // `renzora_ember` turns on — and ember is already gone when UI is off. The
     // dependency is expressed in the manifests now, so there is nothing to
     // enforce here.
-    let render_3d_on = state.get("render_3d").copied().unwrap_or(true);
-    if !render_3d_on {
-        // particles (bevy_hanabi) references bevy_pbr in its asset path — drop it
-        // too in 2D (a dedicated 2D-particle path can re-add it later).
-        for f in [
-            "terrain", "water", "particles",
-            // former `sky` bundle
-            "atmosphere", "environment_map", "skybox",
-            // former `postfx` bundle
-            "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
-            "volumetric_fog", "lens_distortion", "oit", "antialiasing",
-            // 3D-only extras that build on bevy_pbr
-            "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting",
-            "forward_decal",
-        ] {
-            if !out.iter().any(|x| x == f) {
-                out.push(f.to_string());
-            }
+    //
+    // The render_3d cascade is no longer applied here: [`enforce_dependencies`]
+    // has already written it into `state`, so it is one rule with one
+    // implementation, and — the point of moving it — the Features tab shows the
+    // same answer the build will use.
+    let mut state = state.clone();
+    enforce_dependencies(&mut state);
+    collect_disabled(&state, |c| c.runtime_features)
+}
+
+/// Capabilities that cannot survive `render_3d` being off, because what they are
+/// built out of is `bevy_pbr`.
+///
+/// This is a real build constraint, not a suggestion: keeping one of these while
+/// 3D rendering is stripped does not produce a bigger binary, it produces one
+/// that does not compile. [`enforce_dependencies`] therefore writes it into the
+/// state rather than applying it silently at strip time, so the Features tab
+/// cannot show a green toggle for something the build is about to drop — which
+/// is exactly what it used to do for all twenty-odd of these.
+///
+/// `particles` is deliberately NOT here. It was, on the grounds that bevy_hanabi
+/// reached for bevy_pbr in its asset path; it no longer does — the only mention
+/// left in the vendored crate is a doc comment, and the whole 2D-particle path
+/// (`plane_2d` effects, the 2D emitters) landed since. Verified by compiling a 2D
+/// lean binary with `particles` kept, which is the only way to be sure of a claim
+/// like that. Leaving it here silently dropped a 2D game's particle effects.
+pub const RENDER_3D_DEPENDENTS: &[&str] = &[
+    "terrain",
+    "water",
+    // the sky set
+    "atmosphere",
+    "environment_map",
+    "skybox",
+    // the post-process stack, parent included: bevy's own post-process pipeline
+    // is part of what goes.
+    "postfx",
+    "bloom",
+    "ssao",
+    "ssr",
+    "dof",
+    "motion_blur",
+    "distance_fog",
+    "volumetric_fog",
+    "lens_distortion",
+    "oit",
+    "antialiasing",
+    // 3D-only extras that build on bevy_pbr
+    "lumen",
+    "cloth",
+    "ragdoll",
+    "parkour",
+    "gaussian_splatting",
+    "forward_decal",
+    // Hardware ray tracing is bevy_pbr's, so it cannot outlive it either.
+    "solari",
+];
+
+/// Apply the rules a capability state must obey, in place.
+///
+/// Two of them, and both only ever turn things **off**:
+///
+/// 1. A child cannot outlive its parent — see [`Capability::group`].
+/// 2. Nothing in [`RENDER_3D_DEPENDENTS`] can outlive `render_3d`.
+///
+/// Off-only is deliberate. Both rules describe what the *build* will do, so
+/// enforcing them keeps the dialog honest; the reverse ("3D is back on, so have
+/// terrain again") would be the dialog inventing an intention, and turning a
+/// subsystem on behind the user's back is the one direction that can make a
+/// binary bigger than they asked for.
+///
+/// Called on the freshly detected defaults and again after every toggle, so what
+/// the Features tab shows is what the export will build.
+pub fn enforce_dependencies(state: &mut HashMap<String, bool>) {
+    if !state.get("render_3d").copied().unwrap_or(true) {
+        for id in RENDER_3D_DEPENDENTS {
+            state.insert((*id).to_string(), false);
         }
     }
-    out
+    // After the cascade above, so a child of a parent this just turned off goes
+    // with it (`bloom` under `postfx`, for one).
+    for c in CAPABILITIES {
+        let Some(parent) = c.group else { continue };
+        if !state.get(parent).copied().unwrap_or(true) {
+            state.insert(c.id.to_string(), false);
+        }
+    }
 }
 
 fn collect_disabled(
@@ -995,29 +1556,6 @@ fn is_on(state: &HashMap<String, bool>, c: &Capability) -> bool {
     state.get(c.id).copied().unwrap_or(c.default_on)
 }
 
-/// Lowercased file extensions present anywhere under `root` (skipping dot-dirs).
-fn used_extensions(root: &Path) -> std::collections::HashSet<String> {
-    let mut exts = std::collections::HashSet::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        for entry in rd.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let dot = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with('.'));
-                if !dot {
-                    stack.push(path);
-                }
-            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                exts.insert(ext.to_ascii_lowercase());
-            }
-        }
-    }
-    exts
-}
 
 #[cfg(test)]
 mod tests {
@@ -1094,7 +1632,7 @@ mod tests {
     /// binary it always did.
     #[test]
     fn a_default_state_asks_for_no_profile_changes() {
-        let state = defaults(&[], None);
+        let state = defaults_from_scan(&[], None);
         assert_eq!(lean_profile(&state), crate::build::LeanProfile::default());
 
         let mut smaller = state.clone();
@@ -1104,4 +1642,376 @@ mod tests {
         let p = lean_profile(&smaller);
         assert!(p.panic_abort && p.opt_level_z && p.codegen_units_one);
     }
+
+    // ── Content detection ───────────────────────────────────────────────────
+
+    /// A throwaway project directory holding `files` as `(relative path,
+    /// contents)`. Returned as a guard so the directory is removed even when an
+    /// assertion fails partway through.
+    struct TempProject(std::path::PathBuf);
+
+    impl TempProject {
+        fn new(tag: &str, files: &[(&str, &str)]) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "renzora_scan_{tag}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            for (rel, body) in files {
+                let path = root.join(rel);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, body).unwrap();
+            }
+            Self(root)
+        }
+
+        fn state(&self) -> HashMap<String, bool> {
+            defaults_from_scan(&[], Some(&scan_project(&self.0, &[])))
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A 2D scene must not drag the 3D pipeline — or terrain, water, or the sky
+    /// set — into the export. This is the case the whole scan exists for: it is
+    /// most of the binary, and before the scan read scene contents every one of
+    /// these defaulted ON.
+    #[test]
+    fn a_2d_project_strips_the_3d_pipeline() {
+        let p = TempProject::new(
+            "2d",
+            &[(
+                "scenes/level.bsn",
+                "entity 1 {\n\
+                 bevy_camera::components::Camera2d: (),\n\
+                 renzora::core::components::Node2d: (),\n\
+                 renzora::core::components::SpriteImagePath: (\"a.png\"),\n\
+                 }\n",
+            )],
+        );
+        let s = p.state();
+        assert!(s["render_2d"], "the scene is plainly 2D");
+        assert!(!s["render_3d"]);
+        for id in ["terrain", "water", "skybox", "atmosphere", "lumen", "gltf"] {
+            assert!(!s[id], "`{id}` has nothing in this project");
+        }
+    }
+
+    /// The mirror image, so the scan cannot pass by answering "off" to
+    /// everything.
+    #[test]
+    fn a_3d_project_keeps_the_3d_pipeline() {
+        let p = TempProject::new(
+            "3d",
+            &[(
+                "scenes/level.bsn",
+                "entity 1 {\n\
+                 bevy_camera::components::Camera3d: (),\n\
+                 bevy_mesh::components::Mesh3d: (),\n\
+                 renzora_terrain::data::TerrainData: (),\n\
+                 }\n",
+            )],
+        );
+        let s = p.state();
+        assert!(s["render_3d"]);
+        assert!(s["terrain"]);
+        assert!(!s["water"], "one 3D subsystem must not imply the rest");
+    }
+
+    /// A subsystem reached only from a script survives, because the scan reads
+    /// scripts too. Without this a game whose audio is entirely script-driven
+    /// would ship with no audio backend and no error to explain it.
+    #[test]
+    fn a_subsystem_only_a_script_uses_is_still_detected() {
+        let p = TempProject::new(
+            "script",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                ("scripts/boom.lua", "function on_ready()\n  play_sound(\"bang\")\nend\n"),
+            ],
+        );
+        let s = p.state();
+        assert!(s["audio"], "`play_sound` is the only trace audio leaves");
+        assert!(!s["navmesh"], "and it must not turn on everything else");
+    }
+
+    /// Physics has one set of components and one script API for two backends, so
+    /// the dimension comes from the pipeline — which is what `auto_init_physics`
+    /// does at runtime.
+    #[test]
+    fn physics_follows_the_pipeline() {
+        let p = TempProject::new(
+            "phys2d",
+            &[(
+                "scenes/level.bsn",
+                "entity 1 {\n\
+                 renzora::core::components::Node2d: (),\n\
+                 renzora_physics::data::PhysicsBodyData: (),\n\
+                 }\n",
+            )],
+        );
+        let s = p.state();
+        assert!(s["physics_2d"]);
+        assert!(!s["physics_3d"], "a 2D game must not carry parry3d");
+    }
+
+    /// Physics nowhere in the project means neither backend, whatever the
+    /// pipeline says.
+    #[test]
+    fn no_physics_means_neither_backend() {
+        let p = TempProject::new(
+            "nophys",
+            &[("scenes/level.bsn", "entity 1 {\n bevy_mesh::components::Mesh3d: (),\n}\n")],
+        );
+        let s = p.state();
+        assert!(!s["physics_2d"] && !s["physics_3d"]);
+    }
+
+    /// A scene with no renderer in evidence — a pure-UI menu project — keeps
+    /// both pipelines. "No evidence" is not "not used", and a game that cannot
+    /// draw is a worse outcome than a game that is a few MB larger.
+    #[test]
+    fn neither_pipeline_in_evidence_keeps_both() {
+        let p = TempProject::new(
+            "menu",
+            &[(
+                "scenes/menu.bsn",
+                "entity 1 {\n bevy_ui::ui_node::Node: (),\n bevy_ecs::name::Name: \"root\",\n}\n",
+            )],
+        );
+        let s = p.state();
+        assert!(s["render_2d"] && s["render_3d"]);
+        assert!(s["ui"]);
+    }
+
+    /// A project with no scenes at all tells us nothing, so every capability
+    /// falls back to its engine default. A freshly created project must not
+    /// export as an empty shell.
+    #[test]
+    fn a_project_with_no_scenes_keeps_the_engine_defaults() {
+        let p = TempProject::new("empty", &[("readme.txt", "nothing here")]);
+        let scan = scan_project(&p.0, &[]);
+        assert!(!scan.saw_scene);
+        let s = defaults_from_scan(&[], Some(&scan));
+        for c in CAPABILITIES {
+            if c.id == "solari" {
+                continue; // follows its plugin, never the content
+            }
+            assert_eq!(s[c.id], c.default_on, "`{}` must fall back", c.id);
+        }
+    }
+
+    /// The caller-supplied needles the plugin picker uses are found in the same
+    /// pass, in scripts as well as scenes.
+    #[test]
+    fn extra_needles_come_back_from_scenes_and_scripts() {
+        let p = TempProject::new(
+            "plugins",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora_matrix::MatrixSettings: (),\n}\n"),
+                ("scripts/go.lua", "local x = renzora_ripple::something\n"),
+            ],
+        );
+        let extra = ["renzora_matrix::", "renzora_ripple::", "renzora_absent::"]
+            .map(String::from)
+            .to_vec();
+        let scan = scan_project(&p.0, &extra);
+        assert!(scan.saw("renzora_matrix::"));
+        assert!(scan.saw("renzora_ripple::"), "scripts count too");
+        assert!(!scan.saw("renzora_absent::"));
+    }
+
+    /// The editor's own directories hold staged copies of the project's scripts
+    /// and caches of its scenes. Reading them would double the work and could
+    /// resurrect a subsystem from a stale copy of a file the user has since
+    /// changed.
+    #[test]
+    fn dot_directories_are_not_scanned() {
+        let p = TempProject::new(
+            "dotdirs",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora::core::components::Node2d: (),\n}\n"),
+                (".renzora/scripts/old.lua", "play_sound(\"gone\")\n"),
+            ],
+        );
+        assert!(!p.state()["audio"], "a staged copy under `.renzora` must not count");
+    }
+
+    /// Turning 3D rendering off must visibly take everything built on bevy_pbr
+    /// with it. The build has always stripped these; the Features tab used to go
+    /// on showing twenty-odd green toggles for things it was about to drop,
+    /// which is the single most misleading thing the dialog did.
+    #[test]
+    fn render_3d_off_takes_its_dependents_with_it() {
+        let mut state: HashMap<String, bool> =
+            CAPABILITIES.iter().map(|c| (c.id.to_string(), true)).collect();
+        state.insert("render_3d".into(), false);
+        enforce_dependencies(&mut state);
+        for id in RENDER_3D_DEPENDENTS {
+            assert!(!state[*id], "`{id}` cannot outlive render_3d");
+        }
+        // …and only those: 2D and the systems layer are untouched.
+        assert!(state["render_2d"] && state["light2d"] && state["audio"]);
+    }
+
+    /// A child follows its parent, including a parent the render_3d cascade just
+    /// turned off — `bloom` under `postfx` is exactly that chain.
+    #[test]
+    fn a_child_cannot_outlive_its_parent() {
+        let mut state: HashMap<String, bool> =
+            CAPABILITIES.iter().map(|c| (c.id.to_string(), true)).collect();
+        state.insert("ui".into(), false);
+        enforce_dependencies(&mut state);
+        assert!(!state["default_font"] && !state["game_ui"]);
+        assert!(state["audio"], "an unrelated capability must be left alone");
+    }
+
+    /// Multiplayer is detected from the script API as well as from replicated
+    /// entities: a game whose networking is entirely `rpc()` calls has nothing
+    /// in its scenes to find.
+    #[test]
+    fn networking_is_detected_from_a_script_rpc_call() {
+        let p = TempProject::new(
+            "net",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                ("scripts/net.lua", "function on_ready()\n  rpc(\"hello\", {})\nend\n"),
+            ],
+        );
+        assert!(p.state()["networking"]);
+
+        let q = TempProject::new(
+            "nonet",
+            &[("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n")],
+        );
+        assert!(
+            !q.state()["networking"],
+            "a single-player game must not ship the UDP stack"
+        );
+    }
+
+    /// A HUD must not turn world picking on.
+    ///
+    /// `bevy_ui` inserts `Pickable` and `PickingInteraction` on every node as
+    /// required components, so any project with a UI saved hundreds of them into
+    /// its scenes — matching on those kept the mesh and sprite raycast backends
+    /// in every export ever made. UI hit-testing is a different bevy feature and
+    /// rides the UI capability, so it is unaffected.
+    #[test]
+    fn a_ui_scene_does_not_turn_world_picking_on() {
+        let p = TempProject::new(
+            "picking",
+            &[(
+                "scenes/hud.bsn",
+                "entity 1 {\n\
+                 bevy_ui::ui_node::Node: (),\n\
+                 bevy_picking::Pickable: (),\n\
+                 bevy_picking::hover::PickingInteraction: None,\n\
+                 renzora::core::components::Node2d: (),\n\
+                 }\n",
+            )],
+        );
+        assert!(!p.state()["picking"], "auto-inserted UI markers are not evidence");
+        assert!(p.state()["ui"]);
+
+        // A script that observes a pointer event is.
+        let q = TempProject::new(
+            "picking_yes",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora::core::components::Node2d: (),\n}\n"),
+                ("scripts/click.rs", "fn on(_t: Trigger<Pointer<Click>>) {}\n"),
+            ],
+        );
+        assert!(q.state()["picking"]);
+    }
+
+    /// The tonemapping lookup textures follow the curve the scene actually asks
+    /// for. Five of the eight curves need no tables at all.
+    #[test]
+    fn tonemapping_luts_follow_the_curve_the_scene_names() {
+        let plain = TempProject::new(
+            "tm_none",
+            &[(
+                "scenes/level.bsn",
+                "entity 1 {\n bevy_core_pipeline::tonemapping::Tonemapping: None,\n}\n",
+            )],
+        );
+        assert!(!plain.state()["tonemapping_luts"]);
+
+        let lut = TempProject::new(
+            "tm_lut",
+            &[(
+                "scenes/level.bsn",
+                "entity 1 {\n bevy_core_pipeline::tonemapping::Tonemapping: TonyMcMapface,\n}\n",
+            )],
+        );
+        assert!(lut.state()["tonemapping_luts"]);
+    }
+
+    /// Translation follows a real call or the project's own packs — never a bare
+    /// `t(`, which matches `print(`, `expect(` and half of every Rust file.
+    #[test]
+    fn localization_needs_a_real_signal() {
+        let quiet = TempProject::new(
+            "loc_no",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                // Full of `t(` and meaning none of it.
+                ("scripts/a.rs", "fn go(w: &mut World) { let x = w.get_mut::<T>(e).expect(\"x\"); }\n"),
+            ],
+        );
+        assert!(!quiet.state()["localization"], "`expect(` is not a translation");
+
+        let calls = TempProject::new(
+            "loc_call",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                ("scripts/a.rs", "let s = renzora::lang::t(\"hud.score\");\n"),
+            ],
+        );
+        assert!(calls.state()["localization"]);
+
+        // A project shipping its own packs wants the runtime that loads them,
+        // whatever its own code does.
+        let packs = TempProject::new(
+            "loc_packs",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                ("languages/fr.toml", "\"hud.score\" = \"Score\"\n"),
+            ],
+        );
+        assert!(packs.state()["localization"]);
+    }
+
+    /// Every id named by the detection tables must be a real capability, or the
+    /// entry is a rule that can never fire.
+    #[test]
+    fn detection_tables_only_name_real_capabilities() {
+        for c in CAPABILITIES {
+            let _ = detection_extensions(c.id);
+            let _ = detection_types(c.id);
+        }
+        // The reverse direction is what actually goes stale: a capability
+        // renamed, with its detection entry left behind under the old id.
+        for id in ["render_3d", "render_2d", "audio", "terrain", "ui", "game_ui", "networking"] {
+            assert!(
+                CAPABILITIES.iter().any(|c| c.id == id),
+                "`{id}` is named by a detection table but is not a capability"
+            );
+            assert!(
+                !detection_types(id).is_empty(),
+                "`{id}` lost its detection entry"
+            );
+        }
+    }
 }
+
+
+
+
+
