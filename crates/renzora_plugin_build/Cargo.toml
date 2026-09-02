@@ -19,11 +19,29 @@ renzora_native_build = { path = "../renzora_native_build" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Unpacking the shipped `sdk.tar.zst`. `zstd` is already in the workspace
-# lockfile and `zstd-sys` is already compiled, so this adds no new C build — and
-# its decoder implements `Read`, which is what lets the tar reader chain straight
+
+# `mod unpack`'s two dependencies, and the only native ones this crate has.
+#
+# Target-scoped rather than plain because the module is desktop-only: it prepares
+# a `sdk.tar.zst` for `rustc`, and a browser can run neither. This crate is still
+# reached on wasm — `renzora_runtime` deps the native-plugin loader and the
+# Rust-script backend unconditionally — so anything left un-scoped here ships in
+# every web game. `tar` alone brought `filetime` and `xattr` along for a build
+# that has no filesystem.
+#
+# `zstd` could not cross even if we wanted it to: it builds a vendored libzstd
+# through `cc`, and wasm32-unknown-unknown has no libc sysroot for that C, so
+# clang stops at `'stdlib.h' file not found` before reaching any Renzora code.
+# That is what broke the web build when the native plugin system landed. It was
+# briefly fixed by swapping in pure-Rust `ruzstd` for wasm; gating the module is
+# the better answer, because it removes the code rather than porting code that
+# can never run. (`renzora_rpak` keeps its own `ruzstd` arm — a web game really
+# does read `.rpak` archives.)
+#
+# Its decoder implements `Read`, which is what lets the tar reader chain straight
 # onto it instead of round-tripping a ~1.9 GB temporary file. See `unpack.rs` for
 # the measurements, including why the obvious `xz2` swap is not a speed-up.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tar = "0.4"
 zstd = "0.13"
 

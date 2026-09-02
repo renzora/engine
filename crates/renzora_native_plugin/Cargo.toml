@@ -30,6 +30,12 @@ renzora = { path = "../renzora", default-features = false }
 # Reads the SDK manifest and drives rustc. No Bevy in it, so the compile path
 # stays testable without booting an engine.
 renzora_plugin_build = { path = "../renzora_plugin_build" }
+
+# Target-scoped because wasm has no dynamic linking at all, and `libloading` has
+# no backend for it. The crate still compiles for wasm — `renzora_runtime` deps
+# it unconditionally — through the `wasm_dl` shim in `lib.rs`, whose `Library`
+# can never be opened.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = "0.8"
 
 [lints]

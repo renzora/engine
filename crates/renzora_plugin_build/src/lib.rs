@@ -47,8 +47,20 @@ use std::process::Command;
 use serde::Deserialize;
 
 pub mod toolchain;
+/// Unpacking the shipped `sdk.tar.zst`.
+///
+/// Desktop-only, and the gate is about weight rather than portability: this is
+/// the only module here that needs `tar` and a zstd decoder, and it exists to
+/// prepare an SDK for `rustc` — which a browser has no way to run. Left
+/// un-gated it shipped `tar`, `filetime` and a second zstd into every web game,
+/// reached from `renzora_runtime` through the native-plugin loader and the
+/// Rust-script backend, neither of which does anything on wasm.
+///
+/// Its one caller is `renzora_native_plugin::prebuild`, gated the same way.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod unpack;
 pub use toolchain::Toolchain;
+#[cfg(not(target_arch = "wasm32"))]
 pub use unpack::SdkState;
 
 use renzora_native_build as native_build;
@@ -206,9 +218,17 @@ impl Sdk {
             // states need different words: one is a build without an SDK, the
             // other is an SDK one decompression away, and calling the second
             // "missing" sent people looking for a download that does not exist.
-            let exe_dir = root.parent().unwrap_or(&root);
-            if let unpack::SdkState::Packed { archive, bytes } = unpack::sdk_state(exe_dir) {
-                return Err(Error::Packed { archive, bytes });
+            //
+            // Only a question worth asking where an archive could be unpacked:
+            // `mod unpack` is desktop-only (see its gate), and on the web there
+            // is no SDK beside a bundle and no `rustc` to hand one to, so
+            // "missing" is the whole truth there.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let exe_dir = root.parent().unwrap_or(&root);
+                if let unpack::SdkState::Packed { archive, bytes } = unpack::sdk_state(exe_dir) {
+                    return Err(Error::Packed { archive, bytes });
+                }
             }
             return Err(Error::Missing(root));
         }

@@ -15,6 +15,11 @@
 //! which binary you ship, not of which files you delete beside it.
 
 
+/// The first-run setup window, which unpacks the SDK and builds the source-only
+/// plugins. Desktop-only, following `renzora_native_plugin::prebuild` that it
+/// drives — a browser can run neither half, and there is no SDK beside a wasm
+/// bundle to unpack in the first place.
+#[cfg(not(target_arch = "wasm32"))]
 mod setup_ui;
 
 fn main() {
@@ -33,6 +38,10 @@ fn main() {
     //
     // Ordinary launches answer `needed() == false` after a couple of directory
     // stats and fall straight through. See `renzora_native_plugin::prebuild`.
+    // Gated off the web for the same reason the runtime binary's copy is: there
+    // is no SDK beside a wasm bundle, no rustc in a browser to drive if there
+    // were, and no process to relaunch afterwards.
+    #[cfg(not(target_arch = "wasm32"))]
     if renzora_native_plugin::prebuild::needed() {
         setup_ui::run();
         renzora_native_plugin::prebuild::restart();

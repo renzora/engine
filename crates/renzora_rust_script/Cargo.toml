@@ -42,6 +42,12 @@ renzora_plugin_build = { path = "../renzora_plugin_build" }
 # to speak the scripting layer's vocabulary even though it bypasses its
 # execution model.
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
+
+# Target-scoped because wasm has no dynamic linking at all, and `libloading` has
+# no backend for it. The crate still compiles for wasm — `renzora_runtime` deps
+# it unconditionally — through the `wasm_dl` shim in `lib.rs`, whose `Library`
+# can never be opened.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = "0.8"
 
 [lints]

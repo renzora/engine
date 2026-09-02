@@ -15,13 +15,20 @@
 use std::path::Path;
 
 use crate::anim_extract::AnimExtractResult;
-use crate::convert::{ImportError, ImportResult};
+use crate::convert::{ConvertedGlb, ImportError};
 use crate::settings::ImportSettings;
 
 const WHY: &str = "FBX import needs the native ufbx library, which has no web \
                    build — convert to glTF/GLB, or import on desktop";
 
-pub fn convert(_path: &Path, _settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+/// Mirrors `fbx_ufbx::convert`, which returns [`ConvertedGlb`].
+///
+/// Keeping that return type in step is the one maintenance cost of the `#[path]`
+/// switch, and it is not self-enforcing: only a wasm build compiles this file,
+/// so when the native side changed from `ImportResult` to `ConvertedGlb` nothing
+/// on any desktop machine or in CI noticed the twin had drifted. The web lane is
+/// checked in CI now, which is what makes the pairing hold.
+pub fn convert(_path: &Path, _settings: &ImportSettings) -> Result<ConvertedGlb, ImportError> {
     Err(ImportError::UnsupportedFormat(WHY.to_string()))
 }
 

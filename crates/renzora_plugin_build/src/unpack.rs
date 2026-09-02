@@ -141,6 +141,8 @@ fn unpack_stream(
     // Progress is counted on the COMPRESSED side, before the decoder, because
     // that is the only place a byte count corresponds to a known total.
     let counted = Counting { inner: BufReader::with_capacity(1 << 20, file), read: 0, progress };
+    // `Decoder::new` parses the frame header eagerly, so a truncated archive
+    // fails here rather than partway through the untar.
     let decoder = zstd::stream::Decoder::new(counted)
         .map_err(|e| format!("the SDK archive is corrupt or truncated: {e}"))?;
     tar::Archive::new(decoder)

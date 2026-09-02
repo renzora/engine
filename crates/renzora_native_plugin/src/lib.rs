@@ -72,12 +72,80 @@
 
 use std::path::{Path, PathBuf};
 
+/// First-run setup: unpack the shipped SDK and build every source-only plugin.
+///
+/// Desktop-only. It decompresses a ~1.9 GB archive and drives `rustc`, neither
+/// of which a browser can do — and leaving it un-gated pulled `tar`, `filetime`
+/// and a zstd decoder into every web game, because this crate is a hard
+/// dependency of `renzora_runtime`. Its callers (`renzora_app`'s `main` and
+/// `renzora_editor_app`'s) are gated to match.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod prebuild;
 
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use libloading::{Library, Symbol};
+#[cfg(target_arch = "wasm32")]
+use wasm_dl::{Library, Symbol};
 use renzora::{PluginKind, PluginState};
 use renzora_plugin_build::{Error as BuildError, Sdk};
+
+/// `libloading`'s shape, for a platform that has no dynamic loading at all.
+///
+/// A native plugin is a dylib the host `dlopen`s and links against the shared
+/// `bevy_dylib` — a browser has neither, and `dynamic_linking` is never on for
+/// wasm, so [`NativePluginLoader::build`] already returns before reaching any of
+/// this. What it does not do is stop the module from being *compiled*, and
+/// `libloading` has no wasm backend.
+///
+/// The alternative was `#[cfg]`-ing the loading half of a 700-line file out,
+/// which would have meant gating every caller for a platform where they all
+/// correctly find nothing anyway. This is the same shim, and the same reasoning,
+/// as `renzora_plugin::host::loader`'s.
+///
+/// Opening always fails, so no plugin is ever found, and `Symbol` can never be
+/// constructed — which is what makes its `Deref` unreachable rather than wrong.
+#[cfg(target_arch = "wasm32")]
+mod wasm_dl {
+    use std::ffi::OsStr;
+    use std::marker::PhantomData;
+    use std::ops::Deref;
+
+    #[derive(Debug)]
+    pub struct Error;
+
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("dynamic library loading is not available on wasm")
+        }
+    }
+
+    pub struct Library;
+
+    impl Library {
+        /// # Safety
+        /// Never loads anything, so trivially sound; `unsafe` only to match
+        /// `libloading::Library::new`'s signature.
+        pub unsafe fn new<P: AsRef<OsStr>>(_path: P) -> Result<Self, Error> {
+            Err(Error)
+        }
+
+        /// # Safety
+        /// Unreachable — a `Library` cannot be constructed on this target.
+        pub unsafe fn get<T>(&self, _symbol: &[u8]) -> Result<Symbol<T>, Error> {
+            Err(Error)
+        }
+    }
+
+    pub struct Symbol<T>(PhantomData<T>);
+
+    impl<T> Deref for Symbol<T> {
+        type Target = T;
+        fn deref(&self) -> &T {
+            unreachable!("Library::get never returns Ok on wasm")
+        }
+    }
+}
 
 /// The one symbol a Rust plugin must export.
 ///

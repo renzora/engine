@@ -256,6 +256,12 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
 /// implementation moved to the contract crate, because installing a plugin from
 /// the marketplace needs the same restart for the same reason and should not
 /// have to reach into the prebuild module to get it.
+///
+/// Desktop-only, following `renzora::restart_process`, which is: a page has no
+/// process to relaunch. Both callers already gate the block they use it from,
+/// and on the web [`needed`] answers false anyway — there is no SDK beside a
+/// bundle and nothing a browser could compile if there were.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn restart() -> ! {
     renzora::restart_process()
 }
