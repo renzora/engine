@@ -14,7 +14,7 @@ use renzora_editor_framework::EditorSelection;
 pub(crate) const GAUSSIAN_EXTENSIONS: &[&str] = &["ply", "gcloud", "sog", "ssog"];
 
 /// Commit a splat-cloud drop at the given viewport-space pointer. 3D-only
-/// (`native_drop::classify` never routes it in 2D view). `screen_pos` /
+/// (`drop_target::classify` never routes it in 2D view). `screen_pos` /
 /// `vp_rect` are in window logical pixels.
 pub(crate) fn commit_gaussian_drop(
     world: &mut World,

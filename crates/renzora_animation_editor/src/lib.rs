@@ -5,11 +5,11 @@
 //! - `timeline` — transport bar, time ruler, scrubber, track lanes, keyframe editing
 
 mod inspector;
-mod native_animation;
-mod native_inspector;
-mod native_params;
-mod native_state_machine;
-mod native_studio_preview;
+mod inspector_ui;
+mod panel;
+mod params;
+mod state_machine;
+mod studio_preview_panel;
 mod timeline;
 mod preview;
 mod setup;
@@ -331,7 +331,7 @@ impl Plugin for AnimationEditorPlugin {
             use renzora::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
         }
-        native_inspector::register_animator_native(app);
+        inspector_ui::register(app);
 
         app.init_resource::<AnimationEditorState>();
         app.init_resource::<preview::PreviewPlaybackState>();
@@ -389,11 +389,11 @@ impl Plugin for AnimationEditorPlugin {
         );
 
         app.add_plugins(setup::AnimSetupPlugin);
-        app.add_plugins(native_animation::NativeAnimationPanel);
+        app.add_plugins(panel::AnimationPanel);
         app.add_plugins(timeline::TimelinePanel);
-        app.add_plugins(native_params::NativeAnimParams);
-        app.add_plugins(native_state_machine::NativeStateMachine);
-        app.add_plugins(native_studio_preview::NativeStudioPreview);
+        app.add_plugins(params::AnimParamsPanel);
+        app.add_plugins(state_machine::StateMachinePanel);
+        app.add_plugins(studio_preview_panel::StudioPreviewPanel);
     }
 }
 

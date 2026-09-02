@@ -6,7 +6,7 @@
 //! in `renzora_gizmo::grid_2d` (drawn into the offscreen image *under* the
 //! sprites), while everything here is painted *over* the rendered viewport as
 //! flat, root-level absolute UI nodes in window coordinates — the same approach
-//! `native_modal_hud` uses. We do it in `renzora_viewport` (not the gizmo crate)
+//! `modal_hud` uses. We do it in `renzora_viewport` (not the gizmo crate)
 //! for two reasons: Bevy's 2D gizmos can't draw text (rulers need tick labels),
 //! and gizmos render at z=0 *beneath* sprites, whereas selection handles must
 //! sit on top of whatever they're framing.

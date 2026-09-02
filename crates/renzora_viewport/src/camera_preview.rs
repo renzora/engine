@@ -127,7 +127,7 @@ pub fn resize_camera_preview(
 /// tree, or the bevy_ui native preview panel is mounted (its image exists).
 pub fn camera_preview_panel_mounted(
     docking: Option<Res<DockingState>>,
-    native: Query<(), With<crate::native_camera_preview::NativeCamPreview>>,
+    native: Query<(), With<crate::camera_preview_panel::CamPreviewView>>,
 ) -> bool {
     docking.is_some_and(|d| d.tree.contains_panel("camera_preview")) || !native.is_empty()
 }

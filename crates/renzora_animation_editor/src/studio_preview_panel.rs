@@ -20,9 +20,9 @@ use crate::studio_preview::{
     StudioPreviewImage, StudioPreviewOrbit, StudioPreviewSettings, StudioPreviewTracker,
 };
 
-pub struct NativeStudioPreview;
+pub struct StudioPreviewPanel;
 
-impl Plugin for NativeStudioPreview {
+impl Plugin for StudioPreviewPanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("studio_preview", false, build)
             .systems(

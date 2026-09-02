@@ -20,7 +20,7 @@ pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "kt
 
 /// Commit an image-to-sprite drop at the given viewport-space pointer. Shared by
 /// the egui drop check and the native bevy_ui drop
-/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// (`drop_target::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
 /// logical pixels.
 pub(crate) fn commit_sprite_drop(
     world: &mut World,

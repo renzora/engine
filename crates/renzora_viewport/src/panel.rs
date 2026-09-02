@@ -34,7 +34,7 @@ struct NativeViewport(usize);
 #[derive(Component)]
 struct ViewportImage;
 
-pub fn register_native_viewport(app: &mut App) {
+pub fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
     for (i, id) in PANEL_IDS.iter().enumerate() {
         // `scroll = false`: the camera image fills the panel.
@@ -47,9 +47,9 @@ pub fn register_native_viewport(app: &mut App) {
             .run_if(in_state(SplashState::Editor)),
     );
     crate::toolbar::register(app);
-    crate::native_nav::register(app);
-    crate::native_height_ruler::register(app);
-    crate::native_axis_gizmo::register(app);
+    crate::nav::register(app);
+    crate::height_ruler::register(app);
+    crate::axis_gizmo::register(app);
 }
 
 /// Paint the viewport panel border green while Simulate mode runs, and clear it
@@ -135,30 +135,30 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     commands.entity(content).add_child(img);
 
     // Nav overlay (pan/zoom drag + grid/scene-icon toggles), right edge.
-    let nav = crate::native_nav::build(commands, fonts);
+    let nav = crate::nav::build(commands, fonts);
     commands.entity(content).add_child(nav);
 
     // Axis-orientation gizmo, top-right — projected from this slot's own camera.
-    let gizmo = crate::native_axis_gizmo::build(commands, fonts, index);
+    let gizmo = crate::axis_gizmo::build(commands, fonts, index);
     commands.entity(content).add_child(gizmo);
 
     // Height ruler, left edge — slides in while the Zoom button is being
     // dragged. Primary slot only: it reads the shared `EditorCamera`'s
     // altitude, which is the camera the Zoom drag actually moves.
     if index == 0 {
-        let ruler = crate::native_height_ruler::build(commands, fonts);
+        let ruler = crate::height_ruler::build(commands, fonts);
         commands.entity(content).add_child(ruler);
 
         // Tool shelf, left edge — the two-column brush palette. Primary slot
         // only, for the same reason as the ruler: it drives the one shared
         // ActiveTool, and four copies of a palette would all fight over it.
-        let shelf = crate::native_tool_shelf::build(commands, fonts);
+        let shelf = crate::tool_shelf::build(commands, fonts);
         commands.entity(content).add_child(shelf);
 
         // Statistics readout, bottom-left. Primary slot only: the counts
         // describe the scene rather than the view, so four of them would say
         // the same thing four times.
-        let stats = crate::native_stats_overlay::build(commands, fonts);
+        let stats = crate::stats_overlay::build(commands, fonts);
         commands.entity(content).add_child(stats);
     }
 

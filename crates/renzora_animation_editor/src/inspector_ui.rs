@@ -29,7 +29,7 @@ use renzora_inspector::asset_drop_field;
 
 use crate::{AnimEditorAction, AnimEditorBridge};
 
-pub fn register_animator_native(app: &mut App) {
+pub fn register(app: &mut App) {
     app.register_native_inspector_ui("animator", animator_native);
     app.add_systems(
         Update,

@@ -21,7 +21,7 @@ pub(crate) const BLUEPRINT_EXTENSIONS: &[&str] = &["blueprint", "bp"];
 
 /// Commit a `.blueprint` drop — pick the entity under `screen_pos`, load the
 /// graph from `path`, and insert it as a `BlueprintGraph`. Shared by the native
-/// bevy_ui drop (`native_drop::commit_viewport_drop`).
+/// bevy_ui drop (`drop_target::commit_viewport_drop`).
 pub(crate) fn commit_blueprint_drop(
     world: &mut World,
     screen_pos: Vec2,

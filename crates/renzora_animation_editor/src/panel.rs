@@ -36,9 +36,9 @@ const ROTATION: (u8, u8, u8) = (120, 200, 120);
 const SCALE: (u8, u8, u8) = (200, 120, 120);
 const LABEL_W: f32 = 96.0;
 
-pub struct NativeAnimationPanel;
+pub struct AnimationPanel;
 
-impl Plugin for NativeAnimationPanel {
+impl Plugin for AnimationPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<NativeAnimPanelClip>();
         app.register_panel_content("animation", true, build)

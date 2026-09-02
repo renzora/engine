@@ -15,7 +15,7 @@ pub(crate) const SCENE_EXTENSIONS: &[&str] = &["ron", "bsn"];
 
 /// Commit a `.bsn` / `.ron` scene-instance drop at the given viewport-space pointer.
 /// Shared by the egui drop check and the native bevy_ui drop
-/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// (`drop_target::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
 /// logical pixels.
 pub(crate) fn commit_scene_drop(world: &mut World, screen_pos: Vec2, vp_rect: Rect, path: PathBuf) {
     // Reject dropping a scene into itself.

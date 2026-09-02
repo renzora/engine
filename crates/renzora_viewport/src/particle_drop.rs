@@ -16,7 +16,7 @@ use crate::ViewportState;
 pub(crate) const PARTICLE_EXTENSIONS: &[&str] = &["particle"];
 
 /// Commit a `.particle` drop at the given viewport-space pointer. Shared by the
-/// native bevy_ui drop (`native_drop::commit_viewport_drop`). `screen_pos` /
+/// bevy_ui drop (`drop_target::commit_viewport_drop`). `screen_pos` /
 /// `vp_rect` are in window logical pixels.
 pub(crate) fn commit_particle_drop(
     world: &mut World,

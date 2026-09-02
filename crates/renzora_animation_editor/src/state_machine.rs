@@ -68,9 +68,9 @@ fn fresh_sm() -> AnimationStateMachine {
     }
 }
 
-pub struct NativeStateMachine;
+pub struct StateMachinePanel;
 
-impl Plugin for NativeStateMachine {
+impl Plugin for StateMachinePanel {
     fn build(&self, app: &mut App) {
         app.insert_resource(SmEditorState {
             loaded_for: None,

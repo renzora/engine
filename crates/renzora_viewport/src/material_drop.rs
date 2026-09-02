@@ -20,7 +20,7 @@ pub(crate) const MATERIAL_EXTENSIONS: &[&str] = &["material"];
 
 /// Commit a material drop — raycast for the mesh under `screen_pos` and apply the
 /// `.material`. Shared by the egui drop check and the native bevy_ui drop
-/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// (`drop_target::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
 /// logical pixels.
 pub(crate) fn commit_material_drop(
     world: &mut World,

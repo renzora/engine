@@ -88,7 +88,7 @@ pub(super) fn viewport_maximize_dock(
         if !was_maximized {
             *saved = Some(dock.tree.clone());
         }
-        let panel = crate::native_viewport::PANEL_IDS
+        let panel = crate::panel::PANEL_IDS
             .get(slot)
             .copied()
             .unwrap_or("viewport");

@@ -15,18 +15,18 @@ mod gaussian_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
-mod native_axis_gizmo;
-mod native_camera_preview;
-mod native_modal_hud;
-mod native_overlay_2d;
-mod native_drop;
-mod native_game;
+mod axis_gizmo;
+mod camera_preview_panel;
+mod drop_target;
+mod game_view;
+mod height_ruler;
+mod modal_hud;
+mod nav;
+mod overlay_2d;
+mod panel;
+mod stats_overlay;
 pub mod toolbar;
-mod native_height_ruler;
-mod native_nav;
-mod native_stats_overlay;
-mod native_tool_shelf;
-mod native_viewport;
+mod tool_shelf;
 pub mod particle_drop;
 pub mod persistence;
 pub mod play_mode;
@@ -118,7 +118,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<model_drop::ModelDragPreviewState>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
-            .init_resource::<native_drop::ArmedViewportDrop>()
+            .init_resource::<drop_target::ArmedViewportDrop>()
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
@@ -191,11 +191,11 @@ impl Plugin for ViewportPlugin {
                     html_drop::open_ui_template_request,
                     // Native (bevy_ui) asset drops (material / scene / sprite).
                     // `arm` captures the hovering drop candidate each frame;
-                    // `commit` fires it on release — see `native_drop` for why
+                    // `commit` fires it on release — see `drop_target` for why
                     // we can't read the payload at release.
                     (
-                        native_drop::arm_viewport_drop,
-                        native_drop::commit_viewport_drop,
+                        drop_target::arm_viewport_drop,
+                        drop_target::commit_viewport_drop,
                     )
                         .chain(),
                 ),
@@ -259,12 +259,12 @@ impl Plugin for ViewportPlugin {
         // Not gated on `SplashState` so the restore always runs.
         app.add_systems(Update, external_runtime::apply_runtime_pause_render);
 
-        native_viewport::register_native_viewport(app);
-        native_game::register(app);
-        native_camera_preview::register(app);
-        native_modal_hud::register(app);
-        native_overlay_2d::register(app);
-        native_stats_overlay::register(app);
+        panel::register(app);
+        game_view::register(app);
+        camera_preview_panel::register(app);
+        modal_hud::register(app);
+        overlay_2d::register(app);
+        stats_overlay::register(app);
     }
 }
 

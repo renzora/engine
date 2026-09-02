@@ -4,7 +4,7 @@
 //! Under the egui backend the viewport panel's `ui()` calls the
 //! `check_viewport_*_drop` helpers, which read the payload + pointer straight
 //! from egui on the release frame. Under the bevy_ui shell that panel body is
-//! replaced by [`crate::native_viewport`], so those checks never run — and we
+//! replaced by [`crate::panel`], so those checks never run — and we
 //! can't simply read the payload on release either: the native asset browser
 //! removes it via a deferred command on mouse-up, and any intervening exclusive
 //! system flushes that removal before a release-frame read would see it.

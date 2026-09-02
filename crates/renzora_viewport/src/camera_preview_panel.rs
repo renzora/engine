@@ -21,7 +21,7 @@ use crate::camera_preview::{CameraPreviewState, PreviewResizeRequest};
 /// Marks the native preview image — also used as the bevy_ui "panel mounted"
 /// signal so the preview camera renders even without the egui `DockingState`.
 #[derive(Component)]
-pub struct NativeCamPreview;
+pub struct CamPreviewView;
 
 pub fn register(app: &mut App) {
     app.register_panel_content("camera_preview", false, build);
@@ -75,7 +75,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ImageNode::default(),
             Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() },
             BackgroundColor(Color::srgb(0.08, 0.08, 0.10)),
-            NativeCamPreview,
+            CamPreviewView,
             Name::new("camera-preview-image"),
         ))
         .id();
@@ -99,7 +99,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Report the preview image's physical-pixel size to `PreviewResizeRequest` so
 /// the render texture matches the panel (crisp, not upscaled).
-fn report_geometry(q: Query<&ComputedNode, With<NativeCamPreview>>, req: Option<Res<PreviewResizeRequest>>) {
+fn report_geometry(q: Query<&ComputedNode, With<CamPreviewView>>, req: Option<Res<PreviewResizeRequest>>) {
     let Some(req) = req else { return };
     for cn in &q {
         let size = cn.size(); // physical px

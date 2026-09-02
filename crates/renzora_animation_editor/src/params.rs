@@ -60,9 +60,9 @@ struct NewParamScratch {
     kind: ParamKind,
 }
 
-pub struct NativeAnimParams;
+pub struct AnimParamsPanel;
 
-impl Plugin for NativeAnimParams {
+impl Plugin for AnimParamsPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<NewParamScratch>();
         app.register_panel_content("animator_params", true, build)

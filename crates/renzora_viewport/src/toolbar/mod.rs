@@ -517,7 +517,7 @@ pub(crate) fn register(app: &mut App) {
         Update,
         (
             tools::populate_tools,
-            crate::native_tool_shelf::populate_shelf,
+            crate::tool_shelf::populate_shelf,
             crate::tool_buttons::update_tool_buttons,
             shapes::populate_shapes,
         )
