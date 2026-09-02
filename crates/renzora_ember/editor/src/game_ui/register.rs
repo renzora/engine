@@ -66,6 +66,16 @@ pub fn register_game_ui_editor(app: &mut App) {
 
     register_ui_presets(app);
     app.init_resource::<canvas::UiCanvasPreviewEnabled>();
+
+    core_inspectors(app);
+    style_inspectors(app);
+    widget_data_inspectors(app);
+    hierarchy_icons(app);
+    render_target_and_systems(app);
+}
+
+/// The entity-level components: the canvas, the node, the widget.
+fn core_inspectors(app: &mut App) {
     // Per-component inspector entries (Phase A of the UI inspector
     // decomposition). Each constituent component gets its own
     // collapsible in the main inspector. Fill/stroke/etc. are still
@@ -220,6 +230,11 @@ pub fn register_game_ui_editor(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::layout_fields(),
     });
+}
+
+/// Fill, stroke, shadow and the rest — one collapsible each, so a label that
+/// wants no border can drop `UiStroke` outright.
+fn style_inspectors(app: &mut App) {
     // Per-style components — each is individually addable via the
     // Add Component overlay and removable via the trash icon. A text
     // label that doesn't want a border can drop UiStroke; a button
@@ -434,6 +449,10 @@ pub fn register_game_ui_editor(app: &mut App) {
         set_enabled_fn: None,
         fields: Vec::new(),
     });
+}
+
+/// The payload a widget type carries — a slider's range, a tooltip's text.
+fn widget_data_inspectors(app: &mut App) {
     // Per-widget-type data components — Phase C. Each is its own
     // entry; users can swap a slider's data, drop a tooltip's data,
     // etc. via the Add Component overlay.
@@ -634,7 +653,10 @@ pub fn register_game_ui_editor(app: &mut App) {
         fields: inspector::draggable_window_fields(),
     });
 
-    // Register hierarchy icons for UI entities
+}
+
+/// What a UI entity draws as in the hierarchy.
+fn hierarchy_icons(app: &mut App) {
     app.register_component_icon(renzora::ComponentIconEntry {
         // Outranks `HtmlTemplatePath` (66): a canvas holding a template is
         // still a canvas, and holding one is the entity's whole purpose — so
@@ -659,6 +681,10 @@ pub fn register_game_ui_editor(app: &mut App) {
         }),
     });
 
+}
+
+/// The UI viewport's render target, and every system the editor half runs.
+fn render_target_and_systems(app: &mut App) {
     // Editor's dedicated bevy_ui render target — what the UI
     // viewport mode displays for the *real* bevy_ui render
     // (not an egui simulation). The scene backdrop behind it is
