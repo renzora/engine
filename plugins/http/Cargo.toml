@@ -6,6 +6,16 @@ version = "0.1.0"
 edition = "2021"
 description = "The Renzora HTTP client. Implements the engine's network-backend contract."
 
+# Read by the lean exporter, matched as a substring of the Rust target triple.
+#
+# `ureq` is a blocking socket client on worker threads, and a browser has
+# neither. Excluded rather than shipped-and-broken: a plugin that links but can
+# never answer a request is worse than an absent one, because the failure then
+# looks like the request rather than the platform. Web HTTP needs a backend
+# written against `fetch`.
+[package.metadata.renzora]
+unsupported-targets = ["wasm32"]
+
 [lib]
 # `rlib` alongside `cdylib` so the client is unit-testable without going through
 # the C ABI. The request/cancel/drain bookkeeping is the half of this crate that

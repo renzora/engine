@@ -6,6 +6,16 @@ version = "0.1.0"
 edition = "2021"
 description = "Lua scripting for Renzora. Implements the engine's language-backend contract."
 
+# Read by the lean exporter, matched as a substring of the Rust target triple.
+#
+# mlua builds Lua from **C**, and wasm32-unknown-unknown has no libc sysroot for
+# clang to compile it against — the build stops at `'stdlib.h' file not found`.
+# That is the whole reason a web export has no text scripting: the host adopts a
+# linked-in language backend exactly as it would a loaded one, so what is missing
+# is a backend written in pure Rust, not any plumbing.
+[package.metadata.renzora]
+unsupported-targets = ["wasm32"]
+
 [lib]
 crate-type = ["cdylib"]
 

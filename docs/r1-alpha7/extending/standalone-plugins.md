@@ -310,7 +310,43 @@ Things to know:
 - **`Vec`, `String`, `Box`, `vec!` and `format!` are in the prelude too.** Bevy's prelude does not carry them because the std prelude does, but a `no_std` plugin has no std prelude. They come from `alloc`, and under `std` they are the identical items, so this changes nothing for a plugin that keeps it.
 - **`script` and `host` require `std`.** A language backend parks its interpreter in a `std::sync::Mutex` and, in practice, links something like mlua that needs libc anyway — 90 KB is noise next to an interpreter. `host` is the engine side of the boundary and links Bevy.
 - **A `no_std` plugin still links into a static export.** When the lean exporter compiles plugins into the binary, cargo unifies `renzora_plugin` back to `std` and `no_std_runtime!()` emits nothing, because the host already provides the allocator and panic handler. The plugin's own `#![no_std]` is untouched and irrelevant — a `no_std` crate links into a `std` binary perfectly happily.
+- **`add!` must be reachable from the crate root.** Call it at the top of `lib.rs`, or re-export what it emits: `pub use plugin::renzora_plugin_init;`. Shipping as a file finds the entry point by *symbol*, where `#[no_mangle]` exports it from wherever it is written — a private module included. Linking into the binary finds it by *path*, and that mode drops the `#[no_mangle]` so many plugins can share one binary, which leaves a nested entry point unreachable. A plugin can work for years and fail the first time someone picks **Link into the binary**, with an error and a warning that look unrelated: `cannot find value renzora_plugin_init in crate …`, and `struct MyPlugin is never constructed` — the second being the same fault seen from the other side, since an entry point nothing can reach is dead code and takes everything it builds with it.
 - **What will not compile.** `std::collections::HashMap` (use `alloc::collections::BTreeMap`, or add `hashbrown`), `std::sync::Mutex`, anything under `std::fs`/`std::net`/`std::time`, and any dependency that itself needs `std`. Atomics are fine — they live in `core::sync::atomic`, which is where `ripple` gets them.
+
+### Declaring a platform you can't build for
+
+Most plugins are pure Rust with no dependencies and go anywhere the engine goes.
+If yours cannot — it links a C library, it needs a socket, its entry point is
+behind a `#[cfg]` — say so, and the lean exporter will leave it out with a note
+instead of failing the build:
+
+```toml
+[package.metadata.renzora]
+# Substrings matched against the Rust target triple. "wasm32" covers
+# wasm32-unknown-unknown; "apple-darwin" would cover both macOS arches.
+unsupported-targets = ["wasm32"]
+```
+
+Omit the key and your plugin builds everywhere, which is the right default and
+true of nearly all of them.
+
+**What it prevents.** A lean export compiles the ticked plugins into the binary
+through a generated aggregator that names each one's `renzora_plugin_init`. A
+plugin whose entry point is `#[cfg]`'d out for that target has no such symbol,
+so the export runs for several minutes and then dies inside generated code, on a
+crate the person exporting never mentioned:
+
+```text
+error[E0425]: cannot find value `renzora_plugin_init` in crate `audio`
+note: found an item that was configured out
+```
+
+The four in-tree plugins that carry the key are the ones this is drawn from:
+`audio` (cpal, and its entry point is native-only pending a WebAudio backend),
+`lua` and `tracy` (both compile C, and `wasm32-unknown-unknown` has no libc
+sysroot for it), and `http` (a blocking socket client a browser does not have).
+The export dialog's Plugins tab lists them for the selected platform too, so the
+answer arrives before the build rather than during it.
 
 ### Keep it out of the workspace
 

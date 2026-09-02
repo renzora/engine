@@ -6,6 +6,18 @@ version = "0.1.0"
 edition = "2021"
 description = "The Renzora audio engine. Implements the engine's audio-backend contract."
 
+# The lean exporter reads this before it links anything in. Each entry is matched
+# as a substring of the Rust target triple.
+#
+# This crate's `renzora_plugin_init` is behind `#[cfg(not(target_arch =
+# "wasm32"))]` — the backend is built on cpal, whose wasm hosts cannot capture,
+# so the web is waiting on a WebAudio backend implementing the same contract.
+# Without this key a web export links the plugin anyway and dies inside the
+# GENERATED aggregator, minutes into the compile, with `cannot find value
+# renzora_plugin_init in crate audio` and nothing pointing at the cause.
+[package.metadata.renzora]
+unsupported-targets = ["wasm32"]
+
 [lib]
 # `rlib` alongside `cdylib` so the core is unit-testable without going through
 # the C ABI. The DSP is the half of this crate that can be wrong in ways a
@@ -18,7 +30,7 @@ crate-type = ["cdylib", "rlib"]
 # are opt-in because most projects carry neither, and this is the first time
 # that has been a choice — kira's format features were enabled engine-wide, so
 # every game paid for every decoder whether or not it had one of those files.
-default = ["ogg", "wav"]
+default = ["ogg", "wav", "mp3"]
 ogg = ["symphonia/ogg", "symphonia/vorbis"]
 wav = ["symphonia/wav", "symphonia/pcm"]
 mp3 = ["symphonia/mp3"]

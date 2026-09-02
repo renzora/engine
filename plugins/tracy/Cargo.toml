@@ -9,6 +9,14 @@ version = "0.1.0"
 edition = "2021"
 description = "Stream the engine's diagnostics to a running Tracy profiler."
 
+# Read by the lean exporter, matched as a substring of the Rust target triple.
+#
+# `tracy-client` builds the Tracy C++ client through `cc`, which needs a libc
+# sysroot wasm32-unknown-unknown does not have — and there is nothing for it to
+# connect to from a browser tab in any case.
+[package.metadata.renzora]
+unsupported-targets = ["wasm32"]
+
 [lib]
 crate-type = ["cdylib"]
 

@@ -47,3 +47,25 @@ mod plugin {
 
     renzora_plugin::add!(RenzoraHttpPlugin);
 }
+
+// ── Reachable at the crate root ──────────────────────────────────────────────
+//
+// A `dlopen`'d plugin is found by SYMBOL, and `#[no_mangle]` exports one from
+// wherever it happens to be written — so the entry point sat happily inside the
+// private module above for as long as that was the only way in.
+//
+// A plugin compiled INTO the binary is found by PATH. The lean exporter's
+// generated aggregator writes `init: http::renzora_plugin_init`, and the
+// `static_link` build drops `#[no_mangle]` precisely so many plugins can share
+// one binary — which leaves the function `pub` inside a private module, i.e.
+// unreachable. The failure reads as two unrelated messages:
+//
+//     error[E0425]: cannot find value `renzora_plugin_init` in crate `http`
+//     warning: struct `RenzoraHttpPlugin` is never constructed
+//
+// The second is the same cause seen from the other side: an entry point nothing
+// can reach is dead code, and it takes everything it constructs down with it.
+//
+// So the crate root re-exports both halves. That is the contract a linked-in
+// plugin has to meet, and it costs one line.
+pub use plugin::{renzora_plugin_init, renzora_plugin_scope};
