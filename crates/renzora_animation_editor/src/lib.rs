@@ -10,7 +10,7 @@ mod native_inspector;
 mod native_params;
 mod native_state_machine;
 mod native_studio_preview;
-mod native_timeline;
+mod timeline;
 mod preview;
 mod setup;
 pub mod studio_preview;
@@ -390,7 +390,7 @@ impl Plugin for AnimationEditorPlugin {
 
         app.add_plugins(setup::AnimSetupPlugin);
         app.add_plugins(native_animation::NativeAnimationPanel);
-        app.add_plugins(native_timeline::NativeAnimTimeline);
+        app.add_plugins(timeline::TimelinePanel);
         app.add_plugins(native_params::NativeAnimParams);
         app.add_plugins(native_state_machine::NativeStateMachine);
         app.add_plugins(native_studio_preview::NativeStudioPreview);
