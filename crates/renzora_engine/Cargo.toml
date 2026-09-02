@@ -16,7 +16,7 @@ edition = "2021"
 # (via `renzora_runtime`, which forwards only the kept subsystems). `audio` just
 # re-exports the crate (see lib.rs); `animation` gates the scene-save deny of
 # `AnimatorReadState` (see scene_io.rs). See `renzora_export::capabilities`.
-default = ["audio", "animation", "terrain", "physics", "render_3d", "shader_graph", "gltf", "render_2d", "crash_dialog", "scripting", "ui"]
+default = ["audio", "networking", "animation", "terrain", "physics", "render_3d", "shader_graph", "gltf", "render_2d", "crash_dialog", "scripting", "ui"]
 # bevy_ui. This crate's only use is denying the two UI camera-target components
 # on scene save (`scene_io.rs`, via `DenyUiCameraTargets`); without bevy_ui those
 # components don't exist, so there is nothing to deny. Off is what lets a game
@@ -59,6 +59,11 @@ render_2d = []
 # `bevy_pbr`, so the two can't be stripped independently.
 gltf = ["render_3d"]
 audio = ["dep:renzora_audio"]
+# Multiplayer. All this crate needs it for is keeping replication bookkeeping
+# (`Networked`/`NetworkOwner`/`NetworkId`) out of saved scenes, routed through
+# `scene_io`'s `DenyOptionalSubsystems` so the save chains read the same either
+# way. `renzora_runtime` forwards its own `networking`.
+networking = ["dep:renzora_network"]
 animation = ["dep:renzora_animation"]
 # `terrain` only gates the scene-save deny of `TerrainCheckerboardMaterial`
 # (scene_io.rs) — the sole renzora_terrain use in this crate.
@@ -78,7 +83,7 @@ renzora_rmip = { path = "../renzora_rmip" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
-renzora_network = { path = "../renzora_network" }
+renzora_network = { path = "../renzora_network", optional = true }
 renzora_bsn = { path = "../renzora_bsn" }
 # For `plugin_scene_bridge`: mirrors the C-ABI plugin host's component schemas
 # into `renzora_bsn`'s plain-data registry, so the scene format can serialize

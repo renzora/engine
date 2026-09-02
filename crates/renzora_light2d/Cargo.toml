@@ -10,6 +10,21 @@ crate-type = ["rlib"]
 [features]
 default = ["editor"]
 editor = ["renzora/editor"]
+# The selection outlines in `editor.rs`, which need a `Gizmos` system param.
+#
+# NOT in `default`, unlike `editor`, and the difference is the whole point:
+# `renzora_runtime` deps this crate with default features on, so anything in
+# `default` is on in a lean export too and no amount of forwarding can switch it
+# back off. `renzora_runtime`'s own `gizmos` feature turns this on instead, and
+# the exporter's Debug-gizmos capability strips that — which is what lets the
+# code disappear at the same moment bevy's `bevy_gizmos` does.
+#
+# It deliberately forwards NOTHING to bevy: `bevy_gizmos` is named once, in the
+# root manifest, and the exporter shrinks a game by deleting strings from that
+# one list, so a `bevy/bevy_gizmos` forward here would quietly undo its own
+# toggle. This gate only removes the code that would otherwise fail to compile
+# once the toggle has done its work.
+gizmos = []
 
 [dependencies]
 bevy = { workspace = true }

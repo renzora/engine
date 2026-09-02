@@ -227,10 +227,36 @@ impl NativePluginScope {
 ///
 /// Takes a path, so the function may be named anything and live anywhere in the
 /// file — `renzora::script!(behaviour::update)` is fine.
+/// # Lifecycle hooks
+///
+/// A second, optional entry point receives everything that is not the per-frame
+/// update — the Rust counterpart to Lua's `on_ready`, `on_ui`, `on_rpc`,
+/// `on_scene_loaded` and the rest:
+///
+/// ```ignore
+/// fn update(ctx: &mut ScriptCtx) { /* every frame */ }
+///
+/// fn hooks(ctx: &mut ScriptCtx, hook: &renzora::ScriptHook) {
+///     match hook {
+///         renzora::ScriptHook::Ready => { /* once, before the first update */ }
+///         renzora::ScriptHook::SceneLoaded { path, .. } => { /* a scene arrived */ }
+///         _ => {}
+///     }
+/// }
+///
+/// renzora::script!(update, hooks = hooks);
+/// ```
+///
+/// See [`ScriptHook`](crate::ScriptHook) for the event list and why one function
+/// takes them all rather than eight named exports.
 #[macro_export]
 macro_rules! script {
     ($f:path) => {
         $crate::__script_entry!($f);
+    };
+    ($f:path, hooks = $h:path) => {
+        $crate::__script_entry!($f);
+        $crate::__script_hook_entry!($h);
     };
 }
 
@@ -261,6 +287,48 @@ macro_rules! __script_entry {
         ) {
             let mut ctx = $crate::ScriptCtx::new(world, entity);
             $f(&mut ctx)
+        }
+    };
+}
+
+/// The optional hook entry point [`script!`]'s two-argument form emits.
+///
+/// Separate from [`__script_entry!`] and separately optional, so the dispatcher
+/// can tell "this script has no hooks" from "this script has hooks that ignore
+/// everything" by whether the symbol resolves — and so a script written before
+/// hooks existed keeps working untouched.
+#[doc(hidden)]
+#[cfg(not(feature = "static_scripts"))]
+#[macro_export]
+macro_rules! __script_hook_entry {
+    ($h:path) => {
+        #[unsafe(no_mangle)]
+        pub fn renzora_script_hook(
+            world: &mut $crate::bevy::ecs::world::World,
+            entity: $crate::bevy::ecs::entity::Entity,
+            hook: &$crate::ScriptHook<'_>,
+        ) {
+            let mut ctx = $crate::ScriptCtx::new(world, entity);
+            $h(&mut ctx, hook)
+        }
+    };
+}
+
+/// Linked-in variant of the hook entry, for the same reason as
+/// [`__script_entry!`]'s: fifty scripts in one binary cannot each export the
+/// symbol.
+#[doc(hidden)]
+#[cfg(feature = "static_scripts")]
+#[macro_export]
+macro_rules! __script_hook_entry {
+    ($h:path) => {
+        pub fn renzora_script_hook(
+            world: &mut $crate::bevy::ecs::world::World,
+            entity: $crate::bevy::ecs::entity::Entity,
+            hook: &$crate::ScriptHook<'_>,
+        ) {
+            let mut ctx = $crate::ScriptCtx::new(world, entity);
+            $h(&mut ctx, hook)
         }
     };
 }

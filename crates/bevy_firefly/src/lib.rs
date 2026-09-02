@@ -116,7 +116,9 @@ mod utils;
 pub(crate) use phases::*;
 
 pub mod prelude {
-    pub use crate::app::{FireflyGizmoStyle, FireflyGizmosPlugin, FireflyPlugin};
+    pub use crate::app::FireflyPlugin;
+    #[cfg(feature = "gizmos")]
+    pub use crate::app::{FireflyGizmoStyle, FireflyGizmosPlugin};
     pub use crate::data::{
         CombinationMode, CombineLightmapTo, CombinedLightmaps, FireflyConfig, LightmapSize,
         NormalMode,

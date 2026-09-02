@@ -4,9 +4,10 @@
 //! and hands back `TextLayoutInfo.glyphs` — each a centre position and a px rect
 //! in that atlas. We drive that pipeline for the *layout*, then hand the glyph
 //! rects to [`pack_sdf_strip`] (coverage → SDF, packed into one strip) and emit
-//! one padded quad per glyph that samples it. The
-//! [`SdfTextMaterial`](super::material::SdfTextMaterial) shader keeps the edges
-//! crisp at any magnification.
+//! one padded quad per glyph that samples it. The `SdfTextMaterial` shader keeps
+//! the edges crisp at any magnification. (Not a doc link: that material is
+//! behind the `render_3d` feature and this module is not, so the target isn't
+//! always there to link to — see the module doc in `text_mesh/mod.rs`.)
 //!
 //! A plain function (no ECS) so the mesh-based world-space UI could reuse it; in
 //! practice the UI emitter shares only [`pack_sdf_strip`] (it already has bevy_ui's
@@ -35,7 +36,7 @@ const SUPERSAMPLE: f32 = 2.0;
 /// Build a mesh of per-glyph SDF quads for `text`, plus the SDF strip texture the
 /// quads sample. `None` if empty, the font isn't loaded yet (retry), or nothing
 /// laid out. The mesh is centred on the origin, +Y up, facing +Z, world units.
-/// Vertex colours are white — tint via [`SdfTextMaterial::color`].
+/// Vertex colours are white — tint via `SdfTextMaterial::color`.
 #[allow(clippy::too_many_arguments)]
 pub fn build_text_mesh(
     pipeline: &mut TextPipeline,

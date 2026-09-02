@@ -86,6 +86,15 @@ A few consequences worth knowing:
 
 `build.rs` embeds the executable icon and version resource automatically. On a Windows host it uses `winres` with `icon.ico` from the repo root; when cross-compiling from Linux it hand-writes a `.rc` file and compiles it with `llvm-rc`. The version string comes from `CARGO_PKG_VERSION`. The same build also emits `RENZORA_ENGINE_VERSION` and an FNV-1a `RENZORA_BUILD_HASH` (version + rustc + `bevy0.19`) used to reject ABI-incompatible dynamic plugins at load time.
 
+Both paths also read an optional `export-branding.txt` beside `Cargo.toml`, a
+`key=value` file with `product_name` and `file_description`. It is absent in the
+dev tree and in CI — the engine's own strings are the fallback — and exists so a
+**lean export** can brand the game it is compiling. The exporter writes it (and a
+converted `icon.ico`) into its disposable copy of the tree before invoking cargo;
+see [Icons](./overview.md#icons). A file rather than an environment variable
+because a cross-platform export compiles inside a container, where the workspace
+is bind-mounted but the host's env is not.
+
 ## Packaging assets
 
 The exported binary finds assets through the engine's VFS, which resolves each load path in this order:

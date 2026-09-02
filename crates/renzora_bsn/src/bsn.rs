@@ -8,12 +8,19 @@
 //!
 //! ```text
 //! // renzora interim bsn v1
-//! entity 4294967296 {
+//! entity 4294967295 {
 //!     bevy_transform::components::transform::Transform: (translation:(x:0,y:1,z:0),rotation:(0,0,0,1),scale:(x:1,y:1,z:1)),
 //!     bevy_ecs::name::Name: ("Player"),
 //! }
 //! resource my::Res: (field:1),
 //! ```
+//!
+//! The id after `entity` is `Entity::to_bits()`, which is **not** a plain
+//! index — an `EntityIndex` is a `NonMaxU32` stored as `!index`, so index 0
+//! serializes as `4294967295` and index 1 as `4294967294`, with the generation
+//! in the high 32 bits. Hand-writing a scene means writing those, not `0` and
+//! `1`; ids that don't decode are rejected with `invalid entity id bits` rather
+//! than silently loading the wrong entity.
 //!
 //! Each component/resource is `<fully::qualified::TypePath>: <RON value>,` where
 //! the RON value is produced by `bevy_reflect`'s [`TypedReflectSerializer`] and
@@ -761,6 +768,68 @@ mod tests {
         after.write_to_world(&mut dst, &mut map).expect("write");
         let ne = *map.values().next().expect("one entity");
         assert_eq!(dst.get::<Name>(ne).expect("Name via alias").as_str(), "Bob");
+    }
+
+    /// A scene written by hand — from the module docs, not from `serialize` —
+    /// has to load.
+    ///
+    /// Both halves of this are easy to get wrong and fail the same quiet way.
+    /// The entity id is `Entity::to_bits()`, where the index is a `NonMaxU32`
+    /// stored inverted, so index 0 is `4294967295` and the obvious `0` is
+    /// rejected. And the values are bevy's reflection encoding, not a
+    /// convenient one: `Name` is a newtype so it is a bare string rather than
+    /// `("x")`, and `Vec3` is a tuple rather than `(x:..,y:..,z:..)`.
+    ///
+    /// Getting either wrong lands in `deserialize_lossy`, which drops the
+    /// component and carries on — so the scene loads, missing the pieces, with
+    /// only a warning to say so.
+    #[test]
+    fn a_hand_written_scene_parses() {
+        let atr = registry();
+        let text = "\
+// renzora interim bsn v1
+entity 4294967295 {
+    bevy_ecs::name::Name: \"Camera 2D\",
+    bevy_transform::components::transform::Transform: (translation:(1.0,2.0,3.0),rotation:(0.0,0.0,0.0,1.0),scale:(1.0,1.0,1.0)),
+}
+";
+        let (scene, skipped) = {
+            let reg = atr.read();
+            BsnSerializer
+                .deserialize_lossy(text, &reg)
+                .expect("hand-written scene parses")
+        };
+        assert!(
+            skipped.is_empty(),
+            "nothing should be skipped, got {skipped:?}"
+        );
+        assert_eq!(scene.entities.len(), 1);
+        assert_eq!(scene.entities[0].components.len(), 2);
+    }
+
+    /// The forms that are *nearly* right are the ones a person writes, so pin
+    /// that they are rejected rather than half-accepted.
+    #[test]
+    fn the_plausible_wrong_forms_are_rejected() {
+        let atr = registry();
+
+        // A bare index instead of `to_bits()`.
+        let bad_id = "// renzora interim bsn v1\nentity 0 {\n}\n";
+        let reg = atr.read();
+        assert!(BsnSerializer.deserialize_lossy(bad_id, &reg).is_err());
+
+        // `Name` written as a tuple struct, `Vec3` written with field names.
+        let bad_values = "\
+// renzora interim bsn v1
+entity 4294967295 {
+    bevy_ecs::name::Name: (\"Camera 2D\"),
+    bevy_transform::components::transform::Transform: (translation:(x:1.0,y:2.0,z:3.0),rotation:(0.0,0.0,0.0,1.0),scale:(1.0,1.0,1.0)),
+}
+";
+        let (_, skipped) = BsnSerializer
+            .deserialize_lossy(bad_values, &reg)
+            .expect("parses, dropping the bad components");
+        assert_eq!(skipped.len(), 2, "both bad values should be dropped");
     }
 
     #[test]

@@ -25,6 +25,11 @@ default = []
 # and a lean export with the UI capability off strips `bevy_text` from Bevy's
 # feature set — an always-on module would fail that build. Enabled by
 # `renzora_ember`, which is itself dropped in exactly that configuration.
+#
+# It gates `bevy_text` and ONLY `bevy_text`. `SdfTextMaterial` also needs
+# `bevy_pbr`, which a 2D lean export strips independently, so the material half
+# sits behind `render_3d` as well — a UI-but-2D game (this feature on, that one
+# off) is a real configuration and used to fail to compile here.
 text_mesh = []
 # The infinite ground grid's components (`renzora::grid`). The renderer stays in
 # `renzora_grid` — only the vocabulary is here, so a native plugin can put a

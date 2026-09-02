@@ -1184,6 +1184,19 @@ fn process_pending_scene_loads(world: &mut World) {
             Without<EditorCamera>,
             Without<HideInHierarchy>,
             Without<Persistent>,
+            // Bevy represents a connected gamepad as an **entity**, and it
+            // carries a `Name` — so without this the sweep despawns the
+            // player's controller. The pad goes dead the first time a script
+            // changes scene, which presents as "the character freezes after a
+            // doorway": the keyboard still works because it is a resource, not
+            // an entity, so it looks like a movement bug rather than an input
+            // one.
+            //
+            // `scene_io`'s clear and save paths already exclude these (twice),
+            // as do `named_entities`' guard and the hierarchy panel. This is the
+            // one sweep that did not, and it is the one a *script* triggers —
+            // so the editor's own scene switching never showed it.
+            Without<bevy::input::gamepad::Gamepad>,
         )>();
         for entity in query.iter(world) {
             // Skip descendants of a `HideInHierarchy` root — the bevy_ui editor

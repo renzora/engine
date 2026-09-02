@@ -6,6 +6,8 @@
 #   - `#[reflect(Component, Default)]` added to the public components
 #     (FireflyConfig, PointLight2d, Occluder2d, ...) so the renzora inspector
 #     and the reflection-driven scene RON serializer can see them.
+#   - `FireflyGizmosPlugin` put behind a (default-off) `gizmos` feature, so the
+#     crate still compiles when a lean export strips bevy's `bevy_gizmos`.
 #   - examples/assets/dev-dependencies dropped (not vendored).
 # Consumed by `renzora_light2d`; excluded from CI test/clippy like the other
 # vendored ecosystem crates.
@@ -34,6 +36,15 @@ serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 serde = ["dep:serde", "bevy/serialize"]
+# `FireflyGizmosPlugin` and its style resource, which draw light ranges and
+# occluder outlines with a `Gizmos` param. OFF by default (upstream compiles them
+# unconditionally): `Gizmos` only exists when bevy is built with `bevy_gizmos`,
+# and the lean exporter strips that for a shipped game, so an always-on debug
+# plugin here broke every 2D export with debug drawing turned off. Nothing in
+# renzora adds the plugin — `renzora_light2d` draws its own selection outlines —
+# so this stays off until someone asks for it, and asking for it also asks for
+# the bevy feature it needs.
+gizmos = ["bevy/bevy_gizmos"]
 
 [lints.clippy]
 too_many_arguments = "allow"

@@ -26,9 +26,10 @@ use renzora::core::viewport_types::{
     ViewportSettings, ViewportView, Viewports, VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_COUNT,
 };
 use renzora::core::{DefaultCamera, Node2d, PlayModeState, ViewportCamera2d};
-use renzora::{
-    AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
-};
+use renzora::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+// Only the selection outlines read the selection, and they compile away with it.
+#[cfg(feature = "gizmos")]
+use renzora::EditorSelection;
 
 pub(super) fn register(app: &mut App) {
     info!("[editor] Light2d inspectors + presets");
@@ -36,10 +37,9 @@ pub(super) fn register(app: &mut App) {
     app.register_inspector(point_light_entry());
     app.register_inspector(occluder_entry());
     register_presets(app);
-    app.add_systems(
-        Update,
-        (sync_editor_camera_lighting, draw_selection_gizmos, update_light_markers_2d),
-    );
+    app.add_systems(Update, (sync_editor_camera_lighting, update_light_markers_2d));
+    #[cfg(feature = "gizmos")]
+    app.add_systems(Update, draw_selection_gizmos);
 }
 
 // ============================================================================
@@ -170,6 +170,11 @@ fn sync_editor_camera_lighting(
 /// 2D camera is the presenting camera there, so gizmos would leak into the
 /// game view. Also gated on the 2D **Gizmos** overlay toggle
 /// (`ViewportSettings.show_gizmos_2d`), so it hides with the light markers.
+///
+/// Behind the crate's `gizmos` feature because `Gizmos` only exists when Bevy
+/// carries `bevy_gizmos`, and the lean exporter's Debug-gizmos capability — off
+/// by default — strips that. Everything else in this module compiles either way.
+#[cfg(feature = "gizmos")]
 fn draw_selection_gizmos(
     mut gizmos: Gizmos,
     settings: Option<Res<ViewportSettings>>,

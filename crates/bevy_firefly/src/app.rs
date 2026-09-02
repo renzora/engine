@@ -1,13 +1,15 @@
 //! Module containing core plugins and logic to be added to a bevy app.
 
+#[cfg(feature = "gizmos")]
 use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::{
-    color::palettes::css::{GREY, PINK, WHITE},
     core_pipeline::{Core2d, core_2d::main_transparent_pass_2d, tonemapping::tonemapping},
     prelude::*,
     render::RenderApp,
 };
+#[cfg(feature = "gizmos")]
+use bevy::color::palettes::css::{GREY, PINK, WHITE};
 
 use crate::{
     buffers::BuffersPlugin,
@@ -15,12 +17,18 @@ use crate::{
     extract::ExtractPlugin,
     lights::LightPlugin,
     nodes::{apply_lightmap, create_lightmap, sprite},
-    occluders::{Occluder2dShape, OccluderPlugin, translate_vertices},
+    occluders::OccluderPlugin,
     pipelines::PipelinePlugin,
     sprites::SpritesPlugin,
     visibility::VisibilityPlugin,
 };
-use crate::{prelude::*, prepare::PreparePlugin};
+#[cfg(feature = "gizmos")]
+use crate::occluders::{Occluder2dShape, translate_vertices};
+use crate::prepare::PreparePlugin;
+// Only the gizmo half reads the prelude (the style resource, `PointLight2d`,
+// `Occluder2d`); without that feature this is an unused glob.
+#[cfg(feature = "gizmos")]
+use crate::prelude::*;
 
 /// Plugin necessary to use Firefly.
 ///
@@ -56,8 +64,17 @@ impl Plugin for FireflyPlugin {
 /// Plugin that shows gizmos for firefly occluders.
 ///
 /// Useful for debugging. Insert the [`FireflyGizmoStyle`] resource to configure.
+///
+/// Behind the `gizmos` feature, which is off by default. `Gizmos` only exists
+/// when Bevy is built with `bevy_gizmos`, and the lean exporter can strip that
+/// — it is a debug capability a shipped game rarely wants — so an ungated
+/// `Gizmos` system param here failed the build of every 2D game that turned
+/// debug drawing off. Renzora's own `renzora_light2d` draws its selection
+/// outlines itself and never adds this plugin.
+#[cfg(feature = "gizmos")]
 pub struct FireflyGizmosPlugin;
 
+#[cfg(feature = "gizmos")]
 impl Plugin for FireflyGizmosPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FireflyGizmoStyle>();
@@ -66,6 +83,7 @@ impl Plugin for FireflyGizmosPlugin {
 }
 
 /// Resource that can be manually inserted to change the look of Firefly gizmos.
+#[cfg(feature = "gizmos")]
 #[derive(Resource)]
 pub struct FireflyGizmoStyle {
     pub light_outer_color: Color,
@@ -73,6 +91,7 @@ pub struct FireflyGizmoStyle {
     pub occluder_color: Color,
 }
 
+#[cfg(feature = "gizmos")]
 impl Default for FireflyGizmoStyle {
     fn default() -> Self {
         Self {
@@ -83,6 +102,7 @@ impl Default for FireflyGizmoStyle {
     }
 }
 
+#[cfg(feature = "gizmos")]
 fn draw_gizmos(
     mut gizmos: Gizmos,
     style: Res<FireflyGizmoStyle>,

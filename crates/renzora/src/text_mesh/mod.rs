@@ -23,12 +23,25 @@
 //! Layout stays with each caller ([`build_text_mesh`] drives its own for a
 //! standalone entity; the UI emitter already has bevy_ui's) — only the
 //! coverage→SDF→strip step ([`pack_sdf_strip`]) and the material are shared.
+//!
+//! # Why the material is behind `render_3d` and the rest isn't
+//!
+//! Glyph geometry is a `Mesh` and an `Image`; both exist in a 2D-only Bevy. The
+//! *material* implements `bevy::pbr::Material`, which does not — a lean export
+//! with 3D rendering off strips `bevy_pbr`, and an ungated `impl Material` then
+//! fails to compile in a crate that has nothing to do with 3D. The crate feature
+//! `text_mesh` says "this build has `bevy_text`"; it cannot also stand in for
+//! "this build has `bevy_pbr`", which is why the two halves are gated
+//! separately. `renzora_ember` mirrors the split: its world-space UI (the only
+//! caller here that draws in 3D) sits behind an ember `render_3d` of its own.
 
+#[cfg(feature = "render_3d")]
 mod material;
 mod mesh;
 mod pack;
 mod sdf;
 
+#[cfg(feature = "render_3d")]
 pub use material::{ensure_sdf_material, SdfTextMaterial};
 pub use mesh::{build_text_mesh, WORLD_UNITS_PER_PX};
 pub use pack::{glyph_key, pack_sdf_strip, PackedGlyph};

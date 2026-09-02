@@ -298,6 +298,28 @@ macro_rules! error {
 /// The exception is a plugin compiled with the `static_link` feature, which
 /// deliberately drops the mangling guard so a whole set of plugins can be linked
 /// into one binary; see [`crate::static_link`] for who does that and why.
+///
+/// # Write this where the crate root can reach it
+///
+/// `renzora_plugin_init` must be nameable as `<crate>::renzora_plugin_init`.
+/// Calling `add!` at the top of `lib.rs` gives you that for free; calling it
+/// inside a module means re-exporting, `pub use plugin::renzora_plugin_init;`.
+///
+/// It is easy to miss because the `dlopen` path does not care. There the entry
+/// point is found by SYMBOL, and `#[no_mangle]` exports one from wherever it is
+/// written — a private module included. A plugin compiled INTO the binary is
+/// found by PATH instead, by an aggregator the lean exporter generates, and
+/// `static_link` has dropped the `#[no_mangle]` that was papering over the
+/// privacy. So a plugin can work for years and fail the first time someone ticks
+/// "Link into the binary":
+///
+/// ```text
+/// error[E0425]: cannot find value `renzora_plugin_init` in crate `audio`
+/// warning: struct `RenzoraAudioPlugin` is never constructed
+/// ```
+///
+/// The warning is the same fault seen from the other side — an entry point
+/// nothing can reach is dead code, and everything it constructs goes with it.
 #[macro_export]
 macro_rules! add {
     // `add!(MyPlugin, Editor)` — an editor-only plugin. Absent from the shipped

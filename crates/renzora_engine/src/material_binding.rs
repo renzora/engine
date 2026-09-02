@@ -88,12 +88,22 @@ pub fn sanitize_material_name(name: &str) -> String {
 
 /// The `<model_dir>/materials` directory a model's extracted `.material`
 /// files live in, as a project-relative asset path.
+///
+/// Splits the string itself rather than going through `std::path`, and
+/// normalizes separators *before* the split. `Path::parent` is
+/// platform-sensitive: on Linux a backslash is an ordinary filename
+/// character, so a Windows-style `models\bistro\bistro.glb` is a single
+/// component with no parent, and normalizing afterwards is too late to
+/// recover the directory. That matters beyond the test that caught it —
+/// an asset path is recorded by whichever machine did the import, so a
+/// project authored on Windows has to resolve on a Linux runtime, where
+/// the fallback would silently bind every mesh to a bare `materials/`
+/// that isn't there. A wrong `MaterialRef` fails quietly, leaving the raw
+/// glTF material in place, which is the exact failure this module exists
+/// to prevent.
 fn materials_dir_for(model_path: &str) -> String {
-    let model_dir = std::path::Path::new(model_path)
-        .parent()
-        .and_then(|p| p.to_str())
-        .map(|s| s.replace('\\', "/"))
-        .unwrap_or_default();
+    let normalized = model_path.replace('\\', "/");
+    let model_dir = normalized.rsplit_once('/').map_or("", |(dir, _)| dir);
     if model_dir.is_empty() {
         "materials".to_string()
     } else {
