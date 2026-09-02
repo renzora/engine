@@ -17,7 +17,7 @@ mod download;
 #[cfg(not(target_arch = "wasm32"))]
 mod icon;
 #[cfg(not(target_arch = "wasm32"))]
-mod native;
+mod dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
@@ -54,13 +54,13 @@ impl Plugin for ExportPlugin {
             _app.init_resource::<ExportOverlayState>()
                 .init_resource::<TemplateManager>()
                 .add_systems(Update, export_open_on_request);
-            native::register(_app);
+            dialog::register(_app);
         }
     }
 }
 
 /// Backend-agnostic orchestration: open the export modal when the editor menu
-/// fires [`ExportRequested`]. The native (bevy_ui) modal renders the UI and
+/// fires [`ExportRequested`]. The modal in [`dialog`] renders the UI and
 /// polls the worker while visible.
 #[cfg(not(target_arch = "wasm32"))]
 fn export_open_on_request(
