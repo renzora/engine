@@ -485,6 +485,9 @@ fn render_overlay_2d(
                 GlobalZIndex(Z_SELECTION),
                 bevy::ui::FocusPolicy::Pass,
                 bevy::picking::Pickable::IGNORE,
+                // See the ruler spawns below: named chrome is saved unless it
+                // opts out.
+                renzora::HideInHierarchy,
                 Overlay2dPart,
                 Name::new("selection-chrome-2d"),
             ))
@@ -958,6 +961,13 @@ fn draw_rulers(
         GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
+        // Editor chrome, not scene content. Without this the scene *saver*
+        // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
+        // the hierarchy and the debug log can identify them. A 2D scene saved
+        // with the rulers on came back with a thousand `ruler-tick` entities in
+        // the file — the loader prunes them again on the way in, so nothing
+        // looks wrong until you open the `.bsn`.
+        renzora::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-top"),
     ));
@@ -968,6 +978,13 @@ fn draw_rulers(
         GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
+        // Editor chrome, not scene content. Without this the scene *saver*
+        // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
+        // the hierarchy and the debug log can identify them. A 2D scene saved
+        // with the rulers on came back with a thousand `ruler-tick` entities in
+        // the file — the loader prunes them again on the way in, so nothing
+        // looks wrong until you open the `.bsn`.
+        renzora::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-left"),
     ));
@@ -1052,6 +1069,13 @@ fn spawn_tick(commands: &mut Commands, left: f32, top: f32, width: f32, height: 
         GlobalZIndex(Z_RULER_TICK),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
+        // Editor chrome, not scene content. Without this the scene *saver*
+        // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
+        // the hierarchy and the debug log can identify them. A 2D scene saved
+        // with the rulers on came back with a thousand `ruler-tick` entities in
+        // the file — the loader prunes them again on the way in, so nothing
+        // looks wrong until you open the `.bsn`.
+        renzora::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-tick"),
     ));
@@ -1067,6 +1091,13 @@ fn spawn_label(commands: &mut Commands, font: &FontSource, text: &str, left: f32
         GlobalZIndex(Z_RULER_LABEL),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
+        // Editor chrome, not scene content. Without this the scene *saver*
+        // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
+        // the hierarchy and the debug log can identify them. A 2D scene saved
+        // with the rulers on came back with a thousand `ruler-tick` entities in
+        // the file — the loader prunes them again on the way in, so nothing
+        // looks wrong until you open the `.bsn`.
+        renzora::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-label"),
     ));

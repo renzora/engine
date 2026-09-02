@@ -63,13 +63,41 @@ trait DenyOptionalSubsystems: Sized {
     fn deny_terrain_material(self) -> Self;
     fn deny_physics_components(self) -> Self;
     fn deny_render_3d_materials(self) -> Self;
+    fn deny_network_components(self) -> Self;
 }
 
 impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
+    // Replication bookkeeping — an id and an owner assigned by whoever is
+    // authoritative at runtime, never something a saved scene should carry back.
+    // Stripped with the `networking` subsystem, where the types are gone.
+    #[cfg(feature = "networking")]
+    fn deny_network_components(self) -> Self {
+        self.deny_component::<renzora_network::Networked>()
+            .deny_component::<renzora_network::NetworkOwner>()
+            .deny_component::<renzora_network::NetworkId>()
+    }
+    #[cfg(not(feature = "networking"))]
+    fn deny_network_components(self) -> Self {
+        self
+    }
+
+    // Bevy's own playback components as well as ours, because the two strip
+    // together: the `animation` capability drops `renzora_animation` AND bevy's
+    // `bevy_animation` feature, so with it off neither set of types exists.
+    // These three used to sit unguarded at all three call sites, which is what
+    // kept `bevy_animation` — and `blake3` behind it — pinned into every export,
+    // capability or no capability.
     #[cfg(feature = "animation")]
     fn deny_animation_state(self) -> Self {
-        // AnimatorReadState is a runtime mirror — rebuilt each frame.
-        self.deny_component::<renzora_animation::AnimatorReadState>()
+        self
+            // Ephemeral playback state; must rebuild on load.
+            .deny_component::<bevy::animation::AnimationPlayer>()
+            .deny_component::<bevy::animation::transition::AnimationTransitions>()
+            // `AnimatedBy` stores an Entity reference that doesn't remap across
+            // scene loads — reconstructed by the animator rehydration.
+            .deny_component::<bevy::animation::AnimatedBy>()
+            // AnimatorReadState is a runtime mirror — rebuilt each frame.
+            .deny_component::<renzora_animation::AnimatorReadState>()
     }
     #[cfg(not(feature = "animation"))]
     fn deny_animation_state(self) -> Self {
@@ -376,17 +404,9 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
         // Animation runtime state — ephemeral, must rebuild on load.
-        .deny_component::<bevy::animation::AnimationPlayer>()
-        .deny_component::<bevy::animation::transition::AnimationTransitions>()
-        // `AnimatedBy` stores an Entity reference that doesn't remap across
-        // scene loads — must be reconstructed by the animator rehydration.
-        .deny_component::<bevy::animation::AnimatedBy>()
         .deny_animation_state()
-        // Networking: Lightyear internals should not persist to scene files.
-        // Networked/NetworkOwner/NetworkId are runtime-only markers.
-        .deny_component::<renzora_network::Networked>()
-        .deny_component::<renzora_network::NetworkOwner>()
-        .deny_component::<renzora_network::NetworkId>()
+        // Networking: replication bookkeeping is runtime-only.
+        .deny_network_components()
         // Avian runtime components are regenerated on load from our
         // serializable PhysicsBodyData + CollisionShapeData. Persisting them
         // causes duplicate-reflect-type errors during deserialization.
@@ -547,15 +567,8 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
         // Animation runtime state — ephemeral, must rebuild on load.
-        .deny_component::<bevy::animation::AnimationPlayer>()
-        .deny_component::<bevy::animation::transition::AnimationTransitions>()
-        // `AnimatedBy` stores an Entity reference that doesn't remap across
-        // scene loads — must be reconstructed by the animator rehydration.
-        .deny_component::<bevy::animation::AnimatedBy>()
         .deny_animation_state()
-        .deny_component::<renzora_network::Networked>()
-        .deny_component::<renzora_network::NetworkOwner>()
-        .deny_component::<renzora_network::NetworkId>()
+        .deny_network_components()
         // Avian runtime components are regenerated on load from our
         // serializable PhysicsBodyData + CollisionShapeData. Persisting them
         // causes duplicate-reflect-type errors during deserialization.
@@ -626,7 +639,8 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
     if !skipped_types.is_empty() {
         for type_path in &skipped_types {
             warn!(
-                "[scene] string scene skipped unregistered type `{}`",
+                "[scene] string scene skipped `{}` — type is unregistered, or \
+                 its value did not match the type's reflection encoding",
                 type_path
             );
         }
@@ -1285,8 +1299,15 @@ pub fn load_scene(world: &mut World, path: &Path) {
     };
     if !skipped_types.is_empty() {
         for type_path in &skipped_types {
+            // "skipped" covers two causes, and saying only the first sends
+            // anyone hand-editing a scene hunting for a registration that is
+            // already there: `deserialize_lossy` drops a component whose type
+            // is unregistered *or* whose value failed to decode. A wrong RON
+            // encoding — `Name: ("x")` for a newtype, `(x:..,y:..)` for a Vec3 —
+            // lands here looking exactly like a missing type.
             warn!(
-                "[scene] {} skipped unregistered type `{}`",
+                "[scene] {} skipped `{}` — type is unregistered, or its value \
+                 did not match the type's reflection encoding",
                 path.display(),
                 type_path
             );
@@ -1816,13 +1837,8 @@ pub fn save_prefab_source(
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
-        .deny_component::<bevy::animation::AnimationPlayer>()
-        .deny_component::<bevy::animation::transition::AnimationTransitions>()
-        .deny_component::<bevy::animation::AnimatedBy>()
         .deny_animation_state()
-        .deny_component::<renzora_network::Networked>()
-        .deny_component::<renzora_network::NetworkOwner>()
-        .deny_component::<renzora_network::NetworkId>()
+        .deny_network_components()
         .deny_physics_components()
         .extract_entities(descendants.into_iter())
         .build();
