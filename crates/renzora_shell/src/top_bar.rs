@@ -87,7 +87,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // tabs used to fill the rest of this zone; they now sit at the top of the
     // viewport panel (see `build_doc_tabs`).
     let hamburger = hamburger_menu_item(commands, font);
-    let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
+    let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
     let play = build_play_group(commands, font);
     // The document tabs, for anyone who'd rather not spend a row of the window

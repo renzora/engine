@@ -46,7 +46,7 @@ pub fn register_native_viewport(app: &mut App) {
         (report_viewport_geometry, simulate_border, round_scene_corners)
             .run_if(in_state(SplashState::Editor)),
     );
-    crate::native_header::register(app);
+    crate::toolbar::register(app);
     crate::native_nav::register(app);
     crate::native_height_ruler::register(app);
     crate::native_axis_gizmo::register(app);
@@ -187,10 +187,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     // controls floating over the render would eat the view. The scene (and every
     // overlay inside it — axis gizmo, nav buttons, 2D rulers) starts below the
     // bar and moves down as the bar grows, which is why none of them offset for
-    // it any more. The driver systems in `native_header::register` locate every
+    // it any more. The driver systems in `toolbar::register` locate every
     // widget by component and iterate all instances, and `populate_tools` fills
     // each `ToolContainer` in turn, so N bars all behave.
-    let side_toolbar = crate::native_header::build_side_toolbar(commands, fonts, index);
+    let side_toolbar = crate::toolbar::build_side_toolbar(commands, fonts, index);
     // Full-width bars registered by other crates — the editor shell's document
     // tabs. Currently mounted *below* the tool strip, directly above the scene;
     // moving them either side of `side_toolbar` in this vector is the whole

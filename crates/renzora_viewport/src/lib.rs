@@ -21,7 +21,7 @@ mod native_modal_hud;
 mod native_overlay_2d;
 mod native_drop;
 mod native_game;
-pub mod native_header;
+pub mod toolbar;
 mod native_height_ruler;
 mod native_nav;
 mod native_stats_overlay;

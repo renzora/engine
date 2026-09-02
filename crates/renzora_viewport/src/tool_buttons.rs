@@ -4,7 +4,7 @@
 //! wherever it renders: an icon, a tooltip, and three closures deciding whether
 //! it shows, whether it's the active one, and what clicking it does. Only the
 //! *layout* differs — the horizontal strip across the viewport's top edge
-//! ([`crate::native_header::build_side_toolbar`]) versus the two-column shelf
+//! ([`crate::toolbar::build_side_toolbar`]) versus the two-column shelf
 //! down its left edge ([`crate::native_tool_shelf`]).
 //!
 //! So the button widget, the separator, and the two driver systems live here and
