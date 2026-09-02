@@ -1,6 +1,7 @@
-//! Bevy-native (ember) shape library panel: a search box over a wrapping grid
-//! of shape tiles (icon + name). Clicking a tile spawns that shape at the origin
-//! (undoable `SpawnShapeCmd`). Reads `ShapeRegistry`.
+//! The shape library panel: a search box over a wrapping grid of shape tiles
+//! (icon + name). Clicking a tile spawns that shape at the origin (undoable
+//! `SpawnShapeCmd`); dragging one hands off to the viewport. Reads
+//! `ShapeRegistry`.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -30,9 +31,9 @@ const LABEL_H: f32 = 26.0;
 /// Total tile height: the icon block plus the label block plus padding.
 const TILE_H: f32 = 34.0 + LABEL_H + 12.0;
 
-pub struct NativeShapeLibrary;
+pub struct ShapeLibraryPanel;
 
-impl Plugin for NativeShapeLibrary {
+impl Plugin for ShapeLibraryPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<ShapesState>();
         app.init_resource::<ShapePress>();
