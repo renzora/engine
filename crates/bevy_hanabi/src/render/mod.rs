@@ -5336,6 +5336,17 @@ fn emit_sorted_draw<T, F>(
                 continue;
             }
 
+            // Create and cache the bind group layout for this texture layout.
+            //
+            // BEFORE the visibility check below, not after it. `prepare_bind_groups`
+            // walks every batch regardless of which views can see it, and looks the
+            // layout up by texture layout — so caching only for batches visible in
+            // *this* view left that lookup failing for every off-screen effect, once
+            // per slab per frame, at `error!`. Caching is idempotent (it early-outs
+            // on a hit) and only builds a descriptor, never a GPU resource, so doing
+            // it for a batch nothing can see costs one hash probe.
+            render_pipeline.cache_material(&effect_batch.texture_layout);
+
             // Check if batch contains any entity visible in the current view. Otherwise we
             // can skip the entire batch. Note: This is O(n^2) but (unlike
             // the Sprite renderer this is inspired from) we don't expect more than
@@ -5354,9 +5365,6 @@ fn emit_sorted_draw<T, F>(
             }
             #[cfg(feature = "trace")]
             _span_check_vis.exit();
-
-            // Create and cache the bind group layout for this texture layout
-            render_pipeline.cache_material(&effect_batch.texture_layout);
 
             // FIXME - We draw the entire batch, but part of it may not be visible in this
             // view! We should re-batch for the current view specifically!
@@ -5544,6 +5552,17 @@ fn emit_binned_draw<T, F, G>(
                 continue;
             }
 
+            // Create and cache the bind group layout for this texture layout.
+            //
+            // BEFORE the visibility check below, not after it. `prepare_bind_groups`
+            // walks every batch regardless of which views can see it, and looks the
+            // layout up by texture layout — so caching only for batches visible in
+            // *this* view left that lookup failing for every off-screen effect, once
+            // per slab per frame, at `error!`. Caching is idempotent (it early-outs
+            // on a hit) and only builds a descriptor, never a GPU resource, so doing
+            // it for a batch nothing can see costs one hash probe.
+            render_pipeline.cache_material(&effect_batch.texture_layout);
+
             // Check if batch contains any entity visible in the current view. Otherwise we
             // can skip the entire batch. Note: This is O(n^2) but (unlike
             // the Sprite renderer this is inspired from) we don't expect more than
@@ -5562,9 +5581,6 @@ fn emit_binned_draw<T, F, G>(
             }
             #[cfg(feature = "trace")]
             _span_check_vis.exit();
-
-            // Create and cache the bind group layout for this texture layout
-            render_pipeline.cache_material(&effect_batch.texture_layout);
 
             // FIXME - We draw the entire batch, but part of it may not be visible in this
             // view! We should re-batch for the current view specifically!
@@ -6643,13 +6659,17 @@ pub(crate) fn prepare_bind_groups(
         // group for them exists
         // FIXME fix this insert+get below
         if !effect_batch.texture_layout.layout.is_empty() {
-            // This should always be available, as this is cached into the render pipeline
-            // just before we start specializing it.
+            // Cached by the queue systems, which now do it before their own
+            // view-visibility check — so a miss here no longer means "off-screen",
+            // it means this batch was never queued at all (no view drew it, or it
+            // was dropped earlier in the frame). There is nothing to bind it to
+            // either way, so skip it quietly: this runs per batch per frame, and an
+            // `error!` here spammed the console for every off-screen effect.
             let Some(material_bind_group_layout_desc) =
                 render_pipeline.get_material(&effect_batch.texture_layout)
             else {
-                error!(
-                    "Failed to find material bind group layout for particle slab #{}",
+                trace!(
+                    "No cached material bind group layout for particle slab #{} — batch not queued this frame",
                     effect_batch.slab_id.index()
                 );
                 continue;
