@@ -431,7 +431,7 @@ impl FolderPreviews {
 /// most once per [`FOLDER_PREVIEW_TTL`].
 pub(crate) fn scan_folder_previews(
     time: Res<Time>,
-    tiles: Query<&crate::native::AssetTile>,
+    tiles: Query<&crate::state::AssetTile>,
     mut previews: ResMut<FolderPreviews>,
 ) {
     let now = time.elapsed_secs();
@@ -712,7 +712,7 @@ mod folder_preview_tests {
         app.init_resource::<Time>()
             .init_resource::<FolderPreviews>()
             .add_systems(Update, scan_folder_previews);
-        app.world_mut().spawn(crate::native::AssetTile {
+        app.world_mut().spawn(crate::state::AssetTile {
             path: root.clone(),
             is_dir: true,
         });
