@@ -8,7 +8,8 @@ use bevy::prelude::*;
 use renzora::core::{CurrentProject, WindowMode};
 use renzora_import::optimize::MeshOptSettings;
 use renzora_rpak::{
-    pack_project_filtered, pack_project_with_progress, RpakPacker, SERVER_EXTENSIONS,
+    pack_project_filtered, pack_project_with_progress, pack_selected_with_progress, RpakPacker,
+    SERVER_EXTENSIONS,
 };
 
 use crate::download::{self, DownloadProgress, DownloadTask, ReleaseInfo};
@@ -157,6 +158,25 @@ pub struct ExportOverlayState {
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
     /// from the lean build. Populated with defaults after the plugin scan.
     pub capabilities: std::collections::HashMap<String, bool>,
+    /// Every file in the open project, forward-slashed and project-relative.
+    ///
+    /// Filled by the same walk that detects the capabilities, so the Files tab
+    /// costs no extra traversal.
+    pub project_files: Vec<String>,
+    /// Which files to pack, when the author has taken that decision themselves.
+    ///
+    /// `None` — the normal case — means the automatic crawl decides, exactly as
+    /// it always has: start at `project.toml`'s `main_scene` and follow every
+    /// quoted asset path. `Some` means the Files tab was opened and is now
+    /// authoritative: the archive holds these keys and nothing else.
+    ///
+    /// The override exists because the crawl cannot be complete. It finds paths
+    /// that appear literally in a file it packed; it cannot find one a script
+    /// builds at runtime, and it could not see a Rust script's assets at all
+    /// until the packer learned to read those in place. A missing file shows up
+    /// as `Path not found` once a frame in a shipped game, and the fix should not
+    /// be to restructure the game.
+    pub included_files: Option<std::collections::HashSet<String>>,
     /// Features-tab sections the user has folded shut, by section id.
     ///
     /// Collapse is reactive (`bind_display` per row) rather than a rebuild, so
@@ -172,6 +192,15 @@ pub struct ExportOverlayState {
     /// listing the editor's `.dll`s while exporting for Linux would offer
     /// libraries the game cannot load. Changing platform re-scans.
     pub(crate) plugins_scanned_for: Option<Platform>,
+    /// The feature toggles were chosen deliberately (loaded from a preset), so
+    /// the next plugin re-scan must leave them alone.
+    ///
+    /// A re-scan happens whenever the target platform changes, and it re-derives
+    /// the feature defaults from the project. That is right for a fresh dialog
+    /// and wrong straight after loading a preset, which is exactly a saved set of
+    /// answers — without this, applying a preset for another platform put its
+    /// features back to the scan's opinion one frame later.
+    pub(crate) choices_pinned: bool,
     /// Latest GitHub release info (for runtime downloads).
     pub release_info: Option<ReleaseInfo>,
     /// Background fetch of release manifest.
@@ -223,9 +252,12 @@ impl Default for ExportOverlayState {
             selected_plugins: std::collections::HashSet::new(),
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: std::collections::HashMap::new(),
+            project_files: Vec::new(),
+            included_files: None,
             collapsed_sections: std::collections::HashSet::new(),
             plugins_scanned: false,
             plugins_scanned_for: None,
+            choices_pinned: false,
             release_info: None,
             release_fetch_rx: None,
             release_fetch_started: false,
@@ -251,7 +283,10 @@ impl ExportOverlayState {
         self.presets_loaded_for = Some(project_root.to_path_buf());
         self.active_preset = if self.presets.is_empty() { None } else { Some(0) };
         if let Some(p) = self.active_preset.and_then(|i| self.presets.get(i)).cloned() {
-            p.apply(self);
+            // Landing on preset 0 because it is first is not the user choosing
+            // it, so it must not pin the feature toggles the way a deliberate
+            // switch does — the project scan still gets to answer.
+            p.apply_as_default(self);
         }
     }
 
@@ -675,65 +710,10 @@ fn export_wasm_zip(
         .map_err(std::io::Error::other)?;
     writer.write_all(&rpak_bytes)?;
 
-    // Generate index.html
-    let index_html = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title}</title>
-    <style>
-        html, body {{ margin: 0; padding: 0; overflow: hidden; background: #050410; }}
-        canvas {{ display: block; }}
-        #loading {{
-            position: fixed; inset: 0; display: flex;
-            align-items: center; justify-content: center;
-            background: #050410; color: #888; font-family: monospace; font-size: 14px;
-            z-index: 10;
-        }}
-        #loading.hidden {{ display: none; }}
-    </style>
-</head>
-<body>
-    <div id="loading">Loading {title}...</div>
-    <script type="module">
-        import init, {{ set_rpak, start }} from './renzora-runtime.js';
-
-        async function run() {{
-            const rpakResp = await fetch('./game.rpak');
-            if (!rpakResp.ok) throw new Error('Failed to fetch game.rpak: ' + rpakResp.status);
-            const rpakBytes = new Uint8Array(await rpakResp.arrayBuffer());
-
-            await init();
-            set_rpak(rpakBytes);
-            start();
-
-            document.getElementById('loading').classList.add('hidden');
-
-            const canvas = document.querySelector('canvas');
-            if (canvas) {{
-                const resize = () => {{
-                    canvas.width = window.innerWidth;
-                    canvas.height = window.innerHeight;
-                    canvas.style.width = window.innerWidth + 'px';
-                    canvas.style.height = window.innerHeight + 'px';
-                }};
-                resize();
-                window.addEventListener('resize', resize);
-            }}
-        }}
-
-        run().catch(err => {{
-            document.getElementById('loading').textContent = 'Failed to load: ' + err;
-            console.error(err);
-        }});
-    </script>
-</body>
-</html>
-"#,
-        title = project_name,
-    );
+    // The same page the lean path writes. Shared rather than duplicated: the two
+    // modes differ only in where the module came from, and a page that drifted
+    // between them would be a bug found by one user on one packaging mode.
+    let index_html = crate::wasm::index_html(project_name);
 
     writer
         .start_file("index.html", options)
@@ -749,6 +729,112 @@ fn export_wasm_zip(
     Ok(())
 }
 
+/// What a lean compile produced, and the context the caller still needs.
+///
+/// The last two fields are carried rather than re-derived because the web's
+/// post-build chain wants both — a `wasm-bindgen` to run and the lockfile that
+/// pins its version — and resolving them a second time would report finding Rust
+/// twice in a log the user is reading to understand one build.
+struct LeanBuild {
+    /// The compiled file: an executable for a desktop target, a raw `.wasm`
+    /// module for the web.
+    artefact: std::path::PathBuf,
+    /// Plugin ids compiled INTO it, which the copy step must then leave out of
+    /// `plugins/`.
+    linked: Vec<String>,
+    /// Plugin ids the build refused as unbuildable for this target. The copy
+    /// step must leave these out too — they are not coming, and counting them as
+    /// "shipped as files" makes the log contradict itself.
+    dropped: Vec<String>,
+    /// `None` only for a container build, which carries its own compiler.
+    toolchain: Option<crate::toolchain::Toolchain>,
+    /// The engine checkout that was compiled.
+    engine_dir: std::path::PathBuf,
+}
+
+/// Package a **lean** web export: the module this project's own build produced,
+/// rather than the one-size-fits-all template.
+///
+/// The difference from [`export_wasm_zip`] is where the wasm comes from, and it
+/// is the whole point. The template path ships the entire engine to every game
+/// because the template was compiled once, for nobody in particular; this one
+/// was compiled minutes ago with the capabilities this project actually uses
+/// stripped out, and with the selected C-ABI plugins linked in — which on the
+/// web is the *only* way a plugin can reach a game at all, since a browser has
+/// no `dlopen` for the loader to scan with.
+///
+/// Staged through a scratch directory rather than zipped from memory because
+/// `wasm-bindgen` and `wasm-opt` are both file-to-file tools: bindgen splits one
+/// module into glue plus `_bg.wasm`, and `-Oz` rewrites that file in place.
+#[allow(clippy::too_many_arguments)]
+fn export_wasm_lean(
+    tx: &mpsc::Sender<ExportMsg>,
+    toolchain: &crate::toolchain::Toolchain,
+    // The engine checkout, for its `Cargo.lock` — that is what pins the
+    // `wasm-bindgen` CLI to the version of the crate the module was compiled
+    // against, which is a mismatch that fails in the browser rather than here.
+    engine_dir: &std::path::Path,
+    module: &std::path::Path,
+    output_dir: &std::path::Path,
+    project_name: &str,
+    packer: RpakPacker,
+    compression_level: i32,
+) -> std::io::Result<()> {
+    use std::io::Write as _;
+
+    let tx_p = tx.clone();
+    let mut progress = |m: String| {
+        let _ = tx_p.send(ExportMsg::Progress(m));
+    };
+
+    // Beside the output rather than in a temp dir, so a failed export leaves the
+    // intermediate bundle where someone can look at it.
+    let stage = output_dir.join(".wasm-stage");
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir_all(&stage)?;
+
+    crate::wasm::bindgen(toolchain, engine_dir, module, &stage, &mut progress)
+        .map_err(std::io::Error::other)?;
+    crate::wasm::optimize(engine_dir, &stage, &mut progress);
+
+    progress("Packaging the web build…".into());
+    let rpak_bytes = packer.finish(compression_level)?;
+    let zip_path = output_dir.join(format!("{}-web.zip", project_name));
+    let out_file = std::fs::File::create(&zip_path)?;
+    let mut writer = zip::ZipWriter::new(out_file);
+
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    // The rpak's entries are already zstd'd individually, so deflating the
+    // archive again costs time and saves nothing.
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+    for (file, name) in crate::wasm::bundle_files(&stage)? {
+        let bytes = std::fs::read(&file)?;
+        writer
+            .start_file(&name, deflated)
+            .map_err(std::io::Error::other)?;
+        writer.write_all(&bytes)?;
+    }
+
+    writer
+        .start_file("game.rpak", stored)
+        .map_err(std::io::Error::other)?;
+    writer.write_all(&rpak_bytes)?;
+
+    writer
+        .start_file("index.html", deflated)
+        .map_err(std::io::Error::other)?;
+    writer.write_all(crate::wasm::index_html(project_name).as_bytes())?;
+
+    writer.finish().map_err(std::io::Error::other)?;
+    let _ = std::fs::remove_dir_all(&stage);
+
+    info!("[export] lean WASM zip written to {}", zip_path.display());
+    Ok(())
+}
+
 pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let project = world.resource::<CurrentProject>().clone();
     let export_state = world.resource::<ExportOverlayState>();
@@ -761,6 +847,12 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let window_height = export_state.window_height;
     let console_logging = export_state.console_logging;
     let include_server = export_state.include_server;
+    // Sorted so the packing log reads in a stable order rather than a hash one.
+    let included_files = export_state.included_files.as_ref().map(|set| {
+        let mut v: Vec<String> = set.iter().cloned().collect();
+        v.sort();
+        v
+    });
     let enable_modding = export_state.enable_modding;
     let icon_path = if export_state
         .icon_path
@@ -797,8 +889,14 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // Linking in is only meaningful for the mode that compiles. Silently
     // downgrading elsewhere is right rather than an error: the packaging radio is
     // the stronger statement of intent, and the UI says so next to the toggle.
-    let link_plugins_in = export_state.plugin_link_mode == PluginLinkMode::LinkIn
-        && packaging_mode == PackagingMode::LeanSingleBinary;
+    //
+    // The web is the one platform where the *other* choice is the meaningless
+    // one. A browser has no `dlopen`, so a `plugins/` folder beside the bundle is
+    // never read — "ship as files" there means shipping nothing, silently. So a
+    // lean web export always links in, whatever the radio says.
+    let link_plugins_in = packaging_mode == PackagingMode::LeanSingleBinary
+        && (export_state.plugin_link_mode == PluginLinkMode::LinkIn
+            || matches!(platform, Platform::WebWasm32));
     // Bevy + runtime-subsystem features to strip from the lean build (capabilities
     // the game has off).
     let disabled_bevy_features =
@@ -814,24 +912,38 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // The game binary is the already-built renzora(.exe) for this platform.
     // Operation Merge: the editor's own binary IS the game — copy it (and the
     // shared libs sitting next to it) to the export dir. No download.
-    let template_path = match world.resource::<TemplateManager>().get(platform) {
-        Some(t) => t.path.clone(),
-        None => {
-            world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Error(format!(
-                "No build found for {} — build it first (`renzora build {}`).",
-                platform.display_name(),
-                platform.dist_dir_name()
-            ));
-            return;
-        }
-    };
+    let template = world
+        .resource::<TemplateManager>()
+        .get(platform)
+        .map(|t| t.path.clone());
+    // A LEAN export recompiles the engine from source and never opens the
+    // template, so a missing one must not stop it. That distinction only started
+    // to matter with the web: on desktop the template for your own platform is
+    // the editor's own `dist/` dir and is therefore always there, but a checkout
+    // that has never run `cargo renzora wasm` has no web template — and would
+    // have been told to go build the very thing the lean path exists to replace.
+    if template.is_none() && packaging_mode != PackagingMode::LeanSingleBinary {
+        world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Error(format!(
+            "No build found for {} — build it first (`renzora build {}`).",
+            platform.display_name(),
+            platform.dist_dir_name()
+        ));
+        return;
+    }
     // The shared libs (bevy_dylib, renzora.dll, std) sit next to the binary.
     // The copy filter in the worker ships those but NOT renzora_editor.dll (the
     // editor bundle) or the editor's *.exe tools — so the export is a clean game.
-    let runtime_dir = template_path
-        .parent()
-        .map(|p| p.to_path_buf())
+    // With no template it falls back to the editor's own dir, which is where a
+    // lean build looks for the engine source anyway.
+    let runtime_dir = template
+        .as_ref()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .or_else(crate::build::editor_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."));
+    // Empty exactly when the branch above let a template-less export through,
+    // i.e. only for a lean one — and every arm that reads this path belongs to a
+    // packaging mode that cannot be reached from there.
+    let template_path = template.unwrap_or_default();
 
     // The dedicated server reuses the game binary (run with `--server`), so
     // there's no separate server template to resolve here.
@@ -884,6 +996,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             disabled_runtime_features,
             lean_profile,
             upx_compress,
+            included_files,
             cancel,
         );
     });
@@ -921,21 +1034,36 @@ fn export_worker(
     disabled_runtime_features: Vec<String>,
     lean_profile: crate::build::LeanProfile,
     upx_compress: bool,
+    // The Files tab's answer, when it has one. `None` = let the crawl decide.
+    included_files: Option<Vec<String>>,
     cancel: Arc<AtomicBool>,
 ) {
     // Pack assets
     let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
     let tx_pack = tx.clone();
-    let mut packer = match pack_project_with_progress(&project.path, None, |key| {
-        let _ = tx_pack.send(ExportMsg::Progress(format!("Packing {}", key)));
-    }) {
+    let packed = match &included_files {
+        // The author opened the Files tab and settled it, so the archive holds
+        // exactly what the list showed — no crawl, no surprises in either
+        // direction.
+        Some(keys) => pack_selected_with_progress(&project.path, keys, |key| {
+            let _ = tx_pack.send(ExportMsg::Progress(format!("Packing {}", key)));
+        }),
+        None => pack_project_with_progress(&project.path, None, |key| {
+            let _ = tx_pack.send(ExportMsg::Progress(format!("Packing {}", key)));
+        }),
+    };
+    let mut packer = match packed {
         Ok(p) => p,
         Err(e) => {
             let _ = tx.send(ExportMsg::Error(format!("Failed to pack assets: {}", e)));
             return;
         }
     };
-    info!("[export] Packed {} referenced files", packer.len());
+    info!(
+        "[export] Packed {} files ({})",
+        packer.len(),
+        if included_files.is_some() { "chosen in the Files tab" } else { "referenced" }
+    );
 
     // Strip editor-only components from scene files
     packer.strip_for_runtime();
@@ -1004,10 +1132,21 @@ fn export_worker(
     export_config.editor_last_scene = None;
     export_config.editor_open_tabs = Vec::new();
 
-    // If the user picked an icon, copy it into the rpak under `assets/icon.png`
-    // and point project.toml at it. The runtime resolves icons through Vfs.
+    // If the user picked an icon, re-encode it into the rpak under
+    // `assets/icon.png` and point project.toml at it. The runtime resolves icons
+    // through Vfs.
+    //
+    // RE-ENCODED, not copied: the archive entry is named `.png` and the runtime
+    // decodes it with an `image` that has only the codecs bevy_image turns on —
+    // no `ico` among them. Storing the author's bytes verbatim therefore worked
+    // for a PNG and silently produced `Failed to decode icon` for anything else,
+    // with the warning landing in the game's log where nobody exporting would
+    // see it. Converting here means the picker can accept any format the editor
+    // reads without the runtime having to grow a codec for it.
     if let Some(ref icon_src) = icon_path {
-        match std::fs::read(icon_src) {
+        match crate::icon::load_square(std::path::Path::new(icon_src))
+            .and_then(|base| crate::icon::to_png(&base))
+        {
             Ok(bytes) => {
                 let archive_path = "assets/icon.png".to_string();
                 packer.add_file(&archive_path, bytes);
@@ -1015,6 +1154,7 @@ fn export_worker(
             }
             Err(e) => {
                 warn!("[export] Failed to read icon {}: {}", icon_src, e);
+                let _ = tx.send(ExportMsg::Progress(format!("WARN: icon skipped — {e}")));
             }
         }
     }
@@ -1056,6 +1196,7 @@ fn export_worker(
     );
     let is_ios = matches!(platform, Platform::IOSArm64 | Platform::TvOSArm64);
     let is_wasm = matches!(platform, Platform::WebWasm32);
+    let is_lean = matches!(packaging_mode, PackagingMode::LeanSingleBinary);
 
     // Ids the lean build compiled INTO the binary, so the copy step below leaves
     // them out. Filled by the lean arm; empty everywhere else, including when
@@ -1063,6 +1204,10 @@ fn export_worker(
     // fall back to shipping as files, which is why this is the build's answer
     // rather than the user's request.
     let mut linked_ids: Vec<String> = Vec::new();
+    // Ids the build refused as unbuildable for the target — reported once,
+    // then excluded from the copy step so they are not counted a second time
+    // under a different (and wrong) reason.
+    let mut dropped_ids: Vec<String> = Vec::new();
 
     // Resolve the packer once, up front: a missing UPX is a skipped step with a
     // note, never a failed export. The user asked for a smaller game, not for the
@@ -1107,6 +1252,122 @@ fn export_worker(
         }
     };
 
+    // Compile the lean artefact — a `.exe`/ELF/Mach-O for a desktop target, a raw
+    // `.wasm` module for the web. Shared by the two packaging arms that need one
+    // because everything up to the compile is identical; only what happens to the
+    // output differs (append the rpak, versus run the bindgen chain).
+    //
+    // Returns the ids it linked IN, rather than writing `linked_ids` through a
+    // captured `&mut`: the copy step below reads that list, and a closure holding
+    // the borrow would still be alive at that point. It hands back the toolchain
+    // and the engine source too, because the web's post-build chain needs both
+    // and resolving them twice would ask the user's log about Rust twice.
+    let compile_lean = || -> Result<LeanBuild, String> {
+        let tx_b = tx.clone();
+        let mut progress = |m: String| {
+            let _ = tx_b.send(ExportMsg::Progress(m));
+        };
+        // Everything here keys off where the EDITOR lives, not off `runtime_dir`
+        // — that is the target platform's template dir, and for a cross-platform
+        // export it is the download store with no engine source above it. A lean
+        // build ignores the template entirely; it recompiles from source.
+        let editor_dir = crate::build::editor_dir().unwrap_or_else(|| runtime_dir.clone());
+        // A local Rust toolchain is needed for anything compiled on this machine
+        // — the host's own platform, and the web. Another OS compiles in that
+        // platform's container, which carries the pinned toolchain itself, so
+        // provisioning one here would download a rustup the build never invokes,
+        // on a machine whose owner installed Docker precisely to avoid it.
+        let toolchain = if crate::docker::needs_container(platform) {
+            None
+        } else {
+            Some(crate::toolchain::ensure_rust(&editor_dir, &mut progress)?)
+        };
+        // A lean build recompiles the ENGINE (the project is just assets → rpak),
+        // so compile the engine source checkout the editor was built from, found
+        // by walking up from the editor's own dir.
+        let engine_dir = crate::build::resolve_engine_source().ok_or_else(|| {
+            "No engine source to compile. A lean build recompiles the engine, so it \
+             needs either a source checkout the editor runs from, or the engine \
+             source downloaded for this version (Packaging → Download engine source)."
+                .to_string()
+        })?;
+        // Linking a plugin in means COMPILING it, so it needs the source that
+        // produced the library the UI listed. A plugin with no source here (a
+        // marketplace download, say) is reported and shipped as a file instead —
+        // refusing the whole export over one would be a poor trade.
+        let mut linked = Vec::new();
+        let mut dropped = Vec::new();
+        let statics = if link_plugins_in {
+            let wanted: Vec<(String, bool)> = selected_plugins
+                .iter()
+                .map(|p| {
+                    (
+                        p.id.clone(),
+                        p.scope == renzora_plugin::sys::PluginScope::Editor,
+                    )
+                })
+                .collect();
+            let plan = crate::build::resolve_static_plugins(
+                &engine_dir,
+                &wanted,
+                crate::docker::rust_triple(platform),
+            );
+            if !plan.no_source.is_empty() {
+                progress(format!(
+                    "No source found for {} — shipping as file(s) beside the binary",
+                    plan.no_source.join(", ")
+                ));
+            }
+            // A different sentence for a different reason, and worth the words:
+            // the one above is "we could not compile it, so it ships another
+            // way", this one is "it is not coming". Saying only that a plugin was
+            // skipped would send someone looking for a missing file.
+            if !plan.unsupported.is_empty() {
+                progress(format!(
+                    "Left out {}: not buildable for {} (it depends on something the \
+                     platform does not have)",
+                    plan.unsupported.join(", "),
+                    platform.display_name(),
+                ));
+            }
+            // Keyed on the library stem, which is what the selection below
+            // compares against — `id` is the crate name, and on Unix the two
+            // differ by `lib`.
+            linked = plan.linked.iter().map(|p| p.library_stem.clone()).collect();
+            dropped = plan.unsupported.clone();
+            plan.linked
+        } else {
+            Vec::new()
+        };
+        progress(format!(
+            "Compiling lean binary in {} (this can take several minutes)…",
+            engine_dir.display()
+        ));
+        let bin = crate::build::build_lean(
+            &engine_dir,
+            &project.path,
+            platform,
+            toolchain.as_ref(),
+            &mut progress,
+            &disabled_bevy_features,
+            &disabled_runtime_features,
+            lean_profile,
+            &statics,
+            &crate::build::LeanBranding {
+                icon: icon_path.as_ref().map(std::path::PathBuf::from),
+                product_name: Some(project_name.clone()),
+            },
+            &cancel,
+        )?;
+        Ok(LeanBuild {
+            artefact: bin,
+            linked,
+            dropped,
+            toolchain,
+            engine_dir,
+        })
+    };
+
     let result = if is_ios {
         export_ios_app(
             &template_path,
@@ -1115,6 +1376,35 @@ fn export_worker(
             packer,
             compression_level,
         )
+    } else if is_wasm && is_lean {
+        // The web's lean lane. It shares the compile with desktop and nothing
+        // else: there is no binary to append an rpak to, so the module, its glue,
+        // the page and `game.rpak` are zipped as four files.
+        match compile_lean() {
+            Ok(built) => {
+                linked_ids = built.linked;
+                dropped_ids = built.dropped;
+                // `toolchain` is always `Some` here: the web never builds in a
+                // container, so `compile_lean` always resolved one.
+                match built.toolchain {
+                    Some(tc) => export_wasm_lean(
+                        &tx,
+                        &tc,
+                        &built.engine_dir,
+                        &built.artefact,
+                        &output_dir,
+                        binary_stem,
+                        packer,
+                        compression_level,
+                    ),
+                    None => Err(std::io::Error::other(
+                        "Internal error: the web build produced a module with no toolchain \
+                         to run wasm-bindgen with.",
+                    )),
+                }
+            }
+            Err(e) => Err(std::io::Error::other(e)),
+        }
     } else if is_wasm {
         export_wasm_zip(
             &tx,
@@ -1214,97 +1504,14 @@ fn export_worker(
                     .append_to_binary(&src, &binary_dest, compression_level).map(|_| ())
             }
             PackagingMode::LeanSingleBinary => {
-                // Recompile a lean static binary from the project workspace,
-                // then embed the rpak in it. No dev runtime/dylibs are copied.
+                // Recompile a lean static binary from the engine source, then
+                // embed the rpak in it. No dev runtime/dylibs are copied.
                 let binary_dest = output_dir.join(&binary_name);
-                let tx_b = tx.clone();
-                let mut progress = |m: String| {
-                    let _ = tx_b.send(ExportMsg::Progress(m));
-                };
-                // Everything here keys off where the EDITOR lives, not off
-                // `runtime_dir` — that is the target platform's template dir, and
-                // for a cross-platform export it is the download store with no
-                // engine source above it. A lean build ignores the template
-                // entirely; it recompiles the engine from source.
-                let editor_dir = crate::build::editor_dir()
-                    .unwrap_or_else(|| runtime_dir.clone());
-                // A local Rust toolchain is only needed for a SAME-OS build,
-                // which compiles natively. A different OS compiles in the
-                // platform's container, which carries the pinned toolchain
-                // itself — so provisioning one here would download and install a
-                // rustup that the build never invokes, on a machine whose owner
-                // installed Docker precisely so they would not need it.
-                let cross = Platform::current() != Some(platform);
-                let toolchain = if cross {
-                    Ok(None)
-                } else {
-                    crate::toolchain::ensure_rust(&editor_dir, &mut progress).map(Some)
-                };
-                let built = toolchain
-                    .and_then(|toolchain| {
-                        // A lean build recompiles the ENGINE (the project is just
-                        // assets → rpak), so compile the engine source checkout the
-                        // editor was built from, found by walking up from the
-                        // editor's own dir (e.g. `<engine>/dist/windows-x64/`).
-                        let engine_dir = crate::build::resolve_engine_source()
-                            .ok_or_else(|| {
-                                "No engine source to compile. A lean build recompiles \
-                                 the engine, so it needs either a source checkout the \
-                                 editor runs from, or the engine source downloaded for \
-                                 this version (Packaging → Download engine source)."
-                                    .to_string()
-                            })?;
-                        // Linking a plugin in means COMPILING it, so it needs the
-                        // source that produced the library the UI listed. A
-                        // plugin with no source here (a marketplace download, say)
-                        // is reported and shipped as a file instead — refusing the
-                        // whole export over one would be a poor trade.
-                        let statics = if link_plugins_in {
-                            let wanted: Vec<(String, bool)> = selected_plugins
-                                .iter()
-                                .map(|p| {
-                                    (
-                                        p.id.clone(),
-                                        p.scope == renzora_plugin::sys::PluginScope::Editor,
-                                    )
-                                })
-                                .collect();
-                            let (found, missing) =
-                                crate::build::resolve_static_plugins(&engine_dir, &wanted);
-                            if !missing.is_empty() {
-                                progress(format!(
-                                    "No source found for {} — shipping as file(s) beside the binary",
-                                    missing.join(", ")
-                                ));
-                            }
-                            // Keyed on the library stem, which is what the
-                            // selection below compares against — `id` is the
-                            // crate name, and on Unix the two differ by `lib`.
-                            linked_ids = found.iter().map(|p| p.library_stem.clone()).collect();
-                            found
-                        } else {
-                            Vec::new()
-                        };
-                        progress(format!(
-                            "Compiling lean binary in {} (this can take several minutes)…",
-                            engine_dir.display()
-                        ));
-                        crate::build::build_lean(
-                            &engine_dir,
-                            &project.path,
-                            platform,
-                            toolchain.as_ref(),
-                            &mut progress,
-                            &disabled_bevy_features,
-                            &disabled_runtime_features,
-                            lean_profile,
-                            &statics,
-                            &cancel,
-                        )
-                    });
-                match built {
-                    Ok(bin) => {
-                        let src = compress_exe(&bin, &tx);
+                match compile_lean() {
+                    Ok(built) => {
+                        linked_ids = built.linked;
+                        dropped_ids = built.dropped;
+                        let src = compress_exe(&built.artefact, &tx);
                         packer
                             .append_to_binary(&src, &binary_dest, compression_level)
                             .map(|_| ())
@@ -1323,10 +1530,9 @@ fn export_worker(
         let _ = std::fs::remove_file(output_dir.join(format!("{binary_name}.upx-tmp")));
     }
 
-    // The lean binary is statically linked, so it ships none of the dev
+    // (The lean binary is statically linked, so it ships none of the dev
     // runtime's sibling dylibs. It DOES still ship plugins — see below.
-    let is_lean = matches!(packaging_mode, PackagingMode::LeanSingleBinary);
-
+    // `is_lean` is resolved with the other platform flags, above.)
     match result {
         Ok(()) => {
             if !is_wasm && !is_lean {
@@ -1399,9 +1605,18 @@ fn export_worker(
             // plugin twice, and every first-claim registration it makes — a
             // script backend's file extensions, a panel id — would log a
             // duplicate-registration error on the losing copy.
+            // Also drops the ones the build refused as unbuildable for this
+            // target. Without that they fall through to the "shipped as files"
+            // path and are counted as if the packaging mode were the reason —
+            // which produced a second, contradictory line in the log claiming a
+            // lean export needed to be a lean export.
             let to_copy: Vec<&std::path::Path> = selected_plugins
                 .iter()
                 .filter(|p| !linked_ids.contains(&p.id))
+                .filter(|p| {
+                    let bare = p.id.strip_prefix("lib").unwrap_or(&p.id);
+                    !dropped_ids.iter().any(|d| d == &p.id || d == bare)
+                })
                 .map(|p| p.path.as_path())
                 .collect();
             if !is_wasm && !to_copy.is_empty() {
@@ -1418,6 +1633,16 @@ fn export_worker(
                     }
                 }
                 info!("[export] Copied {} plugins to output", to_copy.len());
+            } else if is_wasm && !to_copy.is_empty() {
+                // Never silently. A browser cannot load a plugin from a file, so
+                // these can only travel inside the module — which is what a lean
+                // web export does. Saying so is the difference between "my
+                // effects are missing" and a known limitation.
+                let _ = tx.send(ExportMsg::Progress(format!(
+                    "{} plugin(s) left out: the web can only carry plugins compiled \
+                     into the module, which needs the Lean recompile packaging mode.",
+                    to_copy.len()
+                )));
             }
             if !linked_ids.is_empty() {
                 info!(

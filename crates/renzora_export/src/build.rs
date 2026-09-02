@@ -115,7 +115,24 @@ fn bin_filename(platform: Platform) -> &'static str {
         // Both Windows arches now that a cross build can produce arm64 — the
         // extension follows the target, not the machine doing the compiling.
         Platform::WindowsX64 | Platform::WindowsArm64 => "renzora.exe",
+        // A `[[bin]]` compiled for wasm32 is still a bin — rustc just emits a
+        // module instead of an executable. This is the raw one, before
+        // `wasm-bindgen` splits it into glue plus `<bundle>_bg.wasm`.
+        Platform::WebWasm32 => "renzora.wasm",
         _ => "renzora",
+    }
+}
+
+/// The cargo feature that selects a platform's runtime shape.
+///
+/// The web needs `wasm` rather than `runtime` — it turns on `bevy/webgpu` and
+/// switches `src/main.rs` to the `#[wasm_bindgen]` `set_rpak`/`start` pair
+/// instead of a native `main`. `wasm` itself enables `runtime`, so this is a
+/// replacement rather than an addition.
+fn runtime_feature(platform: Platform) -> &'static str {
+    match platform {
+        Platform::WebWasm32 => "wasm",
+        _ => "runtime",
     }
 }
 
@@ -207,9 +224,16 @@ pub fn find_engine_source(start: &Path) -> Option<PathBuf> {
 /// against a static binary because a C-ABI plugin links no Bevy and so has
 /// nothing to share with the host.
 ///
-/// Native cargo can only target the **host** triple; cross-OS builds are a hard
-/// Same-OS targets compile natively with `toolchain`; a different OS compiles in
-/// that platform's toolchain container, because cargo can only target the host.
+/// Three build shapes, decided by the platform:
+///
+/// * **the host** — native `toolchain` cargo, no `--target`.
+/// * **the web** — native `toolchain` cargo *with* `--target wasm32-unknown-
+///   unknown`. Another architecture, but not another OS: rustc carries the
+///   linker and (once `rustup target add` has run) the std, so no container is
+///   involved. The caller still has to run the bindgen chain over the result —
+///   see [`crate::wasm`].
+/// * **another OS** — that platform's toolchain container, which is where the
+///   cross-linker and its system libraries live.
 #[allow(clippy::too_many_arguments)]
 pub fn build_lean(
     workspace_dir: &Path,
@@ -217,27 +241,46 @@ pub fn build_lean(
     // the engine source, which `workspace_dir` points at.
     project_dir: &Path,
     platform: Platform,
-    // `None` for a cross build, which compiles in a container and needs no
-    // local Rust at all.
+    // `None` only for a container build, which carries its own compiler. The web
+    // needs one despite not being the host.
     toolchain: Option<&Toolchain>,
     progress: &mut dyn FnMut(String),
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
     profile: LeanProfile,
     static_plugins: &[StaticPluginSrc],
+    // The executable's icon and version-info strings. Compile-time only — see
+    // [`stage_branding`].
+    branding: &LeanBranding,
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
-    // ── Docker only for cross-OS; the host builds natively ───────────────────
+    // ── Docker only for another OS; the host builds natively ─────────────────
     //
     // A container is a cross-compiler, and there is nothing to cross-compile for
     // the machine you are sitting at. Native is also faster (no image pull, no
     // bind mount) and needs no Docker install at all — so someone exporting for
     // their own platform never has to have it.
     //
+    // **"In a container" and "passes `--target`" are two questions, not one.**
+    // They coincided for as long as every lean target was a desktop OS, and the
+    // web breaks that: `wasm32-unknown-unknown` needs `--target` (it is not the
+    // host arch) but not a container (rustc ships its linker and std). Conflating
+    // them sent the web build to Docker, which does not even have an image for
+    // it. Keep the two `let`s below distinct.
+    //
     // Checked up front, before the workspace sync copies the engine source —
     // that takes long enough to look like the build had already started.
-    let cross = Platform::current() != Some(platform);
-    if cross {
+    let in_container = crate::docker::needs_container(platform);
+    // `Some` whenever cargo must be told the target explicitly: every container
+    // build, plus the web on the host.
+    let target_triple: Option<&str> = if in_container || matches!(platform, Platform::WebWasm32) {
+        Some(crate::docker::rust_triple(platform).ok_or_else(|| {
+            format!("No Rust target for {}", platform.display_name())
+        })?)
+    } else {
+        None
+    };
+    if in_container {
         if !crate::docker::lean_supported(platform) {
             return Err(format!(
                 "No lean build is available for {} — it has no toolchain image.",
@@ -278,15 +321,16 @@ pub fn build_lean(
     // so the dev cache and locks are untouched and exports stay incremental
     // across runs.
     let ws = sync_export_workspace(workspace_dir, progress)?;
-    if cross {
+    if in_container {
         patch_cross_cargo_config(&ws, platform, progress)?;
     }
+    stage_branding(workspace_dir, &ws, branding, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
     patch_lean_profile(&ws, profile, progress)?;
     stage_static_plugins(workspace_dir, &ws, static_plugins, progress)?;
     let has_scripts = stage_static_scripts(project_dir, &ws, progress)?;
-    let mut features = String::from("runtime");
+    let mut features = String::from(runtime_feature(platform));
     if !static_plugins.is_empty() {
         features.push_str(",static_plugins");
     }
@@ -300,7 +344,7 @@ pub fn build_lean(
     // Native cargo for the host; the toolchain container for anything else. The
     // cargo arguments after this are identical either way — a container build is
     // the same build, run somewhere that has the cross-linker.
-    let mut cmd = if cross {
+    let mut cmd = if in_container {
         let image = crate::docker::image_for(platform)
             .ok_or_else(|| format!("No toolchain image for {}", platform.display_name()))?;
         let image_ref = crate::docker::image_ref(workspace_dir, image).ok_or_else(|| {
@@ -316,13 +360,19 @@ pub fn build_lean(
         c
     } else {
         let tc = toolchain.ok_or(
-            "Internal error: a same-OS lean build was started without a Rust toolchain.",
+            "Internal error: a native lean build was started without a Rust toolchain.",
         )?;
+        // The web is the one native build that targets another architecture, so
+        // it is the one that can be missing its standard library. Done here
+        // rather than in the caller because this is where the triple is known.
+        if let Some(triple) = target_triple {
+            crate::toolchain::ensure_target(tc, triple, progress)?;
+        }
         let mut c = tc.cargo_command();
         c.current_dir(&ws);
         c
     };
-    if !cross {
+    if !in_container {
         cmd.env("CARGO_ENCODED_RUSTFLAGS", encoded_rustflags(platform));
     }
     cmd.args([
@@ -335,14 +385,13 @@ pub fn build_lean(
         ])
         .arg("--features")
         .arg(&features);
-    if cross {
-        // `--target` selects the cross-linker, and nests the output under the
-        // triple — which the binary path below accounts for.
-        let triple = crate::docker::rust_triple(platform)
-            .ok_or_else(|| format!("No Rust target for {}", platform.display_name()))?;
+    if let Some(triple) = target_triple {
+        // `--target` selects the cross-linker (or, for the web, the wasm
+        // backend) and nests the output under the triple — which the binary path
+        // below accounts for.
         cmd.args(["--target", triple]);
     }
-    if !cross && matches!(platform, Platform::LinuxX64) {
+    if !in_container && matches!(platform, Platform::LinuxX64) {
         // The repo config pins linker=clang + `-fuse-ld=mold`; a provisioned
         // minimal toolchain may have neither. `cc` is present on essentially
         // every Linux dev host.
@@ -423,14 +472,17 @@ pub fn build_lean(
         ));
     }
 
-    // `--target` nests the output under the triple; a host build has no
-    // `--target` and writes straight into `target/<profile>/`.
-    let bin = if cross {
-        let triple = crate::docker::rust_triple(platform)
-            .ok_or_else(|| format!("No Rust target for {}", platform.display_name()))?;
-        ws.join("target").join(triple).join("dist-lean").join(bin_filename(platform))
-    } else {
-        ws.join("target").join("dist-lean").join(bin_filename(platform))
+    // `--target` nests the output under the triple; a plain host build has no
+    // `--target` and writes straight into `target/<profile>/`. That follows the
+    // flag, not the container — which is why the web (native, but targeted)
+    // lands in the nested path too.
+    let bin = match target_triple {
+        Some(triple) => ws
+            .join("target")
+            .join(triple)
+            .join("dist-lean")
+            .join(bin_filename(platform)),
+        None => ws.join("target").join("dist-lean").join(bin_filename(platform)),
     };
     if !bin.is_file() {
         return Err(format!(
@@ -439,6 +491,86 @@ pub fn build_lean(
         ));
     }
     Ok(bin)
+}
+
+/// The icon the root `build.rs` embeds into the executable's resource table.
+/// The name is not configurable — `build.rs` hardcodes it — so staging a custom
+/// icon means writing this exact file into the export copy.
+const ICON_FILE: &str = "icon.ico";
+
+/// The version-info overrides the root `build.rs` reads. See `Branding` there.
+const BRANDING_FILE: &str = "export-branding.txt";
+
+/// What the exported executable should *say it is* — the parts of the binary
+/// that are decided at compile time and so cannot be patched in afterwards.
+///
+/// Both fields are `None` for a build that wants the engine's own branding,
+/// which is what a developer running a plain lean export of an unnamed project
+/// gets. There is deliberately no default project name here: a game called
+/// "Renzora Engine" in the Properties dialog is wrong, but so is one called
+/// "Untitled", and the caller knows which it has.
+#[derive(Default, Clone)]
+pub struct LeanBranding {
+    /// The author's picked icon file, in any format `crate::icon` can decode.
+    pub icon: Option<PathBuf>,
+    /// Shown as both ProductName and FileDescription in the Properties dialog.
+    pub product_name: Option<String>,
+}
+
+/// Put the game's icon and version-info strings in front of the compiler.
+///
+/// Neither can be applied to a finished binary without rewriting its PE resource
+/// section, so both have to be staged *before* cargo runs — which is the whole
+/// reason this exists as a separate step rather than a post-processing pass.
+/// Falls back to the engine's own `icon.ico` when the project has none, so an
+/// export never ends up with a blank icon.
+///
+/// Everything is written only when the bytes actually differ. `build.rs` declares
+/// `rerun-if-changed` on both files, so a blind rewrite would rebuild the root
+/// crate and relink a 200 MB binary on every export.
+fn stage_branding(
+    engine_src: &Path,
+    ws: &Path,
+    branding: &LeanBranding,
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    match branding.icon.as_deref() {
+        Some(src) => {
+            progress(format!("Embedding {} in the executable…", src.display()));
+            let base = crate::icon::load_square(src)?;
+            write_bytes_if_changed(&ws.join(ICON_FILE), &crate::icon::to_ico(&base)?)?;
+        }
+        None => {
+            // No project icon: mirror the engine's, which is what the copy used
+            // to get for free from the root-file sync.
+            let engine_icon = engine_src.join(ICON_FILE);
+            if let Ok(bytes) = std::fs::read(&engine_icon) {
+                write_bytes_if_changed(&ws.join(ICON_FILE), &bytes)?;
+            }
+        }
+    }
+
+    let dest = ws.join(BRANDING_FILE);
+    match branding.product_name.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(name) => write_if_changed(
+            &dest,
+            &format!("product_name={name}\nfile_description={name}\n"),
+        )?,
+        // A leftover from an earlier export of a differently-named project would
+        // otherwise brand this one, since the file lives in the reused copy.
+        None if dest.exists() => std::fs::remove_file(&dest)
+            .map_err(|e| format!("remove {}: {e}", dest.display()))?,
+        None => {}
+    }
+    Ok(())
+}
+
+/// Byte-level [`write_if_changed`], for the icon (which is not text).
+fn write_bytes_if_changed(path: &Path, content: &[u8]) -> Result<(), String> {
+    if std::fs::read(path).is_ok_and(|old| old == content) {
+        return Ok(());
+    }
+    std::fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 /// Sync the engine source into an isolated copy that the export build compiles,
@@ -476,6 +608,12 @@ fn sync_export_workspace(
         "node_modules", "templates", "disabled", "docker", ".claude", ".devcontainer",
         "plugins",
     ];
+    // Root FILES `stage_branding` owns outright. Copying the engine's own
+    // `icon.ico` in would put the Renzora logo back on the game's executable
+    // every time — and because copy-if-newer fires on any size difference, the
+    // two would take turns overwriting each other and relink the binary on every
+    // single export even when nothing changed.
+    const TOP_FILE_SKIP: &[&str] = &[ICON_FILE, BRANDING_FILE];
     // cdylib crates are never linked into the lean binary, so leave them out of
     // the copy entirely.
     let drop_plugins = cdylib_crates(engine_src);
@@ -496,9 +634,14 @@ fn sync_export_workspace(
             } else {
                 sync_dir(&s, &d, &mut copied)?;
             }
-        } else if ft.is_file() && should_copy(&s, &d) {
-            std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
-            copied += 1;
+        } else if ft.is_file() {
+            if TOP_FILE_SKIP.contains(&name.to_string_lossy().as_ref()) {
+                continue;
+            }
+            if should_copy(&s, &d) {
+                std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
+                copied += 1;
+            }
         }
     }
     if !drop_plugins.is_empty() {
@@ -643,25 +786,84 @@ fn strip_bevy_features(
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| format!("parse {}: {e}", manifest.display()))?;
-    let arr = doc
-        .get_mut("workspace")
-        .and_then(|w| w.get_mut("dependencies"))
+    let mut removed = 0usize;
+    if doc.get("workspace").is_some() {
+        removed += trim_bevy_features(doc.get_mut("workspace"), disabled);
+    }
+    if doc.get("target").is_some() {
+        if let Some(target) = doc.get_mut("target").and_then(|t| t.as_table_like_mut()) {
+            for (_cfg, item) in target.iter_mut() {
+                removed += trim_bevy_features(Some(item), disabled);
+            }
+        }
+    }
+    if removed == 0 {
+        return Ok(());
+    }
+    std::fs::write(&manifest, doc.to_string())
+        .map_err(|e| format!("write {}: {e}", manifest.display()))?;
+    progress(format!("Stripping {removed} unused Bevy feature(s)"));
+    Ok(())
+}
+
+/// Trim `disabled` from `table`'s `dependencies.bevy.features`, and report how
+/// many entries went. A table with no such list is left completely alone.
+///
+/// # Why there is more than one such table
+///
+/// `[workspace.dependencies].bevy` holds the main feature list, and
+/// `[target.'cfg(not(target_arch = "wasm32"))'.dependencies].bevy` holds a
+/// second — the features the web build cannot have, kept apart so the wasm lane
+/// simply never turns them on. Trimming only the first meant three capabilities
+/// silently did nothing on every desktop export: "Editor/dev conveniences"
+/// removed `file_watcher`, `system_clipboard` and `clipboard_image` from the
+/// workspace list and the target block put all three straight back, so
+/// `bevy_clipboard`, `arboard` and a second copy of the `image` decoder stack
+/// shipped in games whose author had explicitly asked for none of it. The four
+/// `pbr_*_textures` entries sat the same way under "Advanced PBR texture maps",
+/// and `basis-universal` under the image decoders.
+///
+/// # Why existence is checked with the immutable `get` first
+///
+/// Because `toml_edit`'s `get_mut` **creates** a missing key. Walking
+/// `dependencies.bevy.features` mutably through a target block that has no
+/// `bevy` entry does not simply return `None` — it inserts one, and the manifest
+/// gains a bare `bevy = {}` that cargo refuses outright:
+///
+/// ```text
+/// dependency (bevy) specified without providing a local path, Git repository,
+/// version, or workspace dependency to use
+/// ```
+///
+/// The root manifest has exactly such a block (`cfg(target_arch = "wasm32")`,
+/// for the getrandom backends), so the first version of this walk broke every
+/// export the moment it shipped. The immutable pre-check is the whole fix.
+fn trim_bevy_features(table: Option<&mut toml_edit::Item>, disabled: &[String]) -> usize {
+    let Some(table) = table else { return 0 };
+    let present = table
+        .get("dependencies")
+        .and_then(|d| d.get("bevy"))
+        .and_then(|b| b.get("features"))
+        .and_then(|f| f.as_array())
+        .is_some();
+    if !present {
+        return 0;
+    }
+    let Some(arr) = table
+        .get_mut("dependencies")
         .and_then(|d| d.get_mut("bevy"))
         .and_then(|b| b.get_mut("features"))
-        .and_then(|f| f.as_array_mut());
-    let Some(arr) = arr else {
-        // No workspace bevy feature list to trim — nothing to do.
-        return Ok(());
+        .and_then(|f| f.as_array_mut())
+    else {
+        return 0;
     };
+    let before = arr.len();
     arr.retain(|v| {
         v.as_str()
             .map(|s| !disabled.iter().any(|d| d == s))
             .unwrap_or(true)
     });
-    std::fs::write(&manifest, doc.to_string())
-        .map_err(|e| format!("write {}: {e}", manifest.display()))?;
-    progress(format!("Stripping {} unused Bevy feature(s)", disabled.len()));
-    Ok(())
+    before - arr.len()
 }
 
 /// The `[profile.dist-lean]` knobs the export UI can move.
@@ -820,22 +1022,72 @@ pub struct StaticPluginSrc {
     pub editor_scope: bool,
 }
 
-/// Pair each wanted plugin id with the source directory that builds it.
+/// What a lean build will actually do with the plugins the user ticked.
 ///
-/// Returns `(resolved, unresolved)`. An id with no matching source is NOT an
-/// error: a plugin can perfectly well live in `dist/<platform>/plugins/` without
-/// its source being in this checkout — a marketplace download is exactly that —
-/// and the right answer there is to ship it as a file, not to fail the export.
-/// The caller copies the unresolved ones beside the binary as usual.
+/// Three outcomes rather than two, because "cannot be linked in" splits into two
+/// situations that deserve different answers and different words.
+pub struct StaticPluginPlan {
+    /// Compiled into the binary.
+    pub linked: Vec<StaticPluginSrc>,
+    /// No source in this checkout, so nothing to compile. Shipped as a file
+    /// beside the binary instead — which is a perfectly good outcome on desktop,
+    /// and the reason this is not an error.
+    pub no_source: Vec<String>,
+    /// The source IS here, and the plugin says it cannot be built for this
+    /// target. Left out entirely: on the web there is no file to fall back to,
+    /// and on desktop a plugin that declares itself unbuildable would only fail
+    /// the compile a few minutes later.
+    pub unsupported: Vec<String>,
+}
+
+/// Pair each wanted plugin id with the source directory that builds it, and drop
+/// the ones that cannot be built for `target_triple`.
+///
+/// # Why a plugin can be unbuildable for a target
+///
+/// Most of `plugins/` is pure Rust with no dependencies at all and goes
+/// anywhere. A few are not: `audio` is built on cpal and **has no entry point on
+/// wasm** (`renzora_plugin_init` is behind `#[cfg(not(target_arch = "wasm32"))]`,
+/// awaiting a WebAudio backend), `lua` and `tracy` compile C through `cc` and
+/// wasm32-unknown-unknown has no libc sysroot for it, and `http` is built on a
+/// socket stack a browser does not have.
+///
+/// Without this filter the export ticks along happily — syncing the workspace,
+/// stripping features, compiling for minutes — and then dies inside the
+/// GENERATED aggregator with a message about a symbol in a crate the user never
+/// asked about:
+///
+/// ```text
+/// error[E0425]: cannot find value `renzora_plugin_init` in crate `audio`
+/// note: found an item that was configured out
+/// ```
+///
+/// A plugin declares this itself, because the plugin author is the one who
+/// knows, in its own `Cargo.toml`:
+///
+/// ```toml
+/// [package.metadata.renzora]
+/// unsupported-targets = ["wasm32"]
+/// ```
+///
+/// Each entry is matched as a **substring of the Rust target triple**, so
+/// `"wasm32"` covers `wasm32-unknown-unknown` and `"apple-darwin"` would cover
+/// both macOS arches. Absent means "builds anywhere", which is true of nearly
+/// every plugin and is why the default has to be the permissive one.
 pub fn resolve_static_plugins(
     engine_src: &Path,
     wanted: &[(String, bool)],
-) -> (Vec<StaticPluginSrc>, Vec<String>) {
+    // `None` for a host build with no `--target`, which is the host triple by
+    // definition; a plugin cannot be unsupported on the platform whose editor is
+    // listing it, so nothing is filtered.
+    target_triple: Option<&str>,
+) -> StaticPluginPlan {
     // Package name → directory, read from the manifests rather than assumed from
     // the folder names: the library a plugin produces is named after its
     // `[package] name` (with dashes underscored), and that is what the scan sees.
-    // Underscored package name → (package name as written, directory).
-    let mut by_package: std::collections::HashMap<String, (String, String)> = Default::default();
+    // Underscored package name → (package name as written, directory, buildable).
+    let mut by_package: std::collections::HashMap<String, (String, String, bool)> =
+        Default::default();
     if let Ok(entries) = std::fs::read_dir(engine_src.join("plugins")) {
         for entry in entries.flatten() {
             if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -846,13 +1098,20 @@ pub fn resolve_static_plugins(
                 continue;
             };
             if let Some(name) = package_name(&text) {
-                by_package.insert(name.replace('-', "_"), (name, dir));
+                let buildable = match target_triple {
+                    Some(triple) => supports_target(&text, triple),
+                    None => true,
+                };
+                by_package.insert(name.replace('-', "_"), (name, dir, buildable));
             }
         }
     }
 
-    let mut resolved = Vec::new();
-    let mut unresolved = Vec::new();
+    let mut plan = StaticPluginPlan {
+        linked: Vec::new(),
+        no_source: Vec::new(),
+        unsupported: Vec::new(),
+    };
     for (id, editor_scope) in wanted {
         // Unix libraries are `lib<crate>.so`; the scan keeps the stem verbatim,
         // so strip the prefix before matching a crate name against it.
@@ -861,18 +1120,73 @@ pub fn resolve_static_plugins(
             .get(id.as_str())
             .or_else(|| by_package.get(crate_name))
         {
-            Some((package, dir)) => resolved.push(StaticPluginSrc {
+            Some((_, _, false)) => plan.unsupported.push(crate_name.to_string()),
+            Some((package, dir, true)) => plan.linked.push(StaticPluginSrc {
                 id: crate_name.to_string(),
                 package: package.clone(),
                 library_stem: id.clone(),
                 dir: dir.clone(),
                 editor_scope: *editor_scope,
             }),
-            None => unresolved.push(id.clone()),
+            None => plan.no_source.push(id.clone()),
         }
     }
-    resolved.sort_by(|a, b| a.id.cmp(&b.id));
-    (resolved, unresolved)
+    plan.linked.sort_by(|a, b| a.id.cmp(&b.id));
+    plan.unsupported.sort();
+    plan
+}
+
+/// Every plugin under `plugins/` that declares it cannot build for `triple`.
+///
+/// For the export dialog, which lists plugins before anything is compiled and
+/// would otherwise let someone tick one that the build then leaves out. Reading
+/// the manifests is a few dozen small file reads, so call it when the selected
+/// platform changes — not per frame.
+pub fn unsupported_plugins_for(engine_src: &Path, triple: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(engine_src.join("plugins")) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path().join("Cargo.toml")) else {
+            continue;
+        };
+        if let Some(name) = package_name(&text) {
+            if !supports_target(&text, triple) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Whether a plugin manifest allows being built for `triple`.
+///
+/// Reads `[package.metadata.renzora] unsupported-targets`, a list of substrings
+/// matched against the Rust target triple. Anything unparseable or absent means
+/// yes: the permissive answer has to be the default, because nearly every plugin
+/// builds anywhere and none of them will ever carry this key.
+fn supports_target(manifest: &str, triple: &str) -> bool {
+    let Ok(doc) = manifest.parse::<toml_edit::DocumentMut>() else {
+        return true;
+    };
+    doc.get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("renzora"))
+        .and_then(|r| r.get("unsupported-targets"))
+        .and_then(|t| t.as_array())
+        .map(|list| {
+            !list
+                .iter()
+                .filter_map(|v| v.as_str())
+                .any(|pat| triple.contains(pat))
+        })
+        // No key at all: builds anywhere.
+        .unwrap_or(true)
 }
 
 /// The `[package] name` of a manifest, without pulling in a full parse.
@@ -1306,6 +1620,22 @@ fn collect_scripts(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a script's source asks `renzora::script!` for a hook entry point.
+///
+/// Text, not syntax, for the same reason the `add!` plugin generator reads text:
+/// `script!` is a macro, so at staging time there is nothing but the call. The
+/// match is deliberately narrow — the `hooks =` must sit inside a `script!(…)`
+/// argument list — so a script that merely has a function called `hooks`, or the
+/// word in a comment, does not get a table row pointing at a symbol its macro
+/// never generated. That would be a link error rather than a silent problem, but
+/// a link error in generated code nobody wrote is a bad way to find out.
+fn declares_hooks(source: &str) -> bool {
+    source.split("script!").skip(1).any(|rest| {
+        rest.split_once(')')
+            .is_some_and(|(args, _)| args.contains("hooks") && args.contains('='))
+    })
+}
+
 fn stage_static_scripts(
     project_dir: &Path,
     copy_root: &Path,
@@ -1351,6 +1681,22 @@ fn stage_static_scripts(
     let mut mods = String::new();
     let mut entries = String::new();
     let mut ambiguous: Vec<String> = Vec::new();
+    // Does any script name the UI crate? The SDK a script is normally compiled
+    // against hands it three crates — `bevy`, `renzora` and `renzora_ember` —
+    // so a script reading a HUD widget or a markup name index is perfectly
+    // legal, and used to fail this build with "unlinked crate renzora_ember"
+    // because the generated manifest below only ever listed two of the three.
+    // Added on demand rather than always: a game with no UI strips ember
+    // entirely, and an unconditional dep would compile it back in.
+    let mut uses_ember = false;
+    // The scripts that also exported a lifecycle hook, as table rows.
+    //
+    // `renzora::script!(update, hooks = …)` emits a second entry point beside
+    // `update`. The dylib path finds it by symbol lookup, which a static build
+    // has no equivalent of — so before this table a script's `on_scene_loaded`
+    // fired in the editor and silently never fired in a lean export. A loading
+    // screen is exactly that hook, so the difference was not academic.
+    let mut hook_entries = String::new();
     for (i, src) in sources.iter().enumerate() {
         let leaf = src
             .file_name()
@@ -1369,6 +1715,7 @@ fn stage_static_scripts(
         let staged_name = format!("script_{i}.rs");
         let text = std::fs::read_to_string(src)
             .map_err(|e| format!("read {}: {e}", src.display()))?;
+        uses_ember |= text.contains("renzora_ember");
         write_if_changed(&crate_dir.join("src").join(&staged_name), &text)?;
 
         mods.push_str(&format!("#[path = \"{staged_name}\"]\nmod script_{i};\n"));
@@ -1380,6 +1727,20 @@ fn stage_static_scripts(
         // dispatcher resolves by leaf: a `ScriptComponent` entry may hold either
         // spelling depending on how it was added. Registering both keys means
         // neither lookup has to change.
+        // The hook table, under the same keys, for the scripts that have one.
+        // Read from the source rather than from a symbol: `script!` is a macro,
+        // so the only thing that exists at this point is the text that will
+        // expand into `renzora_script_hook`.
+        if declares_hooks(&text) {
+            hook_entries.push_str(&format!(
+                "        (\"{rel}\", script_{i}::renzora_script_hook as HookFn),\n"
+            ));
+            if leaf_counts.get(leaf).copied().unwrap_or(0) == 1 {
+                hook_entries.push_str(&format!(
+                    "        (\"{leaf}\", script_{i}::renzora_script_hook as HookFn),\n"
+                ));
+            }
+        }
         if leaf_counts.get(leaf).copied().unwrap_or(0) == 1 {
             entries.push_str(&format!(
                 "        (\"{leaf}\", script_{i}::renzora_script_update as ScriptFn),\n"
@@ -1404,7 +1765,7 @@ fn stage_static_scripts(
     // A plain literal — nothing is substituted. The braces below are single now:
     // they were doubled to escape them for `format!`, and reading them literally
     // would have emitted `renzora = {{ path = … }}` into the manifest.
-    let manifest = String::from(
+    let mut manifest = String::from(
         "# GENERATED by the lean exporter — see `renzora_export::build`.\n\
          # The project's Rust scripts, compiled into this build's binary.\n\
          [package]\n\
@@ -1417,10 +1778,22 @@ fn stage_static_scripts(
          # emits, so the scripts below can share one binary. Cargo unifies\n\
          # features per package, so naming it once here applies it to all.\n\
          renzora = { path = \"../renzora\", features = [\"static_scripts\"] }\n\
-         bevy = { workspace = true }\n\
-         \n\
+         bevy = { workspace = true }\n"
+    );
+    if uses_ember {
+        // `default-features = false` for the same reason `renzora_runtime` deps
+        // it that way: which of ember's features are on is the export's decision,
+        // not this crate's, and turning them on here would quietly un-strip
+        // `game_ui` (and the world-space 3D UI) in a build that dropped them.
+        manifest.push_str(
+            "# At least one script imports the UI crate.\n\
+             renzora_ember = { path = \"../renzora_ember\", default-features = false }\n",
+        );
+    }
+    manifest.push_str(
+        "\n\
          [lints]\n\
-         workspace = true\n"
+         workspace = true\n",
     );
     write_if_changed(&crate_dir.join("Cargo.toml"), &manifest)?;
 
@@ -1434,11 +1807,17 @@ fn stage_static_scripts(
          use bevy::ecs::world::World;\n\
          \n\
          pub type ScriptFn = fn(&mut World, Entity);\n\
+         pub type HookFn = fn(&mut World, Entity, &renzora::ScriptHook<'_>);\n\
          \n\
          {mods}\n\
          /// Every script compiled in, as `(file name, entry point)`.\n\
          pub fn scripts() -> Vec<(&'static str, ScriptFn)> {{\n\
          \x20   vec![\n{entries}    ]\n\
+         }}\n\
+         \n\
+         /// Every script compiled in that also exported a lifecycle hook.\n\
+         pub fn hooks() -> Vec<(&'static str, HookFn)> {{\n\
+         \x20   vec![\n{hook_entries}    ]\n\
          }}\n"
     );
     write_if_changed(&crate_dir.join("src").join("lib.rs"), &lib)?;
@@ -1584,6 +1963,225 @@ mod tests {
         // `#[no_mangle]` and the binary fails to link.
         let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("features = [\"static_scripts\"]"), "{manifest}");
+        // No script here mentions the UI crate, so it must not be linked: a game
+        // with no UI strips ember, and an unconditional dep would compile it back.
+        assert!(!manifest.contains("renzora_ember"), "{manifest}");
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// The stripper must trim EVERY bevy feature list in the root manifest, not
+    /// just the workspace one.
+    ///
+    /// The root manifest carries a second, target-gated list — the features the
+    /// web build cannot have. Trimming only the first made three capabilities
+    /// no-ops on every desktop export: "Editor/dev conveniences" removed
+    /// `file_watcher`, `system_clipboard` and `clipboard_image` from the
+    /// workspace list and the target block put all three back, taking
+    /// `bevy_clipboard`, `arboard` and a second `image` decoder stack into games
+    /// that had explicitly asked for none of it.
+    #[test]
+    fn every_bevy_feature_list_in_the_root_manifest_is_stripped() {
+        let dir = std::env::temp_dir().join(format!("renzora_strip_bevy_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The real manifest's shape: a workspace list, a desktop-only block that
+        // ADDS to it, a web-only block that does the same for the web, and a
+        // block with dependencies but NO bevy entry. The last one is the trap —
+        // walking it mutably vivifies `bevy = {}` and cargo then refuses the
+        // whole file.
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace.dependencies]\n\
+             bevy = { version = \"0.19\", features = [\"bevy_ui\", \"file_watcher\", \"bevy_pbr\"] }\n\
+             \n\
+             [target.'cfg(not(target_arch = \"wasm32\"))'.dependencies]\n\
+             bevy = { workspace = true, features = [\"file_watcher\", \"system_clipboard\"] }\n\
+             \n\
+             [target.'cfg(target_arch = \"wasm32\")'.dependencies]\n\
+             bevy = { workspace = true, features = [\"webgpu\", \"system_clipboard\"] }\n\
+             wasm-bindgen = \"0.2\"\n\
+             \n\
+             [target.'cfg(unix)'.dependencies]\n\
+             libc = \"0.2\"\n",
+        )
+        .unwrap();
+
+        strip_bevy_features(
+            &dir,
+            &["file_watcher".into(), "system_clipboard".into()],
+            &mut |_| {},
+        )
+        .unwrap();
+
+        let out = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        assert!(!out.contains("file_watcher"), "{out}");
+        // Twice over: the desktop block AND the web one had it.
+        assert!(!out.contains("system_clipboard"), "{out}");
+        // Untouched features survive in every list.
+        assert!(out.contains("bevy_ui") && out.contains("bevy_pbr"), "{out}");
+        assert!(out.contains("webgpu"), "the web's own entry was lost: {out}");
+        // And the bevy-less target block is untouched — no invented entry.
+        assert!(!out.contains("bevy = {}"), "vivified a bevy key: {out}");
+        assert!(out.contains("wasm-bindgen") && out.contains("libc"), "{out}");
+        // The strongest check: cargo must still be able to parse what we wrote.
+        assert!(
+            out.parse::<toml_edit::DocumentMut>().is_ok(),
+            "result is not valid TOML: {out}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A script's lifecycle hook reaches the binary too.
+    ///
+    /// The generated table used to be `(name, update_fn)` only, so a lean export
+    /// ran `update` and delivered no events — a loading screen's
+    /// `on_scene_loaded` fired in the editor and never fired in the shipped
+    /// game. Only scripts that actually asked for a hook get a row: the symbol
+    /// the row names does not exist otherwise.
+    #[test]
+    fn a_script_with_lifecycle_hooks_gets_a_hook_table_row() {
+        let project =
+            std::env::temp_dir().join(format!("renzora_static_hooks_{}", std::process::id()));
+        let scripts = project.join("scripts");
+        std::fs::create_dir_all(&scripts).unwrap();
+        std::fs::write(
+            scripts.join("curtain.rs"),
+            "fn update(_c: &mut ScriptCtx) {}\n\
+             fn hooks(_c: &mut ScriptCtx, _h: &ScriptHook) {}\n\
+             renzora::script!(update, hooks = hooks);\n",
+        )
+        .unwrap();
+        std::fs::write(scripts.join("plain.rs"), SCRIPT).unwrap();
+
+        let ws = project.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+
+        let lib = std::fs::read_to_string(
+            ws.join("crates")
+                .join("renzora_static_scripts")
+                .join("src")
+                .join("lib.rs"),
+        )
+        .unwrap();
+        assert!(lib.contains("pub fn hooks() -> Vec<(&'static str, HookFn)>"), "{lib}");
+        assert!(lib.contains("(\"curtain.rs\", script_0::renzora_script_hook"), "{lib}");
+        // `plain.rs` never asked for one, so naming its symbol would not link.
+        assert!(!lib.contains("script_1::renzora_script_hook"), "{lib}");
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// Only a `hooks =` inside a `script!` argument list counts.
+    #[test]
+    fn hook_detection_ignores_lookalikes() {
+        assert!(declares_hooks("renzora::script!(update, hooks = my_hooks);"));
+        assert!(declares_hooks("script!( update , hooks=h );"));
+        // A function named `hooks`, or the word in prose, is not a declaration.
+        assert!(!declares_hooks("fn hooks() {}\nrenzora::script!(update);"));
+        assert!(!declares_hooks("// hooks = something\nrenzora::script!(update);"));
+        assert!(!declares_hooks(SCRIPT));
+    }
+
+    /// A script that imports `renzora_ember` gets the dependency it needs.
+    ///
+    /// The SDK a script is normally compiled against hands it three crates —
+    /// `bevy`, `renzora` and `renzora_ember` — so reading a HUD widget from a
+    /// script is ordinary. The generated manifest listed only two of the three,
+    /// and such a script failed the lean build on "unlinked crate renzora_ember"
+    /// after having run fine in the editor for as long as the author had been
+    /// writing it.
+    /// The exporter must not try to link a plugin that cannot build for the
+    /// target. Pinned against the REAL manifests rather than a fixture, because
+    /// the thing that goes wrong is a plugin gaining a platform gate in its
+    /// source and nobody adding the key — which a fixture cannot notice.
+    #[test]
+    fn the_web_leaves_out_the_plugins_that_cannot_cross_to_it() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("crates/renzora_export -> repo root");
+        // `audio` is the one that actually bit: its `renzora_plugin_init` is
+        // behind `#[cfg(not(target_arch = "wasm32"))]`, so linking it in fails
+        // inside the generated aggregator minutes into the compile.
+        let wanted: Vec<(String, bool)> = ["audio", "lua", "tracy", "http", "grayscale"]
+            .iter()
+            .map(|id| (id.to_string(), false))
+            .collect();
+
+        let web = resolve_static_plugins(repo, &wanted, Some("wasm32-unknown-unknown"));
+        assert!(
+            web.linked.iter().all(|p| p.id == "grayscale"),
+            "only the pure-Rust one should cross: {:?}",
+            web.linked.iter().map(|p| &p.id).collect::<Vec<_>>()
+        );
+        assert_eq!(web.unsupported, ["audio", "http", "lua", "tracy"]);
+        assert!(web.no_source.is_empty(), "{:?}", web.no_source);
+
+        // The same set on a desktop triple links every one of them: the key is
+        // per-target, not a blanket exclusion.
+        let desktop = resolve_static_plugins(repo, &wanted, Some("x86_64-pc-windows-msvc"));
+        assert_eq!(desktop.linked.len(), 5, "{:?}", desktop.unsupported);
+        assert!(desktop.unsupported.is_empty());
+    }
+
+    /// No `--target` means the host, where nothing is filtered.
+    #[test]
+    fn no_target_filters_nothing() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .unwrap();
+        let wanted = vec![("audio".to_string(), false)];
+        let plan = resolve_static_plugins(repo, &wanted, None);
+        assert_eq!(plan.linked.len(), 1);
+        assert!(plan.unsupported.is_empty());
+    }
+
+    /// A manifest with no `[package.metadata.renzora]` — nearly all of them —
+    /// must read as "builds anywhere", and so must an unparseable one.
+    #[test]
+    fn an_absent_or_broken_key_means_buildable() {
+        assert!(supports_target("[package]\nname = \"x\"\n", "wasm32-unknown-unknown"));
+        assert!(supports_target("this is not toml {{{", "wasm32-unknown-unknown"));
+        assert!(supports_target(
+            "[package.metadata.renzora]\nunsupported-targets = [\"wasm32\"]\n",
+            "x86_64-pc-windows-msvc"
+        ));
+        assert!(!supports_target(
+            "[package.metadata.renzora]\nunsupported-targets = [\"apple-darwin\"]\n",
+            "aarch64-apple-darwin"
+        ));
+    }
+
+    #[test]
+    fn a_script_that_uses_the_ui_crate_gets_it_linked() {
+        let project =
+            std::env::temp_dir().join(format!("renzora_static_ember_{}", std::process::id()));
+        let scripts = project.join("scripts");
+        std::fs::create_dir_all(&scripts).unwrap();
+        std::fs::write(
+            scripts.join("hud.rs"),
+            format!("use renzora_ember::game_ui::components::UiImageFill;\n{SCRIPT}"),
+        )
+        .unwrap();
+
+        let ws = project.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+
+        let manifest = std::fs::read_to_string(
+            ws.join("crates")
+                .join("renzora_static_scripts")
+                .join("Cargo.toml"),
+        )
+        .unwrap();
+        assert!(manifest.contains("renzora_ember"), "{manifest}");
+        // Which of ember's features are on is the export's decision, not this
+        // crate's — turning them on here would un-strip `game_ui` and the
+        // world-space 3D UI in a build that dropped them.
+        assert!(manifest.contains("default-features = false"), "{manifest}");
 
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -1725,5 +2323,6 @@ strip = \"symbols\"
         assert!(out.contains("opt-level = \"s\""), "{out}");
     }
 }
+
 
 

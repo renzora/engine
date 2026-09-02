@@ -18,7 +18,7 @@ use renzora_ember::reactive::{react, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, drag_value, icon_menu_button, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, toggle_switch, OverlaySurface};
+use renzora_ember::widgets::{bind_text_input, drag_value, icon_menu_button, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, toggle_switch, tree_node_with, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode, PluginLinkMode};
@@ -96,6 +96,26 @@ struct CancelOrBackBtn;
 /// Copy the full build log to the system clipboard.
 #[derive(Component)]
 struct CopyLogBtn;
+/// The build log's scroll viewport, so [`follow_log_tail`] can find it.
+#[derive(Component)]
+struct LogScroll;
+/// The Files tab's panel, so [`resolve_included_files`] can tell when it is on
+/// screen and only then pay for reading the project.
+#[derive(Component)]
+struct FilesPanel;
+/// A bulk action button in the Files tab.
+#[derive(Component)]
+struct FilesBulk(FilesAction);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FilesAction {
+    All,
+    None,
+    /// Re-run the automatic crawl and take its answer — the way back from a
+    /// mistake, and it re-reads the project so it also picks up anything added
+    /// since the dialog opened.
+    Detected,
+}
 /// Features-tab section header — click folds/unfolds that section.
 #[derive(Component)]
 struct SectionToggle(&'static str);
@@ -137,6 +157,32 @@ fn probe_docker(world: &mut World) {
 
 fn manage_export_modal(world: &mut World) {
     let visible = world.get_resource::<ExportOverlayState>().is_some_and(|s| s.visible);
+    let mut q = world.query_filtered::<Entity, With<ExportRoot>>();
+    let existing: Vec<Entity> = q.iter(world).collect();
+    // The modal is opening this frame: throw away the previous scan so the
+    // features and plugins are re-detected from the project as it stands right
+    // now. Editing a scene and re-opening the dialog should change what it
+    // offers, and before this the first scan of the session was the only one — a
+    // project that gained a terrain after the dialog had been opened once still
+    // exported without it.
+    //
+    // Unconditional, saved presets included. A preset's feature map is captured
+    // automatically (`sync_active_preset` runs on every close and every export),
+    // so it records the last state rather than a decision, and honouring it here
+    // pinned every project that had ever been exported to whatever its map
+    // happened to hold. A preset is for the platform, packaging, output path and
+    // window — the features are the project's own answer, re-read each time.
+    //
+    // Done before `scan_plugins` rather than in the spawn branch below, because
+    // the checkboxes are built from `capabilities` at spawn time and a re-scan a
+    // frame later would leave them showing the old answer.
+    if visible && existing.is_empty() {
+        if let Some(mut s) = world.get_resource_mut::<ExportOverlayState>() {
+            s.plugins_scanned = false;
+            s.plugins_scanned_for = None;
+            s.choices_pinned = false;
+        }
+    }
     if visible {
         // Presets belong to the open project, so this both fills an empty list
         // on first open and swaps it when the user changes project without
@@ -152,11 +198,11 @@ fn manage_export_modal(world: &mut World) {
         ensure_release_fetch(world);
         poll_release_fetch(world);
         poll_export_task(world);
+        follow_log_tail(world);
+        resolve_included_files(world);
         poll_download_task(world);
         scan_plugins(world);
     }
-    let mut q = world.query_filtered::<Entity, With<ExportRoot>>();
-    let existing: Vec<Entity> = q.iter(world).collect();
 
     if visible && existing.is_empty() {
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
@@ -172,6 +218,106 @@ fn manage_export_modal(world: &mut World) {
             world.entity_mut(e).despawn();
         }
     }
+}
+
+/// Fill the Files tab's ticks the first time it is looked at, and run its
+/// buttons.
+///
+/// The starting ticks are what the automatic crawl would pack, and working that
+/// out means reading the project — every scene, every script, every referenced
+/// file. That is the same cost the export itself pays, and it is far too much to
+/// pay when the dialog merely opens, so it is deferred until this tab is
+/// actually on screen. The checkboxes bind reactively, so they simply fill in on
+/// the frame the answer arrives.
+fn resolve_included_files(world: &mut World) {
+    // Bulk buttons first: "Reset to detected" clears the selection, and the
+    // block below then recomputes it in the same frame.
+    let mut action = None;
+    {
+        let mut q = world.query::<(&Interaction, &FilesBulk)>();
+        for (interaction, bulk) in q.iter(world) {
+            if *interaction == Interaction::Pressed {
+                action = Some(bulk.0);
+            }
+        }
+    }
+    if let Some(action) = action {
+        let all: Vec<String> = world
+            .get_resource::<ExportOverlayState>()
+            .map(|s| s.project_files.clone())
+            .unwrap_or_default();
+        if let Some(mut s) = world.get_resource_mut::<ExportOverlayState>() {
+            match action {
+                FilesAction::All => s.included_files = Some(all.into_iter().collect()),
+                FilesAction::None => s.included_files = Some(Default::default()),
+                FilesAction::Detected => s.included_files = None,
+            }
+        }
+    }
+
+    // Is the tab on screen? `tabs()` shows one panel at a time by toggling
+    // `Node.display`, so that is the question to ask.
+    let showing = {
+        let mut q = world.query_filtered::<&Node, With<FilesPanel>>();
+        q.iter(world).any(|n| n.display != Display::None)
+    };
+    if !showing {
+        return;
+    }
+    let needs = world
+        .get_resource::<ExportOverlayState>()
+        .is_some_and(|s| s.included_files.is_none());
+    if !needs {
+        return;
+    }
+    let Some(root) = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|p| p.path.clone())
+    else {
+        return;
+    };
+    let detected = renzora_rpak::referenced_keys(&root).unwrap_or_default();
+    if let Some(mut s) = world.get_resource_mut::<ExportOverlayState>() {
+        s.included_files = Some(detected.into_iter().collect());
+    }
+}
+
+/// Put the end of the build log on screen the moment the build stops.
+///
+/// The log view already follows the tail while output streams in, and already
+/// releases that follow if the reader scrolls up — which is right during a
+/// build, and wrong the instant it ends. What matters then is the last line: an
+/// export that failed says why on it, and cargo will have pushed that a long way
+/// below the fold. A reader who had scrolled up to watch the packing list went
+/// looking for an error they could not see.
+///
+/// Fires once per finish, on the transition into `Done`/`Error`, so it never
+/// fights someone scrolling back through a finished log.
+fn follow_log_tail(world: &mut World) {
+    let finished = matches!(
+        world.get_resource::<ExportOverlayState>().map(|s| &s.progress),
+        Some(ExportProgress::Done(_)) | Some(ExportProgress::Error(_))
+    );
+    {
+        let mut state = world.get_resource_or_insert_with(LogTailState::default);
+        if finished == state.finished {
+            return;
+        }
+        state.finished = finished;
+    }
+    if !finished {
+        return;
+    }
+    let mut q = world.query_filtered::<&mut renzora_ember::widgets::EmberScroll, With<LogScroll>>();
+    for mut scroll in q.iter_mut(world) {
+        scroll.stick_to_bottom();
+    }
+}
+
+/// Whether [`follow_log_tail`] has already handled the current finish.
+#[derive(Resource, Default)]
+struct LogTailState {
+    finished: bool,
 }
 
 fn scan_plugins(world: &mut World) {
@@ -220,92 +366,62 @@ fn scan_plugins(world: &mut World) {
         plugins.sort_by(|a, b| a.id.cmp(&b.id));
     }
 
-    // Pre-select only the plugins a scene actually references, so the export
-    // ships just the effects it uses instead of all 50+. A plugin id is the dll
-    // stem (e.g. `renzora_matrix`); scenes name components by their defining
-    // crate (`renzora_matrix::MatrixSettings`), so we match `<id>::` in the
-    // project's `.ron` files. Effects added purely from scripts won't be
-    // detected — the user can still tick those manually. If there's no open
-    // project / no scenes to scan, fall back to selecting everything.
+    // Read the project once, and let it choose both halves of the dialog: which
+    // plugins to pre-tick, and which engine features to leave on.
+    //
+    // A plugin id is the dll stem (e.g. `renzora_matrix`); a scene names
+    // components by their defining crate (`renzora_matrix::MatrixSettings`), so
+    // the needle is `<id>::`. The scan reads scripts, markup and authored assets
+    // as well as scenes, so a plugin a script reaches for is now found too —
+    // this was scene-only, and the note admitting it said the user could tick
+    // those by hand.
+    //
+    // With no project, or a project holding no scenes, `scan` is `None` and both
+    // halves fall back to selecting everything / plain defaults.
     let project_root = world
         .get_resource::<renzora::core::CurrentProject>()
         .map(|p| p.path.clone());
-    let used = project_root
-        .as_deref()
-        .and_then(|root| scene_used_plugin_ids(root, &plugins));
-
-    let mut s = world.resource_mut::<ExportOverlayState>();
-    for p in &plugins {
-        let select = used.as_ref().is_none_or(|set| set.contains(&p.id));
-        if select {
-            s.selected_plugins.insert(p.id.clone());
-        }
-    }
-    s.available_plugins = plugins;
-    // Default the engine-feature toggles (Solari follows its plugin; codecs are
-    // auto-enabled from the project's asset files).
-    let selected: Vec<String> = s.selected_plugins.iter().cloned().collect();
-    s.capabilities = crate::capabilities::defaults(&selected, project_root.as_deref());
-    s.plugins_scanned = true;
-    s.plugins_scanned_for = Some(platform);
-}
-
-/// The plugin ids referenced by any `.ron` scene/prefab under `root`. Matches
-/// each plugin's crate prefix (`<id>::`, with a leading `lib` stripped for unix
-/// dll names) against the serialized component type paths. Returns `None` if no
-/// `.ron` could be read, so the caller falls back to selecting all plugins.
-fn scene_used_plugin_ids(
-    root: &std::path::Path,
-    available: &[renzora_plugin::host::loader::PluginInfo],
-) -> Option<std::collections::HashSet<String>> {
-    let needles: Vec<(String, String)> = available
+    let needles: Vec<(String, String)> = plugins
         .iter()
         .map(|p| {
             let crate_name = p.id.strip_prefix("lib").unwrap_or(p.id.as_str());
             (p.id.clone(), format!("{crate_name}::"))
         })
         .collect();
+    let extra: Vec<String> = needles.iter().map(|(_, n)| n.clone()).collect();
+    let scan = project_root
+        .as_deref()
+        .map(|root| crate::capabilities::scan_project(root, &extra))
+        .filter(|s| s.saw_scene);
 
-    let mut ron_files = Vec::new();
-    collect_ron_files(root, &mut ron_files);
-    if ron_files.is_empty() {
-        return None;
-    }
-
-    let mut used = std::collections::HashSet::new();
-    for file in &ron_files {
-        let Ok(text) = std::fs::read_to_string(file) else { continue };
+    let mut s = world.resource_mut::<ExportOverlayState>();
+    // Both halves are skipped when a preset is driving the dialog: a preset is a
+    // saved answer to exactly these two questions, and re-deriving them here
+    // would throw it away one frame after the user loaded it.
+    // The project's file list, for the Files tab. Cleared with the rest when the
+    // scan finds no project, so a stale list cannot outlive the project it came
+    // from.
+    s.project_files = scan.as_ref().map(|sc| sc.files.clone()).unwrap_or_default();
+    if !s.choices_pinned {
+        // A fresh open re-reads the project, so any selection made against the
+        // previous read is stale — a file that has since been deleted would keep
+        // being asked for, and a new one would be invisible. Back to automatic.
+        s.included_files = None;
+        // Replaced, not merged. This runs again on every fresh open, so merging
+        // would make the selection a high-water mark — a plugin detected once
+        // would stay ticked after the scene that used it was deleted.
+        s.selected_plugins.clear();
         for (id, needle) in &needles {
-            if !used.contains(id) && text.contains(needle.as_str()) {
-                used.insert(id.clone());
+            if scan.as_ref().is_none_or(|scan| scan.saw(needle)) {
+                s.selected_plugins.insert(id.clone());
             }
         }
+        let selected: Vec<String> = s.selected_plugins.iter().cloned().collect();
+        s.capabilities = crate::capabilities::defaults_from_scan(&selected, scan.as_ref());
     }
-    Some(used)
-}
-
-/// Recursively collect `.ron` files under `dir`, skipping dot-directories
-/// (`.editor`, `.cache`, `.git`, …).
-fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            let is_dot = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with('.'));
-            if !is_dot {
-                collect_ron_files(&path, out);
-            }
-        } else if matches!(
-            path.extension().and_then(|x| x.to_str()),
-            Some("ron") | Some("bsn")
-        ) {
-            // `.bsn` = interim scene format; `.ron` = sidecars/config still in RON.
-            out.push(path);
-        }
-    }
+    s.available_plugins = plugins;
+    s.plugins_scanned = true;
+    s.plugins_scanned_for = Some(platform);
 }
 
 fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
@@ -764,13 +880,15 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
         build_output_tab(commands, fonts, p, desktop, tab_max),
         build_packaging_tab(commands, fonts, p, desktop, host, tab_max),
         build_features_tab(commands, fonts, host, tab_max),
-        build_plugins_tab(commands, fonts, host, tab_max),
+        build_plugins_tab(commands, fonts, p, host, tab_max),
+        build_files_tab(commands, fonts, tab_max),
     ];
     let tab_labels = [
         renzora::lang::t("export.tab.output"),
         renzora::lang::t("export.tab.packaging"),
         renzora::lang::t("export.tab.features"),
         renzora::lang::t("export.tab.plugins"),
+        renzora::lang::t("export.tab.files"),
     ];
     let tab_refs: Vec<&str> = tab_labels.iter().map(|s| s.as_str()).collect();
     let strip = tabs(
@@ -910,45 +1028,70 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
     let panel = tab_panel(commands);
     let mut secs = Vec::new();
 
-    // Packaging mode (desktop). The lean static single-binary mode recompiles
-    // from source, which native cargo can only do for the host triple — so it's
-    // offered only when exporting for the platform the editor is running on.
-    if desktop {
+    // The web gets a packaging choice too, but only two of the three modes mean
+    // anything there: "Binary + .rpak" and "Single executable" are the same zip
+    // either way, since a wasm module has nothing to append an rpak to. So it
+    // offers prebuilt-template versus lean-recompile, mapped onto the same enum —
+    // `SeparateFiles` is the template path the web has always taken.
+    let web = matches!(p, Platform::WebWasm32);
+
+    // Packaging mode. The lean mode recompiles from source, so it appears only
+    // where a lean build can actually be produced (`host` — see its definition,
+    // which is about lean-capability, not about being the local machine).
+    if desktop || web {
         let (sec, body) = section(commands, fonts, "file-archive", &renzora::lang::t("export.section.packaging_mode"), accent());
         let separate = renzora::lang::t("export.packaging.separate");
         let single = renzora::lang::t("export.packaging.single_exe");
         let lean = renzora::lang::t("export.packaging.lean");
-        let labels: Vec<&str> = if host {
-            vec![separate.as_str(), single.as_str(), lean.as_str()]
-        } else {
-            vec![separate.as_str(), single.as_str()]
+        let web_template = renzora::lang::t("export.packaging.web_template");
+        let web_lean = renzora::lang::t("export.packaging.web_lean");
+        let labels: Vec<&str> = match (web, host) {
+            (true, true) => vec![web_template.as_str(), web_lean.as_str()],
+            // No engine source: the template is the only thing left, and the
+            // "Download engine source" button below says how to get the other.
+            (true, false) => vec![web_template.as_str()],
+            (false, true) => vec![separate.as_str(), single.as_str(), lean.as_str()],
+            (false, false) => vec![separate.as_str(), single.as_str()],
         };
         let radios = radio_group(commands, &fonts.ui, &labels, 0);
         bind_2way(
             commands,
             radios,
-            |w| match w.resource::<ExportOverlayState>().packaging_mode {
+            move |w| match w.resource::<ExportOverlayState>().packaging_mode {
                 PackagingMode::SeparateFiles => 0usize,
-                PackagingMode::SingleBinary => 1,
-                PackagingMode::LeanSingleBinary => 2,
+                // The web's radio has no middle option, so `SingleBinary` — which
+                // it can arrive at from a preset or a platform switch — reads back
+                // as the template, which is what it does there anyway.
+                PackagingMode::SingleBinary => if web { 0 } else { 1 },
+                PackagingMode::LeanSingleBinary => if web { 1 } else { 2 },
             },
-            |w, v: &usize| {
-                w.resource_mut::<ExportOverlayState>().packaging_mode = match *v {
-                    2 => PackagingMode::LeanSingleBinary,
-                    1 => PackagingMode::SingleBinary,
-                    _ => PackagingMode::SeparateFiles,
+            move |w, v: &usize| {
+                let mode = if web {
+                    match *v {
+                        1 => PackagingMode::LeanSingleBinary,
+                        _ => PackagingMode::SeparateFiles,
+                    }
+                } else {
+                    match *v {
+                        2 => PackagingMode::LeanSingleBinary,
+                        1 => PackagingMode::SingleBinary,
+                        _ => PackagingMode::SeparateFiles,
+                    }
                 };
+                w.resource_mut::<ExportOverlayState>().packaging_mode = mode;
             },
         );
         commands.entity(body).add_child(radios);
         // Which mode to actually ship. Said here rather than left implicit,
-        // because the two copy-based modes are the fast ones and therefore the
-        // ones a person reaches for by habit — while what they produce is the
-        // editor's own runtime and its dylibs, not a build made for this game.
-        let guidance = txt(commands, fonts, &renzora::lang::t("export.packaging.guidance"), 11.0, text_muted());
+        // because the copy-based modes are the fast ones and therefore the ones a
+        // person reaches for by habit — while what they produce is the editor's
+        // own runtime and its dylibs, not a build made for this game.
+        let guidance_key = if web { "export.packaging.web_guidance" } else { "export.packaging.guidance" };
+        let guidance = txt(commands, fonts, &renzora::lang::t(guidance_key), 11.0, text_muted());
         commands.entity(body).add_child(guidance);
         if host {
-            let hint = txt(commands, fonts, &renzora::lang::t("export.packaging.lean_hint"), 11.0, text_muted());
+            let hint_key = if web { "export.packaging.web_hint" } else { "export.packaging.lean_hint" };
+            let hint = txt(commands, fonts, &renzora::lang::t(hint_key), 11.0, text_muted());
             commands.entity(body).add_child(hint);
         }
         // No source, no lean build — but that is a missing download rather than
@@ -1026,6 +1169,16 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
     let (line, msg) = icon_msg(commands, fonts, "check-circle", text_muted());
     bind_text(commands, msg, move |w| if w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p)) { renzora::lang::t("export.runtime.installed") } else { renzora::lang::t("export.runtime.not_installed") });
     commands.entity(body).add_child(line);
+    // A lean export recompiles the engine and never opens the template, so a
+    // missing one is not a problem to solve — said here because "not installed"
+    // sitting above a Download button reads as exactly that, and the button
+    // would fetch several hundred MB the build then ignores.
+    let unused = txt(commands, fonts, &renzora::lang::t("export.runtime.lean_unused"), 11.0, text_muted());
+    bind_display(commands, unused, |w| {
+        w.get_resource::<ExportOverlayState>()
+            .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
+    });
+    commands.entity(body).add_child(unused);
     // Buttons.
     let btns = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
     let dl = pill_button(commands, fonts, "download-simple", &renzora::lang::t("export.btn.download_github"));
@@ -1048,6 +1201,214 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
 }
 
 // ── Features tab: the lean engine-feature strip ──────────────────────────────
+
+/// One level of the file tree: the folders at `prefix`, then the files.
+///
+/// Recursive over path segments rather than over the filesystem — the input is
+/// already the flat, sorted list of keys the scan collected, so this never
+/// touches the disk. Folders come first at each level and both halves stay in
+/// the sorted order they arrived in, which is what makes the tree stable between
+/// openings.
+///
+/// A folder's tick is not stored anywhere: it reads as on when every file under
+/// it is on, and toggling it writes that answer down to each of them. There is
+/// no third state to represent a partial folder — the row shows off, and the
+/// files below it tell the truth.
+/// A checkbox sized for a tree row.
+///
+/// A checkbox rather than the toggle switch the Features tab uses: a file tree
+/// is dense and long, and a row of switches reads as a control panel where what
+/// is wanted is a list of ticks. `FocusPolicy::Block` so a click lands on the
+/// box instead of falling through to the tree row and folding the folder.
+fn file_check(commands: &mut Commands) -> Entity {
+    let cb = renzora_ember::widgets::checkbox(commands, false);
+    commands.entity(cb).insert(FocusPolicy::Block);
+    cb
+}
+
+fn file_tree_rows(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    files: &[String],
+    prefix: &str,
+    depth: usize,
+) -> Vec<Entity> {
+    let mut folders: Vec<String> = Vec::new();
+    let mut leaves: Vec<&String> = Vec::new();
+    for key in files {
+        let Some(rest) = key.strip_prefix(prefix) else { continue };
+        match rest.split_once('/') {
+            Some((dir, _)) => {
+                if !folders.iter().any(|f| f == dir) {
+                    folders.push(dir.to_string());
+                }
+            }
+            None => leaves.push(key),
+        }
+    }
+
+    let mut out = Vec::new();
+    for dir in folders {
+        let sub_prefix = format!("{prefix}{dir}/");
+        let children = file_tree_rows(commands, fonts, files, &sub_prefix, depth + 1);
+        // The keys this folder governs, captured for its own tick.
+        let owned: Vec<String> = files
+            .iter()
+            .filter(|k| k.starts_with(&sub_prefix))
+            .cloned()
+            .collect();
+        let cb = file_check(commands);
+        let get_keys = owned.clone();
+        let set_keys = owned;
+        bind_2way(
+            commands,
+            cb,
+            move |w| {
+                w.get_resource::<ExportOverlayState>()
+                    .and_then(|s| s.included_files.as_ref().map(|inc| {
+                        !get_keys.is_empty() && get_keys.iter().all(|k| inc.contains(k))
+                    }))
+                    .unwrap_or(false)
+            },
+            move |w, v: &bool| {
+                if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                    if let Some(inc) = s.included_files.as_mut() {
+                        for k in &set_keys {
+                            if *v {
+                                inc.insert(k.clone());
+                            } else {
+                                inc.remove(k);
+                            }
+                        }
+                    }
+                }
+            },
+        );
+        out.push(tree_node_with(commands, fonts, &dir, depth, children, false, vec![cb], None));
+    }
+    for key in leaves {
+        let name = key.rsplit_once('/').map_or(key.as_str(), |(_, n)| n).to_string();
+        let cb = file_check(commands);
+        let get_key = key.clone();
+        let set_key = key.clone();
+        bind_2way(
+            commands,
+            cb,
+            move |w| {
+                w.get_resource::<ExportOverlayState>()
+                    .and_then(|s| s.included_files.as_ref().map(|inc| inc.contains(&get_key)))
+                    .unwrap_or(false)
+            },
+            move |w, v: &bool| {
+                if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                    if let Some(inc) = s.included_files.as_mut() {
+                        if *v {
+                            inc.insert(set_key.clone());
+                        } else {
+                            inc.remove(&set_key);
+                        }
+                    }
+                }
+            },
+        );
+        // The same icon table the asset browser draws from, so a `.bsn` here is
+        // the same film slate it is over there.
+        let p = std::path::Path::new(key.as_str());
+        let icon = renzora_ember::file_kind::icon_for(p, false);
+        let colour = renzora_ember::file_kind::color_for(p);
+        out.push(tree_node_with(
+            commands,
+            fonts,
+            &name,
+            depth,
+            Vec::new(),
+            false,
+            vec![cb],
+            Some((icon, colour)),
+        ));
+    }
+    out
+}
+
+/// The **Files** tab: every file in the project as a folder tree, ticked.
+///
+/// The ticks start from what the automatic crawl found, and from that moment the
+/// list is authoritative — the archive holds exactly what is ticked. That is the
+/// point of it: the crawl follows quoted asset paths out of files it packed, so
+/// it cannot find a path a script assembles at runtime, and until recently could
+/// not see a Rust script's assets at all (those are compiled into the binary, so
+/// nothing packed them and nothing read them). A file it misses is a game that
+/// runs and logs `Path not found` once a frame, and the fix should be a tick
+/// rather than a restructure.
+///
+/// The tree is built once, when the modal spawns, from the file list the project
+/// scan already collected. The ticks are reactive, so the detected set can
+/// arrive a frame later — see [`resolve_included_files`], which does the reading
+/// only when this tab is actually on screen.
+fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_max: f32) -> Entity {
+    let panel = tab_panel(commands);
+    commands.entity(panel).insert(FilesPanel);
+    let (sec, body) =
+        section(commands, fonts, "folders", &renzora::lang::t("export.section.files"), accent());
+
+    let note = txt(commands, fonts, &renzora::lang::t("export.files.note"), 11.0, text_muted());
+    commands.entity(body).add_child(note);
+
+    // Bulk actions. "Reset to detected" is the important one — it is the way
+    // back from a mistake, and it re-runs the crawl rather than restoring a
+    // snapshot, so it also picks up anything added since the dialog opened.
+    let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), margin: UiRect::vertical(Val::Px(4.0)), ..default() }).id();
+    let all = pill_button(commands, fonts, "check-square", &renzora::lang::t("export.files.all"));
+    commands.entity(all).insert(FilesBulk(FilesAction::All));
+    let none = pill_button(commands, fonts, "square", &renzora::lang::t("export.files.none"));
+    commands.entity(none).insert(FilesBulk(FilesAction::None));
+    let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t("export.files.reset"));
+    commands.entity(reset).insert(FilesBulk(FilesAction::Detected));
+    commands.entity(actions).add_children(&[all, none, reset]);
+    commands.entity(body).add_child(actions);
+
+    let count = txt(commands, fonts, "", 11.0, text_muted());
+    bind_text(commands, count, |w| {
+        let Some(s) = w.get_resource::<ExportOverlayState>() else {
+            return String::new();
+        };
+        match &s.included_files {
+            None => renzora::lang::t("export.files.auto"),
+            Some(set) => renzora::lang::t("export.files.count")
+                .replace("{n}", &set.len().to_string())
+                .replace("{total}", &s.project_files.len().to_string()),
+        }
+    });
+    commands.entity(body).add_child(count);
+
+    // The tree, added straight into the section body. `finish_tab` puts ONE
+    // scroll area around the whole panel, exactly as the other four tabs do —
+    // an inner scroll area here nested a `tab_max`-tall viewport inside a panel
+    // nothing capped, so the tree ran off the bottom of the dialog.
+    //
+    // Filled by a command that can read the world, the same way the plugin cards
+    // are: the file list is settled by the scan that ran a moment ago, but this
+    // builder only has `Commands`.
+    let tree = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    commands.entity(body).add_child(tree);
+    commands.queue(move |world: &mut World| {
+        let files: Vec<String> = world
+            .get_resource::<ExportOverlayState>()
+            .map(|s| s.project_files.clone())
+            .unwrap_or_default();
+        let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
+        let mut queue = CommandQueue::default();
+        {
+            let mut c = Commands::new(&mut queue, world);
+            let rows = file_tree_rows(&mut c, &fonts, &files, "", 0);
+            c.entity(tree).add_children(&rows);
+        }
+        queue.apply(world);
+    });
+
+    finish_tab(commands, panel, &[sec], tab_max);
+    panel
+}
 
 fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
@@ -1124,6 +1485,7 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, t
                             for c in section_members(sid) {
                                 s.capabilities.insert(c.id.to_string(), *v);
                             }
+                            crate::capabilities::enforce_dependencies(&mut s.capabilities);
                         }
                     },
                 );
@@ -1212,6 +1574,13 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, t
                 move |w, v: &bool| {
                     if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
                         s.capabilities.insert(id.to_string(), *v);
+                        // Turning 3D rendering off has to visibly take terrain,
+                        // the sky set and every post-process effect with it —
+                        // the build strips them regardless, and a row left
+                        // showing green for something that is about to be
+                        // dropped is the dialog lying about what it will ship.
+                        // Off-only, so nothing is ever switched back ON here.
+                        crate::capabilities::enforce_dependencies(&mut s.capabilities);
                     }
                 },
             );
@@ -1253,47 +1622,69 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, t
 
 // ── Plugins tab ──────────────────────────────────────────────────────────────
 
-fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, tab_max: f32) -> Entity {
+fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     let mut secs = Vec::new();
+    let web = matches!(p, Platform::WebWasm32);
 
     // How the plugins get there: files beside the binary, or compiled into it.
-    // Offered only on the host platform, because linking in requires the lean
-    // recompile and that can only target the triple the editor is running on.
+    // Offered wherever a lean build is possible, since that is the only mode
+    // that compiles anything to link into.
     if host {
         let (lsec, lbody) = section(commands, fonts, "link", &renzora::lang::t("export.section.plugin_link"), accent());
-        let files = renzora::lang::t("export.plugin_link.files");
-        let linked = renzora::lang::t("export.plugin_link.linked");
-        let labels: Vec<&str> = vec![files.as_str(), linked.as_str()];
-        let radios = radio_group(commands, &fonts.ui, &labels, 0);
-        bind_2way(
-            commands,
-            radios,
-            |w| match w.resource::<ExportOverlayState>().plugin_link_mode {
-                PluginLinkMode::ShipFiles => 0usize,
-                PluginLinkMode::LinkIn => 1,
-            },
-            |w, v: &usize| {
-                w.resource_mut::<ExportOverlayState>().plugin_link_mode = match *v {
-                    1 => PluginLinkMode::LinkIn,
-                    _ => PluginLinkMode::ShipFiles,
-                };
-            },
-        );
-        commands.entity(lbody).add_child(radios);
-        let hint = txt(commands, fonts, &renzora::lang::t("export.plugin_link.hint"), 11.0, text_muted());
-        commands.entity(lbody).add_child(hint);
-        // Linking in needs something to compile into, and only the lean mode
-        // compiles. Rather than disable the radio from the other tab (where the
-        // reason would be invisible), say so — and only when it applies.
-        let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.needs_lean"), 11.0, AMBER);
-        bind_display(commands, warn, |w| {
-            w.get_resource::<ExportOverlayState>().is_some_and(|s| {
-                s.plugin_link_mode == PluginLinkMode::LinkIn
-                    && s.packaging_mode != PackagingMode::LeanSingleBinary
-            })
-        });
-        commands.entity(lbody).add_child(warn);
+        if web {
+            // No radio, because there is no choice to offer. A browser has no
+            // `dlopen`, so a `plugins/` folder beside the bundle is never read —
+            // the export links them in regardless, and showing a two-way control
+            // whose first option silently does nothing would be worse than
+            // showing none. (`renzora_plugin::host::loader`'s wasm shim is the
+            // other end of the same fact: a wasm build gets its plugins linked
+            // in or not at all.)
+            let note = txt(commands, fonts, &renzora::lang::t("export.plugin_link.web_forced"), 11.0, text_muted());
+            commands.entity(lbody).add_child(note);
+            // …and linking in still needs the mode that compiles. On the web that
+            // means the template mode ships no plugins at all, which is worth
+            // saying where the plugin list is rather than only in the log.
+            let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.web_needs_lean"), 11.0, AMBER);
+            bind_display(commands, warn, |w| {
+                w.get_resource::<ExportOverlayState>()
+                    .is_some_and(|s| s.packaging_mode != PackagingMode::LeanSingleBinary)
+            });
+            commands.entity(lbody).add_child(warn);
+        } else {
+            let files = renzora::lang::t("export.plugin_link.files");
+            let linked = renzora::lang::t("export.plugin_link.linked");
+            let labels: Vec<&str> = vec![files.as_str(), linked.as_str()];
+            let radios = radio_group(commands, &fonts.ui, &labels, 0);
+            bind_2way(
+                commands,
+                radios,
+                |w| match w.resource::<ExportOverlayState>().plugin_link_mode {
+                    PluginLinkMode::ShipFiles => 0usize,
+                    PluginLinkMode::LinkIn => 1,
+                },
+                |w, v: &usize| {
+                    w.resource_mut::<ExportOverlayState>().plugin_link_mode = match *v {
+                        1 => PluginLinkMode::LinkIn,
+                        _ => PluginLinkMode::ShipFiles,
+                    };
+                },
+            );
+            commands.entity(lbody).add_child(radios);
+            let hint = txt(commands, fonts, &renzora::lang::t("export.plugin_link.hint"), 11.0, text_muted());
+            commands.entity(lbody).add_child(hint);
+            // Linking in needs something to compile into, and only the lean mode
+            // compiles. Rather than disable the radio from the other tab (where
+            // the reason would be invisible), say so — and only when it applies.
+            let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.needs_lean"), 11.0, AMBER);
+            bind_display(commands, warn, |w| {
+                w.get_resource::<ExportOverlayState>().is_some_and(|s| {
+                    s.plugin_link_mode == PluginLinkMode::LinkIn
+                        && s.packaging_mode != PackagingMode::LeanSingleBinary
+                })
+            });
+            commands.entity(lbody).add_child(warn);
+        }
         secs.push(lsec);
     }
 
@@ -1334,6 +1725,36 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, ta
         })
     });
     commands.entity(body).add_child(native_note);
+
+    // The same idea one step further: some plugins cannot be built for this
+    // platform at all, and the grid below would otherwise let you tick one and
+    // find out minutes into the compile. Named individually rather than left to
+    // a general warning, because "audio is not coming" is the sentence someone
+    // needs — a web game with no sound is a surprise worth having before the
+    // build, not after it.
+    //
+    // Resolved once here rather than in a binding: it depends only on the
+    // selected platform, and the tab is rebuilt when that changes.
+    let blocked = crate::docker::rust_triple(p)
+        .and_then(|triple| {
+            crate::build::resolve_engine_source()
+                .map(|src| crate::build::unsupported_plugins_for(&src, triple))
+        })
+        .unwrap_or_default();
+    if !blocked.is_empty() {
+        let note = txt(
+            commands,
+            fonts,
+            &format!(
+                "{} {}",
+                renzora::lang::t("export.plugins.unsupported_target"),
+                blocked.join(", ")
+            ),
+            11.0,
+            AMBER,
+        );
+        commands.entity(body).add_child(note);
+    }
 
     // Filled by a command that can read the world (the plugin list is stable
     // after the scan).
@@ -1552,7 +1973,15 @@ fn options_sections(commands: &mut Commands, fonts: &EmberFonts, p: Platform, de
     let console = check_state(commands, fonts, &renzora::lang::t("export.options.console_logging"), |s| s.console_logging, |s, v| s.console_logging = v);
     commands.entity(obody).add_child(console);
     if desktop && p.supports_dedicated_server() {
-        let server = check_state(commands, fonts, &renzora::lang::t("export.options.include_server"), |s| s.include_server, |s, v| s.include_server = v);
+        // Asking for a dedicated server is asking for networking, so it turns
+        // the capability back on rather than shipping a server binary with the
+        // transport stripped out of it.
+        let server = check_state(commands, fonts, &renzora::lang::t("export.options.include_server"), |s| s.include_server, |s, v| {
+            s.include_server = v;
+            if v {
+                s.capabilities.insert("networking".to_string(), true);
+            }
+        });
         commands.entity(obody).add_child(server);
     }
     secs.push(osec);
@@ -1637,12 +2066,17 @@ fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // the user scrolls up to read back (an error can otherwise be pushed out of
     // view by cargo's huge linker-command dump). `build_log` is tail-capped at 600
     // lines upstream so this stays bounded.
-    let term = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(360.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
+    // Fills whatever height the modal has rather than a fixed 360 px. The modal
+    // is tall and the log was showing twenty lines of an eight-hundred-line
+    // build with empty space beneath it; `min_height` keeps it usable when the
+    // window is short.
+    let term = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(220.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
     let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
     bind_text(commands, log_text, |w| {
         w.get_resource::<ExportOverlayState>().map(|s| s.build_log.join("\n")).unwrap_or_default()
     });
     let log_scroll = scroll_view_pinned(commands, log_text);
+    commands.entity(log_scroll).insert(LogScroll);
     commands.entity(term).add_child(log_scroll);
 
     // Buttons: Copy log (left), Cancel/Back (right).
@@ -1716,10 +2150,30 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Interaction ──────────────────────────────────────────────────────────────
 
+/// Whether the Export button does anything — and, through `bind_bg`, whether it
+/// looks like it will.
+///
+/// The interesting half is what counts as "there is a runtime to ship". For the
+/// two copy-based modes it is the installed template, because those literally
+/// copy it. **A lean export never opens the template** — it recompiles the engine
+/// from source — so requiring one there greys out the button for a reason that
+/// does not apply, with the Packaging tab's "Runtime template not installed" as
+/// the only clue and a Download button that fixes nothing.
+///
+/// That was only ever theoretical on desktop, where the template for your own
+/// platform is the editor's own `dist/` dir and is therefore always installed.
+/// The web made it real: a checkout that has never run `cargo renzora wasm` has
+/// no web template, and a lean web export has no reason to want one. What a lean
+/// build needs instead is a platform it can build for and the engine source,
+/// which is what this checks.
 fn can_export(w: &Rx) -> bool {
     let Some(s) = w.get_resource::<ExportOverlayState>() else { return false };
-    let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(s.platform));
-    installed && !s.output_dir.is_empty() && s.active_task.is_none() && matches!(s.progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_))
+    let have_runtime = if s.packaging_mode == PackagingMode::LeanSingleBinary {
+        crate::docker::lean_supported(s.platform) && lean_source_available()
+    } else {
+        w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(s.platform))
+    };
+    have_runtime && !s.output_dir.is_empty() && s.active_task.is_none() && matches!(s.progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_))
 }
 
 fn preset_click(q: Query<(&Interaction, &PresetBtn), Changed<Interaction>>, mut state: Option<ResMut<ExportOverlayState>>) {
@@ -1993,7 +2447,12 @@ fn output_browse_click(q: Query<&Interaction, (With<OutputBrowseBtn>, Changed<In
 fn icon_browse_click(q: Query<&Interaction, (With<IconBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            if let Some(f) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_icon")).add_filter(renzora::lang::t("export.filter.images"), &["png", "ico", "svg"]).pick_file() {
+            // The list is `crate::icon::PICKABLE` rather than a literal so the
+            // dialog can never offer a format the conversion then refuses. It
+            // used to include `svg`, which `image` cannot decode at any feature
+            // level — picking one produced a working-looking export with no icon
+            // anywhere.
+            if let Some(f) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_icon")).add_filter(renzora::lang::t("export.filter.images"), crate::icon::PICKABLE).pick_file() {
                 w.resource_mut::<ExportOverlayState>().icon_path = Some(f.to_string_lossy().to_string());
             }
         });

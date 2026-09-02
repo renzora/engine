@@ -15,6 +15,8 @@ mod docker;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
 #[cfg(not(target_arch = "wasm32"))]
+mod icon;
+#[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
 mod overlay;
@@ -26,6 +28,11 @@ mod templates;
 mod toolchain;
 #[cfg(not(target_arch = "wasm32"))]
 mod upx;
+/// The web lane's post-build chain (bindgen / `wasm-opt` / host page). Named for
+/// the platform it targets, not the one it runs on — like every other module
+/// here it is desktop-only, because exporting is a desktop operation.
+#[cfg(not(target_arch = "wasm32"))]
+mod wasm;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use overlay::ExportOverlayState;

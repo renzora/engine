@@ -43,6 +43,43 @@ impl Toolchain {
     /// add the build args.
     pub fn cargo_command(&self) -> Command {
         let mut cmd = Command::new(&self.cargo);
+        self.wire_env(&mut cmd);
+        cmd
+    }
+
+    /// A [`Command`] for a sibling tool of this toolchain's `cargo` — `rustup`,
+    /// or a `cargo install`ed CLI like `wasm-bindgen`.
+    ///
+    /// Looks in this toolchain's own `bin` dir first and only then on `PATH`,
+    /// which matters for the provisioned case: the private cache is the only
+    /// place its `rustup` exists, and a machine with no Rust on `PATH` is
+    /// exactly the machine that provisioned one. `None` when the tool is
+    /// nowhere — every caller treats that as "skip this step and say so",
+    /// never as a failed export.
+    pub fn tool_command(&self, name: &str) -> Option<Command> {
+        let exe = if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_string()
+        };
+        let found = self
+            .path_prepend
+            .iter()
+            .map(|d| d.join(&exe))
+            .find(|p| p.is_file())
+            .or_else(|| which(name))?;
+        let mut cmd = Command::new(found);
+        self.wire_env(&mut cmd);
+        Some(cmd)
+    }
+
+    /// Where `cargo install` puts a CLI for this toolchain — the private cache's
+    /// `bin` when provisioned, otherwise the ambient `~/.cargo/bin`.
+    pub fn install_bin_dir(&self) -> Option<PathBuf> {
+        self.cargo_home.as_ref().map(|h| h.join("bin"))
+    }
+
+    fn wire_env(&self, cmd: &mut Command) {
         if let Some(h) = &self.cargo_home {
             cmd.env("CARGO_HOME", h);
         }
@@ -57,8 +94,55 @@ impl Toolchain {
                 cmd.env("PATH", joined);
             }
         }
-        cmd
     }
+}
+
+/// Make sure `triple`'s standard library is installed, for a lean build that
+/// passes `--target`.
+///
+/// Only the web needs this today: a desktop lean build compiles for the host,
+/// whose std is already there by definition, and every other platform builds in
+/// a container that carries its own. `wasm32-unknown-unknown` is the one target
+/// the host itself can compile for without a container — and the one it will
+/// not have unless someone asked for it.
+///
+/// Best-effort by design. If `rustup` is not the thing managing this cargo
+/// (a distro Rust, a Nix one), there is nothing to run and nothing to fix from
+/// here; the build then fails on its own with rustc's message, which names the
+/// missing target far more precisely than a guess from here could.
+pub fn ensure_target(
+    toolchain: &Toolchain,
+    triple: &str,
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    let Some(mut list) = toolchain.tool_command("rustup") else {
+        // No rustup: say nothing and let the build speak for itself.
+        return Ok(());
+    };
+    let installed = list
+        .args(["target", "list", "--installed"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == triple))
+        .unwrap_or(false);
+    if installed {
+        return Ok(());
+    }
+
+    progress(format!("Installing the {triple} standard library…"));
+    let Some(mut add) = toolchain.tool_command("rustup") else {
+        return Ok(());
+    };
+    let status = add
+        .args(["target", "add", triple])
+        .status()
+        .map_err(|e| format!("Failed to run rustup: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "`rustup target add {triple}` failed. Install it by hand and export again."
+        ));
+    }
+    progress(format!("Installed the {triple} standard library"));
+    Ok(())
 }
 
 fn cargo_exe() -> &'static str {

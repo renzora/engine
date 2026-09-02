@@ -409,28 +409,23 @@ static_scripts = ["renzora_runtime?/static_scripts"]
 # Bevy already frame-marks, and the `plugins/tracy` bridge marking too would
 # double-count every frame.
 profiling = ["bevy/trace", "bevy/trace_tracy", "renzora_runtime?/profiling"]
-wasm = [
-    "runtime",
-    "bevy/webgpu",
-    "bevy/bevy_asset",
-    "bevy/bevy_window",
-    "bevy/bevy_winit",
-    "bevy/bevy_state",
-    "bevy/bevy_log",
-    "bevy/bevy_input_focus",
-    "bevy/bevy_render",
-    "bevy/bevy_core_pipeline",
-    "bevy/bevy_pbr",
-    "bevy/bevy_gltf",
-    "bevy/bevy_scene",
-    "bevy/bevy_ui",
-    "bevy/bevy_ui_render",
-    "bevy/bevy_text",
-    "bevy/bevy_picking",
-    "bevy/jpeg",
-    "bevy/multi_threaded",
-    "bevy/async_executor",
-]
+# The web lane's entry point: `--no-default-features --features wasm`, which is
+# how it drops `dynamic_linking` and `xr` (neither exists on wasm).
+#
+# **It must not forward a single `bevy/<feature>`, and that is not a style rule.**
+# The lean exporter strips Bevy features by DELETING STRINGS from this manifest's
+# dependency tables (`build::strip_bevy_features`); a `bevy/bevy_pbr` forwarded
+# from a crate feature is re-enabled after the deletion, so the capability toggle
+# silently does nothing. That is the same class of bug that made `render_3d` a
+# no-op on desktop while the `3d` meta sat in the dependency list re-enabling it.
+#
+# Nothing was lost removing them: every one of the eighteen `bevy/*` entries this
+# list used to carry is already in `[workspace.dependencies].bevy`, which applies
+# to every target. The nineteenth, `webgpu`, is the one genuinely web-only entry
+# and now lives in the `cfg(target_arch = "wasm32")` dependency block below —
+# where the exporter can see and strip it like any other, rather than behind a
+# feature name it does not know to look through.
+wasm = ["runtime"]
 
 [dependencies]
 # `dynamic_linking` is pulled by the `dynamic_linking` feature (in `default`),
@@ -512,6 +507,15 @@ bevy = { workspace = true, features = [
 # changed shape, a dependency simply crossed a major boundary. Expect to add a
 # 0.5 line here the next time one does.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# The web's render backend, and the mirror image of the block above: that one
+# subtracts for wasm, this one adds for it. It sits here rather than in the
+# `wasm` crate feature because the lean exporter strips Bevy features by editing
+# these dependency tables and cannot see through a crate feature's forward —
+# see the note on `wasm` in `[features]`.
+#
+# `webgl2` stays in `[workspace.dependencies]`: bevy needs it compiled in as the
+# fallback path, and having both is how wgpu picks at runtime.
+bevy = { workspace = true, features = ["webgpu"] }
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }

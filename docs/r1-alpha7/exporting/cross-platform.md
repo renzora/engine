@@ -4,7 +4,7 @@ Exporting for the machine you're sitting at needs nothing extra — the editor y
 
 ## Why a template is needed at all
 
-An export doesn't recompile the engine (except in [lean mode](overview.md#lean-single-binary-compiled-from-source), which is host-only). It packs your project into a `.rpak` archive and combines it with a prebuilt runtime for the target platform:
+An export doesn't recompile the engine (except in [lean mode](overview.md#lean-single-binary-compiled-from-source)). It packs your project into a `.rpak` archive and combines it with a prebuilt runtime for the target platform:
 
 - **Desktop** — the template is the `renzora` binary and its `plugins/`. The engine ships two executables (`renzora` = the game runtime, `renzora-editor` = the editor), so the runtime already sitting beside your editor *is* the template for your own platform.
 - **Mobile and web** — the template is a container shell (an unsigned APK, an `.app` bundle, a wasm + JS bundle) that the export step injects `game.rpak` into.
@@ -53,7 +53,8 @@ You need this only if you're producing templates (engine contributors, release b
 - **Apple targets need an SDK you supply.** The macOS and iOS lanes build only when an Apple SDK is present in the toolchain; the community SDK mirrors are not license-clean, so a production pipeline should regenerate them from Xcode on a Mac.
 - **Android and iOS lanes are best-effort.** A failure there warns rather than failing the whole build, so check the lane summary before assuming a template exists.
 - **Fire TV and Apple TV (tvOS) are listed but not shippable.** The export dialog shows them; there is no working toolchain lane for either, so no template is ever produced.
-- **Lean single binary is host-only.** It compiles from source with native `cargo`, so it's offered only when the selected target matches your machine. Use a copy-based packaging mode for other platforms.
+- **Lean single binary needs the engine source, and for another OS it needs Docker.** It compiles from source, so where it runs depends on the target: your own platform and the **web** build natively (the web is another architecture, not another OS — rustc ships its linker and std for it), while another desktop OS compiles in that platform's toolchain container. Mobile has no lean build at all. See [Where a lean build runs](overview.md#where-a-lean-build-runs).
+- **A lean export ignores the runtime template.** It recompiles the engine, so it does not need one installed — which matters most on the web, where a checkout that has never run `cargo renzora wasm` has no web template and no reason to build one.
 
 ## What's next
 

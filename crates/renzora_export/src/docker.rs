@@ -77,8 +77,11 @@ pub fn image_for(platform: Platform) -> Option<&'static str> {
 
 /// The Rust target triple a platform builds for.
 ///
-/// `None` for anything the lean cross-build does not cover — the mobile and web
-/// targets, which are not single desktop binaries and take other paths entirely.
+/// `None` for anything the lean build does not cover — the mobile targets, which
+/// are not single binaries and take other paths entirely.
+///
+/// The web is here, and it is the one entry that does NOT imply a container:
+/// see [`needs_container`].
 pub fn rust_triple(platform: Platform) -> Option<&'static str> {
     Some(match platform {
         Platform::WindowsX64 => "x86_64-pc-windows-msvc",
@@ -87,18 +90,45 @@ pub fn rust_triple(platform: Platform) -> Option<&'static str> {
         Platform::LinuxArm64 => "aarch64-unknown-linux-gnu",
         Platform::MacOSX64 => "x86_64-apple-darwin",
         Platform::MacOSArm64 => "aarch64-apple-darwin",
+        Platform::WebWasm32 => "wasm32-unknown-unknown",
         _ => return None,
     })
 }
 
+/// Does a lean build for `platform` have to run inside a toolchain image?
+///
+/// "Not the host" is *nearly* the same question, and used to be treated as
+/// exactly it — but the web breaks the equivalence, and that is the whole reason
+/// this function exists separately from [`rust_triple`].
+///
+/// A container is a **cross-linker**, and the reason a Windows host cannot build
+/// a macOS binary is that it has no `ld64` and no Apple SDK. `wasm32-unknown-
+/// unknown` has neither problem: rustc ships the linker (`rust-lld`) and the std
+/// for it, so `rustup target add` is the entire toolchain. Sending the web build
+/// to Docker would mean demanding a container install for a compile the host can
+/// already do — and `cargo renzora wasm` proves it can, since it is the same
+/// cross-compile from the same host.
+///
+/// So: the web targets another architecture (it needs `--target`) without being
+/// a container build (it does not need an image). Those two facts are what the
+/// callers must keep apart.
+pub fn needs_container(platform: Platform) -> bool {
+    !matches!(platform, Platform::WebWasm32) && Platform::current() != Some(platform)
+}
+
 /// Can a lean build for `platform` be produced here at all?
 ///
-/// True for the host (native cargo) and for anything with a toolchain image
-/// (a container). The caller still has to check that Docker is actually
-/// [`probe`]-able for the second case.
+/// True for the host (native cargo), for the web (native cargo + `--target`),
+/// and for anything with a toolchain image (a container). The caller still has
+/// to check that Docker is actually [`probe`]-able for the last case.
 pub fn lean_supported(platform: Platform) -> bool {
-    Platform::current() == Some(platform)
-        || (image_for(platform).is_some() && rust_triple(platform).is_some())
+    // False here means the host itself, or the web — native cargo covers both.
+    // The mobile platforms never reach it: `Platform::current` cannot return
+    // one, so they take the image branch and are refused for having no image.
+    if !needs_container(platform) {
+        return true;
+    }
+    image_for(platform).is_some() && rust_triple(platform).is_some()
 }
 
 /// The `docker run` that compiles the export inside `platform`'s toolchain
@@ -155,4 +185,58 @@ fn hash_file(path: &Path, prefix: Option<&str>) -> Option<String> {
     }
     hasher.update(bytes.iter().copied().filter(|b| *b != b'\r').collect::<Vec<u8>>());
     Some(format!("{:x}", hasher.finalize())[..12].to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The distinction the web introduced, pinned: it targets another
+    /// architecture without being a container build. Conflating the two is what
+    /// sent the web lane to Docker, which has no image for it.
+    #[test]
+    fn the_web_is_targeted_but_not_containerised() {
+        assert!(!needs_container(Platform::WebWasm32));
+        assert_eq!(
+            rust_triple(Platform::WebWasm32),
+            Some("wasm32-unknown-unknown")
+        );
+        assert!(image_for(Platform::WebWasm32).is_none());
+        assert!(lean_supported(Platform::WebWasm32));
+    }
+
+    /// The host is never a container build either, and every other desktop
+    /// platform always is — that is the rule the web is the exception to.
+    #[test]
+    fn the_host_builds_natively_and_other_desktops_do_not() {
+        let Some(host) = Platform::current() else {
+            return; // Not a desktop platform; nothing to assert.
+        };
+        assert!(!needs_container(host));
+        for other in [
+            Platform::WindowsX64,
+            Platform::LinuxX64,
+            Platform::MacOSArm64,
+        ] {
+            if other != host {
+                assert!(needs_container(other), "{other:?} should build in an image");
+                assert!(lean_supported(other), "{other:?} has an image and a triple");
+            }
+        }
+    }
+
+    /// Mobile has neither an image nor a triple, so a lean build is refused
+    /// rather than attempted — and it must not fall through the web's new
+    /// native-build branch to a `true` it cannot honour.
+    #[test]
+    fn mobile_has_no_lean_build() {
+        for p in [
+            Platform::AndroidArm64,
+            Platform::IOSArm64,
+            Platform::TvOSArm64,
+        ] {
+            assert!(needs_container(p), "{p:?}");
+            assert!(!lean_supported(p), "{p:?} must not offer a lean build");
+        }
+    }
 }

@@ -7708,6 +7708,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "bevy",
+ "image",
  "p256",
  "rand_core 0.6.4",
  "rcgen",
@@ -8408,6 +8409,7 @@ dependencies = [
  "renzora_water",
  "renzora_wind",
  "renzora_xr",
+ "toml 0.8.23",
  "wgpu",
  "winit",
 ]

@@ -134,6 +134,13 @@ fn build_one(repo: &Path, package: &str, target_dir: &str) -> bool {
         // ever grows a second one.
         args.push("--bin".into());
         args.push("renzora-editor".into());
+        // And the bin declares `required-features = ["wasm"]`, so that a native
+        // `--workspace` build does not produce a second, unlinkable executable.
+        // Naming a target whose required features are off is a hard cargo error
+        // ("requires the features: `wasm`"), not a silent skip — so this line is
+        // what makes the editor half of this command run at all.
+        args.push("--features".into());
+        args.push("wasm".into());
     }
     args.push("--target".into());
     args.push("wasm32-unknown-unknown".into());
