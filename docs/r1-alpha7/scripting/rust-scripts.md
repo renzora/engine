@@ -94,6 +94,8 @@ Every `.rs` in the project is compiled in, not only the ones a scene currently r
 
 Scripts may live anywhere in the project, not only in `scripts/`. Where two folders hold the same file name, each is reachable by its full project-relative path but not by the bare name, which is ambiguous — the export names any that apply.
 
+A lean export links the same three crates a script has in the editor — `bevy`, `renzora` and `renzora_ember` — so a script that reads a HUD widget or a markup binding compiles there too. The UI crate is linked only when some script actually names it, so a game with no UI still strips it.
+
 ## Limits
 
 - **A cross-platform copy-based export ships no scripts.** The libraries it would ship are host-shaped — a `.dll` is no use to a Linux player — and compiling for another OS needs an SDK for that target. Export *lean* for another platform instead, which compiles the scripts into the binary and has no such limit.

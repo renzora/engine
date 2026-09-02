@@ -152,9 +152,9 @@ pub fn finish(world: &mut World) {
 
     for (name, result) in done {
         match result.and_then(|lib_path| load_library(&lib_path)) {
-            Ok((f, lib)) => {
+            Ok((f, hook, lib)) => {
                 let mut loaded = world.resource_mut::<LoadedScripts>();
-                loaded.insert(name.clone(), f, lib);
+                loaded.insert(name.clone(), f, hook, lib);
                 info!("[rust-script] reloaded {name}");
                 console_success("Script", format!("recompiled {name}"));
             }

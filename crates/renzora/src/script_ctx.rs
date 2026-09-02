@@ -158,3 +158,192 @@ impl<'w> ScriptCtx<'w> {
         self.world.get::<ChildOf>(self.entity).map(|c| c.parent())
     }
 }
+
+// ── Painting ────────────────────────────────────────────────────────────────
+
+impl ScriptCtx<'_> {
+    /// A painter for this entity's draw surface.
+    ///
+    /// The Rust equivalent of Lua's `g`, and the same underlying mechanism: it
+    /// appends [`DrawCmd`](crate::core::DrawCmd)s to
+    /// [`ScriptDrawBuffer`](crate::core::ScriptDrawBuffer), which the UI vector
+    /// renderer drains into pooled shape entities. Nothing about the drawing is
+    /// Lua-specific; only the vocabulary to reach it was.
+    ///
+    /// Immediate mode: call this inside a [`ScriptHook::Draw`](crate::ScriptHook)
+    /// and paint the whole picture each frame. The first painter obtained in a
+    /// frame clears the entity's previous list, so a script that stops drawing
+    /// something stops showing it, with nothing to erase.
+    ///
+    /// ```ignore
+    /// fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
+    ///     if let ScriptHook::Draw { width, height } = *hook {
+    ///         let mut g = ctx.painter();
+    ///         g.rect(0.0, 0.0, width, height, [0.0, 0.0, 0.0, 0.5]);
+    ///         g.circle(width * 0.5, height * 0.5, 40.0, [1.0, 0.8, 0.2, 1.0]);
+    ///     }
+    /// }
+    /// ```
+    pub fn painter(&mut self) -> Painter<'_> {
+        let entity = self.entity;
+        let buffer = self
+            .world
+            .get_resource_mut::<crate::core::ScriptDrawBuffer>();
+        if let Some(mut buffer) = buffer {
+            // Cleared on acquisition, not on drop: a script may take a painter,
+            // branch, and take another, and the picture should be one list.
+            buffer.per_entity.entry(entity).or_default().clear();
+        }
+        Painter {
+            world: self.world,
+            entity,
+        }
+    }
+
+    /// The size of this entity's draw surface, if it has one.
+    ///
+    /// [`ScriptHook::Draw`](crate::ScriptHook) already carries it; this is for
+    /// the rarer case of wanting it from `update`.
+    pub fn surface_size(&self) -> Option<bevy::math::Vec2> {
+        self.world
+            .get_resource::<crate::core::ScriptDrawSurfaces>()?
+            .per_entity
+            .get(&self.entity)
+            .copied()
+    }
+}
+
+/// Immediate-mode drawing onto a script entity's canvas.
+///
+/// Coordinates are surface-local pixels with a **top-left origin and y down**,
+/// matching CSS and the UI rather than the 2D world — a canvas is part of the
+/// interface, and having it agree with the thing it is laid out inside matters
+/// more than agreeing with the scene behind it. Colours are sRGB `[r, g, b, a]`
+/// in `0..1`.
+pub struct Painter<'w> {
+    world: &'w mut World,
+    entity: Entity,
+}
+
+impl Painter<'_> {
+    fn push(&mut self, cmd: crate::core::DrawCmd) {
+        if let Some(mut buffer) = self
+            .world
+            .get_resource_mut::<crate::core::ScriptDrawBuffer>()
+        {
+            buffer.per_entity.entry(self.entity).or_default().push(cmd);
+        }
+    }
+
+    /// Straight stroke between two points.
+    pub fn line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: [f32; 4], thickness: f32) {
+        self.push(crate::core::DrawCmd::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+            thickness,
+        });
+    }
+
+    /// Stroked circular arc. `start`/`end` in degrees, 0 = +x, clockwise.
+    pub fn arc(
+        &mut self,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        start: f32,
+        end: f32,
+        color: [f32; 4],
+        thickness: f32,
+    ) {
+        self.push(crate::core::DrawCmd::Arc {
+            cx,
+            cy,
+            r,
+            start,
+            end,
+            color,
+            thickness,
+        });
+    }
+
+    /// Filled circle.
+    pub fn circle(&mut self, cx: f32, cy: f32, r: f32, color: [f32; 4]) {
+        self.push(crate::core::DrawCmd::Circle { cx, cy, r, color });
+    }
+
+    /// Filled axis-aligned rectangle.
+    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
+        self.push(crate::core::DrawCmd::Rect { x, y, w, h, color });
+    }
+
+    /// Filled triangle.
+    pub fn triangle(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        x3: f32,
+        y3: f32,
+        color: [f32; 4],
+    ) {
+        self.push(crate::core::DrawCmd::Triangle {
+            x1,
+            y1,
+            x2,
+            y2,
+            x3,
+            y3,
+            color,
+        });
+    }
+
+    /// Text, baseline-anchored at `(x, y)` and centred horizontally on `x`.
+    pub fn text(&mut self, x: f32, y: f32, text: impl Into<String>, size: f32, color: [f32; 4]) {
+        self.push(crate::core::DrawCmd::Text {
+            x,
+            y,
+            text: text.into(),
+            size,
+            color,
+        });
+    }
+
+    /// Stroked rectangle outline, as four lines.
+    ///
+    /// A convenience rather than a command: the renderer has no outline
+    /// primitive, and every caller would otherwise write the same four calls.
+    pub fn rect_outline(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: [f32; 4],
+        thickness: f32,
+    ) {
+        self.line(x, y, x + w, y, color, thickness);
+        self.line(x + w, y, x + w, y + h, color, thickness);
+        self.line(x + w, y + h, x, y + h, color, thickness);
+        self.line(x, y + h, x, y, color, thickness);
+    }
+
+    /// Filled convex polygon, fanned into triangles from the first point.
+    ///
+    /// The same fan Lua's `g.poly` performs. Fewer than three points draws
+    /// nothing rather than erroring — a polygon built from a loop that happened
+    /// to produce one point is a degenerate shape, not a bug worth aborting on.
+    pub fn poly(&mut self, points: &[(f32, f32)], color: [f32; 4]) {
+        if points.len() < 3 {
+            return;
+        }
+        let (x1, y1) = points[0];
+        for pair in points[1..].windows(2) {
+            let ((x2, y2), (x3, y3)) = (pair[0], pair[1]);
+            self.triangle(x1, y1, x2, y2, x3, y3, color);
+        }
+    }
+}

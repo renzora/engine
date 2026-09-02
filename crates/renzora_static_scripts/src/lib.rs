@@ -51,3 +51,25 @@ pub type ScriptFn = fn(&mut World, Entity);
 pub fn scripts() -> Vec<(&'static str, ScriptFn)> {
     Vec::new()
 }
+
+/// A script's optional second entry point — the lifecycle hook written by
+/// `renzora::script!(update, hooks = …)`.
+pub type HookFn = fn(&mut World, Entity, &renzora::ScriptHook<'_>);
+
+/// Every script compiled in that also exported a hook, keyed the same way.
+///
+/// A separate table rather than an `Option` in [`scripts`] because hooks are
+/// opt-in and most scripts have none — this one is usually much shorter, and it
+/// keeps the common table a plain pair.
+///
+/// Its absence used to be a real behaviour difference between the editor and a
+/// lean export: a script's `on_scene_loaded` (a loading screen's whole reason
+/// for existing) fired when run from a dylib and silently never fired once
+/// compiled in, because the dylib path finds hooks by looking up a second
+/// symbol and a static build has nothing to look up. The tell in a build log is
+/// `warning: function 'hooks' is never used`.
+///
+/// Empty in the dev tree.
+pub fn hooks() -> Vec<(&'static str, HookFn)> {
+    Vec::new()
+}

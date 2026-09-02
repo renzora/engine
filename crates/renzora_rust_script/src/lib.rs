@@ -32,6 +32,16 @@
 //! * [`backend::RustScriptBackend`] **claims** `.rs`, so the Scripts component
 //!   accepts one and the execution loop does not flag it as broken.
 //! * [`dispatch`] **runs** it, from an exclusive system with the real world.
+//! * [`hooks::dispatch_hooks`] delivers the **lifecycle events** — `Ready`,
+//!   `SceneLoaded`, `Ui`, `Rpc` and the rest — to the optional second entry
+//!   point a script exports via `renzora::script!(update, hooks = …)`.
+//!
+//! That third piece is why the split above is not a compromise. Lua receives
+//! those events through `ScriptBackend`, whose context has no `World` because it
+//! has to serve a C-ABI plugin; a Rust script receives the same events with the
+//! real world in hand. Before it existed, `on_scene_loaded` and everything like
+//! it were Lua-only, which made a loading screen — a global-scene script that
+//! must be told when the incoming scene arrived — impossible to write in Rust.
 //!
 //! # A script IS a native plugin
 //!
@@ -59,17 +69,74 @@
 //! edits.
 
 pub mod backend;
+pub mod hooks;
 pub mod watch;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use libloading::{Library, Symbol};
+#[cfg(target_arch = "wasm32")]
+use wasm_dl::{Library, Symbol};
 use renzora::core::console_log::{console_error, console_success};
 use renzora::{CurrentProject, SplashState};
 use renzora_plugin_build::Sdk;
 use renzora_scripting::{scripts_should_run, ScriptComponent};
+
+/// `libloading`'s shape, for a platform that has no dynamic loading at all.
+///
+/// The web has no `dlopen` and no shared engine image, so `dynamic_linking` is
+/// never on there and [`RustScriptPlugin::build`] returns before any of this is
+/// reached. Compiling is a separate question, and `libloading` has no wasm
+/// backend — hence the shim, which is the same one (and the same reasoning) as
+/// `renzora_plugin::host::loader`'s.
+///
+/// Note this leaves `static_scripts` untouched: a lean *desktop* export runs its
+/// Rust scripts from a linked-in table with no library involved, and that path
+/// does not go through here at all. A lean *web* export takes the same route.
+#[cfg(target_arch = "wasm32")]
+mod wasm_dl {
+    use std::ffi::OsStr;
+    use std::marker::PhantomData;
+    use std::ops::Deref;
+
+    #[derive(Debug)]
+    pub struct Error;
+
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("dynamic library loading is not available on wasm")
+        }
+    }
+
+    pub struct Library;
+
+    impl Library {
+        /// # Safety
+        /// Never loads anything, so trivially sound; `unsafe` only to match
+        /// `libloading::Library::new`'s signature.
+        pub unsafe fn new<P: AsRef<OsStr>>(_path: P) -> Result<Self, Error> {
+            Err(Error)
+        }
+
+        /// # Safety
+        /// Unreachable — a `Library` cannot be constructed on this target.
+        pub unsafe fn get<T>(&self, _symbol: &[u8]) -> Result<Symbol<T>, Error> {
+            Err(Error)
+        }
+    }
+
+    pub struct Symbol<T>(PhantomData<T>);
+
+    impl<T> Deref for Symbol<T> {
+        type Target = T;
+        fn deref(&self) -> &T {
+            unreachable!("Library::get never returns Ok on wasm")
+        }
+    }
+}
 
 /// The symbol a script exports, written by [`renzora::script!`].
 pub const SCRIPT_SYMBOL: &[u8] = b"renzora_script_update\0";
@@ -80,6 +147,19 @@ pub const SCRIPT_SYMBOL: &[u8] = b"renzora_script_update\0";
 /// engine link one shared `bevy_dylib` — the precondition everything here rests
 /// on.
 type ScriptFn = fn(&mut World, Entity);
+
+/// The optional second symbol, written by `renzora::script!(update, hooks = …)`.
+///
+/// Optional on purpose: its absence is how the dispatcher tells "this script
+/// wants no lifecycle events" from "this script handles them and ignored one",
+/// and it is what keeps every script written before hooks existed working
+/// unchanged.
+pub const SCRIPT_HOOK_SYMBOL: &[u8] = b"renzora_script_hook\0";
+
+/// Its signature. Same soundness argument as [`ScriptFn`]: one shared
+/// `bevy_dylib`, so `&mut World` and `ScriptHook` mean the same thing on both
+/// sides.
+pub type ScriptHookFn = fn(&mut World, Entity, &renzora::ScriptHook<'_>);
 
 renzora::add!(RustScriptPlugin, Runtime);
 
@@ -102,12 +182,20 @@ impl Plugin for RustScriptPlugin {
         #[cfg(feature = "static_scripts")]
         {
             app.init_resource::<LoadedScripts>()
+                .init_resource::<hooks::ReadiedScripts>()
                 .add_systems(PreUpdate, (register_backend, load_static_scripts))
                 .add_systems(
                     Update,
                     dispatch
                         .run_if(scripts_should_run)
                         .after(renzora_scripting::ScriptingSet::PreScript),
+                )
+                .add_systems(
+                    Update,
+                    hooks::dispatch_hooks
+                        .after(renzora_scripting::ScriptingSet::PreScript)
+                        .before(renzora_scripting::ScriptingSet::ScriptExecution)
+                        .run_if(scripts_should_run),
                 );
             return;
         }
@@ -148,10 +236,23 @@ impl Plugin for RustScriptPlugin {
             // whenever the scheduler happened to run it first, so toggling a
             // script's preview button would take effect a frame later here than
             // in the Lua path for no reason anyone could see.
+            .init_resource::<hooks::ReadiedScripts>()
             .add_systems(
                 Update,
                 dispatch
                     .after(renzora_scripting::ScriptingSet::PreScript)
+                    .run_if(scripts_should_run),
+            )
+            // Before `ScriptExecution`, which is where the Lua executor drains
+            // the event inboxes with `mem::take`. Reading them first is what
+            // lets both backends see the same frame's events; unordered, a Rust
+            // script would be told about a scene load only on the frames the
+            // scheduler happened to run it first.
+            .add_systems(
+                Update,
+                hooks::dispatch_hooks
+                    .after(renzora_scripting::ScriptingSet::PreScript)
+                    .before(renzora_scripting::ScriptingSet::ScriptExecution)
                     .run_if(scripts_should_run),
             );
     }
@@ -230,7 +331,24 @@ fn load_static_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>)
     for (name, f) in &table {
         loaded.entries.insert((*name).to_string(), *f);
     }
-    info!("[rust-script] {} script(s) compiled into this build", table.len());
+    // Hooks come from a second generated table, under the same keys.
+    //
+    // The dylib path finds a script's hook entry point by looking up a second
+    // symbol; a statically linked build has nothing to look up, so this used to
+    // be left empty and a lean export ran `update` and delivered no lifecycle
+    // events at all. A loading screen IS `on_scene_loaded`, so a game that
+    // worked in the editor shipped with its transition curtain stuck up — the
+    // exact editor/export divergence the static path exists to avoid. The tell
+    // in a build log was `warning: function 'hooks' is never used`.
+    let hook_table = renzora_static_scripts::hooks();
+    for (name, f) in &hook_table {
+        loaded.hooks.insert((*name).to_string(), *f);
+    }
+    info!(
+        "[rust-script] {} script(s) compiled into this build, {} with lifecycle hooks",
+        table.len(),
+        hook_table.len(),
+    );
 }
 
 /// Every script image loaded this session, and each one's entry point.
@@ -241,6 +359,8 @@ fn load_static_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>)
 #[derive(Resource, Default)]
 pub struct LoadedScripts {
     entries: HashMap<String, ScriptFn>,
+    /// Only for scripts that exported one — see [`SCRIPT_HOOK_SYMBOL`].
+    hooks: HashMap<String, ScriptHookFn>,
     _images: Vec<std::mem::ManuallyDrop<Library>>,
 }
 
@@ -249,13 +369,35 @@ impl LoadedScripts {
         self.entries.contains_key(file_name)
     }
 
+    /// The script's lifecycle-hook entry point, if it declared one.
+    pub fn hook(&self, file_name: &str) -> Option<ScriptHookFn> {
+        self.hooks.get(file_name).copied()
+    }
+
     /// Point `file_name` at a newly loaded image.
     ///
     /// Replacing the entry retires the previous function pointer, but the image
     /// it lived in is kept — see [`crate::watch`] for why unmapping it is not an
     /// option.
-    pub fn insert(&mut self, file_name: String, f: ScriptFn, lib: Library) {
-        self.entries.insert(file_name, f);
+    pub fn insert(
+        &mut self,
+        file_name: String,
+        f: ScriptFn,
+        hook: Option<ScriptHookFn>,
+        lib: Library,
+    ) {
+        self.entries.insert(file_name.clone(), f);
+        // Removed when absent, not left behind: a script that dropped its hooks
+        // and was recompiled would otherwise keep being called through the old
+        // image's pointer.
+        match hook {
+            Some(h) => {
+                self.hooks.insert(file_name, h);
+            }
+            None => {
+                self.hooks.remove(&file_name);
+            }
+        }
         self._images.push(std::mem::ManuallyDrop::new(lib));
     }
 }
@@ -303,8 +445,10 @@ fn compile_and_load(world: &mut World) {
             world.resource_mut::<watch::ScriptWatcher>().mark_seen(name.clone(), mtime);
         }
         match build_to_path(&sdk, &project, &src).and_then(|p| load_library(&p)) {
-            Ok((f, lib)) => {
-                world.resource_mut::<LoadedScripts>().insert(name.clone(), f, lib);
+            Ok((f, hook, lib)) => {
+                world
+                    .resource_mut::<LoadedScripts>()
+                    .insert(name.clone(), f, hook, lib);
                 info!("[rust-script] loaded {name}");
                 console_success("Script", format!("compiled {name}"));
             }
@@ -495,9 +639,9 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
             continue;
         }
         match load_library(&dir.join(file)) {
-            Ok((f, lib)) => {
+            Ok((f, hook, lib)) => {
                 opened.insert(file.to_string(), f);
-                loaded.insert(key.to_string(), f, lib);
+                loaded.insert(key.to_string(), f, hook, lib);
                 count += 1;
             }
             Err(e) => {
@@ -513,7 +657,7 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
     }
 }
 
-pub fn load_library(path: &Path) -> Result<(ScriptFn, Library), String> {
+pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Library), String> {
     let lib = unsafe { Library::new(path) }.map_err(|e| e.to_string())?;
     let f: Symbol<ScriptFn> = match unsafe { lib.get(SCRIPT_SYMBOL) } {
         Ok(f) => f,
@@ -531,7 +675,12 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Library), String> {
         }
     };
     let f = *f;
-    Ok((f, lib))
+    // Absent is the normal case, not a failure: hooks are opt-in, and most
+    // scripts only want a per-frame update.
+    let hook: Option<ScriptHookFn> = unsafe { lib.get::<ScriptHookFn>(SCRIPT_HOOK_SYMBOL) }
+        .ok()
+        .map(|s| *s);
+    Ok((f, hook, lib))
 }
 
 /// The directory holding the editor, which is where `sdk/` lives.

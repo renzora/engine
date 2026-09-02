@@ -139,6 +139,9 @@ pub use plugin_meta::NativePluginScope;
 /// What a Rust script is handed — see [`script_ctx::ScriptCtx`].
 pub mod script_ctx;
 pub use script_ctx::ScriptCtx;
+/// The lifecycle events a Rust script can receive — see [`script_hook::ScriptHook`].
+pub mod script_hook;
+pub use script_hook::ScriptHook;
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
 // ── Post-process framework ───────────────────────────────────────────────
