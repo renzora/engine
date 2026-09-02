@@ -24,6 +24,12 @@
 //! World` access — would force every plugin system to be exclusive and
 //! serialise the whole schedule.
 
+/// The live-rebuild source watcher. Desktop-only: it drives `cargo` over plugin
+/// source and watches the filesystem for saves, and a browser has neither. Its
+/// `notify` dependency is target-scoped to match (see `Cargo.toml`), so on wasm
+/// the module and the crate that backs it both disappear rather than shipping a
+/// file watcher into a page.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod dev;
 pub mod input;
 pub mod loader;

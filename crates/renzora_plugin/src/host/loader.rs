@@ -884,6 +884,11 @@ impl Plugin for RenzoraPluginHostPlugin {
             // The other half of the loop: watch plugin SOURCE, rebuild it, and drop
             // the artifact here — where the watcher above then picks it up. Only
             // this ordering works, so the two are installed together.
+            //
+            // Desktop-only: rebuilding means running `cargo`, which a browser
+            // cannot do — so the watcher, its `notify` stack and `libloading` are
+            // all target-scoped away rather than shipped inert in a web build.
+            #[cfg(not(target_arch = "wasm32"))]
             super::dev::install(app, dir.clone());
         }
 

@@ -180,20 +180,40 @@ render_3d = []
 [dependencies]
 renzora_plugin_derive = { path = "../renzora_plugin_derive" }
 bevy = { workspace = true, optional = true }
-libloading = { version = "0.8", optional = true }
-# `host` only — the live-rebuild source watcher (`host::dev`). Already in the
-# tree via bevy's `file_watcher`, so it adds nothing to a build that has bevy;
-# and because it is gated behind `host`, a plugin depending on this crate with
-# default features still resolves to zero dependencies.
-#
-# The debouncer rather than bare `notify`: an editor saving a file emits several
-# filesystem events for one logical write, which is the exact problem the old
-# two-poll `settling` set was hand-rolling.
-notify-debouncer-full = { version = "0.7", optional = true }
 # Pulled only by the `libm` feature, i.e. only by `no_std` plugins. It is itself
 # `no_std` and dependency-free, so it does not weaken the guarantee above — it
 # exposes functions, not types, and nothing from it crosses the ABI boundary.
 libm = { version = "0.2", optional = true }
+
+# ── The `host` feature's two native dependencies ─────────────────────────────
+#
+# Both are still turned on by `host` (`dep:libloading`, `dep:notify-debouncer-full`),
+# but declaring them HERE means that on wasm the feature turns on nothing: a
+# `dep:` entry naming a dependency the target does not have is simply inert.
+#
+# They are target-scoped because neither can work in a browser and both were
+# **shipping in every web game**. This crate is reached from `renzora` — the
+# contract crate — so it is in the graph of essentially everything, and it was
+# dragging `libloading` plus the entire `notify` stack (`notify`,
+# `notify-debouncer-full`, `notify-types`, `walkdir`, `filetime`, `file-id`,
+# `same-file`) into a build that has no filesystem to watch and no library to
+# open.
+#
+# The note this replaces said the watcher "adds nothing to a build that has
+# bevy, since bevy's `file_watcher` already pulls it". That is true on desktop
+# and false on the web, which is exactly where it mattered: `file_watcher` is in
+# the root manifest's `cfg(not(target_arch = "wasm32"))` block — Bevy refuses it
+# on wasm outright — so there was nothing already in the tree to share with.
+#
+# The code side needs no `#[cfg]` for `libloading`: `host::loader` already
+# swaps in its own `wasm_dl` shim, whose `Library` can never be opened. Only
+# `host::dev` (the watcher) is gated out.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libloading = { version = "0.8", optional = true }
+# The debouncer rather than bare `notify`: an editor saving a file emits several
+# filesystem events for one logical write, which is the exact problem the old
+# two-poll `settling` set was hand-rolling.
+notify-debouncer-full = { version = "0.7", optional = true }
 
 # NOTE: the tests deliberately link NO plugin from `plugins/`. A path dependency
 # on one would drag it back into the engine's workspace — cargo rejects a path dep
