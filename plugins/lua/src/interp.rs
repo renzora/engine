@@ -615,29 +615,57 @@ fn translate_fn(lua: &Lua) -> LuaResult<LuaFunction> {
     lua.create_function(|_, key: String| Ok(host::translate(&key)))
 }
 
+/// Every global a script can call, grouped by what it touches.
+///
+/// One function per group rather than one long one: the list below is the
+/// engine-wide vocabulary — the domain functions live in each domain crate's
+/// `ScriptExtension` — and it only ever grows, so a reader looking for how
+/// `play_sound` reaches the mixer should not have to scroll past the gamepad
+/// table to find it.
 fn register_api(lua: &Lua) {
     let globals = lua.globals();
 
-    // -- Transform --
-    register_fn3(lua, &globals, "set_position", |x, y, z| {
+    transform(lua, &globals);
+    input(lua, &globals);
+    audio(lua, &globals);
+    physics(lua, &globals);
+    timers(lua, &globals);
+    debug(lua, &globals);
+    rendering(lua, &globals);
+    animation(lua, &globals);
+    cursor_and_camera(lua, &globals);
+    ecs(lua, &globals);
+    scene(lua, &globals);
+    environment(lua, &globals);
+    reflection(lua, &globals);
+    events(lua, &globals);
+    net(lua, &globals);
+    component_reflection(lua, &globals);
+    asset_progress(lua, &globals);
+    math(lua, &globals);
+}
+
+/// Moving the script's entity, its parent, and its named children.
+fn transform(lua: &Lua, globals: &LuaTable) {
+    register_fn3(lua, globals, "set_position", |x, y, z| {
         push_command(ScriptCommand::SetPosition { x, y, z });
     });
-    register_fn3(lua, &globals, "set_rotation", |x, y, z| {
+    register_fn3(lua, globals, "set_rotation", |x, y, z| {
         push_command(ScriptCommand::SetRotation { x, y, z });
     });
-    register_fn3(lua, &globals, "set_scale", |x, y, z| {
+    register_fn3(lua, globals, "set_scale", |x, y, z| {
         push_command(ScriptCommand::SetScale { x, y, z });
     });
-    register_fn1(lua, &globals, "set_scale_uniform", |s: f32| {
+    register_fn1(lua, globals, "set_scale_uniform", |s: f32| {
         push_command(ScriptCommand::SetScale { x: s, y: s, z: s });
     });
-    register_fn3(lua, &globals, "translate", |x, y, z| {
+    register_fn3(lua, globals, "translate", |x, y, z| {
         push_command(ScriptCommand::Translate { x, y, z });
     });
-    register_fn3(lua, &globals, "rotate", |x, y, z| {
+    register_fn3(lua, globals, "rotate", |x, y, z| {
         push_command(ScriptCommand::Rotate { x, y, z });
     });
-    register_fn3(lua, &globals, "look_at", |x, y, z| {
+    register_fn3(lua, globals, "look_at", |x, y, z| {
         push_command(ScriptCommand::LookAt { x, y, z });
     });
     let _ = globals.set(
@@ -650,13 +678,13 @@ fn register_api(lua: &Lua) {
     );
 
     // -- Parent transform --
-    register_fn3(lua, &globals, "parent_set_position", |x, y, z| {
+    register_fn3(lua, globals, "parent_set_position", |x, y, z| {
         push_command(ScriptCommand::ParentSetPosition { x, y, z });
     });
-    register_fn3(lua, &globals, "parent_set_rotation", |x, y, z| {
+    register_fn3(lua, globals, "parent_set_rotation", |x, y, z| {
         push_command(ScriptCommand::ParentSetRotation { x, y, z });
     });
-    register_fn3(lua, &globals, "parent_translate", |x, y, z| {
+    register_fn3(lua, globals, "parent_translate", |x, y, z| {
         push_command(ScriptCommand::ParentTranslate { x, y, z });
     });
 
@@ -686,7 +714,15 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Input --
+}
+
+/// Keyboard, the named action map, and the gamepads.
+///
+/// Everything here reads a table `set_context_globals` already filled, rather
+/// than calling back into the host: input is read in bursts — a movement script
+/// asks about four keys and two axes every frame — and the snapshot is already
+/// on the Lua side by the time the hook runs.
+fn input(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "is_key_pressed",
         lua.create_function(|lua, key: String| {
@@ -858,7 +894,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Audio --
+}
+
+/// Sounds, music and the per-entity `AudioPlayer`.
+fn audio(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "play_sound",
         lua.create_function(|_, args: LuaMultiValue| {
@@ -944,7 +983,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Physics --
+}
+
+/// Forces, impulses and the rigid body's own settings.
+fn physics(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "apply_force",
         lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
@@ -990,7 +1032,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Timers --
+}
+
+/// Named timers the host counts down and reports back on.
+fn timers(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "start_timer",
         lua.create_function(|_, (name, duration, repeat): (String, f32, Option<bool>)| {
@@ -1012,7 +1057,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Debug --
+}
+
+/// Logging and the on-screen debug draw.
+fn debug(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "print_log",
         lua.create_function(|_, msg: String| {
@@ -1040,7 +1088,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Rendering --
+}
+
+/// Visibility and the material a mesh draws with.
+fn rendering(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "set_visibility",
         lua.create_function(|_, visible: bool| {
@@ -1064,7 +1115,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Animation --
+}
+
+/// Clips, blending and the animation graph.
+fn animation(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "play_animation",
         lua.create_function(
@@ -1211,6 +1265,11 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// The mouse cursor and the active camera — one group because a script that
+/// locks the cursor is nearly always the one driving the camera with it.
+fn cursor_and_camera(lua: &Lua, globals: &LuaTable) {
     // -- Cursor --
     let _ = globals.set(
         "lock_cursor",
@@ -1242,7 +1301,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- ECS --
+}
+
+/// Spawning, despawning and finding entities.
+fn ecs(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "spawn_entity",
         lua.create_function(|_, name: String| {
@@ -1317,7 +1379,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Scene --
+}
+
+/// Loading a different scene.
+fn scene(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "load_scene",
         lua.create_function(|_, path: String| {
@@ -1327,7 +1392,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Environment --
+}
+
+/// Sun, sky and fog.
+fn environment(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "set_sun_angles",
         lua.create_function(|_, (azimuth, elevation): (f32, f32)| {
@@ -1349,6 +1417,14 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// `set` / `get` on any reflected component field, by path.
+///
+/// The generic escape hatch: anything the engine reflects is reachable without
+/// this file learning about it, which is what keeps the named list above from
+/// having to grow every time a component does.
+fn reflection(lua: &Lua, globals: &LuaTable) {
     // -- Generic Reflection (set/set_on) --
     // set("ComponentType.field.subfield", value) — on self entity
     let _ = globals.set(
@@ -1427,6 +1503,11 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// Script actions and broadcast events — the two ways a script talks to
+/// something that is not the engine core.
+fn events(lua: &Lua, globals: &LuaTable) {
     // -- Script Actions (generic events for domain crates) --
     // action("name", { key = value, ... }) — triggers a ScriptAction event
     let _ = globals.set(
@@ -1471,6 +1552,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// HTTP requests and the multiplayer connection's status.
+fn net(lua: &Lua, globals: &LuaTable) {
     // -- HTTP (async) --
     // http_get(url [, callback]) — fire a GET; the response is delivered to
     // on_http(callback, status, body) next frame. callback defaults to "get".
@@ -1600,6 +1685,14 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// Reading a whole component, or listing what an entity has.
+///
+/// Separate from [`reflection`] because these answer *questions* rather than
+/// writing: they go through `host::call_get_component`, which needs the world,
+/// where a `set` only queues a command.
+fn component_reflection(lua: &Lua, globals: &LuaTable) {
     // -- Component Reflection --
     // get_component("ComponentType") — returns all fields as a table
     let _ = globals.set(
@@ -1690,6 +1783,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+}
+
+/// The runtime asset-load tracker, for loading screens.
+fn asset_progress(lua: &Lua, globals: &LuaTable) {
     // -- Asset Load Progress --
     // asset_progress() — returns the runtime asset-load tracker as a table.
     // Returns nil when no scene is loading (idle / no rpak / no scene yet).
@@ -1790,7 +1887,10 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
-    // -- Math helpers --
+}
+
+/// Small vector helpers, so a script does not reimplement `length` badly.
+fn math(lua: &Lua, globals: &LuaTable) {
     let _ = globals.set(
         "vec3",
         lua.create_function(|lua, (x, y, z): (f32, f32, f32)| {
