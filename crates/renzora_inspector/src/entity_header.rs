@@ -29,9 +29,8 @@ use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color}
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{bind_text_input, screen_menu_flip, text_input, MenuAction};
 
-use crate::native::{
-    c, inspected_entity, phosphor_glyph, record_field_change, GetFn, LockBtn, SetFn,
-};
+use crate::panel::section::LockBtn;
+use crate::panel::{c, inspected_entity, phosphor_glyph, record_field_change, GetFn, SetFn};
 
 /// Tint for an "on" header affordance (locked, or explicitly hidden) — the same
 /// blue the lock glyph used on the old ID section header.
@@ -411,7 +410,7 @@ fn lock_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> E
         LockBtn { entity },
     ));
     let locked_now = move |w: &Rx| {
-        w.get_resource::<crate::native::NativeInspectorState>()
+        w.get_resource::<crate::panel::InspectorState>()
             .and_then(|s| s.locked)
             == Some(entity)
     };

@@ -1,20 +1,20 @@
 //! Inspector panel — shows and edits component properties for the selected entity.
 //!
-//! The panel is bevy_ui (ember) native; see [`native`]. Component drawers are
-//! registered into the [`renzora_editor_framework::NativeInspectorRegistry`] (e.g. the
-//! script drawer in [`scripts`]); the reusable [`native::asset_drop_field`] is
+//! The panel itself lives in [`panel`]. Component drawers are registered into
+//! the [`renzora_editor_framework::NativeInspectorRegistry`] (e.g. the script
+//! drawer in [`scripts`]); the reusable [`panel::asset_drop_field`] is
 //! re-exported for drawers in other crates.
 
 mod camera_presets;
 mod entity_header;
-mod native;
+mod panel;
 pub mod reflect_source;
 mod resources;
 mod richtext;
 mod scripts;
 mod textfont;
 
-pub use native::asset_drop_field;
+pub use panel::asset_drop_field;
 
 use bevy::prelude::*;
 use renzora_editor_framework::InspectorRegistry;
@@ -34,8 +34,8 @@ impl Plugin for InspectorPanelPlugin {
         // - Material: renzora_material_editor::material_inspector
         app.init_resource::<InspectorRegistry>();
 
-        // The bevy_ui-native inspector panel + the native script drawer.
-        native::register_native_inspector(app);
+        // The inspector panel + the script drawer.
+        panel::register(app);
         scripts::register(app);
         camera_presets::register(app);
         textfont::register(app);
