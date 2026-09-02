@@ -63,6 +63,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "navmesh")]
     app.add_plugins(renzora_navmesh::NavMeshPlugin::default());
     app.add_plugins(renzora_net::NetPlugin::default());
+    #[cfg(feature = "networking")]
     app.add_plugins(renzora_network::NetworkPlugin::default());
     #[cfg(feature = "oit")]
     app.add_plugins(renzora_oit::OitPlugin::default());
@@ -96,5 +97,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_volumetric_fog::VolumetricFogPlugin::default());
     #[cfg(feature = "water")]
     app.add_plugins(renzora_water::WaterPlugin::default());
+    #[cfg(feature = "render_3d")]
     app.add_plugins(renzora_wind::WindPlugin::default());
 }

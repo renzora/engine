@@ -194,7 +194,17 @@ fn main() {
 
     // Load the network config up front so the headless runner and the network
     // server plugin share one tick rate.
-    let server_config = (server_mode || host_mode).then(load_server_config);
+    //
+    // `None` also means "this build has no networking" — a lean export whose
+    // project never uses multiplayer strips the whole stack. Saying so is the
+    // point: booting as a silent client would look like the server flag was
+    // ignored.
+    let server_config = (server_mode || host_mode)
+        .then(renzora_runtime::server::config_from_args)
+        .flatten();
+    if (server_mode || host_mode) && server_config.is_none() {
+        warn!("[server] this build was exported without networking — starting as a client");
+    }
 
     if let Some(net_config) = &server_config {
         if host_mode {
@@ -210,7 +220,7 @@ fn main() {
             // runner at the network tick. See `add_headless_rendering`.
             renzora_runtime::attach_console();
             app.init_resource::<renzora_runtime::renzora::DedicatedServer>();
-            renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate);
+            renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate());
         }
     } else if vr_mode {
         #[cfg(feature = "xr")]
@@ -238,14 +248,11 @@ fn main() {
 
     if let Some(net_config) = server_config {
         info!(
-            "[server] Starting {} on {}:{}",
+            "[server] Starting {} on {}",
             if host_mode { "host server" } else { "dedicated server" },
-            net_config.server_addr,
-            net_config.port
+            net_config.endpoint()
         );
-        app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(
-            net_config,
-        ));
+        renzora_runtime::server::install(&mut app, net_config);
     }
 
     // The editor image, if this is an editor session. AFTER the engine
@@ -261,76 +268,6 @@ fn main() {
     app.run();
 }
 
-// ── Server config ────────────────────────────────────────────────────────
+// Server config moved to `renzora_runtime::server`, so its `#[cfg]` could live
+// with the `networking` feature that owns it — see that module's docs.
 
-#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
-fn load_server_config() -> renzora_runtime::renzora_network::NetworkConfig {
-    use renzora_runtime::renzora;
-    use renzora_runtime::renzora_network;
-
-    let mut config = renzora_network::NetworkConfig::default();
-    let args: Vec<String> = std::env::args().collect();
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--port" => {
-                if let Some(val) = args.get(i + 1) {
-                    if let Ok(port) = val.parse::<u16>() {
-                        config.port = port;
-                    }
-                    i += 1;
-                }
-            }
-            "--addr" | "--address" => {
-                if let Some(val) = args.get(i + 1) {
-                    config.server_addr = val.clone();
-                    i += 1;
-                }
-            }
-            "--tick-rate" => {
-                if let Some(val) = args.get(i + 1) {
-                    if let Ok(rate) = val.parse::<u16>() {
-                        config.tick_rate = rate;
-                    }
-                    i += 1;
-                }
-            }
-            "--max-clients" => {
-                if let Some(val) = args.get(i + 1) {
-                    if let Ok(max) = val.parse::<u16>() {
-                        config.max_clients = max;
-                    }
-                    i += 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    let project_toml = std::path::PathBuf::from("project.toml");
-    if project_toml.exists() {
-        if let Ok(content) = std::fs::read_to_string(&project_toml) {
-            if let Ok(project_config) = toml::from_str::<renzora::ProjectConfig>(&content) {
-                if let Some(net) = &project_config.network {
-                    if !args.iter().any(|a| a == "--port") {
-                        config.port = net.port;
-                    }
-                    if !args.iter().any(|a| a == "--addr" || a == "--address") {
-                        config.server_addr = net.server_addr.clone();
-                    }
-                    if !args.iter().any(|a| a == "--tick-rate") {
-                        config.tick_rate = net.tick_rate;
-                    }
-                    if !args.iter().any(|a| a == "--max-clients") {
-                        config.max_clients = net.max_clients;
-                    }
-                    config.transport =
-                        renzora_network::TransportKind::from_str_loose(&net.transport);
-                }
-            }
-        }
-    }
-
-    config
-}

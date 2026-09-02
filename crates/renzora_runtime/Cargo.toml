@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -21,6 +21,14 @@ default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui"
 # reached anyway. Off takes `rfd` and `arboard` out of the binary; the panic hook
 # still writes `crash.log`.
 crash_dialog = ["renzora_engine/crash_dialog"]
+# Ember's desktop conveniences: the system clipboard (`arboard`) and the second
+# image-decoding stack (`image` + `moxcms`) behind file-browser thumbnails and
+# markdown `![](url)`. Only the editor's own widgets use either, but both were
+# non-optional dependencies of `renzora_ember`, so they shipped in every exported
+# game that kept the UI. Paired with the exporter's "Editor/dev conveniences"
+# capability, which is off by default — the same toggle that drops `rfd` and the
+# crash dialog. `?/` so it never drags the UI layer in on its own.
+editor_tools = ["renzora_ember?/editor_tools", "renzora_ember_dylib?/editor_tools"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -77,7 +85,20 @@ profiling = []
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped
 # separately by the exporter's render_3d capability.
-render_3d = ["renzora_engine/render_3d", "renzora/render_3d", "renzora_postprocess/render_3d"]
+#
+# Ember is forwarded to BOTH the rlib dep and the shared image, for the same
+# reason `game_ui` is: forwarding to one only would leave cargo resolving two
+# ember units with different feature sets, and the shared image would be built
+# from the wrong one. `?/` because both are optional (they arrive with `ui`) —
+# this feature must not drag the whole UI layer into a headless 3D build.
+render_3d = [
+    "renzora_engine/render_3d",
+    "renzora/render_3d",
+    "renzora_postprocess/render_3d",
+    "renzora_ember?/render_3d",
+    "renzora_ember_dylib?/render_3d",
+    "dep:renzora_wind",
+]
 # The node-graph material system. Its own capability: ~1 MiB that a game using
 # only StandardMaterial never touches. Auto-detected from `.material` assets.
 shader_graph = ["dep:renzora_shader", "renzora_engine/shader_graph", "render_3d"]
@@ -150,6 +171,17 @@ ragdoll = ["dep:renzora_ragdoll"]
 # this instead.
 parkour = ["dep:renzora_parkour"]
 light2d = ["dep:renzora_light2d"]
+# Multiplayer: the UDP transport, replication and RPC, plus the dedicated/host
+# server startup in `src/server.rs`. Forwards `renzora_engine/networking`, which
+# is only there to keep replication bookkeeping out of saved scenes. A
+# single-player game strips the lot, and `--server` on such a build boots as an
+# ordinary client with a warning rather than silently pretending.
+networking = ["dep:renzora_network", "renzora_engine/networking", "dep:toml"]
+# Code that draws with a `Gizmos` param. Paired with the exporter's Debug-gizmos
+# capability, which strips bevy's `bevy_gizmos` — every crate that draws one has
+# to disappear at the same moment or the build fails on a missing type. `?/` so
+# this never pulls an optional subsystem in on its own.
+gizmos = ["renzora_light2d?/gizmos"]
 forward_decal = ["dep:renzora_forward_decal"]
 navmesh = ["dep:renzora_navmesh"]
 particles = ["dep:renzora_hanabi"]
@@ -226,6 +258,12 @@ renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }
 renzora_light2d = { path = "../renzora_light2d", optional = true }
 renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
+# Moved out of the generated block below and made strippable, per the procedure
+# in `xtask/src/sync.rs`: wind sways meshes through a `StandardMaterial`
+# extension, so it is bevy_pbr all the way down and cannot compile at all in a 2D
+# export. Being optional under `render_3d` is also what makes the generator emit
+# the matching `#[cfg(feature = "render_3d")]` in `plugins.rs`.
+renzora_wind = { path = "../renzora_wind", optional = true }
 
 bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from
@@ -286,10 +324,11 @@ renzora_animation = { path = "../renzora_animation", optional = true }
 # below forwards `renzora_ember/game_ui`. Normal builds keep it via `default`.
 renzora_ember = { path = "../renzora_ember", default-features = false, optional = true }
 renzora_hanabi = { path = "../renzora_hanabi", optional = true }
-# Non-optional: the binary's `--server`/`--host` path uses it directly
-# (`renzora_runtime::renzora_network`), so it can't be feature-gated without
-# also cfg-gating `src/main.rs` (a later step).
-renzora_network = { path = "../renzora_network" }
+# Optional under `networking`. It was non-optional because the binary's
+# `--server`/`--host` path reached it through `renzora_runtime::renzora_network`
+# and there was nowhere to put the `#[cfg]`; `src/server.rs` is that somewhere
+# now, so a single-player game no longer compiles the whole UDP stack.
+renzora_network = { path = "../renzora_network", optional = true }
 renzora_audio = { path = "../renzora_audio", optional = true }
 # Optional under `render_3d`: the runtime only keepalive-links it so the shader
 # plugin's inventory entry registers. A 2D export drops it with bevy_pbr.
@@ -338,7 +377,6 @@ renzora_skybox = { path = "../renzora_skybox", optional = true }
 renzora_native_plugin = { path = "../renzora_native_plugin" }
 renzora_net = { path = "../renzora_net" }
 renzora_rust_script = { path = "../renzora_rust_script" }
-renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──
 
 # Loading the editor image beside the executable — see `src/editor_image.rs`.
@@ -347,6 +385,10 @@ renzora_wind = { path = "../renzora_wind" }
 # libloading in would be a dependency that cannot work on that target.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = "0.8"
+# `server.rs` reads `project.toml`'s `[network]` section. Optional under
+# `networking`, which is also the only thing that compiles that module — a
+# single-player export drops the parser with the stack it was parsing for.
+toml = { version = "0.8", optional = true }
 
 [lints]
 workspace = true
