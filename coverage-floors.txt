@@ -113,7 +113,14 @@ renzora_scripting_editor 0.0
 renzora_settings 4.5
 renzora_shader 66.2
 renzora_shader_editor 0.0
-renzora_shape_library 84.2
+# Lowered 84.2 -> 0.0, and the "only ever moves up" rule above still holds: no
+# coverage was lost, it moved. This crate's 84.2% was its copy of the procedural
+# mesh generators, which was a byte-identical duplicate of the engine's and dead
+# (its only caller was #[allow(dead_code)] and uncalled). Deleting it took the
+# tests with it, so the better of the two suites moved onto the live copy —
+# renzora_engine/src/procedural_meshes.rs went from 8 tests to 24. What is left
+# here is panel UI with no tests, so 0.0 is the honest floor. See e6a1566b.
+renzora_shape_library 0.0
 renzora_shell 0.0
 renzora_skybox 0.0
 renzora_skybox_editor 0.0

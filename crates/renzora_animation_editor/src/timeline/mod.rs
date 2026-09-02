@@ -1,8 +1,8 @@
 //! The animation timeline panel, built on the reusable
 //! [`renzora_ember::widgets::timeline_view`] shell: a transport toolbar (scrub
-//! transport, loop, clip selector, speed, snap, zoom), track headers (bone name
-//! + T/R/S channel indicators, or a property track's binding) and keyframe
-//! lanes over the shared ruler / playhead / scrub canvas.
+//! transport, loop, clip selector, speed, snap, zoom), track headers (a bone
+//! name with its T/R/S channel indicators, or a property track's binding) and
+//! keyframe lanes over the shared ruler / playhead / scrub canvas.
 //!
 //! The selected clip's `.anim` data is loaded from disk into [`clip::TimelineClip`]
 //! whenever the `(entity, clip)` selection changes; that cache is also the **edit
