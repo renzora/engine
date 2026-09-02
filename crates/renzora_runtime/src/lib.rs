@@ -49,7 +49,9 @@ pub use renzora;
 // `pub use` block — with `inventory` gone there are no ctors to keep alive, so
 // a plugin crate no longer needs a link edge for its own sake.
 pub use renzora_engine;
-pub use renzora_network;
+// Not re-exported any more: `renzora_network` is optional under `networking`, and
+// the binary's `--server`/`--host` path — the only thing that used it through
+// here — moved into `server` below so the `#[cfg]` lives with the feature.
 // The same, for the first-run setup the binary runs before Bevy starts. It
 // moved out of the editor executable when the editor became a loadable image
 // and there was only one binary left to run it.
@@ -62,6 +64,8 @@ pub use renzora_native_plugin;
 /// Loading the editor image beside the executable — see the module docs for why
 /// one binary can be both the editor and the game.
 pub mod editor_image;
+/// Dedicated-server / host-server startup, behind the `networking` feature.
+pub mod server;
 mod plugins;
 mod render_scale;
 mod viewport_stretch;
@@ -879,35 +883,61 @@ fn apply_window_config(
     }
 
     let cfg = &project.config.window;
+    // The title is the one setting that means something everywhere: on the web
+    // it becomes the document title rather than a title bar.
     window.title = project.config.name.clone();
-    window.resizable = cfg.resizable;
-    window.resolution.set(cfg.width as f32, cfg.height as f32);
-    // Vertical sync. The window is created with Bevy's default `PresentMode`
-    // (vsync); apply the project's choice here so a game can uncap its frame rate
-    // (and so the true per-frame cost is measurable on a fast GPU). `AutoNoVsync`
-    // rather than `Immediate` so wgpu falls back to a supported present mode on
-    // adapters that lack tear-free mailbox/immediate.
-    window.present_mode = if cfg.vsync {
-        bevy::window::PresentMode::AutoVsync
-    } else {
-        bevy::window::PresentMode::AutoNoVsync
-    };
 
-    match cfg.mode {
-        renzora::WindowMode::Windowed => {
-            window.decorations = true;
-            window.mode = BevyWindowMode::Windowed;
-        }
-        renzora::WindowMode::Fullscreen => {
-            window.decorations = false;
-            window.mode =
-                BevyWindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current);
-        }
-        renzora::WindowMode::Borderless => {
-            window.decorations = false;
-            window.mode = BevyWindowMode::Windowed;
+    // ── The web has no window for a game to configure ────────────────────────
+    //
+    // Everything below this point describes an OS window, and on wasm the
+    // "window" IS the canvas — sized by the page, with no decorations, no
+    // resizability of its own, and a present mode the browser owns (rAF).
+    //
+    // `resolution.set` is the one that actually broke something, and visibly:
+    // the window is created with `fit_canvas_to_parent`, which negotiates the
+    // canvas size against `#stage` — and then this ran at `Startup` and stomped
+    // it with the project's configured size. Because the parent never changes
+    // afterwards, the ResizeObserver has no reason to fire and nothing ever puts
+    // it back, so an exported game rendered into a 1280x720 box in the corner of
+    // a black page. That is the identical symptom the `fit_canvas_to_parent`
+    // comment above warns about, reintroduced one system later.
+    //
+    // Fullscreen is not merely inapplicable but impossible from here:
+    // `requestFullscreen` is gated on a user gesture, so a game that wants it on
+    // the web has to ask for it from an input handler.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        window.resizable = cfg.resizable;
+        window.resolution.set(cfg.width as f32, cfg.height as f32);
+        // Vertical sync. The window is created with Bevy's default `PresentMode`
+        // (vsync); apply the project's choice here so a game can uncap its frame
+        // rate (and so the true per-frame cost is measurable on a fast GPU).
+        // `AutoNoVsync` rather than `Immediate` so wgpu falls back to a supported
+        // present mode on adapters that lack tear-free mailbox/immediate.
+        window.present_mode = if cfg.vsync {
+            bevy::window::PresentMode::AutoVsync
+        } else {
+            bevy::window::PresentMode::AutoNoVsync
+        };
+
+        match cfg.mode {
+            renzora::WindowMode::Windowed => {
+                window.decorations = true;
+                window.mode = BevyWindowMode::Windowed;
+            }
+            renzora::WindowMode::Fullscreen => {
+                window.decorations = false;
+                window.mode =
+                    BevyWindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current);
+            }
+            renzora::WindowMode::Borderless => {
+                window.decorations = false;
+                window.mode = BevyWindowMode::Windowed;
+            }
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    let _ = (cfg, BevyWindowMode::Windowed);
 }
 
 /// Attach a console window so subsequent stdout/stderr (Bevy log output) is
