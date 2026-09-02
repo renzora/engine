@@ -7,7 +7,7 @@ pub mod file_thumbnails;
 mod material_inspector;
 mod native_graph;
 mod native_inspector;
-mod native_material_ref;
+mod drawer;
 mod native_preview;
 mod pin_editors;
 pub mod preview;
@@ -106,7 +106,7 @@ impl Plugin for MaterialEditorPlugin {
         app.add_plugins(file_thumbnails::MaterialFileThumbnailPlugin);
         app.add_plugins(pin_editors::MaterialPinEditors);
         app.add_plugins(native_inspector::NativeMaterialInspector);
-        app.add_plugins(native_material_ref::NativeMaterialRef);
+        app.add_plugins(drawer::MaterialDrawer);
         app.add_plugins(native_preview::NativeMaterialPreview);
         app.add_plugins(native_graph::NativeMaterialGraph);
 

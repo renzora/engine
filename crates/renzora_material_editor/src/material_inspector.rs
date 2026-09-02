@@ -41,7 +41,7 @@ pub fn material_entry() -> InspectorEntry {
         set_enabled_fn: None,
         fields: vec![],
         // Native (bevy_ui) drawer registered via `register_native_inspector_ui`
-        // (see `native_material_ref`). No egui custom UI.
+        // (see `drawer`). No egui custom UI.
     }
 }
 
@@ -96,7 +96,7 @@ pub(crate) fn default_param_value(
 /// system**. It used to run inline in the picker's rebuild, which fires on every
 /// keystroke in the search box — profiling caught that path at 13.9 ms in one
 /// frame, not the "well under a millisecond" this comment used to claim. Callers
-/// go through `native_material_ref`'s `MaterialIndex`, which runs it on the IO
+/// go through `drawer::index`'s `MaterialIndex`, which runs it on the IO
 /// task pool and caches the result.
 pub(crate) fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
