@@ -4,6 +4,9 @@ mod bar_fill;
 mod checkbox;
 mod draggable_window;
 mod dropdown;
+// `pub` because the markup `fill=` attribute shares its geometry helpers, so
+// the two fill paths cannot drift apart.
+pub mod image_fill;
 mod interaction_style;
 mod keybind_row;
 mod modal;
@@ -23,6 +26,7 @@ pub use bar_fill::apply_bar_fill;
 pub use checkbox::checkbox_system;
 pub use draggable_window::draggable_window_system;
 pub use dropdown::{dropdown_option_system, dropdown_system};
+pub use image_fill::apply_image_fill;
 pub use interaction_style::interaction_style_system;
 pub use keybind_row::keybind_row_system;
 pub use modal::modal_system;

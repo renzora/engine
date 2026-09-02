@@ -877,7 +877,7 @@ impl MarkdownImages {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "editor_tools", not(target_arch = "wasm32")))]
 fn start_download(url: String, tx: Sender<Result<DownloadedImage, String>>) {
     std::thread::spawn(move || {
         let result = (|| -> Result<DownloadedImage, String> {
@@ -900,7 +900,7 @@ fn start_download(url: String, tx: Sender<Result<DownloadedImage, String>>) {
     });
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(all(feature = "editor_tools", not(target_arch = "wasm32"))))]
 fn start_download(_url: String, _tx: Sender<Result<DownloadedImage, String>>) {}
 
 /// Per-frame: drain finished downloads, then give every pending

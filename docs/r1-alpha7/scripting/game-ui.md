@@ -57,6 +57,24 @@ A handful of tags cover almost everything:
 
 There are a few more tags for repeating lists and reusing components. See the [Scripting API](/docs/r1-alpha7/api/scripting) for the full list.
 
+### Draw order
+
+Tags paint in the order you write them, like HTML: a later sibling draws on top
+of an earlier one. So the usual way to put content on a panel is to write the
+background first and the content after it:
+
+```html
+<node width="395px" height="57px">
+    <image src="assets/ui/bar_bg.png" position="absolute" top="0" left="0"
+           width="395px" height="57px" />
+    <text>100 / 100</text>   <!-- drawn on top of the background -->
+</node>
+```
+
+Widgets you *drag into a scene* follow the opposite convention — the canvas
+editor lists them like layers, where the top row is front-most — but that
+applies only to those entities, never to markup.
+
 ### Sizes and spacing
 
 Lengths are written like CSS: `12px`, `50%`, `auto`, or the viewport units
@@ -146,6 +164,134 @@ Need a circular gauge, a bar chart, or a speedometer? Add `vector="..."` to a no
 ```
 
 The `value`, `data`, and `readout` fields accept live `{{ }}` bindings, so a fuel gauge or speedometer tracks your game in real time. For the full list of widget options, see the [Scripting API](/docs/r1-alpha7/api/scripting).
+
+## Images
+
+`<image src="...">` draws a picture. Three attributes control *how* it is drawn,
+and for hand-drawn or pixel-art UI you will usually want all three.
+
+### `pixelated` — keep pixel art sharp
+
+By default an image is sampled smoothly, which is right for a photo and wrong
+for pixel art: a 40px icon drawn at 44px comes out blurry. Add
+`pixelated="true"` and each texel stays a hard square at any size.
+
+```html
+<image src="assets/ui/icon_hp.png" pixelated="true" width="44px" height="44px" />
+```
+
+Every attribute needs a value — the markup grammar is strictly `key="value"`, so
+a bare `pixelated` is a parse error on the whole tag, not an ignored attribute.
+
+It is per-image on purpose. The editor's own interface is built from this same
+markup, so there is no project-wide "this game is pixel art" switch that
+wouldn't also resample the editor's icons.
+
+### `image_mode` — nine-slicing and tiling
+
+A panel, frame or slot drawn from a small texture has a decorated border.
+Stretching it to a useful size smears that border along with the middle.
+Nine-slicing holds the corners at their authored size and stretches only the
+middle:
+
+```html
+<!-- 93x76 source with a ~20px ornate border, drawn at 640x440 -->
+<image src="assets/ui/panel.png" pixelated
+       image_mode="sliced(20)" width="640px" height="440px" />
+```
+
+| `image_mode=` | Draws |
+|---|---|
+| `auto` | At the texture's own size (the default) |
+| `stretch` | Stretched to the node's box |
+| `sliced(8)` | Nine-slice, 8px border on all four sides |
+| `sliced(8, 12)` | 8px left/right, 12px top/bottom |
+| `sliced(l, r, t, b)` | Each side given separately |
+| `tiled(1.0)` | Repeat rather than stretch |
+
+The border is measured in **source texture pixels**, so it doesn't change when
+the node is resized — that is the whole point. Corners never scale, which is
+what keeps a nine-sliced pixel-art frame from growing fat corners.
+
+A value that doesn't parse logs a warning and falls back to `auto`, rather than
+being ignored in silence.
+
+### Bars drawn from images
+
+A bar drawn as a flat colour is filled by making it narrower. A bar drawn from a
+texture cannot be: shrinking an image squashes the whole picture into less space
+instead of showing less of it, so a health bar with bevelled ends and segment
+ticks compresses those details as it drains.
+
+So an image fill **crops** instead. Put the fill image over the background image
+and give it `image_fill`:
+
+```html
+<node width="553px" height="80px">
+    <image src="assets/ui/bar_bg.png" pixelated
+           position="absolute" top="0" left="0" width="553px" height="80px" />
+    <image name="hp_fill" src="assets/ui/bar_fill_hp.png" pixelated
+           position="absolute" top="13px" left="22px" height="55px"
+           image_fill="1.0" fill_dir="left_to_right" fill_extent="447" />
+</node>
+```
+
+| Attribute | Meaning |
+|---|---|
+| `image_fill="0.75"` | Starting fraction, 0 to 1 |
+| `fill_dir=` | `left_to_right` (default), `right_to_left`, `bottom_to_top`, `top_to_bottom` |
+| `fill_extent="447"` | On-screen width at full, in px. Omit to draw the source at 1:1 |
+
+Then drive it from a script — Lua by reflection, Rust by writing the component:
+
+```lua
+set_on("hp_fill", "UiImageFill.value", current_hp / max_hp)
+```
+
+```rust
+// In a Rust script, with the entity from MarkupNameIndex:
+if let Some(mut fill) = world.get_mut::<UiImageFill>(bar) {
+    fill.value = current_hp / max_hp;
+}
+```
+
+A `right_to_left` or `bottom_to_top` fill shrinks toward its layout origin, so
+anchor it to the far edge (`position_type: absolute` with `right: 0` or
+`bottom: 0`) or it will drain from the wrong end. Left- and top-origin fills,
+the common case, need nothing.
+
+The same applies to the binding form: `fill="Player.Health.current"` on a node
+carrying an image crops it, and on a plain coloured node resizes it, because
+squashing a bar texture is never what you want. `fill_dir` and `fill_extent`
+work on both.
+
+## Gamepad navigation
+
+Menus are navigable with a controller out of the box. The d-pad or left stick
+moves a focus between `<button>` elements, and **South** (A / Cross) activates
+the focused one.
+
+There is nothing to turn on and nothing to annotate. Focus is published by
+writing `Interaction::Hovered` on the focused button and activation by writing
+`Interaction::Pressed` for one frame — the same component a mouse writes — so
+`on_press` handlers, hover styling and transitions all respond exactly as they
+do to a click, and a button that works with a mouse works on a pad.
+
+Movement picks the nearest button in the direction pressed, weighting sideways
+distance so pressing "down" stays inside the column you are looking at. Holding
+a direction repeats after a short delay. Pushing past the end of a list keeps
+the current selection rather than dropping focus.
+
+Moving the mouse releases gamepad focus, so a player who switches input mid-menu
+doesn't fight a stuck highlight; pressing a direction takes it back.
+
+To read the focus or turn the whole thing off for a screen that reads the pad
+itself — a gameplay HUD, where the same button press would otherwise do two
+things — use the `UiGamepadNav` resource:
+
+```rust
+world.resource_mut::<UiGamepadNav>().enabled = false;
+```
 
 ## Showing and hiding UI from a script
 

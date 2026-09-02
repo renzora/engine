@@ -510,14 +510,56 @@ fn apply_xnode_to(
         // gives the cursor's 0..1 position within the node — what the drag reads.
         ec.insert(bevy::ui::RelativeCursorPosition::default());
     }
+    // `image_fill="0.75"` — declare a textured fill with a starting fraction and
+    // let something else drive it later, by writing `UiImageFill.value` from a
+    // script or from the inspector. The `fill=` attribute below is the other
+    // half of the same idea: it *binds* the fraction to a reflected path.
+    // Both exist because a Rust script has no reflected path to point at — it
+    // holds the component and writes it — while Lua and the inspector do.
+    if let Some(spec) = defs.get("image_fill") {
+        match spec.trim().parse::<f32>() {
+            Ok(value) => {
+                let direction = defs
+                    .get("fill_dir")
+                    .and_then(|s| parse_progress_direction(s))
+                    .unwrap_or(crate::game_ui::components::ProgressDirection::LeftToRight);
+                let extent_px = defs
+                    .get("fill_extent")
+                    .and_then(|s| s.trim().trim_end_matches("px").parse().ok())
+                    .unwrap_or(0.0);
+                ec.insert(crate::game_ui::components::UiImageFill {
+                    value,
+                    max: 1.0,
+                    direction,
+                    extent_px,
+                });
+            }
+            Err(_) => warn!(
+                "renzora_ember: image_fill=\"{spec}\" is not a number — use \
+                 fill=\"Some.path\" to bind a fraction, or a literal like \
+                 image_fill=\"0.75\" to set a starting one"
+            ),
+        }
+    }
+
     if let Some(target) = defs.get("fill") {
         let min = defs.get("fill_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
         let max = defs.get("fill_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
+        let direction = defs
+            .get("fill_dir")
+            .and_then(|s| parse_progress_direction(s))
+            .unwrap_or(crate::game_ui::components::ProgressDirection::LeftToRight);
+        let extent_px = defs
+            .get("fill_extent")
+            .and_then(|s| s.trim().trim_end_matches("px").parse().ok())
+            .unwrap_or(0.0);
         ec.insert(crate::markup::widgets::ValueFill {
             target: target.clone(),
             min,
             max,
             host: ctx.host,
+            direction,
+            extent_px,
         });
         // A fill is decorative — let clicks pass through to the slider track
         // beneath it so dragging works across the filled portion.
@@ -783,9 +825,46 @@ fn apply_xnode_to(
             // a styled `<node>` fallback (e.g. the default `<cursor>` dot).
             if let Some(src) = image_src {
                 if !src.is_empty() {
+                    // `image_mode="sliced(8)"` etc. A bad value warns and falls
+                    // back to `Auto` rather than being ignored in silence —
+                    // "my nine-slice did nothing" is otherwise indistinguishable
+                    // from a misspelled attribute.
+                    let image_mode = match defs.get("image_mode") {
+                        Some(spec) => {
+                            crate::markup::image_attrs::parse_image_mode(spec).unwrap_or_else(|| {
+                                warn!(
+                                    "renzora_ember: image_mode=\"{spec}\" is not a valid mode — \
+                                     expected auto, stretch, sliced(..) or tiled(..); using auto"
+                                );
+                                NodeImageMode::Auto
+                            })
+                        }
+                        None => NodeImageMode::Auto,
+                    };
+
+                    // `pixelated` swaps the asset server's default linear
+                    // sampler for nearest, which pixel art needs at any scale
+                    // but 1:1. Opt-in per node: the editor's own interface is
+                    // built from this markup, so this cannot key off a
+                    // project-wide art-style setting.
+                    let pixelated = defs
+                        .get("pixelated")
+                        .is_some_and(|v| crate::markup::image_attrs::attr_is_true(v));
+                    let image = if pixelated {
+                        let sampler = crate::markup::image_attrs::pixelated_sampler();
+                        ctx.server
+                            .load_builder()
+                            .with_settings(move |s: &mut bevy::image::ImageLoaderSettings| {
+                                s.sampler = sampler.clone();
+                            })
+                            .load::<bevy::image::Image>(src)
+                    } else {
+                        ctx.server.load(src)
+                    };
+
                     ec.insert(ImageNode {
-                        image: ctx.server.load(src),
-                        image_mode: NodeImageMode::Auto,
+                        image,
+                        image_mode,
                         ..default()
                     });
                 }
@@ -808,6 +887,22 @@ fn apply_xnode_to(
         if let Some(c) = font_color {
             ec.insert(TextColor(c));
         }
+    }
+}
+
+/// Parse a `fill_dir="..."` value into the edge a fill grows from.
+///
+/// Both the underscored and hyphenated spellings are accepted because markup
+/// attributes elsewhere use hyphens and component fields use underscores, and
+/// guessing wrong here fails silently as a bar that drains the wrong way.
+fn parse_progress_direction(v: &str) -> Option<crate::game_ui::components::ProgressDirection> {
+    use crate::game_ui::components::ProgressDirection as D;
+    match v.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "left_to_right" | "ltr" | "right" => Some(D::LeftToRight),
+        "right_to_left" | "rtl" | "left" => Some(D::RightToLeft),
+        "bottom_to_top" | "btt" | "up" => Some(D::BottomToTop),
+        "top_to_bottom" | "ttb" | "down" => Some(D::TopToBottom),
+        _ => None,
     }
 }
 

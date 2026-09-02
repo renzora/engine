@@ -90,7 +90,7 @@ impl FileImages {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "editor_tools", not(target_arch = "wasm32")))]
 fn start_decode(path: PathBuf, tx: Sender<Result<Decoded, PathBuf>>) {
     std::thread::spawn(move || {
         let result = (|| -> Result<Decoded, PathBuf> {
@@ -105,7 +105,7 @@ fn start_decode(path: PathBuf, tx: Sender<Result<Decoded, PathBuf>>) {
 }
 
 /// No filesystem to read, so every request fails and callers show placeholders.
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(all(feature = "editor_tools", not(target_arch = "wasm32"))))]
 fn start_decode(path: PathBuf, tx: Sender<Result<Decoded, PathBuf>>) {
     let _ = tx.send(Err(path));
 }

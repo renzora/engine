@@ -89,6 +89,89 @@ impl UiBarFill {
     }
 }
 
+// ── Image Fill ──────────────────────────────────────────────────────────────
+
+/// Reveals a fraction of an image by **cropping** it, rather than scaling it.
+///
+/// [`UiBarFill`] resizes its `Node`, which is right for a bar drawn as a flat
+/// coloured rectangle and wrong for one drawn from a texture. Shrinking a node
+/// that carries an `ImageNode` doesn't hide part of the picture, it squashes
+/// the whole picture into less space: a health bar with bevelled ends and
+/// segment ticks compresses those details as it drains instead of sliding them
+/// off the end, and pixel art resampled to a fractional width shimmers on every
+/// change. What a textured bar wants is the picture held at a fixed scale with
+/// progressively less of it shown — the same thing a sprite sheet does with a
+/// source rect.
+///
+/// So this component writes two fields in step:
+///
+/// - `ImageNode.rect` — the sub-rectangle of the *source texture* to sample,
+///   grown from whichever edge [`direction`](Self::direction) names.
+/// - `Node.width` / `Node.height` — the on-screen extent, as the same fraction
+///   of [`extent_px`](Self::extent_px).
+///
+/// Both are needed. The rect alone is enough only while the node is sized
+/// `auto`, because Bevy's `update_image_content_size_system` measures an `Auto`
+/// image from its rect; the moment an author pins a width (which anyone drawing
+/// a 319px source at 400px on screen will do) the crop is stretched back across
+/// the full node and the bar looks like it never drained at all.
+///
+/// Any texture-drawn progress readout is the same shape of problem — health,
+/// mana, stamina, experience, a cooldown wipe, a reload sweep, a loading bar —
+/// so this is a primitive rather than a health-bar widget.
+///
+/// # Anchoring
+///
+/// The node shrinks toward its layout origin, so a `RightToLeft` or
+/// `BottomToTop` fill needs to be anchored to the far edge to drain the way it
+/// reads — `position_type: absolute` with `right: 0` or `bottom: 0`. Left- and
+/// top-origin fills, which are the common case, need nothing.
+///
+/// # Scripting
+///
+/// `set_on("hp_fill", "UiImageFill.value", 0.42)` from Lua, or write the
+/// component directly from a Rust script. `apply_image_fill` picks the change
+/// up the same frame.
+#[derive(Component, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct UiImageFill {
+    /// Current fill amount; clamped to `[0, max]`.
+    pub value: f32,
+    /// Maximum value `value` can reach. Defaults to `1.0` so callers can pass
+    /// a plain fraction.
+    pub max: f32,
+    /// Which edge the visible region grows from.
+    pub direction: ProgressDirection,
+    /// On-screen extent along the fill axis at `value == max`, in logical px.
+    ///
+    /// `0.0` means "use the texture's own size", which keeps a pixel-art bar at
+    /// 1:1 and is the only setting that never resamples. Set it to draw the
+    /// source at some other scale — the crop is still exact, because the
+    /// fraction is applied to the texture rect and to this extent alike.
+    pub extent_px: f32,
+}
+
+impl Default for UiImageFill {
+    fn default() -> Self {
+        Self {
+            value: 1.0,
+            max: 1.0,
+            direction: ProgressDirection::LeftToRight,
+            extent_px: 0.0,
+        }
+    }
+}
+
+impl UiImageFill {
+    /// Fraction in `[0, 1]`. Returns `1.0` when `max <= 0` to avoid NaN.
+    pub fn fraction(&self) -> f32 {
+        if self.max <= 0.0 {
+            return 1.0;
+        }
+        (self.value / self.max).clamp(0.0, 1.0)
+    }
+}
+
 // ── Slider ──────────────────────────────────────────────────────────────────
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]

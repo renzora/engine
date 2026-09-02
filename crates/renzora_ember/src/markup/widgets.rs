@@ -45,15 +45,39 @@ pub struct Disclose {
     pub target: String,
 }
 
-/// `fill="Path.number" fill_min fill_max` — the node's width tracks the bound
+/// `fill="Path.number" fill_min fill_max` — the node's extent tracks the bound
 /// value's fraction of [min, max]. The visual half of a slider / a bound
 /// progress bar.
+///
+/// # Two ways to draw a fraction
+///
+/// A node drawn as a flat colour is filled by **resizing** it. A node drawn from
+/// a texture has to be filled by **cropping** it instead: shrinking an
+/// `ImageNode` squashes the whole picture into less space rather than showing
+/// less of it, so a bar with bevelled ends and segment ticks compresses those
+/// details as it drains.
+///
+/// So the system picks by what is on the entity — an `ImageNode` crops, anything
+/// else resizes. That is not a guess about intent: squashing a bar texture is
+/// never what an author wants, and every template that used `fill=` before this
+/// existed was filling a coloured node and is unaffected.
+///
+/// `fill_dir` chooses the edge the fill grows from (`left_to_right` — the
+/// default — `right_to_left`, `bottom_to_top`, `top_to_bottom`), and
+/// `fill_extent` sets the on-screen size at full, in px. Both apply to either
+/// drawing mode.
 #[derive(Component)]
 pub struct ValueFill {
     pub target: String,
     pub min: f32,
     pub max: f32,
     pub host: Entity,
+    /// The edge the fill grows from.
+    pub direction: crate::game_ui::components::ProgressDirection,
+    /// On-screen extent along the fill axis at full, in px. `0.0` means the
+    /// texture's own size for an image, or `100%` of the parent for a
+    /// coloured node — each mode's natural "as authored".
+    pub extent_px: f32,
 }
 
 // ── Shared write path ───────────────────────────────────────────────────────
@@ -206,17 +230,31 @@ fn drag_value_system(world: &mut World) {
     }
 }
 
-/// Value-driven fill: each frame, set the node's `width` to the bound value's
+/// Value-driven fill: each frame, set the node's extent to the bound value's
 /// fraction of [min, max]. Used for slider fills / progress visuals.
+///
+/// A node carrying an `ImageNode` is *cropped* to the fraction rather than
+/// resized — see [`ValueFill`] for why the two cases have to differ.
 fn value_fill_system(world: &mut World) {
-    let mut items: Vec<(Entity, String, f32, f32, Entity)> = Vec::new();
+    use crate::game_ui::components::ProgressDirection;
+    use crate::game_ui::systems::image_fill;
+
+    let mut items: Vec<(Entity, String, f32, f32, Entity, ProgressDirection, f32)> = Vec::new();
     {
         let mut q = world.query::<(Entity, &ValueFill)>();
         for (e, vf) in q.iter(world) {
-            items.push((e, vf.target.clone(), vf.min, vf.max, vf.host));
+            items.push((
+                e,
+                vf.target.clone(),
+                vf.min,
+                vf.max,
+                vf.host,
+                vf.direction,
+                vf.extent_px,
+            ));
         }
     }
-    for (entity, target, min, max, host) in items {
+    for (entity, target, min, max, host, direction, extent_px) in items {
         let Some(s) = read_path(world, host, &target) else {
             continue;
         };
@@ -229,8 +267,54 @@ fn value_fill_system(world: &mut World) {
         } else {
             0.0
         };
+
+        // Textured fill — crop to the fraction rather than squashing it. Needs
+        // the source dimensions, so it waits for the texture to land; until
+        // then the node is left as authored rather than sized against a guess.
+        let textured = world
+            .get::<bevy::ui::widget::ImageNode>(entity)
+            .map(|i| i.image.clone());
+        if let Some(handle) = textured {
+            let Some(tex) = world
+                .resource::<Assets<Image>>()
+                .get(&handle)
+                .map(|i| i.size().as_vec2())
+                .filter(|t| t.x > 0.0 && t.y > 0.0)
+            else {
+                continue;
+            };
+            let (rect, extent) = image_fill::fill_geometry(direction, frac, tex, extent_px);
+            // One component at a time — `&mut World` won't hand out two.
+            if let Some(mut image_node) = world.get_mut::<bevy::ui::widget::ImageNode>(entity) {
+                if image_node.rect != Some(rect) {
+                    image_node.rect = Some(rect);
+                }
+            }
+            if let Some(mut node) = world.get_mut::<Node>(entity) {
+                if image_fill::is_horizontal(direction) {
+                    if node.width != extent {
+                        node.width = extent;
+                    }
+                } else if node.height != extent {
+                    node.height = extent;
+                }
+            }
+            continue;
+        }
+
+        // Flat-coloured fill — resize. `extent_px == 0` keeps the historical
+        // behaviour of filling the parent by percentage.
         if let Some(mut node) = world.get_mut::<Node>(entity) {
-            node.width = Val::Percent(frac * 100.0);
+            let extent = if extent_px > 0.0 {
+                Val::Px(extent_px * frac)
+            } else {
+                Val::Percent(frac * 100.0)
+            };
+            if image_fill::is_horizontal(direction) {
+                node.width = extent;
+            } else {
+                node.height = extent;
+            }
         }
     }
 }

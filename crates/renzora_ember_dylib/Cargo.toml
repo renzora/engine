@@ -22,6 +22,10 @@ crate-type = ["dylib"]
 # only one, cargo would resolve two ember units with different feature sets and
 # the shared image would be built from the wrong one.
 game_ui = ["renzora_ember/game_ui"]
+# Same mirror, same reason, for the world-space (3D) UI gate.
+render_3d = ["renzora_ember/render_3d"]
+# And for the desktop editor conveniences (clipboard + image decoding).
+editor_tools = ["renzora_ember/editor_tools"]
 
 [dependencies]
 renzora_ember = { path = "../renzora_ember", default-features = false }

@@ -15,6 +15,8 @@ pub mod decor;
 pub mod dnd;
 pub mod drag;
 pub mod foreach;
+pub mod gamepad_nav;
+pub mod image_attrs;
 pub mod input_field;
 pub mod interactions;
 pub mod loader;
@@ -100,6 +102,7 @@ impl Plugin for MarkupPlugin {
         dnd::plugin(app);
         binding::plugin(app);
         foreach::plugin(app);
+        gamepad_nav::plugin(app);
         input_field::plugin(app);
         widgets::plugin(app);
         transitions::plugin(app);

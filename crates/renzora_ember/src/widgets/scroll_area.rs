@@ -85,6 +85,24 @@ impl EmberScroll {
         self.stick = false;
     }
 
+    /// Resume following the bottom, wherever the reader last left the view.
+    ///
+    /// The counterpart to [`scroll_to`](Self::scroll_to) and
+    /// [`nudge`](Self::nudge), which both deliberately cancel bottom-stick so a
+    /// log someone has scrolled up to read stays put. This is the explicit "take
+    /// me to the end", for the moment a log stops growing and its last line is
+    /// the whole point — an export's error, say, which cargo's output has by then
+    /// pushed a long way off screen.
+    ///
+    /// A no-op on a view that was not built pinned: an ordinary scroll view has
+    /// no bottom worth following, and snapping one there would throw away the
+    /// reader's place.
+    pub fn stick_to_bottom(&mut self) {
+        if self.pinned {
+            self.stick = true;
+        }
+    }
+
     /// Set both scroll targets at once (both-axis views). Pair with writing
     /// `ScrollPosition` directly for an immediate, un-eased jump — used by
     /// zoom-to-cursor, which must re-anchor the content the same frame it scales.

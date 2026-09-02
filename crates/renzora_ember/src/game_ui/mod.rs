@@ -18,7 +18,12 @@ pub mod shapes;
 pub mod spawn;
 pub mod systems;
 pub mod script_canvas;
+// World-space UI is 3D geometry (`Mesh3d` + `StandardMaterial` + the SDF text
+// material), so it only exists in a build that has `bevy_pbr`. See the feature's
+// note in Cargo.toml.
+#[cfg(feature = "render_3d")]
 pub mod world_panel;
+#[cfg(feature = "render_3d")]
 pub mod world_ui_mesh;
 
 use bevy::prelude::*;
@@ -40,6 +45,8 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::UiWidgetPart>();
         // Single-entity primitive (replaces ProgressBar / HealthBar / LoadingScreen)
         app.register_type::<components::UiBarFill>();
+        // The textured counterpart — crops its image instead of resizing it.
+        app.register_type::<components::UiImageFill>();
         app.register_type::<components::ProgressDirection>();
         // Form inputs
         app.register_type::<components::SliderData>();
@@ -111,6 +118,8 @@ impl Plugin for GameUiPlugin {
             (
                 heal_orphaned_ui_widgets,
                 heal_nested_ui_canvases,
+                // Before the geometry healer: that one needs a `Node` to exist.
+                heal_canvas_missing_node,
                 heal_canvas_root_geometry,
             ),
         );
@@ -129,8 +138,11 @@ impl Plugin for GameUiPlugin {
         // Templates rendered onto a quad in the 3D scene, clickable from a VR
         // wand or the mouse. Owns the `WorldUiPointers` consumer, so it's also
         // the one place that orders the contract's two sets.
-        world_panel::register(app);
-        world_ui_mesh::register(app);
+        #[cfg(feature = "render_3d")]
+        {
+            world_panel::register(app);
+            world_ui_mesh::register(app);
+        }
         script_canvas::register(app);
 
         // ── Canvas scaler & visibility-mode ──────────────────────────────
@@ -165,10 +177,16 @@ impl Plugin for GameUiPlugin {
         );
 
         // ── Runtime widget systems ──────────────────────────────────────
+        //
+        // Split across two calls only because a system tuple maxes out at 20
+        // elements; there is no ordering relationship between the groups.
+        app.add_systems(
+            Update,
+            (systems::apply_bar_fill, systems::apply_image_fill),
+        );
         app.add_systems(
             Update,
             (
-                systems::apply_bar_fill,
                 systems::slider_system,
                 systems::checkbox_system,
                 systems::toggle_system,
@@ -352,16 +370,30 @@ fn heal_orphaned_ui_widgets(
     moved: Query<Entity, (With<UiWidget>, Changed<ChildOf>)>,
     child_of: Query<&ChildOf>,
     canvases: Query<(), With<UiCanvas>>,
-    world_roots: Query<(), With<world_panel::WorldUiRoot>>,
+    #[cfg(feature = "render_3d")] world_roots: Query<(), With<world_panel::WorldUiRoot>>,
 ) {
     // A widget is in-scope if it reaches either a `UiCanvas` OR a
     // `WorldUiRoot` — the latter is a world panel's camera-routed subtree, a
     // legitimate scope with no canvas above it. Missing the world-root case is
     // what made a panel spawn a stray `UiCanvas` around its built markup.
+    //
+    // Without `render_3d` there are no world panels to reach, so the second test
+    // is compiled out rather than answered `false` at runtime.
+    let is_world_root = |e: Entity| -> bool {
+        #[cfg(feature = "render_3d")]
+        {
+            world_roots.get(e).is_ok()
+        }
+        #[cfg(not(feature = "render_3d"))]
+        {
+            let _ = e;
+            false
+        }
+    };
     let has_ui_scope_ancestor = |start: Entity| -> bool {
         let mut e = start;
         loop {
-            if canvases.get(e).is_ok() || world_roots.get(e).is_ok() {
+            if canvases.get(e).is_ok() || is_world_root(e) {
                 return true;
             }
             match child_of.get(e) {
@@ -427,6 +459,31 @@ fn heal_nested_ui_canvases(
                 }
             });
         }
+    }
+}
+
+/// Give a canvas that has no `Node` one, so it can be authored in a scene.
+///
+/// A `UiCanvas` without a `Node` is not a canvas — it lays nothing out and
+/// renders nothing. Code paths that spawn one always include the `Node`, but a
+/// canvas that arrives by **scene load** does not: a reflection-driven load
+/// inserts exactly the components the file lists and skips required components,
+/// so a hand-authored or editor-saved canvas came back inert. Every downstream
+/// system, [`heal_canvas_root_geometry`] included, queries `&mut Node` and so
+/// silently skipped it — the canvas existed in the hierarchy, its template
+/// loaded, and nothing appeared.
+///
+/// Inserting rather than warning, because there is exactly one correct answer:
+/// the geometry healer below overwrites the rect on the same frame anyway, so
+/// what goes in here only has to exist.
+fn heal_canvas_missing_node(
+    mut commands: Commands,
+    canvases: Query<(Entity, &UiCanvas), Without<Node>>,
+) {
+    for (entity, canvas) in &canvases {
+        commands
+            .entity(entity)
+            .try_insert(components::canvas_root_node(canvas));
     }
 }
 
@@ -594,10 +651,35 @@ fn rehydrate_ui_images(
 /// Syncs `ZIndex` on UI canvas and widget entities so that items higher in the
 /// hierarchy (top of the list) render on top — matching the layer order convention
 /// used by most editors (Photoshop, Unity, etc.).
+///
+/// # Why markup nodes are excluded
+///
+/// That convention belongs to a **layers list**: widgets dragged into a scene
+/// and shown in a panel where the top row is the front-most. It is the opposite
+/// of how a *document* paints, where later siblings go on top — which is what
+/// every `.html` template is, and what anyone writing one expects, because it is
+/// what HTML does.
+///
+/// The two collided because `loader.rs` gives every markup node a [`UiWidget`]
+/// so the canvas editor can hit-test individual elements. That made this system
+/// reverse the draw order of every template: the near-universal idiom of a
+/// background `<image>` declared before the content it sits behind painted
+/// *over* that content, hiding it completely. A panel with a label on it showed
+/// a panel; a bar with a fill showed an empty bar.
+///
+/// `MarkupSource` is the discriminator — it is stamped on exactly the entities
+/// the markup loader spawned. They are left with no `ZIndex` at all, so they
+/// paint in document order.
 fn sync_ui_zindex(
     canvas_entities: Query<Entity, With<UiCanvas>>,
     canvas_data: Query<(&UiCanvas, Option<&GlobalZIndex>)>,
-    widgets: Query<Entity, With<UiWidget>>,
+    widgets: Query<
+        Entity,
+        (
+            With<UiWidget>,
+            Without<crate::markup::provenance::MarkupSource>,
+        ),
+    >,
     zindex_query: Query<Option<&ZIndex>>,
     children_query: Query<&Children>,
     child_of_query: Query<&ChildOf>,
@@ -666,6 +748,91 @@ mod invariant_tests {
         let mut schedule = Schedule::default();
         schedule.add_systems((heal_orphaned_ui_widgets, heal_nested_ui_canvases));
         schedule.run(world);
+    }
+
+    fn run_zindex(world: &mut World) {
+        let mut schedule = Schedule::default();
+        schedule.add_systems(sync_ui_zindex);
+        schedule.run(world);
+    }
+
+    /// Scene-authored widgets keep the layers-list convention: the first child
+    /// is the front-most, so it gets the highest `ZIndex`.
+    #[test]
+    fn scene_widgets_keep_the_layers_list_order() {
+        let mut world = World::new();
+        let canvas = world.spawn((UiCanvas::default(), Node::default())).id();
+        let first = world
+            .spawn((UiWidget::default(), Node::default(), ChildOf(canvas)))
+            .id();
+        let second = world
+            .spawn((UiWidget::default(), Node::default(), ChildOf(canvas)))
+            .id();
+
+        run_zindex(&mut world);
+
+        assert_eq!(world.get::<ZIndex>(first).map(|z| z.0), Some(1));
+        assert_eq!(world.get::<ZIndex>(second).map(|z| z.0), Some(0));
+    }
+
+    /// Markup nodes must be left alone, so a template paints in document order
+    /// like the HTML it is written as.
+    ///
+    /// They carry `UiWidget` (the canvas editor hit-tests it to select single
+    /// elements), so without the `MarkupSource` exclusion they were swept into
+    /// the layers-list convention and every template rendered back-to-front — a
+    /// background image declared before its content covered that content up.
+    #[test]
+    fn markup_nodes_are_left_in_document_order() {
+        use crate::markup::provenance::MarkupSource;
+
+        let mut world = World::new();
+        let canvas = world.spawn((UiCanvas::default(), Node::default())).id();
+        let markup = |world: &mut World, path: Vec<u32>| {
+            world
+                .spawn((
+                    UiWidget::default(),
+                    Node::default(),
+                    ChildOf(canvas),
+                    MarkupSource {
+                        template_handle: Default::default(),
+                        node_path: path,
+                    },
+                ))
+                .id()
+        };
+        let background = markup(&mut world, vec![0]);
+        let content = markup(&mut world, vec![1]);
+
+        run_zindex(&mut world);
+
+        // `Node` requires `ZIndex`, so one always exists — the invariant is that
+        // siblings keep the *same* value and so fall back to document order,
+        // not that the component is absent.
+        assert_eq!(
+            world.get::<ZIndex>(background).map(|z| z.0),
+            Some(0),
+            "a markup node must be left at the default ZIndex"
+        );
+        assert_eq!(world.get::<ZIndex>(content).map(|z| z.0), Some(0));
+    }
+
+    /// A canvas that arrives without a `Node` — which is how every scene load
+    /// delivers one — must be given one, or it lays nothing out and every
+    /// downstream system skips it for want of the component.
+    #[test]
+    fn a_scene_loaded_canvas_is_given_a_node() {
+        let mut world = World::new();
+        let canvas = world.spawn(UiCanvas::default()).id();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(heal_canvas_missing_node);
+        schedule.run(&mut world);
+
+        assert!(
+            world.get::<Node>(canvas).is_some(),
+            "a canvas with no Node must be given one"
+        );
     }
 
     /// A widget dragged to the scene root (no parent) must be re-homed under a

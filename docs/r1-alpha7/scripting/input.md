@@ -111,6 +111,16 @@ end
 
 > Named **actions** (below) are deliberately not per-pad: every connected gamepad drives the same action map, so menus and single-player gameplay respond to whichever controller the player picks up. For split-screen input, read pads directly with the functions above.
 
+## Gamepad in menus
+
+The globals and actions above cover *gameplay*. Menus are handled for you: the
+d-pad or left stick moves a focus between `<button>` elements and South
+activates the focused one, published through the same `Interaction` a mouse
+click writes. Nothing to enable, and no per-button annotation.
+
+See [Game UI → Gamepad navigation](./game-ui#gamepad-navigation) for the details,
+including how to switch it off on a screen that reads the pad itself.
+
 ## Raw keyboard
 
 For keys that aren't part of the movement vector, query them by name. Key names are **Bevy `KeyCode` debug strings** — `"KeyW"`, `"KeyE"`, `"Space"`, `"ShiftLeft"`, `"ArrowUp"`, `"Escape"`, and so on. Letter keys are `"KeyA"`…`"KeyZ"` (not `"A"`), and number-row digits are `"Digit0"`…`"Digit9"`.

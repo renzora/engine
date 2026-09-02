@@ -27,6 +27,34 @@ pub fn tree_node(
     children: Vec<Entity>,
     open: bool,
 ) -> Entity {
+    tree_node_with(commands, fonts, label, depth, children, open, Vec::new(), None)
+}
+
+/// [`tree_node`] with extra widgets between the caret and the icon.
+///
+/// For the trees whose rows carry a control rather than only a name — a
+/// checkbox per file, a status dot, a count badge. They go *after* the caret so
+/// the indent guides still line up, and *before* the icon so the control sits at
+/// a fixed column whatever the label says.
+///
+/// `icon` replaces the default folder/file glyph with a named Phosphor icon and
+/// its colour — pass what [`crate::file_kind::icon_for`] and
+/// [`crate::file_kind::color_for`] say, and a tree of files looks like the asset
+/// browser rather than like a list of identical pages.
+///
+/// A separate entry point rather than parameters on [`tree_node`] because the
+/// plain form is by far the common one and every existing caller would have had
+/// to grow two arguments to say nothing.
+pub fn tree_node_with(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    depth: usize,
+    children: Vec<Entity>,
+    open: bool,
+    prefix: Vec<Entity>,
+    icon: Option<(&str, (u8, u8, u8))>,
+) -> Entity {
     let has_children = !children.is_empty();
     let node = commands
         .spawn((
@@ -74,15 +102,16 @@ pub fn tree_node(
             },))
             .id()
     };
-    let icon = icon_text(
-        commands,
-        &fonts.phosphor,
+    let (icon_name, icon_color) = icon.unwrap_or((
         if has_children { "folder" } else { "file" },
         text_muted(),
-        13.0,
-    );
+    ));
+    let icon = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 13.0);
     let lbl = text_node(commands, &fonts.ui, label, 12.0, text_primary());
-    commands.entity(row).add_children(&[caret, icon, lbl]);
+    let mut row_kids = vec![caret];
+    row_kids.extend(prefix);
+    row_kids.extend([icon, lbl]);
+    commands.entity(row).add_children(&row_kids);
     let kids = commands
         .spawn((
             Node {

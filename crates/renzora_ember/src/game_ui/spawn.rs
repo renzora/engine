@@ -85,6 +85,9 @@ pub(crate) fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<
 /// panel's markup builds have no canvas above them and would otherwise trip the
 /// orphan healer into wrapping them in a stray `UiCanvas`. This lets the healer
 /// recognise the panel root as a legitimate UI scope and leave the subtree be.
+///
+/// Without `render_3d` there are no world panels, so nothing can be inside one.
+#[cfg(feature = "render_3d")]
 pub(crate) fn is_within_world_ui_root(world: &World, mut entity: Entity) -> bool {
     loop {
         if world.get::<super::world_panel::WorldUiRoot>(entity).is_some() {
@@ -95,6 +98,11 @@ pub(crate) fn is_within_world_ui_root(world: &World, mut entity: Entity) -> bool
             None => return false,
         }
     }
+}
+
+#[cfg(not(feature = "render_3d"))]
+pub(crate) fn is_within_world_ui_root(_world: &World, _entity: Entity) -> bool {
+    false
 }
 
 /// Spawn a bare full-screen root `UiCanvas` (no parent). This is the single

@@ -12,11 +12,33 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 # widget library, docking, theming and the foundational `cursor_icon`/`icons`
 # helpers stay regardless (every widget needs them). `renzora_runtime` deps this
 # crate with `default-features = false` and forwards its own `game_ui` feature.
-default = ["game_ui"]
+default = ["game_ui", "render_3d", "editor_tools"]
 # Also pulls scripting: every `renzora_scripting` use in this crate sits inside
 # `markup`/`game_ui` (data binding, input fields, the reflection queue behind
 # widgets), so a game with no markup UI needs neither.
 game_ui = ["dep:bevy_hui", "dep:uuid", "dep:renzora_scripting"]
+# World-space UI: `game_ui::world_panel` (a template rendered onto a quad in the
+# 3D scene) and `game_ui::world_ui_mesh` (the same template emitted as 3D glyph
+# and rect geometry). Both are `Mesh3d` + `StandardMaterial`, i.e. `bevy_pbr`,
+# and one of them also wants `renzora`'s `SdfTextMaterial` — so a lean export
+# that turns 3D rendering off strips the very thing they are built out of. ON by
+# default; `renzora_runtime` forwards its own `render_3d` here, and the exporter
+# strips that for a 2D game. Nothing else in this crate is 3D, which is why the
+# gate is these two modules rather than the UI layer.
+render_3d = ["renzora/render_3d"]
+# Desktop conveniences that only the EDITOR's widgets use: the system clipboard
+# (`arboard`, for the code editor / text input / console Copy) and local + remote
+# image decoding (`image`, for file-browser thumbnails and markdown `![](url)`).
+#
+# Split out because both are non-optional dependencies that shipped in every
+# exported game with UI — `image` in particular is a whole second decoder stack
+# beside bevy's, and drags `moxcms` behind it. A game's markup UI loads textures
+# through bevy's asset pipeline and has no code editor, so it needs neither.
+#
+# Each call site already had a wasm no-op twin, so switching this off takes the
+# same path the browser build has always taken: copy silently fails, paste
+# yields `None`, an image request resolves to its placeholder.
+editor_tools = ["dep:arboard", "dep:image"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -54,13 +76,16 @@ crossbeam-channel = "0.5"
 
 # System clipboard for the code editor's cut/copy/paste. Native-only: arboard
 # has no wasm backend (the browser clipboard is async + gesture-gated), so the
-# editor's clipboard path no-ops on wasm.
+# editor's clipboard path no-ops on wasm. Optional under `editor_tools`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-arboard = "3"
-# Markdown image downloads (`![alt](url)`): fetch + decode on a background
-# thread, register as bevy `Image` assets. wasm builds no-op the download.
+arboard = { version = "3", optional = true }
 renzora_net = { path = "../renzora_net" }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Markdown image downloads (`![alt](url)`) and the file browser's thumbnail
+# decode: fetch + decode on a background thread, register as bevy `Image`
+# assets. wasm builds no-op both. Optional under `editor_tools` — this is a
+# SECOND image-decoding stack on top of bevy_image's, and it brought `moxcms`
+# with it into every shipped game.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
