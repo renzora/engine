@@ -24,9 +24,9 @@ use crate::tools::{ModelingOp, ModelingSettings, PendingOps};
 
 const LABEL_W: f32 = 88.0;
 
-pub struct NativeModeling;
+pub struct ModelingPanel;
 
-impl Plugin for NativeModeling {
+impl Plugin for ModelingPanel {
     fn build(&self, app: &mut App) {
         renzora::RenzoraShellExt::register_shell_panel(app, "modeling", "Modeling", "cube", "3D");
         app.register_panel_content("modeling", true, build)

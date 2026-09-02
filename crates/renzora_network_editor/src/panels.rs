@@ -21,9 +21,9 @@ use renzora_network::{NetworkId, NetworkOwner, NetworkStatus, Networked, OwnerKi
 const MUTED: (u8, u8, u8) = (148, 148, 160);
 const GREEN: (u8, u8, u8) = (80, 200, 120);
 
-pub struct NativeNetworkPanels;
+pub struct NetworkPanels;
 
-impl Plugin for NativeNetworkPanels {
+impl Plugin for NetworkPanels {
     fn build(&self, app: &mut App) {
         app.register_panel_content("network_monitor", true, build_monitor);
         app.register_panel_content("network_entities", true, build_entities);

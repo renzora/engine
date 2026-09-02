@@ -4,7 +4,7 @@
 //! (meshes + lights + camera) similar to Unreal Engine's level templates.
 
 mod graphics_quality;
-mod native;
+mod panel;
 pub mod state;
 
 use bevy::prelude::*;
@@ -87,7 +87,7 @@ impl Plugin for LevelPresetsPlugin {
         graphics_quality::register(app);
 
         // Native (ember/bevy_ui) panel content.
-        app.add_plugins(native::NativeLevelPresets);
+        app.add_plugins(panel::LevelPresetsPanel);
     }
 }
 

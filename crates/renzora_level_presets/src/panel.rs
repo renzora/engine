@@ -30,9 +30,9 @@ const TILE: f32 = 88.0;
 /// was blank, and eleven of them filled the panel with gaps.
 const ICON_AREA: f32 = 34.0;
 
-pub struct NativeLevelPresets;
+pub struct LevelPresetsPanel;
 
-impl Plugin for NativeLevelPresets {
+impl Plugin for LevelPresetsPanel {
     fn build(&self, app: &mut App) {
         // `false`: this panel owns its own vertical scroll over the card grid.
         app.register_panel_content("level_presets", false, build)

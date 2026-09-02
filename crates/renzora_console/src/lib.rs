@@ -1,6 +1,6 @@
 //! Console panel crate for the Renzora editor.
 
-pub mod native;
+pub mod panel;
 pub mod state;
 
 pub use state::*;
@@ -50,8 +50,8 @@ impl Plugin for ConsolePlugin {
             (drain_log_buffer, drain_script_logs).run_if(in_state(SplashState::Editor)),
         );
 
-        // Bevy-native (ember) console for the bevy_ui editor shell.
-        native::register_native_console(app);
+        // The console panel for the bevy_ui editor shell.
+        panel::register(app);
     }
 }
 

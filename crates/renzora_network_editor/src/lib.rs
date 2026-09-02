@@ -1,11 +1,11 @@
 //! Networking editor panels for the Renzora editor.
 //!
 //! Panels: Network Monitor, Network Entities, Network Settings — all rendered
-//! natively (bevy_ui / ember) in [`native`]. This crate also registers the
+//! in bevy_ui / ember in [`panels`]. This crate also registers the
 //! `Networked` and `NetworkTransform` inspector entries (declarative fields, no
 //! egui).
 
-mod native;
+mod panels;
 
 use bevy::prelude::*;
 
@@ -79,7 +79,7 @@ pub struct NetworkEditorPlugin;
 impl Plugin for NetworkEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] NetworkEditorPlugin");
-        app.add_plugins(native::NativeNetworkPanels);
+        app.add_plugins(panels::NetworkPanels);
         app.register_inspector(networked_inspector());
         app.register_inspector(network_transform_inspector());
     }

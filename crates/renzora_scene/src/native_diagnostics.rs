@@ -476,7 +476,7 @@ fn warnings_snapshot(world: &Rx) -> KeyedSnapshot {
 }
 
 /// A small rounded `×N` pill shown when a warning repeated. Same shape and
-/// palette as the console's badge (`renzora_console::native::count_badge`) so
+/// palette as the console's badge (`renzora_console::panel::count_badge`) so
 /// the two feeds read as one system; kept as a local copy rather than a shared
 /// helper because the console is a separate crate this one doesn't depend on.
 fn count_badge(commands: &mut Commands, fonts: &EmberFonts, count: u32) -> Entity {

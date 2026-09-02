@@ -312,7 +312,7 @@ fn history_snapshot(world: &Rx) -> KeyedSnapshot {
 
 // ── Registration ────────────────────────────────────────────────────────────
 
-pub fn register_native_history(app: &mut App) {
+pub fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
     // Build once; the reactive keyed list drives the rows from here on.
     app.register_panel_content(PANEL_ID, true, |commands, _fonts| {

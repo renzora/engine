@@ -1,6 +1,6 @@
 //! Foliage Editor — painting foliage onto terrain with brush tools.
 
-mod native;
+mod panel;
 mod shelf;
 pub mod systems;
 
@@ -17,7 +17,7 @@ impl Plugin for FoliageEditorPlugin {
         info!("[editor] FoliageEditorPlugin");
         // Native (bevy_ui/ember) port of the egui foliage panel; its registered
         // content overrides the egui panel body for id "foliage_painting".
-        app.add_plugins(native::NativeFoliage);
+        app.add_plugins(panel::FoliagePanel);
         // The brush + foliage-type palette on the viewport's left shelf, beside
         // the terrain brushes and driving the same settings the panel does.
         shelf::register(app);

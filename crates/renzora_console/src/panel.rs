@@ -605,8 +605,8 @@ fn chips_snapshot(world: &Rx) -> KeyedSnapshot {
 
 // ── Registration ────────────────────────────────────────────────────────────
 
-/// Wire the bevy-native console into the editor (a single call from `ConsolePlugin`).
-pub fn register_native_console(app: &mut App) {
+/// Wire the console into the editor (a single call from `ConsolePlugin`).
+pub fn register(app: &mut App) {
     use renzora::SplashState;
     // `scroll = false`: the console manages its own internal log scroll.
     app.register_panel_content(PANEL_ID, false, build_console);

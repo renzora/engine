@@ -31,9 +31,9 @@ use crate::systems::FoliageToolState;
 
 const LABEL_W: f32 = 96.0;
 
-pub struct NativeFoliage;
+pub struct FoliagePanel;
 
-impl Plugin for NativeFoliage {
+impl Plugin for FoliagePanel {
     fn build(&self, app: &mut App) {
         app.register_panel_content("foliage_painting", true, build)
             .systems(

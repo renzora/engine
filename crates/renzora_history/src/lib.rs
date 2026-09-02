@@ -1,8 +1,8 @@
 //! History panel — view and jump through the undo/redo stack.
 //!
-//! The panel is bevy_ui (ember) native; see [`native`].
+//! The panel itself is bevy_ui (ember); see [`panel`].
 
-pub mod native;
+pub mod panel;
 
 use bevy::prelude::*;
 
@@ -12,7 +12,7 @@ pub struct HistoryPanelPlugin;
 impl Plugin for HistoryPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] HistoryPanelPlugin");
-        native::register_native_history(app);
+        panel::register(app);
     }
 }
 

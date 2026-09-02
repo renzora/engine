@@ -29,7 +29,7 @@ use renzora::{AppEditorExt, ShortcutEntry};
 use renzora_editor_framework::sdk::conditions::in_mode;
 
 pub mod edit_mesh;
-pub mod native;
+pub mod panel;
 pub mod operators;
 pub mod sculpt;
 pub mod selection;
@@ -49,7 +49,7 @@ pub struct MeshEditPlugin;
 impl Plugin for MeshEditPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] MeshEditPlugin");
-        app.add_plugins(native::NativeModeling);
+        app.add_plugins(panel::ModelingPanel);
         toolbar::register(app);
         app.init_resource::<MeshSelection>()
             .init_resource::<systems::GrabState>()
