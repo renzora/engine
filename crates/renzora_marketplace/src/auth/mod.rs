@@ -12,6 +12,7 @@ pub mod account;
 pub mod api;
 pub mod billing;
 pub mod client;
+pub mod docs;
 pub mod marketplace;
 pub mod publish;
 mod modal;

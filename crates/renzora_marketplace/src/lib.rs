@@ -93,6 +93,8 @@ mod thumbs;
 #[cfg(not(target_arch = "wasm32"))]
 mod toasts;
 #[cfg(not(target_arch = "wasm32"))]
+mod docs_panel;
+#[cfg(not(target_arch = "wasm32"))]
 mod upload_panel;
 #[cfg(not(target_arch = "wasm32"))]
 mod util;
@@ -154,6 +156,9 @@ impl Plugin for MarketplacePlugin {
         app.add_plugins(store::StorePanel);
         app.add_plugins(library::LibraryPanel);
         app.add_plugins(upload_panel::UploaderPanel);
+        // Docs: the renzora.com portal in a panel. Nothing to do with the
+        // marketplace, but it lives here because its API client does.
+        docs_panel::register(app);
         // Creator onboarding: state and systems only. Its UI is Publish's first
         // stage, not a panel of its own — see `onboarding::register`.
         onboarding::register(app);

@@ -415,11 +415,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     ));
     commands.entity(search_row).add_children(&[search_ic, search]);
 
-    // Account + Upload.
-    let account_bar = build_account_bar(commands, fonts);
-    commands
-        .entity(toolbar)
-        .add_children(&[search_row, account_bar]);
+    commands.entity(toolbar).add_children(&[search_row]);
 
     // Status / error.
     let status = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(RED)), Node { flex_shrink: 0.0, ..default() })).id();
@@ -480,22 +476,21 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-/// The account cluster for the **toolbar**: signed-in identity + credit balance,
-/// or a Sign In button, plus Upload Asset.
+/// The account cluster at the **top of the sidebar**: signed-in identity +
+/// credit balance, or a Sign In button, plus Upload Asset.
 ///
-/// These lived at the top of the category sidebar, which is where the store's
-/// own artwork now starts and where a shopper is looking for genres rather than
-/// for their account. Every store puts identity and "sell something" in the top
-/// bar; moving them there also gives the sidebar back to the category list,
-/// which is what the larger category type is for.
+/// It sits above the categories, in the column, so who you are and the thing
+/// you do as yourself ("sell something") read as one block rather than
+/// competing with the search field for the top of the grid.
 ///
-/// Returns one row, laid out horizontally rather than the sidebar's column.
+/// Returns a full-width column — the sidebar is 200px, so identity, balance and
+/// the upload button stack rather than sharing a line.
 fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
         .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
             flex_shrink: 0.0,
             ..default()
         })
@@ -504,16 +499,15 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // ── Account block ──
     let account = commands
         .spawn((
-            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
         ))
         .id();
 
-    // Signed-in identity + balance.
-    // A row now, not a column: in the toolbar the identity and the balance sit
-    // side by side rather than stacked, so the bar keeps one line's height.
-    let signed = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).id();
+    // Identity over balance: at 200px wide there is no room for them side by
+    // side, and stacking is what the column wants anyway.
+    let signed = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() }).id();
     bind_display(commands, signed, signed_in);
     let who_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }).id();
     let who_icon = icon_text(commands, &fonts.phosphor, "user-circle", text_muted(), 14.0);
@@ -580,7 +574,7 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let up_txt = commands.spawn((Text::new("Upload Asset"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     commands.entity(upload).add_children(&[up_icon, up_txt]);
 
-    commands.entity(col).add_children(&[upload, account]);
+    commands.entity(col).add_children(&[account, upload]);
     col
 }
 
@@ -672,10 +666,11 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .entity(filters)
         .add_children(&[sort_l, sort, rating_l, rating, price_l, price, count]);
 
+    let account_bar = build_account_bar(commands, fonts);
     let cats_label = section_label(commands, fonts, "Categories");
     commands
         .entity(col)
-        .add_children(&[cats_label, cats_scroll, sep, filters]);
+        .add_children(&[account_bar, cats_label, cats_scroll, sep, filters]);
     col
 }
 
