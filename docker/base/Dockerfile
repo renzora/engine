@@ -48,6 +48,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libudev-dev \
     libvulkan-dev \
     libssl-dev \
+    # `yeslogic-fontconfig-sys` links this. It was absent here for a long time
+    # without breaking anything, because the `rust:*-bookworm` layer below
+    # already pulls fontconfig in transitively — an implicit dependency that
+    # would turn into a build failure the day the base image moved. Naming it
+    # costs nothing and makes the requirement survive a base bump.
+    libfontconfig1-dev \
     mold \
     clang \
     lld \

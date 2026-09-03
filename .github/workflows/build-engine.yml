@@ -371,6 +371,24 @@ jobs:
       # and udev are linked at build, the X11/Wayland/Vulkan/xkbcommon headers
       # are there so the build stays honest about what it compiles against.
       # zstd packs the SDK further down.
+      #
+      # It did NOT mirror the image for a long time, and both omissions were
+      # fatal rather than cosmetic:
+      #
+      #   * `clang` + `mold`, which `[target.x86_64-unknown-linux-gnu]` in
+      #     .cargo/config.toml names as the linker and its `-fuse-ld`. The x64
+      #     runner ships clang but not mold, so every Linux lane died on
+      #     `clang: error: invalid linker name in argument '-fuse-ld=mold'`
+      #     while compiling xtask — before a single engine crate was reached.
+      #   * `libfontconfig1-dev`, which is in neither this list NOR the base
+      #     image, because `rust:*-bookworm` and the x64 runner image both
+      #     happen to ship fontconfig already. The arm64 runner does not, so
+      #     that lane alone died minutes in, inside the `yeslogic-fontconfig-sys`
+      #     build script. An implicit dependency satisfied by luck on two images
+      #     out of three reads exactly like a flaky lane.
+      #
+      # `cargo renzora` installs this same set on a contributor's machine
+      # (xtask's `preflight_host_deps`); keep the three lists in step.
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -378,7 +396,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             pkg-config libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
             libxinerama-dev libwayland-dev libxkbcommon-dev libasound2-dev \
-            libudev-dev libvulkan-dev libssl-dev zstd
+            libudev-dev libvulkan-dev libssl-dev libfontconfig1-dev \
+            clang mold zstd
 
       # appimagetool turns the AppDir that `--bundle` builds into a `.AppImage`.
       # Optional to the bundler — the AppDir alone already satisfies
