@@ -415,7 +415,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     ));
     commands.entity(search_row).add_children(&[search_ic, search]);
 
-    commands.entity(toolbar).add_children(&[search_row]);
+    // Search, then the one action you take on what it finds.
+    let upload = build_upload_button(commands, fonts);
+    commands.entity(toolbar).add_children(&[search_row, upload]);
 
     // Status / error.
     let status = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(RED)), Node { flex_shrink: 0.0, ..default() })).id();
@@ -477,14 +479,14 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// The account cluster at the **top of the sidebar**: signed-in identity +
-/// credit balance, or a Sign In button, plus Upload Asset.
+/// credit balance, or a Sign In button.
 ///
-/// It sits above the categories, in the column, so who you are and the thing
-/// you do as yourself ("sell something") read as one block rather than
-/// competing with the search field for the top of the grid.
+/// It sits above the categories so who you are reads as part of the column you
+/// navigate from, rather than competing with the search field for the top of
+/// the grid. Upload Asset is *not* here — see [`build_upload_button`].
 ///
-/// Returns a full-width column — the sidebar is 200px, so identity, balance and
-/// the upload button stack rather than sharing a line.
+/// Returns a full-width column — the sidebar is 200px, so identity and balance
+/// stack rather than sharing a line.
 fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
         .spawn(Node {
@@ -559,23 +561,32 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(signin).add_children(&[si_icon, si_txt]);
     commands.entity(account).add_children(&[signed, signin]);
 
-    // ── Upload Asset (opens the Publish uploader panel) ──
+    commands.entity(col).add_child(account);
+    col
+}
+
+/// The **Upload Asset** button, for the toolbar beside the search field.
+///
+/// Not in the sidebar with the identity block: selling is an action on the
+/// catalogue you are looking at, so it sits with the control that filters it
+/// rather than under your name.
+fn build_upload_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let upload = commands
         .spawn((
-            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), height: Val::Px(36.0), padding: UiRect::horizontal(Val::Px(12.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(hover_bg())),
             BorderColor::all(rgb(border())),
             Interaction::default(),
             StoreUploadBtn,
             Name::new("store-upload"),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let up_icon = icon_text(commands, &fonts.phosphor, "upload-simple", text_primary(), 13.0);
+    commands.entity(up_icon).insert(FocusPolicy::Pass);
     let up_txt = commands.spawn((Text::new("Upload Asset"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     commands.entity(upload).add_children(&[up_icon, up_txt]);
-
-    commands.entity(col).add_children(&[account, upload]);
-    col
+    upload
 }
 
 /// The left column: nothing but the category list now.
