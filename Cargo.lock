@@ -8018,6 +8018,7 @@ dependencies = [
  "renzora_audio",
  "renzora_ember",
  "renzora_grid",
+ "renzora_native_build",
  "renzora_shader",
  "renzora_theme",
  "rfd",

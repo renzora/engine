@@ -313,3 +313,278 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
 
     Ok(extract_dir)
 }
+
+// ── Plugins ─────────────────────────────────────────────────────────────────
+
+/// Is this category's download a buildable plugin source tree?
+pub fn is_plugin_category(category: &str) -> bool {
+    matches!(category, "plugins" | "plugin")
+}
+
+/// Where a plugin's source has to land: `<install root>/plugins/`.
+///
+/// Not the project's `plugins/` folder. `renzora_native_plugin::prebuild` scans
+/// the directory beside the executable and compiles what it finds there, and
+/// `NativePluginLoader` loads from the same place — a plugin installed anywhere
+/// else is never seen by either.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn engine_plugins_dir() -> Result<PathBuf, String> {
+    renzora_native_build::install::root()
+        .map(|r| r.join("plugins"))
+        .ok_or_else(|| "Could not locate the engine install directory".to_string())
+}
+
+/// The crate name from a plugin zip's `Cargo.toml`, and the archive prefix to
+/// strip when extracting.
+///
+/// Mirrors the check the marketplace server runs at upload time
+/// (`plugin_crate_name`), and for the same reason: the manifest is the only
+/// authority on what the crate is called. Accepts the manifest at the archive
+/// root (prefix `""`) or one directory down (prefix `"<dir>/"`), because
+/// zipping the crate folder and zipping its contents are both normal.
+#[cfg(not(target_arch = "wasm32"))]
+fn plugin_crate_and_prefix(data: &[u8]) -> Result<(String, String), String> {
+    use std::io::Read;
+
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
+        .map_err(|e| format!("Invalid zip archive: {e}"))?;
+
+    let mut best: Option<(String, String)> = None; // (manifest text, prefix)
+    for i in 0..archive.len() {
+        let mut f = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry: {e}"))?;
+        let name = f.name().to_string();
+        if !name.ends_with("Cargo.toml") || name.contains("..") {
+            continue;
+        }
+        let depth = name.matches('/').count();
+        if depth > 1 {
+            continue;
+        }
+        let prefix = match name.rsplit_once('/') {
+            Some((dir, _)) => format!("{dir}/"),
+            None => String::new(),
+        };
+        let mut text = String::new();
+        if f.read_to_string(&mut text).is_err() {
+            return Err("Cargo.toml is not valid UTF-8".to_string());
+        }
+        if depth == 0 {
+            best = Some((text, prefix));
+            break;
+        }
+        best.get_or_insert((text, prefix));
+    }
+
+    let (text, prefix) = best.ok_or_else(|| {
+        "This plugin's archive has no Cargo.toml — it does not contain buildable source"
+            .to_string()
+    })?;
+
+    let parsed: toml::Table = text
+        .parse()
+        .map_err(|e| format!("Cargo.toml is not valid TOML: {e}"))?;
+    let name = parsed
+        .get("package")
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .ok_or_else(|| "Cargo.toml has no [package] name".to_string())?;
+
+    // The name becomes a directory and a library filename.
+    if name.is_empty()
+        || name.len() > 64
+        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(format!("Invalid crate name '{name}' in Cargo.toml"));
+    }
+    Ok((name.to_string(), prefix))
+}
+
+/// Install a plugin by extracting its source into
+/// `<install root>/plugins/<crate>/`, ready for `prebuild` to compile on the
+/// next launch.
+///
+/// The directory is named after the **crate**, not the marketplace listing:
+/// `prebuild` derives the artefact filename from the directory name, so
+/// `<dir>/build/<dir>.dll` only matches what `rustc` emits when the two agree.
+///
+/// An existing install of the same crate is replaced wholesale, which also
+/// drops its `build/` directory — no stamp means `prebuild` rebuilds, which is
+/// what a new version needs anyway.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_plugin_source(data: &[u8]) -> Result<PathBuf, String> {
+    use std::io::Read;
+
+    let (crate_name, prefix) = plugin_crate_and_prefix(data)?;
+    let plugins = engine_plugins_dir()?;
+    let dest = plugins.join(&crate_name);
+
+    // Extract to a staging directory and swap, so a failure part-way through
+    // cannot leave a half-written plugin behind. Staged *outside* `plugins/`,
+    // on the same filesystem so the rename is atomic: `prebuild` compiles any
+    // directory under `plugins/` with a `src/lib.rs`, so a crash mid-extract
+    // would otherwise leave it a broken tree to build.
+    let root = plugins
+        .parent()
+        .ok_or_else(|| "Install directory has no parent".to_string())?;
+    let staging = root.join(format!(".plugin-incoming-{crate_name}"));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)
+        .map_err(|e| format!("Failed to create {}: {e}", staging.display()))?;
+
+    let extract = || -> Result<(), String> {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
+            .map_err(|e| format!("Invalid zip archive: {e}"))?;
+        for i in 0..archive.len() {
+            let mut entry = archive
+                .by_index(i)
+                .map_err(|e| format!("Failed to read zip entry: {e}"))?;
+            let raw = entry.name().to_string();
+            if raw.contains("..") {
+                continue;
+            }
+            // Strip the wrapper directory, if the archive has one, so the tree
+            // always lands as `<crate>/Cargo.toml` rather than
+            // `<crate>/<crate>/Cargo.toml`.
+            let Some(rel) = raw.strip_prefix(prefix.as_str()) else {
+                continue;
+            };
+            if rel.is_empty() {
+                continue;
+            }
+            let out = staging.join(rel);
+            if entry.is_dir() {
+                std::fs::create_dir_all(&out)
+                    .map_err(|e| format!("Failed to create {}: {e}", out.display()))?;
+                continue;
+            }
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+            }
+            let mut buf = Vec::new();
+            entry
+                .read_to_end(&mut buf)
+                .map_err(|e| format!("Failed to read {rel}: {e}"))?;
+            std::fs::write(&out, &buf)
+                .map_err(|e| format!("Failed to write {}: {e}", out.display()))?;
+        }
+        Ok(())
+    };
+
+    if let Err(e) = extract() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
+    // `prebuild` keys off `src/lib.rs`; without it the plugin would be silently
+    // ignored rather than reported, so say so now.
+    if !staging.join("src").join("lib.rs").is_file() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!(
+            "Plugin '{crate_name}' has no src/lib.rs — it does not look like a plugin crate"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&dest);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+    }
+    std::fs::rename(&staging, &dest).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&staging);
+        format!("Failed to move plugin into {}: {e}", dest.display())
+    })?;
+    Ok(dest)
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod plugin_install_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn zip_of(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            for (name, body) in entries {
+                w.start_file::<_, ()>(*name, zip::write::SimpleFileOptions::default())
+                    .unwrap();
+                w.write_all(body.as_bytes()).unwrap();
+            }
+            w.finish().unwrap();
+        }
+        buf
+    }
+
+    const MANIFEST: &str = "[package]\nname = \"renzora_lumen\"\nversion = \"0.1.0\"\n";
+
+    #[test]
+    fn reads_a_root_manifest_with_no_prefix_to_strip() {
+        let zip = zip_of(&[("Cargo.toml", MANIFEST), ("src/lib.rs", "")]);
+        let (name, prefix) = plugin_crate_and_prefix(&zip).unwrap();
+        assert_eq!(name, "renzora_lumen");
+        assert_eq!(prefix, "");
+    }
+
+    /// Zipping the crate folder is just as common as zipping its contents, and
+    /// the wrapper directory has to come off or the tree lands one level deep.
+    #[test]
+    fn reads_a_wrapped_manifest_and_reports_the_prefix() {
+        let zip = zip_of(&[
+            ("renzora_lumen/Cargo.toml", MANIFEST),
+            ("renzora_lumen/src/lib.rs", ""),
+        ]);
+        let (name, prefix) = plugin_crate_and_prefix(&zip).unwrap();
+        assert_eq!(name, "renzora_lumen");
+        assert_eq!(prefix, "renzora_lumen/");
+    }
+
+    /// The wrapper directory's name is irrelevant — the manifest names the crate.
+    #[test]
+    fn the_crate_name_comes_from_the_manifest_not_the_folder() {
+        let zip = zip_of(&[
+            ("some-download-folder/Cargo.toml", MANIFEST),
+            ("some-download-folder/src/lib.rs", ""),
+        ]);
+        let (name, _) = plugin_crate_and_prefix(&zip).unwrap();
+        assert_eq!(name, "renzora_lumen");
+    }
+
+    #[test]
+    fn a_manifest_nested_deeper_than_one_level_is_not_the_plugins() {
+        let zip = zip_of(&[("a/b/Cargo.toml", MANIFEST)]);
+        assert!(plugin_crate_and_prefix(&zip).is_err());
+    }
+
+    #[test]
+    fn rejects_an_archive_with_no_manifest() {
+        let zip = zip_of(&[("src/lib.rs", ""), ("readme.md", "hi")]);
+        assert!(plugin_crate_and_prefix(&zip).is_err());
+    }
+
+    #[test]
+    fn rejects_a_crate_name_that_would_escape_the_plugins_directory() {
+        for bad in ["../../evil", "a/b", "with space"] {
+            let manifest = format!("[package]\nname = \"{bad}\"\n");
+            let zip = zip_of(&[("Cargo.toml", manifest.as_str())]);
+            assert!(plugin_crate_and_prefix(&zip).is_err(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_bytes_that_are_not_a_zip() {
+        assert!(plugin_crate_and_prefix(b"definitely not a zip").is_err());
+    }
+
+    #[test]
+    fn plugin_categories_match_the_servers() {
+        assert!(is_plugin_category("plugins"));
+        assert!(is_plugin_category("plugin"));
+        assert!(!is_plugin_category("scripts"));
+        // The directory mapping has to agree, or the restart prompt and the
+        // install path would disagree about what a plugin is.
+        assert_eq!(install_dir_for_category("plugins"), "plugins");
+    }
+}

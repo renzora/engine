@@ -51,6 +51,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # Parsing a downloaded theme `.toml`, and writing the installed-plugin metadata
 # sidecar (`<crate>.plugin.toml`).
 toml = "0.8"
+# Where the install root is, so a downloaded plugin's source lands in the
+# `plugins/` directory that `renzora_native_plugin::prebuild` compiles from.
+renzora_native_build = { path = "../renzora_native_build" }
 # Native audio preview for the item overlay: the engine's Kira manager plays the
 # downloaded clip, and we name Kira's own handle/data types to drive it.
 # renzora_audio does NOT depend on this crate, so it stays acyclic.

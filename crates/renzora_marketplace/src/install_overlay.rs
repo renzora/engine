@@ -193,7 +193,11 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // Default destination = the category's conventional subfolder. Create it up
     // front so it shows in the tree even on a fresh project.
     let default_dest = root.join(install::install_dir_for_category(&asset.category));
-    let _ = std::fs::create_dir_all(&default_dest);
+    // Only for the picker's benefit — a plugin never lands in the project, so
+    // don't create a `plugins/` folder there that nothing will ever use.
+    if !install::is_plugin_category(&asset.category) {
+        let _ = std::fs::create_dir_all(&default_dest);
+    }
 
     let mut queue = CommandQueue::default();
     let mut commands = Commands::new(&mut queue, world);
@@ -500,29 +504,40 @@ fn run_install(
         return Err("Sign in to download this asset".into());
     };
     shared.phase.store(Phase::Writing as u8, Ordering::Relaxed);
-    let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
-    // Plugins get a metadata sidecar next to the dll so a lean export can trace
-    // it back to source and the official editor can fetch the right per-release
-    // dll. Non-fatal: a missing sidecar doesn't fail the install.
-    if install::install_dir_for_category(&asset.category) == "plugins" {
+
+    // A plugin is a source tree, not an asset file. It goes to the engine's own
+    // `plugins/` directory under its crate name, where `prebuild` compiles it on
+    // the next launch — `dest` (a project folder) is not somewhere anything
+    // would ever look for it.
+    if install::is_plugin_category(&asset.category) {
+        let path = install::install_plugin_source(&bytes)?;
         let crate_name = path
-            .file_stem()
+            .file_name()
             .and_then(|s| s.to_str())
-            .map(|s| s.strip_prefix("lib").unwrap_or(s).to_string())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_string();
+        // The sidecar ties the installed source back to its listing, so the
+        // manager can show what a directory came from and check for updates.
+        // Non-fatal: a missing sidecar doesn't fail the install.
         let meta = install::PluginSidecar {
             asset_id: asset.id.clone(),
             name: asset.name.clone(),
             slug: asset.slug.clone(),
             version: asset.version.clone(),
             category: asset.category.clone(),
-            crate_name,
+            crate_name: crate_name.clone(),
             ..Default::default()
         };
         if let Err(e) = install::write_plugin_sidecar(&path, &meta) {
-            bevy::log::warn!("[hub] plugin sidecar not written: {e}");
+            bevy::log::warn!("[marketplace] plugin sidecar not written: {e}");
         }
+        return Ok(format!(
+            "Installed \"{}\" as plugin '{crate_name}'. It is built on the next start.",
+            asset.name
+        ));
     }
+
+    let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
 }
 
