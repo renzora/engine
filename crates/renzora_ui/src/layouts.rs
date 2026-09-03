@@ -59,7 +59,6 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
             WorkspaceLayout::scene("Debug", layout_debug()),
-            WorkspaceLayout::scene("Hub", layout_hub()),
             // ── Asset-mode layouts (hidden, auto-activated when an asset
             // doc tab is focused). Add new variants here as panels for
             // those kinds learn to render from `EditorContext`.
@@ -321,22 +320,6 @@ pub fn scene_layout() -> DockTree {
             0.78,
         ),
         0.16,
-    )
-}
-
-/// Hub: the account surfaces that are panels.
-///
-/// The store is no longer one of them — browsing opens as an overlay from the
-/// top bar's storefront icon, so a workspace pointing at `hub_store` would open
-/// on a panel that no longer exists.
-fn layout_hub() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("asset_uploader"),
-        DockTree::Leaf {
-            tabs: vec!["hub_library".into(), "social_wallet".into()],
-            active_tab: 0,
-        },
-        0.6,
     )
 }
 

@@ -546,7 +546,6 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Particles".into(), layout_particles()),
         ("UI".into(), layout_ui()),
         ("Debug".into(), layout_debug()),
-        ("Marketplace".into(), layout_marketplace()),
     ]
 }
 
@@ -790,26 +789,6 @@ pub fn scene_layout() -> DockTree {
             0.78,
         ),
         0.15,
-    )
-}
-
-/// Marketplace workspace: what you sell on the left, what you own on the right.
-///
-/// This was the "Hub" — a community home with friends down one side and feed,
-/// messages and docs across the middle. All of that is gone: the account exists
-/// to publish and purchase assets and nothing else.
-///
-/// The **store itself is not here** any more. Browsing is a place you go rather
-/// than a panel you keep, so it opens as an overlay from the storefront icon in
-/// the top bar (see `renzora_marketplace::store_overlay`). What is left is the
-/// half of an account you come back to: uploading, what you own, and what you
-/// can spend. `asset_uploader` carries both halves of selling — becoming a
-/// creator and uploading — so there is no separate onboarding tab to place.
-fn layout_marketplace() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("asset_uploader"),
-        DockTree::tabs(&["hub_library", "social_wallet"]),
-        0.6,
     )
 }
 

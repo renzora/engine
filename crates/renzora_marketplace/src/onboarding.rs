@@ -14,7 +14,6 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use renzora::SplashState;
 use crate::auth::billing::OnboardStatus;
 use crate::auth::AuthSession;
-use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::tracked::keyed_list_tokened;
@@ -169,11 +168,17 @@ fn open_url(url: &str) {
 /// Publish panel, which is where the wizard is shown.
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<OnboardingPanel>();
+    /// The wizard is part of the uploader tree, which is only on screen while
+    /// the marketplace overlay is in its Publish view.
+    fn publishing(data: Option<Res<crate::store::HubStoreData>>) -> bool {
+        data.map(|d| d.publishing).unwrap_or(false)
+    }
+
     app.add_systems(
         Update,
         (
             poll_results,
-            auto_load.run_if(panel_active(crate::upload_panel::PANEL_ID)),
+            auto_load.run_if(publishing),
             clicks,
         )
             .run_if(in_state(SplashState::Editor)),
@@ -315,11 +320,9 @@ fn clicks(
     }
 
     if uploads.iter().any(pressed) {
-        // Open the in-editor Publish panel (the engine's own uploader), not the
-        // website — mirrors the Marketplace panel's "Upload Asset" button.
-        commands.queue(|world: &mut World| {
-            renzora_ember::dock::open_or_focus_panel(world, "asset_uploader");
-        });
+        // Switch the marketplace overlay to its Publish view (the engine's own
+        // uploader), not the website.
+        commands.queue(crate::upload_panel::begin_publishing);
     }
 
     if refreshes.iter().any(pressed) && session.is_signed_in() {

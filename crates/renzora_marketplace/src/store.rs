@@ -165,7 +165,11 @@ enum HomeMsg {
 }
 
 #[derive(Resource)]
-struct HubStoreData {
+pub(crate) struct HubStoreData {
+    /// Showing the Publish form instead of the storefront. Publishing is a view
+    /// of the marketplace, not a dock panel — you are already here when you
+    /// decide to sell something.
+    pub(crate) publishing: bool,
     search: String,
     category: Option<String>,
     sort: String,
@@ -203,6 +207,7 @@ struct HubStoreData {
 impl Default for HubStoreData {
     fn default() -> Self {
         Self {
+            publishing: false,
             search: String::new(),
             category: None,
             sort: "popular".into(),
@@ -337,6 +342,10 @@ struct StoreSignInBtn;
 struct StoreTopUpBtn;
 #[derive(Component)]
 struct StoreUploadBtn;
+
+/// Leaves the Publish view and returns to the storefront.
+#[derive(Component)]
+struct StoreBackBtn;
 #[derive(Component)]
 struct StopPreviewBtn;
 #[derive(Component)]
@@ -444,10 +453,27 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let browse = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() })
         .id();
-    bind_display(commands, browse, |w| !w.resource::<HubStoreData>().is_home());
+    bind_display(commands, browse, |w| {
+        let d = w.resource::<HubStoreData>();
+        !d.publishing && !d.is_home()
+    });
     commands.entity(browse).add_children(&[grid_scroll, pager]);
 
-    commands.entity(right).add_children(&[toolbar, home, browse]);
+    // Publish: the uploader, in the same content area rather than a panel.
+    let publish = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .id();
+    bind_display(commands, publish, |w| w.resource::<HubStoreData>().publishing);
+    let back = chip_button(commands, fonts, "arrow-left", Some("Back to store"), StoreBackBtn);
+    let back_row = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, ..default() })
+        .id();
+    commands.entity(back_row).add_child(back);
+    let uploader = crate::upload_panel::build(commands, fonts);
+    let uploader_scroll = renzora_ember::widgets::scroll_view(commands, uploader);
+    commands.entity(publish).add_children(&[back_row, uploader_scroll]);
+
+    commands.entity(right).add_children(&[toolbar, home, browse, publish]);
 
     commands.entity(split).add_children(&[sidebar, right]);
     commands.entity(root).add_children(&[status, banner, split]);
@@ -1144,7 +1170,10 @@ fn build_home(commands: &mut Commands) -> Entity {
 
     commands.entity(col).add_child(sections);
     let scroll = renzora_ember::widgets::scroll_view(commands, col);
-    bind_display(commands, scroll, |w| w.resource::<HubStoreData>().is_home());
+    bind_display(commands, scroll, |w| {
+        let d = w.resource::<HubStoreData>();
+        !d.publishing && d.is_home()
+    });
     scroll
 }
 
@@ -1748,15 +1777,17 @@ pub(crate) fn open_url(url: &str) {
 
 fn store_upload_click(
     q: Query<&Interaction, (With<StoreUploadBtn>, Changed<Interaction>)>,
+    back: Query<&Interaction, (With<StoreBackBtn>, Changed<Interaction>)>,
     mut commands: Commands,
+    mut data: ResMut<HubStoreData>,
 ) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
-        // Open in the ember dock model the shell actually renders (+ arm a
-        // rebuild). Using `DockingState` alone left the panel invisible until a
-        // theme switch forced a refresh.
-        commands.queue(|world: &mut World| {
-            renzora_ember::dock::open_or_focus_panel(world, crate::upload_panel::PANEL_ID);
-        });
+        // Publishing is a view of this overlay, not a panel to go and find.
+        // `begin_publishing` also kicks the one category fetch.
+        commands.queue(crate::upload_panel::begin_publishing);
+    }
+    if back.iter().any(|i| *i == Interaction::Pressed) {
+        data.publishing = false;
     }
 }
 

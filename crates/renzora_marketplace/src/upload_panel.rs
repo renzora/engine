@@ -25,7 +25,6 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use renzora::core::RenzoraShellExt;
 use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
@@ -33,7 +32,6 @@ use crate::auth::marketplace::Category;
 use crate::auth::publish::{self, MediaUpload, PublishMeta, UploadFile, UploadedItem};
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed_list};
@@ -41,9 +39,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, dropdown, text_input, textarea, tint};
 use renzora::SplashState;
 
-/// Panel id — matches the `PANEL_META` entry in `renzora_shell` and the
-/// `focus_or_add_panel` call the Upload-Asset button makes.
-pub(crate) const PANEL_ID: &str = "asset_uploader";
+
 
 /// Licence options, value-for-value the website's `<select id="w-license">` and
 /// the server's `VALID_LICENCES` (see `LICENCE_VALUES`).
@@ -108,8 +104,9 @@ struct Uploader {
     /// by a click.
     cats_attempted: bool,
     cats_rx: Option<Receiver<Result<Vec<Category>, String>>>,
-    category: String,
-    category_name: String,
+    /// Index into the category dropdown: 0 is the "Select a category…"
+    /// placeholder, so a real category is `categories[category_index - 1]`.
+    category_index: usize,
 
     // Basics.
     name: String,
@@ -159,8 +156,7 @@ impl Default for Uploader {
             cats_loading: false,
             cats_attempted: false,
             cats_rx: None,
-            category: String::new(),
-            category_name: String::new(),
+            category_index: 0,
             name: String::new(),
             description: String::new(),
             price: "0".to_string(),
@@ -195,6 +191,15 @@ impl Default for Uploader {
 }
 
 impl Uploader {
+    /// The selected category's slug, or "" while the placeholder is showing.
+    fn category_slug(&self) -> &str {
+        self.category_index
+            .checked_sub(1)
+            .and_then(|i| self.categories.get(i))
+            .map(|c| c.slug.as_str())
+            .unwrap_or("")
+    }
+
     fn price_credits(&self) -> i64 {
         self.price.trim().parse::<i64>().unwrap_or(0).max(0)
     }
@@ -233,16 +238,16 @@ pub(crate) struct UploaderPanel;
 impl Plugin for UploaderPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Uploader>();
-        // "Publish" covers both halves of selling now: this panel shows creator
-        // onboarding until you are approved, then the upload form. See `build`.
-        app.register_shell_panel(PANEL_ID, "Publish", "upload-simple", "Marketplace");
-        app.register_panel_content(PANEL_ID, true, build)
-            .systems(
+        // Not a dock panel any more — publishing is a view inside the
+        // marketplace overlay (see `store::build`), which is where you already
+        // are when you decide to sell something. The systems are registered
+        // plainly rather than through `register_panel_content`, so they are not
+        // gated on a panel being visible; the only one that touches the network
+        // is kicked by a click (see `begin_publishing`).
+        app.add_systems(
             Update,
             (
-                ensure_categories,
                 uploader_poll,
-                cat_click,
                 nav_click,
                 pick_click,
                 tag_click,
@@ -256,11 +261,7 @@ impl Plugin for UploaderPanel {
 
 // ── Marker components ───────────────────────────────────────────────────────────
 
-#[derive(Component)]
-struct CatBtn {
-    slug: String,
-    name: String,
-}
+
 #[derive(Component)]
 struct PublishBtn;
 #[derive(Component)]
@@ -280,7 +281,7 @@ struct SuccessLinkBtn;
 
 // ── Build ───────────────────────────────────────────────────────────────────────
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // The panel has two stages and shows exactly one. Both are built up front
     // and swapped by `bind_display`, which is how every other conditional
     // surface here works — the alternative, rebuilding the subtree when creator
@@ -626,7 +627,8 @@ fn build_files_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
 
     let thumb_lbl = field_label(commands, fonts, "Cover Image", false);
-    let thumb_btn = file_pick_button(commands, fonts, PickThumbBtn, "Choose a cover image (1280×720)", |w| {
+    let thumb_hint = help_text(commands, fonts, "Recommended: 1280x720 (16:9). PNG or JPG.");
+    let thumb_btn = file_pick_button(commands, fonts, PickThumbBtn, "Choose a cover image", |w| {
         u(w).and_then(|s| s.thumbnail.as_ref().map(|f| f.name.clone()))
     });
 
@@ -634,7 +636,7 @@ fn build_files_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let shots_btn = file_pick_button(commands, fonts, PickShotsBtn, "Choose screenshots…", |w| {
         u(w).map(|s| s.screenshots.len()).filter(|n| *n > 0).map(|n| format!("{n} screenshot{} selected", if n == 1 { "" } else { "s" }))
     });
-    let shots_hint = help_text(commands, fonts, "Up to 10 images, shown in the gallery.");
+    let shots_hint = help_text(commands, fonts, "Up to 10 images, shown in the gallery. PNG or JPG.");
 
     let video = text_field(
         commands, fonts, "Video Preview URL", false, "https://www.youtube.com/watch?v=… or .mp4 link",
@@ -652,7 +654,7 @@ fn build_files_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(sec).add_children(&[
         head, intro, main_lbl, main_btn, main_hint, dl_hint,
-        thumb_lbl, thumb_btn, shots_lbl, shots_btn, shots_hint, video, audio_grp,
+        thumb_lbl, thumb_hint, thumb_btn, shots_lbl, shots_btn, shots_hint, video, audio_grp,
     ]);
     sec
 }
@@ -672,14 +674,7 @@ fn build_basics_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // select. Selecting one reveals that category's detail group directly below.
     let cat_lbl = field_label(commands, fonts, "Category", true);
     let cat_grid = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            column_gap: Val::Px(8.0),
-            row_gap: Val::Px(8.0),
-            ..default()
-        })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
         .id();
     keyed_list(commands, cat_grid, category_snapshot);
 
@@ -742,13 +737,20 @@ fn build_basics_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let tags = build_tags_field(commands, fonts);
 
+    let ev_lic = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(12.0), ..default() })
+        .id();
     let ev = dropdown_field(commands, fonts, "Minimum Engine Version", ENGINE_VERSIONS, |s| s.engine_version, |s, v| s.engine_version = v);
     let lic = dropdown_field(commands, fonts, "License", LICENSES, |s| s.license, |s, v| s.license = v);
+    for e in [ev, lic] {
+        commands.entity(e).insert(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: Val::Px(0.0), ..default() });
+    }
+    commands.entity(ev_lic).add_children(&[ev, lic]);
     let ai = check_row(commands, fonts, "This asset was created with AI assistance", |s| s.ai_generated, |s, v| s.ai_generated = v);
 
     commands.entity(sec).add_children(&[
         head, name, cat_lbl, cat_grid, music_grp, script_grp,
-        desc_col, price_col, tags, ev, lic, ai,
+        desc_col, price_col, tags, ev_lic, ai,
     ]);
     sec
 }
@@ -793,6 +795,9 @@ fn build_publish_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     col
 }
 
+/// One item — the category dropdown — rebuilt when the fetched list changes.
+/// `dropdown` takes its options at build time, and the categories arrive from
+/// the network, so the field is built inside a keyed list rather than up front.
 fn category_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = u(world) else {
         return note("");
@@ -805,62 +810,36 @@ fn category_snapshot(world: &Rx) -> KeyedSnapshot {
     }
     let cats = state.categories.clone();
     use std::hash::{Hash, Hasher};
-    let items: Vec<(u64, u64)> = cats
-        .iter()
-        .map(|c| {
-            let mut k = std::collections::hash_map::DefaultHasher::new();
-            c.slug.hash(&mut k);
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&c.slug, &c.name).hash(&mut h);
-            (k.finish(), h.finish())
-        })
-        .collect();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for c in &cats {
+        (&c.slug, &c.name).hash(&mut h);
+    }
+    let sig = h.finish();
     KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| category_button(c, f, &cats[i])),
+        items: vec![(0, sig)],
+        build: Box::new(move |c, f, _| {
+            let mut labels: Vec<&str> = vec!["Select a category…"];
+            labels.extend(cats.iter().map(|x| x.name.as_str()));
+            let dd = dropdown(c, f, &labels, 0);
+            bind_2way(
+                c,
+                dd,
+                |w| u(w).map(|s| s.category_index).unwrap_or(0),
+                |w, v| {
+                    if let Some(mut s) = w.get_resource_mut::<Uploader>() {
+                        s.category_index = *v;
+                        s.error = None;
+                    }
+                },
+            );
+            dd
+        }),
     }
 }
 
-fn category_button(commands: &mut Commands, fonts: &EmberFonts, cat: &Category) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                flex_basis: Val::Px(190.0),
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(9.0),
-                padding: UiRect::all(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            Interaction::default(),
-            CatBtn { slug: cat.slug.clone(), name: cat.name.clone() },
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-        ))
-        .id();
-    let icon = clean_icon(&cat.icon);
-    let ic = icon_text(commands, &fonts.phosphor, &icon, accent(), 15.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands
-        .spawn((Text::new(cat.name.clone()), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary())), FocusPolicy::Pass))
-        .id();
-    commands.entity(btn).add_children(&[ic, t]);
-    btn
-}
 
-/// Category icons arrive as web classes like `"ph ph-cube"`; the engine's glyph
-/// lookup wants the bare kebab name (`"cube"`).
-fn clean_icon(raw: &str) -> String {
-    raw.split_whitespace()
-        .last()
-        .unwrap_or("folder")
-        .trim_start_matches("ph-")
-        .to_string()
-}
+
+
 
 fn build_tags_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let wrap = commands.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).id();
@@ -989,7 +968,7 @@ fn sub_head(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
 }
 
 fn cat_in(w: &Rx, list: &[&str]) -> bool {
-    u(w).map(|s| list.contains(&s.category.as_str())).unwrap_or(false)
+    u(w).map(|s| list.contains(&s.category_slug())).unwrap_or(false)
 }
 
 /// A dashed file-picker button whose label shows the current selection.
@@ -1099,9 +1078,11 @@ fn uploader_poll(mut state: ResMut<Uploader>) {
     }
 }
 
-/// Kick the one category fetch. This used to hang off the content-type step;
-/// with that gone it runs on the first frame the panel is alive, exactly once.
-fn ensure_categories(mut state: ResMut<Uploader>) {
+/// Kick the one category fetch. Called when the publish view is opened, which
+/// is the click that used to be "pick a content type". One-shot: a failed load
+/// leaves the list empty, and retrying it per-frame would spawn a worker per
+/// frame.
+fn ensure_categories(state: &mut Uploader) {
     if state.cats_attempted {
         return;
     }
@@ -1114,17 +1095,17 @@ fn ensure_categories(mut state: ResMut<Uploader>) {
     });
 }
 
-/// Category selection — reveals that category's detail group in place.
-fn cat_click(q: Query<(&Interaction, &CatBtn), Changed<Interaction>>, mut state: ResMut<Uploader>) {
-    for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
-            state.category = btn.slug.clone();
-            state.category_name = btn.name.clone();
-            state.error = None;
-            break;
-        }
+/// Open the publish view: flip the store into it and start the category fetch.
+pub(crate) fn begin_publishing(world: &mut World) {
+    if let Some(mut store) = world.get_resource_mut::<crate::store::HubStoreData>() {
+        store.publishing = true;
+    }
+    if let Some(mut state) = world.get_resource_mut::<Uploader>() {
+        ensure_categories(&mut state);
     }
 }
+
+
 
 /// Publish.
 fn nav_click(
@@ -1292,8 +1273,20 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
     if state.submitting {
         return;
     }
+    if state.name.trim().is_empty() {
+        state.error = Some("Name is required.".to_string());
+        return;
+    }
+    if state.category_slug().is_empty() {
+        state.error = Some("Please choose a category.".to_string());
+        return;
+    }
+    if state.description.trim().is_empty() {
+        state.error = Some("Description is required.".to_string());
+        return;
+    }
     let Some(file) = state.file.clone() else {
-        state.error = Some("Please choose a file to upload.".to_string());
+        state.error = Some("Please select a file to upload.".to_string());
         return;
     };
     let Some(session) = session.filter(|s| s.is_signed_in()) else {
@@ -1316,7 +1309,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
             extra.insert("min_engine_version".into(), (*v).into());
         }
     }
-    if state.category == "music" {
+    if state.category_slug() == "music" {
         let bpm = state.bpm.trim();
         if !bpm.is_empty() {
             extra.insert("bpm".into(), bpm.into());
@@ -1328,7 +1321,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
             extra.insert("loopable".into(), true.into());
         }
     }
-    if ["scripts", "plugins", "blueprints"].contains(&state.category.as_str()) {
+    if ["scripts", "plugins", "blueprints"].contains(&state.category_slug()) {
         if let Some(l) = SCRIPT_LANG_VALUES.get(state.script_lang).filter(|l| !l.is_empty()) {
             extra.insert("script_language".into(), (*l).into());
         }
@@ -1337,7 +1330,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
     let meta = PublishMeta {
         name: state.name.trim().to_string(),
         description: state.description.trim().to_string(),
-        category: state.category.clone(),
+        category: state.category_slug().to_string(),
         price_credits: price,
         // Never asked for: a version belongs to an update, not a first publish.
         version: "1.0.0".to_string(),
