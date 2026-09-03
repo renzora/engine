@@ -447,6 +447,13 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Renzora".into(),
+                    // Wayland app_id / X11 WM_CLASS. Desktops match the open
+                    // window to its launcher by this exact string (COSMIC and
+                    // GNOME match it against `<name>.desktop`), so without it
+                    // a pinned dock icon never associates with the running
+                    // editor — the window shows no icon and pinning appears
+                    // broken. Must be set at creation; it is immutable after.
+                    name: Some("renzora-engine".into()),
                     // Initial values — `apply_window_config` overwrites these
                     // from `CurrentProject` once the project is loaded. The
                     // editor draws its own title bar so it wants
@@ -780,6 +787,9 @@ pub fn add_xr_rendering(app: &mut App) {
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Renzora (VR)".into(),
+                // Same launcher association as the desktop window — see the
+                // `name` on the non-XR primary window above.
+                name: Some("renzora-engine".into()),
                 // The desktop window only hosts the spectator mirror — never
                 // block the XR frame loop on the monitor's vsync.
                 present_mode: PresentMode::AutoNoVsync,
