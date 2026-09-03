@@ -16,30 +16,13 @@ use serde::{Deserialize, Serialize};
 use super::client::{api_base, post_json, post_multipart_form, require_token, FilePart};
 use super::session::AuthSession;
 
-/// Which store an upload targets. The web wizard picks this in step 1; it selects
-/// the categories endpoint, the upload endpoint, and the `/media` field names.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ContentType {
-    Asset,
-    Game,
-}
-
-impl ContentType {
-    /// Human label used in the review step and success toast.
-    pub fn label(self) -> &'static str {
-        match self {
-            ContentType::Asset => "Marketplace Asset",
-            ContentType::Game => "Game",
-        }
-    }
-}
-
 /// The upload metadata JSON, serialized into the multipart `metadata` field.
 ///
-/// Field-for-field the object the web wizard's `handleSubmit` builds: the asset
-/// path adds `tags` / `download_filename` / optional `credit_*`; the game path
-/// sends only the common five. `skip_serializing_if` keeps the game payload lean
-/// (no `tags: null`) and omits credit fields unless a creator was named.
+/// Field-for-field the object the website's `handleSubmit` builds. `version` is
+/// always "1.0.0" — the form no longer asks, because a version belongs to an
+/// update rather than a first publish — and `download_filename` is derived from
+/// the title. `skip_serializing_if` omits the optional halves entirely rather
+/// than sending nulls.
 #[derive(Serialize, Default, Clone)]
 pub struct PublishMeta {
     pub name: String,
@@ -55,6 +38,12 @@ pub struct PublishMeta {
     pub credit_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credit_url: Option<String>,
+    /// One of `UploadAssetRequest::VALID_LICENCES` on the server.
+    pub licence: String,
+    pub ai_generated: bool,
+    /// Free-form per-category extras (BPM, genre, scripting language, minimum
+    /// engine version). The server stores this object as-is.
+    pub metadata: serde_json::Value,
 }
 
 /// The slice of an upload response we act on: the new item's id (to attach media
@@ -129,17 +118,6 @@ pub fn upload_asset(
     thumbnail: Option<&UploadFile>,
 ) -> Result<UploadedItem, String> {
     upload_item(session, "/api/marketplace/upload", meta, file, thumbnail)
-}
-
-/// Publish a game: `POST /api/games/upload`. Same multipart shape as an asset.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn upload_game(
-    session: &AuthSession,
-    meta: &PublishMeta,
-    file: &UploadFile,
-    thumbnail: Option<&UploadFile>,
-) -> Result<UploadedItem, String> {
-    upload_item(session, "/api/games/upload", meta, file, thumbnail)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -220,28 +198,6 @@ pub fn add_asset_media(
             token,
         )?,
     };
-    Ok(())
-}
-
-/// Attach a screenshot to a published **game**: `POST /api/games/{id}/media`.
-/// Games take `type=image` + a `sort_order` (assets don't); only images are
-/// supported here, matching the web wizard.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn add_game_media(
-    session: &AuthSession,
-    game_id: &str,
-    sort_order: usize,
-    file: &UploadFile,
-) -> Result<(), String> {
-    let token = require_token(session)?;
-    let url = format!("{}/api/games/{}/media", api_base(), game_id);
-    let sort = sort_order.to_string();
-    let _: serde_json::Value = post_multipart_form(
-        &url,
-        &[("type", "image"), ("sort_order", sort.as_str())],
-        &[FilePart { field: "file", filename: &file.filename, content_type: &file.content_type, bytes: &file.bytes }],
-        token,
-    )?;
     Ok(())
 }
 
