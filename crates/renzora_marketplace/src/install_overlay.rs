@@ -1,8 +1,14 @@
 //! The marketplace "Get / Install" flow: a permissions-style confirmation modal
-//! (mirroring `File → Install Plugin…`) that shows what's being installed and
-//! lets the user **pick where it lands** via a folder tree of the project's own
-//! asset directories. On confirm, the asset downloads on a background thread and
-//! extracts/writes into the chosen folder; a result notice reports success.
+//! (mirroring `File → Install Plugin…`) that shows what's being installed and,
+//! for most assets, lets the user **pick where it lands** via a folder tree of
+//! the project's own asset directories. On confirm, the asset downloads on a
+//! background thread and extracts/writes into the chosen folder; a result notice
+//! reports success.
+//!
+//! **Plugins are the exception.** A plugin only works from the engine's
+//! `plugins/` directory — it is dlopen'd from there at startup — so there is no
+//! choice to offer and no tree to show. Their modal states the destination
+//! instead, and the finished notice offers the restart that actually loads it.
 //!
 //! Gating (sign-in / paid ownership) happens at the card before this opens — by
 //! the time we get here the asset is known to be installable, either through the
@@ -159,6 +165,10 @@ fn human_bytes(n: u64) -> String {
     }
 }
 
+/// The install action's green — the same one the website's asset page uses for
+/// its Download button.
+const GREEN: (u8, u8, u8) = (22, 163, 74);
+
 fn accent_rgb() -> [u8; 3] {
     let (r, g, b) = accent();
     [r, g, b]
@@ -235,24 +245,37 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     commands.entity(details).add_children(&rows);
     commands.entity(header).add_children(&[thumb, details]);
 
-    let mut kids = vec![
-        header,
-        section_label(&mut commands, &fonts, "Install into"),
-    ];
+    // A plugin has exactly one valid home, so it gets a statement rather than a
+    // picker; everything else gets the tree.
+    let is_plugin = install::install_dir_for_category(&asset.category) == "plugins";
 
-    // Destination: the project's own directory structure, via ember's shared
-    // picker (the same widget the hierarchy's Create-asset overlay uses). It
-    // flex-grows to fill the overlay so the buttons stay pinned to the bottom.
-    let picker = folder_picker(&mut commands, &fonts, &root, &default_dest, 1);
-    kids.push(picker);
-
-    kids.push(paragraph(
-        &mut commands,
-        &fonts,
-        "Renzora downloads this asset and writes its files into the folder you \
-         pick above. Only install assets from sources you trust.",
-        rgb(text_muted()),
-    ));
+    let mut kids = vec![header];
+    let mut picker = Entity::PLACEHOLDER;
+    if is_plugin {
+        kids.push(info_row(&mut commands, &fonts, "Installs into", "plugins/"));
+        kids.push(paragraph(
+            &mut commands,
+            &fonts,
+            "Plugins load from the engine's plugins folder at startup, so this \
+             one installs there. Plugins are native code with full editor \
+             privileges — only install ones from sources you trust.",
+            rgb(text_muted()),
+        ));
+    } else {
+        kids.push(section_label(&mut commands, &fonts, "Install into"));
+        // Destination: the project's own directory structure, via ember's shared
+        // picker (the same widget the hierarchy's Create-asset overlay uses). It
+        // flex-grows to fill the overlay so the buttons stay pinned to the bottom.
+        picker = folder_picker(&mut commands, &fonts, &root, &default_dest, 1);
+        kids.push(picker);
+        kids.push(paragraph(
+            &mut commands,
+            &fonts,
+            "Renzora downloads this asset and writes its files into the folder you \
+             pick above. Only install assets from sources you trust.",
+            rgb(text_muted()),
+        ));
+    }
 
     let buttons = commands
         .spawn(Node {
@@ -263,15 +286,27 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
             ..default()
         })
         .id();
-    // New Folder rides in the button row rather than under the tree — one row of
-    // controls, not two. It floats at the row's left edge (absolute, out of
-    // flow), so the Cancel/Install pair lays out untouched.
-    let new_folder = folder_new_button(&mut commands, &fonts, picker);
     let cancel = button(&mut commands, &fonts.ui, "Cancel");
     commands.entity(cancel).insert(InstallDismissBtn(overlay));
-    let install_btn = button(&mut commands, &fonts.ui, "Download & Install");
+    // Green, and named for what it does: a plugin is installed, everything else
+    // is downloaded into your project.
+    let install_btn = crate::util::pill_button(
+        &mut commands,
+        &fonts,
+        if is_plugin { "Install" } else { "Download" },
+        GREEN,
+        (255, 255, 255),
+    );
     commands.entity(install_btn).insert(InstallConfirmBtn);
-    commands.entity(buttons).add_children(&[new_folder, cancel, install_btn]);
+    if is_plugin {
+        commands.entity(buttons).add_children(&[cancel, install_btn]);
+    } else {
+        // New Folder rides in the button row rather than under the tree — one row
+        // of controls, not two. It floats at the row's left edge (absolute, out
+        // of flow), so the Cancel/Install pair lays out untouched.
+        let new_folder = folder_new_button(&mut commands, &fonts, picker);
+        commands.entity(buttons).add_children(&[new_folder, cancel, install_btn]);
+    }
     kids.push(buttons);
 
     // Pad the content so it isn't flush against the overlay edge.
@@ -317,7 +352,14 @@ fn install_buttons(
     commands.entity(pending.overlay).despawn();
 
     let asset = pending.asset.clone();
-    let dest = pick.path().map(Path::to_path_buf).unwrap_or_else(|| pending.default_dest.clone());
+    // A plugin shows no picker, so `FolderPick` still holds whatever the last
+    // non-plugin install chose — take the category's own directory instead of
+    // that stale path.
+    let dest = if install::install_dir_for_category(&pending.asset.category) == "plugins" {
+        pending.default_dest.clone()
+    } else {
+        pick.path().map(Path::to_path_buf).unwrap_or_else(|| pending.default_dest.clone())
+    };
     let session = pending.session.as_ref().map(clone_session);
     commands.remove_resource::<PendingInstall>();
 

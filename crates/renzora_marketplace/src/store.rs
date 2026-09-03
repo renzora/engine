@@ -1214,59 +1214,62 @@ fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
 
 /// One category shelf: a clickable header ("See all →") over a wrapping row of
 /// the same `asset_card`s the browse grid uses.
+/// The shelf's last tile: "See all", sized and shaped like an asset card so it
+/// sits in the grid rather than beside it. Dashed and unfilled, because it is a
+/// way out of the shelf rather than another thing to buy.
+fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Entity {
+    let card = commands
+        .spawn((
+            Node {
+                width: Val::Px(CARD_W),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: Val::Px(6.0),
+                padding: UiRect::all(Val::Px(CARD_PAD)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(rgb(border())),
+            Interaction::default(),
+            StoreSeeAllBtn(slug.to_string()),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTint::solid(
+                Color::NONE,
+                rgb(hover_bg()),
+                rgb(section_bg()),
+            ),
+            Name::new("store-see-all"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, "arrow-right", accent(), 18.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let t = commands
+        .spawn((Text::new("See all"), ui_font(&fonts.ui, 11.0), TextColor(rgb(accent())), FocusPolicy::Pass))
+        .id();
+    commands.entity(card).add_children(&[ic, t]);
+    card
+}
+
 fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: &str, assets: &[AssetSummary]) -> Entity {
     let col = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
         .id();
 
-    // The whole header row is the "See all" target (its children are `Pass`), so
-    // clicking anywhere on it — title or the affordance — enters browse mode.
+    // The header is just the title now — "See all" is the last tile in the grid
+    // below, where it reads as "and more of these" in the run of cards rather
+    // than as a control off in the header.
     let header = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() },
-            Interaction::default(),
-            StoreSeeAllBtn(slug.to_string()),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("store-section-header"),
-        ))
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() })
         .id();
     // 15, and the shelf column below carries the space. The headers were only a
     // point above the card names, so a page of shelves read as one long list
     // with occasional bold rows in it rather than as sections.
-    let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
-    // A filled pill, not accent-coloured text. As text it was the same weight
-    // and nearly the same colour as a link in a body of prose, floating at the
-    // right end of a header with nothing to say it was pressable; the pill
-    // reads as a control at a glance and the white text on accent is the only
-    // pairing in this panel that has real contrast.
-    let see = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                height: Val::Px(24.0),
-                padding: UiRect::horizontal(Val::Px(11.0)),
-                border_radius: BorderRadius::all(Val::Px(12.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(accent())),
-            // `Pass`: the whole header is the target, so the pill must not eat
-            // the press — it is the affordance for the row, not a second button.
-            FocusPolicy::Pass,
-        ))
-        .id();
-    let see_t = commands.spawn((Text::new("See all"), ui_font(&fonts.ui, 10.5), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
-    let see_ic = icon_text(commands, &fonts.phosphor, "arrow-right", (255, 255, 255), 11.0);
-    commands.entity(see_ic).insert(FocusPolicy::Pass);
-    commands.entity(see).add_children(&[see_t, see_ic]);
-    // Beside the title, not banished to the far right of the row. It belongs to
-    // *that* category — at the opposite end of a full-width header it read as a
-    // control for the panel, and on a wide window it was a hundred millimetres
-    // of empty space away from the word it acts on.
-    let after = commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id();
-    commands.entity(header).add_children(&[title, see, after]);
+    let title = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())))).id();
+    commands.entity(header).add_child(title);
 
     // The same wrapping grid the browse view uses, with the same gaps — because
     // it *is* the browse view, showing one category's top few. It was a
@@ -1284,6 +1287,10 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
         .map(|a| asset_card(commands, fonts, a, false))
         .collect();
     commands.entity(row).add_children(&cards);
+    // …then "See all" as the final tile, card-sized so the run of cards stays on
+    // its grid.
+    let see = see_all_card(commands, fonts, slug);
+    commands.entity(row).add_child(see);
 
     commands.entity(col).add_children(&[header, row]);
     col
