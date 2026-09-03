@@ -1049,27 +1049,45 @@ pub fn load_disabled_plugins() -> Vec<String> {
 /// hand-editable and lives in a home directory that may be synced between
 /// machines, so a stable order is what stops a no-op toggle from showing up as a
 /// change.
-#[cfg(not(target_arch = "wasm32"))]
+/// Unlike its `load_` siblings this was gated rather than branched, which made
+/// it the one preference writer a wasm build could not name — `renzora_settings`
+/// calls it unconditionally from the Plugins tab, so the editor's web bundle
+/// failed to compile on `cannot find function save_disabled_plugins`. Branching
+/// inside, the way everything else in this module does, keeps the signature the
+/// same on every target and puts the platform difference where callers can
+/// handle it: the browser has no home directory, so it reports `Unsupported`
+/// rather than returning `Ok` and quietly discarding the write.
 pub fn save_disabled_plugins(disabled: &[String]) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = disabled;
         return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
+            std::io::ErrorKind::Unsupported,
+            "editor preferences are not persisted on the web build",
         ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
     }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    let mut list: Vec<String> = disabled.to_vec();
-    list.sort();
-    list.dedup();
-    prefs.disabled_plugins = list;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "could not resolve home directory for editor preferences",
+            ));
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut prefs = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .unwrap_or_default();
+        let mut list: Vec<String> = disabled.to_vec();
+        list.sort();
+        list.dedup();
+        prefs.disabled_plugins = list;
+        let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+        std::fs::write(&path, text)
+    }
 }
 
 /// Load the persisted Play-button target (default `false` = in-viewport play).

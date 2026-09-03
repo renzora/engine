@@ -21,7 +21,7 @@
 //! commerce half: the store, the library, the uploader, the wallet, creator
 //! onboarding, and the parts of the API client those five need.
 //!
-//! # No `cfg(target_arch = "wasm32")` anywhere
+//! # The `cfg(target_arch = "wasm32")` arm
 //!
 //! All three predecessors carried a wasm arm that hollowed the plugin out,
 //! because the whole thing talks to renzora.com over `renzora::net`, whose HTTP
@@ -30,8 +30,25 @@
 //! generated plugin list had to name their types on every target the editor
 //! compiles for, so the type had to exist even where it could do nothing.
 //!
-//! A native plugin has no such obligation. It is never built for wasm at all, so
-//! the arms are gone and the modules below are unconditional.
+//! This crate is statically linked too — see the `add!` at the bottom of the
+//! file — so the same obligation applies and the arm below is that arm.
+//!
+//! It was briefly absent. When the marketplace landed as a workspace crate the
+//! docs here described it as a *native* plugin, which genuinely has no such
+//! obligation because it is never built for wasm at all; on that premise the
+//! arms were deleted and the modules made unconditional. The premise was wrong.
+//! `renzora_editor` depends on this crate and the editor's wasm bundle
+//! (`renzora_editor_app --features wasm`) compiles it like any other target, so
+//! the nightly web lane broke on 40 errors — `rfd` has no browser equivalent,
+//! `renzora_audio` gates `AudioLink` out of wasm, and every `auth::` API call is
+//! native-only blocking HTTP.
+//!
+//! So: on wasm the modules do not exist and `build` installs nothing. The type
+//! survives because the generated list names it on every target, which is the
+//! whole reason the arm has to exist rather than the dependency being dropped.
+//! Browsing a catalogue you cannot install into, from a build that can neither
+//! open a file dialog nor play an audio preview, is not a web feature worth
+//! keeping compiling.
 //!
 //! # No `cfg(feature = "editor")` either
 //!
@@ -41,31 +58,60 @@
 
 use bevy::prelude::*;
 
+// Every module below is native-only; see the wasm arm in the module docs.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod auth;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod account_settings;
+#[cfg(not(target_arch = "wasm32"))]
 mod avatars;
+#[cfg(not(target_arch = "wasm32"))]
 mod hub_lightbox;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod install;
+#[cfg(not(target_arch = "wasm32"))]
 mod install_overlay;
+#[cfg(not(target_arch = "wasm32"))]
 mod item_overlay;
+#[cfg(not(target_arch = "wasm32"))]
 mod lightbox;
+#[cfg(not(target_arch = "wasm32"))]
 mod material_viewer;
+#[cfg(not(target_arch = "wasm32"))]
 mod model_viewer;
+#[cfg(not(target_arch = "wasm32"))]
 mod library;
+#[cfg(not(target_arch = "wasm32"))]
 mod store;
+#[cfg(not(target_arch = "wasm32"))]
 mod store_overlay;
+#[cfg(not(target_arch = "wasm32"))]
 mod onboarding;
+#[cfg(not(target_arch = "wasm32"))]
 mod thumbs;
+#[cfg(not(target_arch = "wasm32"))]
 mod toasts;
+#[cfg(not(target_arch = "wasm32"))]
 mod upload_panel;
+#[cfg(not(target_arch = "wasm32"))]
 mod util;
+#[cfg(not(target_arch = "wasm32"))]
 mod wallet;
 
 /// The account + marketplace plugin.
 #[derive(Default)]
 pub struct MarketplacePlugin;
 
+#[cfg(target_arch = "wasm32")]
+impl Plugin for MarketplacePlugin {
+    /// Nothing to install: there is no account, catalogue or installer on the
+    /// web build. The type exists only so the generated Editor plugin list —
+    /// which names every plugin on every target — still compiles.
+    fn build(&self, _app: &mut App) {}
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Plugin for MarketplacePlugin {
     fn build(&self, app: &mut App) {
         info!("[marketplace] native plugin");
@@ -126,6 +172,7 @@ impl Plugin for MarketplacePlugin {
 /// When the session ends, clear the account-scoped panel state so the next
 /// sign-in re-fetches rather than showing the previous account's library,
 /// wallet balance or creator status.
+#[cfg(not(target_arch = "wasm32"))]
 fn sign_out_cleanup(
     session: Res<auth::AuthSession>,
     mut was_signed_in: Local<bool>,
