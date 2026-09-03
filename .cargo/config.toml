@@ -15,7 +15,30 @@
 # a member (it has to build even when a dangling generated dependency stops the
 # engine workspace from loading — see xtask/Cargo.toml). The path is relative to
 # the current directory, so run `cargo renzora` from the repo root.
-renzora = "run --manifest-path xtask/Cargo.toml --"
+#
+# ── Why the two `--config` overrides ─────────────────────────────────────────
+# The Linux section at the bottom of this file links with `clang` + `mold`, and
+# a cargo config applies to EVERY build run from this directory — including the
+# build of xtask itself. On a host missing either tool that produced a bootstrap
+# deadlock: `cargo renzora` died with rustc's bare "linker `clang` not found"
+# while compiling xtask, so the one binary able to diagnose the missing linker
+# could never be built to say so.
+#
+# These pin the BOOTSTRAP of xtask to `cc` + binutils `ld.bfd` — the two things
+# every Linux box already has — leaving the linker choice below to apply where
+# it actually pays off: the workspace build that xtask then drives as its own
+# cargo invocation. xtask checks for clang/mold there and reports them by name.
+#
+# `rustflags` is appended, not replaced: cargo JOINS config arrays across
+# sources, so `-fuse-ld=mold` from the target section is still on the command
+# line and the trailing `-fuse-ld=bfd` overrides it (the last `-fuse-ld` wins in
+# the compiler driver). That also means the xtask bootstrap uses bfd even where
+# mold is installed — it is one tiny dependency-free crate, measured at 0.4 s.
+#
+# Inert off Linux: the key names a target triple a Windows/macOS host never
+# selects. xtask lives in its own workspace with its own target/, so nothing
+# here perturbs the engine's build cache or its `-C metadata` hashes.
+renzora = "run --config target.x86_64-unknown-linux-gnu.linker='cc' --config target.x86_64-unknown-linux-gnu.rustflags=['-C','link-arg=-fuse-ld=bfd'] --manifest-path xtask/Cargo.toml --"
 # ⚠ These two select a SINGLE package, so they resolve `renzora` without its
 # `editor` feature and recompile ~86 shared packages against the `--workspace`
 # cache (see the note under `dist` below). Fine for an occasional headless

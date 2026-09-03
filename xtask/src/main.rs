@@ -112,6 +112,15 @@ fn main() -> ExitCode {
     let cmd = std::env::args().nth(1).unwrap_or_else(|| "run".to_string());
     let plat = platform();
 
+    // `sync` and `remove` REPAIR a workspace (they prune the dangling generated
+    // dependency that stops it loading), so they have to keep working on a
+    // machine that cannot yet link. Every other command compiles something.
+    if !matches!(cmd.as_str(), "sync" | "remove") {
+        if let Err(code) = preflight_host_deps() {
+            return code;
+        }
+    }
+
     match cmd.as_str() {
         // Build + stage + launch — the default `cargo renzora`.
         //
@@ -1051,6 +1060,435 @@ fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> Exit
 // ── small helpers ────────────────────────────────────────────────────────────
 
 /// Honor cargo's chosen toolchain when xtask is itself invoked via cargo.
+/// The canonical Linux host build dependencies, per package manager.
+///
+/// The Debian row is the SECOND SOURCE OF TRUTH — keep it in lockstep with
+/// `docker/base/Dockerfile` and the native Linux lane in
+/// `.github/workflows/build-engine.yml`. All three describe the same set from a
+/// different angle: container, CI runner, contributor's machine.
+///
+/// Every row holds the same libraries in the same order; only the names differ,
+/// and they differ a lot — ALSA's headers are `libasound2-dev` on Debian,
+/// `alsa-lib-devel` on Fedora and plain `alsa-lib` on Arch, where the headers
+/// ship in the main package rather than a split `-dev` one. That is the whole
+/// reason this is a table and not one list with the package manager swapped.
+///
+/// Only the Debian row is exercised by this repo's CI and container. The others
+/// are best-effort: a wrong name makes the install fail and fall back to the
+/// printed instructions, which is why nothing here is destructive if it is off.
+#[cfg(target_os = "linux")]
+const DEBIAN_PACKAGES: &[&str] = &[
+    "pkg-config",
+    "libx11-dev",
+    "libxi-dev",
+    "libxcursor-dev",
+    "libxrandr-dev",
+    "libxinerama-dev",
+    "libwayland-dev",
+    "libxkbcommon-dev",
+    "libasound2-dev",
+    "libudev-dev",
+    "libvulkan-dev",
+    "libssl-dev",
+    // Not in `docker/base/Dockerfile` or the CI lane: the `rust:*-bookworm`
+    // image and the GitHub runner image both already ship fontconfig, so a
+    // missing one is invisible to Docker AND to CI and shows up only on a real
+    // host, as a `yeslogic-fontconfig-sys` build-script panic minutes in.
+    "libfontconfig1-dev",
+    "clang",
+    "mold",
+];
+
+#[cfg(target_os = "linux")]
+const FEDORA_PACKAGES: &[&str] = &[
+    "pkgconf-pkg-config",
+    "libX11-devel",
+    "libXi-devel",
+    "libXcursor-devel",
+    "libXrandr-devel",
+    "libXinerama-devel",
+    "wayland-devel",
+    "libxkbcommon-devel",
+    "alsa-lib-devel",
+    "systemd-devel",
+    "vulkan-loader-devel",
+    "openssl-devel",
+    "fontconfig-devel",
+    "clang",
+    "mold",
+];
+
+#[cfg(target_os = "linux")]
+const ARCH_PACKAGES: &[&str] = &[
+    "pkgconf",
+    "libx11",
+    "libxi",
+    "libxcursor",
+    "libxrandr",
+    "libxinerama",
+    "wayland",
+    "libxkbcommon",
+    "alsa-lib",
+    "systemd-libs",
+    "vulkan-icd-loader",
+    "openssl",
+    "fontconfig",
+    "clang",
+    "mold",
+];
+
+#[cfg(target_os = "linux")]
+const SUSE_PACKAGES: &[&str] = &[
+    "pkg-config",
+    "libX11-devel",
+    "libXi-devel",
+    "libXcursor-devel",
+    "libXrandr-devel",
+    "libXinerama-devel",
+    "wayland-devel",
+    "libxkbcommon-devel",
+    "alsa-devel",
+    "systemd-devel",
+    "vulkan-devel",
+    "libopenssl-devel",
+    "fontconfig-devel",
+    "clang",
+    "mold",
+];
+
+/// nixpkgs attribute names, for the `nix-shell` line printed on NixOS.
+#[cfg(target_os = "linux")]
+const NIX_PACKAGES: &[&str] = &[
+    "pkg-config",
+    "xorg.libX11",
+    "xorg.libXi",
+    "xorg.libXcursor",
+    "xorg.libXrandr",
+    "xorg.libXinerama",
+    "wayland",
+    "libxkbcommon",
+    "alsa-lib",
+    "systemd",
+    "vulkan-loader",
+    "openssl",
+    "fontconfig",
+    "clang",
+    "mold",
+];
+
+/// Which package manager this machine actually has.
+///
+/// NixOS is detected FIRST and deliberately never installs. It is declarative:
+/// the system profile is built from a committed configuration, so there is no
+/// imperative "install this" to call — `nix-env -i` would touch only a user
+/// profile and still not put the headers where a build can see them. The
+/// correct answer there is a shell that provides them, so that is what gets
+/// printed. `.cargo/config.toml` already accounts for NixOS hosts in the
+/// `-fuse-ld=mold` comment, so they are an expected audience here.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, PartialEq)]
+enum Distro {
+    Nixos,
+    Debian,
+    Fedora,
+    Arch,
+    Suse,
+    Unknown,
+}
+
+#[cfg(target_os = "linux")]
+fn detect_distro() -> Distro {
+    if Path::new("/etc/NIXOS").exists() || have_bin("nixos-version") {
+        return Distro::Nixos;
+    }
+    for (bin, distro) in [
+        ("apt-get", Distro::Debian),
+        ("dnf", Distro::Fedora),
+        ("pacman", Distro::Arch),
+        ("zypper", Distro::Suse),
+    ] {
+        if have_bin(bin) {
+            return distro;
+        }
+    }
+    Distro::Unknown
+}
+
+#[cfg(target_os = "linux")]
+impl Distro {
+    fn packages(self) -> &'static [&'static str] {
+        match self {
+            Distro::Debian => DEBIAN_PACKAGES,
+            Distro::Fedora => FEDORA_PACKAGES,
+            Distro::Arch => ARCH_PACKAGES,
+            Distro::Suse => SUSE_PACKAGES,
+            Distro::Nixos => NIX_PACKAGES,
+            Distro::Unknown => DEBIAN_PACKAGES,
+        }
+    }
+
+    /// The command a human should run, as a single copy-pasteable line.
+    fn manual_command(self) -> String {
+        let p = self.packages().join(" ");
+        match self {
+            Distro::Debian => format!("sudo apt install {p}"),
+            Distro::Fedora => format!("sudo dnf install {p}"),
+            Distro::Arch => format!("sudo pacman -S --needed {p}"),
+            Distro::Suse => format!("sudo zypper install {p}"),
+            Distro::Nixos => format!("nix-shell -p {p}"),
+            Distro::Unknown => format!("<your package manager>: {p}"),
+        }
+    }
+
+    /// The argv this tool runs to install unattended, or `None` where
+    /// installing on the developer's behalf is not a thing that exists.
+    fn install_argv(self) -> Option<Vec<String>> {
+        let own = |v: &[&str]| -> Vec<String> {
+            v.iter()
+                .map(|s| (*s).to_string())
+                .chain(self.packages().iter().map(|s| (*s).to_string()))
+                .collect()
+        };
+        match self {
+            Distro::Debian => Some(own(&["apt-get", "install", "-y", "--no-install-recommends"])),
+            Distro::Fedora => Some(own(&["dnf", "install", "-y"])),
+            Distro::Arch => Some(own(&["pacman", "-S", "--needed", "--noconfirm"])),
+            Distro::Suse => Some(own(&["zypper", "--non-interactive", "install"])),
+            // Declarative: nothing to run. See the enum docs.
+            Distro::Nixos | Distro::Unknown => None,
+        }
+    }
+
+    fn why_no_install(self) -> &'static str {
+        match self {
+            Distro::Nixos => {
+                "NixOS is declarative, so nothing can install these imperatively \
+                 — enter a shell that provides them"
+            }
+            _ => "no supported package manager was found",
+        }
+    }
+}
+
+/// `pkg-config` names for the dev libraries above.
+///
+/// The `-dev` packages install headers and `.pc` files, not binaries, so a PATH
+/// lookup cannot see them — asking `pkg-config` is the only honest check.
+///
+/// Unlike the package tables, this list is the SAME on every distro: a `.pc`
+/// file's name is set by the library's own build, not by whoever packaged it.
+/// So detection is universal and only the remedy is distro-specific — which is
+/// why a NixOS or Fedora host still gets an accurate list of what it is missing
+/// even where this tool cannot install anything.
+#[cfg(target_os = "linux")]
+const LINUX_PROBES: &[&str] = &[
+    "x11",
+    "xi",
+    "xcursor",
+    "xrandr",
+    "xinerama",
+    "wayland-client",
+    "xkbcommon",
+    "alsa",
+    "libudev",
+    "vulkan",
+    "openssl",
+    "fontconfig",
+];
+
+#[cfg(target_os = "linux")]
+fn have_bin(tool: &str) -> bool {
+    Command::new(tool)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Everything from [`LINUX_PACKAGES`] this machine cannot currently satisfy.
+#[cfg(target_os = "linux")]
+fn linux_missing() -> Vec<String> {
+    let mut missing: Vec<String> = ["clang", "mold", "pkg-config"]
+        .into_iter()
+        .filter(|t| !have_bin(t))
+        .map(String::from)
+        .collect();
+
+    // Without pkg-config the probes below cannot run at all; it is in the
+    // install set, so the next pass sees the real answer.
+    if have_bin("pkg-config") {
+        for probe in LINUX_PROBES {
+            let ok = Command::new("pkg-config")
+                .args(["--exists", probe])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !ok {
+                missing.push((*probe).to_string());
+            }
+        }
+    }
+    missing
+}
+
+/// Run a package manager, as root directly or via `sudo`, terminal attached.
+///
+/// stdio is INHERITED rather than captured: `sudo` prompts for a password on
+/// the controlling terminal, and a captured prompt is an invisible hang.
+#[cfg(target_os = "linux")]
+fn run_privileged(root: bool, argv: &[String]) -> bool {
+    let (head, tail) = argv.split_first().expect("argv is never empty");
+    let mut cmd = if root {
+        Command::new(head)
+    } else {
+        let mut c = Command::new("sudo");
+        c.arg(head);
+        c
+    };
+    cmd.args(tail)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Print the RIGHT instructions for this machine and give up.
+///
+/// The command printed here is the detected distro's, never a hardcoded
+/// `apt` line — telling a Fedora or NixOS user to run `sudo apt install` is
+/// worse than saying nothing, because it looks authoritative and cannot work.
+#[cfg(target_os = "linux")]
+fn linux_manual(distro: Distro, missing: &[String], why: &str) -> Result<(), ExitCode> {
+    eprintln!("[xtask] {why}, so set them up yourself:");
+    eprintln!("[xtask]   {}", distro.manual_command());
+    eprintln!("[xtask] missing: {}", missing.join(", "));
+    if distro == Distro::Nixos {
+        eprintln!(
+            "[xtask] (or add them to your flake/configuration.nix devShell — \
+             this repo ships no nix expression yet)"
+        );
+    }
+    Err(ExitCode::FAILURE)
+}
+
+/// Install the Linux host build dependencies before anything tries to compile.
+///
+/// `[target.x86_64-unknown-linux-gnu]` in `.cargo/config.toml` links with
+/// `clang` driving `mold`, and Bevy needs the X11/Wayland/ALSA/udev/Vulkan dev
+/// libraries on top. None of it ships in a stock desktop install, so the first
+/// thing a contributor used to see was rustc's bare
+///
+///     error: linker `clang` not found
+///
+/// — one of fourteen missing pieces, named after several hundred crates had
+/// already compiled, with no package attached. Fixing that one walked into
+/// `invalid linker name in argument '-fuse-ld=mold'`, and fixing THAT walked
+/// into a `pkg-config` failure from `alsa-sys`. This ends the whole staircase in
+/// one step, before the first crate builds.
+///
+/// This can only run because the `renzora` alias pins xtask's own bootstrap to
+/// `cc` + `ld.bfd`; see the comment on that alias for the deadlock it breaks —
+/// the tool that installs the linker must not itself need it.
+///
+/// ## When it declines to install
+///
+/// Automatic means automatic on a developer's machine, not everywhere:
+///
+///   * `CI` set, or stdin is not a terminal — `sudo` cannot prompt for a
+///     password with nowhere to prompt, so it would hang rather than fail. Both
+///     CI and the container install these themselves anyway.
+///   * `RENZORA_NO_AUTO_INSTALL` set — the escape hatch, for anyone who wants
+///     their package manager left alone.
+///   * No `apt-get`. Package names genuinely differ across distros
+///     (`libasound2-dev` is `alsa-lib-devel` on Fedora, `alsa-lib` on Arch), and
+///     guessing them ships a command that fails halfway. Debian/Ubuntu/Mint is
+///     what the container and CI both use, so it is the one set kept honest.
+///
+/// Each of those prints the exact `apt install` line and stops.
+#[cfg(target_os = "linux")]
+fn preflight_host_deps() -> Result<(), ExitCode> {
+    let missing = linux_missing();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let distro = detect_distro();
+    eprintln!("[xtask] missing Linux host build dependencies: {}", missing.join(", "));
+
+    if std::env::var_os("RENZORA_NO_AUTO_INSTALL").is_some() {
+        return linux_manual(distro, &missing, "RENZORA_NO_AUTO_INSTALL is set");
+    }
+    if std::env::var_os("CI").is_some() {
+        return linux_manual(distro, &missing, "this is CI");
+    }
+    let Some(argv) = distro.install_argv() else {
+        return linux_manual(distro, &missing, distro.why_no_install());
+    };
+    {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() {
+            return linux_manual(distro, &missing, "there is no terminal for sudo to prompt on");
+        }
+    }
+
+    let root = Command::new("id")
+        .arg("-u")
+        .output()
+        .map(|o| o.stdout.starts_with(b"0"))
+        .unwrap_or(false);
+
+    eprintln!(
+        "[xtask] installing them now{}",
+        if root { "" } else { " (sudo may ask for your password)" }
+    );
+
+    if !run_privileged(root, &argv) {
+        // Overwhelmingly a stale index (`404  Not Found` on a moved pool path)
+        // rather than a genuinely absent package, and a refresh is slow enough
+        // to be worth skipping on the common path.
+        if let Some(refresh) = match distro {
+            Distro::Debian => Some(vec!["apt-get".to_string(), "update".to_string()]),
+            Distro::Arch => Some(vec!["pacman".to_string(), "-Sy".to_string()]),
+            Distro::Suse => Some(vec!["zypper".to_string(), "refresh".to_string()]),
+            // dnf refreshes its metadata on demand.
+            Distro::Fedora | Distro::Nixos | Distro::Unknown => None,
+        } {
+            eprintln!("[xtask] install failed; refreshing the package index and retrying once");
+            run_privileged(root, &refresh);
+            if run_privileged(root, &argv) {
+                return finish(distro);
+            }
+        }
+        return linux_manual(distro, &missing, "the automatic install failed");
+    }
+
+    finish(distro)
+}
+
+/// Re-probe after an install: the package manager reporting success is not the
+/// same claim as the build now being able to find the libraries.
+#[cfg(target_os = "linux")]
+fn finish(distro: Distro) -> Result<(), ExitCode> {
+    let still = linux_missing();
+    if !still.is_empty() {
+        return linux_manual(distro, &still, "the install ran but left some unsatisfied");
+    }
+    eprintln!("[xtask] host dependencies installed; continuing");
+    Ok(())
+}
+
+/// Windows links with `rust-lld` from the rustc sysroot and macOS with the
+/// system `cc`, and both get their platform SDKs from the OS toolchain rather
+/// than from packages — so there is nothing to install.
+#[cfg(not(target_os = "linux"))]
+fn preflight_host_deps() -> Result<(), ExitCode> {
+    Ok(())
+}
+
 fn cargo() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
