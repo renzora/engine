@@ -58,6 +58,28 @@ pub struct DownloadResponse {
     pub download_url: String,
     #[serde(default)]
     pub download_filename: String,
+    /// Per-file details. Only `file_size` is read here, to give the install
+    /// progress bar a real total — the transport reports no Content-Length, so
+    /// without this the bar can only sweep.
+    #[serde(default)]
+    pub files: Vec<DownloadFileInfo>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct DownloadFileInfo {
+    #[serde(default)]
+    pub file_size: i64,
+}
+
+impl DownloadResponse {
+    /// Total bytes to expect, when the server said. `None` for a multi-file
+    /// asset or a response without sizes, where one number would be a guess.
+    pub fn total_bytes(&self) -> Option<u64> {
+        match self.files.as_slice() {
+            [only] if only.file_size > 0 => Some(only.file_size as u64),
+            _ => None,
+        }
+    }
 }
 
 // ── API calls (blocking) ──

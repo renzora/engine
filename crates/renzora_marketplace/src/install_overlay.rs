@@ -26,6 +26,7 @@ use renzora::RenzoraShellExt;
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, folder_new_button, folder_picker, overlay_sized, FolderPick};
 use renzora_theme::ThemeManager;
@@ -54,13 +55,15 @@ pub(crate) struct PendingInstall {
 pub(crate) struct InstallShared {
     /// Bytes downloaded so far. Meaningful only in [`Phase::Downloading`].
     bytes: AtomicU64,
+    /// Bytes expected in total, or 0 when unknown — a free asset fetched
+    /// through the public proxy never resolves a file list, so its bar sweeps
+    /// instead of filling.
+    total: AtomicU64,
     /// The current [`Phase`], as its `u8`.
     phase: AtomicU8,
 }
 
-/// Where an install has got to. There is no percentage anywhere in this: no
-/// part of the transport or the catalogue reports a file's size, so the byte
-/// count is the only true number and the bar stays indeterminate.
+/// Where an install has got to.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     /// Asking the server for a download URL (an authenticated round trip).
@@ -101,6 +104,32 @@ pub(crate) struct InstallJob {
 #[derive(Resource, Default)]
 pub(crate) struct InstallJobs(Vec<InstallJob>);
 
+/// The install the open overlay is showing, once Install has been pressed.
+///
+/// The overlay used to close on confirm and hand the user a toast, which is a
+/// poor trade: the thing you were looking at vanishes and the feedback moves to
+/// the corner. It now stays put and becomes the progress view, then the result.
+#[derive(Resource)]
+pub(crate) struct OverlayInstall {
+    pub(crate) overlay: Entity,
+    pub(crate) name: String,
+    pub(crate) shared: Arc<InstallShared>,
+    /// Set when the worker finishes; until then the bar is live.
+    pub(crate) outcome: Option<Result<String, String>>,
+    /// A plugin needs a restart to load, so the result offers one.
+    pub(crate) offer_restart: bool,
+}
+
+/// The whole determinate bar, hidden while the total is unknown.
+#[derive(Component)]
+pub(crate) struct InstallBarTrack;
+/// The sweeping bar, shown only when there is no total to fill against.
+#[derive(Component)]
+pub(crate) struct InstallBusyBar;
+/// "Close" on the finished-install view.
+#[derive(Component)]
+pub(crate) struct InstallCloseBtn;
+
 #[derive(Component)]
 pub(crate) struct InstallConfirmBtn;
 #[derive(Component)]
@@ -113,7 +142,14 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<InstallJobs>();
     app.add_systems(
         Update,
-        (install_buttons, poll_install_result, restart_button),
+        (
+            install_buttons,
+            poll_install_result,
+            restart_button,
+            close_button,
+            drive_install_bar,
+            forget_closed_overlay,
+        ),
     );
     // A background install is invisible without this: the confirm overlay
     // closes on Install and the next thing that happens is a modal, minutes
@@ -313,6 +349,22 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     }
     kids.push(buttons);
 
+    // Everything above is the confirm step; wrap it so pressing Install can
+    // swap it out for the progress view rather than closing the overlay.
+    let confirm_step = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .id();
+    commands.entity(confirm_step).add_children(&kids);
+    bind_display(&mut commands, confirm_step, |w| {
+        w.get_resource::<OverlayInstall>().is_none()
+    });
+
+    let progress_step = build_progress_step(&mut commands, &fonts);
+    bind_display(&mut commands, progress_step, |w| {
+        w.get_resource::<OverlayInstall>().is_some()
+    });
+    let kids = vec![confirm_step, progress_step];
+
     // Pad the content so it isn't flush against the overlay edge.
     let body = commands
         .spawn(Node {
@@ -329,6 +381,9 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     commands.entity(content).add_child(body);
 
     queue.apply(world);
+    // A previous install's state would otherwise decide which face this new
+    // overlay opens on.
+    world.remove_resource::<OverlayInstall>();
     world.insert_resource(PendingInstall { asset, overlay, default_dest, session });
 }
 
@@ -339,13 +394,13 @@ fn install_buttons(
     pending: Option<Res<PendingInstall>>,
     pick: Res<FolderPick>,
     mut jobs: ResMut<InstallJobs>,
-    mut toasts: ResMut<crate::toasts::ToastQueue>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
         if *interaction == Interaction::Pressed {
             commands.entity(btn.0).despawn();
             commands.remove_resource::<PendingInstall>();
+            commands.remove_resource::<OverlayInstall>();
         }
     }
 
@@ -353,8 +408,6 @@ fn install_buttons(
         return;
     }
     let Some(pending) = pending else { return };
-    commands.entity(pending.overlay).despawn();
-
     let asset = pending.asset.clone();
     // A plugin shows no picker, so `FolderPick` still holds whatever the last
     // non-plugin install chose — take the category's own directory instead of
@@ -365,16 +418,8 @@ fn install_buttons(
         pick.path().map(Path::to_path_buf).unwrap_or_else(|| pending.default_dest.clone())
     };
     let session = pending.session.as_ref().map(clone_session);
+    let overlay = pending.overlay;
     commands.remove_resource::<PendingInstall>();
-
-    // Say where it went. The overlay is gone by the time the download starts, so
-    // without this the press has no visible consequence at all until the modal
-    // arrives — which for a large asset is a long way off.
-    toasts.push(
-        crate::toasts::Tone::Info,
-        format!("Installing {} in the background", asset.name),
-        None,
-    );
 
     let (tx, rx) = unbounded();
     let shared = Arc::new(InstallShared::default());
@@ -384,6 +429,17 @@ fn install_buttons(
         rx,
         shared: shared.clone(),
     });
+
+    // The overlay stays and turns into the progress view. No toast: the press
+    // has a visible consequence right where the user is looking.
+    commands.insert_resource(OverlayInstall {
+        overlay,
+        name: asset.name.clone(),
+        shared: shared.clone(),
+        outcome: None,
+        offer_restart: install::install_dir_for_category(&asset.category) == "plugins",
+    });
+
     spawn_install(session, asset, dest, tx, shared);
 }
 
@@ -391,6 +447,7 @@ fn install_buttons(
 fn poll_install_result(
     jobs: Option<ResMut<InstallJobs>>,
     fonts: Option<Res<EmberFonts>>,
+    mut active: Option<ResMut<OverlayInstall>>,
     mut theme_manager: Option<ResMut<ThemeManager>>,
     mut commands: Commands,
 ) {
@@ -398,10 +455,10 @@ fn poll_install_result(
     // Drain every job that has an answer, keep the rest. `retain` rather than an
     // index scan because a finished job is removed while its neighbours keep
     // running.
-    let mut finished: Vec<(String, Result<String, String>)> = Vec::new();
+    let mut finished: Vec<(String, String, Result<String, String>)> = Vec::new();
     jobs.0.retain(|job| match job.rx.try_recv() {
         Ok(outcome) => {
-            finished.push((job.category.clone(), outcome));
+            finished.push((job.name.clone(), job.category.clone(), outcome));
             false
         }
         Err(_) => true,
@@ -410,27 +467,40 @@ fn poll_install_result(
         return;
     }
 
-    for (category, outcome) in finished {
+    for (name, category, outcome) in finished {
         let dir = install::install_dir_for_category(&category);
-        let (title, body) = match outcome {
-            Ok(msg) => {
-                renzora::core::console_log::console_info("Marketplace", msg.clone());
-                // A freshly installed flat theme is only picked up by the picker
-                // on a rescan; do it now so it appears without reopening the
-                // project.
-                if dir == "themes" {
-                    if let Some(manager) = theme_manager.as_mut() {
-                        manager.scan_themes();
-                    }
+        // Side effects first, and once, however the result is then reported.
+        if let Ok(msg) = &outcome {
+            renzora::core::console_log::console_info("Marketplace", msg.clone());
+            // A freshly installed flat theme is only picked up by the picker on
+            // a rescan; do it now so it appears without reopening the project.
+            if dir == "themes" {
+                if let Some(manager) = theme_manager.as_mut() {
+                    manager.scan_themes();
                 }
-                ("Asset Installed".to_string(), msg)
             }
+        }
+
+        // If this is the install the overlay is showing, it reports the result
+        // itself — a modal on top of the overlay that is already saying the same
+        // thing would be two notices for one event.
+        if let Some(a) = active.as_deref_mut() {
+            if a.name == name && a.outcome.is_none() {
+                a.outcome = Some(outcome);
+                continue;
+            }
+        }
+
+        let (title, body) = match outcome {
+            Ok(msg) => ("Asset Installed".to_string(), msg),
             Err(e) => ("Install Failed".to_string(), e),
         };
-        // A plugin is opened once, during `App` assembly, so a new one on disk
-        // is not a new one in the process — the notice offers the restart rather
-        // than leaving the user to work out that the thing they just installed
-        // is not there.
+
+        // Otherwise it outlived its overlay (closed, or a second install), so it
+        // falls back to the notice. A plugin is opened once during `App`
+        // assembly, so a new one on disk is not a new one in the process — the
+        // notice offers the restart rather than leaving the user to work out
+        // that the thing they just installed is not there.
         let offer_restart = dir == "plugins" && title == "Asset Installed";
         let f = fonts.clone();
         commands.queue(move |world: &mut World| {
@@ -492,6 +562,9 @@ fn run_install(
         // downloading nothing.
         shared.phase.store(Phase::Resolving as u8, Ordering::Relaxed);
         let dl = mk::download_asset(s, &asset.id)?;
+        // The catalogue knows the size even though the transport does not, so
+        // the bar can fill rather than sweep.
+        shared.total.store(dl.total_bytes().unwrap_or(0), Ordering::Relaxed);
         shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
         let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
         (bytes, dl.download_filename, dl.download_url)
@@ -543,6 +616,172 @@ fn run_install(
 
     let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
+}
+
+/// The overlay's second face: what Install turns it into.
+///
+/// Both bars are built up front and swapped by `bind_display` — which one is
+/// right is not known until the server answers with a file size, and rebuilding
+/// the subtree at that moment would restart the sweep animation.
+fn build_progress_step(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(10.0),
+            padding: UiRect::vertical(Val::Px(6.0)),
+            ..default()
+        })
+        .id();
+
+    let title = commands
+        .spawn((Text::new(""), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary()))))
+        .id();
+    bind_text(commands, title, |w| match w.get_resource::<OverlayInstall>() {
+        Some(s) => match &s.outcome {
+            None => format!("Installing {}", s.name),
+            Some(Ok(_)) => format!("{} installed", s.name),
+            Some(Err(_)) => format!("{} failed to install", s.name),
+        },
+        None => String::new(),
+    });
+
+    // Determinate: the catalogue gave a size.
+    let track = renzora_ember::widgets::progress_sized(commands, 0.0, 420.0, 8.0);
+    commands.entity(track).insert(InstallBarTrack);
+    bind_display(commands, track, |w| {
+        w.get_resource::<OverlayInstall>()
+            .is_some_and(|s| s.outcome.is_none() && s.shared.total.load(Ordering::Relaxed) > 0)
+    });
+
+    // Indeterminate: it did not, so the bar sweeps instead of lying.
+    let busy = renzora_ember::widgets::progress_indeterminate(commands, 420.0, 8.0);
+    commands.entity(busy).insert(InstallBusyBar);
+    bind_display(commands, busy, |w| {
+        w.get_resource::<OverlayInstall>()
+            .is_some_and(|s| s.outcome.is_none() && s.shared.total.load(Ordering::Relaxed) == 0)
+    });
+
+    let caption = commands
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted()))))
+        .id();
+    bind_text(commands, caption, |w| {
+        let Some(s) = w.get_resource::<OverlayInstall>() else {
+            return String::new();
+        };
+        if let Some(outcome) = &s.outcome {
+            return match outcome {
+                Ok(msg) => msg.clone(),
+                Err(e) => e.clone(),
+            };
+        }
+        let done = s.shared.bytes.load(Ordering::Relaxed);
+        let total = s.shared.total.load(Ordering::Relaxed);
+        match Phase::from_u8(s.shared.phase.load(Ordering::Relaxed)) {
+            Phase::Resolving => "Preparing download…".to_string(),
+            Phase::Downloading if total > 0 => format!(
+                "{} of {} — {}%",
+                human_bytes(done),
+                human_bytes(total),
+                (done as f64 / total as f64 * 100.0).min(100.0).round() as u32
+            ),
+            Phase::Downloading => format!("{} downloaded", human_bytes(done)),
+            Phase::Writing => "Writing files…".to_string(),
+        }
+    });
+
+    // Buttons appear only once there is something to decide.
+    let buttons = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::FlexEnd,
+            column_gap: Val::Px(8.0),
+            margin: UiRect::top(Val::Px(4.0)),
+            ..default()
+        })
+        .id();
+    bind_display(commands, buttons, |w| {
+        w.get_resource::<OverlayInstall>().is_some_and(|s| s.outcome.is_some())
+    });
+    let restart = crate::util::pill_button(commands, fonts, "Restart Editor", GREEN, (255, 255, 255));
+    commands.entity(restart).insert(InstallRestartBtn);
+    bind_display(commands, restart, |w| {
+        w.get_resource::<OverlayInstall>()
+            .is_some_and(|s| s.offer_restart && matches!(s.outcome, Some(Ok(_))))
+    });
+    let close = button(commands, &fonts.ui, "Close");
+    commands.entity(close).insert(InstallCloseBtn);
+    commands.entity(buttons).add_children(&[restart, close]);
+
+    commands.entity(col).add_children(&[title, track, busy, caption, buttons]);
+    col
+}
+
+/// "Close" on the finished view — the same teardown as Cancel, from the other
+/// face of the overlay.
+fn close_button(
+    close: Query<&Interaction, (With<InstallCloseBtn>, Changed<Interaction>)>,
+    active: Option<Res<OverlayInstall>>,
+    mut commands: Commands,
+) {
+    if !close.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    if let Some(active) = &active {
+        commands.entity(active.overlay).despawn();
+    }
+    commands.remove_resource::<OverlayInstall>();
+}
+
+/// Drop the active-install state once its overlay is gone.
+///
+/// The X, Escape and a backdrop click all despawn the overlay through ember's
+/// own dismissal, which knows nothing about this resource. Left behind, it would
+/// make the *next* install overlay open on the progress face of an install that
+/// already finished. The install itself is unaffected — it keeps running and
+/// falls back to the notice, which is what that fallback is for.
+fn forget_closed_overlay(
+    active: Option<Res<OverlayInstall>>,
+    alive: Query<()>,
+    mut commands: Commands,
+) {
+    let Some(active) = active else { return };
+    if alive.get(active.overlay).is_err() {
+        commands.remove_resource::<OverlayInstall>();
+    }
+}
+
+/// Resize the determinate bar's fill from the live byte count.
+///
+/// A system rather than a binding because `bind_*` drives text and visibility,
+/// and this is a `Node` width.
+fn drive_install_bar(
+    active: Option<Res<OverlayInstall>>,
+    tracks: Query<&Children, With<InstallBarTrack>>,
+    mut fills: Query<&mut Node>,
+) {
+    let Some(active) = active else { return };
+    let total = active.shared.total.load(Ordering::Relaxed);
+    if total == 0 {
+        return;
+    }
+    let done = active.shared.bytes.load(Ordering::Relaxed);
+    // Writing has no byte count of its own; leave the bar full rather than
+    // letting it drop back to zero at the last moment.
+    let frac = if active.outcome.is_some()
+        || Phase::from_u8(active.shared.phase.load(Ordering::Relaxed)) == Phase::Writing
+    {
+        1.0
+    } else {
+        (done as f64 / total as f64).clamp(0.0, 1.0)
+    };
+    for children in &tracks {
+        for child in children.iter() {
+            if let Ok(mut node) = fills.get_mut(child) {
+                node.width = Val::Percent(frac as f32 * 100.0);
+            }
+        }
+    }
 }
 
 // ── Small UI helpers (mirror `plugin_install`) ────────────────────────────────
