@@ -7,11 +7,11 @@
 //! container, for the host platform only:
 //!
 //!   1. `cargo build --profile dist --workspace` — compile BOTH executables
-//!      (`renzora`, the runtime/shipped game, and `renzora-editor`) plus every
-//!      distribution plugin cdylib. One invocation: the ~700 shared crates
-//!      compile once and are linked into both binaries.
+//!      (`renzora`, the runtime/shipped game, and `renzora-editor`). One
+//!      invocation: the ~700 shared crates compile once and are linked into
+//!      both binaries, plugin crates among them.
 //!   2. Stage `dist/<platform>/`: the two executables + the shared libraries +
-//!      the OpenXR loader beside each other, every plugin cdylib into `plugins/`.
+//!      the OpenXR loader beside each other.
 //!   3. (`run` only) launch the staged editor.
 //!
 //! ## The shared libraries
@@ -42,10 +42,17 @@
 //! not changed: `renzora_viewport::external_runtime` spawns `renzora` as a child
 //! process for play mode, so both binaries must be staged together regardless.
 //!
-//! Why a staging step at all: a bare `cargo run` leaves the plugin cdylibs flat
-//! in `target/dist/` next to the exe, but the dynamic loader scans
-//! `<exe-dir>/plugins/` — so those plugins compile but never load. Step 2 is the
-//! one thing `cargo run` can't do, and the only reason `cargo renzora` exists.
+//! Why a staging step at all: `cargo run` leaves the executables in
+//! `target/dist/` with the shared libraries they import scattered among ~700
+//! other build artefacts, and nothing arranges the layout the OS loader and the
+//! editor both expect — the exe pair, the shared images beside them, `sdk/` and
+//! `plugins/` alongside. Step 2 is the one thing `cargo run` can't do, and the
+//! only reason `cargo renzora` exists.
+//!
+//! `plugins/` is NOT staged into. It belongs to the editor: the marketplace
+//! installs there, and a plugin is built where it is installed. Nothing in this
+//! repository writes to it, which is also why nothing in this repository sweeps
+//! it.
 //!
 //! Cross-platform builds stay Docker-only (`renzora build` / `build-all.sh`):
 //! this tool only ever produces artifacts for the machine it runs on.
@@ -55,7 +62,6 @@ use std::process::{Command, ExitCode};
 
 mod bundle;
 mod coverage;
-mod native_plugin;
 mod sdk;
 mod sync;
 mod wasm;
@@ -227,21 +233,6 @@ fn main() -> ExitCode {
             };
             launch(&repo, &out, &plat, true)
         }
-        // Build ONE standalone plugin and stage just its library — the hot-reload
-        // loop.
-        //
-        // Separate from `dist` because `dist` copies `renzora.exe`, and a running
-        // editor holds that file open on Windows: a full stage always requires
-        // closing the editor, which is exactly what hot reload exists to avoid.
-        // Staging one plugin touches nothing the editor has locked, because the
-        // loader maps a copy under `plugins/.reload/` and leaves the original free.
-        "plugin" => {
-            let Some(name) = std::env::args().nth(2) else {
-                eprintln!("[xtask] usage: cargo renzora plugin <name>");
-                return ExitCode::from(2);
-            };
-            stage_one_plugin(&repo, &plat, &name)
-        }
         // Delete a plugin crate and every reference to it, in one process — the
         // only safe way to do it. See `sync::remove`.
         "remove" => {
@@ -277,7 +268,6 @@ fn main() -> ExitCode {
         // and never a single workspace threshold.
         //
         //   cargo renzora coverage                  workspace, print the table
-        //   cargo renzora coverage --plugins        the C-ABI plugins too
         //   cargo renzora coverage --check          fail if any crate regressed
         //   cargo renzora coverage --bless          record the current numbers
         //   cargo renzora coverage --report-only    re-read the last run's lcov
@@ -303,78 +293,12 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | xr | dist | sdk | wasm [--no-opt] | plugin <name> | profile | \
+                 (expected: run | xr | dist | sdk | wasm [--no-opt] | profile | \
                  coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)
         }
     }
-}
-
-/// Build `plugins/<name>` and copy its library into the staged `plugins/`.
-///
-/// The editor's watcher notices the changed file and reloads it, so this is the
-/// whole edit-build-see loop — no relaunch, and no contention with the running
-/// process.
-fn stage_one_plugin(repo: &Path, plat: &Platform, name: &str) -> ExitCode {
-    let dir = repo.join("plugins").join(name);
-    if !dir.join("Cargo.toml").exists() {
-        eprintln!("[xtask] no plugin at {}", dir.display());
-        return ExitCode::FAILURE;
-    }
-    println!("[xtask] cargo build --profile dist ({name})");
-    let built = Command::new(cargo())
-        .current_dir(&dir)
-        .args(["build", "--profile", "dist"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !built {
-        return ExitCode::FAILURE;
-    }
-
-    let out = repo.join("dist").join(plat.dir).join("plugins");
-    if let Err(e) = std::fs::create_dir_all(&out) {
-        eprintln!("[xtask] could not create {}: {e}", out.display());
-        return ExitCode::FAILURE;
-    }
-    // All plugins share `plugins/target/` (see `plugins/.cargo/config.toml`), so
-    // this directory holds every plugin's artifact, not just this one's. Resolve
-    // the package name from the manifest — a crate's library name is not always
-    // its directory name — and copy only that file, or a single-plugin rebuild
-    // would restage all 61.
-    let from = repo.join("plugins").join("target").join("dist");
-    let pkg = std::fs::read_to_string(dir.join("Cargo.toml"))
-        .ok()
-        .and_then(|t| {
-            t.lines()
-                .find(|l| l.trim_start().starts_with("name = "))
-                .and_then(|l| l.split('"').nth(1).map(|s| s.replace('-', "_")))
-        })
-        .unwrap_or_else(|| name.replace('-', "_"));
-    let wanted = format!("{}{}.{}", plat.lib_prefix, pkg, plat.ext);
-    let Ok(entries) = std::fs::read_dir(&from) else {
-        eprintln!("[xtask] nothing built at {}", from.display());
-        return ExitCode::FAILURE;
-    };
-    let mut staged = 0;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() || file_name(&path) != wanted {
-            continue;
-        }
-        if let Err(e) = copy(&path, &out.join(file_name(&path))) {
-            eprintln!("[xtask] {e}");
-            return ExitCode::FAILURE;
-        }
-        println!("[xtask] staged {}", out.join(file_name(&path)).display());
-        staged += 1;
-    }
-    if staged == 0 {
-        eprintln!("[xtask] {name} built but produced no {wanted} — is it a cdylib?");
-        return ExitCode::FAILURE;
-    }
-    ExitCode::SUCCESS
 }
 
 fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
@@ -399,11 +323,12 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
             // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
             sdk::build(repo, plat, &out)?;
-            // After the SDK, because they link against it. A native plugin in
-            // `plugins/` is built exactly the way a user's installed one is —
-            // which is the point: an author working from source exercises the
-            // real path rather than a dev-only shortcut.
-            if !native_plugin::build_all(repo, &out) {
+            // Inside `sdk/`, and after it, because the two ship as one archive:
+            // `sdk.tar.zst` is unpacked by REPLACING `sdk/`, so a plugin API
+            // staged beside it would be deleted by the first update. It is not
+            // part of the SDK in any other sense — see `standalone.rs`.
+            if let Err(e) = stage_plugin_api(repo, &out) {
+                eprintln!("[xtask] staging the plugin API failed: {e}");
                 return Err(ExitCode::FAILURE);
             }
             Ok(out)
@@ -464,7 +389,7 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    ok && build_source_plugins(repo) && build_updater(repo)
+    ok && build_updater(repo)
 }
 
 /// Build the update sidecar (`tools/updater`).
@@ -495,170 +420,91 @@ fn build_updater(repo: &Path) -> bool {
     true
 }
 
-/// Build every `renzora_plugin` cdylib under `plugins/`.
+/// Stage the two crates a standalone plugin compiles against, as SOURCE.
 ///
-/// They are excluded from the workspace on purpose — as members they would
-/// inherit the engine's cargo feature unification and link Bevy, destroying the
-/// zero-dependency property that is the whole point. The cost is that
-/// `--workspace` never sees them, so without this step a stale copy from an
-/// earlier ABI lingers in the staged `plugins/` and gets loaded. That failure is
-/// nasty: a plugin built against an older ABI can pass the version handshake and
-/// then be called with a signature it was not compiled for.
+/// This is the standalone counterpart of the SDK, and the comparison is the
+/// point: the SDK is ~444 MB of crate metadata pinned to one exact rustc,
+/// because a native plugin links the engine's own Bevy. A standalone plugin
+/// links nothing, so all it needs is `renzora_plugin` and the derive crate
+/// behind it — about 2 MB of `.rs`, compiled by whatever rustc the user has.
 ///
-/// Each is its own tiny build — a quarter of a second once the shared
-/// `plugins/target/` is warm, since only the plugin itself compiles.
-fn build_source_plugins(repo: &Path) -> bool {
-    let root = repo.join("plugins");
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        return true; // no plugins/ is fine
-    };
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.join("Cargo.toml").exists() {
-            continue;
-        }
-        // Native plugins share this directory but not this build path. They link
-        // Bevy, and `plugins/` sits outside the engine workspace — so cargo
-        // would resolve them a FRESH Bevy from crates.io, with different
-        // `TypeId`s, producing a plugin that builds cleanly and then corrupts
-        // the World. They are compiled against the staged SDK instead, after it
-        // exists. See `native_plugin.rs`.
-        if native_plugin::is_native(&dir) {
-            continue;
-        }
-        // Skip the ones nothing has touched. Cargo would reach the same
-        // conclusion, but only after spawning a process, parsing a manifest and
-        // fingerprinting a dependency graph — and this loop does that ~66 times
-        // on a build where the answer is "no" every time. A `stat` per source
-        // file gets there first.
-        let stamp = plugin_stamp(repo, &dir);
-        if let Some((stamp, path)) = &stamp {
-            if std::fs::read_to_string(path).is_ok_and(|s| s.trim() == stamp) {
-                continue;
-            }
-        }
-        println!("[xtask] cargo build --profile dist ({})", file_name(&dir));
-        let ok = Command::new(cargo())
-            .current_dir(&dir)
-            .args(["build", "--profile", "dist"])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if !ok {
-            return false;
-        }
-        // Recorded only after a build that succeeded, so a failure is retried.
-        if let Some((stamp, path)) = &stamp {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(path, stamp);
-        }
+/// It lands in `sdk/plugin-api/` because the SDK is unpacked by replacing `sdk/`
+/// wholesale, so that is the only place beside the editor an update cannot
+/// delete. What a plugin's manifest says — `path = "../../crates/renzora_plugin"`,
+/// the source-checkout location — does not resolve there, and is repointed by
+/// `renzora_native_plugin::standalone::repoint_contract` before the build. That
+/// is the more robust arrangement anyway: a plugin authored outside this
+/// repository can declare anything, and no layout makes every such path resolve.
+///
+/// A prebuilt `.rlib` would be smaller and is the wrong answer: rlib metadata is
+/// pinned to one rustc, so shipping one would reintroduce `error[E0514]` — the
+/// SDK's toolchain lock — in the one mechanism that exists to avoid it.
+fn stage_plugin_api(repo: &Path, out: &Path) -> std::io::Result<()> {
+    for name in ["renzora_plugin", "renzora_plugin_derive"] {
+        let src = repo.join("crates").join(name);
+        let dst = out.join("sdk").join("plugin-api").join(name);
+        std::fs::create_dir_all(&dst)?;
+        copy_tree(&src.join("src"), &dst.join("src"))?;
+        let manifest = std::fs::read_to_string(src.join("Cargo.toml"))?;
+        std::fs::write(dst.join("Cargo.toml"), deworkspace(&manifest))?;
     }
-    true
+    Ok(())
 }
 
-/// What this plugin was last built from, and where that is recorded.
+/// Rewrite a workspace member's manifest so it stands alone.
 ///
-/// `None` when the inputs cannot be read, which skips the whole mechanism and
-/// always builds — the safe direction. Skipping a build that was needed leaves a
-/// plugin compiled against an older ABI: one that passes the version handshake
-/// and is then called with a signature it was not compiled for. Running a build
-/// that was not needed costs a second.
+/// Cargo resolves `workspace = true` when it PARSES a manifest, before it looks
+/// at features — so `bevy = { workspace = true, optional = true }` fails outside
+/// the workspace even though nothing a plugin builds ever enables it. Two
+/// inheritances to undo, and both are fatal rather than cosmetic:
 ///
-/// # Why a stamp rather than comparing against the built library
-///
-/// That was the obvious approach and it does not work. Cargo, asked to build a
-/// plugin it considers current, prints `Finished` and **does not touch the
-/// artifact** — so the library keeps an old mtime while a source file it did not
-/// need to recompile (a comment in `renzora_plugin`, say) is newer. Compared
-/// against the artifact, every plugin then reads as permanently stale and the
-/// skip never fires. A stamp records the inputs as they were at the last
-/// *successful* build, which is the question actually being asked.
-///
-/// The **path dependencies are part of the stamp**, and are the reason this is
-/// not just the plugin's own `src/`. Every C-ABI plugin path-depends on
-/// `renzora_plugin`, which *is* the ABI: edit that and every plugin must
-/// rebuild even though nothing in its own directory moved.
-fn plugin_stamp(repo: &Path, dir: &Path) -> Option<(String, PathBuf)> {
-    let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
-    let pkg = manifest
-        .lines()
-        .find(|l| l.trim_start().starts_with("name = "))
-        .and_then(|l| l.split('"').nth(1).map(|s| s.replace('-', "_")))
-        .unwrap_or_else(|| file_name(dir).replace('-', "_"));
-
-    // The library has to exist as well as the stamp matching: a wiped
-    // `plugins/target/` leaves the stamp behind, and skipping then would stage
-    // nothing and quietly ship a build with the plugin missing.
-    let plat = platform();
-    let artifact = repo
-        .join("plugins")
-        .join("target")
-        .join(profile())
-        .join(format!("{}{}.{}", plat.lib_prefix, pkg, plat.ext));
-    if !artifact.is_file() {
-        return None;
-    }
-
-    let mut rows = Vec::new();
-    collect_rows(dir, dir, &mut rows)?;
+///   * `bevy` takes the version the workspace pins.
+///   * `[lints] workspace = true` is dropped; a lint table is not part of what a
+///     plugin compiles against.
+fn deworkspace(manifest: &str) -> String {
+    let mut out = String::with_capacity(manifest.len());
+    let mut in_lints = false;
     for line in manifest.lines() {
-        let Some(rest) = line.split_once("path = ").map(|(_, r)| r) else {
-            continue;
-        };
-        let rel = rest.split('"').nth(1)?;
-        let dep = dir.join(rel);
-        collect_rows(&dep, &dep, &mut rows)?;
-    }
-    rows.sort();
-
-    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const PRIME: u64 = 0x0000_0100_0000_01b3;
-    let mut h = OFFSET;
-    for r in &rows {
-        for b in r.as_bytes() {
-            h ^= *b as u64;
-            h = h.wrapping_mul(PRIME);
-        }
-    }
-
-    let path = repo
-        .join("plugins")
-        .join("target")
-        .join(".xtask-stamps")
-        .join(format!("{pkg}.stamp"));
-    Some((format!("{h:016x}"), path))
-}
-
-/// `relative path:len:mtime` for every file under `dir`, skipping build outputs.
-///
-/// `None` on any unreadable directory, which the caller turns into "build it" —
-/// a stamp computed from a partial listing would match again next time and make
-/// the skip permanent.
-fn collect_rows(root: &Path, dir: &Path, out: &mut Vec<String>) -> Option<()> {
-    for e in std::fs::read_dir(dir).ok()?.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            // Outputs, not inputs — and `target/` holds the very artifact this
-            // is deciding about.
-            if matches!(e.file_name().to_str(), Some("target") | Some("build")) {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            in_lints = trimmed.starts_with("[lints]");
+            if in_lints {
                 continue;
             }
-            collect_rows(root, &p, out)?;
+        }
+        if in_lints {
+            continue;
+        }
+        if trimmed.starts_with("bevy = { workspace = true") {
+            out.push_str(&line.replace("workspace = true", "version = \"0.19\""));
         } else {
-            let meta = e.metadata().ok()?;
-            let secs = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy();
-            out.push(format!("{rel}:{}:{secs}", meta.len()));
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Copy a source tree, recursively.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(from)?.flatten() {
+        let p = e.path();
+        let dst = to.join(e.file_name());
+        if p.is_dir() {
+            copy_tree(&p, &dst)?;
+        } else if p.is_file() {
+            // Byte-compared rather than copied unconditionally: `fs::copy` does
+            // not preserve mtime, and the editor decides whether a plugin needs
+            // rebuilding by comparing source mtimes against the artefact. An
+            // unconditional copy would make every plugin look edited after every
+            // `cargo renzora`, and rebuild the lot on the next launch.
+            if std::fs::read(&p).ok() != std::fs::read(&dst).ok() {
+                copy(&p, &dst)?;
+            }
         }
     }
-    Some(())
+    Ok(())
 }
 
 /// Port of `build-all.sh`'s `copy_shared_libs`: arrange `target/dist/` into a
@@ -671,11 +517,15 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     let plugins = out.join("plugins");
     std::fs::create_dir_all(&plugins)?;
 
-    // Wipe prior artifacts so a removed plugin doesn't linger in dist/. Only the
-    // exe + shared libs are swept; any other dist content (configs, assets a
-    // packager dropped in) is left alone.
+    // Wipe prior artifacts so a removed binary or shared library doesn't linger
+    // in dist/. Only the exe + shared libs are swept; any other dist content
+    // (configs, assets a packager dropped in) is left alone.
+    //
+    // NOT `plugins/`. Nothing staged there is ours any more — the directory now
+    // holds what the marketplace installed and what a user dropped in, and a
+    // sweep of every `.so` in it would delete exactly that. It was swept when
+    // xtask put the files there; it must not be now that it doesn't.
     clean_artifacts(&out, plat)?;
-    clean_artifacts(&plugins, plat)?;
 
     // ── The two executables ──────────────────────────────────────────────────
     // `renzora`        the runtime / shipped game — the ONLY binary an export
@@ -745,78 +595,30 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     // start, which is exactly the failure this approach exists to prevent.
     stage_shared_libs(&src, &out, plat)?;
 
-    // ── Distribution plugin cdylibs → plugins/ ───────────────────────────────
-    let mut count = 0;
-    for entry in std::fs::read_dir(&src)? {
-        let path = entry?.path();
-        if !path.is_file() {
-            continue;
-        }
-        let name = file_name(&path);
-        if !name.ends_with(&format!(".{}", plat.ext)) || is_not_a_plugin(&name, plat) {
-            continue;
-        }
-        link_or_copy(&path, &plugins.join(&name))?;
-        count += 1;
+    // ── Engine resources ─────────────────────────────────────────────────────
+    // Under `resources/` rather than at the root, where a loose `icon.png` sits
+    // beside `renzora` and the shared libraries and says nothing about which of
+    // them it belongs to — the editor's icon, the exported game's default, or
+    // something safe to delete. The install's other directories each answer that
+    // question by name (`plugins/`, `sdk/`, `tools/`) and this one does too.
+    //
+    // Staged at all because a DOWNLOADED editor has no repository to read from,
+    // and the exporter needs a real icon to fall back on: `appimagetool` refuses
+    // an AppDir whose `.desktop` names a file that is not there, and a `.app`
+    // with no icon shows the generic application icon, which reads as a broken
+    // bundle. The author's own icon still wins; this is the default for a
+    // project that set none.
+    let icon = repo.join("icon.png");
+    if icon.is_file() {
+        let resources = out.join("resources");
+        std::fs::create_dir_all(&resources)?;
+        link_or_copy(&icon, &resources.join("icon.png"))?;
     }
 
-    // ── Source plugin cdylibs (plugins/) → plugins/ ──────────────────────────
-    // Separate pass because they are separate cargo projects, so the workspace
-    // sweep above never sees them.
-    // One shared `plugins/target/` for all of them now (see
-    // `plugins/.cargo/config.toml`), so this is a single directory read rather
-    // than a walk over 61 per-plugin target dirs.
-    let src_root = repo.join("plugins");
-    let ex = src_root.join("target").join("dist");
-    if let Ok(files) = std::fs::read_dir(&ex) {
-        for f in files.flatten() {
-            let path = f.path();
-            let name = file_name(&path);
-            if path.is_file() && name.ends_with(&format!(".{}", plat.ext)) {
-                // Cargo never sweeps the shared `plugins/target/`, so deleting a
-                // plugin's source leaves its cdylib sitting there and an
-                // unfiltered copy would restage it on every build — the deleted
-                // plugin appears to come back from the dead, and gets loaded
-                // against an ABI it was not compiled for (`renzora_git` did
-                // exactly this, spamming "panel op N is not one this build has").
-                // Stage only what still has a source directory.
-                let stem = name.trim_end_matches(&format!(".{}", plat.ext));
-                // `lib` on Unix, empty on Windows — strip only when non-empty,
-                // so `libgit.so` and `git.dll` both resolve to `plugins/git`.
-                let stem = stem.strip_prefix(plat.lib_prefix).unwrap_or(stem);
-                let manifest = src_root.join(stem).join("Cargo.toml");
-                if !manifest.exists() {
-                    println!("[xtask] skipping orphaned plugin artifact {name} (no plugins/{stem}/)");
-                    continue;
-                }
-                // A directory existing is not enough: a plugin CONVERTED from
-                // C-ABI to native keeps its name, so its stale cdylib in the
-                // shared `plugins/target/` passes the check above and gets staged
-                // beside the native plugin's directory. The two loaders are
-                // supposed to be unable to collide — one scans loose files, the
-                // other directories — and that holds for what the build
-                // *produces*, but not for what a previous build left lying
-                // around. `ai_chat` did exactly this: a loose `ai_chat.dll` and
-                // an `ai_chat/` directory, same id, one disable switch between
-                // them.
-                //
-                // So ask the manifest what the crate actually is now, and only
-                // stage the loose artifact when it is still a C-ABI plugin.
-                let is_cdylib = std::fs::read_to_string(&manifest)
-                    .map(|s| s.contains("cdylib"))
-                    .unwrap_or(false);
-                if !is_cdylib {
-                    println!(
-                        "[xtask] skipping stale C-ABI artifact {name} \
-                         (plugins/{stem}/ is a native plugin now)"
-                    );
-                    continue;
-                }
-                link_or_copy(&path, &plugins.join(&name))?;
-                count += 1;
-            }
-        }
-    }
+    // No plugin pass. In-workspace plugins are rlibs linked straight into the
+    // binaries staged above, and third-party ones — C-ABI or native — arrive
+    // through the marketplace into `plugins/`, which the editor owns. A build
+    // tool that also wrote there could only fight it.
 
     // Native macOS dylibs record their absolute build path as the install name;
     // rewrite to @rpath so the relocated dist/ folder actually resolves at run.
@@ -824,46 +626,8 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     fixup_macos(&out);
 
     let root = std::fs::read_dir(&out)?.flatten().filter(|e| e.path().is_file()).count();
-    println!("[xtask] staged {} ({root} root files, {count} plugins)", out.display());
+    println!("[xtask] staged {} ({root} root files)", out.display());
     Ok(out)
-}
-
-/// Files that look like plugin cdylibs but must NOT be swept into `plugins/`:
-/// the shared SDK dylibs (shipped beside the exe), Rust internals, the editor
-/// bundle (loaded from beside the exe), and a few crates that emit a cdylib but
-/// carry no plugin (`plugin_bevy_hash`) — the loader would reject them, and a
-/// stale one from the cargo cache would ship as dead weight. Mirrors the skip
-/// list in `build-all.sh`.
-fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
-    let p = plat.lib_prefix;
-    let e = plat.ext;
-    let is = |stem: &str| name == format!("{p}{stem}.{e}");
-    name.contains("bevy_dylib")
-        // The shared contract image, staged beside the exe. Sweeping it into
-        // `plugins/` would make the C-ABI loader `dlopen` it looking for an
-        // `INIT_SYMBOL` it does not export — harmless, but it would also ship a
-        // second ~30 MB copy of a library already sitting one directory up.
-        || name.contains("renzora_dylib")
-        // The shared ember image, for the same reason. Its own entry rather than
-        // a looser pattern: `contains("renzora_dylib")` does not match
-        // `renzora_ember_dylib`, and widening it to `_dylib` would start
-        // swallowing names a plugin author is entitled to choose.
-        || name.contains("renzora_ember_dylib")
-        || name.starts_with("std-")
-        || name.starts_with("libstd-")
-        // PROC-MACRO CRATES. These compile to a dylib for *rustc* to load, not for
-        // us. Staging one is not merely useless: the C-ABI loader calls
-        // `Library::new` on every dll in `plugins/`, and `dlopen`ing a proc-macro
-        // dylib into a process that is not the compiler crashes the editor before
-        // it reaches the splash. Any new `proc-macro = true` crate belongs here.
-        || name.contains("renzora_macros")
-        || name.contains("renzora_plugin_derive")
-        || name.contains("avian_derive")
-        || is("renzora")
-        || is("renzora_editor")
-        || is("renzora_editor_bundle") // pre-rename name, in case it lingers in cache
-        || is("renzora_postprocess") // now an rlib shim; a stale dylib has no add!
-        || is("renzora_preview") // wasm helper cdylib, not an engine plugin
 }
 
 /// Copy the shared libraries both executables import into `dist/<platform>/`.
@@ -1683,5 +1447,37 @@ fn fixup_macos(out: &Path) {
         // install_name_tool invalidates the ad-hoc signature; arm64 macOS refuses
         // invalid signatures, so re-sign each touched file ad-hoc.
         let _ = Command::new("codesign").args(["-s", "-", "-f"]).arg(f).status();
+    }
+}
+
+#[cfg(test)]
+mod plugin_api_tests {
+    use super::deworkspace;
+
+    /// Cargo resolves `workspace = true` when it PARSES a manifest, before it
+    /// looks at features — so an unresolved inheritance is a hard error even for
+    /// a dependency nothing enables. Both of these are fatal in the staged copy,
+    /// and their failure mode is every standalone plugin refusing to build with
+    /// an error about the API crate rather than about itself.
+    #[test]
+    fn workspace_inheritance_is_resolved_away() {
+        let out = deworkspace(
+            "[package]\nname = \"renzora_plugin\"\n\n             [dependencies]\n             bevy = { workspace = true, optional = true }\n             libm = { version = \"0.2\", optional = true }\n\n             [lints]\nworkspace = true\n",
+        );
+        assert!(!out.contains("workspace = true"), "{out}");
+        assert!(out.contains("bevy = { version = \"0.19\", optional = true }"), "{out}");
+        assert!(!out.contains("[lints]"), "{out}");
+        // Everything else survives untouched — this is a repair, not a rewrite.
+        assert!(out.contains("libm = { version = \"0.2\", optional = true }"), "{out}");
+        assert!(out.contains("name = \"renzora_plugin\""), "{out}");
+    }
+
+    /// `[lints]` is dropped by skipping to the next table header, so whatever
+    /// follows it must survive.
+    #[test]
+    fn a_table_after_lints_is_kept() {
+        let out = deworkspace("[lints]\nworkspace = true\n\n[features]\ndefault = []\n");
+        assert!(out.contains("[features]"), "{out}");
+        assert!(out.contains("default = []"), "{out}");
     }
 }

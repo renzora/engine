@@ -23,20 +23,15 @@
 # The cost is that `cargo renzora` is invoked with `--manifest-path` (see
 # `.cargo/config.toml`) and so must be run from the repo root.
 #
-# Deliberately almost ZERO dependencies: it must stay a tiny, instant-compiling
-# helper, and it must never pull `bevy` (which would perturb the workspace
-# feature unification that keeps every crate on one Bevy compilation).
+# ZERO dependencies: it must stay a tiny, instant-compiling helper, and it must
+# never pull `bevy` (which would perturb the workspace feature unification that
+# keeps every crate on one Bevy compilation).
 #
-# The single exception is `renzora_native_build`, and it is one because it costs
-# nothing: that crate has no dependencies of its own, so xtask's build is
-# unchanged. It holds the `rustc` command line for compiling a native plugin,
-# which the editor (`renzora_plugin_build`) must produce identically — the two
-# used to keep separate copies, and a change to one drifted silently from the
-# other. A path dependency on a workspace member is safe here despite the note
-# above about `sync.rs`: cargo reads a workspace root to resolve
-# `[lints] workspace = true` but does NOT validate its sibling members, so this
-# still builds when a dangling generated dependency has made the engine
-# workspace unloadable. Measured, not assumed.
+# It used to carry one, `renzora_native_build`, for the `rustc` command line that
+# compiled a native plugin — shared with the editor so the two could not drift.
+# xtask compiles no plugins any more: in-workspace ones are rlibs linked into the
+# binary, and third-party ones are built where they are installed. The editor is
+# now that crate's only caller, which is where the knowledge belonged anyway.
 [workspace]
 
 [package]
@@ -46,4 +41,3 @@ edition = "2021"
 publish = false
 
 [dependencies]
-renzora_native_build = { path = "../crates/renzora_native_build" }

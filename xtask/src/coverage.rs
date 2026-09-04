@@ -51,17 +51,18 @@
 //! machine to itself. CI hits none of this because the coverage job is the only
 //! thing in its container.
 //!
-//! ## Two scopes, because the plugins are not workspace members
+//! ## One scope
 //!
-//! `plugins/*` are deliberately excluded from the workspace (they must not
-//! inherit the engine's feature unification and link Bevy). The cost is that
-//! `cargo test --workspace` — and therefore CI, and therefore any workspace-wide
-//! coverage run — has never once compiled them. That is ~14k lines of C-ABI
-//! boundary code, the layer where a mistake is a hard crash in a user's game,
-//! sitting entirely outside the gate. `scope = plugins` walks them individually.
+//! There used to be two, because `plugins/*` sat outside the workspace and
+//! `cargo test --workspace` had therefore never compiled ~14k lines of C-ABI
+//! boundary code. That directory is gone — plugins are distributed through the
+//! marketplace and built where they are installed — so a coverage run over this
+//! repository now covers all of it, with nothing silently outside the gate.
+//! `renzora_plugin`, the boundary itself, is a workspace member and is measured
+//! with everything else.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitCode};
 
 /// Vendored third-party crates, excluded exactly as `.github/workflows/test.yml`
@@ -117,8 +118,6 @@ pub fn run(repo: &Path, args: &[String]) -> ExitCode {
     let bless = args.iter().any(|a| a == "--bless");
     let open = args.iter().any(|a| a == "--open");
     let skip_run = args.iter().any(|a| a == "--report-only");
-    let plugins = args.iter().any(|a| a == "--plugins");
-    let workspace = !plugins || args.iter().any(|a| a == "--workspace");
 
     if check && bless {
         eprintln!("[coverage] --check and --bless are opposites; pick one");
@@ -142,22 +141,12 @@ pub fn run(repo: &Path, args: &[String]) -> ExitCode {
 
     let mut tallies: BTreeMap<String, Tally> = BTreeMap::new();
 
-    if workspace {
+    {
         let lcov = out.join("workspace.lcov");
         if !skip_run && !run_workspace(repo, &lcov, open) {
             return ExitCode::FAILURE;
         }
-        match parse_lcov(repo, &lcov, Scope::Workspace) {
-            Ok(t) => merge(&mut tallies, t),
-            Err(e) => {
-                eprintln!("[coverage] {e}");
-                return ExitCode::FAILURE;
-            }
-        }
-    }
-
-    if plugins {
-        match run_plugins(repo, &out, skip_run) {
+        match parse_lcov(repo, &lcov) {
             Ok(t) => merge(&mut tallies, t),
             Err(e) => {
                 eprintln!("[coverage] {e}");
@@ -270,52 +259,6 @@ fn run_workspace(repo: &Path, lcov: &Path, open: bool) -> bool {
     true
 }
 
-/// Walk `plugins/*` and run each one's suite under instrumentation.
-///
-/// Each plugin is its own cargo project with its own lockfile and target dir, so
-/// there is no `--workspace` to lean on and no shared profraw directory to merge:
-/// one invocation per plugin, one lcov file per plugin, summed here.
-fn run_plugins(repo: &Path, out: &Path, skip_run: bool) -> Result<BTreeMap<String, Tally>, String> {
-    let root = repo.join("plugins");
-    let dir = out.join("plugins");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-
-    let mut all = BTreeMap::new();
-    let entries =
-        std::fs::read_dir(&root).map_err(|e| format!("cannot read {}: {e}", root.display()))?;
-    let mut names: Vec<PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.join("Cargo.toml").exists())
-        .collect();
-    names.sort();
-
-    for plugin in names {
-        let name = file_name(&plugin);
-        let lcov = dir.join(format!("{name}.lcov"));
-        if !skip_run {
-            println!("[coverage] cargo llvm-cov ({name})");
-            let mut cmd = Command::new(cargo());
-            cmd.current_dir(&plugin).args([
-                "llvm-cov",
-                "--profile",
-                "dist",
-                "--lcov",
-                "--output-path",
-                &lcov.display().to_string(),
-            ]);
-            cov_env(&mut cmd);
-            if !cmd.status().map(|s| s.success()).unwrap_or(false) {
-                return Err(format!("plugin '{name}' failed under instrumentation"));
-            }
-        }
-        if lcov.exists() {
-            merge(&mut all, parse_lcov(repo, &lcov, Scope::Plugin)?);
-        }
-    }
-    Ok(all)
-}
-
 /// Files whose lines are not ours to cover: every dependency checkout, the
 /// vendored Bevy-ecosystem crates, and generated code.
 ///
@@ -340,37 +283,20 @@ fn ignore_regex() -> String {
 
 // ── lcov parsing ─────────────────────────────────────────────────────────────
 
-/// Which scope's lcov we are reading.
-///
-/// This is not cosmetic. Every plugin path-depends on `crates/renzora_plugin` for
-/// the C-ABI headers, so a plugin's lcov carries `renzora_plugin` records too —
-/// almost all of them zero-hit, because a plugin exercises the codec and not the
-/// host loader. Summed naively across 69 plugins that buries `renzora_plugin`'s
-/// real workspace coverage under 69 copies of its unhit lines. A plugin run only
-/// ever contributes lines under `plugins/`.
-#[derive(Clone, Copy, PartialEq)]
-enum Scope {
-    Workspace,
-    Plugin,
-}
-
 /// Sum an lcov file into per-crate tallies.
 ///
 /// We only need three of lcov's record types: `SF:` opens a file, `LF:`/`LH:`
 /// close it with lines-found and lines-hit. That is why this reads lcov rather
 /// than llvm-cov's JSON — xtask is deliberately dependency-free (no serde), and
 /// a line-oriented format needs no parser at all.
-fn parse_lcov(repo: &Path, path: &Path, scope: Scope) -> Result<BTreeMap<String, Tally>, String> {
+fn parse_lcov(repo: &Path, path: &Path) -> Result<BTreeMap<String, Tally>, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let mut out: BTreeMap<String, Tally> = BTreeMap::new();
     let mut current: Option<String> = None;
     for line in text.lines() {
         if let Some(file) = line.strip_prefix("SF:") {
-            current = crate_of(repo, file).filter(|name| match scope {
-                Scope::Workspace => !name.starts_with("plugins/"),
-                Scope::Plugin => name.starts_with("plugins/"),
-            });
+            current = crate_of(repo, file);
         } else if let Some(n) = line.strip_prefix("LF:") {
             if let (Some(name), Ok(n)) = (current.as_ref(), n.trim().parse::<u64>()) {
                 out.entry(name.clone()).or_default().found += n;
@@ -390,8 +316,7 @@ fn parse_lcov(repo: &Path, path: &Path, scope: Scope) -> Result<BTreeMap<String,
 ///
 /// Nested editor subcrates (`crates/renzora_engine/editor/`) are reported under
 /// their own package name, `renzora_engine_editor`, because that is what cargo
-/// calls them and what a floor line has to name. Plugins get a `plugins/` prefix
-/// so a plugin and a crate of the same name cannot collide in the floor file.
+/// calls them and what a floor line has to name.
 fn crate_of(repo: &Path, file: &str) -> Option<String> {
     let norm = file.replace('\\', "/");
     let root = repo.display().to_string().replace('\\', "/");
@@ -411,7 +336,6 @@ fn crate_of(repo: &Path, file: &str) -> Option<String> {
                 Some(name.to_string())
             }
         }
-        "plugins" => Some(format!("plugins/{}", parts.next()?)),
         // The root `renzora_app` binary crate lives at `src/` in the repo root.
         "src" => Some("renzora_app".to_string()),
         _ => None,
@@ -565,8 +489,3 @@ fn cargo() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
 
-fn file_name(p: &Path) -> String {
-    p.file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}

@@ -43,14 +43,11 @@ members = [
 # avian_derive) went with it — they were members only so avian's path deps
 # resolved to them, and a path copy sitting alongside the registry copy the
 # published avian pulls would be two distinct types sharing a name.
-# `plugins/` holds first-party `renzora_plugin` cdylibs — the C-ABI mechanism,
-# not the older dylib one in `crates/renzora_*`. They are deliberately NOT
-# workspace members: as members they would inherit the engine's cargo feature
-# unification and link Bevy, destroying the zero-dependency property that makes a
-# plugin build in a second on any machine. Each is its own cargo project with its
-# own lockfile and target dir; `cargo renzora` builds and stages them all, and a
-# dev can `cd plugins/<name> && cargo build` directly.
-exclude = ["plugins"]
+# There is no `exclude` for plugins any more, because there is no `plugins/`.
+# This repository builds the engine; plugins — C-ABI and native alike — are
+# distributed through the marketplace and built where they are installed. What
+# stays here is the boundary itself (`crates/renzora_plugin`) and the in-workspace
+# plugin crates, which are rlibs linked straight into the binaries.
 # (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
 # is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
 # not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)

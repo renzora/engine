@@ -310,131 +310,6 @@ copy_shared_libs() {
     return 0
 }
 
-# ── Build the standalone C-ABI plugins for one platform ─────────────────────
-# Usage: build_plugins <rust-target|native> <platform-name> <ext>
-#
-# `plugins/*` are separate cargo projects, NOT workspace members — deliberately,
-# because as members they would inherit the engine's feature unification and link
-# Bevy, destroying the zero-dependency property that lets a plugin built by any
-# rustc load into any engine. The cost is that `cargo build --workspace` never
-# sees them, and for a long time nothing else in CI did either: every published
-# artifact shipped an EMPTY `plugins/` directory, which is not a subtle
-# degradation — it is no Lua scripting, no HTTP, and none of the ~50 post-process
-# effects, with no error message, because the host simply finds nothing to load.
-#
-# `cargo renzora` (xtask) has always built them for the host; this is the
-# cross-compiling equivalent, and the skip list below mirrors `is_not_a_plugin`
-# there.
-#
-# **Best-effort per plugin, on purpose.** These have real third-party
-# dependencies — mlua compiles C, the HTTP plugin pulls the rustls/ring stack —
-# and any of them can fail to cross-compile for a given target without that being
-# a reason to sink the whole engine build. A plugin that fails is named in the
-# summary and simply absent from the artifact. Silence would be the bug: an empty
-# `plugins/` looked exactly like a successful build for months.
-#
-# **Except for a plugin that depends on nothing.** Best-effort was the right call
-# for the reason above and the wrong one for everything else: it is scoped to
-# third-party code that can fail to cross-compile, and a plugin whose only
-# dependency is `renzora_plugin` has no such excuse. When one of those stops
-# building it is our bug, on every platform at once.
-#
-# Losing that distinction cost 25 days. All 59 `no_std` plugins stopped linking
-# on macOS the moment they stopped linking `std` (which is what carries the
-# `#[link]` for libc), and this loop reported `8 built, 59 failed` on both macOS
-# slices of every nightly while the job stayed green and the artifact shipped
-# without a single post-process effect. `plugin_has_third_party_deps` is what
-# separates "a dependency did not cross-compile" from "we broke the plugins".
-plugin_has_third_party_deps() {
-    awk '
-        /^\[dependencies\]/ { deps = 1; next }
-        /^\[/               { deps = 0 }
-        deps && /^[A-Za-z0-9_-]+[[:space:]]*=/ {
-            split($0, f, /[[:space:]]*=/)
-            if (f[1] != "renzora_plugin") { found = 1 }
-        }
-        END { exit(found ? 0 : 1) }
-    ' "$1"
-}
-
-build_plugins() {
-    local RUST_TARGET="$1" PLATFORM="$2" EXT="$3"
-    [ -d plugins ] || return 0
-
-    local TARGET_FLAG=() SRC="plugins/target/dist"
-    if [ "$RUST_TARGET" != "native" ]; then
-        TARGET_FLAG=(--target "$RUST_TARGET")
-        SRC="plugins/target/$RUST_TARGET/dist"
-    fi
-
-    echo "=== Building C-ABI plugins for $PLATFORM ==="
-    local dir name log built=0 failed=() fatal=()
-    for dir in plugins/*/; do
-        [ -f "$dir/Cargo.toml" ] || continue
-        name=$(basename "$dir")
-        # NATIVE plugins are skipped here, and running cargo on one would be
-        # actively harmful rather than merely wrong. `crate-type = ["dylib"]`
-        # means it links the real Bevy — and `plugins/` is outside the engine
-        # workspace, so cargo would resolve it a FRESH Bevy from crates.io. That
-        # is a ten-minute build per plugin whose output has different `TypeId`s
-        # from the engine: it loads, runs, and corrupts the World.
-        #
-        # The only sound way to build one is against the artifacts the engine was
-        # actually built from, which is what the staged SDK holds and what
-        # `xtask/src/native_plugin.rs` does. The quoted `"dylib"` is matched
-        # rather than the bare word because `"cdylib"` also ends in `dylib`.
-        if grep -q 'crate-type.*"dylib"' "$dir/Cargo.toml"; then
-            echo "    skipping '$name' (native plugin — built against the SDK, not by cargo)"
-            continue
-        fi
-        log=$(mktemp)
-        if ( cd "$dir" && cargo build --profile dist "${TARGET_FLAG[@]}" ) > "$log" 2>&1; then
-            built=$((built + 1))
-        else
-            failed+=("$name")
-            # The tail is what says *why*; a bare "failed" would send the next
-            # person to reproduce a 67-plugin build by hand.
-            echo "WARN: plugin '$name' failed to build for $PLATFORM:"
-            tail -15 "$log" | sed 's/^/    /'
-            if ! plugin_has_third_party_deps "$dir/Cargo.toml"; then
-                fatal+=("$name")
-            fi
-        fi
-        rm -f "$log"
-    done
-
-    # Sweep the built cdylibs into the staged tree. Only the profile dir's ROOT
-    # is read: dependency artifacts (including proc-macro dylibs, which crash the
-    # loader if `dlopen`'d) live in `deps/`, and the guards below are belt and
-    # braces for anything a warm cache leaves behind.
-    local OUT="$OUTPUT_DIR/$PLATFORM/plugins"
-    mkdir -p "$OUT"
-    local staged=0 f base
-    for f in "$SRC"/*."$EXT"; do
-        [ -f "$f" ] || continue
-        base=$(basename "$f")
-        [[ "$base" == *renzora_macros* ]] && continue
-        [[ "$base" == *renzora_plugin_derive* ]] && continue
-        [[ "$base" == *avian_derive* ]] && continue
-        [[ "$base" == libstd-* || "$base" == std-* ]] && continue
-        cp "$f" "$OUT/"
-        staged=$((staged + 1))
-    done
-
-    echo "=== $PLATFORM plugins: $built built, ${#failed[@]} failed, $staged staged ==="
-    if [ ${#failed[@]} -gt 0 ]; then
-        echo "    not shipped: ${failed[*]}"
-    fi
-    # Only the dependency-free ones sink the build; a third-party dependency that
-    # will not cross-compile is still a warning, which is what best-effort was for.
-    if [ ${#fatal[@]} -gt 0 ]; then
-        echo "ERROR: plugins with no third-party dependencies failed to build for $PLATFORM: ${fatal[*]}"
-        echo "       These build everywhere or nowhere — treat this as a broken plugin API, not a toolchain gap."
-        return 1
-    fi
-    return 0
-}
-
 # ── Build the update sidecar for one platform ───────────────────────────────
 # Usage: build_updater <rust-target|native> <platform-name> <exe-suffix>
 #
@@ -729,7 +604,6 @@ build_one() {
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            build_plugins native "$LINUX_PLATFORM" "so" || return 1
             build_updater native "$LINUX_PLATFORM" ""
             compress_binaries "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
@@ -737,26 +611,22 @@ build_one() {
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
             build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" ""
             compress_binaries "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll" || return 1
             build_updater x86_64-pc-windows-msvc "windows-x64" ".exe"
             compress_binaries "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
-            build_plugins x86_64-apple-darwin "macos-x64" "dylib" || return 1
             build_updater x86_64-apple-darwin "macos-x64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
-            build_plugins aarch64-apple-darwin "macos-arm64" "dylib" || return 1
             build_updater aarch64-apple-darwin "macos-arm64" ""
             # Pack BEFORE signing — packing invalidates a signature.
             compress_binaries "macos-arm64" ""

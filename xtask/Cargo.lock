@@ -3,12 +3,5 @@
 version = 4
 
 [[package]]
-name = "renzora_native_build"
-version = "0.1.0"
-
-[[package]]
 name = "xtask"
 version = "0.1.0"
-dependencies = [
- "renzora_native_build",
-]
