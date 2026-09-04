@@ -329,7 +329,7 @@ impl Plugin for StorePanel {
         // panel-systems-ungated: async store work must continue while the tab is hidden
         app.add_systems(
             Update,
-            (poll_preview, store_stop_preview_click, store_preview_install_click)
+            (poll_preview, store_stop_preview_click, store_preview_install_click, store_preview_dismiss_click)
                 .run_if(in_state(SplashState::Editor)),
         );
     }
@@ -363,6 +363,10 @@ struct StoreUploadBtn;
 struct StoreBackBtn;
 #[derive(Component)]
 struct StopPreviewBtn;
+/// Clears a failed preview's banner. Only shown when there is an error and no
+/// live preview — see [`build_preview_banner`].
+#[derive(Component)]
+struct PreviewDismissBtn;
 #[derive(Component)]
 struct PreviewInstallBtn;
 /// A home shelf's header / "See all" — carries the category slug to browse.
@@ -721,13 +725,39 @@ fn build_preview_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BorderColor::all(rgb(accent())),
         ))
         .id();
-    bind_display(commands, banner, |w| w.resource::<ThemePreview>().previewing.is_some());
+    // Shown while previewing OR when a preview failed. `error` used to be written
+    // in three places and read in none, so a preview that could not download,
+    // could not parse, or landed with no `ThemeManager` did exactly nothing on
+    // screen — indistinguishable from a button that is not wired up, which is
+    // what it was reported as.
+    bind_display(commands, banner, |w| {
+        let p = w.resource::<ThemePreview>();
+        p.previewing.is_some() || p.error.is_some()
+    });
     let eye = icon_text(commands, &fonts.phosphor, "eye", accent(), 13.0);
     let label = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    bind_text(commands, label, |w| w.resource::<ThemePreview>().previewing.clone().map(|n| format!("Previewing theme: {n}")).unwrap_or_default());
+    bind_text(commands, label, |w| {
+        let p = w.resource::<ThemePreview>();
+        match (&p.previewing, &p.error) {
+            (Some(n), _) => format!("Previewing theme: {n}"),
+            (None, Some(e)) => format!("Preview failed — {e}"),
+            (None, None) => String::new(),
+        }
+    });
+    // Hidden on failure: there is nothing to install and nothing to stop, and
+    // offering either would suggest the preview half-worked.
     let install = pill_btn(commands, fonts, "Install Theme", rgb(GREEN), PreviewInstallBtn);
     let stop = pill_btn(commands, fonts, "Stop", rgb(hover_bg()), StopPreviewBtn);
-    commands.entity(banner).add_children(&[eye, label, install, stop]);
+    for b in [install, stop] {
+        bind_display(commands, b, |w| w.resource::<ThemePreview>().previewing.is_some());
+    }
+    // Dismisses the failure, since nothing else clears it.
+    let dismiss = pill_btn(commands, fonts, "Dismiss", rgb(hover_bg()), PreviewDismissBtn);
+    bind_display(commands, dismiss, |w| {
+        let p = w.resource::<ThemePreview>();
+        p.previewing.is_none() && p.error.is_some()
+    });
+    commands.entity(banner).add_children(&[eye, label, install, stop, dismiss]);
     banner
 }
 
@@ -1883,6 +1913,15 @@ fn store_preview_click(
     }
 }
 
+fn store_preview_dismiss_click(
+    q: Query<&Interaction, (With<PreviewDismissBtn>, Changed<Interaction>)>,
+    mut preview: ResMut<ThemePreview>,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        preview.error = None;
+    }
+}
+
 fn store_signin_click(q: Query<&Interaction, (With<StoreSignInBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.insert_resource(renzora::core::AuthToggleWindowRequest);
@@ -1928,7 +1967,13 @@ fn poll_preview(mut preview: ResMut<ThemePreview>, manager: Option<ResMut<ThemeM
     let Some(rx) = preview.rx.as_ref() else { return };
     let Ok(res) = rx.try_recv() else { return };
     preview.rx = None;
-    let Some(mut manager) = manager else { return };
+    let Some(mut manager) = manager else {
+        // Consumed the message already, so returning quietly here loses it and
+        // the click looks ignored.
+        preview.error =
+            Some("no theme manager in this build, so a theme cannot be applied".to_string());
+        return;
+    };
     match res {
         Ok((name, theme)) => {
             if preview.saved.is_none() {
