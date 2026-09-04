@@ -63,6 +63,10 @@ pub(crate) struct InstallShared {
     total: AtomicU64,
     /// The current [`Phase`], as its `u8`.
     phase: AtomicU8,
+    /// Where the asset landed, once it has. Carried back so the main thread can
+    /// finish work the worker cannot: a downloaded model still has to go through
+    /// the import pipeline, and that fires events, which needs a `World`.
+    installed: std::sync::Mutex<Option<std::path::PathBuf>>,
 }
 
 /// Where an install has got to.
@@ -496,10 +500,12 @@ fn poll_install_result(
     // Drain every job that has an answer, keep the rest. `retain` rather than an
     // index scan because a finished job is removed while its neighbours keep
     // running.
-    let mut finished: Vec<(String, String, Result<String, String>)> = Vec::new();
+    let mut finished: Vec<(String, String, Result<String, String>, Option<std::path::PathBuf>)> =
+        Vec::new();
     jobs.0.retain(|job| match job.rx.try_recv() {
         Ok(outcome) => {
-            finished.push((job.name.clone(), job.category.clone(), outcome));
+            let installed = job.shared.installed.lock().ok().and_then(|p| p.clone());
+            finished.push((job.name.clone(), job.category.clone(), outcome, installed));
             false
         }
         Err(_) => true,
@@ -508,7 +514,21 @@ fn poll_install_result(
         return;
     }
 
-    for (name, category, outcome) in finished {
+    for (name, category, outcome, installed) in finished {
+        // A model arrives as whatever the author uploaded — an FBX, an OBJ, a
+        // glTF with loose textures — and the engine loads GLB with materials
+        // beside it. Everything dropped into the viewport already goes through
+        // the import pipeline for exactly this reason; an installed model was
+        // the one way into a project that skipped it, and the result was a file
+        // the engine could not read, or read without its materials.
+        //
+        // Queued rather than run here: the pipeline fires an event per material
+        // so `.material` files get written, and that needs a `World`.
+        if outcome.is_ok() && install::install_dir_for_category(&category) == "models" {
+            if let Some(root) = installed {
+                commands.queue(move |world: &mut World| import_installed_model(world, &root));
+            }
+        }
         let dir = install::install_dir_for_category(&category);
         // Side effects first, and once, however the result is then reported.
         if let Ok(msg) = &outcome {
@@ -607,8 +627,25 @@ fn run_install(
         // the bar can fill rather than sweep.
         shared.total.store(dl.total_bytes().unwrap_or(0), Ordering::Relaxed);
         shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
-        let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
-        (bytes, dl.download_filename, dl.download_url)
+        // An asset of several files comes as a zip of all of them, not as its
+        // first one. `download_url` points at that first file, which for a model
+        // is the mesh — so taking it delivered the geometry and silently none of
+        // the textures, and the install looked like it had worked.
+        //
+        // The `.zip` name is what makes the install extract it: `install_asset`
+        // decides by extension and magic bytes, so a zip named for its contents
+        // would be written to disk whole.
+        if dl.files.len() > 1 {
+            let url = mk::download_zip_url(&asset.id);
+            let bytes = mk::download_file_progress_auth(s, &url, &mut on_bytes)?;
+            // Only the extension matters: `install_asset` decides by that and
+            // by the leading `PK` magic, and the folder it extracts into is
+            // named from the asset, not from this.
+            (bytes, "asset.zip".to_string(), url)
+        } else {
+            let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
+            (bytes, dl.download_filename, dl.download_url)
+        }
     } else if asset.price_credits == 0 {
         let url = mk::preview_file_url(&asset.id);
         shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
@@ -661,7 +698,61 @@ fn run_install(
     }
 
     let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
+    if let Ok(mut slot) = shared.installed.lock() {
+        *slot = Some(path.clone());
+    }
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
+}
+
+/// Put every model file under `root` through the import pipeline, in place.
+///
+/// `root` is whatever the install produced — one file for a bare `.glb`, a
+/// folder for anything that arrived as an archive. Both are walked the same way
+/// because the difference is the seller's packaging, not the asset.
+///
+/// Each source becomes a sibling `.glb` with its textures in `textures/` and a
+/// `.material` per material, which is the layout the engine loads. A source that
+/// is already GLB still goes through: the converter is what extracts the
+/// materials, and skipping it would leave a model that renders untextured.
+///
+/// Failures are logged per file and the rest continue. A model the pipeline
+/// cannot read is still on disk exactly as it was downloaded, which is strictly
+/// better than an install that reports failure and leaves nothing.
+fn import_installed_model(world: &mut World, root: &std::path::Path) {
+    let Some(project) = world.get_resource::<renzora::CurrentProject>() else { return };
+    let project_path = project.path.clone();
+
+    let mut sources: Vec<std::path::PathBuf> = Vec::new();
+    collect_models(root, &mut sources);
+    if sources.is_empty() {
+        return;
+    }
+    for source in sources {
+        let Some(model_dir) = source.parent().map(std::path::Path::to_path_buf) else { continue };
+        let dest = source.with_extension("glb");
+        renzora_import::run_import_pipeline(world, &source, &dest, &model_dir, &project_path);
+        // The source is replaced by its GLB, not kept beside it — two files
+        // describing one model is what makes an asset browser show it twice.
+        if dest != source {
+            if let Err(e) = std::fs::remove_file(&source) {
+                warn!("[marketplace] could not remove {}: {e}", source.display());
+            }
+        }
+    }
+}
+
+/// Every importable model file at or under `path`, depth-first.
+fn collect_models(path: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if path.is_file() {
+        if renzora_import::detect_format(path).is_some() {
+            out.push(path.to_path_buf());
+        }
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else { return };
+    for entry in entries.flatten() {
+        collect_models(&entry.path(), out);
+    }
 }
 
 /// The overlay's second face: what Install turns it into.

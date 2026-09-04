@@ -479,122 +479,6 @@ fn compute_ground_position(
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
 
-/// Run the import pipeline on `source`, write the result to `dest`, dump
-/// extracted textures under `<model_dir>/textures/`, and fire one
-/// `PbrMaterialExtracted` event per material so `renzora_shader::material`
-/// writes a `.material` file per entry.
-///
-/// Logs and falls back to a plain file copy on failure — the GLB still loads
-/// for the user, just without per-material editable graphs.
-fn run_import_pipeline(
-    world: &mut World,
-    source: &std::path::Path,
-    dest: &std::path::Path,
-    model_dir: &std::path::Path,
-    project_path: &std::path::Path,
-) {
-    use renzora_import::{convert_to_glb, ImportSettings};
-
-    // Skip mesh optimization for the drop path — these reorder triangle
-    // buffers and are only meaningful for re-importing source files. The
-    // drop pipeline is for getting an existing GLB into the project quickly.
-    let settings = ImportSettings {
-        optimize_vertex_cache: false,
-        optimize_overdraw: false,
-        optimize_vertex_fetch: false,
-        ..Default::default()
-    };
-
-    let result = match convert_to_glb(source, &settings) {
-        Ok(r) => r,
-        Err(e) => {
-            warn!(
-                "[model_drop] convert failed for {:?}: {}; falling back to plain copy",
-                source, e
-            );
-            if source != dest {
-                if let Err(ce) = std::fs::copy(source, dest) {
-                    error!("[model_drop] copy fallback failed: {}", ce);
-                }
-            }
-            return;
-        }
-    };
-
-    if let Err(e) = std::fs::write(dest, &result.glb_bytes) {
-        error!("[model_drop] write GLB to {:?}: {}", dest, e);
-        return;
-    }
-
-    if !result.extracted_textures.is_empty() {
-        let tex_dir = model_dir.join("textures");
-        if let Err(e) = std::fs::create_dir_all(&tex_dir) {
-            warn!("[model_drop] create textures dir: {}", e);
-        } else {
-            for tex in &result.extracted_textures {
-                let tex_path = tex_dir.join(format!("{}.{}", tex.name, tex.extension));
-                if let Err(e) = tex.write_to(&tex_path) {
-                    warn!("[model_drop] write texture '{}': {}", tex.name, e);
-                }
-            }
-        }
-    }
-
-    if !result.extracted_materials.is_empty() {
-        let mat_dir = model_dir.join("materials");
-        // Texture URIs from the converter are relative to the model folder
-        // (e.g. `textures/diffuse.png`). The material observer wants
-        // project-relative paths so the resolver can find them — prefix with
-        // the model folder's location under the project root.
-        let model_rel = model_dir
-            .strip_prefix(project_path)
-            .ok()
-            .and_then(|p| p.to_str())
-            .map(|s| s.replace('\\', "/"))
-            .unwrap_or_default();
-        let prefix = |uri: &Option<String>| -> Option<String> {
-            uri.as_ref().map(|u| {
-                if model_rel.is_empty() {
-                    u.clone()
-                } else {
-                    format!("{}/{}", model_rel, u)
-                }
-            })
-        };
-
-        for mat in &result.extracted_materials {
-            world.trigger(renzora::core::PbrMaterialExtracted {
-                name: mat.name.clone(),
-                output_dir: mat_dir.clone(),
-                project_root: project_path.to_path_buf(),
-                base_color: mat.base_color,
-                metallic: mat.metallic,
-                roughness: mat.roughness,
-                emissive: mat.emissive,
-                base_color_texture: prefix(&mat.base_color_texture),
-                normal_texture: prefix(&mat.normal_texture),
-                metallic_roughness_texture: prefix(&mat.metallic_roughness_texture),
-                roughness_texture: prefix(&mat.roughness_texture),
-                metallic_texture: prefix(&mat.metallic_texture),
-                emissive_texture: prefix(&mat.emissive_texture),
-                occlusion_texture: prefix(&mat.occlusion_texture),
-                specular_glossiness_texture: prefix(&mat.specular_glossiness_texture),
-                opacity_texture: prefix(&mat.opacity_texture),
-                specular_texture: prefix(&mat.specular_texture),
-                advanced: mat.advanced.rewrite_textures(prefix),
-                alpha_mode: match mat.alpha_mode {
-                    renzora_import::ExtractedAlphaMode::Opaque => {
-                        renzora::core::PbrAlphaMode::Opaque
-                    }
-                    renzora_import::ExtractedAlphaMode::Mask => renzora::core::PbrAlphaMode::Mask,
-                    renzora_import::ExtractedAlphaMode::Blend => renzora::core::PbrAlphaMode::Blend,
-                },
-                alpha_cutoff: mat.alpha_cutoff,
-                double_sided: mat.double_sided,
-            });
-        }
-    }
-}
 
 /// Initiate loading a model file — called from a deferred `EditorCommands` closure.
 fn initiate_model_load(
@@ -629,7 +513,7 @@ fn initiate_model_load(
         // in for the GLB's embedded `StandardMaterial`. Falls back to a plain
         // copy if conversion fails — the model still loads, just without the
         // editable per-material graphs.
-        run_import_pipeline(world, &path, &dest, &model_dir, &project_path);
+        renzora_import::run_import_pipeline(world, &path, &dest, &model_dir, &project_path);
 
         glb_compat::ensure_loadable(&dest);
 

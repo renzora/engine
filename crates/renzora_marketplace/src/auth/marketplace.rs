@@ -160,6 +160,18 @@ pub fn get_asset(slug: &str) -> Result<AssetDetail, String> {
 /// Download an asset (requires authentication).
 /// Returns the download URL for the asset file.
 #[cfg(not(target_arch = "wasm32"))]
+/// Every file of a multi-file asset, as one zip.
+///
+/// The `/download` response carries a `download_url` for the FIRST file only,
+/// which is the wrong thing to hand someone for an asset that is a mesh plus its
+/// textures: they get the mesh and silently none of the rest. This endpoint
+/// packs the lot.
+///
+/// Authenticated, like `/download` — it enforces the same ownership rules.
+pub fn download_zip_url(asset_id: &str) -> String {
+    format!("{API_BASE}/api/marketplace/{asset_id}/download-zip")
+}
+
 pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadResponse, String> {
     let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
@@ -208,7 +220,31 @@ pub fn download_file_progress(
     url: &str,
     on_bytes: &mut dyn FnMut(u64),
 ) -> Result<Vec<u8>, String> {
+    download_file_progress_inner(url, None, on_bytes)
+}
+
+/// [`download_file_progress`] with the caller's bearer token.
+///
+/// The presigned URLs from `/download` carry their own authorisation in the
+/// query string, so the plain form suffices for those. `/download-zip` is an API
+/// route rather than a redirect, and enforces ownership itself — without the
+/// token it answers 401 and the install reports a failed download.
+pub fn download_file_progress_auth(
+    session: &AuthSession,
+    url: &str,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, String> {
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
+    download_file_progress_inner(url, Some(token), on_bytes)
+}
+
+fn download_file_progress_inner(
+    url: &str,
+    token: Option<&str>,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, String> {
     let mut stream = renzora::net::Request::get(url)
+        .maybe_bearer(token)
         .max_bytes(MAX_DOWNLOAD)
         .send_stream()
         .map_err(|e| format!("Download failed: {e}"))?;

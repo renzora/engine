@@ -30,6 +30,10 @@ renzora_theme = { path = "../renzora_theme" }
 # `InfiniteGrid`/`InfiniteGridSettings` types; the render plugin is already
 # registered by the editor's own GridPlugin.
 renzora_shader = { path = "../renzora_shader" }
+# The import pipeline. A downloaded model has to arrive the same way a dropped
+# one does — converted to GLB, textures extracted, a `.material` per material —
+# and that is one shared function rather than two that agree today.
+renzora_import = { path = "../renzora_import" }
 # The shader compiler + `CodeShaderMaterial` for the material/shader item
 # preview: compile a downloaded shader, extract its `@param`s, render it on a
 # primitive. `ShaderPlugin` (registry + cache + pipeline) is already in the build.

@@ -59,6 +59,8 @@ pub use fbx_ufbx::extract_animations as extract_animations_from_fbx;
 pub use formats::{detect_format, supported_extensions, ModelFormat};
 pub use inspect::{inspect_glb, GlbStats};
 pub use optimize::{optimize_glb, MeshOptSettings};
+pub mod pipeline;
+pub use pipeline::run_import_pipeline;
 pub use prune::{prune_glb, PruneSpec, Pruned};
 pub use settings::{ImportSettings, SceneStructure, UpAxis};
 pub use usd::extract_animations_from_usd;
