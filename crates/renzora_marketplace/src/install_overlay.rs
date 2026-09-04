@@ -516,9 +516,12 @@ fn run_install(
             .and_then(|s| s.to_str())
             .unwrap_or_default()
             .to_string();
-        // The sidecar ties the installed source back to its listing, so the
-        // manager can show what a directory came from and check for updates.
-        // Non-fatal: a missing sidecar doesn't fail the install.
+        // The sidecar ties the installed source back to its listing, and it is
+        // also what marks this directory as marketplace-owned: `xtask`'s
+        // `prune_orphans` deletes any staged plugin directory without one, since
+        // that is how it recognises a leftover copy of a repo plugin. Failing
+        // the install is better than leaving a plugin the next `cargo renzora`
+        // would silently delete.
         let meta = install::PluginSidecar {
             asset_id: asset.id.clone(),
             name: asset.name.clone(),
@@ -529,7 +532,8 @@ fn run_install(
             ..Default::default()
         };
         if let Err(e) = install::write_plugin_sidecar(&path, &meta) {
-            bevy::log::warn!("[marketplace] plugin sidecar not written: {e}");
+            let _ = std::fs::remove_dir_all(&path);
+            return Err(format!("Could not finish installing '{crate_name}': {e}"));
         }
         return Ok(format!(
             "Installed \"{}\" as plugin '{crate_name}'. It is built on the next start.",

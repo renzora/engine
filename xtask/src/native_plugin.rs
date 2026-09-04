@@ -103,6 +103,15 @@ pub fn build_all(repo: &Path, dist_root: &Path) -> bool {
 /// Only directories are considered, and only ones holding a `Cargo.toml` — a
 /// staged plugin always has one, and refusing to recurse past that keeps this
 /// from ever looking at an unrelated directory a user put in `dist/`.
+///
+/// **Marketplace installs are not orphans.** `dist/<platform>/plugins/` is
+/// shared: xtask stages copies of the repo's own `plugins/*` there, and the
+/// editor installs downloaded ones into the same directory, because that is
+/// where the loader looks. A downloaded plugin has no source in the repo, so by
+/// the rule above it looked exactly like an orphan and was deleted on the next
+/// `cargo renzora` — the plugin you just installed, gone. They are told apart by
+/// the `plugin.toml` sidecar the marketplace writes inside the directory it
+/// installs, which is why that write is fatal there rather than best-effort.
 fn prune_orphans(src_root: &Path, dist_root: &Path) {
     let staged_root = dist_root.join("plugins");
     let Ok(entries) = std::fs::read_dir(&staged_root) else {
@@ -110,6 +119,11 @@ fn prune_orphans(src_root: &Path, dist_root: &Path) {
     };
     for staged in entries.flatten().map(|e| e.path()) {
         if !staged.is_dir() || !staged.join("Cargo.toml").is_file() {
+            continue;
+        }
+        // Installed from the marketplace, not staged from this repo. Not ours
+        // to delete.
+        if staged.join("plugin.toml").is_file() {
             continue;
         }
         let name = crate::file_name(&staged);
@@ -373,4 +387,112 @@ fn newer_than(dir: &Path, target: &Path) -> bool {
         })
     }
     any_newer(&dir.join("src"), built)
+}
+
+#[cfg(test)]
+mod prune_tests {
+    use super::*;
+
+    /// A staged plugin: a directory with a `Cargo.toml`, as xtask leaves behind.
+    fn staged(dist: &Path, name: &str) -> PathBuf {
+        let dir = dist.join("plugins").join(name);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        std::fs::write(dir.join("src").join("lib.rs"), "").unwrap();
+        dir
+    }
+
+    /// The same, plus the sidecar the marketplace writes to claim ownership.
+    fn installed(dist: &Path, name: &str) -> PathBuf {
+        let dir = staged(dist, name);
+        std::fs::write(dir.join("plugin.toml"), "name = \"x\"\n").unwrap();
+        dir
+    }
+
+    fn temp(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("renzora-prune-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn removes_a_staged_copy_whose_source_is_gone() {
+        let root = temp("orphan");
+        let src = root.join("plugins");
+        std::fs::create_dir_all(&src).unwrap();
+        let dist = root.join("dist");
+        let orphan = staged(&dist, "was_deleted");
+
+        prune_orphans(&src, &dist);
+
+        assert!(!orphan.exists(), "an orphaned staged copy should be pruned");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn keeps_a_staged_copy_that_still_has_source() {
+        let root = temp("kept");
+        let src = root.join("plugins");
+        std::fs::create_dir_all(src.join("still_here")).unwrap();
+        let dist = root.join("dist");
+        let live = staged(&dist, "still_here");
+
+        prune_orphans(&src, &dist);
+
+        assert!(live.exists(), "a plugin still in plugins/ must survive");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The regression this guard exists for: a plugin installed from the
+    /// marketplace has no source in the repo, so the orphan rule matched it and
+    /// `cargo renzora` deleted what had just been installed.
+    #[test]
+    fn keeps_a_marketplace_install_with_no_source_in_the_repo() {
+        let root = temp("marketplace");
+        let src = root.join("plugins");
+        std::fs::create_dir_all(&src).unwrap();
+        let dist = root.join("dist");
+        let downloaded = installed(&dist, "renzora_lumen");
+
+        prune_orphans(&src, &dist);
+
+        assert!(
+            downloaded.exists(),
+            "a marketplace install must survive staging — it is not an orphan"
+        );
+        assert!(downloaded.join("src").join("lib.rs").is_file(), "its source must survive too");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ownership is what decides it, not whether source happens to exist.
+    #[test]
+    fn the_sidecar_protects_even_when_a_same_named_source_exists() {
+        let root = temp("both");
+        let src = root.join("plugins");
+        std::fs::create_dir_all(src.join("renzora_lumen")).unwrap();
+        let dist = root.join("dist");
+        let downloaded = installed(&dist, "renzora_lumen");
+
+        prune_orphans(&src, &dist);
+
+        assert!(downloaded.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ignores_directories_that_are_not_plugins() {
+        let root = temp("unrelated");
+        let src = root.join("plugins");
+        std::fs::create_dir_all(&src).unwrap();
+        let dist = root.join("dist");
+        let other = dist.join("plugins").join("some_user_folder");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("notes.txt"), "hello").unwrap();
+
+        prune_orphans(&src, &dist);
+
+        assert!(other.exists(), "a directory with no Cargo.toml is not ours to touch");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
