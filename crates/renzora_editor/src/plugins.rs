@@ -42,6 +42,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_grid::GridPlugin::default());
     app.add_plugins(renzora_hierarchy::HierarchyPanelPlugin::default());
     app.add_plugins(renzora_history::HistoryPanelPlugin::default());
+    app.add_plugins(renzora_http::RenzoraHttpPlugin::default());
     app.add_plugins(renzora_import_ui::ImportPlugin::default());
     app.add_plugins(renzora_inspector::InspectorPanelPlugin::default());
     app.add_plugins(renzora_lens_distortion_editor::LensDistortionEditorPlugin::default());

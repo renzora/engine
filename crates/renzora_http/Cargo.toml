@@ -1,0 +1,33 @@
+# The editor's HTTP client, linked in rather than loaded.
+#
+# The same code the `http` plugin ships, compiled into the editor bundle instead
+# of dlopen'd from `plugins/`. Nothing about the networking API changes: this
+# registers through the ordinary backend contract, so a game still gets its
+# client from a plugin — or from none, and carries no network stack at all.
+#
+# Why the editor cannot use the plugin form. Every other plugin is optional in
+# the sense that losing it costs you that plugin; losing this one costs the
+# marketplace, the update check, the update installer, engine-source and runtime
+# template downloads, toolchain provisioning and the splash's release feed. And
+# since plugins are now BUILT where they are installed, it is also the only one
+# whose first build pulls twenty packages from crates.io — so the editor's
+# networking would depend on the machine already having networking.
+[package]
+name = "renzora_http"
+version = "0.1.0"
+edition = "2021"
+description = "The engine's HTTP backend, statically linked into the editor."
+
+[dependencies]
+# `static_link` strips the `#[no_mangle]` from `add!`'s entry point, so this can
+# be linked in alongside anything else without two definitions of
+# `renzora_plugin_init`. `net` brings the backend contract itself.
+renzora_plugin = { path = "../renzora_plugin", features = ["net", "static_link", "host"] }
+# For `add!`, which declares this an Editor-scope plugin and lets the generator
+# wire it into the editor's list — the same way every other crate here is added.
+renzora = { path = "../renzora", default-features = false }
+bevy = { workspace = true }
+ureq = "3"
+
+[lints]
+workspace = true

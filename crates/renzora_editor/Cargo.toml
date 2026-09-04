@@ -124,6 +124,7 @@ editor = [
 ]
 
 [dependencies]
+
 renzora = { path = "../renzora", default-features = false }
 
 
@@ -244,6 +245,7 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_http = { path = "../renzora_http" }
 renzora_parkour_editor = { path = "../renzora_parkour/editor" }
 renzora_update = { path = "../renzora_update" }
 renzora_wind_editor = { path = "../renzora_wind/editor" }
