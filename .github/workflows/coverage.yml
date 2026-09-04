@@ -10,12 +10,20 @@ name: Coverage
 # needs. Running that on every PR would trade a reliable 15-minute gate for a
 # flaky 90-minute one.
 #
-# So it runs on pushes to `main` and weekly: a regression is caught within a day
-# and the report is always downloadable, without every PR paying for it. Promote
-# it to `pull_request` if the runner ever gets bigger.
+# Weekly and on demand, and NOT on push either — which is a value decision
+# rather than a disk one. The job runs after the merge, so it can never stop a
+# regression from landing; it can only report one that has. A gate that fires
+# after the fact is worth much less than one that fires before, and this one
+# spent eleven minutes of instrumented build on every push to say so.
+#
+# What it still does is hold the ratchet. `coverage-floors.txt` only moves up,
+# and `--check` fails when a crate slides below its floor — caught within a week
+# now instead of within a day, which is the right trade for a signal that cannot
+# block anything either way.
+#
+# Promote it to `pull_request` if the runner ever gets bigger; that is the
+# version that would actually earn the time.
 on:
-  push:
-    branches: [main]
   schedule:
     # Sundays 04:00 UTC — after the week's merges, before anyone starts Monday.
     - cron: "0 4 * * 0"
