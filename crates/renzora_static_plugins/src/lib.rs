@@ -25,3 +25,20 @@ use renzora_plugin::static_link::StaticPlugin;
 pub fn plugins() -> Vec<StaticPlugin> {
     Vec::new()
 }
+
+/// Install the NATIVE plugins compiled into this binary. Does nothing in the
+/// dev tree.
+///
+/// A separate function rather than a second list, because the two kinds are
+/// installed differently and neither shape fits the other. A C-ABI plugin is a
+/// function pointer the host calls across the ABI, so it can be described by
+/// data. A native plugin is an ordinary `impl Plugin` — the only way to install
+/// one is to call `add_plugins` with its type, which means generated code rather
+/// than a generated list.
+///
+/// The exporter rewrites this file with one `add_plugins` call per plugin, and
+/// turns on `renzora/static_plugins` so their `plugin!` declarations stop
+/// emitting the `#[no_mangle]` loader symbols that would otherwise collide.
+pub fn native_plugins(app: &mut bevy::app::App) {
+    let _ = app;
+}

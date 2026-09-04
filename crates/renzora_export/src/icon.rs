@@ -125,6 +125,32 @@ pub fn to_ico(base: &RgbaImage) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// A neutral 256×256 icon, for a project that has set none.
+///
+/// Needed because an AppImage cannot be built without one: the `.desktop` entry
+/// must name an icon and `appimagetool` refuses an `AppDir` where that file is
+/// absent — "test{.png,.svg,.xpm} defined in desktop file but not found" — so a
+/// project with no artwork could not be packaged at all.
+///
+/// Deliberately NOT the engine's own `icon.png`. Shipping Renzora's logo as the
+/// icon of somebody's game is a worse default than an obvious placeholder: it is
+/// wrong in a way that looks intentional, and it would travel all the way to a
+/// store page before anyone noticed.
+///
+/// A dark square with an inset border, so it reads as "no icon yet" rather than
+/// as a rendering failure.
+pub fn placeholder() -> RgbaImage {
+    const EDGE: u32 = 18;
+    RgbaImage::from_fn(BASE, BASE, |x, y| {
+        let inset = x >= EDGE && y >= EDGE && x < BASE - EDGE && y < BASE - EDGE;
+        if inset {
+            image::Rgba([32, 34, 40, 255])
+        } else {
+            image::Rgba([58, 62, 74, 255])
+        }
+    })
+}
+
 /// Encode the square base as a PNG, for the rpak entry the runtime hands winit.
 pub fn to_png(base: &RgbaImage) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();

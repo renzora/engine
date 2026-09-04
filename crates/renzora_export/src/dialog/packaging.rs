@@ -101,6 +101,12 @@ pub(super) fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p
         secs.push(sec);
     }
 
+    // Before the runtime status, because it is a decision about the OUTPUT and
+    // belongs beside the packaging mode it composes with — not down among the
+    // toolchain plumbing.
+    if crate::bundle::supported(p) {
+        secs.push(build_bundle_section(commands, fonts, p));
+    }
     secs.push(build_runtime_status(commands, fonts, p));
     secs.push(build_modding_section(commands, fonts));
     // Compression and mesh optimisation are packaging decisions — how the build
@@ -151,6 +157,43 @@ fn build_modding_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     });
     commands.entity(body).add_child(note);
 
+    sec
+}
+
+/// Application-bundle section: wrap the export in an `.AppImage` or a `.app`.
+///
+/// Shown only where the platform has such a format — Windows ships a folder and
+/// the web ships a directory a server points at, so a switch there would be a
+/// control with one meaningful setting.
+///
+/// Off by default. Rearranging the output into a directory the user did not ask
+/// for is a worse surprise than an unticked box, and the unbundled tree is what
+/// every export has produced until now.
+fn build_bundle_section(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
+    let mac = matches!(p, Platform::MacOSX64 | Platform::MacOSArm64);
+    let title = if mac { "export.section.app_bundle" } else { "export.section.appimage" };
+    let (sec, body) = section(commands, fonts, "package", &renzora::lang::t(title), accent());
+
+    let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+    let cb = switch_control(commands, false);
+    bind_2way(
+        commands,
+        cb,
+        |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.bundle_app),
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                s.bundle_app = *v;
+            }
+        },
+    );
+    let label = renzora::lang::t(if mac { "export.bundle.enable_app" } else { "export.bundle.enable_appimage" });
+    let label = txt(commands, fonts, &label, 12.5, text_primary());
+    commands.entity(row).add_children(&[cb, label]);
+    commands.entity(body).add_child(row);
+
+    let hint = renzora::lang::t(if mac { "export.bundle.hint_app" } else { "export.bundle.hint_appimage" });
+    let hint = txt(commands, fonts, &hint, 11.0, text_muted());
+    commands.entity(body).add_child(hint);
     sec
 }
 

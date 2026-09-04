@@ -8,6 +8,8 @@
 mod apk_signer;
 #[cfg(not(target_arch = "wasm32"))]
 mod build;
+/// Wrapping a finished export into an `.AppImage` or a `.app`.
+mod bundle;
 #[cfg(not(target_arch = "wasm32"))]
 mod capabilities;
 #[cfg(not(target_arch = "wasm32"))]

@@ -83,6 +83,10 @@ pub struct ExportPreset {
     pub selected_plugins: HashSet<String>,
     #[serde(default)]
     pub plugin_link_mode: PluginLinkMode,
+    /// `#[serde(default)]`, so a preset written before bundling existed reads
+    /// back as "no bundle" rather than failing to parse.
+    #[serde(default)]
+    pub bundle_app: bool,
     /// Engine capability toggles (id → on). Only the ids that differ from the
     /// default would be enough, but the full map is written so a preset keeps
     /// meaning the same thing when a later engine adds a capability that
@@ -134,6 +138,7 @@ impl ExportPreset {
             mesh_generate_lods: false,
             mesh_lod_levels: default_lod_levels(),
             selected_plugins: HashSet::new(),
+            bundle_app: false,
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: HashMap::new(),
         }
@@ -162,6 +167,7 @@ impl ExportPreset {
             mesh_generate_lods: state.mesh_generate_lods,
             mesh_lod_levels: state.mesh_lod_levels,
             selected_plugins: state.selected_plugins.clone(),
+            bundle_app: state.bundle_app,
             plugin_link_mode: state.plugin_link_mode,
             capabilities: state.capabilities.clone(),
         }
@@ -216,6 +222,7 @@ impl ExportPreset {
         state.mesh_generate_lods = self.mesh_generate_lods;
         state.mesh_lod_levels = self.mesh_lod_levels;
         state.selected_plugins = self.selected_plugins.clone();
+        state.bundle_app = self.bundle_app;
         state.plugin_link_mode = self.plugin_link_mode;
         // Merge rather than replace: a capability added by a newer engine is
         // absent from an older preset, and dropping it would silently strip a

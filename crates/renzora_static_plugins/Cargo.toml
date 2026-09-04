@@ -18,6 +18,11 @@ edition = "2021"
 # `sys` types inside it, all of which are dependency-free. Pulling `host` here
 # would drag Bevy into a crate whose entire job is to hold a list.
 renzora_plugin = { path = "../renzora_plugin" }
+# For the NATIVE half. A native plugin is an ordinary Bevy plugin, so linking one
+# in is `app.add_plugins(..)` and this crate has to be able to name `App`. It is
+# the one thing that pulls Bevy in here; the C-ABI half above still names only
+# dependency-free types.
+bevy = { workspace = true }
 
 [lints]
 workspace = true

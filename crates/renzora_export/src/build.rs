@@ -162,6 +162,24 @@ fn runtime_feature(platform: Platform) -> &'static str {
 /// template dir *is* `<engine>/dist/<platform>/`. Once a lean build could target
 /// another platform it stopped being true — and a lean build never reads the
 /// template anyway, since it recompiles the engine from source.
+/// Where a plugin's SOURCE lives, for the exporter to compile from.
+///
+/// Beside the editor, not in the engine checkout. Plugins used to live in the
+/// repository's `plugins/`, so `engine_src.join("plugins")` was the same
+/// directory and the distinction never came up. They are distributed through the
+/// marketplace now and installed into `<editor>/plugins/<id>/`, source and all —
+/// which is what a lean export has to compile, and it is also the only copy that
+/// exists on a machine that installed the editor rather than cloning it.
+///
+/// The failure this fixes is quiet in the worst way: the plan finds no source,
+/// says so in one line among a hundred compiler lines, and ships every plugin as
+/// a loose file — producing a "lean" build that is not lean and a single binary
+/// that is not single.
+pub fn plugin_source_root() -> Option<PathBuf> {
+    let dir = editor_dir()?.join("plugins");
+    dir.is_dir().then_some(dir)
+}
+
 pub fn editor_dir() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
 }
@@ -328,7 +346,13 @@ pub fn build_lean(
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
     patch_lean_profile(&ws, profile, progress)?;
-    stage_static_plugins(workspace_dir, &ws, static_plugins, progress)?;
+    // The plugins' SOURCE, which is beside the editor rather than in the
+    // checkout — `workspace_dir` is the engine repo and has held no `plugins/`
+    // since they moved to the marketplace. Empty is not an error here: the plan
+    // this stages was resolved from the same root, so an empty root produced an
+    // empty plan and there is nothing to stage.
+    let plugins_root = plugin_source_root().unwrap_or_else(|| workspace_dir.join("plugins"));
+    stage_static_plugins(&plugins_root, &ws, static_plugins, progress)?;
     let has_scripts = stage_static_scripts(project_dir, &ws, progress)?;
     let mut features = String::from(runtime_feature(platform));
     if !static_plugins.is_empty() {
@@ -993,6 +1017,18 @@ fn strip_runtime_features(
 
 // ── Statically-linked plugins ────────────────────────────────────────────────
 
+/// Which mechanism a linked-in plugin belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticKind {
+    /// `crate-type = ["cdylib"]`, registered with `renzora_plugin::add!`.
+    /// Installed as a `StaticPlugin` entry the host calls across the ABI.
+    CAbi,
+    /// `crate-type = ["dylib"]`, declared with `renzora::plugin!(Expr, Scope)`.
+    /// Carries that expression, because installing it is
+    /// `app.add_plugins(<crate>::<expr>)` and there is nothing else to call.
+    Native { expr: String },
+}
+
 /// One plugin to compile into the binary instead of shipping beside it.
 ///
 /// [`resolve_static_plugins`] builds these by pairing what the export UI listed
@@ -1005,6 +1041,13 @@ pub struct StaticPluginSrc {
     /// and what the host logs the plugin as. Underscored, because that is what
     /// rustc sees; see `package` for what cargo is told.
     pub id: String,
+    /// How this plugin is installed once it is linked in.
+    ///
+    /// Not cosmetic: the two are compiled the same way and installed by entirely
+    /// different code. A C-ABI plugin becomes a `StaticPlugin` the host calls
+    /// through; a native one is an ordinary Bevy plugin, so the generated crate
+    /// has to `add_plugins` its type by name.
+    pub kind: StaticKind,
     /// The `[package] name` as written, which may contain dashes. Cargo resolves
     /// a dependency by this and rustc then substitutes underscores, so the
     /// generated manifest must use it verbatim and the generated code must not.
@@ -1075,7 +1118,10 @@ pub struct StaticPluginPlan {
 /// both macOS arches. Absent means "builds anywhere", which is true of nearly
 /// every plugin and is why the default has to be the permissive one.
 pub fn resolve_static_plugins(
-    engine_src: &Path,
+    // Directory holding one source directory per plugin — see
+    // `plugin_source_root`. Named `plugins_root` rather than `engine_src`
+    // because it is no longer inside the checkout.
+    plugins_root: &Path,
     wanted: &[(String, bool)],
     // `None` for a host build with no `--target`, which is the host triple by
     // definition; a plugin cannot be unsupported on the platform whose editor is
@@ -1086,9 +1132,9 @@ pub fn resolve_static_plugins(
     // the folder names: the library a plugin produces is named after its
     // `[package] name` (with dashes underscored), and that is what the scan sees.
     // Underscored package name → (package name as written, directory, buildable).
-    let mut by_package: std::collections::HashMap<String, (String, String, bool)> =
+    let mut by_package: std::collections::HashMap<String, (String, String, bool, StaticKind)> =
         Default::default();
-    if let Ok(entries) = std::fs::read_dir(engine_src.join("plugins")) {
+    if let Ok(entries) = std::fs::read_dir(plugins_root) {
         for entry in entries.flatten() {
             if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
@@ -1102,7 +1148,25 @@ pub fn resolve_static_plugins(
                     Some(triple) => supports_target(&text, triple),
                     None => true,
                 };
-                by_package.insert(name.replace('-', "_"), (name, dir, buildable));
+                // `crate-type` is the distinction everywhere else in the engine,
+                // so it is the distinction here. A `dylib` is native and needs
+                // its `plugin!` expression read out of the source; a `cdylib` is
+                // C-ABI and is described entirely by its manifest.
+                let kind = if declares_dylib(&text) {
+                    match native_plugin_expr(&entry.path()) {
+                        Some(expr) => Some(StaticKind::Native { expr }),
+                        // Declared no plugin, or declared one this cannot name —
+                        // `plugin!(MyPlugin { size: 4 }, Runtime)` is legal and
+                        // is not a path. Left unlinked and shipped as a file
+                        // instead, which is what a copy-based export does anyway.
+                        None => None,
+                    }
+                } else {
+                    Some(StaticKind::CAbi)
+                };
+                if let Some(kind) = kind {
+                    by_package.insert(name.replace('-', "_"), (name, dir, buildable, kind));
+                }
             }
         }
     }
@@ -1120,9 +1184,10 @@ pub fn resolve_static_plugins(
             .get(id.as_str())
             .or_else(|| by_package.get(crate_name))
         {
-            Some((_, _, false)) => plan.unsupported.push(crate_name.to_string()),
-            Some((package, dir, true)) => plan.linked.push(StaticPluginSrc {
+            Some((_, _, false, _)) => plan.unsupported.push(crate_name.to_string()),
+            Some((package, dir, true, kind)) => plan.linked.push(StaticPluginSrc {
                 id: crate_name.to_string(),
+                kind: kind.clone(),
                 package: package.clone(),
                 library_stem: id.clone(),
                 dir: dir.clone(),
@@ -1136,15 +1201,62 @@ pub fn resolve_static_plugins(
     plan
 }
 
+/// Does this manifest declare a `dylib` — a native, Bevy-linking plugin?
+///
+/// Checks the quoted `"dylib"`: `"cdylib"` also ends in `dylib`, and matching
+/// loosely would call every C-ABI plugin native.
+fn declares_dylib(manifest: &str) -> bool {
+    manifest
+        .lines()
+        .filter(|l| l.trim_start().starts_with("crate-type"))
+        .any(|l| l.contains("\"dylib\""))
+}
+
+/// The expression a native plugin passes to `renzora::plugin!`.
+///
+/// `plugin!` takes an expression rather than a type — `Box::new($plugin)` — so
+/// `plugin!(SplinePlugin, Runtime)` names a unit struct's value. Linking one in
+/// is `app.add_plugins(spline::SplinePlugin)`, which needs that text prefixed
+/// with the crate name, and that is only sound when the expression is a bare
+/// identifier.
+///
+/// Anything else — `MyPlugin::default()`, `MyPlugin { size: 4 }` — returns
+/// `None` rather than being pasted after a `::` to produce a syntax error inside
+/// generated code the author never wrote. Such a plugin ships as a file instead.
+fn native_plugin_expr(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("src").join("lib.rs")).ok()?;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        let Some(rest) = t.split_once("plugin!(").map(|(_, r)| r) else { continue };
+        // Only `renzora::plugin!` and a bare `plugin!`, never `__native_plugin_entry!`
+        // or another crate's macro that happens to end in the same characters.
+        let head = t.split("plugin!(").next().unwrap_or_default().trim_end_matches('!');
+        if !(head.is_empty() || head.ends_with("renzora::") || head == "plugin") {
+            continue;
+        }
+        let expr = rest.split([',', ')']).next()?.trim();
+        let is_ident = !expr.is_empty()
+            && expr.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && expr.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if is_ident {
+            return Some(expr.to_string());
+        }
+    }
+    None
+}
+
 /// Every plugin under `plugins/` that declares it cannot build for `triple`.
 ///
 /// For the export dialog, which lists plugins before anything is compiled and
 /// would otherwise let someone tick one that the build then leaves out. Reading
 /// the manifests is a few dozen small file reads, so call it when the selected
 /// platform changes — not per frame.
-pub fn unsupported_plugins_for(engine_src: &Path, triple: &str) -> Vec<String> {
+pub fn unsupported_plugins_for(plugins_root: &Path, triple: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(engine_src.join("plugins")) else {
+    let Ok(entries) = std::fs::read_dir(plugins_root) else {
         return out;
     };
     for entry in entries.flatten() {
@@ -1220,7 +1332,7 @@ fn package_name(manifest: &str) -> Option<String> {
 /// 3. **Drop `[profile.*]`.** Profiles outside a workspace root are ignored with
 ///    a warning, and sixty of those warnings buries the build log.
 fn stage_static_plugins(
-    engine_src: &Path,
+    plugins_root: &Path,
     copy_root: &Path,
     plugins: &[StaticPluginSrc],
     progress: &mut dyn FnMut(String),
@@ -1231,7 +1343,7 @@ fn stage_static_plugins(
 
     let mut copied = 0usize;
     for p in plugins {
-        let src = engine_src.join("plugins").join(&p.dir);
+        let src = plugins_root.join(&p.dir);
         let dest = copy_root.join("plugins").join(&p.dir);
         std::fs::create_dir_all(&dest).map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
         // Everything but the manifest, which is written patched below. A plugin
@@ -1244,21 +1356,38 @@ fn stage_static_plugins(
 
     let mut deps = String::new();
     let mut entries = String::new();
+    let mut native_calls = String::new();
     for p in plugins {
         deps.push_str(&format!(
             "{name} = {{ path = \"../../plugins/{dir}\" }}\n",
             name = p.package,
             dir = p.dir
         ));
-        entries.push_str(&format!(
-            "        StaticPlugin {{\n\
-             \x20           id: \"{id}\",\n\
-             \x20           scope: PluginScope::{scope},\n\
-             \x20           init: {id}::renzora_plugin_init,\n\
-             \x20       }},\n",
-            id = p.id,
-            scope = if p.editor_scope { "Editor" } else { "Runtime" },
-        ));
+        match &p.kind {
+            // Data: the host calls this through the ABI, so it can be described
+            // by a struct literal.
+            StaticKind::CAbi => entries.push_str(&format!(
+                "        StaticPlugin {{\n\
+                 \x20           id: \"{id}\",\n\
+                 \x20           scope: PluginScope::{scope},\n\
+                 \x20           init: {id}::renzora_plugin_init,\n\
+                 \x20       }},\n",
+                id = p.id,
+                scope = if p.editor_scope { "Editor" } else { "Runtime" },
+            )),
+            // Code: a native plugin is an ordinary `impl Plugin`, and the only
+            // way to install one is to hand `add_plugins` its type. There is no
+            // symbol to look up and nothing to describe.
+            //
+            // Editor-scope ones are not emitted at all. A lean binary is a game;
+            // an editor plugin compiled into one would run its editor systems
+            // there, which is worse than the file being absent.
+            StaticKind::Native { expr } if !p.editor_scope => native_calls.push_str(&format!(
+                "    app.add_plugins({krate}::{expr});\n",
+                krate = p.id,
+            )),
+            StaticKind::Native { .. } => {}
+        }
     }
 
     let manifest = format!(
@@ -1275,6 +1404,12 @@ fn stage_static_plugins(
          # the binary fails to link. Cargo unifies features per package, so\n\
          # naming it once here applies it to all of them.\n\
          renzora_plugin = {{ path = \"../renzora_plugin\", features = [\"static_link\"] }}\n\
+         # The native counterpart. `plugin!` emits `#[no_mangle]`\n\
+         # `renzora_native_plugin_ctor`, and fifty of those in one binary do not\n\
+         # link either. Cargo unifies features per package, so naming it here\n\
+         # turns it off for every native plugin in the build.\n\
+         renzora = {{ path = \"../renzora\", features = [\"static_plugins\"] }}\n\
+         bevy = {{ workspace = true }}\n\
          {deps}"
     );
     write_if_changed(&crate_dir.join("Cargo.toml"), &manifest)?;
@@ -1293,7 +1428,10 @@ fn stage_static_plugins(
          use renzora_plugin::static_link::StaticPlugin;\n\
          use renzora_plugin::sys::PluginScope;\n\
          \n\
-         pub fn plugins() -> Vec<StaticPlugin> {{\n{body}}}\n"
+         pub fn plugins() -> Vec<StaticPlugin> {{\n{body}}}\n\
+         \n\
+         #[allow(unused_variables)]\n\
+         pub fn native_plugins(app: &mut bevy::app::App) {{\n{native_calls}}}\n"
     );
     write_if_changed(&crate_dir.join("src").join("lib.rs"), &lib)?;
 
@@ -1890,6 +2028,43 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
 
     doc.remove("workspace");
     doc.remove("profile");
+
+    // Repoint the engine dependencies at THIS workspace's copies.
+    //
+    // A plugin's manifest names them by relative path, and the path that is
+    // correct where the plugin is installed is wrong here. An installed
+    // standalone plugin says `../../sdk/plugin-api/renzora_plugin` — written by
+    // `renzora_native_plugin::standalone::repoint_contract`, and correct from
+    // `<editor>/plugins/<id>/`. Copied to `<workspace>/plugins/<id>/` the same
+    // string resolves to a `sdk/` directory the export workspace has never had,
+    // and cargo refuses the whole workspace before compiling a line:
+    //
+    //   failed to read .../export-src/sdk/plugin-api/renzora_plugin/Cargo.toml
+    //
+    // Rewriting rather than assuming is what makes this hold for a plugin from
+    // anywhere. A marketplace download, a plugin developed in its author's own
+    // checkout and one repointed by the editor all name that crate differently,
+    // and all three are correct where they came from.
+    //
+    // Only `path` dependencies are touched: a plugin depending on a published
+    // `renzora_plugin` from crates.io is naming a version, and cargo resolves it
+    // the same way here as anywhere.
+    if let Some(deps) = doc.get_mut("dependencies").and_then(|d| d.as_table_like_mut()) {
+        for (name, workspace_path) in [
+            ("renzora_plugin", "../../crates/renzora_plugin"),
+            // The native half. `renzora` and `bevy` are what a native plugin
+            // links, and `renzora` is the one named by path.
+            ("renzora", "../../crates/renzora"),
+            ("renzora_ember", "../../crates/renzora_ember"),
+        ] {
+            let Some(dep) = deps.get_mut(name).and_then(|d| d.as_table_like_mut()) else {
+                continue;
+            };
+            if dep.get("path").is_some() {
+                dep.insert("path", toml_edit::value(workspace_path));
+            }
+        }
+    }
     let lib = doc
         .entry("lib")
         .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
@@ -2092,51 +2267,103 @@ mod tests {
     /// and such a script failed the lean build on "unlinked crate renzora_ember"
     /// after having run fine in the editor for as long as the author had been
     /// writing it.
-    /// The exporter must not try to link a plugin that cannot build for the
-    /// target. Pinned against the REAL manifests rather than a fixture, because
-    /// the thing that goes wrong is a plugin gaining a platform gate in its
-    /// source and nobody adding the key — which a fixture cannot notice.
-    #[test]
-    fn the_web_leaves_out_the_plugins_that_cannot_cross_to_it() {
-        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("crates/renzora_export -> repo root");
-        // `audio` is the one that actually bit: its `renzora_plugin_init` is
-        // behind `#[cfg(not(target_arch = "wasm32"))]`, so linking it in fails
-        // inside the generated aggregator minutes into the compile.
-        let wanted: Vec<(String, bool)> = ["audio", "lua", "tracy", "http", "grayscale"]
-            .iter()
-            .map(|id| (id.to_string(), false))
-            .collect();
+    /// Build a `plugins/` tree: one directory per entry, with a manifest and a
+    /// `src/lib.rs` so both kinds are readable.
+    fn plugin_tree(tag: &str, entries: &[(&str, &str, &str)]) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("renzora_plan_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (name, manifest, lib) in entries {
+            let dir = root.join("plugins").join(name);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+            std::fs::write(dir.join("src").join("lib.rs"), lib).unwrap();
+        }
+        root
+    }
 
-        let web = resolve_static_plugins(repo, &wanted, Some("wasm32-unknown-unknown"));
+    fn cabi(name: &str, unsupported: &str) -> String {
+        format!(
+            "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n{unsupported}\n\
+             [lib]\ncrate-type = [\"cdylib\"]\n"
+        )
+    }
+
+    /// The exporter must not try to link a plugin that cannot build for the
+    /// target.
+    ///
+    /// Fixtures rather than the repository's own plugins, which this used to
+    /// read: they no longer live here — they are distributed through the
+    /// marketplace and installed beside the editor — so a test pinned to their
+    /// manifests was asserting on a directory that no longer exists. What is
+    /// left is the rule itself, which is what the exporter actually implements.
+    #[test]
+    fn a_plugin_that_cannot_cross_to_the_target_is_not_linked() {
+        let gate = "[package.metadata.renzora]\nunsupported-targets = [\"wasm32\"]\n";
+        let repo = plugin_tree(
+            "web",
+            &[
+                ("audio", &cabi("audio", gate), ""),
+                ("grayscale", &cabi("grayscale", ""), ""),
+            ],
+        );
+        let wanted: Vec<(String, bool)> =
+            ["audio", "grayscale"].iter().map(|id| (id.to_string(), false)).collect();
+
+        let web = resolve_static_plugins(&repo.join("plugins"), &wanted, Some("wasm32-unknown-unknown"));
         assert!(
             web.linked.iter().all(|p| p.id == "grayscale"),
-            "only the pure-Rust one should cross: {:?}",
+            "only the ungated one should cross: {:?}",
             web.linked.iter().map(|p| &p.id).collect::<Vec<_>>()
         );
-        assert_eq!(web.unsupported, ["audio", "http", "lua", "tracy"]);
+        assert_eq!(web.unsupported, ["audio"]);
         assert!(web.no_source.is_empty(), "{:?}", web.no_source);
 
-        // The same set on a desktop triple links every one of them: the key is
-        // per-target, not a blanket exclusion.
-        let desktop = resolve_static_plugins(repo, &wanted, Some("x86_64-pc-windows-msvc"));
-        assert_eq!(desktop.linked.len(), 5, "{:?}", desktop.unsupported);
+        // The same set on a desktop triple links both: the key is per-target,
+        // not a blanket exclusion.
+        let desktop = resolve_static_plugins(&repo.join("plugins"), &wanted, Some("x86_64-pc-windows-msvc"));
+        assert_eq!(desktop.linked.len(), 2, "{:?}", desktop.unsupported);
         assert!(desktop.unsupported.is_empty());
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     /// No `--target` means the host, where nothing is filtered.
     #[test]
     fn no_target_filters_nothing() {
-        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .unwrap();
-        let wanted = vec![("audio".to_string(), false)];
-        let plan = resolve_static_plugins(repo, &wanted, None);
+        let gate = "[package.metadata.renzora]\nunsupported-targets = [\"wasm32\"]\n";
+        let repo = plugin_tree("hosttriple", &[("audio", &cabi("audio", gate), "")]);
+        let plan = resolve_static_plugins(&repo.join("plugins"), &[("audio".to_string(), false)], None);
         assert_eq!(plan.linked.len(), 1);
         assert!(plan.unsupported.is_empty());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A native plugin is linkable too, and is described by CODE rather than by
+    /// a table: the plan has to carry the expression `plugin!` was given, since
+    /// installing one is `add_plugins(<crate>::<expr>)` and there is no symbol
+    /// to look up.
+    #[test]
+    fn a_native_plugin_is_planned_with_its_type() {
+        let repo = plugin_tree(
+            "native",
+            &[
+                (
+                    "spline",
+                    "[package]\nname = \"spline\"\nversion = \"0.1.0\"\n\
+                     [lib]\ncrate-type = [\"dylib\"]\n",
+                    "renzora::plugin!(SplinePlugin, Runtime);\n",
+                ),
+                ("grayscale", &cabi("grayscale", ""), ""),
+            ],
+        );
+        let wanted: Vec<(String, bool)> =
+            ["spline", "grayscale"].iter().map(|id| (id.to_string(), false)).collect();
+        let plan = resolve_static_plugins(&repo.join("plugins"), &wanted, None);
+
+        let spline = plan.linked.iter().find(|p| p.id == "spline").expect("spline linked");
+        assert_eq!(spline.kind, StaticKind::Native { expr: "SplinePlugin".into() });
+        let grayscale = plan.linked.iter().find(|p| p.id == "grayscale").expect("grayscale");
+        assert_eq!(grayscale.kind, StaticKind::CAbi);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     /// A manifest with no `[package.metadata.renzora]` — nearly all of them —
@@ -2324,5 +2551,118 @@ strip = \"symbols\"
     }
 }
 
+#[cfg(test)]
+mod native_static_tests {
+    use super::{declares_dylib, native_plugin_expr};
 
+    #[test]
+    fn crate_type_tells_the_two_kinds_apart() {
+        assert!(declares_dylib("[lib]\ncrate-type = [\"dylib\"]\n"));
+        // `"cdylib"` ends in `dylib`; a loose match would call every C-ABI
+        // plugin native and generate an `add_plugins` call for a type that
+        // does not exist.
+        assert!(!declares_dylib("[lib]\ncrate-type = [\"cdylib\"]\n"));
+        assert!(!declares_dylib("[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n"));
+    }
+
+    fn plugin_dir(tag: &str, body: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("renzora_expr_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        std::fs::write(d.join("src").join("lib.rs"), body).unwrap();
+        d
+    }
+
+    /// The shape every native plugin in the repository uses.
+    #[test]
+    fn a_bare_identifier_is_linkable() {
+        let d = plugin_dir("bare", "use bevy::prelude::*;\nrenzora::plugin!(SplinePlugin, Runtime);\n");
+        assert_eq!(native_plugin_expr(&d).as_deref(), Some("SplinePlugin"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// `plugin!` takes an EXPRESSION, so these are legal and cannot be pasted
+    /// after a `::`. Refusing them here ships the plugin as a file; accepting
+    /// them would put a syntax error in generated code the author never wrote.
+    #[test]
+    fn an_expression_that_is_not_a_path_is_refused() {
+        for body in [
+            "renzora::plugin!(MyPlugin::default(), Runtime);",
+            "renzora::plugin!(MyPlugin { size: 4 }, Runtime);",
+            "// renzora::plugin!(Commented, Runtime);",
+            "fn main() {}",
+        ] {
+            let d = plugin_dir("expr", body);
+            assert_eq!(native_plugin_expr(&d), None, "accepted {body:?}");
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    /// The single-argument form defaults to `Editor`, and still names a type.
+    #[test]
+    fn the_scopeless_form_is_read_too() {
+        let d = plugin_dir("scopeless", "renzora::plugin!(ToolPlugin);\n");
+        assert_eq!(native_plugin_expr(&d).as_deref(), Some("ToolPlugin"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod manifest_patch_tests {
+    use super::patch_plugin_manifest;
+
+    fn patched(manifest: &str) -> String {
+        let src = std::env::temp_dir()
+            .join(format!("renzora_patch_{}_{:?}", std::process::id(), std::thread::current().id()));
+        let _ = std::fs::remove_dir_all(&src);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("Cargo.toml"), manifest).unwrap();
+        let dest = src.join("out.toml");
+        patch_plugin_manifest(&src, &dest).unwrap();
+        let out = std::fs::read_to_string(&dest).unwrap();
+        let _ = std::fs::remove_dir_all(&src);
+        out
+    }
+
+    /// What an INSTALLED standalone plugin's manifest says. That path is correct
+    /// beside the editor and names nothing inside the export workspace, and
+    /// cargo refuses the entire workspace over it before compiling anything.
+    #[test]
+    fn an_installed_plugins_contract_path_is_repointed() {
+        let out = patched(
+            "[package]\nname = \"flock\"\nversion = \"0.1.0\"\n\n             [lib]\ncrate-type = [\"cdylib\"]\n\n             [dependencies]\n             renzora_plugin = { path = \"../../sdk/plugin-api/renzora_plugin\",              default-features = false, features = [\"libm\"] }\n",
+        );
+        assert!(out.contains("../../crates/renzora_plugin"), "{out}");
+        assert!(!out.contains("sdk/plugin-api"), "{out}");
+        // The features are what make a `no_std` plugin compile; a rewrite that
+        // dropped them would trade one failure for a stranger one.
+        assert!(out.contains("default-features = false"), "{out}");
+        assert!(out.contains("libm"), "{out}");
+        // And the crate type has to become an rlib to be linked in.
+        assert!(out.contains("rlib"), "{out}");
+    }
+
+    /// A native plugin names `renzora` by path for the same reason and needs the
+    /// same treatment; `bevy` comes from the registry and unifies on its own.
+    #[test]
+    fn a_native_plugins_engine_paths_are_repointed() {
+        let out = patched(
+            "[package]\nname = \"clouds\"\nversion = \"0.1.0\"\n\n             [lib]\ncrate-type = [\"dylib\"]\n\n             [dependencies]\n             bevy = \"0.19\"\n             renzora = { path = \"/somewhere/else/crates/renzora\" }\n",
+        );
+        assert!(out.contains("../../crates/renzora"), "{out}");
+        assert!(!out.contains("/somewhere/else"), "{out}");
+        assert!(out.contains("bevy = \"0.19\""), "{out}");
+    }
+
+    /// A version dependency is not a path and must be left alone — cargo
+    /// resolves it here exactly as it does anywhere.
+    #[test]
+    fn a_registry_dependency_is_untouched() {
+        let out = patched(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n             [dependencies]\nrenzora_plugin = \"1\"\n",
+        );
+        assert!(out.contains("renzora_plugin = \"1\""), "{out}");
+        assert!(!out.contains("crates/renzora_plugin"), "{out}");
+    }
+}
 

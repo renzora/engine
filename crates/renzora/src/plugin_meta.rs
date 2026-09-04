@@ -143,6 +143,29 @@ macro_rules! plugin {
         $crate::plugin!($plugin, Editor);
     };
     ($plugin:expr, $scope:ident) => {
+        $crate::__native_plugin_entry!($plugin, $scope);
+    };
+}
+
+/// The symbols [`plugin!`] emits, or nothing when the plugin is being compiled
+/// INTO a binary rather than loaded from one.
+///
+/// Split out for the same reason [`__script_entry!`] is: a
+/// `#[cfg(feature = ...)]` written inside `plugin!`'s expansion would be
+/// evaluated when the **plugin** is compiled, against the plugin's own manifest,
+/// where `static_plugins` does not exist and never will. Defining the two
+/// variants here evaluates the cfg where the feature lives — on `renzora`, which
+/// cargo compiles once per build and whose features are unified across it.
+///
+/// Both symbols are `#[no_mangle]`, so linking fifty plugins into one binary
+/// defines each of them fifty times and the link fails. The lean exporter turns
+/// this feature on and calls `add_plugins` on the plugin type directly, which
+/// needs no symbol at all.
+#[doc(hidden)]
+#[cfg(not(feature = "static_plugins"))]
+#[macro_export]
+macro_rules! __native_plugin_entry {
+    ($plugin:expr, $scope:ident) => {
         /// The one symbol the loader looks up. Unmangled so it can be found by
         /// string; see [`plugin!`] for why hand-writing this is a trap.
         #[unsafe(no_mangle)]
@@ -163,6 +186,18 @@ macro_rules! plugin {
             $crate::NativePluginScope::$scope as u8
         }
     };
+}
+
+/// [`__native_plugin_entry!`] for a build that links its plugins in.
+///
+/// Emits nothing. The plugin's type is defined by the author's own code and is
+/// all the generated aggregator needs; the scope was decided at export time, by
+/// reading it from the built library rather than from this declaration.
+#[doc(hidden)]
+#[cfg(feature = "static_plugins")]
+#[macro_export]
+macro_rules! __native_plugin_entry {
+    ($plugin:expr, $scope:ident) => {};
 }
 
 /// Where a native plugin is allowed to load.

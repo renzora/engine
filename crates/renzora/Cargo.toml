@@ -50,6 +50,12 @@ audio = []
 # tree. Cargo compiles `renzora` once per build and unifies features across it,
 # which is exactly what makes one flag here apply to every script in the build.
 static_scripts = []
+# The same idea for native plugins. A lean export compiles them INTO the binary,
+# and `plugin!` emits `#[no_mangle] renzora_native_plugin_ctor` — fifty of those
+# in one binary do not link. With this on, `plugin!` emits nothing: the type is
+# all the generated aggregator needs, since it calls `add_plugins` directly
+# rather than looking a symbol up.
+static_plugins = []
 # Enables the editor CONTRACT (Operation Merge fold): the thin, boundary-
 # crossing editor types — `EditorSelection`, the inspector/spawn/toolbar/
 # shortcut registries, `AppEditorExt`, the field macros, `Inspectable`/

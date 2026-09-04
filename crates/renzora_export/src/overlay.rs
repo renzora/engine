@@ -155,6 +155,10 @@ pub struct ExportOverlayState {
     pub selected_plugins: std::collections::HashSet<String>,
     /// Files beside the binary, or compiled into it. See [`PluginLinkMode`].
     pub plugin_link_mode: PluginLinkMode,
+    /// Wrap the finished export in its platform's application bundle — an
+    /// `.AppImage` on Linux, a `.app` on macOS. Ignored where there is no such
+    /// format; see [`crate::bundle::supported`].
+    pub bundle_app: bool,
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
     /// from the lean build. Populated with defaults after the plugin scan.
     pub capabilities: std::collections::HashMap<String, bool>,
@@ -250,6 +254,11 @@ impl Default for ExportOverlayState {
             active_task: None,
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
+            // Off by default: a bundle is a deliberate choice about how the game
+            // is delivered, and an export that silently rearranged its output
+            // into a directory the user did not ask for would be worse than one
+            // that made them tick a box.
+            bundle_app: false,
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: std::collections::HashMap::new(),
             project_files: Vec::new(),
@@ -847,6 +856,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let window_height = export_state.window_height;
     let console_logging = export_state.console_logging;
     let include_server = export_state.include_server;
+    let bundle_app = export_state.bundle_app;
     // Sorted so the packing log reads in a stable order rather than a hash one.
     let included_files = export_state.included_files.as_ref().map(|set| {
         let mut v: Vec<String> = set.iter().cloned().collect();
@@ -982,6 +992,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             icon_path,
             binary_name_override,
             include_server,
+            bundle_app,
             enable_modding,
             mesh_simplify,
             mesh_simplify_ratio,
@@ -1019,6 +1030,9 @@ fn export_worker(
     icon_path: Option<String>,
     binary_name_override: Option<String>,
     include_server: bool,
+    // Wrap the finished tree in its platform's application bundle. Applied
+    // last, because doing so MOVES everything else into it.
+    bundle_app: bool,
     // Ship the plugin SDK so the game can compile plugins a player adds.
     enable_modding: bool,
     mesh_simplify: bool,
@@ -1307,8 +1321,14 @@ fn export_worker(
                     )
                 })
                 .collect();
+            // Not `engine_dir`: a plugin's source lives beside the editor now,
+            // and the checkout has none. Passing the wrong root produced a
+            // no_source line per plugin and a "lean" build that shipped every
+            // one of them as a loose file.
+            let plugins_root = crate::build::plugin_source_root()
+                .unwrap_or_else(|| engine_dir.join("plugins"));
             let plan = crate::build::resolve_static_plugins(
-                &engine_dir,
+                &plugins_root,
                 &wanted,
                 crate::docker::rust_triple(platform),
             );
@@ -1487,6 +1507,23 @@ fn export_worker(
             }
         }
 
+        // On Unix an executable that is not marked executable is not an
+        // executable. `SingleBinary` WRITES its output (runtime + appended
+        // rpak) rather than copying it, so it lands at the process umask —
+        // 0644 — and the only thing the user sees on double-clicking their
+        // game is "Permission denied", with nothing to connect it to an export.
+        // `SeparateFiles` inherits the mode through `fs::copy` and is marked
+        // anyway, so the two modes cannot drift apart again.
+        #[cfg(unix)]
+        fn mark_executable(path: &std::path::Path) {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)) {
+                warn!("[export] could not mark {} executable: {e}", path.display());
+            }
+        }
+        #[cfg(not(unix))]
+        fn mark_executable(_path: &std::path::Path) {}
+
         match packaging_mode {
             PackagingMode::SeparateFiles => {
                 let rpak_path = output_dir.join(format!("{}.rpak", binary_stem));
@@ -1495,13 +1532,17 @@ fn export_worker(
 
                 packer
                     .write_to_file(&rpak_path, compression_level)
-                    .and_then(|_| std::fs::copy(&src, &binary_dest).map(|_| ())).map(|_| ())
+                    .and_then(|_| std::fs::copy(&src, &binary_dest).map(|_| ()))
+                    .inspect(|_| mark_executable(&binary_dest))
+                    .map(|_| ())
             }
             PackagingMode::SingleBinary => {
                 let binary_dest = output_dir.join(&binary_name);
                 let src = compress_exe(&template_path, &tx);
                 packer
-                    .append_to_binary(&src, &binary_dest, compression_level).map(|_| ())
+                    .append_to_binary(&src, &binary_dest, compression_level)
+                    .inspect(|_| mark_executable(&binary_dest))
+                    .map(|_| ())
             }
             PackagingMode::LeanSingleBinary => {
                 // Recompile a lean static binary from the engine source, then
@@ -1514,6 +1555,7 @@ fn export_worker(
                         let src = compress_exe(&built.artefact, &tx);
                         packer
                             .append_to_binary(&src, &binary_dest, compression_level)
+                            .inspect(|_| mark_executable(&binary_dest))
                             .map(|_| ())
                     }
                     Err(e) => Err(std::io::Error::other(e)),
@@ -1610,26 +1652,46 @@ fn export_worker(
             // path and are counted as if the packaging mode were the reason —
             // which produced a second, contradictory line in the log claiming a
             // lean export needed to be a lean export.
-            let to_copy: Vec<&std::path::Path> = selected_plugins
+            let to_copy: Vec<(&str, &std::path::Path)> = selected_plugins
                 .iter()
                 .filter(|p| !linked_ids.contains(&p.id))
                 .filter(|p| {
                     let bare = p.id.strip_prefix("lib").unwrap_or(&p.id);
                     !dropped_ids.iter().any(|d| d == &p.id || d == bare)
                 })
-                .map(|p| p.path.as_path())
+                .map(|p| (p.id.as_str(), p.path.as_path()))
                 .collect();
             if !is_wasm && !to_copy.is_empty() {
                 let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
                 let plugins_out = output_dir.join("plugins");
                 let _ = std::fs::create_dir_all(&plugins_out);
 
-                for plugin_path in &to_copy {
-                    if let Some(filename) = plugin_path.file_name() {
-                        let dest = plugins_out.join(filename);
-                        if let Err(e) = std::fs::copy(plugin_path, &dest) {
-                            warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
-                        }
+                // `plugins/<id>/build/<id>.<ext>`, NOT a loose file beside the
+                // exe. Both plugin kinds live in that layout now — the loader
+                // scans directories and derives a plugin's identity from the
+                // directory name, so a flat file is not a plugin it can see.
+                //
+                // Staged flat, an export ships its plugins and loads none of
+                // them: no error, no warning, just a game missing every effect
+                // the picker said it had. Which is exactly what shipped before
+                // this line was fixed.
+                //
+                // Matches `build::stage_runtime_native_plugins`, which already
+                // wrote this shape for the native half.
+                for (id, plugin_path) in &to_copy {
+                    let stem = id.strip_prefix("lib").unwrap_or(id).replace('-', "_");
+                    let ext = plugin_path
+                        .extension()
+                        .map(|e| e.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| std::env::consts::DLL_EXTENSION.to_string());
+                    let dir = plugins_out.join(&stem).join("build");
+                    if let Err(e) = std::fs::create_dir_all(&dir) {
+                        warn!("[export] Failed to create {}: {}", dir.display(), e);
+                        continue;
+                    }
+                    let dest = dir.join(format!("{stem}.{ext}"));
+                    if let Err(e) = std::fs::copy(plugin_path, &dest) {
+                        warn!("[export] Failed to copy plugin {stem}: {e}");
                     }
                 }
                 info!("[export] Copied {} plugins to output", to_copy.len());
@@ -1708,6 +1770,55 @@ fn export_worker(
                                 "Skipped {label}: {e}"
                             )));
                         }
+                    }
+                }
+            }
+
+            // Last, after everything else has been written into `output_dir` —
+            // the binary, its libraries, `plugins/`, the `.rpak`, and any UPX
+            // pass over them. Wrapping MOVES that tree inside the bundle, so
+            // anything that ran afterwards would be writing beside the bundle
+            // rather than into it.
+            //
+            // The one deliberate exception is the server below, which is a
+            // separate deliverable: a headless binary a player never launches
+            // belongs beside the bundle, not inside it.
+            if bundle_app {
+                let tx_progress = tx.clone();
+                match crate::bundle::wrap(
+                    platform,
+                    &crate::bundle::BundleSpec {
+                        output_dir: &output_dir,
+                        binary_name: &binary_name,
+                        app_name: binary_stem,
+                        identifier: &format!("org.renzora.{}", crate::bundle::slug(binary_stem)),
+                        // The same icon the export already uses for the
+                        // executable, so a bundled game and an unbundled one
+                        // wear the same face.
+                        icon_png: icon_path.as_ref().map(std::path::Path::new),
+                    },
+                    &mut |line| {
+                        let _ = tx_progress.send(ExportMsg::Progress(line));
+                    },
+                ) {
+                    Ok(Some(path)) => {
+                        let _ = tx.send(ExportMsg::Progress(format!(
+                            "Bundled as {}",
+                            path.file_name().unwrap_or_default().to_string_lossy()
+                        )));
+                    }
+                    // A platform with no bundle format. The dialog hides the
+                    // toggle there, so this is only reachable from a preset made
+                    // for another platform — worth neither a message nor a
+                    // failure.
+                    Ok(None) => {}
+                    // Not fatal. The export itself succeeded and the tree beside
+                    // the bundle is exactly what an unbundled export produces,
+                    // so the game still ships — it just ships as a folder.
+                    Err(e) => {
+                        let _ = tx.send(ExportMsg::Progress(format!(
+                            "Could not bundle the export ({e}); shipped as a folder instead"
+                        )));
                     }
                 }
             }

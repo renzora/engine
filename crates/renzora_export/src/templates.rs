@@ -272,6 +272,29 @@ pub fn user_template_dir(platform: Platform) -> Option<PathBuf> {
     Some(user_templates_root()?.join(platform.dist_dir_name()))
 }
 
+/// Where a tool the exporter fetches for itself is cached.
+///
+/// `~/.renzora/tools/`, beside [`user_source_dir`] — per USER, not per install.
+/// Three reasons, and the first is the one that bites:
+///
+/// * The install directory need not be writable. A system-wide install, or an
+///   editor distributed as an AppImage, is read-only, and a 9 MB download into
+///   it simply fails.
+/// * Updating or reinstalling the editor replaces that directory. A cache that
+///   lives there is re-fetched every update for no reason.
+/// * `cargo renzora dist` stages into it, so a downloaded file sitting there is
+///   something the build tool has to be told not to touch.
+///
+/// Not `resources/`, which is staged WITH the engine, versioned with it, and
+/// holds assets rather than executables. "Files we need" is not a category — the
+/// distinction that matters is shipped versus fetched.
+pub fn user_tools_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    Some(home.join(".renzora").join("tools"))
+}
+
 /// Where a downloaded engine source checkout is installed.
 ///
 /// Version-scoped like the templates, and for the same reason: a lean build
