@@ -159,11 +159,24 @@ pub fn overlay_val(
 }
 
 /// Escape, a backdrop click (outside the card), or the X closes the overlay.
+/// Dismiss the **topmost** overlay on Escape, its X, or a click outside it.
+///
+/// Topmost, not all of them: overlays stack, and one raised from another has to
+/// be closable without taking its opener with it. The marketplace stacks three
+/// deep — the store at 9400, an item at 9600, the install dialog at 9700 — and
+/// closing the install dialog used to despawn every `Overlay` in the world, so
+/// pressing its X dropped the user back to the editor instead of to the store
+/// they opened it from.
+///
+/// `GlobalZIndex` is the ordering because it is the same thing that decides
+/// what is drawn on top, so what the user sees in front is what closes. An
+/// overlay that never set one keeps `overlay_val`'s default, and overlays
+/// sharing the top index close together — they are siblings, not a stack.
 pub(crate) fn overlay_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     closes: Query<&Interaction, (Changed<Interaction>, With<OverlayClose>)>,
-    overlays: Query<Entity, With<Overlay>>,
+    overlays: Query<(Entity, Option<&GlobalZIndex>), With<Overlay>>,
     cards: Query<&RelativeCursorPosition, With<OverlayCard>>,
     mut commands: Commands,
 ) {
@@ -174,9 +187,109 @@ pub(crate) fn overlay_dismiss(
     let x = closes.iter().any(|i| *i == Interaction::Pressed);
     let click_outside =
         mouse.just_pressed(MouseButton::Left) && !cards.iter().any(|r| r.cursor_over);
-    if esc || x || click_outside {
-        for o in &overlays {
-            commands.entity(o).despawn();
+    if !(esc || x || click_outside) {
+        return;
+    }
+    let top = overlays
+        .iter()
+        .map(|(_, z)| z.map(|z| z.0).unwrap_or(0))
+        .max()
+        .unwrap_or(0);
+    for (entity, z) in &overlays {
+        if z.map(|z| z.0).unwrap_or(0) == top {
+            commands.entity(entity).despawn();
         }
+    }
+}
+
+#[cfg(test)]
+mod dismiss_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// A bare overlay: the marker plus a z-index, which is all `overlay_dismiss`
+    /// reads.
+    fn overlay(world: &mut World, z: i32) -> Entity {
+        world.spawn((Overlay, GlobalZIndex(z))).id()
+    }
+
+    /// Escape with no cursor over any card, which is also the click-outside path.
+    fn press_escape(world: &mut World) {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Escape);
+        world.insert_resource(keys);
+        world.insert_resource(ButtonInput::<MouseButton>::default());
+        world.run_system_once(overlay_dismiss).unwrap();
+    }
+
+    #[test]
+    fn a_lone_overlay_closes() {
+        let mut world = World::new();
+        let only = overlay(&mut world, 8000);
+        press_escape(&mut world);
+        assert!(world.get_entity(only).is_err(), "the only overlay should close");
+    }
+
+    /// The bug: the marketplace stacks the store (9400) under the install
+    /// dialog (9700), and dismissing the dialog took the store with it.
+    #[test]
+    fn only_the_topmost_of_a_stack_closes() {
+        let mut world = World::new();
+        let store = overlay(&mut world, 9400);
+        let install = overlay(&mut world, 9700);
+
+        press_escape(&mut world);
+
+        assert!(world.get_entity(install).is_err(), "the dialog should close");
+        assert!(
+            world.get_entity(store).is_ok(),
+            "the overlay it was opened from must survive"
+        );
+    }
+
+    /// Closing the top one twice walks back down the stack, rather than the
+    /// second dismissal doing nothing.
+    #[test]
+    fn dismissing_again_closes_the_next_one_down() {
+        let mut world = World::new();
+        let store = overlay(&mut world, 9400);
+        overlay(&mut world, 9700);
+
+        press_escape(&mut world);
+        press_escape(&mut world);
+
+        assert!(world.get_entity(store).is_err(), "the second dismissal closes the store");
+    }
+
+    /// Same index means siblings, not a stack — they close together.
+    #[test]
+    fn overlays_sharing_the_top_index_close_together() {
+        let mut world = World::new();
+        let a = overlay(&mut world, 9000);
+        let b = overlay(&mut world, 9000);
+        press_escape(&mut world);
+        assert!(world.get_entity(a).is_err() && world.get_entity(b).is_err());
+    }
+
+    /// An overlay that never set an index still has `overlay_val`'s default, so
+    /// a missing component must not read as "on top of everything".
+    #[test]
+    fn an_overlay_without_a_z_index_is_treated_as_the_bottom() {
+        let mut world = World::new();
+        let bare = world.spawn(Overlay).id();
+        let top = overlay(&mut world, 9700);
+        press_escape(&mut world);
+        assert!(world.get_entity(top).is_err(), "the indexed overlay is on top");
+        assert!(world.get_entity(bare).is_ok(), "the un-indexed one is below it");
+    }
+
+    #[test]
+    fn nothing_happens_without_a_dismissal() {
+        let mut world = World::new();
+        let only = overlay(&mut world, 8000);
+        world.insert_resource(ButtonInput::<KeyCode>::default());
+        world.insert_resource(ButtonInput::<MouseButton>::default());
+        world.run_system_once(overlay_dismiss).unwrap();
+        assert!(world.get_entity(only).is_ok());
     }
 }

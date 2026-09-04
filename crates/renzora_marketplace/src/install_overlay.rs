@@ -28,7 +28,9 @@ use crate::auth::session::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{button, folder_new_button, folder_picker, overlay_sized, FolderPick};
+use renzora_ember::widgets::{
+    button, folder_new_button, folder_picker, overlay_sized, overlay_val, FolderPick,
+};
 use renzora_theme::ThemeManager;
 
 use crate::install;
@@ -238,7 +240,13 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     let mut queue = CommandQueue::default();
     let mut commands = Commands::new(&mut queue, world);
 
-    let (overlay, content) = overlay_sized(&mut commands, &fonts, "Install Asset", 560.0, 460.0, true);
+    // A plugin has no folder tree, and 460px of dialog around four rows of text
+    // is mostly empty space. Only the tree needs a fixed height — it is the one
+    // thing here that scrolls, and it has to be given room to.
+    let is_plugin = install::is_plugin_category(&asset.category);
+    let height = if is_plugin { Val::Auto } else { Val::Px(460.0) };
+    let (overlay, content) =
+        overlay_val(&mut commands, &fonts, "Install Asset", Val::Px(560.0), height, true);
 
     // Above the item overlay, which is what opened this. `overlay_sized` hands
     // out `GlobalZIndex(8000)` — fine for a modal raised from a panel, but the
@@ -287,8 +295,6 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
 
     // A plugin has exactly one valid home, so it gets a statement rather than a
     // picker; everything else gets the tree.
-    let is_plugin = install::install_dir_for_category(&asset.category) == "plugins";
-
     let mut kids = vec![header];
     let mut picker = Entity::PLACEHOLDER;
     if is_plugin {
@@ -861,7 +867,9 @@ fn info_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: &st
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            Node { width: Val::Px(70.0), flex_shrink: 0.0, ..default() },
+            // Wide enough for "Installs into", the longest label here — at 70 it
+            // wrapped onto two lines and pushed its value out of alignment.
+            Node { width: Val::Px(88.0), flex_shrink: 0.0, ..default() },
         ))
         .id();
     let v = commands
