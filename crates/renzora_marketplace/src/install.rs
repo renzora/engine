@@ -401,24 +401,41 @@ fn plugin_crate_and_prefix(data: &[u8]) -> Result<(String, String), String> {
     Ok((name.to_string(), prefix))
 }
 
-/// Install a plugin by extracting its source into
-/// `<install root>/plugins/<crate>/`, ready for `prebuild` to compile on the
-/// next launch.
-///
-/// The directory is named after the **crate**, not the marketplace listing:
-/// `prebuild` derives the artefact filename from the directory name, so
-/// `<dir>/build/<dir>.dll` only matches what `rustc` emits when the two agree.
-///
-/// An existing install of the same crate is replaced wholesale, which also
-/// drops its `build/` directory — no stamp means `prebuild` rebuilds, which is
-/// what a new version needs anyway.
+/// The outcome of installing a plugin's source.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn install_plugin_source(data: &[u8]) -> Result<PathBuf, String> {
+pub struct PluginInstall {
+    pub path: PathBuf,
+    /// The directory name, which is also the name it compiles under.
+    pub dir_name: String,
+    /// This replaced an existing install of the same asset.
+    pub updated: bool,
+    /// The crate name wanted was taken by a different asset, so it went in
+    /// under `dir_name` instead. Worth telling the user.
+    pub renamed_from: Option<String>,
+}
+
+/// Install a plugin by extracting its source into `<install root>/plugins/`,
+/// ready for `prebuild` to compile on the next launch.
+///
+/// The directory name is what the plugin compiles as —
+/// `renzora_plugin_build::crate_name` reads it back off the directory, and
+/// `layout` derives `<dir>/build/<dir>.<ext>` from it — so it starts from the
+/// crate's own name. Which directory it actually gets is decided by
+/// [`crate::installed::destination_for`], because two different listings can
+/// ship the same crate name and the second must not overwrite the first.
+///
+/// Reinstalling the same asset replaces its directory wholesale, dropping the
+/// `build/` inside it — no stamp means `prebuild` rebuilds, which is what a new
+/// version needs anyway.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstall, String> {
     use std::io::Read;
 
     let (crate_name, prefix) = plugin_crate_and_prefix(data)?;
+    let (dir_name, updated) = crate::installed::destination_for(asset_id, &crate_name);
+    let renamed_from = (dir_name != crate_name).then(|| crate_name.clone());
     let plugins = engine_plugins_dir()?;
-    let dest = plugins.join(&crate_name);
+    let dest = plugins.join(&dir_name);
 
     // Extract to a staging directory and swap, so a failure part-way through
     // cannot leave a half-written plugin behind. Staged *outside* `plugins/`,
@@ -428,7 +445,7 @@ pub fn install_plugin_source(data: &[u8]) -> Result<PathBuf, String> {
     let root = plugins
         .parent()
         .ok_or_else(|| "Install directory has no parent".to_string())?;
-    let staging = root.join(format!(".plugin-incoming-{crate_name}"));
+    let staging = root.join(format!(".plugin-incoming-{dir_name}"));
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging)
         .map_err(|e| format!("Failed to create {}: {e}", staging.display()))?;
@@ -496,7 +513,7 @@ pub fn install_plugin_source(data: &[u8]) -> Result<PathBuf, String> {
         let _ = std::fs::remove_dir_all(&staging);
         format!("Failed to move plugin into {}: {e}", dest.display())
     })?;
-    Ok(dest)
+    Ok(PluginInstall { path: dest, dir_name, updated, renamed_from })
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

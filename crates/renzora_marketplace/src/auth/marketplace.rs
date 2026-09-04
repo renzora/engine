@@ -82,6 +82,37 @@ impl DownloadResponse {
     }
 }
 
+/// What the marketplace currently publishes for an installed plugin.
+#[derive(Debug, Deserialize, Clone)]
+pub struct PluginUpdate {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    pub version: String,
+    /// Minimum engine release. Empty means the creator did not set one, which
+    /// is treated as "any" rather than as a floor nobody meets.
+    #[serde(default)]
+    pub min_engine_version: String,
+    #[serde(default)]
+    pub published: bool,
+}
+
+/// Latest published versions for a set of installed plugins, in one request.
+///
+/// Public — an update check should not need a sign-in, and the version is on
+/// the listing anyway.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn plugin_updates(ids: &[String]) -> Result<Vec<PluginUpdate>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    super::client::post_json(
+        &format!("{}/api/marketplace/plugin-updates", super::client::api_base()),
+        &serde_json::json!({ "ids": ids }),
+        None,
+    )
+}
+
 // ── API calls (blocking) ──
 
 /// Search/browse marketplace assets.

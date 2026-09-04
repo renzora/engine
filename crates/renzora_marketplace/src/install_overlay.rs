@@ -298,15 +298,45 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     let mut kids = vec![header];
     let mut picker = Entity::PLACEHOLDER;
     if is_plugin {
-        kids.push(info_row(&mut commands, &fonts, "Installs into", "plugins/"));
-        kids.push(paragraph(
-            &mut commands,
-            &fonts,
-            "Plugins load from the engine's plugins folder at startup, so this \
-             one installs there. Plugins are native code with full editor \
-             privileges — only install ones from sources you trust.",
-            rgb(text_muted()),
-        ));
+        // Already installed? Say so, and say what pressing the button will do —
+        // reinstalling the same asset replaces it in place rather than adding a
+        // second copy.
+        let existing = crate::installed::find_by_asset(&asset.id);
+        match &existing {
+            Some(p) if p.version == asset.version => {
+                kids.push(info_row(&mut commands, &fonts, "Installed", &format!("v{} as '{}'", p.version, p.dir_name)));
+                kids.push(paragraph(
+                    &mut commands,
+                    &fonts,
+                    "This plugin is already installed at this version. Installing \
+                     again replaces it and rebuilds it on the next start.",
+                    rgb(text_muted()),
+                ));
+            }
+            Some(p) => {
+                kids.push(info_row(&mut commands, &fonts, "Installed", &format!("v{} as '{}'", p.version, p.dir_name)));
+                kids.push(paragraph(
+                    &mut commands,
+                    &fonts,
+                    &format!(
+                        "Updating to v{}. It replaces the copy you have and is rebuilt on the next start.",
+                        asset.version
+                    ),
+                    rgb(text_muted()),
+                ));
+            }
+            None => {
+                kids.push(info_row(&mut commands, &fonts, "Installs into", "plugins/"));
+                kids.push(paragraph(
+                    &mut commands,
+                    &fonts,
+                    "Plugins load from the engine's plugins folder at startup, so this \
+                     one installs there. Plugins are native code with full editor \
+                     privileges — only install ones from sources you trust.",
+                    rgb(text_muted()),
+                ));
+            }
+        }
     } else {
         kids.push(section_label(&mut commands, &fonts, "Install into"));
         // Destination: the project's own directory structure, via ember's shared
@@ -336,13 +366,18 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     commands.entity(cancel).insert(InstallDismissBtn(overlay));
     // Green, and named for what it does: a plugin is installed, everything else
     // is downloaded into your project.
-    let install_btn = crate::util::pill_button(
-        &mut commands,
-        &fonts,
-        if is_plugin { "Install" } else { "Download" },
-        GREEN,
-        (255, 255, 255),
-    );
+    // The button says what will happen, which for an installed plugin is not
+    // "Install".
+    let label = if !is_plugin {
+        "Download"
+    } else if crate::installed::find_by_asset(&asset.id).is_some_and(|p| p.version != asset.version) {
+        "Update"
+    } else if crate::installed::find_by_asset(&asset.id).is_some() {
+        "Reinstall"
+    } else {
+        "Install"
+    };
+    let install_btn = crate::util::pill_button(&mut commands, &fonts, label, GREEN, (255, 255, 255));
     commands.entity(install_btn).insert(InstallConfirmBtn);
     if is_plugin {
         commands.entity(buttons).add_children(&[cancel, install_btn]);
@@ -589,12 +624,7 @@ fn run_install(
     // the next launch — `dest` (a project folder) is not somewhere anything
     // would ever look for it.
     if install::is_plugin_category(&asset.category) {
-        let path = install::install_plugin_source(&bytes)?;
-        let crate_name = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default()
-            .to_string();
+        let done = install::install_plugin_source(&asset.id, &bytes)?;
         // The sidecar ties the installed source back to its listing, and it is
         // also what marks this directory as marketplace-owned: `xtask`'s
         // `prune_orphans` deletes any staged plugin directory without one, since
@@ -607,16 +637,26 @@ fn run_install(
             slug: asset.slug.clone(),
             version: asset.version.clone(),
             category: asset.category.clone(),
-            crate_name: crate_name.clone(),
+            crate_name: done.dir_name.clone(),
             ..Default::default()
         };
-        if let Err(e) = install::write_plugin_sidecar(&path, &meta) {
-            let _ = std::fs::remove_dir_all(&path);
-            return Err(format!("Could not finish installing '{crate_name}': {e}"));
+        if let Err(e) = install::write_plugin_sidecar(&done.path, &meta) {
+            let _ = std::fs::remove_dir_all(&done.path);
+            return Err(format!("Could not finish installing '{}': {e}", done.dir_name));
         }
+        let verb = if done.updated { "Updated" } else { "Installed" };
+        // A rename is not a footnote: the plugin builds and loads under the new
+        // name, so anything the user does with it later uses that name.
+        let renamed = match &done.renamed_from {
+            Some(wanted) => format!(
+                " Another plugin already uses '{wanted}', so this one installed as '{}'.",
+                done.dir_name
+            ),
+            None => String::new(),
+        };
         return Ok(format!(
-            "Installed \"{}\" as plugin '{crate_name}'. It is built on the next start.",
-            asset.name
+            "{verb} \"{}\" as plugin '{}'.{renamed} It is built on the next start.",
+            asset.name, done.dir_name
         ));
     }
 

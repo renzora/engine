@@ -71,6 +71,10 @@ mod hub_lightbox;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod install;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod installed;
+#[cfg(not(target_arch = "wasm32"))]
+mod plugin_updates;
+#[cfg(not(target_arch = "wasm32"))]
 mod install_overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod item_overlay;
@@ -162,6 +166,11 @@ impl Plugin for MarketplacePlugin {
         // Creator onboarding: state and systems only. Its UI is Publish's first
         // stage, not a panel of its own — see `onboarding::register`.
         onboarding::register(app);
+        // Checks installed plugins against the marketplace, once, in the
+        // background. Desktop only — there is no plugins directory beside a
+        // wasm bundle to check.
+        #[cfg(not(target_arch = "wasm32"))]
+        plugin_updates::register(app);
         wallet::register(app);
 
         // Offscreen previews for catalogue items: a 3D turntable for models and
