@@ -63,7 +63,7 @@ pub fn resolve(version: &str) -> Toolchain {
     if path_rustc_release().as_deref() == Some(version) {
         // No rustup, but the compiler on PATH happens to be the pinned one.
         // Common for someone who installed Rust another way.
-        return Toolchain::Ready(PathBuf::from("rustc"));
+        return Toolchain::Ready(renzora_native_build::tool("rustc"));
     }
     if have_rustup() {
         Toolchain::ToolchainMissing { version: version.to_string() }
@@ -77,7 +77,7 @@ pub fn resolve(version: &str) -> Toolchain {
 /// Returns `None` when rustup is absent or does not have that toolchain, which
 /// are handled differently by the caller and so are not distinguished here.
 fn rustup_which(version: &str) -> Option<PathBuf> {
-    let out = renzora_native_build::hide_console(&mut Command::new("rustup"))
+    let out = renzora_native_build::hide_console(&mut Command::new(renzora_native_build::tool("rustup")))
         .args(["which", "--toolchain", version, "rustc"])
         .output()
         .ok()?;
@@ -89,7 +89,7 @@ fn rustup_which(version: &str) -> Option<PathBuf> {
 }
 
 fn have_rustup() -> bool {
-    renzora_native_build::hide_console(&mut Command::new("rustup"))
+    renzora_native_build::hide_console(&mut Command::new(renzora_native_build::tool("rustup")))
         .arg("--version")
         .output()
         .is_ok_and(|o| o.status.success())
@@ -97,7 +97,7 @@ fn have_rustup() -> bool {
 
 /// The release string of whatever `rustc` is on `PATH`, if any.
 fn path_rustc_release() -> Option<String> {
-    let out = renzora_native_build::hide_console(&mut Command::new("rustc"))
+    let out = renzora_native_build::hide_console(&mut Command::new(renzora_native_build::tool("rustc")))
         .arg("-vV")
         .output()
         .ok()?;
@@ -116,7 +116,7 @@ fn path_rustc_release() -> Option<String> {
 /// Deliberately NOT `--no-self-update`: leaving rustup's own maintenance alone is
 /// its owner's business, not ours.
 pub fn install_toolchain(version: &str) -> Result<(), String> {
-    let out = renzora_native_build::hide_console(&mut Command::new("rustup"))
+    let out = renzora_native_build::hide_console(&mut Command::new(renzora_native_build::tool("rustup")))
         .args(["toolchain", "install", version, "--profile", "minimal"])
         .output()
         .map_err(|e| format!("could not run rustup: {e}"))?;

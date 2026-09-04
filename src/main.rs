@@ -89,6 +89,20 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
         // crates.io and cannot take a path dependency on the contract crate.
         disabled: renzora_runtime::renzora::load_disabled_plugins(),
     });
+    // The native half of the same idea. Separate call because a native plugin is
+    // an ordinary Bevy plugin — installed by `add_plugins`, not by a table the
+    // host reads — and because it must land AFTER the engine crates, exactly as
+    // a loaded one does. Compiled to nothing in every build but a lean export.
+    #[cfg(feature = "static_plugins")]
+    renzora_static_plugins::native_plugins(app);
+
+    // The ONE pass over `plugins/`, immediately after the host it depends on:
+    // a standalone plugin resolves its host-component mirrors during
+    // `RenzoraPluginHostPlugin::build`, so the scan has to follow it. Both kinds
+    // load here — the scanner dispatches on which entry symbol an artefact
+    // exports, which is the only thing that can tell them apart now that they
+    // share one on-disk layout.
+    app.add_plugins(renzora_runtime::renzora_native_plugin::NativePluginLoader::default());
     // Installs any render passes those plugins registered. Separate plugin
     // because the work happens in `finish`, after every `build` has run and the
     // render sub-app exists.

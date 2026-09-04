@@ -219,7 +219,7 @@ fn write_manifest(dir: &Path, deps: &[(String, String)]) -> Result<(), String> {
 /// ~12 s against a Bevy-pulling manifest — so the refusal costs seconds rather
 /// than the half-hour a Bevy build would have taken before failing.
 fn reject_engine_crates(dir: &Path) -> Result<(), String> {
-    let out = crate::hide_console(&mut Command::new("cargo"))
+    let out = crate::hide_console(&mut Command::new(crate::tool("cargo")))
         .current_dir(dir)
         .args(["metadata", "--format-version", "1", "--quiet"])
         .stderr(Stdio::piped())
@@ -273,9 +273,25 @@ fn compile(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     // console to exist for the child, which is the window `hide_console` is
     // suppressing. Cargo's progress lines go into the pipe and are dropped; its
     // diagnostics still reach the caller through the non-zero exit below.
-    let out = crate::hide_console(&mut Command::new("cargo"))
+    // `--target-dir` is passed EXPLICITLY, and it is not a preference. The caller
+    // reports `<dir>/target/release/deps` as the `-L dependency=` search path,
+    // and without this that is an assumption about cargo's default rather than a
+    // fact: cargo discovers config by walking up from the working directory, so
+    // any `.cargo/config.toml` above the plugin — anywhere, including one a user
+    // put beside their own plugins — can set `build.target-dir` and silently
+    // redirect the output.
+    //
+    // The failure that reaches the author is not "wrong directory". It is
+    // `error[E0460]: found possibly newer version of crate X`, because the search
+    // path then points at whatever a PREVIOUS run left behind while the fresh
+    // rlibs sit somewhere else, and rustc resolves one dependency from each. The
+    // message names a crate the plugin never mentioned and says nothing about a
+    // target directory.
+    let out = crate::hide_console(&mut Command::new(crate::tool("cargo")))
         .current_dir(dir)
         .args(["build", "--release", "--message-format=json-render-diagnostics"])
+        .arg("--target-dir")
+        .arg(dir.join("target"))
         .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("could not run cargo: {e}"))?;

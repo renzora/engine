@@ -61,6 +61,8 @@ struct Shared {
     failures: Vec<String>,
     /// What the worker actually did, for the summary line.
     prepared: prebuild::Prepared,
+    /// A toolchain the run needed and did not find. Drives the second button.
+    gap: Option<prebuild::ToolchainGap>,
 }
 
 impl Shared {
@@ -88,6 +90,15 @@ struct LogLine(usize);
 /// The "Start Editor" button, hidden until the worker finishes.
 #[derive(Component)]
 struct StartBtn;
+
+/// Offers to install a missing toolchain. Shown only when one is missing AND
+/// the editor can actually add it — see [`prebuild::ToolchainGap`].
+#[derive(Component)]
+struct InstallBtn;
+
+/// The install button's caption, which names the version being fetched.
+#[derive(Component)]
+struct InstallLabel;
 
 /// The progress bar's track, hidden once the worker finishes — a full bar under
 /// a summary reads as "still going", and the button is the live thing then.
@@ -135,7 +146,40 @@ fn product_name() -> String {
 pub fn run() {
     let shared = Arc::new(Mutex::new(Shared::default()));
 
-    let worker = shared.clone();
+    spawn_worker(shared.clone());
+
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                // Not "first run": this window is also how an update and an
+                // edited plugin get rebuilt, and both are ordinary launches.
+                title: format!("{} — setup", product_name()),
+                resolution: WindowResolution::new(760, 470),
+                resizable: false,
+                // Centred and alone: this is a modal moment, not a workspace.
+                position: WindowPosition::Centered(MonitorSelection::Primary),
+                ..default()
+            }),
+            ..default()
+        }))
+        .insert_resource(ClearColor(Color::srgb(0.09, 0.09, 0.11)))
+        .insert_resource(Work(shared))
+        .add_systems(Startup, spawn_ui)
+        .add_systems(Update, tick)
+        .run();
+}
+
+const TEXT: Color = Color::srgb(0.92, 0.92, 0.95);
+const MUTED: Color = Color::srgb(0.62, 0.62, 0.68);
+const ACCENT: Color = Color::srgb(0.35, 0.62, 0.95);
+
+/// Run the setup pass on a worker thread, reporting into `shared`.
+///
+/// A function rather than an inline spawn because it runs **twice** in the one
+/// case this window exists to rescue: install the missing toolchain, then do the
+/// work that was waiting for it. Restarting the process to achieve the same
+/// thing would drop the log the user is reading.
+fn spawn_worker(worker: Arc<Mutex<Shared>>) {
     std::thread::spawn(move || {
         let prepared = prebuild::run(&mut |p| {
             // Also logged to stderr: the window shows the build, but a failure
@@ -166,33 +210,53 @@ pub fn run() {
         });
         let mut s = worker.lock().expect("setup progress lock");
         s.prepared = prepared;
+        s.gap = prebuild::toolchain_gap();
         s.finished = true;
     });
-
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                // Not "first run": this window is also how an update and an
-                // edited plugin get rebuilt, and both are ordinary launches.
-                title: format!("{} — setup", product_name()),
-                resolution: WindowResolution::new(760, 470),
-                resizable: false,
-                // Centred and alone: this is a modal moment, not a workspace.
-                position: WindowPosition::Centered(MonitorSelection::Primary),
-                ..default()
-            }),
-            ..default()
-        }))
-        .insert_resource(ClearColor(Color::srgb(0.09, 0.09, 0.11)))
-        .insert_resource(Work(shared))
-        .add_systems(Startup, spawn_ui)
-        .add_systems(Update, tick)
-        .run();
 }
 
-const TEXT: Color = Color::srgb(0.92, 0.92, 0.95);
-const MUTED: Color = Color::srgb(0.62, 0.62, 0.68);
-const ACCENT: Color = Color::srgb(0.35, 0.62, 0.95);
+/// Install the pinned toolchain, then run the setup pass again.
+///
+/// The window stays open across both, which is the point: the plugins that were
+/// waiting on the toolchain build in the same session that installed it, with
+/// their output in the same log. Restarting the process between the two would
+/// work and would throw away everything the user is reading.
+///
+/// Failure is reported into the same log and leaves the button offered again —
+/// a network drop is worth a second press, and rustup's own message says more
+/// about why than anything this could add.
+fn start_install(shared: &Arc<Mutex<Shared>>, version: String) {
+    {
+        let mut s = shared.lock().expect("setup progress lock");
+        s.finished = false;
+        s.gap = None;
+        // The previous run's failures were all downstream of the missing
+        // toolchain. Keeping them would summarise a state that no longer exists.
+        s.failures.clear();
+        s.push_log(format!("Installing Rust {version} (rustup, minimal profile)…"));
+    }
+    let shared = shared.clone();
+    std::thread::spawn(move || {
+        match prebuild::install_toolchain(&version) {
+            Ok(()) => {
+                shared
+                    .lock()
+                    .expect("setup progress lock")
+                    .push_log(format!("Installed Rust {version}"));
+                // Straight on into the work it was blocking.
+                spawn_worker(shared);
+            }
+            Err(e) => {
+                eprintln!("[setup] rustup: {e}");
+                let mut s = shared.lock().expect("setup progress lock");
+                s.push_log(format!("error: rustup could not install {version}: {e}"));
+                s.failures.push(format!("Rust {version} could not be installed: {e}"));
+                s.gap = Some(prebuild::ToolchainGap::Installable { version });
+                s.finished = true;
+            }
+        }
+    });
+}
 
 fn spawn_ui(mut commands: Commands) {
     commands.spawn(Camera2d);
@@ -332,29 +396,77 @@ fn spawn_ui(mut commands: Commands) {
         .id();
     commands.entity(start).add_child(start_label);
 
+    // Offered rather than imposed, and only when it is ours to offer: rustup is
+    // already installed, so this adds a toolchain to it rather than putting Rust
+    // on someone's machine. The caption carries the version, which is not known
+    // until the worker has looked.
+    let install_label = commands
+        .spawn((
+            Text::new(""),
+            TextFont::from_font_size(14.0),
+            TextColor(TEXT),
+            InstallLabel,
+        ))
+        .id();
+    let install = commands
+        .spawn((
+            Button,
+            Node {
+                display: Display::None,
+                padding: UiRect::axes(px(22), px(9)),
+                border_radius: BorderRadius::all(px(6)),
+                border: UiRect::all(px(1)),
+                ..default()
+            },
+            BorderColor::all(MUTED),
+            BackgroundColor(Color::NONE),
+            InstallBtn,
+        ))
+        .id();
+    commands.entity(install).add_child(install_label);
+
+    let buttons = commands
+        .spawn(Node {
+            column_gap: px(10),
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .id();
+    commands.entity(buttons).add_children(&[install, start]);
+
     commands
         .entity(root)
-        .add_children(&[title, status, track, log, start]);
+        .add_children(&[title, status, track, log, buttons]);
 }
 
 fn tick(
     work: Res<Work>,
-    mut fill: Query<&mut Node, (With<BarFill>, Without<BarTrack>, Without<StartBtn>)>,
-    mut track: Query<&mut Node, (With<BarTrack>, Without<StartBtn>)>,
-    mut start: Query<(&mut Node, &Interaction), With<StartBtn>>,
+    // Every `&mut Node` query here must be provably disjoint from every other,
+    // or Bevy refuses the system at init — `error[B0001]`, at run time, because
+    // the check is on the resolved archetypes and no compiler can see it. Adding
+    // a fourth button meant every earlier query needed to exclude it too, which
+    // is the part that is easy to miss: the new query is not the one that breaks.
+    mut fill: Query<
+        &mut Node,
+        (With<BarFill>, Without<BarTrack>, Without<StartBtn>, Without<InstallBtn>),
+    >,
+    mut track: Query<&mut Node, (With<BarTrack>, Without<StartBtn>, Without<InstallBtn>)>,
+    mut start: Query<(&mut Node, &Interaction), (With<StartBtn>, Without<InstallBtn>)>,
+    mut install: Query<(&mut Node, &Interaction), (With<InstallBtn>, Without<StartBtn>)>,
+    mut install_label: Query<&mut Text, (With<InstallLabel>, Without<StatusText>, Without<LogLine>)>,
     mut status: Query<&mut Text, (With<StatusText>, Without<LogLine>)>,
     mut log: Query<(&LogLine, &mut Text), Without<StatusText>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut writer: MessageWriter<AppExit>,
 ) {
-    let (latest, finished, lines, summary) = {
+    let (latest, finished, lines, summary, gap) = {
         let s = work.0.lock().expect("setup progress lock");
         // Only the tail is drawn; copying it under the lock keeps the lock held
         // for as long as it takes to clone ~14 short strings.
         let start = s.log.len().saturating_sub(LOG_LINES);
         let lines: Vec<String> = s.log.iter().skip(start).cloned().collect();
         let summary = s.finished.then(|| summarize(&s.prepared, &s.failures));
-        (s.latest.clone(), s.finished, lines, summary)
+        (s.latest.clone(), s.finished, lines, summary, s.gap.clone())
     };
 
     for (slot, mut text) in &mut log {
@@ -377,6 +489,33 @@ fn tick(
         if let Ok(mut node) = track.single_mut() {
             node.display = Display::None;
         }
+
+        // The offer, when there is one to make. `RustupMissing` deliberately
+        // gets no button: the summary says where to get Rust, and installing it
+        // is a decision about the user's machine rather than about this editor.
+        let offer = match &gap {
+            Some(prebuild::ToolchainGap::Installable { version }) => Some(version.clone()),
+            _ => None,
+        };
+        if let Ok((mut node, interaction)) = install.single_mut() {
+            match &offer {
+                None => node.display = Display::None,
+                Some(version) => {
+                    node.display = Display::Flex;
+                    if let Ok(mut text) = install_label.single_mut() {
+                        let want = format!("Install Rust {version}");
+                        if text.as_str() != want {
+                            **text = want;
+                        }
+                    }
+                    if *interaction == Interaction::Pressed {
+                        start_install(&work.0, version.clone());
+                        return;
+                    }
+                }
+            }
+        }
+
         if let Ok((mut node, interaction)) = start.single_mut() {
             node.display = Display::Flex;
             // Enter as well as a click: this is the only control in the window,

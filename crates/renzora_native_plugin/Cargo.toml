@@ -30,6 +30,15 @@ renzora = { path = "../renzora", default-features = false }
 # Reads the SDK manifest and drives rustc. No Bevy in it, so the compile path
 # stays testable without booting an engine.
 renzora_plugin_build = { path = "../renzora_plugin_build" }
+# The C-ABI loader. This crate owns the ONE pass over `plugins/` and dispatches
+# to whichever loader an artefact belongs to, so it has to see both — and it is
+# the only side that can: `renzora_plugin` is published to crates.io and takes no
+# dependency on anything in this workspace.
+renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+# The shared build helpers: the `rustc` command line for a native plugin, and
+# `tool()`, which finds a toolchain the editor's `PATH` does not name. No Bevy in
+# it, and no dependencies of its own.
+renzora_native_build = { path = "../renzora_native_build" }
 
 # Target-scoped because wasm has no dynamic linking at all, and `libloading` has
 # no backend for it. The crate still compiles for wasm — `renzora_runtime` deps

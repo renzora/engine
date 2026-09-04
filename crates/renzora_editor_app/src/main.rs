@@ -69,6 +69,13 @@ fn main() {
         // crates.io and cannot take a path dependency on the contract crate.
         disabled: renzora_runtime::renzora::load_disabled_plugins(),
     });
+    // The ONE pass over `plugins/`, immediately after the host it depends on:
+    // a standalone plugin resolves its host-component mirrors during
+    // `RenzoraPluginHostPlugin::build`, so the scan has to follow it. Both kinds
+    // load here — the scanner dispatches on which entry symbol an artefact
+    // exports, which is the only thing that can tell them apart now that they
+    // share one on-disk layout.
+    app.add_plugins(renzora_native_plugin::NativePluginLoader::default());
     // Render passes those plugins registered. Separate plugin because the work
     // happens in `finish`, after every `build` has run and the render sub-app
     // exists.

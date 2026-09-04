@@ -61,8 +61,6 @@ const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(300);
 pub struct PluginSourceWatcher {
     /// Directory holding one subdirectory per plugin crate.
     pub root: PathBuf,
-    /// Where to put a built library, i.e. the directory the loader scans.
-    stage_to: PathBuf,
     /// Debounced filesystem events, drained each frame.
     rx: std::sync::Mutex<Receiver<DebounceEventResult>>,
     /// Crates we already hold watches for, so a new one can be picked up without
@@ -175,7 +173,7 @@ fn find_source_root() -> Option<PathBuf> {
 }
 
 /// Install the source watcher. Editor-only, called by the loader's plugin.
-pub(crate) fn install(app: &mut App, stage_to: PathBuf) {
+pub(crate) fn install(app: &mut App) {
     let Some(root) = find_source_root() else {
         debug!("[plugin] no plugin source directory found — live rebuild is off");
         return;
@@ -227,7 +225,6 @@ pub(crate) fn install(app: &mut App, stage_to: PathBuf) {
 
     app.insert_resource(PluginSourceWatcher {
         root,
-        stage_to,
         rx: std::sync::Mutex::new(rx),
         watched,
         debouncer,
@@ -391,10 +388,96 @@ fn poll_plugin_sources(mut watcher: ResMut<PluginSourceWatcher>, mut builds: Res
         if builds.in_flight.contains(&name) {
             continue;
         }
+        // An event is not a change. The debouncer reports what the filesystem
+        // told it, and "the filesystem mentioned this path" covers a great deal
+        // more than "the author edited it": a watch registered over an existing
+        // tree, an editor writing a file back byte-identical, a `git checkout`
+        // that restores what was already there.
+        //
+        // Left unchecked that is not one wasted build, it is one per plugin, all
+        // at once. An install now holds the source of every plugin it has, so
+        // launching the editor from its own directory put a watch over ~65
+        // crates and rebuilt every one of them two seconds after startup —
+        // 65 concurrent `cargo` processes, and then 65 hot reloads as each
+        // artefact landed. That reads as the editor stuttering on startup, with
+        // nothing on screen connecting it to a plugin.
+        //
+        // So ask the same question the build pass asks: is the source actually
+        // newer than what was built from it?
+        if !source_newer_than_artefact(&dir, &name) {
+            debug!("[plugin] {name} reported a change but is not newer than its build — skipping");
+            continue;
+        }
         info!("[plugin] {name} source changed, rebuilding");
         builds.in_flight.insert(name.clone());
-        spawn_build(builds.tx.clone(), name, dir, watcher.stage_to.clone());
+        spawn_build(builds.tx.clone(), name, dir);
     }
+}
+
+/// Is anything under `<dir>/src` newer than the library already built from it?
+///
+/// The same test `renzora_native_plugin::layout` uses to decide a plugin is
+/// stale, asked here so a filesystem event that changed nothing costs nothing.
+/// A missing artefact counts as "newer": there is nothing to compare against and
+/// building is the right answer.
+fn source_newer_than_artefact(dir: &Path, name: &str) -> bool {
+    let artefact = dir
+        .join("build")
+        .join(format!("{}.{}", name.replace('-', "_"), std::env::consts::DLL_EXTENSION));
+    let Ok(built) = std::fs::metadata(&artefact).and_then(|m| m.modified()) else {
+        return true;
+    };
+    fn any_newer(dir: &Path, built: std::time::SystemTime) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                return any_newer(&p, built);
+            }
+            e.metadata().and_then(|m| m.modified()).map(|t| t > built).unwrap_or(false)
+        })
+    }
+    any_newer(&dir.join("src"), built)
+        || std::fs::metadata(dir.join("Cargo.toml"))
+            .and_then(|m| m.modified())
+            .map(|t| t > built)
+            .unwrap_or(false)
+}
+
+/// Where `cargo` is, when `PATH` does not say.
+///
+/// Rustup installs into `~/.cargo/bin` and adds it to `PATH` from the shell's
+/// profile — so an editor started from a terminal finds cargo and an editor
+/// started from a desktop launcher does not. Spawning the bare name reports
+/// "Rust is not installed" on a machine that plainly has it.
+///
+/// `CARGO` first, because cargo sets it for everything it spawns: an editor
+/// launched by `cargo renzora` then rebuilds with the toolchain that built it.
+///
+/// Duplicated rather than shared with `renzora_native_build::tool`, because this
+/// crate takes no dependencies at all — a plugin author must be able to
+/// `cargo add renzora_plugin` — and fifteen lines is a smaller price than an
+/// edge in that graph.
+fn cargo_path() -> PathBuf {
+    if let Some(explicit) = std::env::var_os("CARGO") {
+        let path = PathBuf::from(explicit);
+        if path.is_file() {
+            return path;
+        }
+    }
+    let exe = if cfg!(windows) { "cargo.exe" } else { "cargo" };
+    let home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo")))
+        .or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".cargo")));
+    if let Some(candidate) = home.map(|h| h.join("bin").join(exe)) {
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    PathBuf::from("cargo")
 }
 
 /// Run `cargo build` on a worker thread and stage the result.
@@ -406,9 +489,9 @@ fn poll_plugin_sources(mut watcher: ResMut<PluginSourceWatcher>, mut builds: Res
 /// Staging happens HERE, on the worker, rather than back on the main thread: the
 /// copy is the trigger for the dll watcher, so doing it off-thread means the frame
 /// that receives the result has nothing left to do.
-fn spawn_build(tx: Sender<PluginBuildResult>, plugin: String, dir: PathBuf, stage_to: PathBuf) {
+fn spawn_build(tx: Sender<PluginBuildResult>, plugin: String, dir: PathBuf) {
     std::thread::spawn(move || {
-        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let cargo = cargo_path();
         // `dist` to match what the editor itself was staged with, so the artifact
         // lands in `target/dist/` where the copy below looks for it.
         let output = std::process::Command::new(cargo)
@@ -428,7 +511,7 @@ fn spawn_build(tx: Sender<PluginBuildResult>, plugin: String, dir: PathBuf, stag
                 // stderr, not stdout: cargo's diagnostics go there.
                 output: String::from_utf8_lossy(&out.stderr).into_owned(),
             },
-            Ok(_) => match stage(&dir, &stage_to) {
+            Ok(_) => match stage(&dir) {
                 Ok(()) => PluginBuildResult {
                     plugin,
                     ok: true,
@@ -448,78 +531,77 @@ fn spawn_build(tx: Sender<PluginBuildResult>, plugin: String, dir: PathBuf, stag
     });
 }
 
-/// Copy whatever libraries the build produced into the directory the loader scans.
+/// Copy the library the build produced into the plugin's own `build/` directory.
 ///
-/// Sweeps `target/dist` rather than assuming the file is named after the
-/// directory, because a crate's library name need not match its folder.
-fn stage(dir: &Path, stage_to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(stage_to)?;
-    let suffix = format!(".{}", std::env::consts::DLL_EXTENSION);
+/// `plugins/<id>/build/<id>.<ext>`, which is where [`super::loader::artefacts`]
+/// looks and where `renzora_native_plugin` puts a native plugin's library. One
+/// layout for both kinds: the directory name is the plugin's identity, and the
+/// artefact is named after it rather than after whatever cargo happened to call
+/// the file.
+///
+/// That renaming is load-bearing rather than tidiness. Cargo emits a cdylib as
+/// `lib<crate>.so` on Unix and `<crate>.dll` on Windows, so a staged file kept
+/// under cargo's name gives the same plugin two ids depending on the platform —
+/// and the disable list, the reload queue and the marketplace sidecar all key on
+/// that id.
+fn stage(dir: &Path) -> std::io::Result<()> {
+    let ext = std::env::consts::DLL_EXTENSION;
+    let Some(id) = dir.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "plugin directory has no name",
+        ));
+    };
+    let crate_name = id.replace('-', "_");
 
-    // Two possible artifact directories, and the shared one is now the normal
-    // case. `plugins/.cargo/config.toml` sets `target-dir = "target"`, which
-    // cargo resolves relative to THAT file's directory — so every plugin builds
-    // into `plugins/target/`, not `plugins/<name>/target/`. Looking only in the
-    // per-plugin location failed with a bare "cannot find the path" for every
-    // plugin, because that directory has not existed since the shared target dir
-    // was introduced as a build-time optimisation.
-    //
-    // The per-plugin path is still tried first: a plugin built outside this
-    // checkout has one, and it is the more specific answer when both exist.
+    // Two possible artifact directories, and the shared one is the normal case:
+    // a `plugins/.cargo/config.toml` setting `target-dir = "target"` resolves it
+    // relative to THAT file's directory, so every plugin builds into
+    // `plugins/target/`. The per-plugin path is tried first because a plugin
+    // built outside such a tree has one, and it is the more specific answer.
     let own = dir.join("target").join("dist");
-    let shared = dir
-        .parent()
-        .map(|p| p.join("target").join("dist"))
-        .unwrap_or_else(|| own.clone());
-    let (from, shared_dir) = if own.is_dir() {
-        (own, false)
+    let from = if own.is_dir() {
+        own
     } else {
-        (shared, true)
+        dir.parent()
+            .map(|p| p.join("target").join("dist"))
+            .unwrap_or(own)
     };
 
-    // Every plugin's artifacts sit in the shared directory, so copying the lot
-    // would restage all of them on every keystroke — and would overwrite a
-    // plugin the editor has loaded with whatever happened to be built last. Take
-    // only this one, matched on the directory name.
-    let want = dir
-        .file_name()
-        .map(|n| format!("{}{suffix}", n.to_string_lossy()));
-
-    let mut copied = 0;
-    for entry in std::fs::read_dir(&from)?.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let name = entry.file_name();
-        if !name.to_string_lossy().ends_with(&suffix) {
-            continue;
-        }
-        // Only filter in the shared directory. A per-plugin `target/` holds one
-        // plugin's output, and its library name need not match its folder.
-        if shared_dir {
-            match &want {
-                Some(w) if name.to_string_lossy() != *w => continue,
-                None => continue,
-                _ => {}
-            }
-        }
-        std::fs::copy(&path, stage_to.join(&name))?;
-        copied += 1;
-    }
-    if copied == 0 {
+    // What cargo named it. `DLL_PREFIX` is `lib` on Unix and empty on Windows —
+    // spelling it out rather than sweeping the directory, because the shared
+    // target dir holds every plugin's output and a sweep would restage all of
+    // them, overwriting libraries the editor has already loaded.
+    let produced = from.join(format!("{}{crate_name}.{ext}", std::env::consts::DLL_PREFIX));
+    if !produced.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            // Naming what was looked for, not just where: in the shared
-            // directory the usual cause is a package name that differs from the
-            // folder name, and "no .dll in plugins/target/dist" is actively
-            // misleading when 60 of them are sitting there.
-            match &want {
-                Some(w) => format!("no {w} in {} — is it a cdylib, and does the package name match the folder?", from.display()),
-                None => format!("no {suffix} in {} — is it a cdylib?", from.display()),
-            },
+            format!(
+                "no {} in {} — is it a cdylib, and does the package name match the folder?",
+                produced.file_name().unwrap_or_default().to_string_lossy(),
+                from.display()
+            ),
         ));
     }
+
+    // Written to a sibling and renamed in, never through the path the loader
+    // reads — see the note on the copy helper. Inlined rather than shared with
+    // `renzora_native_build::stage_atomically`, because this crate takes no
+    // dependencies: a plugin author must be able to `cargo add renzora_plugin`.
+    let build = dir.join("build");
+    std::fs::create_dir_all(&build)?;
+    let out = build.join(format!("{crate_name}.{ext}"));
+    let want = std::fs::metadata(&produced)?.len();
+    let tmp = out.with_extension("staging");
+    let copied = std::fs::copy(&produced, &tmp)?;
+    if copied != want {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            format!("{copied} of {want} bytes — the library was still being written"),
+        ));
+    }
+    std::fs::rename(&tmp, &out)?;
     Ok(())
 }
 

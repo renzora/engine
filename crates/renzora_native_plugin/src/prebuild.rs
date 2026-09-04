@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use renzora_plugin_build::unpack::{self, SdkState};
 use renzora_plugin_build::Sdk;
 
-use crate::{exe_dir, layout, name_of, read_dir_sorted};
+use crate::{exe_dir, is_native_source, is_standalone_source, layout, name_of, read_dir_sorted, standalone};
 
 /// Where setup has got to, for a progress bar to draw.
 ///
@@ -101,6 +101,52 @@ impl Prepared {
     }
 }
 
+/// A missing toolchain that stopped work, and whether the editor can fix it.
+///
+/// Two states rather than one, because the remedies are not comparable. Asking
+/// rustup to add a toolchain is a bounded, reversible thing the user has already
+/// consented to by installing rustup. Putting Rust on a machine that has none is
+/// a decision about their machine, and an editor should not make it by pressing
+/// its own button.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolchainGap {
+    /// rustup is here; the pinned toolchain is not. One command, ~400 MB.
+    ///
+    /// Standalone plugins are unaffected — they build with whatever toolchain
+    /// rustup already has — so this blocks the native ones only.
+    Installable { version: String },
+    /// No Rust at all. Both kinds are blocked, and the fix is rustup's installer.
+    RustupMissing,
+}
+
+/// What, if anything, has to be installed before plugins can be built.
+///
+/// Answered after a run rather than before it, so it describes what actually
+/// stopped rather than what might.
+pub fn toolchain_gap() -> Option<ToolchainGap> {
+    if !standalone::have_toolchain() {
+        return Some(ToolchainGap::RustupMissing);
+    }
+    let root = exe_dir()?;
+    match Sdk::load(root.join("sdk")).ok()?.toolchain() {
+        renzora_plugin_build::Toolchain::ToolchainMissing { version } => {
+            Some(ToolchainGap::Installable { version })
+        }
+        // `RustupMissing` from the SDK's point of view means no rustup, but we
+        // already know a cargo exists — Rust installed some other way, with the
+        // wrong version for native plugins and nothing we can do about it.
+        _ => None,
+    }
+}
+
+/// Add the pinned toolchain through the rustup that is already installed.
+///
+/// Re-exported so a caller does not have to reach past this module into the SDK
+/// crate for the one action the setup window offers.
+pub fn install_toolchain(version: &str) -> Result<(), String> {
+    renzora_plugin_build::toolchain::install_toolchain(version)
+}
+
 /// Is there any setup to do at all?
 ///
 /// Called before anything is shown, so an ordinary launch never puts up a setup
@@ -114,16 +160,28 @@ pub fn needed() -> bool {
         return true;
     }
     let dir = root.join("plugins");
-    let Ok(sdk) = Sdk::load(root.join("sdk")) else {
-        return false;
-    };
-    let expected = sdk.stamp();
     let disabled = renzora::load_disabled_plugins();
-    read_dir_sorted(&dir)
-        .into_iter()
-        .filter(|p| p.join("src").join("lib.rs").is_file())
-        .filter(|p| !disabled.iter().any(|d| d == &name_of(p)))
-        .any(|p| layout(&p, Some(&sdk), Some(&expected)).needs_build)
+    let sdk = Sdk::load(root.join("sdk")).ok();
+    let native_stamp = sdk.as_ref().map(|s| s.stamp());
+    for p in read_dir_sorted(&dir) {
+        if disabled.iter().any(|d| d == &name_of(&p)) {
+            continue;
+        }
+        if is_native_source(&p) {
+            let Some(sdk) = sdk.as_ref() else { continue };
+            if layout(&p, Some(sdk), native_stamp.as_deref()).needs_build {
+                return true;
+            }
+        } else if is_standalone_source(&p) {
+            if layout(&p, None, None).needs_build {
+                // Only worth a window if there is something to build it with. A
+                // machine with no Rust installed would otherwise get the setup
+                // window on every launch, build nothing, and restart into it.
+                return standalone::have_toolchain();
+            }
+        }
+    }
+    false
 }
 
 /// Unpack the SDK if it is still an archive, then build any plugin that needs it.
@@ -170,6 +228,17 @@ pub fn run(report: &mut impl FnMut(Progress)) -> Prepared {
     done
 }
 
+/// Which builder a pending plugin needs.
+///
+/// Not a property of the plugin so much as of its manifest: `crate-type` decides
+/// it, which is why nothing here reads a sidecar or trusts anything the
+/// marketplace recorded. See `is_native_source` / `is_standalone_source`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Native,
+    Standalone,
+}
+
 /// Compile every plugin whose artefact is missing or stale.
 ///
 /// Deliberately does NOT load anything: loading is the `App`'s job, and doing it
@@ -179,37 +248,63 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     if !dir.is_dir() {
         return 0;
     }
-    let Ok(sdk) = Sdk::load(root.join("sdk")) else {
-        // No SDK: nothing can be built, and saying so here would duplicate the
-        // loader's message with less context.
-        return 0;
-    };
-    let expected = sdk.stamp();
-
+    // No SDK is not a reason to stop: it blocks the NATIVE plugins and nothing
+    // else. A standalone plugin links no Bevy and compiles against the plugin API
+    // staged in `<install>/crates/`, so it builds on a machine that has never
+    // unpacked one.
+    let sdk = Sdk::load(root.join("sdk")).ok();
+    let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.
     let disabled = renzora::load_disabled_plugins();
-    let pending: Vec<PathBuf> = read_dir_sorted(&dir)
-        .into_iter()
-        .filter(|p| p.join("src").join("lib.rs").is_file())
-        .filter(|p| !disabled.iter().any(|d| d == &name_of(p)))
-        .filter(|p| layout(p, Some(&sdk), Some(&expected)).needs_build)
-        .collect();
+    let mut pending: Vec<(PathBuf, Kind)> = Vec::new();
+    for p in read_dir_sorted(&dir) {
+        if disabled.iter().any(|d| d == &name_of(&p)) {
+            continue;
+        }
+        if is_native_source(&p) {
+            if sdk.is_some() && layout(&p, sdk.as_ref(), native_stamp.as_deref()).needs_build {
+                pending.push((p, Kind::Native));
+            }
+        } else if is_standalone_source(&p) && layout(&p, None, None).needs_build {
+            pending.push((p, Kind::Standalone));
+        }
+    }
     if pending.is_empty() {
         return 0;
+    }
+    if pending.iter().any(|(_, k)| *k == Kind::Standalone) && !standalone::have_toolchain() {
+        report(Progress::Failed(
+            "Rust is not installed, so standalone plugins cannot be built. \
+             Install it from https://rustup.rs and relaunch."
+                .to_string(),
+        ));
+        pending.retain(|(_, k)| *k == Kind::Native);
+        if pending.is_empty() {
+            return 0;
+        }
     }
 
     let total = pending.len();
     let mut built = 0;
-    for (i, plugin) in pending.iter().enumerate() {
+    for (i, (plugin, kind)) in pending.iter().enumerate() {
         let name = name_of(plugin);
         report(Progress::Building { name: name.clone(), index: i + 1, total });
-        let l = layout(plugin, Some(&sdk), Some(&expected));
+        let (expected, l) = match kind {
+            Kind::Native => (
+                native_stamp.clone().unwrap_or_default(),
+                layout(plugin, sdk.as_ref(), native_stamp.as_deref()),
+            ),
+            // No expected stamp: nothing about this machine can make a
+            // standalone artefact stale. What is written beside it afterwards is
+            // provenance — which compiler produced it — and is never compared.
+            Kind::Standalone => (String::new(), layout(plugin, None, None)),
+        };
         if let Err(e) = std::fs::create_dir_all(plugin.join("build")) {
             report(Progress::Failed(format!("{name}: {e}")));
             continue;
         }
-        match sdk.compile_with(plugin, &l.lib_path, &mut |line| {
+        let mut on_line = |line: &str| {
             // Blank lines are separators in rustc/cargo output, not status. Left
             // in, they render as a bare "name:" with nothing after it, which
             // looks like the build stalled on an unnamed step.
@@ -222,7 +317,18 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
                 total,
                 line: line.to_string(),
             });
-        }) {
+        };
+        // Two builders, one shape of answer. The SDK drives `rustc` against the
+        // staged images; `standalone` runs `cargo` and links nothing.
+        let outcome = match kind {
+            Kind::Native => sdk
+                .as_ref()
+                .expect("a Native entry is only pushed when the SDK loaded")
+                .compile_with(plugin, &l.lib_path, &mut on_line)
+                .map_err(|e| e.to_string()),
+            Kind::Standalone => standalone::compile(plugin, &l.lib_path, &mut on_line),
+        };
+        match outcome {
             Ok(stamp) => match std::fs::write(&l.stamp_path, &stamp) {
                 Ok(()) => {
                     built += 1;

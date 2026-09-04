@@ -464,7 +464,7 @@ fn ensure_cargo_manifest(dir: &Path) -> Result<PathBuf, Error> {
 
 /// The local rustc's release string, e.g. `1.95.0`.
 fn rustc_release() -> Result<String, String> {
-    let out = native_build::hide_console(&mut Command::new("rustc"))
+    let out = native_build::hide_console(&mut Command::new(native_build::tool("rustc")))
         .arg("-vV")
         .output()
         .map_err(|e| e.to_string())?;

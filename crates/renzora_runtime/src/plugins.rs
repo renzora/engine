@@ -59,7 +59,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_lumen::LumenPlugin::default());
     #[cfg(feature = "motion_blur")]
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
-    app.add_plugins(renzora_native_plugin::NativePluginLoader::default());
     #[cfg(feature = "navmesh")]
     app.add_plugins(renzora_navmesh::NavMeshPlugin::default());
     app.add_plugins(renzora_net::NetPlugin::default());

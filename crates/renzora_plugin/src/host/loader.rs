@@ -171,104 +171,47 @@ pub enum LoadOutcome {
     WrongScope(sys::PluginScope),
 }
 
-/// Load every `renzora_plugin` cdylib in `dir`, except any already linked into
-/// this binary.
+/// Every plugin library under `root`, as `(id, path)`.
 ///
-/// Missing or unreadable directories are not an error — a build with no plugins
-/// is normal.
+/// A plugin is a **directory** — `plugins/<id>/` — holding its source and, once
+/// something has built it, `build/<id>.<ext>`. Both kinds live that way: a
+/// native plugin always did, and a standalone one used to sit beside them as a
+/// loose `<id>.dll` / `lib<id>.so`.
 ///
-/// `linked` holds the crate names of plugins compiled in (see [`load_static`]).
-/// Loading a second copy of one is not a duplicate that resolves itself: the two
-/// get separate slots, so BOTH sets of systems end up in the schedules and every
-/// one of the plugin's systems runs twice a frame — and the second copy's
-/// first-claim registrations (a script backend's extensions, a panel id) fail
-/// with an error that reads like a conflict between two different plugins. An
-/// export never produces this, because it skips copying what it linked; a user
-/// pointing a game at the editor's `plugins/` folder produces it immediately.
-pub fn load_dir(
-    world: &mut World,
-    dir: &Path,
-    is_editor: bool,
-    linked: &[&str],
-    disabled: &[String],
-) -> Vec<(PathBuf, LoadOutcome)> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+/// Collapsing the two shapes is what lets one identity — the directory name —
+/// serve the loader, the disable list, the update check and the marketplace
+/// sidecar at once. The loose form could not: its id was a *file stem*, which is
+/// `lib`-prefixed on Unix and not on Windows, so the same plugin answered to two
+/// different names depending on the platform, and neither matched the directory
+/// its source was in.
+///
+/// Directories beginning with `.` are skipped: `.reload` holds the shadow copies
+/// this loader makes (mapping one would load every plugin twice) and `.cargo`
+/// holds build config.
+pub fn artefacts(root: &Path) -> Vec<(String, PathBuf)> {
+    let ext = std::env::consts::DLL_EXTENSION;
+    let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
     };
-    let ext = std::env::consts::DLL_EXTENSION;
-    let mut results = Vec::new();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
-            continue;
-        }
-        // `lib` is stripped because a cdylib is `lib<crate>.so` on Unix and
-        // `<crate>.dll` on Windows, while a linked plugin is only ever known by
-        // its crate name.
-        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
-        let name = stem.strip_prefix("lib").unwrap_or(&stem);
-        if linked.contains(&name) {
-            info!("[plugin] ignoring {stem} in plugins/ — this build links {name} in");
-            continue;
-        }
-        // Skipped **before** `Library::new`, which is the whole point rather
-        // than an optimisation. Opening a plugin and then declining to use it
-        // means either dropping the handle — the `FreeLibrary` deadlock this
-        // loader has hit twice — or leaking an image and running the static
-        // initializers of a plugin the user explicitly turned off. Never opening
-        // it has neither problem.
-        //
-        // The name is checked rather than the file's symbols, so a disabled
-        // plugin is not even sniffed. That costs one thing: a disabled library
-        // that was never a plugin still gets a row in the report. Listing
-        // something the user can turn back on is the harmless direction to be
-        // wrong in.
-        let outcome = if disabled.iter().any(|d| d == name) {
-            info!("[plugin] {name} is disabled — Settings → Editor → Plugins");
-            LoadOutcome::Disabled
-        } else {
-            load_one(world, &path, is_editor)
-        };
-        // Recorded here rather than by the caller so every exit from this loop
-        // reaches the report — including the disabled one, which never produces
-        // anything for the caller to log.
-        if !matches!(outcome, LoadOutcome::NotAPlugin) {
-            world
-                .get_resource_or_insert_with(PluginLoadReport::default)
-                .record(name, &outcome);
-        }
-        results.push((path, outcome));
-    }
-    results
-}
-
-/// What became of every C-ABI plugin file this process considered.
-///
-/// Exists so the editor's Settings → Editor → Plugins list is built from what the
-/// actually did rather than from a second `read_dir` with a second opinion about
-/// what a plugin is. "Is this file a plugin?" has a non-obvious answer here — it
-/// must export one specific symbol and must not be a proc-macro dylib — and a
-/// panel listing a different set from the one the engine loaded is worse than no
-/// panel at all.
-///
-/// Deliberately holds no `renzora` types. This crate is published to crates.io
-/// so a third-party plugin author can `cargo add renzora_plugin`, which rules
-/// out a path dependency on the contract crate — so the editor copies this into
-/// `renzora::PluginInventory` instead, and the two loaders meet there.
-#[derive(Resource, Default)]
-pub struct PluginLoadReport {
-    /// `(id, outcome)`, in the order the loader reached them. The id is the
-    /// library's file stem with any `lib` prefix stripped, which is the same
-    /// string the disable list is keyed on.
-    pub entries: Vec<(String, LoadOutcome)>,
-}
-
-impl PluginLoadReport {
-    fn record(&mut self, id: &str, outcome: &LoadOutcome) {
-        self.entries.retain(|(existing, _)| existing != id);
-        self.entries.push((id.to_string(), outcome.clone()));
-    }
+    let mut out: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter_map(|dir| {
+            let id = dir.file_name()?.to_str()?.to_string();
+            if id.starts_with('.') {
+                return None;
+            }
+            // Underscored to match what `rustc --crate-name` produced, which is
+            // the same rule `renzora_native_plugin::layout` follows — one layout,
+            // whichever builder wrote it.
+            let lib = dir.join("build").join(format!("{}.{ext}", id.replace('-', "_")));
+            lib.is_file().then_some((id, lib))
+        })
+        .collect();
+    // Stable order so a load failure is always reported in the same place.
+    out.sort();
+    out
 }
 
 /// True if the file is a Rust **proc-macro** dylib.
@@ -302,7 +245,7 @@ fn is_proc_macro_dylib(path: &Path) -> bool {
 /// copy or load happens. Every C-ABI plugin exports [`sys::INIT_SYMBOL`], and an
 /// exported name appears verbatim in the export table, so a byte search settles it
 /// with no PE/ELF parsing — the same trick [`is_proc_macro_dylib`] uses.
-fn exports_plugin_init(path: &Path) -> bool {
+pub fn exports_plugin_init(path: &Path) -> bool {
     contains_symbol(path, sys::INIT_SYMBOL.as_bytes())
 }
 
@@ -355,7 +298,7 @@ fn clear_shadow_dir(dir: &Path) {
     }
 }
 
-fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
+pub fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
     if is_proc_macro_dylib(path) {
         return LoadOutcome::NotAPlugin;
     }
@@ -697,16 +640,8 @@ const POLL_INTERVAL: f32 = 0.25;
 /// `(mtime, size)` for every plugin-shaped file in `dir`.
 fn stamp_dir(dir: &Path) -> std::collections::HashMap<PathBuf, (std::time::SystemTime, u64)> {
     let mut out = std::collections::HashMap::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    let ext = std::env::consts::DLL_EXTENSION;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
-            continue;
-        }
-        if let Ok(meta) = entry.metadata() {
+    for (_, path) in artefacts(dir) {
+        if let Ok(meta) = std::fs::metadata(&path) {
             if let Ok(mtime) = meta.modified() {
                 out.insert(path, (mtime, meta.len()));
             }
@@ -726,16 +661,8 @@ fn poll_plugin_dir(
     }
     watcher.countdown = POLL_INTERVAL;
 
-    let Ok(entries) = std::fs::read_dir(&watcher.dir) else {
-        return;
-    };
-    let ext = std::env::consts::DLL_EXTENSION;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
-            continue;
-        }
-        let Ok(meta) = entry.metadata() else { continue };
+    for (_, path) in artefacts(&watcher.dir) {
+        let Ok(meta) = std::fs::metadata(&path) else { continue };
         let Ok(mtime) = meta.modified() else { continue };
         let stamp = (mtime, meta.len());
 
@@ -889,7 +816,7 @@ impl Plugin for RenzoraPluginHostPlugin {
             // cannot do — so the watcher, its `notify` stack and `libloading` are
             // all target-scoped away rather than shipped inert in a web build.
             #[cfg(not(target_arch = "wasm32"))]
-            super::dev::install(app, dir.clone());
+            super::dev::install(app);
         }
 
         // Linked-in plugins first, and their names then suppress any loose copy
@@ -916,34 +843,29 @@ impl Plugin for RenzoraPluginHostPlugin {
             }
         }
 
-        let linked: Vec<&str> = self.statics.iter().map(|p| p.id).collect();
-        for (path, outcome) in
-            load_dir(app.world_mut(), &dir, self.is_editor, &linked, &self.disabled)
-        {
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            match outcome {
-                LoadOutcome::Loaded => info!("[plugin] loaded {name}"),
-                LoadOutcome::NotAPlugin => {}
-                // `load_dir` already said so, at the point it decided.
-                LoadOutcome::Disabled => {}
-                LoadOutcome::VersionTooOld => warn!(
-                    "[plugin] {name} needs a newer renzora_plugin ABI than this build \
-                     (host is {}.{})",
-                    sys::VERSION_MAJOR,
-                    sys::VERSION_MINOR
-                ),
-                // Debug, not warn: a game staged alongside the editor sees every
-                // editor plugin in its `plugins/` directory, and saying so at
-                // warn level once per plugin per launch is noise about something
-                // working correctly.
-                LoadOutcome::WrongScope(scope) => {
-                    debug!("[plugin] skipping {name} — {scope:?} scope")
-                }
-                LoadOutcome::Failed(why) => error!("[plugin] {name} failed: {why}"),
-            }
-        }
+        // The disk scan is NOT here. One pass over `plugins/` loads both kinds —
+        // see `renzora_native_plugin`, which is the only place that can see both
+        // loaders. This plugin installs the C-ABI host and the plugins linked
+        // into the binary, and the scanner calls back into [`load_one`].
+        //
+        // Split rather than merged the other way round because of ordering. A
+        // plugin resolves its host-component mirrors during THIS `build`, so this
+        // has to come after the engine crates that expose them — while the
+        // scanner has no such constraint and simply follows it.
+        app.insert_resource(LinkedPluginIds(
+            self.statics.iter().map(|p| p.id.to_string()).collect(),
+        ));
     }
 }
+
+/// Ids of the plugins compiled into this binary.
+///
+/// Read by the scanner so a loose copy of a linked-in plugin is skipped rather
+/// than loaded a second time — which is not a duplicate that resolves itself:
+/// both sets of systems end up in the schedules and every one of the plugin's
+/// systems runs twice a frame.
+#[derive(Resource, Default)]
+pub struct LinkedPluginIds(pub Vec<String>);
 
 /// One C-ABI plugin found on disk, without loading it into a `World`.
 ///
@@ -991,17 +913,10 @@ pub struct PluginInfo {
 /// the folder since boot, or one whose load failed before the scope was read —
 /// falls through to [`probe_scope`].
 pub fn scan_plugins(world: &World, dir: &Path) -> Vec<PluginInfo> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
     let known = world.get_resource::<LoadedPlugins>();
     let mut out = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some(std::env::consts::DLL_EXTENSION)
-            || is_proc_macro_dylib(&path)
-            || !exports_plugin_init(&path)
-        {
+    for (id, path) in artefacts(dir) {
+        if is_proc_macro_dylib(&path) || !exports_plugin_init(&path) {
             continue;
         }
         let Some(scope) = known
@@ -1010,10 +925,6 @@ pub fn scan_plugins(world: &World, dir: &Path) -> Vec<PluginInfo> {
         else {
             continue;
         };
-        let id = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
         out.push(PluginInfo { id, path, scope });
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
