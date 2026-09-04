@@ -734,7 +734,7 @@ fn layout_debug() -> DockTree {
                 0.65,
             ),
             DockTree::vertical(
-                DockTree::tabs(&["inspector", "gamepad", "ecs_stats"]),
+                DockTree::tabs(&["inspector", "ecs_stats"]),
                 DockTree::tabs(&[
                     "scene_diagnostics",
                     "material_resolver_diag",

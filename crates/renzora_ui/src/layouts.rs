@@ -314,7 +314,7 @@ pub fn scene_layout() -> DockTree {
                 0.72,
             ),
             DockTree::Leaf {
-                tabs: vec!["inspector".into(), "gamepad".into(), "history".into()],
+                tabs: vec!["inspector".into(), "history".into()],
                 active_tab: 0,
             },
             0.78,
@@ -428,7 +428,7 @@ fn layout_debug() -> DockTree {
             ),
             DockTree::vertical(
                 DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "gamepad".into(), "ecs_stats".into()],
+                    tabs: vec!["inspector".into(), "ecs_stats".into()],
                     active_tab: 0,
                 },
                 // The MOT — Scene Diagnostics on top, with the subsystem

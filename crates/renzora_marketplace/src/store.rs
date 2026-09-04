@@ -72,6 +72,14 @@ fn elide(s: &str, max: usize) -> String {
     out.push('…');
     out
 }
+/// Is this the plugins category?
+///
+/// Two slugs because the marketplace has accepted both — see the server's own
+/// `is_plugin_category`.
+fn is_plugin_slug(slug: &str) -> bool {
+    matches!(slug, "plugins" | "plugin")
+}
+
 /// How many cards a home category shelf shows before "See all".
 ///
 /// Ten rather than six because the cards are a fixed width now: six of them
@@ -79,6 +87,13 @@ fn elide(s: &str, max: usize) -> String {
 /// line of a maximised window at their real size, and a shelf that is mostly
 /// empty space reads as a category with nothing in it.
 const SECTION_CAP: usize = 10;
+
+/// Diameter of the shelf's "See all" circle.
+///
+/// A circle rather than a card-shaped tile because it is not a card: it buys
+/// nothing and represents no asset. At card width with round ends it was an
+/// oval, which reads as a stretched button rather than as a deliberate shape.
+const SEE_ALL_D: f32 = 44.0;
 
 const SORTS: [(&str, &str); 5] = [
     ("popular", "Most Downloaded"),
@@ -1218,22 +1233,54 @@ fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
 /// sits in the grid rather than beside it. Dashed and unfilled, because it is a
 /// way out of the shelf rather than another thing to buy.
 fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Entity {
-    let card = commands
+    // A column, not a box: the circle is the shape and the label sits under it.
+    //
+    // The two cannot be one entity. A box wide enough for "See all" with fully
+    // rounded ends is an oval, which is what a single tile produced — so the
+    // circle holds the arrow alone and the words go beneath, outside it.
+    let col = commands
         .spawn((
             Node {
-                width: Val::Px(CARD_W),
                 flex_shrink: 0.0,
+                // Centred against the row rather than sitting at its top. The
+                // tile is a fraction of a card's height, so top-aligned it read
+                // as something that had failed to load rather than as a control.
+                align_self: AlignSelf::Center,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
                 row_gap: Val::Px(6.0),
-                padding: UiRect::all(Val::Px(CARD_PAD)),
+                padding: UiRect::horizontal(Val::Px(10.0)),
+                ..default()
+            },
+            // Clickable too, so the words work and not only the circle. Never
+            // both at once: the circle blocks focus, so it takes the interaction
+            // when the cursor is on it and this takes it when the cursor is on
+            // the label.
+            Interaction::default(),
+            StoreSeeAllBtn(slug.to_string()),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("store-see-all"),
+        ))
+        .id();
+
+    let circle = commands
+        .spawn((
+            Node {
+                // Square, so the radius below is a circle rather than a pill.
+                width: Val::Px(SEE_ALL_D),
+                height: Val::Px(SEE_ALL_D),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)),
+                border_radius: BorderRadius::all(Val::Px(SEE_ALL_D / 2.0)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
+            // `HoverTint` reads `Interaction` from its own entity, so the tint
+            // and the interaction have to live together — on the circle, which
+            // is the thing that visibly reacts.
             Interaction::default(),
             StoreSeeAllBtn(slug.to_string()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -1242,16 +1289,22 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
                 rgb(hover_bg()),
                 rgb(section_bg()),
             ),
-            Name::new("store-see-all"),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, "arrow-right", accent(), 18.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands
-        .spawn((Text::new("See all"), ui_font(&fonts.ui, 11.0), TextColor(rgb(accent())), FocusPolicy::Pass))
+    commands.entity(circle).add_child(ic);
+
+    let label = commands
+        .spawn((
+            Text::new("See all"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(accent())),
+            FocusPolicy::Pass,
+        ))
         .id();
-    commands.entity(card).add_children(&[ic, t]);
-    card
+    commands.entity(col).add_children(&[circle, label]);
+    col
 }
 
 fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: &str, assets: &[AssetSummary]) -> Entity {
@@ -1275,8 +1328,43 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     // it *is* the browse view, showing one category's top few. It was a
     // non-wrapping rail that clipped, which meant a narrow window silently hid
     // cards with no way to reach them but "See all".
+    // The shelf body: a clipped run of cards with the "See all" circle after it.
+    //
+    // It used to be one wrapping grid with "See all" as the last child, and that
+    // is what pushed it onto a line of its own: when the cards happened to fill
+    // the row exactly — which at `SECTION_CAP` = 10 they did at most window
+    // widths — the tile wrapped and took a whole row to say two words.
+    //
+    // Wrapping cannot be made to work here. Whether the last card leaves room
+    // depends on the panel's width, which is not known when the layout is built,
+    // so any fixed number of cards is wrong at some width. Pinning the tile as a
+    // SIBLING of the card run removes the question: it is at the end of the
+    // section at every width, on the same line, always.
+    //
+    // The cards clip rather than wrap, which is what a shelf is — the top few of
+    // a category, with the way to the rest at the end of the row. That is the
+    // control that was wrapping.
+    let body = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(12.0), ..default() })
+        .id();
     let row = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_content: AlignContent::FlexStart, align_items: AlignItems::FlexStart, column_gap: Val::Px(12.0), row_gap: Val::Px(14.0), ..default() })
+        .spawn(Node {
+            // NOT `flex_grow`. Grown, the card run fills the section and pushes
+            // the circle to the far right — at the end of the ROW rather than at
+            // the end of the CARDS, which is a different place entirely whenever
+            // a category has only three or four of them.
+            //
+            // Content-width with the default `flex_shrink` instead: the run is
+            // as wide as its cards while they fit, so the circle sits directly
+            // after the last one, and shrinks (clipping) only once they would
+            // push it off the edge.
+            min_width: Val::Px(0.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::FlexStart,
+            column_gap: Val::Px(12.0),
+            overflow: Overflow::clip(),
+            ..default()
+        })
         .id();
     // `SECTION_CAP`, not a second hardcoded 6 — they had drifted apart already
     // in waiting.
@@ -1287,16 +1375,16 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
         .map(|a| asset_card(commands, fonts, a, false))
         .collect();
     commands.entity(row).add_children(&cards);
-    // …then "See all" as the final tile, card-sized so the run of cards stays on
-    // its grid.
+    // …then "See all", beside the run rather than inside it.
     let see = see_all_card(commands, fonts, slug);
-    commands.entity(row).add_child(see);
+    commands.entity(body).add_children(&[row, see]);
 
-    commands.entity(col).add_children(&[header, row]);
+    commands.entity(col).add_children(&[header, body]);
     col
 }
 
-/// The store tile's action: **Download** when free, the credit price when not.
+/// The store tile's action: **Download** — or **Install** for a plugin — when
+/// free, and the credit price when not.
 ///
 /// `Block`ing and carrying [`StoreInstallBtn`], so pressing it goes straight to
 /// install or purchase rather than opening the detail overlay the rest of the
@@ -1364,10 +1452,20 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, card:
     });
 
     if free {
-        let ic = icon_text(commands, &fonts.phosphor, "download-simple", fg, 10.5);
+        // "Install", not "Download", for a plugin. Every other category IS a
+        // download — the file lands in the project and the user does something
+        // with it. A plugin is extracted, compiled and loaded into the editor,
+        // and calling that "Download" describes the first tenth of it.
+        let plugin = is_plugin_slug(&a.category);
+        let (glyph, label) = if plugin {
+            ("puzzle-piece", "Install")
+        } else {
+            ("download-simple", "Download")
+        };
+        let ic = icon_text(commands, &fonts.phosphor, glyph, fg, 10.5);
         commands.entity(ic).insert(FocusPolicy::Pass);
         let t = commands
-            .spawn((Text::new("Download"), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+            .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
             .id();
         commands.entity(pill).add_children(&[ic, t]);
     } else {
@@ -1538,6 +1636,8 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
         for m in got {
             match m {
                 HomeMsg::Section(slug, name, Ok(mut assets)) => {
+                    // Already random — the server ordered the whole category
+                    // that way — so this is just the shelf's size.
                     assets.truncate(SECTION_CAP);
                     // Skip empty shelves — an empty category shouldn't take up a row.
                     if !assets.is_empty() {
@@ -1546,7 +1646,20 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
                         // category list's order regardless of who returned first.
                         let order: std::collections::HashMap<String, usize> =
                             data.categories.iter().enumerate().map(|(i, (s, _))| (s.clone(), i)).collect();
-                        data.sections.sort_by_key(|s| order.get(&s.slug).copied().unwrap_or(usize::MAX));
+                        // Plugins first, then the category list's own order.
+                        //
+                        // Not a reshuffle of the whole page: the rest keeps the
+                        // order the server sends, so a shelf stays where someone
+                        // learned it was. Plugins are pinned because they are the
+                        // one category that changes what the editor can DO, and
+                        // burying them under nine shelves of art meant nobody
+                        // scrolled to them.
+                        data.sections.sort_by_key(|s| {
+                            (
+                                !is_plugin_slug(&s.slug),
+                                order.get(&s.slug).copied().unwrap_or(usize::MAX),
+                            )
+                        });
                         data.home_version += 1;
                     }
                 }
@@ -1585,7 +1698,12 @@ fn store_home_init(mut data: ResMut<HubStoreData>) {
     for (slug, name) in data.categories.clone() {
         let tx = tx.clone();
         std::thread::spawn(move || {
-            let r = crate::auth::marketplace::list_assets(None, Some(&slug), Some("popular"), 1, None, None);
+            // `random`, so the shelf samples the WHOLE category rather than a
+            // page of it. `popular` returned the top 100 by downloads and the
+            // shelf took ten of those — so a category of 400 could only ever
+            // show its top quarter, and shuffling client-side reordered that
+            // same slice rather than widening it.
+            let r = crate::auth::marketplace::list_assets(None, Some(&slug), Some("random"), 1, None, None);
             let _ = tx.send(HomeMsg::Section(slug, name, r.map(|resp| resp.assets)));
         });
     }
