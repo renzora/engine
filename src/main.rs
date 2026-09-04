@@ -102,6 +102,11 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // load here — the scanner dispatches on which entry symbol an artefact
     // exports, which is the only thing that can tell them apart now that they
     // share one on-disk layout.
+    //
+    // Desktop-only, matching the re-export it reaches through: wasm has no
+    // dynamic linking at all, so there is nothing on disk for this to scan and
+    // `renzora_runtime` does not compile the crate there.
+    #[cfg(not(target_arch = "wasm32"))]
     app.add_plugins(renzora_runtime::renzora_native_plugin::NativePluginLoader::default());
     // Installs any render passes those plugins registered. Separate plugin
     // because the work happens in `finish`, after every `build` has run and the

@@ -172,13 +172,11 @@ pub fn needed() -> bool {
             if layout(&p, Some(sdk), native_stamp.as_deref()).needs_build {
                 return true;
             }
-        } else if is_standalone_source(&p) {
-            if layout(&p, None, None).needs_build {
-                // Only worth a window if there is something to build it with. A
-                // machine with no Rust installed would otherwise get the setup
-                // window on every launch, build nothing, and restart into it.
-                return standalone::have_toolchain();
-            }
+        } else if is_standalone_source(&p) && layout(&p, None, None).needs_build {
+            // Only worth a window if there is something to build it with. A
+            // machine with no Rust installed would otherwise get the setup
+            // window on every launch, build nothing, and restart into it.
+            return standalone::have_toolchain();
         }
     }
     false

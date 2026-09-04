@@ -1153,14 +1153,11 @@ pub fn resolve_static_plugins(
                 // its `plugin!` expression read out of the source; a `cdylib` is
                 // C-ABI and is described entirely by its manifest.
                 let kind = if declares_dylib(&text) {
-                    match native_plugin_expr(&entry.path()) {
-                        Some(expr) => Some(StaticKind::Native { expr }),
-                        // Declared no plugin, or declared one this cannot name —
-                        // `plugin!(MyPlugin { size: 4 }, Runtime)` is legal and
-                        // is not a path. Left unlinked and shipped as a file
-                        // instead, which is what a copy-based export does anyway.
-                        None => None,
-                    }
+                    // `None` when the crate declares no plugin, or declares one
+                    // this cannot name — `plugin!(MyPlugin { size: 4 }, Runtime)`
+                    // is legal and is not a path. Left unlinked and shipped as a
+                    // file instead, which is what a copy-based export does anyway.
+                    native_plugin_expr(&entry.path()).map(|expr| StaticKind::Native { expr })
                 } else {
                     Some(StaticKind::CAbi)
                 };
