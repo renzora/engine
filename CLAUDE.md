@@ -552,6 +552,17 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
   for `Edit`, that is a signal it is too large for one step — split it, don't
   reach for a script. Shell remains correct for building, testing, searching,
   inspecting binaries and running probes; the rule is about *mutating source*.
+- **Never use an em dash. Anywhere.** Not in code, comments, doc-comments,
+  markdown, commit messages, release notes, UI strings, log lines, error text or
+  panic messages. This is absolute: there is no context in this repository where
+  `—` is the right character, and "it reads better here" is not an exception.
+  The same goes for an en dash (`–`) used as punctuation; `-` in identifiers,
+  flags and ranges is fine, and `−` in a numeric diff is a minus sign, not
+  punctuation.
+  Reach for a colon when the second half explains the first, a comma or
+  parentheses for an aside, a semicolon for two joined clauses, or a full stop
+  and a new sentence. Almost every em dash is one of those four wearing a
+  costume, and picking the right one says what the dash left ambiguous.
 - **Comment the WHY, not the what.** This codebase's hallmark is doc-comments
   (`//!` module, `///` item) that explain *why* the code is shaped this way, what
   edge case it handles, and what previously went wrong. Match that density and

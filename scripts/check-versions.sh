@@ -79,12 +79,15 @@ done < <(grep -oP '"id"\s*:\s*"\K[^"]+' "$vfile")
 
 # ── RELEASE_NOTES.md ────────────────────────────────────────────────────────
 if [ -f RELEASE_NOTES.md ]; then
-    if head -n 1 RELEASE_NOTES.md | grep -qF "$version"; then
-        ok "RELEASE_NOTES.md names $version on line 1"
+    if head -n 5 RELEASE_NOTES.md | grep -qF "$version"; then
+        ok "RELEASE_NOTES.md names $version in its opening lines"
     else
-        err "RELEASE_NOTES.md line 1 does not name $version — it is still the
-      previous release's notes. The publish job refuses a release on this, but
-      only after the tag is pushed; here it costs nothing to catch."
+        err "RELEASE_NOTES.md does not name $version in its opening lines — it is
+      still the previous release's notes. The notes carry the version in an HTML
+      comment on line 1, which GitHub renders as nothing, so the published body
+      does not have to repeat a title the release page already shows. The publish
+      job refuses a release on this, but only after the tag is pushed; here it
+      costs nothing to catch."
     fi
 else
     err "RELEASE_NOTES.md is missing"

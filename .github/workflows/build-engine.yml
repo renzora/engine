@@ -169,8 +169,8 @@ jobs:
               echo "::error::RELEASE_NOTES.md is missing; a release must carry its notes"
               exit 1
             fi
-            if ! head -n 1 RELEASE_NOTES.md | grep -qF "$version"; then
-              echo "::error::RELEASE_NOTES.md does not name $version in its first line — it is still the previous release's notes"
+            if ! head -n 5 RELEASE_NOTES.md | grep -qF "$version"; then
+              echo "::error::RELEASE_NOTES.md does not name $version in its opening lines — it is still the previous release's notes"
               exit 1
             fi
           fi
