@@ -38,6 +38,23 @@ pub enum WindowAction {
     StartResize(CompassOctant),
 }
 
+/// The set [`apply_window_actions`] runs in.
+///
+/// Exists so the fast-exit reaper can be ordered **after** it.
+/// [`WindowAction::Close`] becomes an `AppExit` in this system, in `Last`; the
+/// reaper that turns an `AppExit` into an immediate `process::exit` is also in
+/// `Last`. Unordered, the two race, and losing that race means the message is
+/// written after its only reader has already run — the frame ends, the runner
+/// sees the exit and unwinds the whole `World` instead, which stalls for
+/// seconds while wgpu, the editor bundle and every plugin dylib tear down.
+///
+/// That was a real, shipped symptom twice: `renzora_shell`'s exit flow works
+/// around it by writing `AppExit` from `Update` instead of using this queue, and
+/// the splash's close button — which does use the queue — paused for seconds
+/// before quitting. A workaround per caller is not a fix; the ordering is.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WindowActionSet;
+
 /// Register the chrome plugin — call this once on your editor App.
 pub struct WindowChromePlugin;
 
@@ -45,13 +62,14 @@ impl Plugin for WindowChromePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WindowActionQueue>()
             .add_systems(Update, init_maximized_state)
-            .add_systems(Last, apply_window_actions);
+            .add_systems(Last, apply_window_actions.in_set(WindowActionSet));
     }
 }
 
 fn apply_window_actions(
     mut queue: ResMut<WindowActionQueue>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     if queue.actions.is_empty() {
@@ -61,6 +79,10 @@ fn apply_window_actions(
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
+    // Set when this frame handed a drag or resize to the window manager. See
+    // `release_mouse` below for why that has to be followed by forgetting the
+    // button.
+    let mut handed_to_wm = false;
     for action in actions {
         match action {
             WindowAction::None => {}
@@ -83,9 +105,32 @@ fn apply_window_actions(
                     window.set_maximized(false);
                 }
                 window.start_drag_move();
+                handed_to_wm = true;
             }
-            WindowAction::StartResize(dir) => window.start_drag_resize(dir),
+            WindowAction::StartResize(dir) => {
+                window.start_drag_resize(dir);
+                handed_to_wm = true;
+            }
         }
+    }
+
+    // The window manager now owns the button, and it will never give it back.
+    //
+    // `start_drag_move` / `start_drag_resize` hand the press to the WM's own
+    // move/resize loop (on X11, `_NET_WM_MOVERESIZE`). The app keeps running and
+    // keeps drawing, but it does not see the mouse-up that ends the drag — so
+    // `ButtonInput<MouseButton>` stays "left is held", `ui_focus_system` keeps
+    // the handle at `Interaction::Pressed`, and the `Changed<Interaction>` that
+    // every drag/resize starter filters on never fires again. The symptom is
+    // exact: you can drag the window once, and the second drag does nothing
+    // until you click somewhere first (that click is what finally produces a
+    // release Bevy can see).
+    //
+    // So forget the button here. `reset` rather than `release`, because a
+    // synthetic `just_released` would read as a completed click to every button
+    // under the cursor — including the one the press started on.
+    if handed_to_wm {
+        mouse.reset(MouseButton::Left);
     }
 }
 

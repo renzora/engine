@@ -63,11 +63,16 @@ pub(crate) fn process_exit_request(
 
     let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
     // Nothing unsaved (or we can't render the prompt) → exit straight away.
-    // Write `AppExit` here in `Update` (not via the `WindowAction::Close` queue,
-    // which `apply_window_actions` drains in `Last`) so the exit event already
-    // exists by the time the `Last`-scheduled `kill_on_app_exit` reads it —
-    // otherwise the two `Last` systems race and the fast-exit is missed,
-    // falling back to the slow World teardown.
+    // Written here in `Update` because this flow already owns the decision — it
+    // had to work out whether to prompt first — so handing back out to the
+    // `WindowAction::Close` queue would be a detour.
+    //
+    // It used to be a *fix*: the queue is drained in `Last` beside
+    // `kill_on_app_exit`, the two raced, and losing the race meant the fast exit
+    // was missed and the `World` unwound slowly instead. That race is gone —
+    // `kill_on_app_exit` is now ordered after
+    // `renzora_ui::window_chrome::WindowActionSet` — so either route exits
+    // promptly.
     if !dirty || fonts.is_none() {
         exit.write(AppExit::Success);
         return;

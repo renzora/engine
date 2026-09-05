@@ -253,7 +253,17 @@ impl Plugin for ViewportPlugin {
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 
-        app.add_systems(Last, external_runtime::kill_on_app_exit);
+        // After the window-chrome queue, which is where `WindowAction::Close`
+        // becomes an `AppExit`. Both live in `Last`; unordered, this can read the
+        // message buffer before the close is written, and then the fast exit is
+        // missed entirely — the runner unwinds the whole `World` instead and the
+        // window sits there for seconds. See
+        // `renzora_ui::window_chrome::WindowActionSet`.
+        app.add_systems(
+            Last,
+            external_runtime::kill_on_app_exit
+                .after(renzora_ui::window_chrome::WindowActionSet),
+        );
 
         // Throttle / restore the editor's render loop around external runs.
         // Not gated on `SplashState` so the restore always runs.
