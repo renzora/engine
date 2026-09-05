@@ -66,11 +66,7 @@ impl InstallLayout {
         let relaunch = if self.kind == InstallKind::File || is_bundle {
             target.clone()
         } else {
-            target.join(if cfg!(windows) {
-                "renzora-editor.exe"
-            } else {
-                "renzora-editor"
-            })
+            target.join(engine_exe())
         };
         Self {
             kind: self.kind.clone(),
@@ -124,11 +120,10 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
         }
     }
 
-    let relaunch = exe_dir.join(if cfg!(windows) {
-        "renzora-editor.exe"
-    } else {
-        "renzora-editor"
-    });
+    // The one binary — see `engine_exe`. Pointing this at `renzora-editor` meant
+    // that even an install that *did* succeed relaunched into a file that has
+    // not shipped since the editor became a loadable image.
+    let relaunch = exe_dir.join(engine_exe());
     Ok(InstallLayout {
         is_source_checkout: is_source_checkout(&exe_dir),
         kind: InstallKind::Directory,
@@ -279,6 +274,7 @@ fn download_and_stage(
         .extract(&staged)
         .map_err(|e| format!("Could not extract the update: {e}"))?;
     let _ = fs::remove_file(&zip_path);
+    ensure_appimage_executable(&staged);
 
     resolve_staged_source(&staged, kind)
 }
@@ -313,25 +309,140 @@ fn resolve_staged_source(staged: &Path, kind: InstallKind) -> Result<PathBuf, St
             if let Some(app) = entries.iter().find(|p| ends_with(p, "app") && p.is_dir()) {
                 return Ok(app.clone());
             }
-            // Windows / extracted Linux: the flat tree itself. Some zip tools
-            // produce a single wrapping folder, so unwrap one level if that is
-            // what we got.
-            if has_editor_binary(staged) {
-                return Ok(staged.to_path_buf());
-            }
-            if let Some(only) = entries.iter().find(|p| p.is_dir()) {
-                if has_editor_binary(only) {
-                    return Ok(only.clone());
+            // Windows: the flat tree itself. Some zip tools produce a single
+            // wrapping folder, so unwrap one level if that is what we got.
+            for root in std::iter::once(staged.to_path_buf())
+                .chain(entries.iter().filter(|p| p.is_dir()).cloned())
+            {
+                if has_engine_binary(&root) {
+                    // The binary alone is the *runtime*; the editor image beside
+                    // it is what makes the tree an engine. Both ship as assets on
+                    // the same release, so this is a distinction a user can
+                    // actually land on.
+                    if !editor_image(&root) {
+                        return Err(format!(
+                            "That download is the game runtime, not the engine — it has \
+                             {} but no editor image beside it. Use the <platform>.zip \
+                             asset rather than renzora-runtime-<platform>.zip.",
+                            engine_exe()
+                        ));
+                    }
+                    return Ok(root);
                 }
             }
-            Err("The downloaded update doesn't contain an editor binary.".to_string())
+            // Linux's engine asset is a single `.AppImage`, and the install may
+            // still be a directory — a folder the user picked, or a checkout's
+            // `dist/`. Install the extracted tree *as* that directory: the
+            // sidecar swaps a directory for a directory perfectly well
+            // (`install_new` renames, or recurses), so the target ends up
+            // holding the AppImage.
+            //
+            // This used to be refused, on the reasoning that you cannot replace
+            // a folder with a file. True, and beside the point — nobody asked to
+            // replace the folder with a file, they asked for the new engine to
+            // be in that folder. Refusing also made a *fresh empty directory*
+            // an error, which is the most ordinary install target there is.
+            if entries.iter().any(|p| ends_with(p, "AppImage")) {
+                return Ok(staged.to_path_buf());
+            }
+            Err(format!(
+                "The downloaded update doesn't contain {}.",
+                engine_exe()
+            ))
         }
     }
 }
 
-fn has_editor_binary(dir: &Path) -> bool {
-    dir.join("renzora-editor").is_file() || dir.join("renzora-editor.exe").is_file()
+/// Name of the engine executable in a release tree.
+///
+/// **`renzora`, not `renzora-editor`.** There is one binary: it runs as the
+/// editor when `renzora_editor.<dll|so|dylib>` sits beside it and as the shipped
+/// game when it does not (CLAUDE.md §5). `renzora-editor` was a second
+/// executable that existed only while Bevy was statically linked, and it has not
+/// shipped since. Looking for it here is what made every flat-tree update fail
+/// with "doesn't contain an editor binary" — the download was fine; the filename
+/// was stale.
+fn engine_exe() -> &'static str {
+    if cfg!(windows) {
+        "renzora.exe"
+    } else {
+        "renzora"
+    }
 }
+
+/// The loadable editor image, whose presence is what makes a release tree the
+/// *engine* rather than the game runtime.
+fn editor_image(dir: &Path) -> bool {
+    [
+        "renzora_editor.dll",
+        "renzora_editor.so",
+        "librenzora_editor.so",
+        "renzora_editor.dylib",
+        "librenzora_editor.dylib",
+    ]
+    .iter()
+    .any(|n| dir.join(n).is_file())
+}
+
+fn has_engine_binary(dir: &Path) -> bool {
+    dir.join(engine_exe()).is_file()
+}
+
+/// The `.AppImage` directly inside `dir`, if that is what the payload is.
+fn appimage_in(dir: &Path) -> Option<PathBuf> {
+    fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|e| e.to_str()) == Some("AppImage"))
+}
+
+/// What to launch once the swap is done.
+///
+/// Cannot be settled in [`detect_layout`], which runs before anything is known
+/// about the payload: a directory install normally relaunches the engine binary
+/// inside it, but a directory that just received a Linux AppImage has to
+/// relaunch *that* — there is no `renzora` in it to run. Deriving it from the
+/// staged source is what makes "install the AppImage into a folder" actually
+/// come back up afterwards instead of failing at the last step.
+fn relaunch_after(staged_source: &Path, layout: &InstallLayout) -> PathBuf {
+    // A single-file install, and a macOS bundle, both relaunch the thing that
+    // was replaced.
+    if layout.kind == InstallKind::File
+        || layout.target.extension().and_then(|e| e.to_str()) == Some("app")
+    {
+        return layout.target.clone();
+    }
+    match staged_source.is_dir().then(|| appimage_in(staged_source)).flatten() {
+        Some(img) => match img.file_name() {
+            Some(name) => layout.target.join(name),
+            None => layout.relaunch.clone(),
+        },
+        None => layout.relaunch.clone(),
+    }
+}
+
+/// Make sure an extracted `.AppImage` is executable.
+///
+/// The zip records mode 0755 and `package-release.sh` restores it before
+/// archiving for exactly this reason, but an archive that lost the bit anywhere
+/// along the way would install fine and then fail to launch, which is a much
+/// worse failure than a loud one here. Cheap insurance.
+#[cfg(unix)]
+fn ensure_appimage_executable(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(img) = appimage_in(dir) {
+        if let Ok(meta) = fs::metadata(&img) {
+            let mode = meta.permissions().mode();
+            if mode & 0o111 == 0 {
+                let _ = fs::set_permissions(&img, fs::Permissions::from_mode(mode | 0o755));
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn ensure_appimage_executable(_dir: &Path) {}
 
 /// Start the sidecar and quit so it can do the swap.
 ///
@@ -376,7 +487,9 @@ pub fn launch_sidecar(staged_source: &Path, layout: &InstallLayout) -> Result<()
         .arg("--target")
         .arg(&layout.target)
         .arg("--relaunch")
-        .arg(&layout.relaunch)
+        // Derived from what is actually being installed, not from the layout
+        // alone — see `relaunch_after`.
+        .arg(relaunch_after(staged_source, layout))
         .arg("--pid")
         .arg(std::process::id().to_string())
         .arg("--log")
@@ -423,11 +536,21 @@ mod tests {
         assert!(ok.ends_with("r1-alpha7-nightly-16aug26"));
     }
 
+    /// Lay out a release tree the way the published `windows-x64.zip` actually
+    /// is: the one binary plus the loadable editor image.
+    ///
+    /// These tests used to write `renzora-editor.exe`, which is why the stale
+    /// filename in `resolve_staged_source` survived the editor becoming a
+    /// loadable image — the suite asserted the bug rather than the release.
+    fn write_engine_tree(dir: &Path) {
+        fs::write(dir.join(engine_exe()), b"x").unwrap();
+        fs::write(dir.join("renzora_editor.dll"), b"x").unwrap();
+    }
+
     #[test]
     fn a_flat_windows_tree_is_its_own_source() {
         let dir = temp_dir("flat");
-        fs::write(dir.join("renzora-editor.exe"), b"x").unwrap();
-        fs::write(dir.join("renzora.exe"), b"x").unwrap();
+        write_engine_tree(&dir);
         assert_eq!(
             resolve_staged_source(&dir, InstallKind::Directory).unwrap(),
             dir
@@ -438,14 +561,72 @@ mod tests {
     #[test]
     fn a_single_wrapping_folder_is_unwrapped() {
         let dir = temp_dir("wrapped");
-        let inner = dir.join("renzora");
+        let inner = dir.join("renzora-engine");
         fs::create_dir_all(&inner).unwrap();
-        fs::write(inner.join("renzora-editor"), b"x").unwrap();
+        write_engine_tree(&inner);
         assert_eq!(
             resolve_staged_source(&dir, InstallKind::Directory).unwrap(),
             inner
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The runtime asset (`renzora-runtime-<platform>.zip`) ships the binary with
+    /// no editor image. Installing it would silently downgrade the editor to a
+    /// game, so it is refused by name rather than accepted.
+    #[test]
+    fn a_runtime_only_tree_is_refused_by_name() {
+        let dir = temp_dir("runtime-only");
+        fs::write(dir.join(engine_exe()), b"x").unwrap();
+        let err = resolve_staged_source(&dir, InstallKind::Directory).unwrap_err();
+        assert!(err.contains("game runtime"), "{err}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The reported bug: a Linux engine asset is a single `.AppImage`, and the
+    /// install target is a directory — a folder the user picked, or a checkout's
+    /// `dist/`. That installs: the extracted tree becomes the target directory,
+    /// which then holds the AppImage.
+    ///
+    /// This was refused at first, which also made a fresh empty directory an
+    /// error — the most ordinary install target there is.
+    #[test]
+    fn an_appimage_payload_installs_into_a_directory() {
+        let dir = temp_dir("appimage-into-dir");
+        fs::write(dir.join("Renzora Engine-x86_64.AppImage"), b"x").unwrap();
+        assert_eq!(
+            resolve_staged_source(&dir, InstallKind::Directory).unwrap(),
+            dir
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// ...and the relaunch follows the payload, not the layout. A directory
+    /// install normally relaunches the engine binary inside it; one that just
+    /// received an AppImage has no such binary and must relaunch the image.
+    #[test]
+    fn relaunch_follows_an_appimage_into_a_directory() {
+        let staged = temp_dir("relaunch-appimage");
+        fs::write(staged.join("Renzora Engine-x86_64.AppImage"), b"x").unwrap();
+        let target = std::env::temp_dir().join("renzora_update_target");
+        let layout = InstallLayout {
+            kind: InstallKind::Directory,
+            target: target.clone(),
+            relaunch: target.join(engine_exe()),
+            is_source_checkout: false,
+        };
+        assert_eq!(
+            relaunch_after(&staged, &layout),
+            target.join("Renzora Engine-x86_64.AppImage")
+        );
+
+        // A flat engine tree keeps the layout's own answer.
+        let flat = temp_dir("relaunch-flat");
+        write_engine_tree(&flat);
+        assert_eq!(relaunch_after(&flat, &layout), target.join(engine_exe()));
+
+        fs::remove_dir_all(&staged).unwrap();
+        fs::remove_dir_all(&flat).unwrap();
     }
 
     #[test]
@@ -520,20 +701,13 @@ mod tests {
         let checkout = InstallLayout {
             kind: InstallKind::Directory,
             target: dir.clone(),
-            relaunch: dir.join("renzora-editor"),
+            relaunch: dir.join(engine_exe()),
             is_source_checkout: true,
         };
         assert!(checkout.retargeted(dir.clone()).is_source_checkout);
         let moved = checkout.retargeted(elsewhere.clone());
         assert!(!moved.is_source_checkout);
-        assert_eq!(
-            moved.relaunch,
-            elsewhere.join(if cfg!(windows) {
-                "renzora-editor.exe"
-            } else {
-                "renzora-editor"
-            })
-        );
+        assert_eq!(moved.relaunch, elsewhere.join(engine_exe()));
 
         // A single-file install relaunches the file it just replaced, not a
         // binary "inside" it.
