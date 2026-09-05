@@ -187,6 +187,14 @@ impl Plugin for ShellPlugin {
             tree: layouts[active].1.clone(),
         });
         app.insert_resource(ShellLayouts { layouts, active });
+        // Workspaces a plugin registered through `register_workspace`. Drained
+        // here rather than in `renzora_editor_framework` because THIS is the
+        // dock the editor draws: `renzora_ui::LayoutManager` is the older egui
+        // model, and a workspace installed into that one never reaches the
+        // ribbon. No tree conversion either, since this dock already speaks
+        // ember's `DockTree` and that is the type a plugin registers with.
+        app.init_resource::<renzora_ember::workspace::PendingWorkspaces>()
+            .add_systems(Update, install_plugin_workspaces);
         // Reopen persisted floating dock windows. The spawn system queues the
         // requests until ember's fonts are ready, so pushing them this early is
         // safe. (Inserted after `EmberPlugin` above, so `DockPlugin`'s
@@ -335,6 +343,35 @@ renzora::add!(ShellPlugin, Editor);
 pub(crate) struct ShellLayouts {
     pub(crate) layouts: Vec<(String, DockTree)>,
     pub(crate) active: usize,
+}
+
+/// Install workspaces registered through
+/// [`renzora_ember::workspace::RegisterWorkspace`].
+///
+/// Drained every frame rather than once at startup, because a native plugin
+/// loads (and reloads, whenever its source moves) long after this crate's
+/// `build` has run. A workspace from a plugin that arrives mid-session shows up
+/// in the ribbon on the next frame.
+///
+/// Replaces by name. A reloading plugin re-registers on every rebuild, so
+/// appending would grow the ribbon one duplicate per rebuild. Replacing also
+/// means a saved layout for that name is overwritten by the plugin's, which is
+/// the correct way round: the plugin's tree is the definition, and the saved one
+/// may arrange panels that no longer exist.
+fn install_plugin_workspaces(
+    mut pending: ResMut<renzora_ember::workspace::PendingWorkspaces>,
+    mut layouts: ResMut<ShellLayouts>,
+) {
+    if pending.0.is_empty() {
+        return;
+    }
+    for request in pending.drain() {
+        match layouts.layouts.iter().position(|(n, _)| *n == request.name) {
+            Some(i) => layouts.layouts[i].1 = request.tree,
+            None => layouts.layouts.push((request.name.clone(), request.tree)),
+        }
+        info!("[shell] workspace `{}` registered", request.name);
+    }
 }
 
 /// Marks the shell's root UI entity so it can be despawned when the backend

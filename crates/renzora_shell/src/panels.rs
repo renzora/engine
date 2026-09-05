@@ -79,19 +79,13 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Input
     ("gamepad", "Gamepad", "game-controller", "Input"),
     // Debug / profiling
-    ("performance", "Performance", "gauge", "Debug"),
-    ("render_stats", "Render Stats", "chart-bar", "Debug"),
-    ("ecs_stats", "ECS Stats", "list-numbers", "Debug"),
-    ("memory_profiler", "Memory", "memory", "Debug"),
-    ("system_profiler", "System", "cpu", "Debug"),
+    //
+    // Only the two the engine itself owns. The other thirteen belong to the
+    // `debugger` native plugin and are registered by it through
+    // `register_shell_panel`, the same way the marketplace panels above are —
+    // so an editor without that plugin shows no entries for panels that cannot
+    // open, rather than a Debug category full of dead menu items.
     ("physics_debug", "Physics Debug", "atom", "Debug"),
-    ("camera_debug", "Camera Debug", "video-camera", "Debug"),
-    ("culling_debug", "Culling", "scissors", "Debug"),
-    ("material_resolver_diag", "Material Diag", "palette", "Debug"),
-    ("lumen_diag", "Lumen Diag", "lightbulb", "Debug"),
-    ("scripting_diag", "Scripting Diag", "bug", "Debug"),
-    ("ui_reactivity", "UI Reactivity", "lightning", "Debug"),
-    ("ui_layout", "UI Layout", "layout", "Debug"),
     ("resources", "Resources", "database", "Debug"),
     // Plugins
     ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),

@@ -19,12 +19,6 @@ renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
-# For `workspace::PendingWorkspaces`, the queue a plugin registers a workspace
-# into. This crate is the one that links BOTH ember and `renzora_ui`, which is
-# what lets it translate between their two `DockTree` types: a native plugin
-# reaches only ember, and `LayoutManager` lives in `renzora_ui`. Neither of those
-# crates depends on this one, so the edge is acyclic.
-renzora_ember = { path = "../renzora_ember" }
 # `features = ["editor"]` so the editor CONTRACT (registries, EditorSelection,
 # field macros, AppEditorExt) that folded into `renzora` core is visible here
 # and re-exported at `renzora_editor_framework::*` for back-compat.

@@ -545,7 +545,6 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
         ("UI".into(), layout_ui()),
-        ("Debug".into(), layout_debug()),
     ]
 }
 
@@ -710,52 +709,6 @@ fn layout_particles() -> DockTree {
         DockTree::leaf("particle_preview"),
         DockTree::leaf("particle_editor"),
         0.8,
-    )
-}
-
-/// Debug: Hierarchy/Performance | Viewport+diag panels | Inspector/ECS + diagnostics
-fn layout_debug() -> DockTree {
-    DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("performance"),
-            0.6,
-        ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("viewport"),
-                DockTree::horizontal(
-                    DockTree::horizontal(
-                        DockTree::leaf("system_profiler"),
-                        DockTree::leaf("render_stats"),
-                        0.5,
-                    ),
-                    DockTree::horizontal(
-                        DockTree::leaf("memory_profiler"),
-                        DockTree::horizontal(
-                            DockTree::leaf("physics_debug"),
-                            DockTree::leaf("camera_debug"),
-                            0.5,
-                        ),
-                        0.33,
-                    ),
-                    0.4,
-                ),
-                0.65,
-            ),
-            DockTree::vertical(
-                DockTree::tabs(&["inspector", "ecs_stats"]),
-                DockTree::tabs(&[
-                    "scene_diagnostics",
-                    "material_resolver_diag",
-                    "lumen_diag",
-                    "scripting_diag",
-                ]),
-                0.5,
-            ),
-            0.75,
-        ),
-        0.15,
     )
 }
 

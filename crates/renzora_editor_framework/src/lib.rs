@@ -92,77 +92,6 @@ fn mark_layout_dirty(
     }
 }
 
-/// Convert a workspace tree from the vocabulary a plugin can reach into the
-/// shell's own.
-///
-/// The two enums are structurally identical, and duplicated because a native
-/// plugin links `renzora_ember` but not `renzora_ui`. This crate is the only one
-/// linking both, which is why the translation lives here rather than in either.
-fn to_shell_tree(tree: &renzora_ember::dock::DockTree) -> renzora_ui::dock_tree::DockTree {
-    use renzora_ember::dock::{DockTree as In, SplitDirection as InDir};
-    use renzora_ui::dock_tree::{DockTree as Out, SplitDirection as OutDir};
-    match tree {
-        In::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } => Out::Split {
-            direction: match direction {
-                InDir::Horizontal => OutDir::Horizontal,
-                InDir::Vertical => OutDir::Vertical,
-            },
-            // Clamped for the same reason `DockTree::horizontal` clamps: a ratio
-            // outside this range collapses a pane to nothing, and this one comes
-            // from a plugin rather than from the drag handler.
-            ratio: ratio.clamp(0.1, 0.9),
-            first: Box::new(to_shell_tree(first)),
-            second: Box::new(to_shell_tree(second)),
-        },
-        In::Leaf { tabs, active_tab } => Out::Leaf {
-            tabs: tabs.clone(),
-            // The shell indexes `tabs` with this, and a plugin can name an
-            // out-of-range tab, so it is pinned here rather than trusted.
-            active_tab: (*active_tab).min(tabs.len().saturating_sub(1)),
-        },
-        In::Empty => Out::Empty,
-    }
-}
-
-/// Install workspaces registered through
-/// [`renzora_ember::workspace::RegisterWorkspace`].
-///
-/// Drained every frame rather than once at startup, because a native plugin
-/// loads (and reloads, whenever its source moves) long after this crate's
-/// `build` has run. A workspace from a plugin that arrives mid-session shows up
-/// in the switcher on the next frame.
-///
-/// Replaces by name rather than appending. A reloading plugin re-registers on
-/// every rebuild, so appending would grow the switcher one duplicate per
-/// rebuild. Customisations to a workspace of that name are lost when its plugin
-/// reloads, which is the right trade: the plugin's tree is the definition, and
-/// the alternative is preserving edits to a layout whose panels may be gone.
-pub fn install_plugin_workspaces(
-    mut pending: bevy::prelude::ResMut<renzora_ember::workspace::PendingWorkspaces>,
-    mut manager: bevy::prelude::ResMut<renzora_ui::LayoutManager>,
-) {
-    if pending.0.is_empty() {
-        return;
-    }
-    for request in pending.drain() {
-        let layout = renzora_ui::WorkspaceLayout {
-            name: request.name.clone(),
-            tree: to_shell_tree(&request.tree),
-            hidden: request.hidden,
-        };
-        match manager.layouts.iter().position(|l| l.name == request.name) {
-            Some(i) => manager.layouts[i] = layout,
-            None => manager.layouts.push(layout),
-        }
-        bevy::log::info!("[layout] workspace `{}` registered", request.name);
-    }
-}
-
 /// Write the workspace (all layouts + active index) to disk once it's
 /// been stable for a few frames — avoids fsync churn during drag gestures.
 fn flush_layout_save(
@@ -468,22 +397,10 @@ impl Plugin for RenzoraEditorPlugin {
         );
 
         // Auto-save the dock layout whenever it changes.
-        //
-        // `install_plugin_workspaces` runs before `mark_layout_dirty` so a
-        // workspace a plugin registered this frame is persisted by the same
-        // pass that notices the change, rather than waiting for the next one.
-        app.init_resource::<renzora_ember::workspace::PendingWorkspaces>()
-            .init_resource::<PendingLayoutSave>()
-            .add_systems(
-                Update,
-                (
-                    install_plugin_workspaces,
-                    mark_layout_dirty,
-                    flush_layout_save,
-                )
-                    .chain()
-                    .run_if(in_state(SplashState::Editor)),
-            );
+        app.init_resource::<PendingLayoutSave>().add_systems(
+            Update,
+            (mark_layout_dirty, flush_layout_save).run_if(in_state(SplashState::Editor)),
+        );
 
         // Mirror the open document tabs into project.toml so a project reload
         // can restore them. Gated on the Editor state so the default seeded
