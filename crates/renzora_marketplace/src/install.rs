@@ -312,12 +312,27 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
 
         let entry_name = entry.name().to_string();
 
-        // Security: reject path traversal
-        if entry_name.contains("..") {
+        // Reject anything that would land outside `extract_dir`.
+        //
+        // This was `entry_name.contains("..")`, which misses the case that
+        // matters: `Path::join` DISCARDS the base when the argument is
+        // absolute, so an entry named `/etc/cron.d/x` (or `C:\…`, or a bare
+        // leading `\` on Windows) made `extract_dir.join(name)` evaluate to
+        // that path itself. No `..` anywhere, nothing to catch it, and this
+        // archive comes off the marketplace and is compiled and loaded
+        // afterwards, which turns an arbitrary file write into arbitrary code
+        // execution.
+        //
+        // `enclosed_name` is the zip crate's own answer and is strictly
+        // stronger than the string test both ways: it rejects
+        // `Component::RootDir` and `Component::Prefix`, and it counts depth
+        // rather than pattern-matching, so `a/../../b` is refused while a file
+        // legitimately named `foo..bar` is no longer collateral.
+        let Some(rel) = entry.enclosed_name() else {
             continue;
-        }
+        };
 
-        let out_path = extract_dir.join(&entry_name);
+        let out_path = extract_dir.join(&rel);
 
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)
@@ -483,7 +498,14 @@ pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstal
                 .by_index(i)
                 .map_err(|e| format!("Failed to read zip entry: {e}"))?;
             let raw = entry.name().to_string();
-            if raw.contains("..") {
+            // See `extract_zip` for why this is `enclosed_name` and not a `..`
+            // string test. The `strip_prefix` below looks like it already
+            // guards this, and does for a wrapped archive, but `prefix` is ""
+            // whenever the manifest sits at the archive root (which
+            // `reads_a_root_manifest_with_no_prefix_to_strip` asserts is a
+            // shape we accept). An empty prefix strips nothing, so an absolute
+            // entry name reached `staging.join` unchanged.
+            if entry.enclosed_name().is_none() {
                 continue;
             }
             // Strip the wrapper directory, if the archive has one, so the tree
@@ -592,6 +614,65 @@ mod plugin_install_tests {
         ]);
         let (name, _) = plugin_crate_and_prefix(&zip).unwrap();
         assert_eq!(name, "renzora_lumen");
+    }
+
+    /// An absolute entry name must not escape the extraction directory.
+    ///
+    /// The regression this pins is not a traversal in the usual sense: there is
+    /// no `..` anywhere in these names, which is exactly why the old
+    /// `contains("..")` test passed them through. `Path::join` discards its base
+    /// when handed an absolute path, so each of these used to be written to
+    /// itself rather than under `dest`.
+    ///
+    /// Asserted through `enclosed_name` rather than by running `extract_zip`,
+    /// because a test that genuinely reproduced the bug would write to
+    /// `/tmp/renzora-escape-probe` (and, on a developer's box, could write
+    /// wherever the name pointed). The predicate is the fix; exercising it is
+    /// what the sites now do.
+    #[test]
+    fn an_absolute_entry_name_is_refused() {
+        for name in [
+            "/tmp/renzora-escape-probe",
+            "/etc/cron.d/renzora",
+            // Windows shapes. Both are absolute to `Path` on Windows only, so
+            // this arm of the assert is meaningful there; on Unix they are
+            // ordinary (if oddly named) relative paths and stay contained.
+            r"C:\Windows\System32\renzora.dll",
+            r"\\server\share\renzora",
+        ] {
+            let zip = zip_of(&[(name, "payload")]);
+            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+            let entry = archive.by_index(0).unwrap();
+            if let Some(rel) = entry.enclosed_name() {
+                assert!(
+                    rel.is_relative(),
+                    "`{name}` was accepted as `{}`, which would escape the destination",
+                    rel.display()
+                );
+            }
+        }
+    }
+
+    /// `..` that climbs past the root is refused; `..` that stays inside is not.
+    ///
+    /// The old string test could not tell these apart and rejected both, which
+    /// also meant a file merely *named* `notes..txt` was silently dropped from
+    /// an otherwise valid plugin.
+    #[test]
+    fn parent_components_are_counted_not_pattern_matched() {
+        let escapes = zip_of(&[("a/../../outside", "")]);
+        let mut a = zip::ZipArchive::new(std::io::Cursor::new(escapes)).unwrap();
+        assert!(a.by_index(0).unwrap().enclosed_name().is_none());
+
+        // Returned as written, not normalised: the check counts depth and hands
+        // the original path back, so `a/b/../c` stays `a/b/../c` and is resolved
+        // under the destination by the filesystem. Contained either way, since
+        // depth never reaches below zero.
+        let contained = zip_of(&[("a/b/../c", ""), ("notes..txt", "")]);
+        let mut c = zip::ZipArchive::new(std::io::Cursor::new(contained)).unwrap();
+        let inner = c.by_index(0).unwrap().enclosed_name().unwrap();
+        assert!(inner.is_relative(), "{} should stay under the destination", inner.display());
+        assert_eq!(c.by_index(1).unwrap().enclosed_name().unwrap(), Path::new("notes..txt"));
     }
 
     #[test]

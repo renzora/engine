@@ -1,6 +1,17 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- security(marketplace): a plugin archive containing an absolute path (`/etc/…`,
+  `C:\…`, or a bare leading `\`) escaped the install directory and could write
+  anywhere the editor could. The guard tested for `..`, which those names do not
+  contain, and `Path::join` discards its base when handed an absolute path. Since
+  an installed plugin is compiled and loaded, this was a code-execution channel.
+  Both extraction loops now use the zip crate's own `enclosed_name` check.
+- fix(assets): dragging a file in the tree view no longer opens the rename field
+  mid-drag. Pressing a selected item's name arms an explorer-style rename that
+  fires 0.45s later, and nothing cancelled it when the press became a drag. It
+  showed up in the tree because a row there is one full-width name label, so
+  every press lands on it.
 - fix(release): the Linux engine zips ship the plugin SDK again. `linux-x64` and
   `linux-arm64` carried the AppImage and nothing else, so an installed editor
   could run no Rust script and no native plugin, and had no way to say why. The
