@@ -5,12 +5,6 @@
       "commit": "dc6e1dccb9d91cb9da4af174051de91ce6a4b8e7",
       "abi_hash": "10799222d6c2089a",
       "status": "released"
-    },
-    {
-      "version": "r1-alpha7",
-      "commit": "5ed294fcf586236f01ea4d34ec4567706f686c32",
-      "abi_hash": "2da49dbfb2274428",
-      "status": "released"
     }
   ]
 }
