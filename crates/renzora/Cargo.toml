@@ -41,6 +41,15 @@ grid = []
 # `renzora_audio_backend`, linked in) and the mixer/timeline/emitters are still
 # `renzora_audio`; only the link is here.
 audio = []
+# What the debug panels read: the material and script perf tables, plus the two
+# count resources their owners publish. Here so those panels can be a native
+# plugin, which reaches only `bevy`, `renzora` and `renzora_ember`.
+#
+# Turned on by `renzora_shader` and `renzora_scripting`, the two crates that
+# populate it, which keeps this status-quo: the types were already compiled into
+# any build carrying either of those, and a lean export stripping both still
+# carries none of it.
+diagnostics = []
 # Compile the project's Rust scripts INTO the binary instead of loading each as
 # a dylib. Changes only what `script!` emits: without it the entry point is
 # `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is

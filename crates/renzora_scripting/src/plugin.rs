@@ -93,6 +93,8 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<renzora::ScriptSceneInbox>()
             .init_resource::<renzora::GameEventQueue>()
             .init_resource::<crate::perf::ScriptPerfStats>()
+            .init_resource::<renzora::diagnostics::ScriptInventory>()
+            .add_systems(bevy::prelude::Update, publish_script_inventory)
             .init_resource::<crate::http::HttpInbox>()
             // The C-ABI surface: standalone plugins issuing HTTP requests.
             .add_plugins(PluginHttpBridge)
@@ -438,5 +440,42 @@ fn evict_despawned_scripts(
         if still_scripted.get(entity).is_err() {
             engine.evict_entity(entity.to_bits());
         }
+    }
+}
+
+/// Publish what the scripting layer is carrying, for the Scripting diagnostics
+/// panel.
+///
+/// The panel used to hold `Res<ScriptEngine>` and `Query<&ScriptComponent>`
+/// itself. It cannot any more: it is a native plugin, which links `bevy`,
+/// `renzora` and `renzora_ember` and can name neither type. What it actually
+/// read was two counts, a backend count and a folder path, so that is what
+/// crosses the boundary, and the engine stays free to change shape.
+///
+/// Written only on change. `ScriptInventory` is `PartialEq` for exactly that:
+/// marking it changed every frame would wake every reactive binding watching it,
+/// and in a scene nobody is editing these numbers never move.
+fn publish_script_inventory(
+    engine: Option<Res<ScriptEngine>>,
+    components: Query<&ScriptComponent>,
+    mut inventory: ResMut<renzora::diagnostics::ScriptInventory>,
+) {
+    let mut entities = 0usize;
+    let mut attachments = 0usize;
+    for comp in components.iter() {
+        entities += 1;
+        attachments += comp.scripts.len();
+    }
+    let current = renzora::diagnostics::ScriptInventory {
+        entities_with_script: entities,
+        total_attachments: attachments,
+        backend_count: engine.as_ref().map(|e| e.backend_count()).unwrap_or(0),
+        scripts_folder: engine
+            .as_ref()
+            .and_then(|e| e.scripts_folder())
+            .map(|p| p.to_string_lossy().to_string()),
+    };
+    if *inventory != current {
+        *inventory = current;
     }
 }

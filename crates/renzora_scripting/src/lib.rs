@@ -12,7 +12,10 @@ mod input;
 mod plugin;
 
 pub mod api;
-pub mod perf;
+// Moved to the contract crate so the Scripting diagnostics panel could become a
+// native plugin. Timing is still collected in `systems::execution`; only the
+// types moved. Re-exported under the old path so `perf::…` still resolves.
+pub use renzora::diagnostics::script as perf;
 pub mod resources;
 pub mod systems;
 

@@ -4,7 +4,12 @@ pub mod instance;
 pub mod material_ref;
 pub mod nodes;
 pub mod pbr_build;
-pub mod perf;
+// Moved to the contract crate so the Material Resolver panel could become a
+// native plugin: a plugin links `bevy`, `renzora` and `renzora_ember` and could
+// never have named a type in here. Collection still happens in `resolver.rs`;
+// only the vocabulary moved. Re-exported under the old path so every existing
+// `material::perf::…` still resolves.
+pub use renzora::diagnostics::material as perf;
 pub mod precompiled;
 pub mod resolver;
 pub mod runtime;

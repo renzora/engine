@@ -173,7 +173,8 @@ impl Plugin for MaterialResolverPlugin {
             .register_type::<MaterialRef>()
             .register_type::<super::material_ref::MaterialOverrides>()
             .register_type::<super::material_ref::ParamValue>()
-            .add_systems(Update, resolve_material_refs);
+            .init_resource::<renzora::diagnostics::MaterialCacheCounts>()
+            .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain());
         // Problems-panel validation: re-composes every graph material's WGSL
         // against all of bevy_pbr's modules and naga-validates it on the main
         // thread. Editor-only — a shipped game has no Problems panel.
@@ -1280,4 +1281,30 @@ fn assemble_graph_material(
     mat.extension.params.slots = super::instance::build_default_param_slots(&parameters);
 
     (materials.add(mat), parameters)
+}
+
+/// Publish the cache's sizes for the Material Resolver panel.
+///
+/// The panel used to read `MaterialCache` directly. It cannot any more: it is a
+/// native plugin, which links `bevy`, `renzora` and `renzora_ember` and could
+/// not name this type. Reading what it actually wanted showed four numbers, so
+/// four numbers are what crosses the boundary, and the cache stays free to
+/// change shape without touching a plugin.
+///
+/// Written only when a count moves. `MaterialCacheCounts` is `PartialEq` for
+/// exactly this: a resource marked changed every frame would wake every reactive
+/// binding watching it, and the cache is static in most frames.
+fn publish_cache_counts(
+    cache: Res<MaterialCache>,
+    mut counts: ResMut<renzora::diagnostics::MaterialCacheCounts>,
+) {
+    let current = renzora::diagnostics::MaterialCacheCounts {
+        standard: cache.standard_count(),
+        graph: cache.graph_count(),
+        code: cache.code_count(),
+        master_meta: cache.master_meta_count(),
+    };
+    if *counts != current {
+        *counts = current;
+    }
 }

@@ -26,7 +26,11 @@ script_http = ["dep:renzora_net"]
 # lives here, so a plugin request takes the same path a script's does.
 renzora_plugin = { path = "../renzora_plugin", features = ["host", "http", "script"] }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `diagnostics` for the script perf tables, which live in the contract crate so the
+# debug panels reading them can be a native plugin. This crate populates
+# them; enabling the feature here is what keeps them out of a build that
+# does not carry this crate at all.
+renzora = { path = "../renzora", default-features = false, features = ["diagnostics"] }
 # Visual-scripting compiler. Used by `plugin_backend` to turn a `.blueprint`/
 # `.bp` graph into Lua before the source reaches the language plugin — it links
 # Bevy, so it cannot cross the boundary itself. Optional: stripped for games

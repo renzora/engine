@@ -90,6 +90,14 @@ pub mod grid;
 #[cfg(feature = "audio")]
 pub mod audio;
 
+// What the debug panels read. Here rather than in `renzora_shader` /
+// `renzora_scripting` because those panels are a native plugin now, and a plugin
+// reaches only `bevy`, `renzora` and `renzora_ember`. Collection stays with the
+// crates doing the work; both re-export their old path. NOT glob re-exported:
+// `MaterialPerfStats` and friends are panel vocabulary, not crate-root names.
+#[cfg(feature = "diagnostics")]
+pub mod diagnostics;
+
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened

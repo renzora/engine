@@ -124,7 +124,7 @@ impl ScriptPerfStats {
         t
     }
 
-    pub(crate) fn record_on_update(
+    pub fn record_on_update(
         &mut self,
         path: &Path,
         dur: Duration,
@@ -142,7 +142,7 @@ impl ScriptPerfStats {
         }
     }
 
-    pub(crate) fn record_on_ready(
+    pub fn record_on_ready(
         &mut self,
         path: &Path,
         dur: Duration,
@@ -158,21 +158,21 @@ impl ScriptPerfStats {
         }
     }
 
-    pub(crate) fn record_on_rpc(&mut self, path: &Path, dur: Duration) {
+    pub fn record_on_rpc(&mut self, path: &Path, dur: Duration) {
         let frame = self.frame;
         let entry = self.per_script.entry(path.to_path_buf()).or_default();
         entry.last_on_rpc = dur;
         entry.last_seen_frame = frame;
     }
 
-    pub(crate) fn record_on_ui(&mut self, path: &Path, dur: Duration) {
+    pub fn record_on_ui(&mut self, path: &Path, dur: Duration) {
         let frame = self.frame;
         let entry = self.per_script.entry(path.to_path_buf()).or_default();
         entry.last_on_ui = dur;
         entry.last_seen_frame = frame;
     }
 
-    pub(crate) fn tick_frame(&mut self) {
+    pub fn tick_frame(&mut self) {
         self.frame = self.frame.wrapping_add(1);
     }
 }
