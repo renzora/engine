@@ -1,6 +1,13 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(release): the Linux engine zips ship the plugin SDK again. `linux-x64` and
+  `linux-arm64` carried the AppImage and nothing else, so an installed editor
+  could run no Rust script and no native plugin, and had no way to say why. The
+  packager tested for `sdk.tar.zst` with a relative path from inside a subshell
+  that had already changed directory, found nothing, and left it out in silence.
+  Both Linux zips now carry the whole staged tree, minus the AppDir the AppImage
+  already is.
 - refactor(audio): the audio engine moves from `plugins/audio` into
   `crates/renzora_audio_backend` and is linked into the binary. It registers
   through the same C-ABI backend contract, so a replacement backend still loads

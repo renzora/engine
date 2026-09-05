@@ -55,6 +55,13 @@ COMMIT="${4:-}"
 
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
+# Absolute for the same reason `OUT_DIR` is, and it was missing for long enough
+# to ship a release without it. Several helpers below `cd` into a platform
+# directory before using paths derived from this one, and the workflow passes it
+# relative (`artifacts`), so a relative value silently resolves against the wrong
+# base. That cost r1-alpha7's Linux editors their plugin SDK; see the note in
+# `package_desktop`. Normalising here means no caller has to remember.
+ARTIFACTS_DIR=$(cd "$ARTIFACTS_DIR" && pwd)
 
 # The version is the tag with any `-nightly-<date>` suffix removed, so a nightly
 # and its eventual release both report `r1-alpha7`.
@@ -181,21 +188,42 @@ package_desktop() {
     package_runtime_template "$platform" "$dir"
     compress_sdk "$dir"
 
-    # The engine zip. On Linux the AppImage IS the distribution — it already
-    # contains everything in the AppDir — so shipping both would double the
-    # asset for no gain. The AppDir stays on disk either way because the runtime
-    # template is extracted from it.
+    # The engine zip: the whole staged tree, on every platform.
+    #
+    # Linux is the only one where "the tree" and "the bundle" are two copies of
+    # the same bytes. `xtask`'s `--bundle` moves the binaries and shared
+    # libraries into `Renzora Engine.AppDir/`, then squashes that into an
+    # `.AppImage` beside it, so shipping both would put ~128 MB in twice. The
+    # AppDir stays on disk regardless because `package_runtime_template` reads
+    # the runtime out of it, so it is excluded here rather than deleted.
+    #
+    # Everything ELSE in the tree ships, `sdk.tar.zst` above all. The editor
+    # unpacks that on first launch and cannot run a Rust script or a native
+    # plugin without it, and it can only ride beside the bundle: an AppImage is
+    # a read-only squashfs, and `renzora_native_build::install::root()` resolves
+    # `$APPIMAGE` to the directory the user unzipped for exactly this reason.
+    #
+    # ── Why this is a whole-directory zip with an exclusion ──────────────────
+    # It used to name the two files to include, and shipped r1-alpha7's Linux
+    # editors with no SDK at all. The test was written `[ -f "$dir/sdk.tar.zst" ]`
+    # INSIDE a subshell that had already `cd "$dir"`, and `$dir` is relative
+    # (the workflow passes `artifacts`), so it resolved to `$dir/$dir/...`, found
+    # nothing, and `echo`'d an empty string. `zip` was simply handed one fewer
+    # argument: no error, no warning, a 127 MB asset where macOS shipped 573 MB.
+    #
+    # Listing what to include is what made that silent. A whole-directory zip
+    # cannot omit a file nobody remembered to name, so anything added to the
+    # staged tree later ships without editing this line.
     local asset="$OUT_DIR/$platform.zip"
     rm -f "$asset"
     local appimage=""
     for f in "$dir"/*.AppImage; do [ -f "$f" ] && appimage="$f"; done
     if [ -n "$appimage" ]; then
-        # The SDK cannot go inside the AppImage — that is built upstream by
-        # build-all.sh — so it rides beside it in the zip, which is also where
-        # the editor looks for it.
-        ( cd "$dir" && zip -qry "$asset" "$(basename "$appimage")" \
-            $( [ -f "$dir/sdk.tar.zst" ] && echo "sdk.tar.zst" ) )
+        ( cd "$dir" && zip -qry "$asset" . -x "*.AppDir/*" "*.AppDir/" )
     else
+        # No AppImage: appimagetool is optional (see `xtask/src/bundle.rs`), and
+        # without it the AppDir is the only copy of the binaries there is. Ship
+        # the tree whole.
         ( cd "$dir" && zip -qry "$asset" . )
     fi
     record "$asset" "$platform" engine
