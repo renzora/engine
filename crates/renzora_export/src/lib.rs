@@ -9,6 +9,14 @@ mod apk_signer;
 #[cfg(not(target_arch = "wasm32"))]
 mod build;
 /// Wrapping a finished export into an `.AppImage` or a `.app`.
+///
+/// Gated like every other module here. The crate docs in `bundle.rs` explain why
+/// it carries no `#[cfg(target_os = ...)]` — the platform it wraps for is the one
+/// the user picked, not the host — and that reasoning is untouched: this gate is
+/// about the host having no export UI at all. It reaches for `Platform`, `icon`,
+/// `build`, `templates` and `renzora_net`, all of which are wasm-gated, so
+/// leaving it open meant the crate could not compile for the web at all.
+#[cfg(not(target_arch = "wasm32"))]
 mod bundle;
 #[cfg(not(target_arch = "wasm32"))]
 mod capabilities;
