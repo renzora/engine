@@ -8,13 +8,13 @@ into the marketplace.
 |                     |                                              |
 | ------------------- | -------------------------------------------- |
 | **Previous release**| [`r1-alpha6`](https://github.com/renzora/engine/releases/tag/r1-alpha6) · 29 Jun 2026 |
-| **Commits**         | 700 (694 direct, 6 merged pull requests)     |
+| **Commits**         | 703 (697 direct, 6 merged pull requests)     |
 | **Features**        | 303                                          |
-| **Fixes**           | 223                                          |
+| **Fixes**           | 225                                          |
 | **Refactors**       | 58                                           |
 | **Performance**     | 15                                           |
 | **Docs**            | 41                                           |
-| **Changed**         | 2,014 files · +363,792 / −187,921            |
+| **Changed**         | 2,017 files · +364,401 / −187,921            |
 | **Plugin ABI**      | 4.10 (the C ABI is new in this release)      |
 | **Contributors**    | 8                                            |
 
@@ -261,9 +261,17 @@ collaborative editing sessions, and the version-control panel.
 
 ## Fixes
 
-223 of them. The largest clusters were the plugin ABI (34), the editor UI
+225 of them. The largest clusters were the plugin ABI (34), the editor UI
 (`ui-editor` 11, `editor` 9, `ember` 7, `dock` 4), the viewport (10), CI (9),
 shaders (7), and the marketplace (6).
+
+Two landed last and are worth naming, because between them the **web editor
+could not be built at all**. `renzora_http` links `ureq`, whose rustls/ring
+stack does not compile for `wasm32-unknown-unknown`; and `renzora_export` left
+one module of fourteen ungated while every item it used was gated out. The
+second was invisible until the first was fixed. Neither could have been caught
+before: CI checked only the web *runtime*, which links neither crate. It now
+checks the editor too.
 
 ---
 
