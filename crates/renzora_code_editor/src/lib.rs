@@ -271,11 +271,118 @@ pub(crate) fn build_code_editor_toolbar(
     // own clamps; nothing had ever called them.
     let zoom_out = zoom_button(commands, fonts, "minus", CodeZoom::Out);
     let zoom_in = zoom_button(commands, fonts, "plus", CodeZoom::In);
+    let compile = compile_button(commands, fonts);
 
     commands
         .entity(row)
-        .add_children(&[zoom_out, size_label, size, zoom_in, mini_label, mini, ws_label, ws, wrap_label, wrap]);
+        .add_children(&[zoom_out, size_label, size, zoom_in, mini_label, mini, ws_label, ws, wrap_label, wrap, compile]);
     row
+}
+
+/// Marks the toolbar's **Compile** button.
+#[derive(Component)]
+pub(crate) struct CompileShaderBtn;
+
+/// Compile: save the open `.wgsl` and ask for it to be recompiled.
+///
+/// Only meaningful for a shader, so it is only shown for one — see
+/// [`sync_compile_button`]. Saving first is not a convenience: the compile acts
+/// on the file, and compiling a buffer the author has not written out would
+/// report on source that is not what the viewport will load.
+fn compile_button(
+    commands: &mut Commands,
+    fonts: &renzora_ember::font::EmberFonts,
+) -> Entity {
+    use renzora_ember::font::{icon_text, ui_font};
+    use renzora_ember::theme::{accent, rgb, text_primary};
+
+    let btn = commands
+        .spawn((
+            Node {
+                height: Val::Px(20.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(accent()).with_alpha(0.22)),
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
+            CompileShaderBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, "play", text_primary(), 11.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t_or("code.compile", "Compile")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(btn).add_children(&[ic, label]);
+    btn
+}
+
+/// Show **Compile** only while a `.wgsl` is open.
+///
+/// A per-frame display toggle rather than a rebuild of the toolbar: the bar is
+/// spawned once by the shell's toolbar host, and the active file changes far
+/// more often than the bar does.
+fn sync_compile_button(
+    state: Option<Res<CodeEditorState>>,
+    mut q: Query<&mut Node, With<CompileShaderBtn>>,
+) {
+    let shader = state
+        .and_then(|s| {
+            s.active_tab
+                .and_then(|i| s.open_files.get(i))
+                .map(|f| is_shader(&f.path))
+        })
+        .unwrap_or(false);
+    for mut node in &mut q {
+        let want = if shader { Display::Flex } else { Display::None };
+        if node.display != want {
+            node.display = want;
+        }
+    }
+}
+
+/// Save the active shader and ask for it to be recompiled.
+fn compile_shader_click(
+    q: Query<&Interaction, (With<CompileShaderBtn>, Changed<Interaction>)>,
+    mut state: Option<ResMut<CodeEditorState>>,
+    mut commands: Commands,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(state) = state.as_mut() else { return };
+    let Some(path) = state
+        .active_tab
+        .and_then(|i| state.open_files.get(i))
+        .map(|f| f.path.clone())
+    else {
+        return;
+    };
+    if !is_shader(&path) {
+        return;
+    }
+    // Written out before the request, so what compiles is what is on disk.
+    state.save_active();
+    commands.trigger(renzora::core::ShaderCompileRequested { path });
+}
+
+/// `.wgsl` and nothing else. A `.material` carries its compiled shader inside
+/// it and writes no `.wgsl` to edit — see `renzora_shader_editor::hot_reload`.
+fn is_shader(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("wgsl"))
 }
 
 /// Which way a zoom button steps.
@@ -376,6 +483,11 @@ impl Plugin for CodeEditorPlugin {
                 sync_asset_filter_for_scripting,
                 sync_settings_to_code_editor_prefs,
                 code_zoom_input.run_if(renzora_ember::dock::panel_active("code_editor")),
+                // Not gated on the panel being active: the toolbar is spawned
+                // once by the shell's host and its visibility has to be right
+                // the moment the panel is shown, not a frame later.
+                sync_compile_button,
+                compile_shader_click,
             )
                 .run_if(in_state(SplashState::Editor)),
         );

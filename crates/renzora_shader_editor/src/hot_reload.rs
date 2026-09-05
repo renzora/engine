@@ -197,6 +197,29 @@ fn invalidate_for_wgsl(
     }
 }
 
+/// The code editor's **Compile** button, arriving as an event.
+///
+/// Does exactly what a file change does — the work is identical, and the only
+/// difference is who decided the moment. Sharing `invalidate_for_wgsl` with the
+/// watcher is the point: a compile that recompiled slightly differently from a
+/// save would be a second definition of what compiling means.
+fn on_compile_requested(
+    trigger: On<renzora::core::ShaderCompileRequested>,
+    project: Option<Res<CurrentProject>>,
+    mut cache: ResMut<MaterialCache>,
+    mut commands: Commands,
+    resolved: Query<(Entity, &MaterialResolved)>,
+) {
+    let Some(project) = project else { return };
+    invalidate_for_wgsl(
+        &trigger.path,
+        &project.path,
+        &mut cache,
+        &mut commands,
+        &resolved,
+    );
+}
+
 /// Registers WGSL hot-reload. Editor-only by construction — nothing outside
 /// `renzora_shader_editor` links this crate.
 pub struct WgslHotReloadPlugin;
@@ -212,5 +235,6 @@ impl Plugin for WgslHotReloadPlugin {
             )
                 .chain(),
         );
+        app.add_observer(on_compile_requested);
     }
 }

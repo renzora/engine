@@ -750,6 +750,23 @@ impl EditedMesh {
 #[derive(Component)]
 pub struct EditedMeshApplied;
 
+/// Recompile the shader at `path` and re-resolve everything using it.
+///
+/// Sent by the code editor's **Compile** button and observed in
+/// `renzora_shader_editor::hot_reload`, which already does this work when a
+/// `.wgsl` changes on disk. The button exists because the watcher answers "the
+/// file changed" and not "I am ready to see it": an editor buffer becomes a
+/// saved file on every keystroke's autosave, and recompiling a shader mid-word
+/// spends a pipeline rebuild on source the author has not finished typing.
+///
+/// Both sides communicate only through this type — no sibling crate deps.
+#[derive(Event, Debug, Clone)]
+pub struct ShaderCompileRequested {
+    /// Absolute path to the `.wgsl`. Made project-relative by the observer,
+    /// which is the form the material cache keys on.
+    pub path: std::path::PathBuf,
+}
+
 /// Event fired when a model importer has pulled PBR material data out of a
 /// source file and needs somewhere to persist it as a `.material` graph.
 /// Importers (the import dialog and the viewport drop pipeline) trigger this
