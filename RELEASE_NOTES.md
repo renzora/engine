@@ -10,6 +10,10 @@
   reach them, and `renzora_shader`/`renzora_scripting` now publish counts instead
   of the debugger reaching into `MaterialCache` and `ScriptEngine`. **An editor
   without the plugin installed has no debug panels and no Debug workspace.**
+- refactor(system_monitor): the status-bar CPU/RAM/GPU readouts are a native
+  plugin (`plugins/system_monitor`) rather than a crate linked into the editor.
+  It already linked nothing but `bevy` and `renzora`, so the move needed no
+  contract changes.
 - security(marketplace): a plugin archive containing an absolute path (`/etc/…`,
   `C:\…`, or a bare leading `\`) escaped the install directory and could write
   anywhere the editor could. The guard tested for `..`, which those names do not

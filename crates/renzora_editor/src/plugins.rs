@@ -69,7 +69,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_sprite_anim_editor::SpriteAnimEditorPlugin::default());
     app.add_plugins(renzora_ssao_editor::SsaoEditorPlugin::default());
     app.add_plugins(renzora_ssr_editor::SsrEditorPlugin::default());
-    app.add_plugins(renzora_system_monitor::SystemMonitorPlugin::default());
     app.add_plugins(renzora_terrain_editor::TerrainEditorPlugin::default());
     app.add_plugins(renzora_test_component::TestComponentPlugin::default());
     app.add_plugins(renzora_theme_status::ThemeStatusPlugin::default());
