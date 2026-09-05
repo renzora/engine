@@ -7,6 +7,13 @@
   contain, and `Path::join` discards its base when handed an absolute path. Since
   an installed plugin is compiled and loaded, this was a code-execution channel.
   Both extraction loops now use the zip crate's own `enclosed_name` check.
+- fix(import): a malformed USD or Alembic file is reported instead of taking the
+  editor down. Offsets in both formats are 64-bit values read straight out of the
+  file, and the guards against them were written `if off + 8 > data.len()`, which
+  wraps rather than catching anything (this profile has overflow-checks off). A
+  crafted or truncated asset panicked inside a slice index, naming an offset
+  nobody could connect back to the file. All 28 reads now go through checked
+  helpers.
 - fix(assets): dragging a file in the tree view no longer opens the rename field
   mid-drag. Pressing a selected item's name arms an explorer-style rename that
   fires 0.45s later, and nothing cancelled it when the press became a drag. It

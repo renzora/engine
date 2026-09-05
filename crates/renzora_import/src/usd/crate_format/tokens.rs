@@ -16,21 +16,18 @@ pub fn read_tokens(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<String>>
         None => return Ok(Vec::new()),
     };
 
+    // `offset + size`, both out of the file. See `sections::section_data` for
+    // what writing that as a bare `+` used to do.
     let sec_start = section.offset as usize;
-    let sec_end = sec_start + section.size as usize;
-
-    if sec_end > data.len() {
-        return Err(UsdError::Parse("TOKENS section extends beyond file".into()));
-    }
-
-    let sec_data = &data[sec_start..sec_end];
+    let sec_data = super::read::slice(data, sec_start, section.size as usize)
+        .ok_or_else(|| UsdError::Parse("TOKENS section extends beyond file".into()))?;
 
     if sec_data.len() < 8 {
         return Ok(Vec::new());
     }
 
     // First 8 bytes: token count
-    let token_count = u64::from_le_bytes(sec_data[0..8].try_into().unwrap()) as usize;
+    let token_count = super::read::le_u64(sec_data, 0).unwrap_or(0) as usize;
 
     if token_count == 0 {
         return Ok(Vec::new());
@@ -45,8 +42,8 @@ pub fn read_tokens(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<String>>
 
     // Heuristic: if the next 8+8 bytes give plausible sizes, treat as compressed
     let token_bytes = if remaining.len() >= 16 {
-        let uncompressed_size = u64::from_le_bytes(remaining[0..8].try_into().unwrap()) as usize;
-        let compressed_size = u64::from_le_bytes(remaining[8..16].try_into().unwrap()) as usize;
+        let uncompressed_size = super::read::le_u64(remaining, 0).unwrap_or(0) as usize;
+        let compressed_size = super::read::le_u64(remaining, 8).unwrap_or(0) as usize;
 
         if compressed_size > 0
             && compressed_size < remaining.len()

@@ -44,17 +44,16 @@ pub fn read_paths(
         None => return Ok(Vec::new()),
     };
 
+    // `offset + size`, both out of the file. See `sections::section_data` for
+    // what writing that as a bare `+` used to do.
     let s = section.offset as usize;
-    let e = s + section.size as usize;
-    if e > data.len() {
-        return Err(UsdError::Parse("PATHS truncated".into()));
-    }
-    let sd = &data[s..e];
+    let sd = super::read::slice(data, s, section.size as usize)
+        .ok_or_else(|| UsdError::Parse("PATHS truncated".into()))?;
     if sd.len() < 8 {
         return Ok(Vec::new());
     }
 
-    let num_paths = u64::from_le_bytes(sd[0..8].try_into().unwrap()) as usize;
+    let num_paths = super::read::le_u64(sd, 0).unwrap_or(0) as usize;
     let mut pos = 8usize;
     if num_paths == 0 {
         return Ok(Vec::new());
@@ -62,9 +61,8 @@ pub fn read_paths(
 
     // The repeated count. Guarded rather than assumed: older writers that emit
     // it once would otherwise have their first compressed block skipped.
-    if sd.len() >= 16 {
-        let repeat = u64::from_le_bytes(sd[8..16].try_into().unwrap()) as usize;
-        if repeat == num_paths {
+    if let Some(repeat) = super::read::le_u64(sd, 8) {
+        if repeat as usize == num_paths {
             pos = 16;
         }
     }

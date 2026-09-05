@@ -104,12 +104,23 @@ struct OgawaChild {
     size: u64,
 }
 
-fn read_group(data: &[u8], offset: usize) -> Result<OgawaGroup, ImportError> {
-    if offset + 8 > data.len() {
-        return Err(ImportError::ParseError("Group header truncated".into()));
-    }
+/// A little-endian `u64` at `off`, or `None` if it does not fit.
+///
+/// Ogawa offsets are `u64`s lifted out of the file, so the `off + 8` that these
+/// reads used to be guarded by is an addition on a hostile number: it wraps
+/// (this profile inherits `release`, so overflow-checks are off), sails past a
+/// comparison with the buffer length, and panics in the slice index instead of
+/// reporting a malformed archive.
+fn le_u64(data: &[u8], off: usize) -> Option<u64> {
+    let end = off.checked_add(8)?;
+    let bytes: [u8; 8] = data.get(off..end)?.try_into().ok()?;
+    Some(u64::from_le_bytes(bytes))
+}
 
-    let child_count = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
+fn read_group(data: &[u8], offset: usize) -> Result<OgawaGroup, ImportError> {
+    let child_count = le_u64(data, offset)
+        .ok_or_else(|| ImportError::ParseError("Group header truncated".into()))?
+        as usize;
 
     // Sanity check
     if child_count > 10_000 {
@@ -127,23 +138,23 @@ fn read_group(data: &[u8], offset: usize) -> Result<OgawaGroup, ImportError> {
     // For each child: a u64 where the low bit indicates data(1) vs group(0),
     // and the remaining 63 bits are the file offset.
     for i in 0..child_count {
-        let entry_offset = entries_start + i * 8;
-        if entry_offset + 8 > data.len() {
+        // `entries_start + i * 8` walks a file-derived base, so both halves are
+        // checked. Running off the end ends the loop, which is what the length
+        // test below it already did for the truncated case.
+        let Some(entry_offset) = i.checked_mul(8).and_then(|d| entries_start.checked_add(d)) else {
             break;
-        }
-
-        let raw = u64::from_le_bytes(data[entry_offset..entry_offset + 8].try_into().unwrap());
+        };
+        let Some(raw) = le_u64(data, entry_offset) else {
+            break;
+        };
         let is_data = (raw & 1) != 0;
         let child_offset = raw >> 1;
 
-        let size = if is_data && (child_offset as usize) + 8 <= data.len() {
-            // Data streams store their size at the referenced offset
-            let so = child_offset as usize;
-            if so + 8 <= data.len() {
-                u64::from_le_bytes(data[so..so + 8].try_into().unwrap())
-            } else {
-                0
-            }
+        // Data streams store their size at the referenced offset. A size that
+        // points outside the file reads as zero rather than ending the parse:
+        // the child is still structurally there, it just carries nothing.
+        let size = if is_data {
+            le_u64(data, child_offset as usize).unwrap_or(0)
         } else {
             0
         };
@@ -164,19 +175,15 @@ fn read_data_stream<'a>(data: &'a [u8], child: &OgawaChild) -> Option<&'a [u8]> 
     }
 
     let offset = child.offset as usize;
-    if offset + 8 > data.len() {
-        return None;
-    }
 
-    // Size is stored at the offset, data follows
-    let size = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
-    let data_start = offset + 8;
-
-    if data_start + size > data.len() {
-        return None;
-    }
-
-    Some(&data[data_start..data_start + size])
+    // Size is stored at the offset, data follows. Both the size and the offset
+    // it came from are out of the file, so `data_start + size` is two hostile
+    // numbers added: wrapping it gave an end BELOW the start, which passed the
+    // length test and then panicked in the slice with "slice index starts at N
+    // but ends at M".
+    let size = le_u64(data, offset)? as usize;
+    let data_start = offset.checked_add(8)?;
+    data.get(data_start..data_start.checked_add(size)?)
 }
 
 // ---------------------------------------------------------------------------
@@ -349,17 +356,19 @@ fn looks_like_indices(data: &[u8], vertex_count: usize) -> bool {
         .all(|&v| v >= 0 && (v as usize) < vertex_count.max(1) * 2)
 }
 
+// `chunks_exact` rather than `chunks().filter(len == 4)`: it yields only whole
+// chunks, so the conversion is infallible by construction instead of resting on
+// a filter that a `try_into().unwrap()` two lines down had to be trusted to
+// agree with. A trailing partial chunk is dropped either way.
 fn read_f32_array(data: &[u8]) -> Vec<f32> {
-    data.chunks(4)
-        .filter(|c| c.len() == 4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+    data.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
 
 fn read_i32_array(data: &[u8]) -> Vec<i32> {
-    data.chunks(4)
-        .filter(|c| c.len() == 4)
-        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+    data.chunks_exact(4)
+        .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
 

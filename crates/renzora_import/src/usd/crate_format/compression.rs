@@ -52,18 +52,19 @@ pub fn decompress_lz4(compressed: &[u8], uncompressed_size: usize) -> UsdResult<
     let mut out = Vec::with_capacity(uncompressed_size);
     let mut pos = 0usize;
     for chunk in 0..n_chunks as usize {
-        if pos + 4 > rest.len() {
-            return Err(UsdError::Parse(format!(
+        let size = super::read::le_i32(rest, pos).ok_or_else(|| {
+            UsdError::Parse(format!(
                 "LZ4: truncated chunk header {} of {}",
                 chunk + 1,
                 n_chunks
-            )));
-        }
-        let size = i32::from_le_bytes(rest[pos..pos + 4].try_into().unwrap());
+            ))
+        })?;
         pos += 4;
         let size = usize::try_from(size)
             .map_err(|_| UsdError::Parse("LZ4: negative chunk size".into()))?;
-        if pos + size > rest.len() {
+        // `pos + size` with a file-supplied `size`: wrapping it made an
+        // over-long chunk look like it fit.
+        if pos.checked_add(size).is_none_or(|end| end > rest.len()) {
             return Err(UsdError::Parse(format!(
                 "LZ4: chunk {} claims {} bytes, {} remain",
                 chunk + 1,
@@ -108,29 +109,26 @@ pub fn read_compressed_ints_with_count(
     }
 
     // Read u64 compressed size prefix
-    if *pos + 8 > data.len() {
-        return Err(UsdError::Parse(
-            "Compressed ints: truncated size prefix".into(),
-        ));
-    }
-
-    let comp_size = u64::from_le_bytes(data[*pos..*pos + 8].try_into().unwrap()) as usize;
+    let comp_size = super::read::le_u64(data, *pos)
+        .ok_or_else(|| UsdError::Parse("Compressed ints: truncated size prefix".into()))?
+        as usize;
     *pos += 8;
 
     if comp_size == 0 {
         return Ok(vec![0u32; num_ints]);
     }
 
-    if *pos + comp_size > data.len() {
-        return Err(UsdError::Parse(format!(
+    // `*pos + comp_size` with `comp_size` out of the file: one `read::slice`
+    // does the checked add and the bounds test that used to be two lines that
+    // could disagree.
+    let compressed = super::read::slice(data, *pos, comp_size).ok_or_else(|| {
+        UsdError::Parse(format!(
             "Compressed ints: need {} compressed bytes at {}, have {}",
             comp_size,
             *pos,
-            data.len() - *pos
-        )));
-    }
-
-    let compressed = &data[*pos..*pos + comp_size];
+            data.len().saturating_sub(*pos)
+        ))
+    })?;
     *pos += comp_size;
 
     // Stage 1: LZ4 decompress
@@ -143,11 +141,9 @@ pub fn read_compressed_ints_with_count(
 
 /// Read a compressed u32 array with a u64 count prefix followed by a u64 size prefix.
 pub fn read_compressed_ints(data: &[u8], pos: &mut usize) -> UsdResult<Vec<u32>> {
-    if *pos + 8 > data.len() {
-        return Err(UsdError::Parse("Compressed ints: truncated count".into()));
-    }
-
-    let num_ints = u64::from_le_bytes(data[*pos..*pos + 8].try_into().unwrap()) as usize;
+    let num_ints = super::read::le_u64(data, *pos)
+        .ok_or_else(|| UsdError::Parse("Compressed ints: truncated count".into()))?
+        as usize;
     *pos += 8;
 
     read_compressed_ints_with_count(data, pos, num_ints)
@@ -179,18 +175,21 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
     }
 
     // Read common delta value
-    let common_delta = i32::from_le_bytes(encoded[0..4].try_into().unwrap());
+    let common_delta = super::read::le_i32(encoded, 0)
+        .ok_or_else(|| UsdError::Parse("Integer decode: buffer too small".into()))?;
 
-    // Read 2-bit codes
-    let num_code_bytes = (num_ints * 2).div_ceil(8);
+    // Read 2-bit codes. `num_ints` is a count out of the file, so doubling it
+    // can wrap: a count near `usize::MAX / 2` produced a tiny `num_code_bytes`,
+    // which then passed the length test and decoded from the wrong window.
+    let num_code_bytes = num_ints
+        .checked_mul(2)
+        .map(|bits| bits.div_ceil(8))
+        .ok_or_else(|| UsdError::Parse("Integer decode: implausible count".into()))?;
     let codes_start = 4;
     let vints_start = codes_start + num_code_bytes;
 
-    if codes_start + num_code_bytes > encoded.len() {
-        return Err(UsdError::Parse("Integer decode: codes truncated".into()));
-    }
-
-    let codes = &encoded[codes_start..codes_start + num_code_bytes];
+    let codes = super::read::slice(encoded, codes_start, num_code_bytes)
+        .ok_or_else(|| UsdError::Parse("Integer decode: codes truncated".into()))?;
     let vints = if vints_start < encoded.len() {
         &encoded[vints_start..]
     } else {
@@ -218,16 +217,17 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
                 vint_pos += 1;
                 v
             }
-            // Medium: i16
-            2 if vint_pos + 2 <= vints.len() => {
-                let v =
-                    i16::from_le_bytes(vints[vint_pos..vint_pos + 2].try_into().unwrap()) as i32;
+            // Medium: i16. `vint_pos` only ever advances within `vints`, so
+            // these cannot wrap; through the helper anyway so the guard and the
+            // read are one expression rather than two that can drift.
+            2 if super::read::le_i16(vints, vint_pos).is_some() => {
+                let v = super::read::le_i16(vints, vint_pos).unwrap_or(0) as i32;
                 vint_pos += 2;
                 v
             }
             // Large: i32
-            3 if vint_pos + 4 <= vints.len() => {
-                let v = i32::from_le_bytes(vints[vint_pos..vint_pos + 4].try_into().unwrap());
+            3 if super::read::le_i32(vints, vint_pos).is_some() => {
+                let v = super::read::le_i32(vints, vint_pos).unwrap_or(0);
                 vint_pos += 4;
                 v
             }

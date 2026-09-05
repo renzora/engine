@@ -32,8 +32,11 @@ impl Header {
 
         let version = [data[8], data[9], data[10]];
 
-        // TOC offset is at byte 16 in all known versions
-        let toc_offset = u64::from_le_bytes(data[16..24].try_into().unwrap());
+        // TOC offset is at byte 16 in all known versions. `MIN_SIZE` above
+        // already covers it; read through `le_u64` regardless so the guard and
+        // the read cannot drift apart later.
+        let toc_offset = super::read::le_u64(data, 16)
+            .ok_or_else(|| UsdError::Parse("USDC header truncated at the TOC offset".into()))?;
 
         if toc_offset as usize >= data.len() {
             return Err(UsdError::Parse("TOC offset beyond end of file".into()));

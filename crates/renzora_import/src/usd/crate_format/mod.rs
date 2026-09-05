@@ -15,6 +15,9 @@ mod compression;
 mod fields;
 mod header;
 mod paths;
+/// Checked little-endian reads. Every offset in this format comes out of the
+/// file, so every read of one goes through here.
+mod read;
 mod sections;
 mod specs;
 mod tokens;
@@ -1260,4 +1263,56 @@ fn compute_parent_indices(joints: &[String]) -> Vec<i32> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod hostile_input_tests {
+    /// A crafted USDC header must be rejected, not crash the importer.
+    ///
+    /// This is the end-to-end form of what `read`'s unit tests pin: a
+    /// `toc_offset` of `u64::MAX` used to wrap its own `offset + 8 > data.len()`
+    /// guard down to 7, pass it, and panic inside `data[offset..offset + 8]`
+    /// with an index nobody could connect back to the file. The importer runs
+    /// in the editor process, so that panic took the editor with it, and the
+    /// file that caused it is one a user drags in.
+    ///
+    /// Asserted as "returns an `Err`" rather than for a particular message: the
+    /// point is that a malformed asset is reported, not which sentence reports
+    /// it.
+    #[test]
+    fn a_toc_offset_at_the_top_of_the_range_is_reported_not_fatal() {
+        for toc_offset in [u64::MAX, u64::MAX - 7, i64::MAX as u64, u64::MAX / 2] {
+            let mut data = vec![0u8; 64];
+            data[0..8].copy_from_slice(b"PXR-USDC");
+            data[8] = 0;
+            data[9] = 8;
+            data[10] = 0;
+            data[16..24].copy_from_slice(&toc_offset.to_le_bytes());
+            assert!(
+                super::parse(&data).is_err(),
+                "toc_offset {toc_offset} should be refused, not accepted or fatal"
+            );
+        }
+    }
+
+    /// Truncation at every length must also report rather than panic. Walks the
+    /// prefix lengths so a guard added to one section but not its neighbour has
+    /// somewhere to fail.
+    #[test]
+    fn every_truncation_of_a_plausible_header_is_survivable() {
+        let mut full = vec![0u8; 128];
+        full[0..8].copy_from_slice(b"PXR-USDC");
+        full[9] = 8;
+        full[16..24].copy_from_slice(&32u64.to_le_bytes());
+        // A section count and one entry, so the TOC walk is actually entered.
+        full[32..40].copy_from_slice(&1u64.to_le_bytes());
+        full[40..56].copy_from_slice(b"TOKENS\0\0\0\0\0\0\0\0\0\0");
+        full[56..64].copy_from_slice(&64u64.to_le_bytes());
+        full[64..72].copy_from_slice(&u64::MAX.to_le_bytes());
+
+        for len in 0..full.len() {
+            // Must not panic. Either answer is fine at a given prefix.
+            let _ = super::parse(&full[..len]);
+        }
+    }
 }

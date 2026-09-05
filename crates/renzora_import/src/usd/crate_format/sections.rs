@@ -31,11 +31,13 @@ impl TableOfContents {
     pub fn read(data: &[u8], header: &Header) -> UsdResult<Self> {
         let offset = header.toc_offset as usize;
 
-        if offset + 8 > data.len() {
-            return Err(UsdError::Parse("TOC header truncated".into()));
-        }
-
-        let section_count = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        // `offset` is a `u64` straight out of the file. The guard here used to
+        // be `if offset + 8 > data.len()`, which a `toc_offset` of `u64::MAX`
+        // walks through: the addition wraps (this profile has overflow-checks
+        // off), 7 is not greater than any real length, and the slice index one
+        // line down panicked. `le_u64` does the add with `checked_add`.
+        let section_count = super::read::le_u64(data, offset)
+            .ok_or_else(|| UsdError::Parse("TOC header truncated".into()))?;
 
         if section_count > 64 {
             return Err(UsdError::Parse(format!(
@@ -45,22 +47,27 @@ impl TableOfContents {
         }
 
         let mut sections = Vec::new();
-        let mut pos = offset + 8;
+        // Same wrap, one step along: `offset` survived its own check, but
+        // `offset + 8` is still file-derived arithmetic.
+        let mut pos = offset
+            .checked_add(8)
+            .ok_or_else(|| UsdError::Parse("TOC header truncated".into()))?;
 
         for _ in 0..section_count {
             // Each section entry: 16 bytes name (null-padded) + 8 bytes offset + 8 bytes size
-            if pos + 32 > data.len() {
-                return Err(UsdError::Parse("TOC entry truncated".into()));
-            }
+            let entry = super::read::slice(data, pos, 32)
+                .ok_or_else(|| UsdError::Parse("TOC entry truncated".into()))?;
 
-            let name_bytes = &data[pos..pos + 16];
+            let name_bytes = &entry[..16];
             let name_end = name_bytes.iter().position(|&b| b == 0).unwrap_or(16);
             let name = std::str::from_utf8(&name_bytes[..name_end])
                 .unwrap_or("")
                 .to_string();
 
-            let sec_offset = u64::from_le_bytes(data[pos + 16..pos + 24].try_into().unwrap());
-            let sec_size = u64::from_le_bytes(data[pos + 24..pos + 32].try_into().unwrap());
+            // Infallible now: `entry` is exactly 32 bytes, so both reads are in
+            // bounds by construction rather than by a separate check.
+            let sec_offset = super::read::le_u64(entry, 16).unwrap_or(0);
+            let sec_size = super::read::le_u64(entry, 24).unwrap_or(0);
 
             log::debug!(
                 "Section '{}': offset={}, size={}",
@@ -92,17 +99,22 @@ impl TableOfContents {
             .find(name)
             .ok_or_else(|| UsdError::Parse(format!("Missing section: {}", name)))?;
         let start = section.offset as usize;
-        let end = start + section.size as usize;
-        if end > data.len() {
-            return Err(UsdError::Parse(format!(
+        // Both halves come out of the TOC, so `start + size` is two hostile
+        // numbers added together. It used to be written that way, and wrapping
+        // it produced an `end` BELOW `start`: smaller than `data.len()`, so the
+        // check below passed, and then `&data[start..end]` panicked with "slice
+        // index starts at N but ends at M". `read::slice` adds with
+        // `checked_add` and indexes with `get`, so both failures are the same
+        // `None`.
+        super::read::slice(data, start, section.size as usize).ok_or_else(|| {
+            UsdError::Parse(format!(
                 "Section '{}' extends beyond file (offset={}, size={}, file_len={})",
                 name,
                 start,
                 section.size,
                 data.len()
-            )));
-        }
-        Ok(&data[start..end])
+            ))
+        })
     }
 }
 
@@ -118,13 +130,17 @@ pub fn read_string_indices(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<
     let mut indices = Vec::with_capacity(count);
 
     for i in 0..count {
-        let offset = start + i * 4;
-        if offset + 4 > data.len() {
+        // `start` is file-derived and `count` is derived from a file-derived
+        // size, so both halves of this can wrap. A `None` from either means the
+        // table runs past the end, which is the same "stop here" this loop
+        // already did for the truncated case.
+        let Some(offset) = i.checked_mul(4).and_then(|d| start.checked_add(d)) else {
             break;
-        }
-        indices.push(u32::from_le_bytes(
-            data[offset..offset + 4].try_into().unwrap(),
-        ));
+        };
+        let Some(index) = super::read::le_u32(data, offset) else {
+            break;
+        };
+        indices.push(index);
     }
 
     Ok(indices)

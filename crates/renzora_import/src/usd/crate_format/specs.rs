@@ -42,17 +42,16 @@ pub fn read_specs(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<Spec>> {
         None => return Ok(Vec::new()),
     };
 
+    // `offset + size`, both out of the file. See `sections::section_data` for
+    // what writing that as a bare `+` used to do.
     let s = section.offset as usize;
-    let e = s + section.size as usize;
-    if e > data.len() {
-        return Err(super::super::UsdError::Parse("SPECS truncated".into()));
-    }
-    let sd = &data[s..e];
+    let sd = super::read::slice(data, s, section.size as usize)
+        .ok_or_else(|| super::super::UsdError::Parse("SPECS truncated".into()))?;
     if sd.len() < 8 {
         return Ok(Vec::new());
     }
 
-    let num_specs = u64::from_le_bytes(sd[0..8].try_into().unwrap()) as usize;
+    let num_specs = super::read::le_u64(sd, 0).unwrap_or(0) as usize;
     let mut pos = 8usize;
     if num_specs == 0 {
         return Ok(Vec::new());

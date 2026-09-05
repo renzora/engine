@@ -28,18 +28,17 @@ pub fn read_fields(data: &[u8], toc: &TableOfContents, tokens: &[String]) -> Usd
         None => return Ok(Vec::new()),
     };
 
+    // `offset + size`, both out of the file. See `sections::section_data` for
+    // what writing that as a bare `+` used to do.
     let sec_start = section.offset as usize;
-    let sec_end = sec_start + section.size as usize;
-    if sec_end > data.len() {
-        return Err(UsdError::Parse("FIELDS section extends beyond file".into()));
-    }
-    let sec_data = &data[sec_start..sec_end];
+    let sec_data = super::read::slice(data, sec_start, section.size as usize)
+        .ok_or_else(|| UsdError::Parse("FIELDS section extends beyond file".into()))?;
 
     if sec_data.len() < 8 {
         return Ok(Vec::new());
     }
 
-    let num_fields = u64::from_le_bytes(sec_data[0..8].try_into().unwrap()) as usize;
+    let num_fields = super::read::le_u64(sec_data, 0).unwrap_or(0) as usize;
     let mut pos = 8usize;
 
     if num_fields == 0 {
@@ -51,25 +50,29 @@ pub fn read_fields(data: &[u8], toc: &TableOfContents, tokens: &[String]) -> Usd
         compression::read_compressed_ints_with_count(sec_data, &mut pos, num_fields)?;
 
     // Value reps: raw LZ4 compressed u64 array (NOT integer coded)
-    if pos + 8 > sec_data.len() {
-        return Err(UsdError::Parse("FIELDS: value reps size truncated".into()));
-    }
-    let reps_comp_size = u64::from_le_bytes(sec_data[pos..pos + 8].try_into().unwrap()) as usize;
+    let reps_comp_size = super::read::le_u64(sec_data, pos)
+        .ok_or_else(|| UsdError::Parse("FIELDS: value reps size truncated".into()))?
+        as usize;
     pos += 8;
 
-    let value_reps = if reps_comp_size > 0 && pos + reps_comp_size <= sec_data.len() {
-        let compressed = &sec_data[pos..pos + reps_comp_size];
-        let raw_size = num_fields * 8;
+    // `num_fields * 8` is a file-derived count scaled by 8, so it overflows on
+    // a large enough count and would ask the decompressor for a nonsense
+    // buffer. A count that cannot be expressed is a corrupt one.
+    let raw_size = num_fields
+        .checked_mul(8)
+        .ok_or_else(|| UsdError::Parse("FIELDS: implausible field count".into()))?;
+
+    let value_reps = if let Some(compressed) =
+        (reps_comp_size > 0).then(|| super::read::slice(sec_data, pos, reps_comp_size)).flatten()
+    {
         let decompressed = compression::decompress_lz4_raw(compressed, raw_size)?;
 
         (0..num_fields)
             .map(|i| {
-                let off = i * 8;
-                if off + 8 <= decompressed.len() {
-                    u64::from_le_bytes(decompressed[off..off + 8].try_into().unwrap())
-                } else {
-                    0
-                }
+                // `i` is bounded by `num_fields`, whose × 8 is checked above, so
+                // this cannot wrap; read through the helper regardless so a
+                // short decompression is a zero rather than a panic.
+                super::read::le_u64(&decompressed, i * 8).unwrap_or(0)
             })
             .collect()
     } else {
@@ -318,10 +321,11 @@ fn decode_out_of_line_array(
     tokens: &[String],
     is_compressed: bool,
 ) -> Value {
-    if offset + 8 > data.len() {
+    let Some(count) = super::read::le_u64(data, offset) else {
         return Value::Unknown(type_enum);
-    }
-    let count = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
+    };
+    let count = count as usize;
+    // Sound because `le_u64` above only answered after its own `checked_add`.
     let s = offset + 8;
     if count > 100_000_000 {
         return Value::Unknown(type_enum);
@@ -479,11 +483,13 @@ macro_rules! impl_le {
     ($t:ty, $n:expr) => {
         impl LeRead for $t {
             fn at(d: &[u8], o: usize) -> Option<Self> {
-                if o + $n <= d.len() {
-                    Some(<$t>::from_le_bytes(d[o..o + $n].try_into().unwrap()))
-                } else {
-                    None
-                }
+                // `o + $n` rather than `o.checked_add($n)` was the same wrap the
+                // rest of this module carried: `o` walks a file-derived buffer,
+                // and near the top of the range the sum came back small enough
+                // to pass `<= d.len()` and then panic in the index.
+                let end = o.checked_add($n)?;
+                let bytes: [u8; $n] = d.get(o..end)?.try_into().ok()?;
+                Some(<$t>::from_le_bytes(bytes))
             }
         }
     };
