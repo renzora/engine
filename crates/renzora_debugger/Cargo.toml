@@ -4,15 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-renzora_macros = { path = "../renzora_macros" }
 renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-# Editor-only deps for the diagnostic panels — counts of compiled
-# materials, loaded scripts, etc. These crates are already in the
-# editor build's dependency closure.
-renzora_shader = { path = "../renzora_shader" }
-renzora_scripting = { path = "../renzora_scripting" }
+renzora = { path = "../renzora", default-features = false, features = ["editor", "diagnostics"] }
 # Reached by the Render Toggles debug panel to flip AutoExposureSettings.
 memory-stats = "1"
 

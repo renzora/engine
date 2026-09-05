@@ -7451,9 +7451,6 @@ dependencies = [
  "memory-stats",
  "renzora",
  "renzora_ember",
- "renzora_macros",
- "renzora_scripting",
- "renzora_shader",
 ]
 
 [[package]]

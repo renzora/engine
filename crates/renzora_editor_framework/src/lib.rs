@@ -142,7 +142,7 @@ fn to_shell_tree(tree: &renzora_ember::dock::DockTree) -> renzora_ui::dock_tree:
 /// rebuild. Customisations to a workspace of that name are lost when its plugin
 /// reloads, which is the right trade: the plugin's tree is the definition, and
 /// the alternative is preserving edits to a layout whose panels may be gone.
-fn install_plugin_workspaces(
+pub fn install_plugin_workspaces(
     mut pending: bevy::prelude::ResMut<renzora_ember::workspace::PendingWorkspaces>,
     mut manager: bevy::prelude::ResMut<renzora_ui::LayoutManager>,
 ) {

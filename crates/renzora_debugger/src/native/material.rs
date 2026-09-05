@@ -13,8 +13,12 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
-use renzora_shader::material::perf::{MaterialPerf, MaterialPerfStats, MAX_RECENT_FAILURES};
-use renzora_shader::material::resolver::MaterialCache;
+// `renzora::diagnostics` rather than `renzora_shader`: this panel is a native
+// plugin, which links `bevy`, `renzora` and `renzora_ember` and nothing else.
+// `MaterialCacheCounts` is what `renzora_shader` publishes in place of handing
+// over `MaterialCache` itself.
+use renzora::diagnostics::material::{MaterialPerf, MaterialPerfStats, MAX_RECENT_FAILURES};
+use renzora::diagnostics::MaterialCacheCounts;
 
 use super::{root, section};
 
@@ -26,10 +30,11 @@ pub(super) fn register_material_resolver(app: &mut App) {
 }
 
 fn present(w: &Rx) -> bool {
-    w.get_resource::<MaterialCache>().is_some() && w.get_resource::<MaterialPerfStats>().is_some()
+    w.get_resource::<MaterialCacheCounts>().is_some()
+        && w.get_resource::<MaterialPerfStats>().is_some()
 }
-fn cache<R: Default>(w: &Rx, f: impl FnOnce(&MaterialCache) -> R) -> R {
-    w.get_resource::<MaterialCache>().map(f).unwrap_or_default()
+fn cache<R: Default>(w: &Rx, f: impl FnOnce(&MaterialCacheCounts) -> R) -> R {
+    w.get_resource::<MaterialCacheCounts>().map(f).unwrap_or_default()
 }
 fn mperf<R: Default>(w: &Rx, f: impl FnOnce(&MaterialPerfStats) -> R) -> R {
     w.get_resource::<MaterialPerfStats>().map(f).unwrap_or_default()
@@ -167,7 +172,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, tot, |w| {
-        cache(w, |c| (c.standard_count() + c.graph_count() + c.code_count()).to_string())
+        cache(w, |c| c.total().to_string())
     });
     let tot_u = commands
         .spawn((
@@ -189,10 +194,10 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         cache(w, |c| {
             format!(
                 "{} std \u{b7} {} graph \u{b7} {} code  \u{b7}  {} master-meta entries",
-                c.standard_count(),
-                c.graph_count(),
-                c.code_count(),
-                c.master_meta_count(),
+                c.standard,
+                c.graph,
+                c.code,
+                c.master_meta,
             )
         })
     });

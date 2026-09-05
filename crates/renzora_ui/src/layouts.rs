@@ -58,7 +58,6 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Animation", layout_animation()),
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
-            WorkspaceLayout::scene("Debug", layout_debug()),
             // ── Asset-mode layouts (hidden, auto-activated when an asset
             // doc tab is focused). Add new variants here as panels for
             // those kinds learn to render from `EditorContext`.
@@ -407,61 +406,6 @@ fn layout_animation() -> DockTree {
         ),
         DockTree::leaf("timeline"),
         0.60,
-    )
-}
-
-/// Debug: Hierarchy+Performance | Viewport+debug panels | Inspector+ECS / SceneDiagnostics+(subsystem diag tabs)
-fn layout_debug() -> DockTree {
-    DockTree::horizontal(
-        DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("performance"),
-            0.6,
-        ),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("viewport"),
-                DockTree::horizontal(
-                    DockTree::horizontal(
-                        DockTree::leaf("system_profiler"),
-                        DockTree::leaf("render_stats"),
-                        0.5,
-                    ),
-                    DockTree::horizontal(
-                        DockTree::leaf("memory_profiler"),
-                        DockTree::horizontal(
-                            DockTree::leaf("physics_debug"),
-                            DockTree::leaf("camera_debug"),
-                            0.5,
-                        ),
-                        0.33,
-                    ),
-                    0.4,
-                ),
-                0.65,
-            ),
-            DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "ecs_stats".into()],
-                    active_tab: 0,
-                },
-                // The MOT — Scene Diagnostics on top, with the subsystem
-                // diagnostic panels stacked as tabs so they all share
-                // one slot the user can flip through.
-                DockTree::Leaf {
-                    tabs: vec![
-                        "scene_diagnostics".into(),
-                        "material_resolver_diag".into(),
-                        "lumen_diag".into(),
-                        "scripting_diag".into(),
-                    ],
-                    active_tab: 0,
-                },
-                0.5,
-            ),
-            0.75,
-        ),
-        0.15,
     )
 }
 

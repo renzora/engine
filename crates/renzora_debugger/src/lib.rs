@@ -15,6 +15,9 @@ use bevy::diagnostic::{
     EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
 };
 use bevy::prelude::*;
+
+use renzora_ember::dock::DockTree;
+use renzora_ember::workspace::RegisterWorkspace;
 use renzora_ember::reactive::Rx;
 
 use state::*;
@@ -28,27 +31,21 @@ use state::*;
 // is a cdylib and owns the internal voxel/bake types it reads. The native Lumen
 // panel just reads the contract resource.
 
+// `ScriptInventory` rather than `Res<ScriptEngine>` plus a `ScriptComponent`
+// query: this panel is a native plugin, which links `bevy`, `renzora` and
+// `renzora_ember` and can name neither of those. `renzora_scripting` publishes
+// the four values this ever read, so the walk over every scripted entity happens
+// once in the crate that owns them instead of again here.
 fn update_scripting_diag_state(
     mut state: ResMut<panels::scripting::ScriptingDiagState>,
-    engine: Option<Res<renzora_scripting::ScriptEngine>>,
-    perf: Option<Res<renzora_scripting::perf::ScriptPerfStats>>,
-    components: Query<&renzora_scripting::ScriptComponent>,
+    inventory: Option<Res<renzora::diagnostics::ScriptInventory>>,
+    perf: Option<Res<renzora::diagnostics::script::ScriptPerfStats>>,
 ) {
-    // Entity-level inventory (cheap, no allocations beyond the count).
-    let mut entities = 0usize;
-    let mut attachments = 0usize;
-    for comp in components.iter() {
-        entities += 1;
-        attachments += comp.scripts.len();
-    }
-    state.entities_with_script = entities;
-    state.total_script_attachments = attachments;
-
-    if let Some(engine) = engine {
-        state.backend_count = engine.backend_count();
-        state.scripts_folder = engine
-            .scripts_folder()
-            .map(|p| p.to_string_lossy().to_string());
+    if let Some(inv) = inventory {
+        state.entities_with_script = inv.entities_with_script;
+        state.total_script_attachments = inv.total_attachments;
+        state.backend_count = inv.backend_count;
+        state.scripts_folder = inv.scripts_folder.clone();
     }
 
     if let Some(perf) = perf {
@@ -199,7 +196,68 @@ impl Plugin for DebuggerPlugin {
 
         // bevy-native (ember) content for every debug panel.
         native::register_native_debug(app);
+
+        // And the workspace those panels sit in. This used to be `layout_debug`
+        // in `renzora_ui::LayoutManager::default()`, hardcoded beside the
+        // built-in layouts, which meant the editor shipped an arrangement of
+        // panels it did not own. Registering it here keeps the panels and the
+        // layout that arranges them in one place: whichever way this plugin is
+        // built in, the Debug workspace arrives with it and leaves with it.
+        app.register_workspace("Debug", debug_workspace());
     }
+}
+
+/// The Debug workspace: hierarchy and performance down the left, the viewport
+/// over a row of profilers in the middle, and inspector/ECS above the
+/// subsystem diagnostics on the right.
+///
+/// The subsystem panels share one slot as tabs rather than each taking space.
+/// There are four of them and they are consulted one at a time.
+fn debug_workspace() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(DockTree::leaf("hierarchy"), DockTree::leaf("performance"), 0.6),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::horizontal(
+                    DockTree::horizontal(
+                        DockTree::leaf("system_profiler"),
+                        DockTree::leaf("render_stats"),
+                        0.5,
+                    ),
+                    DockTree::horizontal(
+                        DockTree::leaf("memory_profiler"),
+                        DockTree::horizontal(
+                            DockTree::leaf("physics_debug"),
+                            DockTree::leaf("camera_debug"),
+                            0.5,
+                        ),
+                        0.33,
+                    ),
+                    0.4,
+                ),
+                0.65,
+            ),
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec!["inspector".into(), "ecs_stats".into()],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec![
+                        "scene_diagnostics".into(),
+                        "material_resolver_diag".into(),
+                        "lumen_diag".into(),
+                        "scripting_diag".into(),
+                    ],
+                    active_tab: 0,
+                },
+                0.5,
+            ),
+            0.75,
+        ),
+        0.15,
+    )
 }
 
 /// Settings → Plugins → "Stats Refresh": three sliders setting how often the

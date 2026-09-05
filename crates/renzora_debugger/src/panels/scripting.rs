@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use renzora_scripting::perf::{ScriptPerf, ScriptPerfTotals};
+use renzora::diagnostics::script::{ScriptPerf, ScriptPerfTotals};
 
 /// Per-frame snapshot the panel renders from. Updated by
 /// `update_scripting_diag_state` in the debugger plugin.

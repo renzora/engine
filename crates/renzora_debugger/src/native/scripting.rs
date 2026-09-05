@@ -14,7 +14,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
-use renzora_scripting::perf::ScriptPerf;
+use renzora::diagnostics::script::ScriptPerf;
 
 use crate::panels::scripting::ScriptingDiagState;
 
