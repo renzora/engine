@@ -104,6 +104,12 @@ pub(crate) fn asset_drag(
                     path,
                 });
                 state.dragging = true;
+                // The press that started this drag may also have armed an
+                // explorer-style rename, if it landed on the name label of an
+                // already-selected item. Moving 5px settles which gesture it
+                // was, and it was not a rename, so retire the arm here rather
+                // than let it open a text field 0.45s into the drag.
+                state.rename_arm = None;
             }
         }
     }

@@ -39,6 +39,17 @@ pub(crate) fn rename_arm_fire(time: Res<Time>, mut state: ResMut<NativeAssets>) 
         state.rename_arm = None;
         return;
     }
+    // A press that turned into a drag was never a rename gesture. `asset_drag`
+    // clears the arm as soon as it promotes one, but the two live in different
+    // `add_systems` blocks with no ordering between them, so on the frame a drag
+    // begins this can run first and open a field that is about to be dragged.
+    //
+    // Nothing above catches it: a single dragged item stays the sole selection
+    // for the whole gesture, which is exactly the state the arm is waiting for.
+    if state.dragging {
+        state.rename_arm = None;
+        return;
+    }
     if time.elapsed_secs_f64() - t >= DELAY {
         state.rename_arm = None;
         state.renaming = Some(path);
