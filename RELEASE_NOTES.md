@@ -1,9 +1,5 @@
 # Renzora Engine `r1-alpha7`
 
-Two months and 703 commits. The plugin system became a real C ABI, the editor
-gained a 2D mode and a UI workspace, the whole engine now builds for the
-browser, and the first-party plugins moved out to the marketplace.
-
 |                |                                                                                          |
 | -------------- | ---------------------------------------------------------------------------------------- |
 | **Previous**   | [`r1-alpha6`](https://github.com/renzora/engine/releases/tag/r1-alpha6) · 29 Jun 2026     |
@@ -51,13 +47,14 @@ browser, and the first-party plugins moved out to the marketplace.
 
 ## Contributors
 
-**Kassinity** (shader and material error attribution, WGSL validation) ·
-**Lucas Mundim** (`no_std` plugin linking, crash timestamps, Solari) ·
-**saki2fifty** (transform snapping, material-graph Apply) · **dreamersilly**
-(undo reparenting, green CI) · **Umut Faruk** (directory drag-and-drop import)
-
-Merged PRs: [#89](https://github.com/renzora/engine/pull/89),
-[#92](https://github.com/renzora/engine/pull/92),
-[#96](https://github.com/renzora/engine/pull/96),
-[#98](https://github.com/renzora/engine/pull/98),
-[#102](https://github.com/renzora/engine/pull/102).
+- **Kassinity** — [#92](https://github.com/renzora/engine/pull/92) — shader and material compile errors attributed to the
+  graph node that caused them, generated shaders validated, WGSL pulled through
+  one `renzora::wgsl` seam
+- **Lucas Mundim** — [#96](https://github.com/renzora/engine/pull/96), [#98](https://github.com/renzora/engine/pull/98), [#102](https://github.com/renzora/engine/pull/102) — unwind symbols stubbed so
+  `no_std` plugins load again, a missing `SuppressShadowMaps` tolerated on
+  Solari's first extract, exact civil-date crash timestamps
+- **saki2fifty** — [#89](https://github.com/renzora/engine/pull/89), [#90](https://github.com/renzora/engine/pull/90) — snap settings honoured in modal G/R/S
+  transforms, the rotate HUD readout snapped
+- **dreamersilly** — [#76](https://github.com/renzora/engine/pull/76), [#78](https://github.com/renzora/engine/pull/78) — a green CI build after it had been red
+  since 14 June 2026, deleted entities restored under their original parent
+- **Umut Faruk** — [#87](https://github.com/renzora/engine/pull/87) — directory drag-and-drop import
