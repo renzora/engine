@@ -87,6 +87,8 @@ mod model_viewer;
 #[cfg(not(target_arch = "wasm32"))]
 mod library;
 #[cfg(not(target_arch = "wasm32"))]
+mod splash_plugins;
+#[cfg(not(target_arch = "wasm32"))]
 mod store;
 #[cfg(not(target_arch = "wasm32"))]
 mod store_overlay;
@@ -143,7 +145,6 @@ impl Plugin for MarketplacePlugin {
         app.add_systems(
             Update,
             (
-                thumbs::poll_thumbs,
                 avatars::poll_avatars,
                 avatars::request_avatars,
                 toasts::drain_toasts,
@@ -155,6 +156,23 @@ impl Plugin for MarketplacePlugin {
             )
                 .run_if(in_state(renzora::SplashState::Editor)),
         );
+        // The thumbnail cache is the one shared piece the splash's Plugins page
+        // also draws from, so it registers finished downloads in Splash too —
+        // gated on Editor alone, a card's artwork downloaded on the dashboard and
+        // was never turned into an `Image`, so every listing showed a placeholder
+        // until a project was open.
+        app.add_systems(
+            Update,
+            thumbs::poll_thumbs.run_if(
+                in_state(renzora::SplashState::Editor)
+                    .or_else(in_state(renzora::SplashState::Splash)),
+            ),
+        );
+
+        // The splash dashboard's Plugins page. Registered here rather than in
+        // `renzora_splash` because everything it needs — the catalogue client,
+        // the session and the installer — is in this crate; see the module doc.
+        splash_plugins::register(app);
 
         // The panels.
         app.add_plugins(store::StorePanel);

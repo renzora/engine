@@ -77,6 +77,12 @@ Every asset card has a **Get** (free) or **Buy** (paid) button. Click it and Ren
 
 The asset downloads in the background and a notice confirms where it landed. A paid asset you're not signed in for sends you to the sign-in window first.
 
+### Plugins: from the dashboard, before you open a project
+
+A plugin is the one category that does not install into a project. It extracts into the engine's own `plugins/` directory, where it is compiled and loaded at **startup** — so installing one from inside the editor always ends with "it will be there next time you start".
+
+The splash [dashboard](/docs/r1-alpha7/getting-started/dashboard) has a **Plugins** page for exactly that: search the plugin listings, install, and press **Restart now**. Free plugins install without an account; a paid one needs you signed in, which the page offers. Installing from the Marketplace panel inside the editor still works and puts the files in the same place — the dashboard just puts the restart next to the install.
+
 ### From your Library
 
 1. Open the **My Library** panel. It lists everything you own and shows which folder each asset installs into.

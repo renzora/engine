@@ -38,6 +38,11 @@ renzora_import = { path = "../renzora_import" }
 # preview: compile a downloaded shader, extract its `@param`s, render it on a
 # primitive. `ShaderPlugin` (registry + cache + pipeline) is already in the build.
 renzora_grid = { path = "../renzora_grid" }
+# The splash dashboard's page registry, for the Plugins page. The dependency runs
+# THIS way on purpose: `renzora_splash` is linked into the runtime, so a splash
+# that depended on this crate would drag the import pipeline, the audio decoder
+# and `rfd` into the shipped game binary. See `splash_plugins`.
+renzora_splash = { path = "../renzora_splash" }
 crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
