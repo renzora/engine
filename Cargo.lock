@@ -7367,6 +7367,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_editor_framework",
+ "renzora_ember",
 ]
 
 [[package]]

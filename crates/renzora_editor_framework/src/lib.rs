@@ -57,71 +57,6 @@ pub struct EditorActionHooks {
     pub can_redo: Option<fn(&bevy::prelude::World) -> bool>,
 }
 
-/// Debounce state for the auto-save layout system — tracks "dirty since N
-/// frames ago". We delay the write a few frames after the last change so
-/// mid-drag updates don't hammer the disk.
-#[derive(bevy::prelude::Resource, Default)]
-pub struct PendingLayoutSave {
-    pub dirty: bool,
-    pub frames_stable: u32,
-}
-
-/// Mirror `DockingState` into the active layout's slot + mark dirty for
-/// the debounced save. Runs every frame — when nothing changed, we just
-/// bump the stable-frame counter toward the flush threshold.
-fn mark_layout_dirty(
-    docking: bevy::prelude::Res<renzora_ui::DockingState>,
-    mut manager: bevy::prelude::ResMut<renzora_ui::LayoutManager>,
-    mut pending: bevy::prelude::ResMut<PendingLayoutSave>,
-) {
-    if docking.is_changed() {
-        // Keep the active layout slot in sync with the live dock so
-        // switching away and back preserves edits.
-        let idx = manager.active_index;
-        if let Some(slot) = manager.layouts.get_mut(idx) {
-            slot.tree = docking.tree.clone();
-        }
-        pending.dirty = true;
-        pending.frames_stable = 0;
-    } else if manager.is_changed() {
-        // active_index changed (layout switch) — persist that too.
-        pending.dirty = true;
-        pending.frames_stable = 0;
-    } else if pending.dirty {
-        pending.frames_stable = pending.frames_stable.saturating_add(1);
-    }
-}
-
-/// Write the workspace (all layouts + active index) to disk once it's
-/// been stable for a few frames — avoids fsync churn during drag gestures.
-fn flush_layout_save(
-    manager: bevy::prelude::Res<renzora_ui::LayoutManager>,
-    mut pending: bevy::prelude::ResMut<PendingLayoutSave>,
-) {
-    const SAVE_DELAY_FRAMES: u32 = 8;
-    if pending.dirty && pending.frames_stable >= SAVE_DELAY_FRAMES {
-        renzora_ui::save_workspace(&manager);
-        pending.dirty = false;
-        pending.frames_stable = 0;
-    }
-}
-
-/// Reset only the currently-active layout to its factory default. Other
-/// layouts keep their customisations. The saved workspace file is also
-/// deleted so the next launch starts clean.
-pub fn reset_layout(world: &mut bevy::prelude::World) {
-    world.resource_scope::<renzora_ui::LayoutManager, _>(|world, mut manager| {
-        if let Some(mut docking) = world.get_resource_mut::<renzora_ui::DockingState>() {
-            manager.reset_active(&mut docking);
-        }
-    });
-    if let Some(mut pending) = world.get_resource_mut::<PendingLayoutSave>() {
-        pending.dirty = false;
-        pending.frames_stable = 0;
-    }
-    renzora_ui::delete_saved_workspace();
-}
-
 /// Insert this as a resource to request the context-menu plugin open its
 /// "Add Component" overlay at a given screen position. Consumed (removed)
 /// by the plugin once opened. Lives in the SDK so any panel can fire the
@@ -304,66 +239,10 @@ impl Plugin for RenzoraEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] RenzoraEditorPlugin");
 
-        // Restore the user's saved workspace (all layouts + active index)
-        // if one exists, otherwise use the factory defaults. The active
-        // layout's tree seeds `DockingState`.
-        //
-        // Reconcile against the current factory defaults: drop any saved
-        // layouts whose names no longer exist (e.g. removed workspaces like
-        // the old "Lifecycle" one), and append any new defaults that weren't
-        // in the save file. Preserves user customisations on surviving names.
-        let saved_manager = renzora_ui::load_saved_workspace();
-        let (initial_manager, initial_docking) = match saved_manager {
-            Some(mut manager) => {
-                let defaults = LayoutManager::default();
-                let default_names: std::collections::HashSet<&str> =
-                    defaults.layouts.iter().map(|l| l.name.as_str()).collect();
-                let previous_active_name = manager
-                    .layouts
-                    .get(manager.active_index)
-                    .map(|l| l.name.clone());
-                manager
-                    .layouts
-                    .retain(|l| default_names.contains(l.name.as_str()));
-                for def in &defaults.layouts {
-                    if !manager.layouts.iter().any(|l| l.name == def.name) {
-                        manager.layouts.push(def.clone());
-                    }
-                }
-                // Re-stamp the `hidden` flag from defaults so workspaces saved
-                // before asset-mode layouts existed correctly hide them from
-                // the title bar.
-                for layout in &mut manager.layouts {
-                    if let Some(def) = defaults.layouts.iter().find(|d| d.name == layout.name) {
-                        layout.hidden = def.hidden;
-                    }
-                }
-                manager.active_index = previous_active_name
-                    .and_then(|name| manager.layouts.iter().position(|l| l.name == name))
-                    .unwrap_or(0);
-                // Initial last-scene = current if it's a scene layout, else 0.
-                manager.last_scene_index = manager
-                    .layouts
-                    .get(manager.active_index)
-                    .filter(|l| !l.hidden)
-                    .map(|_| manager.active_index)
-                    .unwrap_or(0);
-                let tree = manager
-                    .layouts
-                    .get(manager.active_index)
-                    .map(|l| l.tree.clone())
-                    .unwrap_or_else(renzora_ui::layouts::scene_layout);
-                (manager, DockingState { tree })
-            }
-            None => (LayoutManager::default(), DockingState::default()),
-        };
-
         app.init_state::<EditorState>()
             .init_resource::<ThemeManager>()
             .init_resource::<PanelRegistry>()
             .init_resource::<renzora::ShellPanelRegistry>()
-            .insert_resource(initial_docking)
-            .insert_resource(initial_manager)
             .init_resource::<FloatingPanels>()
             .init_resource::<DocumentTabState>()
             .init_resource::<renzora_ui::EditorContext>()
@@ -396,11 +275,6 @@ impl Plugin for RenzoraEditorPlugin {
             shortcut_dispatch_system.run_if(in_state(SplashState::Editor)),
         );
 
-        // Auto-save the dock layout whenever it changes.
-        app.init_resource::<PendingLayoutSave>().add_systems(
-            Update,
-            (mark_layout_dirty, flush_layout_save).run_if(in_state(SplashState::Editor)),
-        );
 
         // Mirror the open document tabs into project.toml so a project reload
         // can restore them. Gated on the Editor state so the default seeded
@@ -967,83 +841,6 @@ fn persist_open_tabs(
     }
 }
 
-/// Sync `EditorContext` to whatever the active document tab represents and
-/// route the workspace layout accordingly. Scene tabs restore the user's
-/// last chosen scene-mode layout (`last_scene_index`); asset tabs force
-/// their hidden asset-mode variant.
-///
-/// Call this after any change to the active document tab (activate, close,
-/// add). Idempotent — safe to call when nothing changed.
-fn sync_context_and_layout_for_active_tab(world: &mut World) {
-    use renzora_ui::{DocumentTabState, EditorContext};
-
-    let Some(tab) = world
-        .get_resource::<DocumentTabState>()
-        .and_then(|ts| ts.active_tab().cloned())
-    else {
-        return;
-    };
-
-    let new_ctx = EditorContext::from_tab(&tab);
-    world.insert_resource(new_ctx.clone());
-
-    match new_ctx {
-        EditorContext::Scene => {
-            let restore_idx = world
-                .get_resource::<LayoutManager>()
-                .map(|lm| lm.last_scene_index)
-                .unwrap_or(0);
-            // Only switch if we're currently in a different (likely hidden)
-            // layout — avoids resetting the user's dock edits unnecessarily.
-            let needs_switch = world
-                .get_resource::<LayoutManager>()
-                .map(|lm| lm.active_index != restore_idx)
-                .unwrap_or(false);
-            if needs_switch {
-                switch_layout(world, restore_idx);
-            }
-        }
-        EditorContext::Asset { kind, .. } => {
-            // Prefer the hidden asset-mode layout when the kind has one
-            // (panels know how to render from file path). Otherwise fall
-            // back to the scene-mode layout for that kind — same as the
-            // pre-context-aware behaviour, until those panels are wired.
-            if let Some(layout) = kind.asset_layout_name().or_else(|| kind.layout_name()) {
-                switch_layout_by_name(world, layout);
-            }
-        }
-    }
-}
-
-/// Switch to a layout by index.
-fn switch_layout(world: &mut World, index: usize) {
-    let new_tree = world
-        .get_resource::<LayoutManager>()
-        .and_then(|lm| lm.layouts.get(index).map(|l| l.tree.clone()));
-    if let Some(tree) = new_tree {
-        if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
-            docking.tree = tree;
-        }
-        if let Some(mut layout_mgr) = world.get_resource_mut::<LayoutManager>() {
-            layout_mgr.active_index = index;
-        }
-        // Clear any floating panels when switching layouts
-        if let Some(mut floating) = world.get_resource_mut::<FloatingPanels>() {
-            floating.panels.clear();
-        }
-    }
-}
-
-/// Switch to a layout by name.
-pub fn switch_layout_by_name(world: &mut World, name: &str) {
-    let index = world
-        .get_resource::<LayoutManager>()
-        .and_then(|lm| lm.layouts.iter().position(|l| l.name == name));
-    if let Some(i) = index {
-        switch_layout(world, i);
-    }
-}
-
 /// Open (or focus an existing) document tab for the given asset path, then
 /// switch to the layout appropriate for its kind. Called by the asset browser
 /// when the user double-clicks a file.
@@ -1092,8 +889,12 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
         });
     }
 
-    // Sync EditorContext + route to the appropriate (asset-mode or scene-mode) layout.
-    sync_context_and_layout_for_active_tab(world);
+    // `EditorContext` and the workspace both follow the active tab, and both are
+    // the shell's job: `renzora_shell::sync_workspace_to_active_doc` reads the
+    // new tab's kind, writes `EditorContext`, and activates that kind's
+    // workspace against the live dock. What used to be called here did the same
+    // against `LayoutManager` and `DockingState`, which nothing has rendered
+    // since the bevy_ui dock replaced them.
 
     match kind {
         DocTabKind::Script | DocTabKind::Shader => {

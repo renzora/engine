@@ -327,18 +327,6 @@ fn open_in_code_editor(world: &mut World, path: PathBuf) {
     let kind = renzora_editor_framework::doc_kind_for_path(&path).unwrap_or(DocTabKind::Script);
     renzora_editor_framework::open_asset_tab(world, &path, kind);
 
-    // egui dock model (legacy backend): focus/add the panel, or switch layout,
-    // per the `code_open_switch_layout` setting.
-    let switch = world
-        .get_resource::<renzora_editor_framework::EditorSettings>()
-        .map(|s| s.code_open_switch_layout)
-        .unwrap_or(false);
-    if switch {
-        renzora_editor_framework::switch_layout_by_name(world, "Scripting");
-    } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor_framework::DockingState>() {
-        docking.tree.focus_or_add_panel("code_editor");
-    }
-
     // Nothing here for the bevy_ui shell's dock: revealing the code-editor panel
     // there is `sync_workspace_to_active_doc`'s job now, because it runs *after*
     // the workspace switch the new tab triggers. Adding the panel from here put

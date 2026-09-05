@@ -765,11 +765,6 @@ fn script_open_click(
                 }
             };
             w.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
-            if let Some(mut docking) =
-                w.get_resource_mut::<renzora_editor_framework::DockingState>()
-            {
-                docking.tree.focus_or_add_panel("code_editor");
-            }
             if let Some(mut dock) = w.get_resource_mut::<renzora_ember::dock::Dock>() {
                 dock.tree.focus_or_add_panel("code_editor");
             }

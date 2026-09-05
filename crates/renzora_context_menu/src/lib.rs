@@ -29,7 +29,7 @@ use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_editor_framework::{
-    ActiveTool, DockingState, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
+    ActiveTool, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
 };
 
@@ -125,7 +125,7 @@ fn detect_right_click_tap(
     active_tool: Option<Res<ActiveTool>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     selection: Option<Res<EditorSelection>>,
-    docking: Option<Res<DockingState>>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
 ) {
     // Accumulate motion every frame — works even when the camera has
     // grabbed the cursor. Only counts while the button is held.
@@ -181,7 +181,10 @@ fn detect_right_click_tap(
     // would spawn the scene's Add / EntityActions menu, because
     // ViewportState.screen_position is stale from when the Viewport tab
     // was last rendered.
-    if !docking
+    // Read from the live dock. This was `DockingState`, whose tree was seeded
+    // once at startup and never updated by the bevy_ui dock, so the gate was
+    // answering about a layout that had not been true since boot.
+    if !dock
         .as_deref()
         .is_none_or(|d| d.tree.is_active_tab("viewport"))
     {

@@ -16,22 +16,22 @@
 //!
 //! # Why this is a queue and not a direct write
 //!
-//! The obvious implementation is to reach for `LayoutManager` and push. A plugin
-//! cannot: `LayoutManager` lives in `renzora_ui`, and a native plugin links
-//! `bevy`, `renzora` and `renzora_ember` and nothing else (see `Externs` in
-//! `renzora_plugin_build`). Widening that list to a fourth shared image would
-//! make every plugin's ABI depend on the editor's layout crate, which is a large
-//! price for one registration.
+//! The obvious implementation is to reach for the editor's layout list and push
+//! into it. A plugin cannot: that list is `renzora_shell`'s `ShellLayouts`, and
+//! a native plugin links `bevy`, `renzora` and `renzora_ember` and nothing else
+//! (see `Externs` in `renzora_plugin_build`). Widening that list to a fourth
+//! shared image would make every plugin's ABI depend on the editor's shell
+//! crate, which is a large price for one registration.
 //!
-//! So this crate holds the request and `renzora_editor_framework` — which links
-//! both this crate and `renzora_ui` — drains it into `LayoutManager`. That is the
-//! same shape `PluginPanels` and `PluginAudioBackend` already use for the C-ABI
-//! boundary: the guest describes what it wants in vocabulary it can reach, and
-//! the crate that owns the real structure performs it.
+//! So this crate holds the request and `renzora_shell` drains it into the dock
+//! it draws. That is the same shape `PluginPanels` and `PluginAudioBackend`
+//! already use for the C-ABI boundary: the guest describes what it wants in
+//! vocabulary it can reach, and the crate that owns the real structure performs
+//! it.
 //!
 //! It also means registration order stops mattering. A plugin's `build` runs
-//! whenever the loader gets to it, which may be before or after the editor has
-//! restored `LayoutManager` from disk; a queue drained every frame is correct
+//! whenever the loader gets to it, which may be before or after the shell has
+//! restored its saved layouts from disk; a queue drained every frame is correct
 //! either way, where a direct write would land in a resource about to be
 //! overwritten.
 //!
@@ -52,8 +52,8 @@ pub struct WorkspaceRequest {
     /// Shown in the title-bar layout switcher, and the key the request is
     /// deduplicated on.
     pub name: String,
-    /// The arrangement, in this crate's vocabulary. `renzora_editor_framework`
-    /// converts it to the shell's own tree when it drains this.
+    /// The arrangement, in this crate's vocabulary, which is also the dock's:
+    /// `renzora_shell` installs it as-is.
     pub tree: DockTree,
     /// Hidden workspaces do not appear in the switcher. For asset-mode variants
     /// the editor activates on its own; a plugin adding an ordinary workspace
@@ -61,11 +61,11 @@ pub struct WorkspaceRequest {
     pub hidden: bool,
 }
 
-/// Workspaces registered but not yet installed into the editor's layout manager.
+/// Workspaces registered but not yet installed into the editor's ribbon.
 ///
-/// Drained by `renzora_editor_framework`. Left in place (rather than removed)
-/// when nothing drains it, which is what keeps this crate usable in a build with
-/// no editor shell: the requests simply accumulate and nothing reads them.
+/// Drained by `renzora_shell`. Left in place (rather than removed) when nothing
+/// drains it, which is what keeps this crate usable in a build with no editor
+/// shell: the requests simply accumulate and nothing reads them.
 #[derive(Resource, Default)]
 pub struct PendingWorkspaces(pub Vec<WorkspaceRequest>);
 

@@ -144,12 +144,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             s.is_modified = true;
             s.current_file_path = None;
         }
-        // Match the double-click/open-asset path: switch the framework layout to
-        // the particle workspace so `particle_preview` is mounted in DockingState.
-        // The preview camera + effect spawn are gated on
-        // `particle_preview_panel_mounted` (which reads DockingState); without
-        // this the new effect's preview never activates and stays blank.
-        renzora_editor_framework::switch_layout_by_name(w, "Particles");
+        // No explicit workspace switch. This called `switch_layout_by_name`,
+        // which drove `LayoutManager` and therefore moved nothing the bevy_ui
+        // dock renders. Opening the effect creates a document tab, and
+        // `renzora_shell::sync_workspace_to_active_doc` activates that kind's
+        // workspace from the tab itself, which is what actually mounts
+        // `particle_preview` and un-gates the preview camera.
     }));
     let open_btn = action_button(commands, fonts, "Open", text_muted(), Arc::new(|w: &mut World| {
         #[cfg(not(target_arch = "wasm32"))]

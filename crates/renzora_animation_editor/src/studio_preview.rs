@@ -11,7 +11,6 @@ use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
-use renzora_editor_framework::DockingState;
 
 use crate::AnimationEditorState;
 
@@ -22,21 +21,21 @@ pub use renzora::core::viewport_types::STUDIO_PREVIEW_LAYER;
 /// Run condition: `true` when the Studio Preview panel is in the active dock
 /// tree. All expensive studio-preview work (camera rendering, model cloning,
 /// skeleton drawing, etc.) is gated on this so other layouts don't pay for it.
-pub fn studio_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.is_some_and(|d| d.tree.contains_panel("studio_preview"))
+pub fn studio_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock>>) -> bool {
+    dock.is_some_and(|d| d.tree.contains_panel("studio_preview"))
 }
 
 /// Toggles the studio-preview camera on/off with panel visibility and tears
 /// down the cloned model + tracker when the panel closes. Runs every frame
 /// regardless of panel state so close transitions are always caught.
 pub fn sync_studio_preview_activation(
-    docking: Option<Res<DockingState>>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
     mut camera_q: Query<&mut Camera, With<StudioPreviewCamera>>,
     preview_q: Query<Entity, With<StudioPreviewModel>>,
     mut tracker: ResMut<StudioPreviewTracker>,
     mut commands: Commands,
 ) {
-    let mounted = docking.is_some_and(|d| d.tree.contains_panel("studio_preview"));
+    let mounted = dock.is_some_and(|d| d.tree.contains_panel("studio_preview"));
     for mut camera in camera_q.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;

@@ -12,7 +12,6 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::ui::ComputedNode;
 use bevy_hanabi::prelude::*;
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor_framework::DockingState;
 
 use renzora_hanabi::builder::build_complete_effect;
 use renzora_hanabi::data::EditorMode;
@@ -501,19 +500,19 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
 
 /// Run condition: `true` when the Particle Preview panel is in the active
 /// dock tree. Heavy per-frame work (effect spawn/update) is gated on this.
-pub fn particle_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.is_some_and(|d| d.tree.contains_panel("particle_preview"))
+pub fn particle_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock>>) -> bool {
+    dock.is_some_and(|d| d.tree.contains_panel("particle_preview"))
 }
 
 fn sync_preview_camera_active(
     editor_state: Res<ParticleEditorState>,
-    docking: Option<Res<DockingState>>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
     mut camera: Query<&mut Camera, With<ParticlePreviewCamera>>,
     preview_effects: Query<Entity, With<ParticlePreviewEffect>>,
     mut tracker: ResMut<ParticlePreviewTracker>,
     mut commands: Commands,
 ) {
-    let panel_mounted = docking.is_some_and(|d| d.tree.contains_panel("particle_preview"));
+    let panel_mounted = dock.is_some_and(|d| d.tree.contains_panel("particle_preview"));
     let should_be_active = panel_mounted && editor_state.current_effect.is_some();
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {

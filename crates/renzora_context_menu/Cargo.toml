@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+# For `dock::Dock`, the live dock tree. The viewport context menu has to know
+# whether the viewport is the active tab, and the resource it used to ask
+# (`DockingState`) was seeded once at boot and never updated by the bevy_ui dock.
+renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 

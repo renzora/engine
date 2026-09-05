@@ -595,10 +595,17 @@ fn consume_open_code_editor_file(
 /// formats (scripts, shaders, configs). Reset when leaving so other workspaces
 /// see the full asset list again.
 fn sync_asset_filter_for_scripting(
-    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
     mut filter: ResMut<renzora_editor_framework::AssetBrowserExtensionFilter>,
 ) {
-    let is_scripting = layout_mgr.active_name() == "Scripting";
+    // Keyed on the code editor being docked rather than on a workspace called
+    // "Scripting". It used to read `LayoutManager::active_name`, which the
+    // bevy_ui dock never updated, so the filter never engaged. Keying on the
+    // panel also means docking the code editor into any workspace narrows the
+    // browser, which is the behaviour the name was standing in for.
+    let is_scripting = dock
+        .as_deref()
+        .is_some_and(|d| d.tree.contains_panel("code_editor"));
     let desired: Option<Vec<String>> = if is_scripting {
         Some(
             [

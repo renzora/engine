@@ -182,30 +182,11 @@ fn collect_items(
         });
     }
 
-    // Layouts — every visible workspace layout becomes a "Switch to X" entry.
-    if let Some(manager) = world.get_resource::<renzora_editor_framework::LayoutManager>() {
-        let layouts: Vec<(usize, String)> = manager
-            .visible_layouts()
-            .map(|(i, l)| (i, l.name.clone()))
-            .collect();
-        for (idx, name) in layouts {
-            let label = format!("Switch to {}", name);
-            out.push(PaletteItem {
-                kind: "Layout",
-                label,
-                detail: None,
-                handler: Arc::new(move |w: &mut World| {
-                    w.resource_scope::<renzora_editor_framework::LayoutManager, _>(|w, mut mgr| {
-                        if let Some(mut docking) =
-                            w.get_resource_mut::<renzora_editor_framework::DockingState>()
-                        {
-                            mgr.switch(idx, &mut docking);
-                        }
-                    });
-                }),
-            });
-        }
-    }
+    // No "Switch to <workspace>" entries. They drove `LayoutManager`, which
+    // the bevy_ui dock never read, so every one of them did nothing when
+    // clicked. The ribbon is the workspace switcher now, and duplicating it here
+    // would mean reaching into `renzora_shell`'s private layout state for a
+    // command the user already has one click away.
 
     // Panels — every registered panel can be opened via "Open <Panel>".
     // Focuses the panel if already in the dock; otherwise adds it to the
@@ -222,9 +203,18 @@ fn collect_items(
                 label,
                 detail: None,
                 handler: Arc::new(move |w: &mut World| {
-                    if let Some(mut docking) = w.get_resource_mut::<renzora_editor_framework::DockingState>()
-                    {
-                        docking.tree.focus_or_add_panel(&id);
+                    // The live dock, not `DockingState`: that resource was
+                    // seeded once at boot and never updated, so this focused a
+                    // panel in a tree nothing draws. `DockDirty` is what makes
+                    // the change show up, the same way the shell's own dock
+                    // mutations do it.
+                    let changed = w
+                        .get_resource_mut::<renzora_ember::dock::Dock>()
+                        .is_some_and(|mut d| d.tree.focus_or_add_panel(&id));
+                    if changed {
+                        if let Some(mut dirty) = w.get_resource_mut::<renzora_ember::dock::DockDirty>() {
+                            dirty.0 = true;
+                        }
                     }
                 }),
             });

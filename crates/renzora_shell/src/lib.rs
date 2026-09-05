@@ -191,12 +191,10 @@ impl Plugin for ShellPlugin {
             active,
             plugin_provided: std::collections::HashSet::new(),
         });
-        // Workspaces a plugin registered through `register_workspace`. Drained
-        // here rather than in `renzora_editor_framework` because THIS is the
-        // dock the editor draws: `renzora_ui::LayoutManager` is the older egui
-        // model, and a workspace installed into that one never reaches the
-        // ribbon. No tree conversion either, since this dock already speaks
-        // ember's `DockTree` and that is the type a plugin registers with.
+        // Workspaces a plugin registered through `register_workspace`. This is
+        // the dock the editor draws, so this is where they have to land. No tree
+        // conversion either: this dock already speaks ember's `DockTree`, which
+        // is the type a plugin registers with.
         app.init_resource::<renzora_ember::workspace::PendingWorkspaces>()
             .add_systems(Update, install_plugin_workspaces);
         // Reopen persisted floating dock windows. The spawn system queues the

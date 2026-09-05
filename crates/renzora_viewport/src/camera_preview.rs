@@ -16,7 +16,7 @@ use renzora::core::{
     DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera,
     PrimaryViewportCamera,
 };
-use renzora_editor_framework::{DockingState, EditorSelection};
+use renzora_editor_framework::EditorSelection;
 
 /// Skybox brightness for the shared atmosphere cubemap when synthesizing a
 /// `Skybox` from the primary's `GeneratedEnvironmentMapLight`. Matches
@@ -123,25 +123,29 @@ pub fn resize_camera_preview(
 /// Manages the camera preview — spawns/updates/despawns the preview camera.
 ///
 /// Shows: selected Camera3d → DefaultCamera → first scene Camera3d.
-/// Run condition: true when the Camera Preview panel is in the active egui dock
-/// tree, or the bevy_ui native preview panel is mounted (its image exists).
+/// Run condition: true when the native preview panel is mounted (its image
+/// exists).
+///
+/// This used to be that `||` an `is_some_and` on `DockingState`. The egui half
+/// answered from a tree seeded at boot and never updated, so it reported the
+/// panel mounted for the whole session and the condition was effectively always
+/// true.
 pub fn camera_preview_panel_mounted(
-    docking: Option<Res<DockingState>>,
     native: Query<(), With<crate::camera_preview_panel::CamPreviewView>>,
 ) -> bool {
-    docking.is_some_and(|d| d.tree.contains_panel("camera_preview")) || !native.is_empty()
+    !native.is_empty()
 }
 
 /// Toggles the Camera Preview camera on/off with panel visibility and despawns
 /// the preview camera entity when the panel closes.
 pub fn sync_camera_preview_activation(
-    docking: Option<Res<DockingState>>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
     mut preview_cameras: Query<&mut Camera, With<CameraPreviewMarker>>,
     preview_entities: Query<Entity, With<CameraPreviewMarker>>,
     mut preview_state: Option<ResMut<CameraPreviewState>>,
     mut commands: Commands,
 ) {
-    let mounted = docking.is_some_and(|d| d.tree.contains_panel("camera_preview"));
+    let mounted = dock.is_some_and(|d| d.tree.contains_panel("camera_preview"));
     for mut camera in preview_cameras.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;

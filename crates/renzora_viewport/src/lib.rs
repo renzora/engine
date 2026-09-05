@@ -49,7 +49,6 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
-use renzora_editor_framework::DockingState;
 
 pub use camera_preview::CameraPreviewState;
 // Re-export all viewport types from core (they now live in renzora::viewport_types)
@@ -452,7 +451,6 @@ fn compute_viewport_render_resolution(
 /// singleton [`ViewportState`] that the gizmo / picking / overlay stack reads.
 fn resolve_viewport_slots(
     resize_req: Res<ViewportResizeRequest>,
-    docking: Option<Res<DockingState>>,
     ember_dock: Option<Res<renzora_ember::dock::Dock>>,
     ember_fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     ember_windows: Option<Res<renzora_ember::dock::DockWindows>>,
@@ -483,27 +481,28 @@ fn resolve_viewport_slots(
     #[allow(clippy::needless_range_loop)] // `i` indexes several parallel arrays
     for i in 0..VIEWPORT_COUNT {
         let req = &resize_req.slots[i];
-        // "Docked" = the slot's panel is visible in the live dock. The native
-        // (ember) dock is authoritative when it exists: a slot counts only
-        // while its panel is some leaf's *active tab*, so hidden tabs and
-        // viewport-less workspaces release their slot. The egui `DockingState`
-        // is only a fallback — it's seeded with the boot layout's tree and
-        // goes stale once the ember shell drives the UI, permanently
-        // reporting the viewport as docked (which kept the always-on slot-0
-        // camera rendering the full scene behind empty workspaces).
-        let docked = match (ember_dock.as_ref(), docking.as_ref()) {
-            // Floating dock windows count as docked too — a viewport torn off
-            // onto another monitor is still visible and must keep its camera.
-            // So does the fixed bottom area: a viewport dragged down there is
-            // on screen and must keep rendering.
-            (Some(d), _) => renzora_ember::dock::panel_visible_anywhere(
+        // "Docked" = the slot's panel is visible in the live dock. A slot counts
+        // only while its panel is some leaf's *active tab*, so hidden tabs and
+        // viewport-less workspaces release their slot.
+        //
+        // Floating dock windows count as docked too: a viewport torn off onto
+        // another monitor is still visible and must keep its camera. So does the
+        // fixed bottom area, for the same reason.
+        //
+        // There used to be a `DockingState` fallback here for when the ember
+        // dock was absent. Its own comment recorded the problem with it: seeded
+        // from the boot layout and never updated, it reported the viewport as
+        // docked forever, which kept the slot-0 camera rendering the whole scene
+        // behind empty workspaces. With that gone the absent-dock case answers
+        // `true`, which is what it answered before any dock existed.
+        let docked = match ember_dock.as_ref() {
+            Some(d) => renzora_ember::dock::panel_visible_anywhere(
                 VIEWPORT_PANEL_IDS[i],
                 Some(d),
                 ember_fixed.as_deref(),
                 ember_windows.as_deref(),
             ),
-            (None, Some(d)) => d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]),
-            (None, None) => true,
+            None => true,
         };
         let hovered = req.hovered.load(Ordering::Relaxed) && docked && !modal_open;
         let screen_position = Vec2::new(
