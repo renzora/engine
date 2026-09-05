@@ -180,8 +180,31 @@ pub fn plugin_source_root() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// The directory holding the editor's DATA: `plugins/`, `resources/`, the SDK,
+/// and the `.toolchain` cache.
+///
+/// NOT `current_exe().parent()`, which is what this was. Inside a Linux
+/// AppImage that parent is a read-only temporary mount under `/tmp`, holding
+/// the squashed copy of the tree and nothing else. Every caller here wants the
+/// other thing:
+///
+///   * `plugin_source_root` and `stage_runtime_native_plugins` read `plugins/`,
+///     which is where the MARKETPLACE installs, i.e. beside the bundle. From
+///     the mount they saw only whatever was squashed in at build time, so a
+///     quick export shipped the plugins we bundled and silently dropped every
+///     one the user had installed.
+///   * `bundle::icon_bytes` reads `resources/icon.png`, and `xtask`'s wrapper
+///     moves binaries and shared libraries into the AppDir but leaves
+///     `resources/` outside it.
+///   * `toolchain::ensure_rust` WRITES a `.toolchain` cache, which a read-only
+///     squashfs cannot accept at all.
+///
+/// `install::root()` is the shared answer: it prefers `$APPIMAGE`, which the
+/// AppImage runtime sets to the archive's own path, and falls back to
+/// `current_exe().parent()` everywhere else. So this is unchanged on Windows,
+/// macOS and a plain Linux tree.
 pub fn editor_dir() -> Option<PathBuf> {
-    std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
+    renzora_plugin_build::install::root()
 }
 
 /// The engine source a lean build compiles: the checkout the editor runs from

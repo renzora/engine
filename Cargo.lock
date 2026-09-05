@@ -7753,6 +7753,7 @@ dependencies = [
  "renzora_native_plugin",
  "renzora_net",
  "renzora_plugin",
+ "renzora_plugin_build",
  "renzora_rpak",
  "renzora_rust_script",
  "rfd",

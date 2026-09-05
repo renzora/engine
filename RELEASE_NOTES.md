@@ -7,6 +7,11 @@
   contain, and `Path::join` discards its base when handed an absolute path. Since
   an installed plugin is compiled and loaded, this was a code-execution channel.
   Both extraction loops now use the zip crate's own `enclosed_name` check.
+- fix(export): a quick export from an installed Linux editor ships the native
+  plugins you actually installed. `editor_dir` was `current_exe().parent()`,
+  which inside an AppImage is a read-only temporary mount, so the exporter read
+  `plugins/` and `resources/` from the squashed copy rather than from beside the
+  bundle where the marketplace installs them.
 - fix(import): a malformed USD or Alembic file is reported instead of taking the
   editor down. Offsets in both formats are 64-bit values read straight out of the
   file, and the guards against them were written `if off + 8 > data.len()`, which

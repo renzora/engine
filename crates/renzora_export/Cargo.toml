@@ -17,6 +17,11 @@ renzora_rust_script = { path = "../renzora_rust_script" }
 # For `read_scope` — asking a built plugin library whether it belongs in a game,
 # rather than parsing the source for an answer that describes a different build.
 renzora_native_plugin = { path = "../renzora_native_plugin" }
+# For `install::root()`, which `editor_dir` delegates to. Already in the graph
+# under both crates above; named directly because this crate calls it rather
+# than merely depending on something that does. It is the one place that knows
+# `$APPIMAGE` points at the archive rather than at the mount it runs from.
+renzora_plugin_build = { path = "../renzora_plugin_build" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 # Edit the export copy's Cargo.toml (strip Bevy features) while preserving the
