@@ -55,6 +55,9 @@ pub mod theme;
 pub mod toolbar;
 pub mod virtual_scroll;
 pub mod widgets;
+/// Workspace registration, for a plugin contributing a whole editor mode rather
+/// than a single panel. Queued here, drained by `renzora_editor_framework`.
+pub mod workspace;
 
 /// Registers all of ember's runtime systems (theme + dock + widgets + fonts +
 /// the reactive bindings/keyed-list drivers).
