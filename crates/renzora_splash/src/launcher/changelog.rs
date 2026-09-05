@@ -268,16 +268,21 @@ const EXCERPT_CHARS: usize = 1200;
 /// blocks — a cut mid-list or mid-fence renders as literal syntax.
 fn excerpt(body: &str) -> (String, bool) {
     let mut out = String::new();
-    let mut lines = 0usize;
+    // Tracked rather than re-measured with `out.chars().count()` each iteration,
+    // which walked the whole accumulated string every line. The `+ 1` is the
+    // newline pushed with each line, so the budget still counts what `out`
+    // actually holds.
+    let mut chars = 0usize;
     let mut truncated = false;
-    for line in body.lines() {
-        if lines >= EXCERPT_LINES || out.chars().count() + line.chars().count() > EXCERPT_CHARS {
+    for (taken, line) in body.lines().enumerate() {
+        let len = line.chars().count();
+        if taken >= EXCERPT_LINES || chars + len > EXCERPT_CHARS {
             truncated = true;
             break;
         }
         out.push_str(line);
         out.push('\n');
-        lines += 1;
+        chars += len + 1;
     }
     // A single line longer than the whole budget would otherwise leave the card
     // empty; show it rather than nothing.
