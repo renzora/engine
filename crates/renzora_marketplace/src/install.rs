@@ -125,16 +125,41 @@ fn single_asset_path(
         // fall through to the download's original name rather than write a
         // nameless file. Rare enough that the UUID fallback is acceptable.
     }
-    let filename = if !download_filename.is_empty() {
+
+    // The name in the asset browser is the one from the store page.
+    //
+    // It used to be whatever the download was called, which is a storage key
+    // for anything the server did not name — so a bought sound arrived as
+    // `d999e56d-e24a-4a7a-bb22-fa82c1118e36`, with no extension, and the panel
+    // showed that. The bytes were right and the asset was unfindable.
+    //
+    // Only the STEM comes from the asset; the extension still comes from the
+    // download, because it is what says whether the bytes are a `.png` or an
+    // `.ogg` and nothing in the catalogue is authoritative about that.
+    let downloaded = if !download_filename.is_empty() {
         download_filename
     } else {
         file_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(asset_name)
     };
-    dest.join(filename)
+    let ext = Path::new(downloaded)
+        .extension()
+        .and_then(|e| e.to_str())
+        .filter(|e| !e.is_empty());
+    match (sanitize_theme_stem(asset_name), ext) {
+        (Some(stem), Some(ext)) => dest.join(format!("{stem}.{ext}")),
+        // No usable extension: keep the stem anyway. A file the asset browser
+        // can name and not classify beats one it can do neither with.
+        (Some(stem), None) => dest.join(stem),
+        // Nothing usable in the asset's name — see the theme note above.
+        (None, _) => dest.join(downloaded),
+    }
 }
 
 /// Sanitize a human asset name into a filename-safe stem for a single-file
-/// theme. This stem is exactly what the user reads in the theme dropdown, so we
+/// asset.
+///
+/// Named for themes because they were the first to need it; every single-file
+/// install is named this way now — see [`single_asset_path`]. This stem is exactly what the user reads in the theme dropdown, so we
 /// keep letters and spaces and only strip what a filesystem rejects: the path
 /// separators / reserved characters `/ \ : * ? " < > |` and control chars.
 /// Whitespace runs collapse to one space, and leading/trailing spaces and dots

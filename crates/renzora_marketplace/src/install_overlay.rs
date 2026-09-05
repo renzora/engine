@@ -397,7 +397,24 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // Everything above is the confirm step; wrap it so pressing Install can
     // swap it out for the progress view rather than closing the overlay.
     let confirm_step = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            // Takes the height `body` was given rather than the height its own
+            // contents want. Without this the folder tree — which is
+            // `flex_grow: 1` and scrolls, and so is happy to be any size — grew
+            // to fit every folder in the project, and this node grew with it,
+            // pushing the note beneath it and the Install and Cancel buttons off
+            // the bottom of a dialog whose height is fixed at 460px.
+            //
+            // `min_height: 0` is the half that does the work. A flex item's
+            // minimum is its content by default, so `flex_grow` alone would let
+            // it grow past its share and never shrink back.
+            flex_grow: 1.0,
+            min_height: Val::Px(0.0),
+            ..default()
+        })
         .id();
     commands.entity(confirm_step).add_children(&kids);
     bind_display(&mut commands, confirm_step, |w| {
