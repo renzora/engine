@@ -641,13 +641,23 @@ fn layout_blueprints() -> DockTree {
 /// workspace would be a second, independent instance of the same panel sitting
 /// right above it.
 fn layout_scripting() -> DockTree {
+    // Mirrors `renzora_ui::layouts::layout_scripting` — see the note there for
+    // why Problems is on the left and the editor owns the middle column.
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("problems"),
-            0.6,
+            DockTree::tabs(&["problems", "console"]),
+            0.5,
         ),
-        DockTree::leaf("code_editor"),
+        DockTree::horizontal(
+            DockTree::leaf("code_editor"),
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::leaf("shader_preview"),
+                0.62,
+            ),
+            0.66,
+        ),
         0.18,
     )
 }

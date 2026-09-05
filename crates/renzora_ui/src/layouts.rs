@@ -346,28 +346,42 @@ fn layout_blueprints() -> DockTree {
 
 /// Scripting: Hierarchy+Assets | CodeEditor+Console | Inspector+ScriptVariables
 fn layout_scripting() -> DockTree {
-    // Left column:   Hierarchy / Assets                         (~16%)
-    // Center column: Code editor / (Console+Problems tabbed)    (~57%)
-    // Right column:  Viewport                                   (~27%)
+    // Left column:   Hierarchy / Assets / (Problems+Console tabbed)  (~18%)
+    // Center column: Code editor, floor to ceiling                   (~54%)
+    // Right column:  Viewport over Shader Preview                    (~28%)
+    //
+    // Problems used to sit under the editor, tabbed with the console, and that
+    // is the one place it costs something: the editor is where the errors are,
+    // and a list of them stole height from the file they point into. Moved left,
+    // it reads beside the code rather than under it, and the editor gets the
+    // whole column — which is the point of a scripting workspace.
+    //
+    // Shader Preview goes bottom-right, under the viewport. It answers "what did
+    // that shader just do", which is a glance away from the code rather than
+    // something to hunt for, and it wants width more than height.
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::leaf("assets"),
-            0.4,
-        ),
-        DockTree::horizontal(
             DockTree::vertical(
-                DockTree::leaf("code_editor"),
+                DockTree::leaf("assets"),
                 DockTree::Leaf {
-                    tabs: vec!["console".into(), "problems".into()],
+                    tabs: vec!["problems".into(), "console".into()],
                     active_tab: 0,
                 },
-                0.72,
+                0.5,
             ),
-            DockTree::leaf("viewport"),
-            0.68,
+            0.32,
         ),
-        0.16,
+        DockTree::horizontal(
+            DockTree::leaf("code_editor"),
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::leaf("shader_preview"),
+                0.62,
+            ),
+            0.66,
+        ),
+        0.18,
     )
 }
 
