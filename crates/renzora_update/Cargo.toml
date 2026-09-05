@@ -14,6 +14,11 @@ serde = { version = "1", features = ["derive"] }
 # update path is compiled out on wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 renzora_net = { path = "../renzora_net" }
+# The splash dashboard's page registry, for the Updates page. The dependency runs
+# THIS way on purpose: `renzora_splash` is linked into the runtime, so a splash
+# that depended on this crate would drag `rfd`, `zip` and the release client into
+# the shipped game binary. See `splash_page`.
+renzora_splash = { path = "../renzora_splash" }
 # The "Install to ▸ Browse…" folder picker. Same direct `rfd` call every other
 # editor panel that needs a native dialog makes (the exporter, the importer, the
 # hub) — the C-ABI dialog bridge exists for *plugins*, which cannot link rfd.

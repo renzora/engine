@@ -272,7 +272,28 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         true,
     );
     commands.entity(root).insert(UpdateRoot);
+    let body = build_body(commands, fonts, true);
+    commands.entity(content).add_child(body);
+}
 
+/// The updater itself — headline, channel, version list, install path, progress
+/// and the action button — with no container of its own.
+///
+/// Split out of [`spawn_modal`] so the splash dashboard's Updates page can host
+/// the same tree (see [`crate::splash_page`]). Same reasoning as the
+/// marketplace's store overlay: there is nothing modal-shaped about an updater,
+/// and a second implementation of the install path, the overwrite confirmation
+/// and the sidecar handoff is the last thing this feature needs two of.
+///
+/// `in_modal` drops the **Later** button on a page, where there is no modal to
+/// dismiss and the rail is how you leave.
+///
+/// **One instance at a time.** [`rebuild_version_list`] drives the first
+/// `VersionList` it finds, so two live copies would leave one of them frozen.
+/// They cannot coexist today — the splash page never sets `UpdateState::visible`,
+/// so it never raises the modal over itself — and anything that changes that has
+/// to make the version list per-container first.
+pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: bool) -> Entity {
     let body = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -577,8 +598,15 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         })
     });
 
-    let (close, _, _) = pill(commands, fonts, "x", &renzora::lang::t("update.btn.later"));
-    commands.entity(close).insert(CloseBtn);
+    // "Later" dismisses the modal. On a page there is nothing to dismiss — the
+    // rail is how you leave — so it is not built at all rather than built and
+    // hidden, which would leave a `CloseBtn` in the world for `close_click` to
+    // find.
+    let close = in_modal.then(|| {
+        let (close, _, _) = pill(commands, fonts, "x", &renzora::lang::t("update.btn.later"));
+        commands.entity(close).insert(CloseBtn);
+        close
+    });
 
     let (action, action_ic, action_label) = pill(commands, fonts, "download-simple", "");
     commands.entity(action).insert(ActionBtn);
@@ -606,9 +634,10 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         }
     });
 
-    commands
-        .entity(row)
-        .add_children(&[notes_link, spacer, skip, close, action]);
+    let mut row_kids = vec![notes_link, spacer, skip];
+    row_kids.extend(close);
+    row_kids.push(action);
+    commands.entity(row).add_children(&row_kids);
 
     commands.entity(body).add_children(&[
         card,
@@ -624,7 +653,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         warning,
         row,
     ]);
-    commands.entity(content).add_child(body);
+    body
 }
 
 /// A small pill button: icon + label. Returns `(button, icon, label)` — both

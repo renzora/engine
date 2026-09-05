@@ -63,6 +63,8 @@ mod install;
 #[cfg(not(target_arch = "wasm32"))]
 mod dialog;
 #[cfg(not(target_arch = "wasm32"))]
+mod splash_page;
+#[cfg(not(target_arch = "wasm32"))]
 mod version;
 
 use bevy::prelude::*;
@@ -263,6 +265,10 @@ impl Plugin for UpdatePlugin {
                     ),
                 );
             dialog::register(_app);
+            // The same updater as a page on the splash dashboard. Registered
+            // here rather than in `renzora_splash` because everything it needs
+            // is in this crate; see the `splash_page` module doc.
+            splash_page::register(_app);
         }
     }
 }
