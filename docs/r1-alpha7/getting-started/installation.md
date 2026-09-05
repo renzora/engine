@@ -31,7 +31,9 @@ Want the quickest start? Grab a prebuilt engine for your platform from the downl
 
 **[renzora.com/download](/download)**
 
-Each platform ships as a `.zip` archive built from the [GitHub releases](https://github.com/renzora/engine/releases) — download it, extract, and run the engine directly. The archive contains two executables: `renzora-editor` (the editor, what you run) and `renzora` (the game runtime, which the editor launches when you hit Play), plus the plugins both load.
+Each platform ships as a `.zip` archive built from the [GitHub releases](https://github.com/renzora/engine/releases) — download it, extract, and run the engine directly. Windows gets a folder of files, Linux a single `.AppImage`, macOS a `.app` bundle.
+
+There is **one executable**, `renzora`, plus the plugins it loads. It runs as the editor when the editor image (`renzora_editor.dll` / `.so` / `.dylib`) is sitting beside it, and as your shipped game when it isn't — so "remove the editor" is deleting one file, and the binary you edit in is the same one your game runs on.
 
 ### Nightly builds
 
@@ -39,7 +41,7 @@ Alongside the numbered releases there are **nightlies** — an automated build o
 
 ### Windows
 
-Download the Windows `.zip`, extract it anywhere, and double-click `renzora-editor.exe`.
+Download the Windows `.zip`, extract it anywhere, and double-click `renzora.exe`.
 
 ### macOS
 

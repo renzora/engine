@@ -6,7 +6,7 @@ Exporting for the machine you're sitting at needs nothing extra — the editor y
 
 An export doesn't recompile the engine (except in [lean mode](overview.md#lean-single-binary-compiled-from-source)). It packs your project into a `.rpak` archive and combines it with a prebuilt runtime for the target platform:
 
-- **Desktop** — the template is the `renzora` binary and its `plugins/`. The engine ships two executables (`renzora` = the game runtime, `renzora-editor` = the editor), so the runtime already sitting beside your editor *is* the template for your own platform.
+- **Desktop** — the template is the `renzora` binary and its `plugins/`. There is only one executable: it runs as the editor when the editor image (`renzora_editor.dll` / `.so` / `.dylib`) is beside it and as your game when it isn't. So the binary you are already running *is* the template for your own platform — the export simply leaves the image behind.
 - **Mobile and web** — the template is a container shell (an unsigned APK, an `.app` bundle, a wasm + JS bundle) that the export step injects `game.rpak` into.
 
 So the only question a cross-platform export has to answer is: where does the target's runtime come from?

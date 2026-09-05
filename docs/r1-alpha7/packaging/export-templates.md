@@ -8,7 +8,7 @@ An export template is a **pre-built runtime artifact** for a target platform. Wh
 
 There are two kinds of template, and the difference matters:
 
-- **Desktop** (Windows / Linux / macOS): the template is the **`renzora` binary and its `plugins/`** — the game runtime, with no editor. The engine ships two executables (`renzora` = runtime, `renzora-editor` = editor), so "the desktop template" is the first of those plus the plugin libraries it loads. Nothing extra has to be compiled.
+- **Desktop** (Windows / Linux / macOS): the template is the **`renzora` binary and its `plugins/`** — the game runtime, with no editor. There is only one executable: `renzora` is the editor when the editor image (`renzora_editor.dll` / `.so` / `.dylib`) is beside it and the game when it isn't, so "the desktop template" is that binary and its plugin libraries, *without* the image. Nothing extra has to be compiled — the runtime already sitting beside your editor is the template.
 - **Mobile / web** (Android / iOS / WASM): the template is a **container shell** — an unsigned APK, an `.app` bundle, or a wasm + JS bundle — that the export step injects `game.rpak` into. These are produced by the per-platform build scripts under `templates/`.
 
 You only need a template for a platform **other than the one you are running on** — your own platform's runtime already sits beside the editor.
@@ -185,7 +185,7 @@ The background export worker (`crates/renzora_export/src/overlay.rs`) packs asse
 | iOS | Inject `game.rpak` into the `.app` bundle, re-zip as `.ipa` |
 | Web | Zip `renzora-runtime.js` + `_bg.wasm` + `game.rpak` + generated `index.html` |
 
-On desktop it also copies any shared libraries sitting beside the runtime — but **never** `renzora-editor`, so the export is a clean game. (Since Bevy went static there are usually none: the runtime is self-contained.)
+On desktop it also copies any shared libraries sitting beside the runtime — but **never** the editor image (anything matching `renzora_editor.*`), which is exactly what would turn the exported binary back into an editor. That one exclusion is what makes the export a clean game.
 
 ### Plugin selection
 

@@ -56,7 +56,7 @@ Two assets per desktop platform, from `scripts/package-release.sh`:
 
 | Asset | What it is |
 |---|---|
-| `<platform>.zip` | the **engine** — `renzora-editor` and `renzora` together. Linux ships the `.AppImage`; macOS the `.app`. |
+| `<platform>.zip` | the **engine** — `renzora` with the editor image (`renzora_editor.*`) beside it, plus `plugins/` and `sdk.tar.zst`. Windows is that tree flat; Linux ships the `.AppImage`; macOS the `.app`. |
 | `renzora-runtime-<platform>.zip` | the **export template** — the game runtime and its `plugins/`, no editor. |
 
 Plus `manifest.json` (every asset with size and SHA-256, keyed by platform) and `SHA256SUMS`.
@@ -65,7 +65,9 @@ The engine asset keeps the bare `<platform>.zip` name the earlier releases used,
 
 ### Executable bits
 
-`actions/upload-artifact` does **not** preserve unix file modes, so every binary reaches the publish job as `0644`. `package-release.sh` restores the bit on `renzora`, `renzora-editor`, `AppRun` and `*.AppImage` **before** zipping, because `zip` stores whatever mode a file has at the moment it is archived. Without that pass, Linux and macOS releases ship an engine nobody can launch.
+`actions/upload-artifact` does **not** preserve unix file modes, so every binary reaches the publish job as `0644`. `package-release.sh` restores the bit on `renzora`, `renzora-update`, `AppRun` and `*.AppImage` **before** zipping, because `zip` stores whatever mode a file has at the moment it is archived. Without that pass, Linux and macOS releases ship an engine nobody can launch.
+
+Only things that are *launched*. The editor image and everything under `plugins/` are `dlopen`'d rather than executed, so they stay `0644`.
 
 ## The C-ABI plugins
 
@@ -85,6 +87,8 @@ Measured on `windows-x64`, both changes stacked:
 |---|---|---|---|---|
 | `renzora.exe` | 187.0 MB | 138.2 MB | **24.9 MB** | −86.7% |
 | `renzora-editor.exe` | 265.6 MB | 194.3 MB | **35.1 MB** | −86.8% |
+
+These numbers are from when the editor was a **second executable**. It is a loadable image now (`renzora_editor.dll` beside `renzora.exe`), so the second row no longer names a file that ships — the measurement stands, the filename is history. UPX packs executables only, so the image is not packed and the ratios above no longer describe the whole download.
 
 The whole installed tree goes from ~470 MB to ~77 MB (the plugins stay unpacked at ~15 MB). The profile change alone accounts for a 26% cut and is the more durable half: it is less code, so it is less to page in, less to decompress and a smaller working set. UPX's 83% is a disk-and-download number that costs RAM and startup time back — see below.
 
@@ -119,7 +123,7 @@ The `plugins/*` and `tools/updater` builds are unaffected — each is its own wo
 
 Two things are deliberately not packed: **`renzora-update`**, because it is what repairs a broken install and should be the *last* binary with extra machinery between the loader and `main`; and **`plugins/*`**, 68 libraries totalling ~15 MB against 450 MB of executables.
 
-**UPX is not free at runtime.** A normally-linked executable is demand-paged: the OS maps it and faults in only the pages actually touched, so a 138 MB binary with ~40 MB of hot code costs ~40 MB of working set. A packed executable cannot do that — the whole image is decompressed into private committed memory before `main` runs. Packing therefore trades disk for **RAM and a startup pause, on every launch**, for the editor as much as for an exported game. If that becomes the wrong trade for the editor specifically, `compress_binaries` takes an explicit list of binaries and dropping `renzora-editor` from it is a one-line change.
+**UPX is not free at runtime.** A normally-linked executable is demand-paged: the OS maps it and faults in only the pages actually touched, so a 138 MB binary with ~40 MB of hot code costs ~40 MB of working set. A packed executable cannot do that — the whole image is decompressed into private committed memory before `main` runs. Packing therefore trades disk for **RAM and a startup pause, on every launch**, for the editor as much as for an exported game. If that becomes the wrong trade, `compress_binaries` takes an explicit list of binaries and dropping `renzora` from it is a one-line change — though note that is now the *only* packed engine binary, since the editor is a `dlopen`'d image and UPX packs executables only.
 
 **Ordering matters on macOS.** `compress_binaries` runs *before* `fixup_macos`, because packing rewrites the file and invalidates any signature it carries — and arm64 macOS refuses a binary whose signature does not verify. `rcodesign` must sign the packed file, not the other way round.
 

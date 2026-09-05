@@ -195,7 +195,7 @@ Search existing issues first to avoid duplicates. For a bug report, include:
 
 - **Steps to reproduce**, expected vs actual behavior.
 - **Environment** — OS, GPU, and `rustc --version`.
-- **Run mode** — editor (`renzora-editor`), shipped game (`renzora`), or the runtime launched with `--server` (headless), `--host` (listen server), or `--vr`. There is no `--no-editor` flag any more: the runtime binary can never become the editor. Note also that the only build features are `runtime` (default) and `wasm`; there is no `editor` feature to report.
+- **Run mode** — editor, shipped game, or the runtime launched with `--server` (headless), `--host` (listen server), or `--vr`. Both modes are the same `renzora` binary: it is the editor when the editor image (`renzora_editor.dll` / `.so` / `.dylib`) is beside it and the game when it isn't, so name the mode rather than an executable. There is no `--no-editor` flag; removing that one file is how you get a game. Note also that the only build features are `runtime` (default) and `wasm`; there is no `editor` feature to report.
 - **Crash logs** — the editor writes `~/.renzora/crashes/last_crash.txt` (plus a native dialog); the shipped game silently appends `crash.log` beside the executable. Attach the relevant one.
 
 ## License
