@@ -87,7 +87,7 @@ Both kinds live in `plugins/`. A native plugin is a **directory**; a C-ABI plugi
 
 ## Building
 
-From a source checkout, `cargo renzora` builds every native plugin under `plugins/` as part of staging. From a downloaded editor, there is nothing to run: the editor compiles a plugin the first time it sees one, and again whenever the engine moves under it.
+The editor compiles a plugin the first time it sees one, and again whenever the engine moves under it. That is the only build path, and it is the same from a source checkout as from a downloaded editor: `cargo renzora` stages the engine and the SDK but deliberately does not touch `plugins/`, which belongs to the editor rather than to this repository (see the note at the top of `xtask/src/main.rs`). Drop a plugin directory in and launch.
 
 **Do not run `cargo build` in a native plugin directory.** `plugins/` sits outside the engine workspace, so cargo would resolve it a fresh Bevy from crates.io — a different compilation with different `TypeId`s. The result builds cleanly, loads, and corrupts the World. The `bevy` and `renzora` entries in your `Cargo.toml` are there so rust-analyzer can resolve them while you author, and so Bevy's derive macros can read the manifest; the plugin itself is compiled by `rustc` against the SDK, and cargo is never pointed at those entries. (Your *other* dependencies are built by cargo — from a stripped manifest that mentions no Bevy. See [Crates from crates.io](#crates-from-cratesio).)
 

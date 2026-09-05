@@ -32,7 +32,7 @@ impl ScriptEngine {
     }
 
     /// Number of registered script backends. Exposed for diagnostic
-    /// panels (renzora_debugger scripting panel) so they can show the
+    /// panels (the `debugger` plugin's scripting panel) so they can show the
     /// scripting subsystem's wiring state without poking internals.
     pub fn backend_count(&self) -> usize {
         self.backends.len()

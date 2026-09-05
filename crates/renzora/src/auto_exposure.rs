@@ -3,7 +3,7 @@
 //! The metering and curve-building live in the `auto_exposure` **native
 //! plugin**; only the settings type is here, for the same reason as
 //! [`crate::clouds`]: `renzora_level_presets` inserts and queries this component
-//! while compiled into the editor binary, and `renzora_debugger` reads it to
+//! while compiled into the editor binary, and the `debugger` plugin reads it to
 //! show the live EV — both of them binaries that cannot name a type living in a
 //! plugin. One definition here means one `TypeId` on both sides of the dlopen
 //! boundary.

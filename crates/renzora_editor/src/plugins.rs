@@ -28,7 +28,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_command_palette::CommandPalettePlugin::default());
     app.add_plugins(renzora_console::ConsolePlugin::default());
     app.add_plugins(renzora_context_menu::ContextMenuPlugin::default());
-    app.add_plugins(renzora_debugger::DebuggerPlugin::default());
     app.add_plugins(renzora_distance_fog_editor::DistanceFogEditorPlugin::default());
     app.add_plugins(renzora_dof_editor::DepthOfFieldEditorPlugin::default());
     app.add_plugins(renzora_ember_editor::HuiEditorBundlePlugin::default());

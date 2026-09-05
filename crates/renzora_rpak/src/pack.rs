@@ -711,7 +711,6 @@ const EDITOR_ONLY_PREFIXES: &[&str] = &[
     "renzora_grid::",
     "renzora_hierarchy::",
     "renzora_inspector::",
-    "renzora_debugger::",
     "renzora_console::",
     "renzora_viewport::",
     "renzora_keybindings::",

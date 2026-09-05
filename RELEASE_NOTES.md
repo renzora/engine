@@ -1,6 +1,15 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(ember): `register_workspace`, the counterpart to `register_panel_content`.
+  A plugin can now contribute the arrangement its panels sit in, not just the
+  panels, so a whole editor mode can arrive and leave with its plugin.
+- refactor(debugger): the thirteen debug panels and the Debug workspace are a
+  native plugin (`plugins/debugger`) rather than a crate linked into the editor.
+  The perf tables they read moved to `renzora::diagnostics`, where a plugin can
+  reach them, and `renzora_shader`/`renzora_scripting` now publish counts instead
+  of the debugger reaching into `MaterialCache` and `ScriptEngine`. **An editor
+  without the plugin installed has no debug panels and no Debug workspace.**
 - security(marketplace): a plugin archive containing an absolute path (`/etc/…`,
   `C:\…`, or a bare leading `\`) escaped the install directory and could write
   anywhere the editor could. The guard tested for `..`, which those names do not

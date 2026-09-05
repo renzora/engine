@@ -5352,16 +5352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-stats"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c73f5c649995a115e1a0220b35e4df0a1294500477f97a91d0660fb5abeb574a"
-dependencies = [
- "libc",
- "windows-sys 0.52.0",
-]
-
-[[package]]
 name = "meshopt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7444,16 +7434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_debugger"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "memory-stats",
- "renzora",
- "renzora_ember",
-]
-
-[[package]]
 name = "renzora_distance_fog"
 version = "0.1.0"
 dependencies = [
@@ -7520,7 +7500,6 @@ dependencies = [
  "renzora_command_palette",
  "renzora_console",
  "renzora_context_menu",
- "renzora_debugger",
  "renzora_distance_fog",
  "renzora_distance_fog_editor",
  "renzora_dof",

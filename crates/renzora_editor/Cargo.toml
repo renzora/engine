@@ -66,7 +66,6 @@ editor = [
     "dep:renzora_code_editor",
     "dep:renzora_command_palette",
     "dep:renzora_context_menu",
-    "dep:renzora_debugger",
     "dep:renzora_export",
     "dep:renzora_foliage_editor",
     "dep:renzora_hierarchy",
@@ -148,7 +147,6 @@ renzora_blueprint_editor   = { path = "../renzora_blueprint_editor", optional = 
 renzora_code_editor        = { path = "../renzora_code_editor", optional = true }
 renzora_command_palette    = { path = "../renzora_command_palette", optional = true }
 renzora_context_menu       = { path = "../renzora_context_menu", optional = true }
-renzora_debugger           = { path = "../renzora_debugger", optional = true }
 renzora_export             = { path = "../renzora_export", optional = true }
 renzora_foliage_editor     = { path = "../renzora_foliage_editor", optional = true }
 renzora_hierarchy          = { path = "../renzora_hierarchy", optional = true }

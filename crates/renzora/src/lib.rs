@@ -49,7 +49,7 @@ pub mod clouds;
 pub use clouds::*;
 
 // Auto-exposure settings. Same boundary reason as `clouds`: `level_presets`
-// inserts and queries it, and `renzora_debugger` reads it for the live EV
+// inserts and queries it, and the `debugger` plugin reads it for the live EV
 // readout — both compiled into the binary, while the metering is a plugin.
 pub mod auto_exposure;
 pub use auto_exposure::*;
