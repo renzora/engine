@@ -238,7 +238,7 @@ workarounds that existed only to keep its constructors alive.
 
 ### Third-party extensions are standalone C-ABI plugins that link no Bevy
 
-A `plugins/*` cdylib exports exactly **one** required symbol,
+A standalone plugin cdylib exports exactly **one** required symbol,
 `renzora_plugin_init` (`sys::INIT_SYMBOL`), plus an optional
 `renzora_plugin_scope` (`sys::SCOPE_SYMBOL`; absent = `Runtime`). It imports
 nothing from the host — the whole interface is passed *in* as a function table.
@@ -313,7 +313,8 @@ per-entity convention on top — same driver, same SDK, same loading. See §7.
 No longer an ABI concern — a runtime one. Bevy installs its Tracy layer in
 `LogPlugin` at boot whenever that feature is compiled in, with no runtime
 off-switch, so it would arm Tracy (and grow RAM) on every launch. Tracy is opt-in
-via `plugins/tracy`, a standalone C-ABI plugin (frame marks + diagnostic plots,
+via the Tracy plugin from the marketplace, a standalone C-ABI plugin (frame
+marks + diagnostic plots,
 started on its own Settings toggle); per-system CPU zones need a dedicated
 profiling build that re-adds `trace_tracy`.
 
@@ -321,20 +322,26 @@ profiling build that re-adds `trace_tracy`.
 
 ## 4. Versioning & documentation
 
-- **Current dev version: `r1-alpha8`.** From now on, **only edit
-  `docs/r1-alpha8/`.** `docs/r1-alpha7/` is released and **frozen** (its frozen
+- **Current dev version: `r1-alpha7`.** From now on, **only edit
+  `docs/r1-alpha7/`.** `docs/r1-alpha6/` is released and **frozen** (its frozen
   ABI hash + release commit are recorded in `releases.json` at the repo root) —
-  do not mirror changes into it, nor into the older frozen `docs/r1-alpha6/`
-  and `docs/r1-alpha5/`. Top-level non-versioned `docs/*.md` are still fair game.
+  do not mirror changes into it, nor into the older frozen `docs/r1-alpha5/`.
+  Top-level non-versioned `docs/*.md` are still fair game.
+- **The next version is opened after its predecessor's tag is pushed, not
+  before.** `ENGINE_VERSION` is what the release workflow compares against the
+  tag to decide whether it is building a release or a nightly, so the constant
+  cannot run ahead of the tag — and `docs/_versions.json` must not run ahead of
+  the constant. Bump, fork `docs/<next>/` and reset `RELEASE_NOTES.md` in one
+  commit *after* the tag. `scripts/check-versions.sh` enforces the agreement.
 - **Always update the docs after adding or changing a feature.** Stale docs are
   treated as a bug. If you ship a feature (new scripting function, new inspector
   field, new plugin capability, new editor panel), update the matching page under
-  `docs/r1-alpha8/` in the same change.
+  `docs/r1-alpha7/` in the same change.
 - Docs are also published at <https://renzora.com/docs>. Pushing `docs/r1-alpha*`
   changes to `main` auto-publishes via `.github/workflows/sync-docs.yml` (rsync
   into the website repo, which redeploys). You do not copy anything by hand.
 
-`docs/r1-alpha8/` sections include: `getting-started`, `setup`, `scripting`,
+`docs/r1-alpha7/` sections include: `getting-started`, `setup`, `scripting`,
 `api`, `editor`, `editor-dev`, `engine-core`, `rendering`, `extending`,
 `exporting`, `packaging`, `multiplayer`, `marketplace`, `platform-api`,
 `contributing`.
@@ -353,15 +360,15 @@ profiling build that re-adds `trace_tracy`.
   file is a history, newest first, of one section per published nightly:
 
 ```markdown
-# Renzora Engine `r1-alpha8`
+# Renzora Engine `r1-alpha7`
 
 ## Unreleased
 - feat(editor): what it does, in the commit-subject voice
 
-## r1-alpha8-nightly-06sep26
+## r1-alpha7-nightly-06sep26
 - fix(plugin): what broke, and what now happens instead
 
-## r1-alpha8-nightly-05sep26
+## r1-alpha7-nightly-05sep26
 - ...
 ```
 
@@ -471,7 +478,8 @@ Principles (in priority order):
 **The scripting system is statically linked; the interpreter is a plugin.**
 `crates/renzora_scripting` owns the hooks, the command vocabulary, the context
 and the queue that applies commands to the world. It contains no interpreter.
-Lua is `plugins/lua`, a standalone C-ABI cdylib — so which language a game can
+Lua is a standalone C-ABI cdylib installed from the marketplace — so which
+language a game can
 be scripted in is decided by which plugin is present, not by how the engine was
 compiled. Rhai is gone.
 
@@ -491,8 +499,8 @@ to write Rust is the `&mut World` no command vocabulary can stand in for. Gated
 on play mode exactly like Lua; recompiles on save, off the main thread.
 
 **When writing scripts, refer to the scripting API first**
-(`docs/r1-alpha7/scripting/` + `docs/r1-alpha7/api/scripting.md`, and
-`plugins/lua/src/interp.rs`).
+(`docs/r1-alpha7/scripting/` + `docs/r1-alpha7/api/scripting.md`). The
+interpreter itself is not in this repository — see the note on plugins in §3.
 
 **If a script needs a function that doesn't exist yet:**
 
@@ -620,8 +628,6 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 | `xtask/src/sdk.rs`, `xtask/src/native_plugin.rs` | Stage the plugin SDK; build the repo's own native plugins the way a user's machine builds an installed one |
 | `crates/renzora_scripting/` | Scripting system: hooks, commands, context, declarative `ScriptExtension` |
 | `crates/renzora_plugin/src/script/` | The language-backend boundary (codec, contexts, `Backend`) |
-| `plugins/lua/` | The Lua interpreter, as a standalone plugin |
-| `plugins/grayscale/` | The smallest C-ABI plugin — a 52-line `#![no_std]` post-process template |
 | `crates/renzora_static_plugins/` | **Generated.** The list of C-ABI plugins a lean export linked into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |

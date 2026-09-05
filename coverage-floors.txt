@@ -6,7 +6,6 @@
 #
 # Format: <package> <floor-percent>
 renzora 38.0
-renzora_ai_chat 23.1
 renzora_animation 13.8
 renzora_animation_editor 0.0
 renzora_antialiasing 0.0
@@ -18,9 +17,6 @@ renzora_atmosphere 0.0
 renzora_atmosphere_editor 0.0
 # 41.7 -> 35.8. See the "moved to plugins" note at the bottom of this file.
 renzora_audio 35.8
-renzora_auth 0.0
-renzora_auto_exposure 0.0
-renzora_auto_exposure_editor 0.0
 renzora_autosave 0.0
 renzora_bloom_effect 0.0
 renzora_bloom_effect_editor 0.0
@@ -30,13 +26,10 @@ renzora_blueprint_editor 0.0
 renzora_bsn 75.9
 renzora_camera 20.6
 renzora_cloth 0.0
-renzora_clouds 0.0
-renzora_clouds_editor 0.0
 renzora_code_editor 21.3
 renzora_command_palette 11.0
 renzora_console 25.7
 renzora_context_menu 21.9
-renzora_daw 0.0
 renzora_debugger 0.0
 renzora_distance_fog 0.0
 renzora_distance_fog_editor 0.0
@@ -55,14 +48,12 @@ renzora_export 12.9
 renzora_foliage_editor 0.0
 renzora_forward_decal 0.0
 renzora_forward_decal_editor 0.0
-renzora_gamepad 30.0
 renzora_gaussian_splatting 0.0
 renzora_gizmo 14.8
 renzora_grid 0.0
 renzora_hanabi 26.4
 renzora_hierarchy 0.0
 renzora_history 43.4
-renzora_hub 0.0
 renzora_import 21.5
 renzora_import_ui 10.5
 renzora_input 65.3
@@ -79,7 +70,6 @@ renzora_lighting_editor 0.0
 renzora_lumen 0.0
 renzora_macros 35.6
 renzora_material_editor 0.0
-renzora_mesh_draw 0.0
 renzora_mesh_edit 27.8
 renzora_mixer 6.9
 renzora_motion_blur 0.0
@@ -90,8 +80,6 @@ renzora_navmesh_editor 0.0
 renzora_net 65.0
 renzora_network 35.7
 renzora_network_editor 0.0
-renzora_night_stars 0.0
-renzora_night_stars_editor 0.0
 renzora_oit 0.0
 renzora_oit_editor 0.0
 renzora_particle_editor 0.0
@@ -99,12 +87,8 @@ renzora_physics 38.9
 renzora_physics_editor 0.0
 renzora_plugin 57.2
 renzora_plugin_derive 57.3
-renzora_pool_water 0.0
-renzora_pool_water_editor 0.0
 renzora_postprocess 0.0
 renzora_preview 0.0
-renzora_procedural_tree 0.0
-renzora_procedural_tree_editor 0.0
 renzora_ragdoll 0.0
 renzora_rmip 68.1
 renzora_rpak 43.7
@@ -127,10 +111,8 @@ renzora_shape_library 0.0
 renzora_shell 0.0
 renzora_skybox 0.0
 renzora_skybox_editor 0.0
-renzora_social 0.0
 renzora_solari 0.0
 renzora_splash 0.0
-renzora_spline 93.8
 renzora_sprite_anim 98.5
 renzora_sprite_anim_editor 0.0
 renzora_ssao 0.0
@@ -142,8 +124,6 @@ renzora_terrain 6.6
 renzora_terrain_editor 0.0
 renzora_test_component 0.0
 renzora_test_harness 80.7
-renzora_text3d 0.0
-renzora_text_mesh 0.0
 renzora_theme 74.2
 renzora_theme_status 97.0
 renzora_tilemap 54.1
@@ -155,7 +135,6 @@ renzora_ui 0.0
 # 41.8 -> 36.0. See the "moved to plugins" note at the bottom of this file.
 renzora_undo 36.0
 renzora_viewport 0.0
-renzora_vignette 0.0
 renzora_volumetric_fog 0.0
 renzora_volumetric_fog_editor 0.0
 renzora_water 55.7
@@ -174,17 +153,16 @@ renzora_xr 0.0
 # client into plugins. renzora_audio lost link.rs (602 lines, 9 tests) and
 # renzora_net lost api.rs (799 lines, 10 tests); lighting and undo kept every
 # test they had and simply had covered lines deleted out from under them, which
-# moves the ratio without moving the testing. The extracted code is tested where
-# it landed — plugins/audio has 85 tests, plugins/http has 5.
-#
-# None of that is counted, and THAT is the thing to fix rather than these four
-# numbers. `plugins/*` are deliberately not workspace members, so the workspace
-# lcov cannot see them; xtask grew a `--plugins` scope for exactly this reason
-# (see the "Two scopes" section in xtask/src/coverage.rs), and .github/workflows/
-# coverage.yml does not pass it — it runs the workspace scope only. Until it
-# does, every future extraction into a plugin will read as a coverage
-# regression, and the honest response will keep being to lower a floor.
+# moves the ratio without moving the testing.
 #
 # Floors above are the CI-measured values minus MARGIN (1.5), matching what
 # `--bless` would have written, but set by hand so that blessing these four did
 # not silently rewrite the other 141.
+#
+# The note that used to close this file asked for `.github/workflows/coverage.yml`
+# to pass a `--plugins` scope, so that extracted code stayed measured. That scope
+# no longer exists and the request is moot: 3e78cc80 took `plugins/` out of the
+# repository altogether, so there is nothing outside the workspace left to
+# measure and `xtask/src/coverage.rs` documents one scope rather than two. The
+# extracted code is now tested wherever the marketplace ships it from, which is
+# not this repository's gate to hold.

@@ -300,13 +300,22 @@ mod tests {
 
     /// The screenshot bug: the check found `r1-alpha7-nightly-16aug26`, rendered
     /// its release notes, and still said "Renzora is up to date".
+    ///
+    /// The nightly is built from `ENGINE_VERSION` rather than written out. Pinned
+    /// to a literal it also needed `ENGINE_VERSION == "r1-alpha7"` to stay
+    /// meaningful, and that guard does not fail when the version moves — it stops
+    /// being entered, so the test goes green while asserting nothing. Derived, it
+    /// keeps testing the property (a source build is older than its own
+    /// nightlies) for whatever version the tree is on.
     #[test]
     fn a_dev_build_is_offered_its_versions_nightlies() {
         let running = current_version().expect("dev build parses");
-        let nightly = ParsedVersion::parse("r1-alpha7-nightly-16aug26").unwrap();
-        if renzora::version::release_tag().is_none()
-            && renzora::version::ENGINE_VERSION == "r1-alpha7"
-        {
+        let nightly = ParsedVersion::parse(&format!(
+            "{}-nightly-16aug26",
+            renzora::version::ENGINE_VERSION
+        ))
+        .expect("a nightly of the current version parses");
+        if renzora::version::release_tag().is_none() {
             assert!(
                 nightly.is_newer_than(&running),
                 "a source checkout must be offered its own version's nightlies"

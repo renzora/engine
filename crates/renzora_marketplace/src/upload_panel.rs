@@ -68,9 +68,36 @@ const SCRIPT_LANG_VALUES: &[&str] = &["", "rust", "lua", "rhai", "wgsl", "bluepr
 const GENRE_VALUES: &[&str] = &["", "ambient", "orchestral", "electronic", "retro", "rock", "cinematic", "other"];
 /// Licence ids, matching the server's `VALID_LICENCES`.
 const LICENCE_VALUES: &[&str] = &["standard", "extended", "mit", "apache2", "gpl3", "cc0"];
-/// Supported engine versions, newest first. Mirrors `docs/_versions.json`;
-/// nightlies are deliberately not offered as a support target.
-const ENGINE_VERSIONS: &[&str] = &["Any version", "r1-alpha7", "r1-alpha6", "r1-alpha5"];
+/// Engine versions released before the one this build is, newest first.
+/// Nightlies are deliberately not offered as a support target.
+const PAST_ENGINE_VERSIONS: &[&str] = &["r1-alpha6", "r1-alpha5"];
+
+/// Supported engine versions for the "Minimum Engine Version" dropdown, newest
+/// first: "Any version", then the version this editor *is*, then the ones before
+/// it.
+///
+/// The current version is taken from `ENGINE_VERSION` rather than written into
+/// the list. Hardcoded, the list silently fell a version behind every bump — and
+/// the failure is not a stale label but a seller who cannot declare the version
+/// they built against, because the option does not exist. Deriving the head of
+/// the list makes that impossible; only the tail, which is history and does not
+/// change, is written down.
+fn engine_versions() -> &'static [&'static str] {
+    static VERSIONS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    VERSIONS.get_or_init(|| {
+        let mut v = vec!["Any version", renzora::version::ENGINE_VERSION];
+        // Skipped rather than asserted against: during a release window the
+        // current version is briefly also the newest past one, and a duplicate
+        // entry would be a second identical row in the dropdown.
+        v.extend(
+            PAST_ENGINE_VERSIONS
+                .iter()
+                .copied()
+                .filter(|p| *p != renzora::version::ENGINE_VERSION),
+        );
+        v
+    })
+}
 
 /// A file the user picked from a native dialog. Bytes are read lazily on the
 /// upload worker thread (the main file can be hundreds of MB), so we hold only
@@ -740,7 +767,7 @@ fn build_basics_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let ev_lic = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(12.0), ..default() })
         .id();
-    let ev = dropdown_field(commands, fonts, "Minimum Engine Version", ENGINE_VERSIONS, |s| s.engine_version, |s, v| s.engine_version = v);
+    let ev = dropdown_field(commands, fonts, "Minimum Engine Version", engine_versions(), |s| s.engine_version, |s, v| s.engine_version = v);
     let lic = dropdown_field(commands, fonts, "License", LICENSES, |s| s.license, |s, v| s.license = v);
     for e in [ev, lic] {
         commands.entity(e).insert(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: Val::Px(0.0), ..default() });
@@ -1305,7 +1332,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
     // fields the selected category actually shows are sent.
     let mut extra = serde_json::Map::new();
     if state.engine_version > 0 {
-        if let Some(v) = ENGINE_VERSIONS.get(state.engine_version) {
+        if let Some(v) = engine_versions().get(state.engine_version) {
             extra.insert("min_engine_version".into(), (*v).into());
         }
     }

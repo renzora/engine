@@ -48,6 +48,22 @@ jobs:
       - name: Check plugin wiring is regenerated
         run: cargo run --manifest-path xtask/Cargo.toml -- sync --check
 
+  # `ENGINE_VERSION` is the version; four other files write it down again and
+  # none of them fails loudly when it drifts. A stale docs default serves the
+  # wrong docs, stale RELEASE_NOTES publishes the previous version's notes under
+  # this version's tag, and a stale marketplace list leaves a seller unable to
+  # declare the version they built against. All four have gone wrong. This is a
+  # grep over five files, so it runs on the plain image with no compile at all.
+  versions:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every copy of the version agrees
+        run: bash scripts/check-versions.sh
+
   test:
     runs-on: ubuntu-latest
     container: ghcr.io/renzora/base:latest
@@ -116,38 +132,23 @@ jobs:
             --no-default-features --features wasm \
             --target wasm32-unknown-unknown
 
-      # When the editor lane builds again, the step is:
+      # The editor, which is the half that actually broke. `renzora_http` links
+      # `ureq`, and the rustls/ring stack under it does not compile for
+      # wasm32-unknown-unknown — but nothing checked the editor on wasm, so the
+      # break only surfaced in a release build, 40 minutes into the publishing
+      # lane. Checking the runtime alone could never have caught it: the runtime
+      # does not link the client.
       #
-      #   cargo check -p renzora_editor_app --bin renzora-editor \
-      #       --features wasm --target wasm32-unknown-unknown
-      #
-      # `--features wasm` is not optional there: the `[[bin]]` declares
+      # `--features wasm` is not optional: the `[[bin]]` declares
       # `required-features = ["wasm"]` so a native `--workspace` build does not
       # produce a second, unlinkable executable, and naming a target whose
       # required features are off is a hard cargo error rather than a silent skip.
+      - name: Check the web editor
+        run: |
+          cargo check -p renzora_editor_app --bin renzora-editor \
+            --features wasm \
+            --target wasm32-unknown-unknown
 
-  # The same plugins again, on a real Mac, because the job above cannot see the
-  # class of bug that only macOS reports.
-  #
-  # Every other platform resolves a shared library by NAME and tolerates a hole
-  # until load time. `ld` lets a `.so` leave a symbol undefined and hands it to
-  # the loader; the PE import table names a bare DLL. macOS does neither: `ld64`
-  # resolves a dylib up front and dyld keys images by the path a load command
-  # resolves to. So a plugin can link clean on Linux and Windows and be
-  # structurally impossible on macOS, and nothing in an all-Linux gate is capable
-  # of noticing.
-  #
-  # That is not hypothetical. A `no_std` plugin links no libc — `std` carries the
-  # `#[link]` for it — so all 59 of them failed to link the moment they stopped
-  # linking `std`, on macOS only, for 25 days. Linux was fine (the loader found
-  # `malloc` in the host), CI was entirely Linux, and the cross-macOS lane
-  # reports a failed plugin as a warning, so the build stayed green while the
-  # artifact shipped 8 plugins out of 67.
-  #
-  # `cargo build`, not `cargo test`: a test target links a std harness and would
-  # go on passing while the shipped cdylib could not be produced. `--profile
-  # dist` for the same reason — it is the profile that sets `panic = "abort"`,
-  # without which a `no_std` plugin does not build at all.
   # Tests that need a real graphics adapter — render-graph nodes, pipeline
   # specialization, materials, post-process passes.
   #

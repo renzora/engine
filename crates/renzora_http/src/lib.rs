@@ -42,8 +42,15 @@
 //! the same contract without sharing a line with this one.
 
 /// The engine's network backend, over `ureq`.
+///
+/// Absent on wasm, where `ureq`'s rustls/ring stack does not compile (see
+/// `Cargo.toml`). The web backend is `fetch`, which reaches the host through the
+/// same contract and shares no code with this one — which is the property the
+/// module docs above describe.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use client::Ureq;
 
 /// Registers the HTTP backend. An ordinary Bevy plugin, so it is declared and
@@ -52,6 +59,15 @@ pub use client::Ureq;
 pub struct RenzoraHttpPlugin;
 
 impl bevy::app::Plugin for RenzoraHttpPlugin {
+    // On wasm there is no `ureq` to register, so this installs nothing and the
+    // host is left with no backend — which the contract already models as "a
+    // game that carries no network stack", and reports the same way. The web
+    // editor is a compile target rather than a usable product today; when the
+    // `fetch` backend lands it registers here, by the same `load_static` call.
+    #[cfg(target_arch = "wasm32")]
+    fn build(&self, _app: &mut bevy::app::App) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut bevy::app::App) {
         // Installed through `load_static`, the path the lean exporter uses for
         // a plugin it compiled in. Deliberate rather than incidental: the client
@@ -95,6 +111,7 @@ renzora::add!(RenzoraHttpPlugin, Editor);
 
 // ── The backend itself ───────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 mod backend {
     use renzora_plugin::prelude::*;
 
