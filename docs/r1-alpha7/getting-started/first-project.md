@@ -6,7 +6,9 @@ Let's make something move on screen. In this guide you'll create a project, drop
 
 You can get Renzora two ways: grab a prebuilt build from [renzora.com/download](/download), or install the command-line tool with `cargo install renzora`. Either way, the next step is the same — open the editor. (The [Installation guide](/docs/r1-alpha7/getting-started/installation) has the exact commands for your platform.)
 
-When the editor starts you'll land on a project picker. Click **New Project**, type a name, and choose a folder on your computer. That's it — the editor builds the project and opens its starting scene, ready to go.
+When the editor starts you'll land on the [dashboard](/docs/r1-alpha7/getting-started/dashboard), open on its **Projects** page. Click **New Project** and choose a folder on your computer — the folder's name becomes the project's. That's it — the editor builds the project and opens its starting scene, ready to go.
+
+There is more on the dashboard than projects: a **Plugins** page for fitting the engine out before you open anything, a **Changelog**, and your renzora.com account. None of it is needed for a first project, so walk past it for now — it's all in [The Dashboard](/docs/r1-alpha7/getting-started/dashboard) when you want it.
 
 ### The first-run walkthrough
 

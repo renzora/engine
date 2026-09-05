@@ -392,6 +392,52 @@ If you want a panel docked by default, add it to a workspace layout rather than 
 
 > Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
 
+## Splash dashboard pages
+
+The splash is a dashboard: a rail of pages on the left, one page shown at a
+time. `renzora_splash` owns the rail, the page host and two pages of its own
+(Projects, Changelog); anything else registers a page from outside.
+
+```rust
+use renzora_splash::{register_splash_section, SplashSection};
+
+register_splash_section(
+    app,
+    SplashSection::new("plugins", "puzzle-piece", "Plugins", 40, build_my_page),
+);
+```
+
+The arguments are the page's stable id, a Phosphor icon name, the rail label, the
+rail order (low first — the built-in pages take 0 and 80), and a builder
+`Fn(&mut Commands, &EmberFonts) -> Entity`. Registering the same id twice
+replaces the first registration rather than adding a second rail row.
+
+Three things to know before writing one:
+
+- **The builder runs again every time the page is opened.** Anything live inside
+  it has to be a reactive binding (`bind_*`, `keyed_list`) reading a resource,
+  not a value read once at build time. See [Reactive content](#reactive-content).
+- **Your systems need `run_if(in_state(SplashState::Splash))`.** The page's
+  clicks, polls and fetches are yours to schedule; registering a section
+  schedules nothing.
+- **The dependency runs from your crate to `renzora_splash`, never the other
+  way.** That direction is the whole reason the registry exists:
+  `renzora_splash` is linked into the *runtime*, so a splash that reached for the
+  marketplace (or anything else editor-shaped) would drag it into the shipped
+  game binary. `renzora_marketplace`'s `splash_plugins` is the worked example.
+
+Two notes on the shell around your page. Every clickable node needs an explicit
+`FocusPolicy::Block` — the default is `Pass`, which hands the press to every
+ancestor under the cursor as well. And the splash draws before a project, and
+therefore before a theme, is loaded: it carries its own fixed palette
+(`renzora_splash::launcher::style`) rather than reading `ThemeManager`, so a page
+registered from elsewhere matches it by using the same values, not by importing
+them.
+
+A native plugin cannot do any of this — it links only `bevy`, `renzora` and
+`renzora_ember` (see [Editor Features from Code](../extending/editor-api.md)).
+Dashboard pages are for in-workspace crates.
+
 ## Panel toolbars — a panel's tools live *in* that panel
 
 There is no shared toolbar strip. There used to be: one row under the top bar

@@ -11,6 +11,7 @@
           "category": "Getting Started",
           "pages": [
             { "slug": "getting-started/installation", "title": "Installation" },
+            { "slug": "getting-started/dashboard", "title": "The Dashboard" },
             { "slug": "getting-started/editor-overview", "title": "Editor Tour" },
             { "slug": "getting-started/first-project", "title": "Your First Project" },
             { "slug": "getting-started/concepts", "title": "Core Concepts" }

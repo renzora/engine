@@ -6,11 +6,18 @@ pub mod loading;
 mod loading_ui;
 mod post;
 pub mod project;
+pub mod releases;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
 
 pub use config::AppConfig;
 pub use github::GithubStats;
+/// The dashboard page registry. A crate that can depend on this one adds its own
+/// page with [`launcher::register_splash_section`] — see `launcher::sections`.
+pub use launcher::{
+    register_splash_section, ActiveSection, SectionBuilder, SplashSection, SplashSections,
+};
+pub use releases::{ReleaseEntry, ReleaseFeed};
 pub use loading::{
     EditorLoadingOverlayActive, LoadingBytes, LoadingTask, LoadingTaskHandle, LoadingTasks,
     TextureLoadProgress,
@@ -38,6 +45,11 @@ impl Plugin for SplashPlugin {
         app.init_state::<SplashState>()
             .insert_resource(app_config)
             .insert_resource(GithubStats::new())
+            // Kicked off here, not on first view of the Changelog page: the
+            // request is unauthenticated and rate-limited per IP, so it is worth
+            // exactly one per launch, and starting it now means the page has an
+            // answer by the time anyone clicks through to it.
+            .insert_resource(releases::ReleaseFeed::new())
             .init_resource::<LoadingTasks>()
             .init_resource::<LoadingBytes>()
             .init_resource::<TextureLoadProgress>()
@@ -47,7 +59,10 @@ impl Plugin for SplashPlugin {
                 loading::auto_advance_to_editor.run_if(in_state(SplashState::Loading)),
             )
             .add_systems(Update, handle_request_open_project)
-            .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
+            .add_systems(
+                OnEnter(SplashState::Loading),
+                (loading::log_loading_entered, maximize_for_editor),
+            );
 
         // Dev shortcut: `--project <path>` skips the splash UI and jumps
         // straight into the project. This moved here from the binary's `main()`
@@ -144,6 +159,33 @@ fn apply_project_arg(mut commands: Commands) {
         Err(e) => error!("[splash] Failed to open --project: {}", e),
     }
 }
+
+/// Grow the window to fill the screen now that a project is opening.
+///
+/// The editor window is *created* at `renzora_runtime::SPLASH_WINDOW` — a
+/// launcher-sized box in the middle of the screen — because that is the right
+/// size for the dashboard, and the wrong one for an editor. This is the moment
+/// the second becomes true: `Loading` is entered only from choosing a project,
+/// so it is the last frame before the workspace appears.
+///
+/// Not on `OnEnter(Editor)`: the loading screen is the editor's own, and having
+/// it play out inside the launcher-sized window only to snap open at the end
+/// reads as a stutter at exactly the point the user is waiting.
+///
+/// A user who maximized the splash themselves gets a no-op, and a user who
+/// wants a smaller editor window can still resize it — nothing here runs again.
+#[cfg(not(target_arch = "wasm32"))]
+fn maximize_for_editor(
+    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    if let Ok(mut window) = windows.single_mut() {
+        window.set_maximized(true);
+    }
+}
+
+/// The browser has no OS window to maximize; the canvas is sized by the page.
+#[cfg(target_arch = "wasm32")]
+fn maximize_for_editor() {}
 
 /// Marker resource: splash should immediately transition back to editor
 /// (e.g. project opened via File menu).

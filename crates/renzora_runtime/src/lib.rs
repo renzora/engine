@@ -404,6 +404,16 @@ fn init_io_task_pool_with_large_stack() {
     });
 }
 
+/// Size the editor window opens at, in logical pixels: big enough for the splash
+/// dashboard's rail plus a page of plugin listings, small enough to read as a
+/// launcher sitting on the desktop rather than as the editor.
+///
+/// It stops being the window size the moment a project is opened —
+/// `renzora_splash` maximizes on `OnEnter(SplashState::Loading)`. Chosen to fit
+/// a 1280x800 laptop with room around it.
+#[cfg(not(target_arch = "wasm32"))]
+pub const SPLASH_WINDOW: (u32, u32) = (1040, 740);
+
 pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
@@ -462,6 +472,32 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // (OS title bar). Decided at runtime via `is_editor`.
                     decorations: !is_editor,
                     resizable: true,
+                    // The editor opens on the splash dashboard, which is a
+                    // launcher and not a workspace: it wants a window you can
+                    // see your desktop around, not the whole screen. So the
+                    // editor window is created at [`SPLASH_WINDOW`], centred,
+                    // and `renzora_splash` maximizes it on the way into a
+                    // project (`OnEnter(SplashState::Loading)`).
+                    //
+                    // Set here, at creation, rather than resized on the first
+                    // frame: a window that appears full-screen and then snaps
+                    // down to a launcher is a visible flinch, and on Windows a
+                    // post-creation resize of an undecorated window has its own
+                    // outer-vs-inner size problems (see `decorations` above).
+                    #[cfg(not(target_arch = "wasm32"))]
+                    resolution: if is_editor {
+                        bevy::window::WindowResolution::new(SPLASH_WINDOW.0, SPLASH_WINDOW.1)
+                    } else {
+                        default()
+                    },
+                    #[cfg(not(target_arch = "wasm32"))]
+                    position: if is_editor {
+                        bevy::window::WindowPosition::Centered(
+                            bevy::window::MonitorSelection::Primary,
+                        )
+                    } else {
+                        default()
+                    },
                     // Web: bind to the canvas in the page and track its size.
                     //
                     // Without `canvas` winit creates its OWN canvas and appends
@@ -604,7 +640,11 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         app.insert_resource(RenderErrorHandler(render_error_policy));
     }
     if is_editor {
-        app.add_systems(Startup, maximize_primary_window);
+        // Nothing to do. The editor used to maximize here, from back when the
+        // first thing it showed was the editor. It now opens on the splash
+        // dashboard at [`SPLASH_WINDOW`], and the maximize moved to the moment
+        // that stops being true — `renzora_splash`'s
+        // `OnEnter(SplashState::Loading)`, i.e. a project is being opened.
     } else {
         // `apply_window_config` only touches the `Window` component, so it can
         // run on Startup. `apply_window_icon` needs `WinitWindows`, which is
@@ -848,14 +888,6 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
 
     let wait = Duration::from_secs_f64(1.0 / tick_rate.max(1) as f64);
     app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));
-}
-
-fn maximize_primary_window(
-    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
-) {
-    if let Ok(mut window) = windows.single_mut() {
-        window.set_maximized(true);
-    }
 }
 
 /// Apply `CurrentProject.config.window` to the primary window at runtime startup.
