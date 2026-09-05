@@ -321,23 +321,73 @@ profiling build that re-adds `trace_tracy`.
 
 ## 4. Versioning & documentation
 
-- **Current dev version: `r1-alpha7`.** From now on, **only edit
-  `docs/r1-alpha7/`.** `docs/r1-alpha6/` is released and **frozen** (its frozen
+- **Current dev version: `r1-alpha8`.** From now on, **only edit
+  `docs/r1-alpha8/`.** `docs/r1-alpha7/` is released and **frozen** (its frozen
   ABI hash + release commit are recorded in `releases.json` at the repo root) —
-  do not mirror changes into it, nor into the older frozen `docs/r1-alpha5/`.
-  Top-level non-versioned `docs/*.md` are still fair game.
+  do not mirror changes into it, nor into the older frozen `docs/r1-alpha6/`
+  and `docs/r1-alpha5/`. Top-level non-versioned `docs/*.md` are still fair game.
 - **Always update the docs after adding or changing a feature.** Stale docs are
   treated as a bug. If you ship a feature (new scripting function, new inspector
   field, new plugin capability, new editor panel), update the matching page under
-  `docs/r1-alpha7/` in the same change.
+  `docs/r1-alpha8/` in the same change.
 - Docs are also published at <https://renzora.com/docs>. Pushing `docs/r1-alpha*`
   changes to `main` auto-publishes via `.github/workflows/sync-docs.yml` (rsync
   into the website repo, which redeploys). You do not copy anything by hand.
 
-`docs/r1-alpha7/` sections include: `getting-started`, `setup`, `scripting`,
+`docs/r1-alpha8/` sections include: `getting-started`, `setup`, `scripting`,
 `api`, `editor`, `editor-dev`, `engine-core`, `rendering`, `extending`,
 `exporting`, `packaging`, `multiplayer`, `marketplace`, `platform-api`,
 `contributing`.
+
+### Release notes
+
+- **Every new feature and every fix adds its line to `RELEASE_NOTES.md`** at the
+  repo root, in the same change that ships it. Treat a missing note exactly like
+  a missing docs update: the change is unfinished.
+- This is not bookkeeping for its own sake. **A nightly publishes every day
+  something lands on `main`**, so these notes are the only record of what any
+  given nightly actually contains. Reconstructing that afterwards means reading
+  the commit range by hand — `r1-alpha7` was 700 commits, and that is the work
+  this rule exists to stop repeating.
+- New lines go under **`## Unreleased`**, always the top section. Below it the
+  file is a history, newest first, of one section per published nightly:
+
+```markdown
+# Renzora Engine `r1-alpha8`
+
+## Unreleased
+- feat(editor): what it does, in the commit-subject voice
+
+## r1-alpha8-nightly-06sep26
+- fix(plugin): what broke, and what now happens instead
+
+## r1-alpha8-nightly-05sep26
+- ...
+```
+
+- **The publish job puts `## Unreleased` into the nightly's release page**, under
+  *Since the last nightly*. So the section is written before the build that
+  ships it, not after — which is why the heading is `Unreleased` and not a date.
+  A nightly's tag is only known at build time (the schedule skips a quiet day),
+  so naming the section ahead of time would mean guessing a date, and a guess
+  that missed would publish the wrong list under the wrong tag.
+- **After a nightly publishes, rename its section to the tag that shipped it**
+  and open a fresh `## Unreleased` above. That is the only manual step, it is
+  never urgent, and nothing breaks if it is late: CI keys on the `## Unreleased`
+  heading alone and ignores every heading below it.
+- An empty or absent `## Unreleased` is fine — the nightly falls back to the
+  asset boilerplate on its own, which is what it published before these notes
+  existed.
+- **A major release overwrites the file.** Cutting `r1-alphaN` replaces
+  `RELEASE_NOTES.md` with the curated notes for that version — prose, not the
+  running list, since the running list has by then done its job. The notes it
+  replaced stay published on each nightly's GitHub page, which is the permanent
+  copy. The next version then starts a fresh `## Unreleased` under the new
+  heading.
+- **The first line must name the version being released.** The `setup` job
+  refuses to start a release whose `RELEASE_NOTES.md` still names the previous
+  one — the failure mode of a hand-written file is a stale one, not a missing
+  one. See `docs/<version>/contributing/releases.md`.
 
 ---
 

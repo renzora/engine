@@ -6,10 +6,10 @@ Everything here is the **Build Engine** workflow, `.github/workflows/build-engin
 
 ## The version is one string
 
-`renzora::version::ENGINE_VERSION` in `crates/renzora/src/version.rs` is the engine's version — `r1-alpha7` today. It is what:
+`renzora::version::ENGINE_VERSION` in `crates/renzora/src/version.rs` is the engine's version — `r1-alpha8` today. It is what:
 
 - the About dialog and the splash show,
-- the docs directory is named after (`docs/r1-alpha7/`),
+- the docs directory is named after (`docs/r1-alpha8/`),
 - the release workflow builds its tag from,
 - the export downloader asks GitHub for.
 
@@ -19,7 +19,7 @@ A published binary also carries two values CI stamps in at compile time, read wi
 
 | Variable | Value | Absent means |
 |---|---|---|
-| `RENZORA_RELEASE_TAG` | `r1-alpha7` or `r1-alpha7-nightly-16aug26` | built from source (a *dev* build) |
+| `RENZORA_RELEASE_TAG` | `r1-alpha8` or `r1-alpha8-nightly-16aug26` | built from source (a *dev* build) |
 | `RENZORA_BUILD_COMMIT` | the commit the release was cut from | — |
 
 `option_env!` is baked in at compile time, so only a **cold** build picks these up. CI builds cold every run; a warm local tree ignores them, which is correct because a local tree is a dev build anyway.
@@ -28,7 +28,7 @@ A published binary also carries two values CI stamps in at compile time, read wi
 
 | Trigger | Tag | Kind |
 |---|---|---|
-| `schedule`, 02:00 UTC daily | `r1-alpha7-nightly-16aug26` | prerelease |
+| `schedule`, 02:00 UTC daily | `r1-alpha8-nightly-16aug26` | prerelease |
 | `push` of an `r1-alpha*` tag | the tag itself | full release |
 | `workflow_dispatch` | your choice of `none` / `nightly` / `release` | — |
 
@@ -174,9 +174,9 @@ The sidecar is deliberately **excluded from export templates** — `renzora-runt
 
 `auto` (the default) follows the build: a nightly is offered newer nightlies, a release is offered releases, and a build from source tracks nightlies. `stable` and `nightly` override it, stored in `~/.renzora/editor.toml` as `update_channel`. It is stored as `auto` rather than resolved once, because the answer changes when you update — taking a nightly user to a release should move them to the stable channel, which a resolved value would not do.
 
-The ordering that makes this work is in `crates/renzora_update/src/version.rs`. Release and pre-release sort with absent above present (`r1` > `r1-alpha7`), and within one version a three-state `Stage` orders `Dev < Nightly(date) < Final`.
+The ordering that makes this work is in `crates/renzora_update/src/version.rs`. Release and pre-release sort with absent above present (`r1` > `r1-alpha8`), and within one version a three-state `Stage` orders `Dev < Nightly(date) < Final`.
 
-That third state earns its place. It started as a two-state "is this a nightly?", which could say that `r1-alpha7` outranks `r1-alpha7-nightly-16aug26` — correct — but had no way to place a build from source, which has no tag at all. Such a build reported the bare version, parsed as the *finished* release, and so outranked every nightly of its own version: the dialog said "Renzora is up to date" while displaying the release notes of the nightly it was declining to offer. A source build is the *least* finished build of a version, not the most.
+That third state earns its place. It started as a two-state "is this a nightly?", which could say that `r1-alpha8` outranks `r1-alpha8-nightly-16aug26` — correct — but had no way to place a build from source, which has no tag at all. Such a build reported the bare version, parsed as the *finished* release, and so outranked every nightly of its own version: the dialog said "Renzora is up to date" while displaying the release notes of the nightly it was declining to offer. A source build is the *least* finished build of a version, not the most.
 
 ### Running from a source checkout
 
@@ -220,6 +220,6 @@ Because the file is written by hand, its failure mode is not a missing file but 
 
 ## See also
 
-- [Building Export Templates](/docs/r1-alpha7/packaging/export-templates) — how the editor resolves, downloads and uses a template.
-- [Cross-Compilation](/docs/r1-alpha7/packaging/cross-compilation) — the toolchain images the build jobs run in.
-- [Building from source](/docs/r1-alpha7/setup/building-from-source) — `cargo renzora` for local work.
+- [Building Export Templates](/docs/r1-alpha8/packaging/export-templates) — how the editor resolves, downloads and uses a template.
+- [Cross-Compilation](/docs/r1-alpha8/packaging/cross-compilation) — the toolchain images the build jobs run in.
+- [Building from source](/docs/r1-alpha8/setup/building-from-source) — `cargo renzora` for local work.

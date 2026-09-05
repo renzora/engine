@@ -157,6 +157,24 @@ jobs:
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+          # ── A real release must carry its own notes ──────────────────────
+          # `RELEASE_NOTES.md` is written by hand, so the failure mode is not a
+          # missing file but a stale one: the previous version's notes shipping
+          # under this version's tag, which nothing downstream could detect.
+          # Checked here, in `setup`, rather than in `publish` — this job costs
+          # seconds and `publish` is ~6 runner-hours downstream of it, so a
+          # mismatch should stop before anything is built, not after.
+          if [ "$publish" = "release" ]; then
+            if [ ! -f RELEASE_NOTES.md ]; then
+              echo "::error::RELEASE_NOTES.md is missing; a release must carry its notes"
+              exit 1
+            fi
+            if ! head -n 1 RELEASE_NOTES.md | grep -qF "$version"; then
+              echo "::error::RELEASE_NOTES.md does not name $version in its first line — it is still the previous release's notes"
+              exit 1
+            fi
+          fi
+
           # ── Nothing new? Don't build a nightly. ──────────────────────────
           # A daily cron on a quiet week would otherwise publish 7 identical
           # releases and burn ~6 runner-hours each.
@@ -635,13 +653,42 @@ jobs:
             title="Renzora Engine $tag (nightly)"
           fi
 
+          # What this nightly carries: the `## Unreleased` section of
+          # RELEASE_NOTES.md, which every feature and fix appends to as it lands
+          # (CLAUDE.md §4). Keyed on that exact heading rather than "whatever the
+          # top section is", because between a release and the next version's
+          # first commit the file is a curated release document whose first
+          # section is prose about the release, not a list of unshipped changes.
+          # Absent or empty, a nightly falls back to the asset boilerplate alone
+          # — what it published before these notes existed.
+          unreleased=""
+          if [ -f RELEASE_NOTES.md ]; then
+            unreleased=$(awk '
+              /^##[[:space:]]*[Uu]nreleased[[:space:]]*$/ { seen=1; next }
+              seen && /^##[[:space:]]/ { exit }
+              seen { print }
+            ' RELEASE_NOTES.md)
+          fi
+
           {
             if [ "${{ needs.setup.outputs.publish }}" = "nightly" ]; then
               echo "Automated nightly build of \`$version\` from [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
               echo
               echo "> Nightlies are unreviewed builds of \`main\`. They are the right thing to run if you are developing *against* the engine and want the latest fixes; they are not the right thing to ship a game on."
+              if [ -n "$(printf '%s' "$unreleased" | tr -d '[:space:]')" ]; then
+                echo
+                echo "### Since the last nightly"
+                printf '%s\n' "$unreleased"
+              fi
             else
-              echo "Renzora Engine \`$version\`."
+              # The hand-written notes for this version, verified against
+              # $version by the `setup` job before anything was built. A
+              # nightly deliberately does not get them: they describe the
+              # finished release, and a nightly is a snapshot of `main` that
+              # may be either side of it.
+              cat RELEASE_NOTES.md
+              echo
+              echo "---"
             fi
             echo
             echo "### Engine"
