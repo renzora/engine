@@ -48,14 +48,6 @@ browser, and the first-party plugins moved out to the marketplace.
   made the three crossing enums newtypes).
 - **First-party plugins are no longer in this repository.** Install them from
   the marketplace; `cargo renzora plugin <name>` is gone.
-- **Reverted before release, and not in `r1-alpha7`:** live collaborative
-  editing, and the version-control panel.
-
-## Upgrading
-
-Existing projects load as they are. Update from **Help ▸ Check for Updates** or
-the chip in the top bar. Rebuild prebuilt plugins, and reinstall first-party
-ones from the marketplace.
 
 ## Contributors
 
