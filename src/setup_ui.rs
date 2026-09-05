@@ -87,10 +87,6 @@ struct StatusText;
 #[derive(Component)]
 struct LogLine(usize);
 
-/// The "Start Editor" button, hidden until the worker finishes.
-#[derive(Component)]
-struct StartBtn;
-
 /// Offers to install a missing toolchain. Shown only when one is missing AND
 /// the editor can actually add it — see [`prebuild::ToolchainGap`].
 #[derive(Component)]
@@ -368,34 +364,6 @@ fn spawn_ui(mut commands: Commands) {
         .collect();
     commands.entity(log).add_children(&lines);
 
-    // Takes the bar's place when the work is done. Setup used to close itself
-    // the instant the worker finished, which meant the one thing worth reading
-    // — a plugin that failed to compile — was on screen for a single frame.
-    // Ending on a button holds the result until it has been seen, and makes
-    // starting the editor something that was chosen rather than something that
-    // happened.
-    let start_label = commands
-        .spawn((
-            Text::new("Start Editor"),
-            TextFont::from_font_size(14.0),
-            TextColor(Color::WHITE),
-        ))
-        .id();
-    let start = commands
-        .spawn((
-            Button,
-            Node {
-                display: Display::None,
-                padding: UiRect::axes(px(22), px(9)),
-                border_radius: BorderRadius::all(px(6)),
-                ..default()
-            },
-            BackgroundColor(ACCENT),
-            StartBtn,
-        ))
-        .id();
-    commands.entity(start).add_child(start_label);
-
     // Offered rather than imposed, and only when it is ours to offer: rustup is
     // already installed, so this adds a toolchain to it rather than putting Rust
     // on someone's machine. The caption carries the version, which is not known
@@ -432,7 +400,7 @@ fn spawn_ui(mut commands: Commands) {
             ..default()
         })
         .id();
-    commands.entity(buttons).add_children(&[install, start]);
+    commands.entity(buttons).add_child(install);
 
     commands
         .entity(root)
@@ -448,15 +416,13 @@ fn tick(
     // is the part that is easy to miss: the new query is not the one that breaks.
     mut fill: Query<
         &mut Node,
-        (With<BarFill>, Without<BarTrack>, Without<StartBtn>, Without<InstallBtn>),
+        (With<BarFill>, Without<BarTrack>, Without<InstallBtn>),
     >,
-    mut track: Query<&mut Node, (With<BarTrack>, Without<StartBtn>, Without<InstallBtn>)>,
-    mut start: Query<(&mut Node, &Interaction), (With<StartBtn>, Without<InstallBtn>)>,
-    mut install: Query<(&mut Node, &Interaction), (With<InstallBtn>, Without<StartBtn>)>,
+    mut track: Query<&mut Node, (With<BarTrack>, Without<InstallBtn>)>,
+    mut install: Query<(&mut Node, &Interaction), With<InstallBtn>>,
     mut install_label: Query<&mut Text, (With<InstallLabel>, Without<StatusText>, Without<LogLine>)>,
     mut status: Query<&mut Text, (With<StatusText>, Without<LogLine>)>,
     mut log: Query<(&LogLine, &mut Text), Without<StatusText>>,
-    keys: Res<ButtonInput<KeyCode>>,
     mut writer: MessageWriter<AppExit>,
 ) {
     let (latest, finished, lines, summary, gap) = {
@@ -516,16 +482,22 @@ fn tick(
             }
         }
 
-        if let Ok((mut node, interaction)) = start.single_mut() {
-            node.display = Display::Flex;
-            // Enter as well as a click: this is the only control in the window,
-            // so the keyboard should reach it without a pointer.
-            if *interaction == Interaction::Pressed
-                || keys.just_pressed(KeyCode::Enter)
-                || keys.just_pressed(KeyCode::NumpadEnter)
-            {
-                writer.write(AppExit::Success);
-            }
+        // Nothing left to decide, so nothing to press: the editor starts.
+        //
+        // There used to be a Start Editor button here, and the reason was that
+        // this window once closed the instant the worker finished — a plugin
+        // that failed to compile was on screen for a single frame. That reason
+        // is gone rather than overruled: a failure is written to stderr as it
+        // happens, and the loader records it in the plugin inventory, so it is
+        // waiting in Settings ▸ Editor ▸ Plugins when the editor comes up.
+        // Holding a window shut until someone acknowledges a message they can
+        // still read afterwards is a toll, not a safeguard.
+        //
+        // The exception is an offer, above. While one stands, the window is the
+        // only place it can be taken, so closing would answer it by default —
+        // and the default would be no.
+        if offer.is_none() {
+            writer.write(AppExit::Success);
         }
         return;
     }
