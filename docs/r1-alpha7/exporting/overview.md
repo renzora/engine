@@ -680,7 +680,7 @@ starts from what the project says today.
 The web build is **game-runtime only** — there is no WebAssembly editor. It runs on **WebGPU**, and several native-only subsystems compile to no-ops in the browser:
 
 - **Lua does not run** on `wasm32`, so neither do blueprints (they compile to Lua and share its VM). The obstacle is no longer `dlopen`: a lean web export links its C-ABI plugins into the module and the host adopts a linked-in language backend exactly as it would a loaded one. It is `plugins/lua` itself — mlua builds Lua from **C**, and `wasm32-unknown-unknown` has no libc sysroot for that C to compile against. A language backend written in pure Rust would work on the web today. Until one exists, web-targeted logic has to live in Rust. (The `.rhai` backend that used to fill this gap has been removed.)
-- The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio — the bundled `plugins/audio` is native, because cpal cannot capture on the web. See [Audio backends](../extending/audio-backends.md).
+- The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio: the bundled `renzora_audio_backend` is native, because cpal cannot capture on the web, and it compiles to a plugin that registers nothing on `wasm32`. See [Audio backends](../extending/audio-backends.md).
 - Networking is a no-op stub (no native UDP), so multiplayer is unavailable on web.
 
 ### Android / iOS

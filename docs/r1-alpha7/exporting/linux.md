@@ -105,7 +105,7 @@ A Linux machine running your game needs:
 |---|---|
 | **GPU + Vulkan** | Renzora renders through `wgpu`; install Vulkan drivers (`mesa-vulkan-drivers` or your vendor's driver). |
 | **X11 or Wayland** | `winit` auto-selects whichever is available; `libxkbcommon` / `libwayland` provide the client libs. |
-| **ALSA / PulseAudio** | Needed by the audio backend plugin; without them (or without `plugins/audio`) the game runs silently. |
+| **ALSA / PulseAudio** | Needed by the audio backend; without them (or in a build made with `renzora_runtime`'s `audio` feature off) the game runs silently. |
 
 ## Architecture
 

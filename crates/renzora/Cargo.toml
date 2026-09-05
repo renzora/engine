@@ -37,8 +37,9 @@ text_mesh = []
 # Gated like `text_mesh` so a lean build that draws no grid compiles none of it.
 grid = []
 # `AudioLink` (`renzora::audio`) — the engine side of the audio boundary, so any
-# plugin can play a sound. The backend is still a `dlopen`'d audio plugin and the
-# mixer/timeline/emitters are still `renzora_audio`; only the link is here.
+# plugin can play a sound. The backend is still reached across the C ABI (today
+# `renzora_audio_backend`, linked in) and the mixer/timeline/emitters are still
+# `renzora_audio`; only the link is here.
 audio = []
 # Compile the project's Rust scripts INTO the binary instead of loading each as
 # a dylib. Changes only what `script!` emits: without it the entry point is
@@ -107,8 +108,8 @@ serde = { version = "1", features = ["derive"] }
 # this crate, so there is no cycle. The actual client stays behind the C-ABI
 # boundary in `plugins/http`; see `src/net.rs` for why the queue has to be here.
 # `audio` is the same arrangement one subsystem over: the play/stop request
-# vocabulary for `src/audio.rs`, with the actual backend behind the C-ABI
-# boundary in an audio plugin. Both features are `["std"]` and nothing else.
+# vocabulary for `src/audio.rs`, with the actual mixer behind the C-ABI boundary
+# in `renzora_audio_backend`. Both features are `["std"]` and nothing else.
 renzora_plugin = { path = "../renzora_plugin", default-features = false, features = ["net", "audio"] }
 # `Request::json` / `Response::json`. Came across with `net`; every caller was
 # already hand-rolling the same encode/decode a line later.

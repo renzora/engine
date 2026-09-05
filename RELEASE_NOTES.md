@@ -1,5 +1,13 @@
 <!-- r1-alpha7 -->
 
+## Unreleased
+- refactor(audio): the audio engine moves from `plugins/audio` into
+  `crates/renzora_audio_backend` and is linked into the binary. It registers
+  through the same C-ABI backend contract, so a replacement backend still loads
+  from `plugins/`; what changes is that the bundled mixer can no longer go
+  missing, and is stripped by `renzora_runtime`'s `audio` feature instead of by
+  deleting a file.
+
 ## Highlights
 
 - **C-ABI plugins**: write plugins in Rust with **no Bevy dependency**, so one

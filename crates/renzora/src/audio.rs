@@ -1,8 +1,11 @@
 //! The engine side of the audio boundary.
 //!
-//! [`AudioLink`] is the one place that knows a backend is a `dlopen`'d plugin.
-//! Everything else in this crate — the mixer state, the emitters, the timeline —
-//! talks to it in ordinary Rust and never sees a function pointer.
+//! [`AudioLink`] is the one place that knows a backend is reached across the
+//! C ABI. Everything else in this crate (the mixer state, the emitters, the
+//! timeline) talks to it in ordinary Rust and never sees a function pointer.
+//! Whether the backend was linked into the binary (`renzora_audio_backend`,
+//! which is the ordinary case) or `dlopen`'d from `plugins/` makes no
+//! difference here: both register a descriptor and are called the same way.
 //!
 //! ## What stays on this side
 //!
@@ -18,10 +21,11 @@
 //!
 //! ## No backend is a normal state
 //!
-//! Every method answers sensibly with nothing loaded: calls are dropped, reads
-//! come back empty. That is what makes the audio plugin *removable* — delete the
-//! file and the same binary runs silent, with the mixer panel still showing a
-//! board and every `play_sound` still resolving. The alternative, unwrapping a
+//! Every method answers sensibly with nothing registered: calls are dropped,
+//! reads come back empty. That is what makes the backend *separable*: a build
+//! with `renzora_runtime`'s `audio` feature off, or a platform with no backend
+//! written for it yet, runs silent with the mixer panel still showing a board
+//! and every `play_sound` still resolving. The alternative, unwrapping a
 //! backend that may not exist, would make audio mandatory in a build system
 //! whose entire point is that it is not.
 

@@ -1,15 +1,16 @@
 # Audio backends
 
 The engine ships an audio **API** and no audio. What makes sound is a separate
-C-ABI plugin, exactly the way a scripting language is — see
+backend behind a C ABI, exactly the way a scripting language is. See
 [Script backends](./script-backends.md), whose shape this mirrors deliberately.
 
-Drop `audio.dll` (`.so`, `.dylib`) into `plugins/` and the game plays. Delete it
-and the same binary runs silent: the mixer panel still shows a board, every
-`play_sound()` still resolves, nothing panics. That is what "removable" means
-here — not a feature flag, a file.
+The bundled backend, `renzora_audio_backend`, is **linked into the binary**. You
+do not install it and you cannot delete it: it is present whenever the engine was
+built with its `audio` feature, and absent from the build entirely when it was
+not. The contract it registers through is still the C ABI one, so a backend for a
+platform we have not written one for can be loaded from `plugins/` instead.
 
-## Why audio is a plugin and not part of the engine
+## Why the backend is a separate crate
 
 Two reasons, and only the second is about size.
 
@@ -21,15 +22,26 @@ that path. It wants WebAudio instead, where the graph, the panner and the
 decoders come free from the browser and nothing has to be compiled into the wasm
 blob. Those two share a contract, not a line of code.
 
-**A game that makes no sound should not carry a mixer.** With the plugin absent,
-the binary contains no device layer, no decoders and no DSP.
+**A game that makes no sound should not carry a mixer.** Build with
+`renzora_runtime`'s `audio` feature off and the binary contains no device layer,
+no decoders and no DSP.
+
+### It used to be a plugin you dropped in `plugins/`
+
+It shipped as `audio.dll` (`.so`, `.dylib`) through r1-alpha7, and the size
+argument above was the reason. What that form could not do is be reliably
+*present*: every moving part of the API is inert without a backend, so a game
+exported without the library beside it, or a player who deleted one file, got a
+binary that ran perfectly and made no noise, with no error to explain it. A cargo
+feature strips the mixer just as completely as a missing file did, and it cannot
+go missing by accident.
 
 ## What each side owns
 
 | | |
 |---|---|
 | **The engine** (`renzora_audio`) | the bus graph, the components scenes serialize, the command queue, the timeline, emitter bookkeeping, **and all file I/O** |
-| **The backend** (`plugins/audio`) | decoding, mixing, panning, distance attenuation, effects, the device, capture |
+| **The backend** (`renzora_audio_backend`) | decoding, mixing, panning, distance attenuation, effects, the device, capture |
 
 The split is the point: the backend speaks in handles, samples and bus keys, and
 knows nothing about entities, asset paths, transforms or the editor.
@@ -90,7 +102,9 @@ reports the capabilities it actually has.
 **One backend loads.** Two scripting languages coexist because a script picks one
 by its file extension; there is no equivalent for audio, and a second backend
 would open the same output device and mix over the first. The host keeps the
-first registration and logs the second.
+first registration and logs the second. Since the bundled backend is linked in,
+it is the one already holding that slot on any build with `audio` on: replacing
+it means building with the feature off, not adding a file.
 
 ## Ops, not one function pointer per operation
 
@@ -106,10 +120,11 @@ and nothing stops working.
 
 ## The bundled backend
 
-`plugins/audio` is the native one: cpal for the device, symphonia for decoding, and
-our own mixer, spatialiser, reverb and delay. Its decoder support is **per-project**
-— cargo features for `ogg`, `wav` (on by default), `mp3` and `flac` — so a game
-that only ships `.ogg` does not carry the MP3 and FLAC decoders.
+`crates/renzora_audio_backend` is the native one: cpal for the device, symphonia
+for decoding, and our own mixer, spatialiser, reverb and delay. Its decoder
+support is **per-project**, through cargo features for `ogg`, `wav` (on by
+default), `mp3` and `flac`, so a game that only ships `.ogg` does not carry the
+MP3 and FLAC decoders.
 
 Two things worth knowing about it:
 

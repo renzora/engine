@@ -7299,6 +7299,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_audio_backend"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "cpal",
+ "renzora",
+ "renzora_plugin",
+ "rtrb",
+ "symphonia",
+]
+
+[[package]]
 name = "renzora_autosave"
 version = "0.1.0"
 dependencies = [
@@ -8403,6 +8415,7 @@ dependencies = [
  "renzora_antialiasing",
  "renzora_atmosphere",
  "renzora_audio",
+ "renzora_audio_backend",
  "renzora_bloom_effect",
  "renzora_blueprint",
  "renzora_cloth",
@@ -9115,6 +9128,12 @@ dependencies = [
  "num-traits",
  "smallvec",
 ]
+
+[[package]]
+name = "rtrb"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fae8ee26b0371a29a77d2b2d6b3ae13aa81def6f9bf1b1b92a32d279a5e709b7"
 
 [[package]]
 name = "rustc-hash"

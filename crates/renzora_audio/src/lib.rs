@@ -2,14 +2,16 @@
 //!
 //! This crate owns the bus graph, the components scenes serialize, the command
 //! queue, the timeline and the emitter bookkeeping. What makes sound is a
-//! separate C-ABI plugin implementing [`renzora_plugin::audio::Backend`] — drop
-//! `audio.dll` beside the binary and the game plays; leave it out and the same
-//! binary runs silent, carrying none of the cost.
+//! separate crate implementing [`renzora_plugin::audio::Backend`]:
+//! `renzora_audio_backend`, which is linked in beside this one under the same
+//! `audio` feature, so a build either has both or neither.
 //!
 //! That split is why nothing here links a device, a decoder or any DSP.
-//! [`link`] is the one module that knows a backend is a plugin at all, and it
-//! answers harmlessly when none is loaded — which is what makes the plugin
-//! genuinely removable rather than nominally optional.
+//! [`link`] is the one module that knows a backend exists at all, and it
+//! answers harmlessly when none is registered. That is not merely defensive:
+//! the backend is reached through the C-ABI contract rather than by name, so a
+//! marketplace plugin can still supply one, and a build with the `audio`
+//! feature off has this API and no mixer behind it.
 //!
 //! On wasm the same API is linked against a WebAudio backend instead, because
 //! cpal cannot capture in a browser. Neither backend knows the other exists.

@@ -1,0 +1,61 @@
+# The engine's audio backend, linked in rather than loaded.
+#
+# The same code the `audio` plugin shipped, compiled into the binary instead of
+# `dlopen`'d from `plugins/`. Nothing about the audio API changes: this registers
+# through the ordinary backend contract (`renzora_plugin::audio::Backend`), so a
+# second backend (WebAudio on wasm, a console's own mixer) still arrives the same
+# way and this one takes no special case anywhere in the host.
+#
+# Why it stopped being a distribution plugin. Audio is not an extension anyone
+# opts into: `renzora_audio` ships the bus graph, the components, the command
+# queue and the timeline, and every one of them is inert without a backend. A
+# game exported without the library beside it, or a player who deleted one loose
+# file, got a binary that ran silent with nothing to say about it. The cost the
+# plugin form was protecting against, which is cpal, symphonia and the decoders
+# in a build that never makes a sound, is protected here by the `audio` feature
+# on `renzora_runtime` instead: it strips this crate outright.
+[package]
+name = "renzora_audio_backend"
+version = "0.1.0"
+edition = "2021"
+description = "The Renzora audio engine, statically linked into the binary."
+
+[features]
+# Ogg Vorbis and WAV, which is what a game project actually ships: Vorbis for
+# everything compressed, WAV for the short uncompressed one-shots. MP3 and FLAC
+# are opt-in because most projects carry neither, and this is the first time
+# that has been a choice: kira's format features were enabled engine-wide, so
+# every game paid for every decoder whether or not it had one of those files.
+default = ["ogg", "wav", "mp3"]
+ogg = ["symphonia/ogg", "symphonia/vorbis"]
+wav = ["symphonia/wav", "symphonia/pcm"]
+mp3 = ["symphonia/mp3"]
+flac = ["symphonia/flac"]
+
+[dependencies]
+# The boundary. `audio` brings the `Backend` trait and the request/reply
+# vocabulary; `static_link` strips the `#[no_mangle]` from `add!`'s entry point
+# so this links in alongside anything else without two definitions of
+# `renzora_plugin_init`; `host` brings `load_static`, which installs it.
+renzora_plugin = { path = "../renzora_plugin", features = ["audio", "static_link", "host"] }
+# For `add!`, which declares this a Runtime-scope plugin and lets the generator
+# wire it into the runtime list, the same way every other crate here is added.
+renzora = { path = "../renzora", default-features = false }
+bevy = { workspace = true }
+
+# `default-features = false` matters more than usual here: symphonia's default
+# turns on mkv, adpcm, flac and more, which is most of what the feature list
+# above exists to avoid.
+symphonia = { version = "0.5", default-features = false }
+
+# Native only. cpal's wasm hosts implement output but leave `build_input_stream_raw`
+# as a `// TODO` returning an error, so a browser build gets a WebAudio backend
+# instead of this one, which is the whole reason the mixer here is ours rather
+# than a library's. `rtrb` is the SPSC ring the host thread posts commands
+# through; see `device.rs` for why a mutex is not an option.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cpal = "0.17"
+rtrb = "0.3"
+
+[lints]
+workspace = true

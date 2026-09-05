@@ -196,7 +196,11 @@ sprite_anim = ["dep:renzora_sprite_anim"]
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
 terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
 water = ["dep:renzora_water"]
-audio = ["dep:renzora_audio", "renzora_engine/audio"]
+# Pulls the backend as well as the API. They are two crates because the mixer
+# links neither Bevy nor the engine, not because a build would ever want one
+# without the other: `renzora_audio` is the bus graph, the components and the
+# timeline, and every one of them is inert with nothing to render a block.
+audio = ["dep:renzora_audio", "dep:renzora_audio_backend", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
 blueprint = ["scripting", "dep:renzora_blueprint", "renzora_scripting?/blueprint"]
 # Pulls `scripting`: ember's markup runtime binds `.html` fields to script
@@ -330,6 +334,10 @@ renzora_hanabi = { path = "../renzora_hanabi", optional = true }
 # now, so a single-player game no longer compiles the whole UDP stack.
 renzora_network = { path = "../renzora_network", optional = true }
 renzora_audio = { path = "../renzora_audio", optional = true }
+# The mixer behind the API above. Listed by hand rather than left in the
+# generated block so the `audio` feature can strip cpal, symphonia and the
+# decoders from a build that never makes a sound.
+renzora_audio_backend = { path = "../renzora_audio_backend", optional = true }
 # Optional under `render_3d`: the runtime only keepalive-links it so the shader
 # plugin's inventory entry registers. A 2D export drops it with bevy_pbr.
 renzora_shader = { path = "../renzora_shader", optional = true }
