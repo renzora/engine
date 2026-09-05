@@ -186,7 +186,11 @@ impl Plugin for ShellPlugin {
         app.insert_resource(Dock {
             tree: layouts[active].1.clone(),
         });
-        app.insert_resource(ShellLayouts { layouts, active });
+        app.insert_resource(ShellLayouts {
+            layouts,
+            active,
+            plugin_provided: std::collections::HashSet::new(),
+        });
         // Workspaces a plugin registered through `register_workspace`. Drained
         // here rather than in `renzora_editor_framework` because THIS is the
         // dock the editor draws: `renzora_ui::LayoutManager` is the older egui
@@ -343,6 +347,21 @@ renzora::add!(ShellPlugin, Editor);
 pub(crate) struct ShellLayouts {
     pub(crate) layouts: Vec<(String, DockTree)>,
     pub(crate) active: usize,
+    /// Names supplied by a plugin this session, rather than by the built-in
+    /// defaults or the save file.
+    ///
+    /// These are deliberately NOT persisted. A workspace arranges panels, and a
+    /// plugin's panels leave with it, so a saved copy outlives the only thing
+    /// that could fill it: uninstall the plugin and the ribbon keeps a
+    /// workspace whose every tab opens empty, with nothing to explain why. The
+    /// plugin re-registers on each launch, so the entry is rebuilt whenever it
+    /// is genuinely there.
+    ///
+    /// The cost is that layout edits to a plugin's workspace do not survive a
+    /// restart. That is the right way round: the plugin's tree is the
+    /// definition, and the alternative is preserving an arrangement of panels
+    /// that may no longer exist.
+    pub(crate) plugin_provided: std::collections::HashSet<String>,
 }
 
 /// Install workspaces registered through
@@ -370,6 +389,7 @@ fn install_plugin_workspaces(
             Some(i) => layouts.layouts[i].1 = request.tree,
             None => layouts.layouts.push((request.name.clone(), request.tree)),
         }
+        layouts.plugin_provided.insert(request.name.clone());
         info!("[shell] workspace `{}` registered", request.name);
     }
 }
@@ -896,6 +916,18 @@ fn persist_dock_layout(
     if let Some(slot) = snapshot.get_mut(layouts.active) {
         slot.1 = dock.tree.clone();
     }
+    // Drop the plugin-supplied ones before writing. See `plugin_provided`: a
+    // saved workspace outlives the plugin whose panels fill it, so persisting
+    // one leaves a ribbon entry full of empty tabs after an uninstall. Done
+    // after the active-slot sync above so the live tree is still written when
+    // the active workspace is a built-in.
+    let active_name = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone());
+    snapshot.retain(|(n, _)| !layouts.plugin_provided.contains(n));
+    // The saved active index has to point into the list that was actually
+    // written, or a restart lands on the wrong workspace (or out of range).
+    let active_index = active_name
+        .and_then(|n| snapshot.iter().position(|(sn, _)| *sn == n))
+        .unwrap_or(0);
     // Snapshot every floating dock window's tree + client geometry.
     let floating: Vec<dock::FloatingLayout> = floats
         .0
@@ -939,7 +971,7 @@ fn persist_dock_layout(
         sets,
         active: bottom_sets.active,
     };
-    let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating, &bottom_dock) else {
+    let Some(json) = dock::layout_json(&snapshot, active_index, &floating, &bottom_dock) else {
         return;
     };
     if last_saved.as_deref() == Some(json.as_str()) {
