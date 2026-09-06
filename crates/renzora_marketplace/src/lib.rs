@@ -88,6 +88,7 @@ mod model_viewer;
 mod library;
 #[cfg(not(target_arch = "wasm32"))]
 mod splash_plugins;
+mod splash_templates;
 #[cfg(not(target_arch = "wasm32"))]
 mod store;
 #[cfg(not(target_arch = "wasm32"))]
@@ -173,6 +174,7 @@ impl Plugin for MarketplacePlugin {
         // `renzora_splash` because everything it needs — the catalogue client,
         // the session and the installer — is in this crate; see the module doc.
         splash_plugins::register(app);
+        splash_templates::register(app);
 
         // The panels.
         app.add_plugins(store::StorePanel);

@@ -1548,6 +1548,15 @@ fn category_hue(category: &str) -> (u8, u8, u8) {
 
 /// A representative phosphor icon for a marketplace category — the thumbnail
 /// placeholder and a hint of what the asset is.
+///
+/// Matched here rather than read from the category's `icon` column, which the
+/// server does carry: this is a `&'static str` into the phosphor map, and the
+/// font is *subsetted* at build time from the icon names that appear in the
+/// source. An icon named only in the database is not in the subset, so trusting
+/// the column would render a blank box for every category added after the last
+/// engine release. The cost is that a new category shows the `package` fallback
+/// until an arm is added here, which is what Prefabs, Media, SVGs and UI
+/// Templates were all doing.
 fn category_icon(category: &str) -> &'static str {
     let c = category.to_lowercase();
     if c.contains("theme") {
@@ -1578,6 +1587,16 @@ fn category_icon(category: &str) -> &'static str {
         "folder-open"
     } else if c.contains("font") {
         "text-aa"
+    } else if c.contains("starter") {
+        "blueprint"
+    } else if c.contains("prefab") {
+        "stack"
+    } else if c.contains("media") {
+        "film-strip"
+    } else if c.contains("svg") || c.contains("vector") {
+        "bezier-curve"
+    } else if c.contains("ui-template") || c == "ui" {
+        "layout"
     } else {
         "package"
     }

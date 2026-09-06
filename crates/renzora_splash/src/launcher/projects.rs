@@ -17,8 +17,9 @@ use renzora_ember::reactive::{react, KeyedSnapshot, Rx};
 use renzora_ember::widgets::{bind_text_input, scroll_view, text_input, HoverTooltip};
 
 use crate::config::AppConfig;
-// Both are desktop-only paths: the browser opens a project through a directory
-// handle (`renzora_webfs`), not a path, so neither has a caller on wasm.
+// Desktop-only: the browser opens a project through a directory handle
+// (`renzora_webfs`), not a path, so this has no caller on wasm. Creating a
+// project moved to the New Project page, which owns the starter choice.
 #[cfg(not(target_arch = "wasm32"))]
 use crate::project::{create_project, open_project};
 
@@ -28,6 +29,8 @@ pub(crate) const SECTION_ID: &str = "projects";
 
 #[derive(Component)]
 struct NewProjectBtn;
+#[derive(Component)]
+struct NewFromTemplateBtn;
 #[derive(Component)]
 struct OpenProjectBtn;
 /// A recent-project row — a spectral sheen travels around its border on hover.
@@ -57,6 +60,7 @@ pub(crate) fn systems(app: &mut App) {
         Update,
         (
             new_project_click,
+            new_from_template_click,
             open_project_click,
             recent_open_click,
             recent_remove_click,
@@ -109,10 +113,19 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let new = pill_button(commands, fonts, "plus", "New Project", true);
     commands.entity(new).insert(NewProjectBtn);
+    let template = pill_button(commands, fonts, "blueprint", "New from Template", false);
+    commands.entity(template).insert(NewFromTemplateBtn);
+    // Hidden when nothing registered the Templates page — a build without the
+    // marketplace has no way to get a template, and a button that switches to a
+    // page that does not exist would land on an empty host.
+    bind_display(commands, template, |w| {
+        w.get_resource::<super::SplashSections>()
+            .is_some_and(|s| s.get(crate::TEMPLATES_SECTION_ID).is_some())
+    });
     let open = pill_button(commands, fonts, "folder-open", "Open Project", false);
     commands.entity(open).insert(OpenProjectBtn);
     let search = build_search(commands, fonts);
-    commands.entity(toolbar).add_children(&[new, open, search]);
+    commands.entity(toolbar).add_children(&[new, template, open, search]);
 
     let heading = commands
         .spawn((
@@ -515,6 +528,21 @@ fn new_project_click(
 ) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(do_new_project);
+    }
+}
+
+/// New from Template goes to the Templates page rather than a folder dialog.
+///
+/// A template is downloaded, so the choice is a browse, not a modal: it needs
+/// thumbnails, descriptions and a search box, none of which fit in a file
+/// dialog. Blank stays on the button next to it, so the fast path is still one
+/// click and never waits on the network.
+fn new_from_template_click(
+    q: Query<&Interaction, (With<NewFromTemplateBtn>, Changed<Interaction>)>,
+    mut active: ResMut<super::ActiveSection>,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        active.0 = crate::TEMPLATES_SECTION_ID.to_string();
     }
 }
 

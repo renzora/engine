@@ -83,6 +83,24 @@ A plugin is the one category that does not install into a project. It extracts i
 
 The splash [dashboard](/docs/r1-alpha7/getting-started/dashboard) has a **Plugins** page for exactly that: search the plugin listings, install, and press **Restart now**. Free plugins install without an account; a paid one needs you signed in, which the page offers. Installing from the Marketplace panel inside the editor still works and puts the files in the same place — the dashboard just puts the restart next to the install.
 
+### Starter templates: the category that *is* a project
+
+Every other category is a **part** of a project and installs into the one you
+have open. **Starter Templates** are the exception: a starter is a whole project,
+so it lands in a folder you choose and is a project from that moment — openable,
+in your recents, indistinguishable from one you made yourself. There is no
+install location for them and nothing cached on your machine.
+
+The natural place to use one is therefore the dashboard, before any project is
+open: its [Templates](/docs/r1-alpha7/getting-started/dashboard#templates) page
+browses this category and creates the project for you.
+
+Publishing one is the easy half: a starter is just a project folder. Zip it —
+`project.toml`, `scenes/`, and whatever assets and scripts go with them — and
+whatever settings your project had are the settings someone else's copy starts
+with. The download refuses a folder that already contains a `project.toml`, so
+it can never land on top of existing work.
+
 ### From your Library
 
 1. Open the **My Library** panel. It lists everything you own and shows which folder each asset installs into.

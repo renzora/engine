@@ -15,6 +15,7 @@ pub fn install_dir_for_category(category: &str) -> &'static str {
         "audio" | "sound" | "music" | "sfx" => "audio",
         "materials" | "material" => "materials",
         "scenes" | "scene" => "scenes",
+        "starters" | "starter" => "starters",
         "shaders" | "shader" => "shaders",
         "fonts" | "font" => "fonts",
         "animations" | "animation" => "animations",
@@ -352,6 +353,175 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
     }
 
     Ok(extract_dir)
+}
+
+// ── Starter templates ───────────────────────────────────────────────────────
+
+/// A safe directory name from a human string, or `None` if nothing usable is
+/// left.
+///
+/// Shared by the starter installer, which names the installed directory after
+/// the listing's slug: that name ends up in a path, in the splash's starter list
+/// and in the id a project records, so it has to survive a round trip through
+/// all three.
+pub fn sanitize_dir_name(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches('-').to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
+}
+
+
+/// Is this category's download a starter template?
+pub fn is_starter_category(category: &str) -> bool {
+    matches!(category, "starters" | "starter")
+}
+
+/// Install a starter as a project, at `dest`.
+///
+/// # Why this is not an install location of its own
+///
+/// It briefly was: `<install root>/starters/`, beside `plugins/`, on the
+/// reasoning that a starter is the engine's rather than a project's. That was
+/// wrong, and the correction is worth keeping written down because the wrong
+/// version is the tempting one. A starter template **is a project**. There is
+/// nothing to keep a local library of and nothing to instantiate later: the
+/// download is the finished thing, and the only question is where on disk the
+/// user wants it. So it lands where they say, exactly as a project would,
+/// and from that moment it is one -- openable, in recents, indistinguishable
+/// from a project they made themselves.
+///
+/// The archive's own wrapper directory is stripped, so `dest` ends up holding
+/// `project.toml` directly rather than `<name>/project.toml`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_starter_project(dest: &Path, data: &[u8]) -> Result<PathBuf, String> {
+    let parent = dest
+        .parent()
+        .ok_or_else(|| "That folder has no parent".to_string())?;
+    let leaf = dest
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "That folder has no name".to_string())?;
+
+    // Staged beside the destination, on the same filesystem so the swap is a
+    // rename: a download that dies half way must not leave a folder that looks
+    // like a project and will not open.
+    let staging = parent.join(format!(".project-incoming-{leaf}"));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)
+        .map_err(|e| format!("Failed to create {}: {e}", staging.display()))?;
+
+    let finish = |extracted: PathBuf| -> Result<PathBuf, String> {
+        // Zipping the folder and zipping its contents are both normal, so the
+        // manifest decides where the tree really starts.
+        let manifest = find_project_root(&extracted).ok_or_else(|| {
+            "This download has no project.toml, so it is not a project.".to_string()
+        })?;
+
+        if dest.join("project.toml").is_file() {
+            return Err(format!(
+                "{} is already a project. Choose an empty folder.",
+                dest.display()
+            ));
+        }
+        std::fs::create_dir_all(dest)
+            .map_err(|e| format!("Failed to create {}: {e}", dest.display()))?;
+        // Merged into the chosen folder rather than replacing it: the folder may
+        // be one the user just made, and removing and recreating it would lose
+        // anything they had already put there.
+        copy_dir(&manifest, dest).map_err(|e| format!("Failed to install project: {e}"))?;
+
+        // The project takes the folder's name, exactly as New Project does.
+        // Without this every copy of a template is called whatever the listing
+        // was, so downloading two leaves two projects with the same name.
+        let toml_path = dest.join("project.toml");
+        if let Ok(text) = std::fs::read_to_string(&toml_path) {
+            let _ = std::fs::write(&toml_path, rewrite_project_name(&text, leaf));
+        }
+        Ok(dest.to_path_buf())
+    };
+
+    let outcome = extract_zip(data, &staging, leaf).and_then(finish);
+    let _ = std::fs::remove_dir_all(&staging);
+    outcome
+}
+
+/// Replace the top-level `name = "..."` in a `project.toml`, or add one if it
+/// has none.
+///
+/// Line-based rather than a round trip through `ProjectConfig`, which would
+/// quietly drop every key it does not know about -- including any a plugin
+/// added, and a template is exactly where someone puts a key for a plugin they
+/// ship alongside it.
+///
+/// Only the first match is touched, and only before any `[section]` header, so a
+/// `name` belonging to an audio bus or a window config is never mistaken for the
+/// project's.
+#[cfg(not(target_arch = "wasm32"))]
+fn rewrite_project_name(text: &str, name: &str) -> String {
+    let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+    let mut out = String::with_capacity(text.len() + name.len());
+    let mut replaced = false;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if !replaced && trimmed.starts_with('[') {
+            // The first section, with no top-level name found: put one in before
+            // the top-level table is out of reach.
+            out.push_str(&format!("name = \"{escaped}\"\n"));
+            replaced = true;
+        }
+        if !replaced && trimmed.starts_with("name") && trimmed[4..].trim_start().starts_with('=') {
+            out.push_str(&format!("name = \"{escaped}\""));
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    if !replaced {
+        out.push_str(&format!("name = \"{escaped}\"\n"));
+    }
+    out
+}
+
+/// The directory holding `project.toml`: this one, or the single wrapper
+/// directory inside it. `None` if neither is a project.
+#[cfg(not(target_arch = "wasm32"))]
+fn find_project_root(dir: &Path) -> Option<PathBuf> {
+    if dir.join("project.toml").is_file() {
+        return Some(dir.to_path_buf());
+    }
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let nested = entry.path();
+        if nested.join("project.toml").is_file() {
+            return Some(nested);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
 }
 
 // ── Plugins ─────────────────────────────────────────────────────────────────
@@ -699,6 +869,112 @@ mod plugin_install_tests {
     #[test]
     fn rejects_bytes_that_are_not_a_zip() {
         assert!(plugin_crate_and_prefix(b"definitely not a zip").is_err());
+    }
+
+    /// The whole path, on real bytes: a zipped project folder goes in, a project
+    /// in the chosen folder comes out, named after it.
+    ///
+    /// Worth doing end to end rather than on the pieces, because the two things
+    /// most likely to break are the seam between them: whether the archive's
+    /// wrapper directory is stripped, and whether the rewrite reaches the file
+    /// that actually landed.
+    #[test]
+    fn a_zipped_project_installs_into_the_chosen_folder() {
+        let zip = zip_of(&[
+            ("town-square/project.toml", "name = \"Town Square\"\nversion = \"0.1.0\"\n"),
+            ("town-square/scenes/main.bsn", "// renzora interim bsn v1\n"),
+        ]);
+        let root = std::env::temp_dir().join(format!("renzora-starter-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let dest = root.join("my-level");
+
+        let out = install_starter_project(&dest, &zip).expect("installs");
+        assert_eq!(out, dest);
+        // The wrapper directory is stripped: `project.toml` is at the top.
+        assert!(dest.join("project.toml").is_file(), "no project.toml at the root");
+        assert!(dest.join("scenes/main.bsn").is_file(), "the scene did not come with it");
+        let toml = std::fs::read_to_string(dest.join("project.toml")).unwrap();
+        assert!(toml.contains("name = \"my-level\""), "not renamed: {toml}");
+        assert!(toml.contains("version = \"0.1.0\""), "lost a key: {toml}");
+        // Nothing staged is left behind.
+        assert!(!root.join(".project-incoming-my-level").exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Landing on an existing project is refused rather than merged. Merging two
+    /// projects into one folder produces a third that is neither.
+    #[test]
+    fn it_refuses_a_folder_that_is_already_a_project() {
+        let zip = zip_of(&[("p/project.toml", "name = \"T\"\n")]);
+        let root = std::env::temp_dir().join(format!("renzora-starter-clash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dest = root.join("taken");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("project.toml"), "name = \"Mine\"\n").unwrap();
+
+        assert!(install_starter_project(&dest, &zip).is_err());
+        // The existing project is untouched.
+        let kept = std::fs::read_to_string(dest.join("project.toml")).unwrap();
+        assert!(kept.contains("Mine"), "clobbered an existing project");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A download that is not a project is rejected at install time, where there
+    /// is someone to read the message.
+    #[test]
+    fn it_rejects_an_archive_that_is_not_a_project() {
+        let zip = zip_of(&[("stuff/readme.txt", "hello")]);
+        let root = std::env::temp_dir().join(format!("renzora-starter-junk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        let err = install_starter_project(&root.join("x"), &zip).unwrap_err();
+        assert!(err.contains("project.toml"), "unhelpful message: {err}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project created from a template takes the folder's name. Without this
+    /// every copy of a listing is called whatever the listing was, so two
+    /// downloads leave two projects with the same name.
+    #[test]
+    fn a_template_project_takes_the_folder_name() {
+        let src = "name = \"Town Square\"\nversion = \"0.1.0\"\n\n[window]\nwidth = 1280\n";
+        let out = rewrite_project_name(src, "my-level");
+        assert!(out.starts_with("name = \"my-level\"\n"), "{out}");
+        assert!(out.contains("version = \"0.1.0\""));
+        assert!(out.contains("[window]"));
+        assert_eq!(out.matches("name =").count(), 1);
+    }
+
+    /// A `name` inside a section belongs to that section. Rewriting it would
+    /// rename an audio bus and leave the project called after the template.
+    #[test]
+    fn a_name_inside_a_section_is_not_the_projects() {
+        let src = "version = \"0.1.0\"\n\n[[audio.buses]]\nname = \"Master\"\n";
+        let out = rewrite_project_name(src, "my-level");
+        assert!(out.contains("name = \"Master\""), "{out}");
+        let project = out.find("name = \"my-level\"").expect("a project name");
+        let section = out.find("[[audio.buses]]").expect("the section");
+        assert!(project < section, "the project name must stay top-level: {out}");
+    }
+
+    /// A template whose `project.toml` never names one still produces a named
+    /// project rather than an unnamed one.
+    #[test]
+    fn a_template_with_no_name_gets_one() {
+        let out = rewrite_project_name("version = \"0.1.0\"\n", "my-level");
+        assert!(out.contains("name = \"my-level\""), "{out}");
+    }
+
+    /// Quotes in a folder name must not end the TOML string early.
+    #[test]
+    fn a_quoted_folder_name_stays_one_string() {
+        let out = rewrite_project_name("name = \"x\"\n", "My \"Great\" Level");
+        assert!(out.contains(r#"name = "My \"Great\" Level""#), "{out}");
     }
 
     #[test]

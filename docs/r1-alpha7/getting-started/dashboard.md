@@ -22,11 +22,33 @@ The window opens at about half your screen, centred: the dashboard is a launcher
 The default page, and what the launcher used to be on its own.
 
 - **New Project** — choose a folder; it becomes the project root and takes the folder's name.
+- **New from Template** — opens the [Templates](#templates) page, to start from a finished project instead of an empty one. Hidden in a build without the Marketplace.
 - **Open Project** — pick a `project.toml`.
 - **Recent Projects** — everything you have opened, newest first. Click a row to open it. The **✕** on a row removes it from this list and *does not* touch the folder on disk. A project whose folder has moved or gone is shown greyed out and marked `(missing)`.
 - The search box filters the recents list by name or path.
 
 In the browser build, "New" and "Open" both go through the directory picker, and a recent entry reopens through the folder handle the browser remembers — which asks you to re-grant permission.
+
+## Templates
+
+A **starter template is a project** — not a description of one, and not a library
+entry to instantiate later. The download *is* the finished project, so there is
+no install step and nothing kept on your machine between times: you pick a
+template, you pick a folder, and what lands there is a project. It opens
+straight away, and from that moment it is indistinguishable from one you made
+yourself.
+
+The folder is chosen *after* the template on purpose. The template is the
+interesting decision, and a file dialog is a bad place to still be making it.
+
+Templates come from the Marketplace's **Starter Templates** category, so this
+page is a browse: search, thumbnails, descriptions. Free templates need no
+account; a paid one needs you signed in. **New Project** stays one click away on
+the Projects page, so the empty-project path never waits on the network.
+
+A template brings its own `project.toml`, which becomes your project's — that is
+how one can start you with a resolution, a rendering mode or a mixer bus layout
+already set. Only the project *name* changes, to the folder you chose.
 
 ## Plugins
 

@@ -26,6 +26,24 @@ pub use loading::{
 pub use project::create_project;
 pub use project::{open_project, CurrentProject, ProjectConfig, WindowConfig};
 
+/// The id of the **Templates** dashboard page.
+///
+/// Declared here rather than by the page itself because the dependency runs the
+/// other way: the Projects page's "New from Template" button has to name the
+/// section it switches to, and the crate that *provides* that section
+/// (`renzora_marketplace`) depends on this one. A build without the marketplace
+/// registers no such section, and the button hides itself.
+pub const TEMPLATES_SECTION_ID: &str = "templates";
+
+/// Open a project that was just created, as the splash's own New Project does:
+/// record it in recents and start the transition into the editor.
+///
+/// Public because a dashboard page can be registered from another crate, and a
+/// page that creates a project needs the same ending as the one built in.
+pub fn enter_created_project(world: &mut World, project: CurrentProject) {
+    launcher::enter_project(world, project);
+}
+
 use bevy::prelude::*;
 
 // SplashState now lives in the `renzora` SDK — coordination contract used

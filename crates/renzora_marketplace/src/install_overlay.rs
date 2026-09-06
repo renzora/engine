@@ -235,8 +235,8 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // Default destination = the category's conventional subfolder. Create it up
     // front so it shows in the tree even on a fresh project.
     let default_dest = root.join(install::install_dir_for_category(&asset.category));
-    // Only for the picker's benefit — a plugin never lands in the project, so
-    // don't create a `plugins/` folder there that nothing will ever use.
+    // Only for the picker's benefit — neither a plugin nor a starter lands in
+    // the project, so don't create a folder there that nothing will ever use.
     if !install::is_plugin_category(&asset.category) {
         let _ = std::fs::create_dir_all(&default_dest);
     }
@@ -474,7 +474,7 @@ fn install_buttons(
     // A plugin shows no picker, so `FolderPick` still holds whatever the last
     // non-plugin install chose — take the category's own directory instead of
     // that stale path.
-    let dest = if install::install_dir_for_category(&pending.asset.category) == "plugins" {
+    let dest = if install::is_plugin_category(&pending.asset.category) {
         pending.default_dest.clone()
     } else {
         pick.path().map(Path::to_path_buf).unwrap_or_else(|| pending.default_dest.clone())
@@ -499,7 +499,7 @@ fn install_buttons(
         name: asset.name.clone(),
         shared: shared.clone(),
         outcome: None,
-        offer_restart: install::install_dir_for_category(&asset.category) == "plugins",
+        offer_restart: install::is_plugin_category(&asset.category),
     });
 
     spawn_install(session, asset, dest, tx, shared);
@@ -543,7 +543,9 @@ fn poll_install_result(
         // so `.material` files get written, and that needs a `World`.
         if outcome.is_ok() && install::install_dir_for_category(&category) == "models" {
             if let Some(root) = installed {
-                commands.queue(move |world: &mut World| import_installed_model(world, &root));
+                commands.queue(move |world: &mut World| {
+                    renzora_import::import_tree_in_place(world, &root)
+                });
             }
         }
         let dir = install::install_dir_for_category(&category);
@@ -677,6 +679,22 @@ fn run_install(
     // `plugins/` directory under its crate name, where `prebuild` compiles it on
     // the next launch — `dest` (a project folder) is not somewhere anything
     // would ever look for it.
+    // A starter template is a whole project, so it lands in the chosen folder as
+    // one rather than as an asset inside the open project. Everything else in
+    // the store is a *part* of a project; this is the one category that is a
+    // project, and the difference is the whole of why it has a category.
+    if install::is_starter_category(&asset.category) {
+        let dir = install::sanitize_dir_name(&asset.name)
+            .or_else(|| install::sanitize_dir_name(&asset.slug))
+            .unwrap_or_else(|| "new-project".to_string());
+        let root = install::install_starter_project(&dest.join(dir), &bytes)?;
+        return Ok(format!(
+            "Created the project '{}' at {}. Open it from the dashboard's Projects page.",
+            asset.name,
+            root.display()
+        ));
+    }
+
     if install::is_plugin_category(&asset.category) {
         let done = install::install_plugin_source(&asset.id, &bytes)?;
         // The sidecar ties the installed source back to its listing, and it is
@@ -719,57 +737,6 @@ fn run_install(
         *slot = Some(path.clone());
     }
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
-}
-
-/// Put every model file under `root` through the import pipeline, in place.
-///
-/// `root` is whatever the install produced — one file for a bare `.glb`, a
-/// folder for anything that arrived as an archive. Both are walked the same way
-/// because the difference is the seller's packaging, not the asset.
-///
-/// Each source becomes a sibling `.glb` with its textures in `textures/` and a
-/// `.material` per material, which is the layout the engine loads. A source that
-/// is already GLB still goes through: the converter is what extracts the
-/// materials, and skipping it would leave a model that renders untextured.
-///
-/// Failures are logged per file and the rest continue. A model the pipeline
-/// cannot read is still on disk exactly as it was downloaded, which is strictly
-/// better than an install that reports failure and leaves nothing.
-fn import_installed_model(world: &mut World, root: &std::path::Path) {
-    let Some(project) = world.get_resource::<renzora::CurrentProject>() else { return };
-    let project_path = project.path.clone();
-
-    let mut sources: Vec<std::path::PathBuf> = Vec::new();
-    collect_models(root, &mut sources);
-    if sources.is_empty() {
-        return;
-    }
-    for source in sources {
-        let Some(model_dir) = source.parent().map(std::path::Path::to_path_buf) else { continue };
-        let dest = source.with_extension("glb");
-        renzora_import::run_import_pipeline(world, &source, &dest, &model_dir, &project_path);
-        // The source is replaced by its GLB, not kept beside it — two files
-        // describing one model is what makes an asset browser show it twice.
-        if dest != source {
-            if let Err(e) = std::fs::remove_file(&source) {
-                warn!("[marketplace] could not remove {}: {e}", source.display());
-            }
-        }
-    }
-}
-
-/// Every importable model file at or under `path`, depth-first.
-fn collect_models(path: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    if path.is_file() {
-        if renzora_import::detect_format(path).is_some() {
-            out.push(path.to_path_buf());
-        }
-        return;
-    }
-    let Ok(entries) = std::fs::read_dir(path) else { return };
-    for entry in entries.flatten() {
-        collect_models(&entry.path(), out);
-    }
 }
 
 /// The overlay's second face: what Install turns it into.
