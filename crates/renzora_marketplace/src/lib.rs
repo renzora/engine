@@ -88,6 +88,7 @@ mod model_viewer;
 mod library;
 #[cfg(not(target_arch = "wasm32"))]
 mod splash_plugins;
+#[cfg(not(target_arch = "wasm32"))]
 mod splash_templates;
 #[cfg(not(target_arch = "wasm32"))]
 mod store;
