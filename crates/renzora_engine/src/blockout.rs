@@ -18,7 +18,8 @@
 
 use bevy::prelude::*;
 use bevy::render::mesh::VertexAttributeValues;
-use renzora::core::{GridTexture, MeshPrimitive};
+use std::collections::HashSet;
+use renzora::core::{GridTexture, MeshColor, MeshPrimitive};
 
 /// The material a primitive wears until it is given one of its own: the
 /// blockout grid, tinted by `base_color`.
@@ -38,203 +39,311 @@ pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> Stand
     }
 }
 
-/// The object scale currently baked into an entity's mesh UVs by
-/// [`retile_blockout_grid`].
+/// Push a changed [`MeshColor`] into the material the entity is already
+/// wearing.
 ///
-/// Not registered for reflection on purpose: it describes the state of a mesh
-/// asset, not the scene, and a saved scene rebuilds its meshes from the shape
-/// registry on load — pristine, so the absence of this component correctly
-/// means "nothing baked in yet".
-#[derive(Component)]
-pub struct BlockoutTiling(Vec3);
-
-/// Keep the blockout grid a constant size in world units as an object is
-/// scaled, instead of stretching four cells across whatever the object has
-/// become.
+/// Until this existed, `MeshColor` was write-once: every path that *creates* a
+/// primitive read it (spawn, undo of a delete, scene load, the drag ghost) and
+/// baked it into a fresh `StandardMaterial`, and nothing at all watched it
+/// afterwards. So the component was in the scene file, on the entity, and
+/// registered for reflection, and yet setting it did nothing until the next
+/// reload. That caught the inspector's new colour row, but it caught scripts
+/// too: `ScriptCommand::Spawn` inserts a `MeshColor`, and a script that changed
+/// one later was silently ignored.
 ///
-/// A primitive's UVs run 0..1 across a face, so scaling a cube into a wall
-/// stretched its four cells into four tall rectangles — the grid stopped
-/// reading as a measure of anything, which is the entire reason to have it.
-/// Scaling the UVs to match puts the tiles back to square and keeps them the
-/// same size as the tiles on everything else in the scene.
+/// Skips anything with a [`MaterialRef`](renzora::core::MaterialRef): there the
+/// resolver owns the material, and writing a base colour over a compiled graph
+/// would fight it every frame the graph recompiled.
 ///
-/// The stretch factor has to be per-UV-axis, so this needs to know which way
-/// through the model `+u` and `+v` actually run — see [`uv_axes`]. On a cube
-/// that comes out exact per face; on a sphere the axes swing around, so the
-/// tiling varies a little under a non-uniform scale, which is a far smaller
-/// artefact than the stretching it replaces.
-///
-/// Entities with a [`MaterialRef`](renzora::core::MaterialRef) are left alone —
-/// once a real material is on the mesh, its UVs are the author's business.
-pub fn retile_blockout_grid(
-    mut commands: Commands,
-    query: Query<
+/// Alpha is honoured by switching the alpha mode with it. `blockout_material`
+/// leaves the mode at `Opaque`, so a colour picked with alpha below 1 would
+/// otherwise look exactly like the opaque one and read as the alpha slider
+/// being broken.
+#[cfg(feature = "render_3d")]
+pub fn apply_mesh_color(
+    changed: Query<
+        (&MeshColor, &MeshMaterial3d<StandardMaterial>),
         (
-            Entity,
-            Ref<Mesh3d>,
-            Ref<GlobalTransform>,
-            Option<&BlockoutTiling>,
-        ),
-        (
-            With<MeshPrimitive>,
+            Changed<MeshColor>,
             Without<renzora::core::MaterialRef>,
-            Without<renzora::core::EditedMesh>,
         ),
     >,
-    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    for (entity, mesh3d, transform, tiling) in &query {
-        if !mesh3d.is_changed() && !transform.is_changed() {
+    let Some(mut materials) = materials else { return };
+    for (color, handle) in &changed {
+        let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
-        }
-        // A fresh `Mesh3d` is a fresh mesh asset straight from the shape
-        // registry, so whatever was baked into the last one is gone with it.
-        let baked = if mesh3d.is_changed() {
-            Vec3::ONE
+        };
+        material.base_color = color.0;
+        material.alpha_mode = if color.0.alpha() < 1.0 {
+            AlphaMode::Blend
         } else {
-            tiling.map_or(Vec3::ONE, |t| t.0)
+            AlphaMode::Opaque
         };
-        let scale = transform.scale().abs().max(Vec3::splat(1e-4));
-        if scale.abs_diff_eq(baked, 1e-4) {
-            continue;
-        }
-
-        let Some(mut mesh) = meshes.get_mut(&mesh3d.0) else {
-            continue;
-        };
-        let Some((u_axes, v_axes)) = uv_axes(&mesh) else {
-            continue;
-        };
-        let Some(VertexAttributeValues::Float32x2(uvs)) =
-            mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
-        else {
-            continue;
-        };
-        if uvs.len() != u_axes.len() {
-            continue;
-        }
-        for (i, uv) in uvs.iter_mut().enumerate() {
-            // How far one unit of UV stretches in the world, before and after.
-            // The ratio is what has to be applied, because the UVs already
-            // carry the previous scale.
-            uv[0] *= stretch(u_axes[i], scale) / stretch(u_axes[i], baked);
-            uv[1] *= stretch(v_axes[i], scale) / stretch(v_axes[i], baked);
-        }
-        commands.entity(entity).try_insert(BlockoutTiling(scale));
     }
 }
 
-/// How much a unit-length object-space direction grows under `scale`.
-fn stretch(axis: Vec3, scale: Vec3) -> f32 {
-    let s = (axis * scale).length();
-    if s > 1e-4 {
-        s
-    } else {
-        // A degenerate axis (a vertex the triangle walk found nothing for)
-        // falls back to the average, which at least keeps tiles square.
-        (scale.x + scale.y + scale.z) / 3.0
-    }
-}
-
-/// Object-space directions that `+u` and `+v` run in at each vertex.
+/// World units spanned by one tile of the blockout grid image.
 ///
-/// This is a tangent frame, but computed here and thrown away rather than
-/// stored as a vertex attribute: nothing *renders* with it — the grid is flat
-/// and normal-maps nothing — it is only needed to know which way a UV axis runs
-/// through the model, so the retiling stretches the right one.
-fn uv_axes(mesh: &Mesh) -> Option<(Vec<Vec3>, Vec<Vec3>)> {
+/// One, so the grid measures metres directly: at the default scale a unit cube
+/// wears exactly one tile per face, which is what the shape registry's authored
+/// UVs already produced and so keeps every existing scene looking the same.
+const TILE: f32 = 1.0;
+
+/// Project the blockout grid onto a shape from its own geometry, so the grid
+/// keeps a constant size in the world however the shape is scaled, extruded or
+/// inset.
+///
+/// # Why projection and not a UV rescale
+///
+/// This used to take the mesh's authored UVs and stretch them by the object's
+/// scale, which handled the one case it was written for (dragging a cube out
+/// into a wall) and nothing else. Its assumption was that the mesh's unwrap
+/// stays put and only the object's size changes. Modeling breaks that
+/// assumption immediately: extrude and inset build new faces, and an operator
+/// that has no idea what a blockout grid is has no UVs to give them. The new
+/// geometry inherited whatever the fallback produced, and the grid smeared into
+/// stripes across exactly the faces you had just made.
+///
+/// Deriving the UVs instead means there is nothing for an operator to get
+/// wrong. Every vertex is projected along whichever axis its normal points down
+/// most, in world-scaled object space, so the tile size is a property of the
+/// world rather than of the mesh's history. Scale a wall, extrude a ledge,
+/// inset a panel: the grid stays square and the same size as the grid on
+/// everything else in the scene, because all of them are measuring the same
+/// space.
+///
+/// It is also idempotent, which is what lets it run on whatever the mesh editor
+/// last baked without any handshake between the two: re-projecting an
+/// already-projected mesh computes the same UVs and writes nothing.
+///
+/// Entities with a [`MaterialRef`](renzora::core::MaterialRef) are left alone:
+/// once a real material is on the mesh, its UVs are the author's business.
+pub fn project_blockout_uvs(
+    query: Query<(Ref<Mesh3d>, Ref<GlobalTransform>), (With<MeshPrimitive>, Without<renzora::core::MaterialRef>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut mesh_events: MessageReader<AssetEvent<Mesh>>,
+) {
+    // A mesh's *contents* can change without its handle changing: the mesh
+    // editor bakes in place, so `Mesh3d` never fires. Collect the assets that
+    // were modified this frame and treat those as changed too.
+    //
+    // Writing below modifies the asset and so produces one of these events on
+    // the next frame. That does not loop, because the equality check makes the
+    // second pass write nothing, and a pass that writes nothing emits no event.
+    let mut touched: HashSet<AssetId<Mesh>> = HashSet::new();
+    for event in mesh_events.read() {
+        if let AssetEvent::Modified { id } | AssetEvent::Added { id } = event {
+            touched.insert(*id);
+        }
+    }
+
+    for (mesh3d, transform) in &query {
+        if !mesh3d.is_changed() && !transform.is_changed() && !touched.contains(&mesh3d.0.id()) {
+            continue;
+        }
+        let scale = transform.scale().abs().max(Vec3::splat(1e-4));
+        let Some(mesh) = meshes.get(&mesh3d.0) else {
+            continue;
+        };
+        let Some(projected) = project_uvs(mesh, scale) else {
+            continue;
+        };
+
+        // Read, compare, and only then take the mutable borrow. `get_mut` emits
+        // `AssetEvent::Modified` whether or not anything is written, and this
+        // system reads those events, so writing unconditionally would have it
+        // re-examining every blockout mesh in the scene every frame forever.
+        let unchanged = matches!(
+            mesh.attribute(Mesh::ATTRIBUTE_UV_0),
+            Some(VertexAttributeValues::Float32x2(current))
+                if current.len() == projected.len()
+                    && current.iter().zip(&projected).all(|(a, b)| {
+                        (a[0] - b[0]).abs() < 1e-5 && (a[1] - b[1]).abs() < 1e-5
+                    })
+        );
+        if unchanged {
+            continue;
+        }
+
+        if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, projected);
+        }
+    }
+}
+
+/// Project `mesh`'s blockout UVs in place, for an object at `scale`.
+///
+/// The system above is the normal path and reaches everything in the scene. This
+/// is for a mesh that is not in the scene yet: the ghost that follows the cursor
+/// during a shape drag is not a scene primitive, so nothing projects it, and it
+/// would wear the shape registry's authored unwrap right up until the moment you
+/// let go and the real shape landed wearing a different one.
+///
+/// Does nothing to a mesh it cannot measure, for the same reason
+/// [`project_uvs`] returns `None` there.
+pub fn project_mesh_uvs(mesh: &mut Mesh, scale: Vec3) {
+    if let Some(uvs) = project_uvs(mesh, scale) {
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    }
+}
+
+/// Box-project every vertex of `mesh`, in object space scaled to world size.
+///
+/// `None` when the mesh has no positions or no normals to project along, which
+/// is the honest answer for something this cannot measure rather than a guess
+/// that would look like a bug.
+fn project_uvs(mesh: &Mesh, scale: Vec3) -> Option<Vec<[f32; 2]>> {
     let VertexAttributeValues::Float32x3(positions) = mesh.attribute(Mesh::ATTRIBUTE_POSITION)?
     else {
         return None;
     };
-    let VertexAttributeValues::Float32x2(uvs) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)? else {
+    let VertexAttributeValues::Float32x3(normals) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL)? else {
         return None;
     };
-    let indices: Vec<usize> = mesh.indices()?.iter().collect();
+    if normals.len() != positions.len() {
+        return None;
+    }
 
-    let mut u_axes = vec![Vec3::ZERO; positions.len()];
-    let mut v_axes = vec![Vec3::ZERO; positions.len()];
-    for tri in indices.chunks_exact(3) {
-        let (a, b, c) = (tri[0], tri[1], tri[2]);
-        if a.max(b).max(c) >= positions.len() {
-            return None;
-        }
-        let edge1 = Vec3::from(positions[b]) - Vec3::from(positions[a]);
-        let edge2 = Vec3::from(positions[c]) - Vec3::from(positions[a]);
-        let duv1 = Vec2::from(uvs[b]) - Vec2::from(uvs[a]);
-        let duv2 = Vec2::from(uvs[c]) - Vec2::from(uvs[a]);
-        let det = duv1.x * duv2.y - duv2.x * duv1.y;
-        if det.abs() < 1e-12 {
-            continue; // degenerate UVs on this triangle — the others will do
-        }
-        let r = 1.0 / det;
-        let u = (edge1 * duv2.y - edge2 * duv1.y) * r;
-        let v = (edge2 * duv1.x - edge1 * duv2.x) * r;
-        // Normalize per triangle before accumulating, so a large triangle
-        // doesn't outvote its neighbours on a shared vertex.
-        let (u, v) = (u.normalize_or_zero(), v.normalize_or_zero());
-        for &i in tri {
-            u_axes[i] += u;
-            v_axes[i] += v;
-        }
+    Some(
+        positions
+            .iter()
+            .zip(normals)
+            .map(|(p, n)| {
+                // World-sized offsets, deliberately without the rotation: which
+                // way a wall is turned should not change how big its tiles are.
+                let w = Vec3::from(*p) * scale / TILE;
+                project_vertex(w, Vec3::from(*n))
+            })
+            .collect(),
+    )
+}
+
+/// One vertex's UV: the two axes that are not the one its normal points down.
+///
+/// Split out so the axis choice can be tested on its own: it is the whole of
+/// what makes a projection read as a grid rather than as a smear, and it is
+/// wrong in a way that is hard to see on a screenshot and trivial to assert.
+fn project_vertex(world: Vec3, normal: Vec3) -> [f32; 2] {
+    let n = normal.abs();
+    if n.x >= n.y && n.x >= n.z {
+        [world.z, world.y]
+    } else if n.y >= n.z {
+        [world.x, world.z]
+    } else {
+        [world.x, world.y]
     }
-    for (u, v) in u_axes.iter_mut().zip(v_axes.iter_mut()) {
-        *u = u.normalize_or_zero();
-        *v = v.normalize_or_zero();
-    }
-    Some((u_axes, v_axes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::math::primitives::Cuboid;
 
-    /// On a cuboid every face's UV axes are two of the cardinal axes, which is
-    /// what makes the per-face retiling exact: scaling a cube into a wall
-    /// stretches each face's `u` and `v` by the two world dimensions that face
-    /// actually spans.
+    fn uvs_of(mesh: &Mesh) -> Vec<[f32; 2]> {
+        match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+            Some(VertexAttributeValues::Float32x2(v)) => v.clone(),
+            _ => panic!("mesh has no UVs"),
+        }
+    }
+
+    /// The grid keeps a constant size in the world as the object is scaled.
+    ///
+    /// Stated as the property that matters: the span of UV across a face has to
+    /// grow in step with the face, so a cube dragged into a wall shows more
+    /// tiles rather than four stretched ones.
     #[test]
-    fn cuboid_uv_axes_are_cardinal_and_orthogonal() {
+    fn scaling_a_shape_adds_tiles_instead_of_stretching_them() {
         let mesh = Mesh::from(Cuboid::new(1.0, 1.0, 1.0));
-        let (u_axes, v_axes) = uv_axes(&mesh).expect("cuboid has positions, uvs and indices");
 
-        for (u, v) in u_axes.iter().zip(v_axes.iter()) {
-            assert!((u.length() - 1.0).abs() < 1e-4, "u should be unit: {u}");
-            assert!((v.length() - 1.0).abs() < 1e-4, "v should be unit: {v}");
-            assert!(u.dot(*v).abs() < 1e-4, "u and v should be perpendicular");
-            // Cardinal means one component is ±1 and the rest are zero.
-            for axis in [u, v] {
+        let unit = project_uvs(&mesh, Vec3::ONE).expect("a cuboid projects");
+        let wide = project_uvs(&mesh, Vec3::new(8.0, 1.0, 1.0)).expect("a cuboid projects");
+
+        let span = |uvs: &[[f32; 2]], axis: usize| {
+            let (lo, hi) = uvs.iter().fold((f32::MAX, f32::MIN), |(lo, hi), uv| {
+                (lo.min(uv[axis]), hi.max(uv[axis]))
+            });
+            hi - lo
+        };
+        // Eight times the object, eight times the tiles across it.
+        assert!(
+            (span(&wide, 0) - span(&unit, 0) * 8.0).abs() < 1e-4,
+            "u span {} should be 8x {}",
+            span(&wide, 0),
+            span(&unit, 0)
+        );
+        // The axis that did not grow is untouched, or a non-uniform scale would
+        // square up one direction by skewing the other.
+        assert!((span(&wide, 1) - span(&unit, 1)).abs() < 1e-4);
+    }
+
+    /// Tiles stay square under a non-uniform scale, which is the whole point of
+    /// projecting rather than stretching an authored unwrap.
+    #[test]
+    fn tiles_stay_square_under_a_non_uniform_scale() {
+        let mesh = Mesh::from(Cuboid::new(1.0, 1.0, 1.0));
+        let uvs = project_uvs(&mesh, Vec3::new(5.0, 1.0, 3.0)).expect("a cuboid projects");
+
+        let VertexAttributeValues::Float32x3(positions) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap()
+        else {
+            panic!()
+        };
+        // Every edge of the cuboid must map to a UV distance equal to its world
+        // length, on whichever face it belongs to. Checking the two ends of the
+        // mesh's own index list is enough to catch an axis mix-up.
+        let indices: Vec<usize> = mesh.indices().unwrap().iter().collect();
+        for tri in indices.chunks_exact(3) {
+            for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+                let world_a = Vec3::from(positions[a]) * Vec3::new(5.0, 1.0, 3.0);
+                let world_b = Vec3::from(positions[b]) * Vec3::new(5.0, 1.0, 3.0);
+                let uv_a = Vec2::from(uvs[a]);
+                let uv_b = Vec2::from(uvs[b]);
+                // The projection drops one axis, so the UV distance is the world
+                // distance measured in the plane. It can never exceed it.
                 assert!(
-                    (axis.abs().max_element() - 1.0).abs() < 1e-4,
-                    "axis should be cardinal: {axis}"
+                    uv_a.distance(uv_b) <= world_a.distance(world_b) + 1e-4,
+                    "a UV edge grew longer than the edge it measures"
                 );
             }
         }
     }
 
-    /// The whole point: a wall made by scaling a cube gets tiles the same size
-    /// as everything else, not four stretched rectangles. Each face's two UV
-    /// axes must pick up the two scale components that face spans.
+    /// A vertex projects along the two axes its normal does *not* point down.
+    /// Get this wrong and a face's UVs collapse to a line, which is exactly the
+    /// stripe pattern this replaced.
     #[test]
-    fn stretch_follows_the_axis_it_runs_along() {
-        let scale = Vec3::new(6.0, 3.0, 1.0);
-        assert_eq!(stretch(Vec3::X, scale), 6.0);
-        assert_eq!(stretch(Vec3::Y, scale), 3.0);
-        assert_eq!(stretch(-Vec3::Z, scale), 1.0);
-        // Every axis a cuboid's UVs can run along is covered by exactly one
-        // scale component, so no face can come out non-square.
-        let mesh = Mesh::from(Cuboid::new(1.0, 1.0, 1.0));
-        let (u_axes, v_axes) = uv_axes(&mesh).unwrap();
-        for (u, v) in u_axes.iter().zip(v_axes.iter()) {
-            assert!([6.0, 3.0, 1.0].contains(&stretch(*u, scale)));
-            assert!([6.0, 3.0, 1.0].contains(&stretch(*v, scale)));
-        }
+    fn a_vertex_projects_across_its_face_not_through_it() {
+        let world = Vec3::new(2.0, 3.0, 5.0);
+        assert_eq!(project_vertex(world, Vec3::X), [5.0, 3.0]);
+        assert_eq!(project_vertex(world, Vec3::NEG_X), [5.0, 3.0]);
+        assert_eq!(project_vertex(world, Vec3::Y), [2.0, 5.0]);
+        assert_eq!(project_vertex(world, Vec3::Z), [2.0, 3.0]);
     }
 
-    /// A vertex the triangle walk found nothing for must not collapse the UVs
-    /// to zero — that would put the whole grid in one texel.
+    /// Re-projecting a projected mesh must produce the same UVs. The system
+    /// relies on this to run beside the mesh editor without a handshake, and to
+    /// avoid re-triggering itself through the asset events it listens to.
     #[test]
-    fn degenerate_axis_falls_back_to_the_average_scale() {
-        assert_eq!(stretch(Vec3::ZERO, Vec3::new(2.0, 3.0, 4.0)), 3.0);
+    fn projection_is_idempotent() {
+        let mut mesh = Mesh::from(Cuboid::new(1.0, 1.0, 1.0));
+        let scale = Vec3::new(2.0, 0.5, 3.0);
+
+        let once = project_uvs(&mesh, scale).expect("a cuboid projects");
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, once.clone());
+        let twice = project_uvs(&mesh, scale).expect("a cuboid projects");
+
+        assert_eq!(uvs_of(&mesh), once);
+        assert_eq!(once, twice);
+    }
+
+    /// A mesh with no normals cannot be projected, and says so rather than
+    /// guessing an axis and producing a smear that looks like a bug elsewhere.
+    #[test]
+    fn a_mesh_without_normals_is_left_alone() {
+        let mut mesh = Mesh::from(Cuboid::new(1.0, 1.0, 1.0));
+        mesh.remove_attribute(Mesh::ATTRIBUTE_NORMAL);
+        assert!(project_uvs(&mesh, Vec3::ONE).is_none());
     }
 }

@@ -613,14 +613,20 @@ impl Plugin for RuntimePlugin {
         // "disabled").
         #[cfg(feature = "render_3d")]
         {
-            // Keep the blockout grid a constant size in world units as shapes
-            // are scaled. In `PostUpdate` after transform propagation because
-            // it reads world scale, and a frame behind would show the stretched
-            // grid for that frame every time the gizmo moves.
+            // Keep the blockout grid a constant size in world units however a
+            // shape is scaled or modeled. In `PostUpdate` after transform
+            // propagation because it reads world scale, and a frame behind would
+            // show a stretched grid for that frame every time the gizmo moves.
             app.add_systems(
                 PostUpdate,
-                blockout::retile_blockout_grid.after(TransformSystems::Propagate),
+                blockout::project_blockout_uvs.after(TransformSystems::Propagate),
             );
+
+            // Push `MeshColor` edits into the material. Here rather than beside
+            // `rehydrate_meshes` in the game-boot block above, for exactly the
+            // reason this block exists: that block is `!is_editor`, and the one
+            // place a colour is edited by hand is the editor's inspector.
+            app.add_systems(Update, blockout::apply_mesh_color);
 
             // Distance LODs ride the mesh-instance rehydrate wave:
             // probe → spawn variants → tag meshes with VisibilityRange. The

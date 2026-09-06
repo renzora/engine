@@ -331,6 +331,16 @@ pub fn update_shape_drag_preview(
             };
 
             let mesh = (entry.create_mesh)(&mut meshes);
+            // The ghost has to wear the grid the dropped shape will wear. The
+            // real one gets its UVs from `project_blockout_uvs`, which only
+            // looks at primitives that are in the scene, and this is not one
+            // yet — so it projects its own, at the scale it will land at. Without
+            // this the preview carries the registry's authored unwrap and the
+            // texture visibly changes the instant you let go, which is the same
+            // thing the tint below was fixed for.
+            if let Some(mut m) = meshes.get_mut(&mesh) {
+                renzora_engine::blockout::project_mesh_uvs(&mut m, Vec3::ONE);
+            }
             let min_offset = meshes
                 .get(&mesh)
                 .and_then(|m| m.compute_aabb())

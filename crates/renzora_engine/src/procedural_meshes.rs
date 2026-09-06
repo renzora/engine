@@ -699,7 +699,15 @@ pub fn create_pyramid_mesh() -> Mesh {
         let va = Vec3::from(apex);
         let edge = v1 - v0;
         let to_apex = va - v0;
-        let n = edge.cross(to_apex).normalize();
+        // `to_apex × edge`, not `edge × to_apex`. The base is wound
+        // counter-clockwise seen from above, so the first order gives the
+        // *inward* normal on every side — and because `build_mesh` runs
+        // `ensure_correct_winding`, which rewinds each triangle to agree with
+        // its stored normal, a wrong normal here does not merely shade badly:
+        // it turns the whole side face around. Every pyramid rendered as an
+        // open shell you could see into, with the four sides backface-culled
+        // from outside and visible from within.
+        let n = to_apex.cross(edge).normalize();
 
         add_tri(
             &mut positions,
@@ -2625,6 +2633,41 @@ mod tests {
             assert!(
                 has_vertex(&positions, corner),
                 "missing base corner {corner:?}"
+            );
+        }
+    }
+
+    /// Every face of a closed convex mesh must point away from its centre.
+    ///
+    /// The existing test above checks that the pyramid has an apex and four
+    /// base corners, which it did while all four sides faced *inward*: the
+    /// vertices were right and the shape was inside-out, so a spawned pyramid
+    /// rendered as an open shell you could see into. Geometry alone cannot
+    /// catch that; the facing has to be asserted separately.
+    ///
+    /// Checked through the winding rather than the stored normals, because
+    /// `build_mesh` rewinds each triangle to agree with its normal — so reading
+    /// the normals back would only confirm they agree with themselves.
+    #[test]
+    fn pyramid_faces_outward() {
+        let mesh = create_pyramid_mesh();
+        let positions = positions_of(&mesh);
+        let indices = match mesh.indices().expect("indexed") {
+            bevy::mesh::Indices::U32(v) => v.clone(),
+            bevy::mesh::Indices::U16(v) => v.iter().map(|&i| i as u32).collect(),
+        };
+        for tri in indices.chunks(3) {
+            let a = Vec3::from(positions[tri[0] as usize]);
+            let b = Vec3::from(positions[tri[1] as usize]);
+            let c = Vec3::from(positions[tri[2] as usize]);
+            let face_normal = (b - a).cross(c - a);
+            // The pyramid's centroid sits below the middle of its own height,
+            // and every face of a convex solid faces away from any interior
+            // point. The base centre is comfortably inside.
+            let inside = Vec3::new(0.0, -0.25, 0.0);
+            assert!(
+                face_normal.dot(a - inside) > 0.0,
+                "inward-facing triangle {a:?} {b:?} {c:?}"
             );
         }
     }
