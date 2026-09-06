@@ -134,8 +134,31 @@ which does the same thing.
 Inside the field, left of the caret, are two buttons: the **pencil** opens this
 material in the Material Editor, and **×** removes it from the object.
 
-An object with no material yet shows a **New material** button under the field
-instead. It asks where the file should go — type a name and pick a destination
+### Base Color: an object with no material
+
+A built-in shape doesn't start with a `.material`. It wears the **blockout
+grid** tinted by a single colour, which is why a freshly spawned cube is a solid
+red and a sphere a solid blue without anything being assigned to them.
+
+That colour is the **Base Color** row, directly under the material slot. Click
+the swatch for an HSV picker with an alpha slider; the object updates as you
+drag. The colour is stored on the object and saved with the scene, so a
+blockout keeps its palette across reloads.
+
+Two things follow from what it is:
+
+- **It only appears on built-in shapes with no material.** Assign a `.material`
+  and the row goes away, because from then on the material owns the surface and
+  a tint that tinted nothing would be a lie. Remove the material and the row
+  comes back. Imported models never show it — their meshes already have
+  materials from their own files.
+- **Alpha works.** Drop it below 1 and the object switches to blended
+  transparency; take it back to 1 and it returns to opaque.
+
+This is the fast way to dress a greybox: spawn the shapes, colour them, and only
+reach for real materials on the surfaces that need them.
+
+An object with no material yet also shows a **New material** button under the field. It asks where the file should go — type a name and pick a destination
 folder from the project tree — then writes the `.material` there and binds it.
 It does *not* jump you to the Material Editor: the texture slots that appear
 underneath are where a new material usually gets filled in, and the pencil is

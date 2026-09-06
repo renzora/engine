@@ -17,6 +17,28 @@ over bevy_pbr's own shader sources, then naga. Imports resolve to the real
 thing, so a node whose codegen drifts invalid is a CI failure rather than a
 silent runtime fallback.
 
+## Reading the catalogue from code
+
+This page is written by hand and the compiler does not check it. `renzora_shader`
+also publishes the same list at runtime, as data, into
+`renzora::MaterialNodeCatalog` — node type, category, description, and each pin's
+name, type and direction:
+
+```rust
+fn pick_a_noise(catalogue: Res<renzora::MaterialNodeCatalog>) {
+    for node in catalogue.iter().filter(|n| n.category == "Procedural") {
+        let inputs: Vec<&str> = node.inputs().map(|pin| pin.name.as_str()).collect();
+        info!("{} takes {inputs:?}", node.node_type);
+    }
+}
+```
+
+That exists because the definitions cannot leave `renzora_shader` — a
+`PinTemplate` carries a `PinValue`, which is the compiler's own vocabulary — while
+a native plugin links only `bevy`, `renzora` and `renzora_ember`. Prefer it over
+transcribing this page: a copied list drifts, and the drift shows up as a graph
+that will not compile rather than as a mismatch anyone can see.
+
 ## How to read this page
 
 Every node is identified by a `category/name` string (e.g. `math/multiply`). For

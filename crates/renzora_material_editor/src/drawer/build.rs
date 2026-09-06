@@ -73,7 +73,8 @@ pub(super) fn rebuild_material(world: &mut World) {
         let path = material_path(&Rx::new(&*world), entity);
         let rev = world.get_resource::<MatCache>().map(|c| c.rev).unwrap_or(0);
         let expanded = world.get_resource::<TexSlotsExpanded>().is_some_and(|e| e.0);
-        let sig = sig_of(entity, &path, rev, expanded);
+        let tint = super::shows_tint(&Rx::new(&*world), entity);
+        let sig = sig_of(entity, &path, rev, expanded, tint);
         if old_sig == Some(sig) {
             continue;
         }
@@ -94,7 +95,7 @@ pub(super) fn rebuild_material(world: &mut World) {
             for ch in existing {
                 commands.entity(ch).despawn();
             }
-            build_body(&mut commands, &fonts, root, entity, &path, &params, &slots, expanded);
+            build_body(&mut commands, &fonts, root, entity, &path, &params, &slots, expanded, tint);
         }
         queue.apply(world);
         if let Some(mut mr) = world.get_mut::<MatRoot>(root) {
@@ -158,11 +159,22 @@ fn build_body(
     params: &[MaterialParam],
     slots: &[SlotState],
     expanded: bool,
+    tint: bool,
 ) {
     let mut children: Vec<Entity> = Vec::new();
 
     // ── Material slot ──
     children.push(super::slot::build_slot(commands, fonts, entity, path));
+
+    // ── Base colour ──
+    //
+    // Directly under the slot, because it answers the question the slot just
+    // raised: the slot says "No material", and this is what the thing is
+    // coloured by instead. It disappears the moment a real material is
+    // assigned, since the material owns the surface from then on.
+    if tint {
+        children.push(super::tint::build_tint_row(commands, fonts, entity));
+    }
 
     // ── Texture slots ──
     //

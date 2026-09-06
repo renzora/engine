@@ -36,12 +36,63 @@ impl Plugin for MaterialPlugin {
         info!("[runtime] MaterialPlugin");
         app.add_plugins(runtime::GraphMaterialPlugin);
         app.add_plugins(resolver::MaterialResolverPlugin);
+        // Authoring-only, so it follows `validate.rs` behind the same feature:
+        // nothing in a shipped game asks what nodes exist, and the catalogue is
+        // 159 entries of strings built at startup to answer that question.
+        // Unlike the validator this needs no runtime `EditorSession` gate,
+        // because being wrong costs a little memory rather than a wrong result.
+        #[cfg(feature = "editor")]
+        publish_node_catalogue(app);
         // Importers emit `PbrMaterialExtracted` per material pulled out of
         // a source file. Turn each event into a `.material` graph file on
         // disk so the resolver can later load it and the material editor
         // can open it as a node graph.
         app.add_observer(on_pbr_material_extracted);
     }
+}
+
+/// Copy [`nodes::ALL_NODES`] into the contract crate's catalogue, as data.
+///
+/// The definitions cannot leave this crate: a `PinTemplate` carries a
+/// `PinValue`, which is the compiler's own vocabulary, and moving that chain
+/// into `renzora` would end with the shader compiler in the contract crate. But
+/// the *description* is answerable without any of it, and something has to
+/// answer it: a native plugin links `bevy`, `renzora` and `renzora_ember`, so
+/// without this there is no way for one to find out that
+/// `procedural/noise_fbm` exists, let alone what its pins are called. The
+/// alternative was every such consumer keeping its own copy of a 159-entry list
+/// and discovering it had drifted when a graph failed to compile.
+///
+/// Once, at startup. The list is `&'static` and nothing adds to it at runtime.
+#[cfg(feature = "editor")]
+fn publish_node_catalogue(app: &mut App) {
+    use renzora::core::material_nodes::{
+        MaterialNodeCatalog, MaterialNodeDefinition, MaterialNodePin,
+    };
+
+    let entries: Vec<MaterialNodeDefinition> = nodes::ALL_NODES
+        .iter()
+        .map(|def| MaterialNodeDefinition {
+            node_type: def.node_type.to_string(),
+            display_name: def.display_name.to_string(),
+            category: def.category.to_string(),
+            description: def.description.to_string(),
+            pins: (def.pins)()
+                .into_iter()
+                .map(|pin| MaterialNodePin {
+                    name: pin.name,
+                    label: pin.label,
+                    pin_type: format!("{:?}", pin.pin_type),
+                    input: matches!(pin.direction, graph::PinDir::Input),
+                })
+                .collect(),
+        })
+        .collect();
+
+    app.init_resource::<MaterialNodeCatalog>();
+    app.world_mut()
+        .resource_mut::<MaterialNodeCatalog>()
+        .set(entries);
 }
 
 /// Observer: write a `.material` JSON file for each emitted

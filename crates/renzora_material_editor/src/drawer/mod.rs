@@ -49,6 +49,7 @@ pub(crate) mod index;
 pub(crate) mod overrides;
 pub(crate) mod picker;
 pub(crate) mod slot;
+pub(crate) mod tint;
 pub(crate) mod textures;
 
 pub struct MaterialDrawer;
@@ -183,13 +184,27 @@ pub(super) fn material_abs(w: &Rx, path: &str) -> Option<PathBuf> {
     w.get_resource::<CurrentProject>().map(|p| p.resolve_path(path))
 }
 
-pub(super) fn sig_of(entity: Entity, path: &str, rev: u64, expanded: bool) -> u64 {
+pub(super) fn sig_of(entity: Entity, path: &str, rev: u64, expanded: bool, tint: bool) -> u64 {
     let mut h = DefaultHasher::new();
     entity.hash(&mut h);
     path.hash(&mut h);
     rev.hash(&mut h);
     expanded.hash(&mut h);
+    tint.hash(&mut h);
     h.finish()
+}
+
+/// Whether this entity should show the base-colour row: a built-in primitive
+/// with no `.material` of its own.
+///
+/// Gated on [`MeshPrimitive`] rather than on having a mesh at all, because the
+/// colour it edits is the blockout tint, and the blockout material is only ever
+/// worn by primitives. An imported model's mesh already has a material from its
+/// own file; putting a tint control on it would offer to change something that
+/// would not change.
+pub(super) fn shows_tint(w: &Rx, entity: Entity) -> bool {
+    w.get::<renzora::core::MeshPrimitive>(entity).is_some()
+        && w.get::<MaterialRef>(entity).is_none()
 }
 
 /// Current override value for a param (override if present, else master default).

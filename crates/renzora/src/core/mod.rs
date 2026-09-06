@@ -25,6 +25,7 @@ pub mod entity_id; // canonical unique snake_case entity ids (Name)
 pub mod graph; // node-graph vocabulary (blueprint / material / particle)
 pub mod input_actions; // named actions + the character controller queue
 pub mod environment_suppressed; // shading modes that show no sky
+pub mod material_nodes; // the material node catalogue, as data
 pub mod material_ref; // pointing an entity at a .material file
 pub mod play_mode; // Play / Simulate / Edit state and its run conditions
 pub mod plugin_inventory; // what plugins were found on disk, and their state
@@ -46,6 +47,7 @@ pub use entity_id::*;
 pub use graph::*;
 pub use input_actions::*;
 pub use environment_suppressed::*;
+pub use material_nodes::*;
 pub use material_ref::*;
 pub use play_mode::*;
 pub use plugin_inventory::*;
