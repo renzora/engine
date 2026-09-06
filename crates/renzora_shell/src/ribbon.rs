@@ -609,6 +609,55 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSou
     input
 }
 
+/// Publish the workspace list for consumers outside this crate, and perform any
+/// switch they asked for.
+///
+/// [`ShellLayouts`] is `pub(crate)` and stays that way: a plugin cannot name a
+/// `DockTree` slot list, and widening the shared-image set to let it would make
+/// every plugin's ABI depend on this crate. So the exchange goes through
+/// `renzora_ember`'s [`WorkspaceSwitch`], which both sides can reach, in the
+/// same shape `PendingWorkspaces` already uses for registration: the guest asks
+/// in vocabulary it has, and the crate owning the structure performs it.
+///
+/// The published list is rewritten only when it differs, because this runs every
+/// frame and a `Vec<String>` rebuilt each time would churn for nothing.
+pub(crate) fn exchange_workspace_switch(
+    mut switch: ResMut<renzora_ember::workspace::WorkspaceSwitch>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    // Read before taking. `take_request` is `&mut self`, so calling it
+    // unconditionally would deref_mut the resource every frame and mark it
+    // changed forever, which is exactly the signal a `resource_changed` reader
+    // would want to trust.
+    if switch.requested.is_some() {
+        let name = switch.take_request().unwrap_or_default();
+        // By name, never by index. An index that happens to be in range after
+        // the list changed addresses a different workspace than the caller
+        // meant, and nothing downstream could tell.
+        if let Some(index) = layouts.layouts.iter().position(|(n, _)| *n == name) {
+            apply_workspace(index, &mut layouts, &mut dock, &mut dirty);
+        } else {
+            warn!("[shell] no workspace named `{name}`");
+        }
+    }
+
+    let active = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone());
+    if switch.active != active {
+        switch.active = active;
+    }
+    if switch.names.len() != layouts.layouts.len()
+        || switch
+            .names
+            .iter()
+            .zip(&layouts.layouts)
+            .any(|(published, (name, _))| published != name)
+    {
+        switch.names = layouts.layouts.iter().map(|(name, _)| name.clone()).collect();
+    }
+}
+
 /// Swap the dock to workspace `index`, saving the current layout into the active
 /// slot first. The ribbon highlight follows via the reactive rebuild (the
 /// snapshot keys on `layouts.active`). Shared by the ribbon + doc-tab clicks.

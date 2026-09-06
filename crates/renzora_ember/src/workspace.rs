@@ -115,6 +115,40 @@ fn queue<'a>(app: &'a mut App, name: &str, tree: DockTree, hidden: bool) -> &'a 
     app
 }
 
+/// The workspace list, and a request to switch to one of them.
+///
+/// Two directions through one resource, for the same reason [`PendingWorkspaces`]
+/// exists: the layouts are `renzora_shell`'s `ShellLayouts`, and a plugin links
+/// `bevy`, `renzora` and `renzora_ember` and nothing else. The shell publishes
+/// what it has into `names` / `active` each frame, and drains `requested` back.
+///
+/// A plugin therefore does not need to know what a workspace *is* to offer one:
+/// it reads a list of names and asks for one by name. That is what the editor's
+/// own ribbon does, expressed in the vocabulary the boundary allows.
+///
+/// `requested` naming a workspace that does not exist is dropped by the shell
+/// rather than clamped to an index, because a stale name and an index that
+/// happens to be in range are the same thing to a caller and only one of them
+/// is safe to guess at.
+#[derive(Resource, Default)]
+pub struct WorkspaceSwitch {
+    /// Every workspace the ribbon offers, in ribbon order. Published by the
+    /// shell; empty in a build with no shell, which is how a consumer tells
+    /// "none offered" from "not supported".
+    pub names: Vec<String>,
+    /// The one currently showing, by name.
+    pub active: Option<String>,
+    /// Set to ask for a switch. The shell takes it.
+    pub requested: Option<String>,
+}
+
+impl WorkspaceSwitch {
+    /// Take the pending request, leaving none.
+    pub fn take_request(&mut self) -> Option<String> {
+        self.requested.take()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

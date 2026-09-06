@@ -197,6 +197,11 @@ impl Plugin for ShellPlugin {
         // is the type a plugin registers with.
         app.init_resource::<renzora_ember::workspace::PendingWorkspaces>()
             .add_systems(Update, install_plugin_workspaces);
+        // The other half of that boundary: publish the workspace list outward
+        // and perform switches asked for from outside this crate, so a plugin
+        // can drive the ribbon without naming `ShellLayouts`.
+        app.init_resource::<renzora_ember::workspace::WorkspaceSwitch>()
+            .add_systems(Update, ribbon::exchange_workspace_switch);
         // Reopen persisted floating dock windows. The spawn system queues the
         // requests until ember's fonts are ready, so pushing them this early is
         // safe. (Inserted after `EmberPlugin` above, so `DockPlugin`'s
