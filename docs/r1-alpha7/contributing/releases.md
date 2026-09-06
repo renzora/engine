@@ -214,9 +214,32 @@ Because the file is written by hand, its failure mode is not a missing file but 
 
 `releases.json` at the repo root is the canonical record of what each release froze — version, commit, ABI hash. The value is `RENZORA_BUILD_HASH`, the FNV-1a in `build.rs` over `<crate version>-<rustc version>-bevy<minor>`. Read it from a build rather than deriving it by hand: it is emitted into `target/<profile>/build/renzora_app-*/output`, and because it is keyed on the *toolchain* and not on engine source, two releases built with the same pinned rustc and Bevy legitimately share a hash.
 
+## Publishing also updates renzora.com/engine
+
+Every nightly and every release refreshes the browser build the website serves at **[renzora.com/engine](https://renzora.com/engine)**: the editor and the runtime, running on WebGPU, from the same `web-wasm32.zip` the release carries.
+
+The chain has three links:
+
+1. The `website` job at the end of **Build Engine** sends a `repository_dispatch` of type `engine-wasm` to `renzora/website`, carrying the tag it just published. It uses `WEBSITE_SYNC_TOKEN`, the same fine-grained PAT `sync-docs.yml` holds, because `POST /repos/{owner}/{repo}/dispatches` needs exactly the Contents write it already grants.
+2. The website's **Engine WASM** workflow catches that and SSHes into the droplet. Nothing is rebuilt and no image is pushed, because the website itself did not change.
+3. `scripts/fetch-engine-wasm.sh` on the droplet downloads `web-wasm32.zip` for that tag, unpacks it to `engine/builds/<tag>/`, pre-compresses it, and moves the `engine/current` symlink.
+
+The job is `continue-on-error` and runs after the release is already published. A website one build stale is not a reason to redden a green release, and the next nightly re-fires it anyway.
+
+**The wasm is never committed anywhere.** `renzora-editor_bg.wasm` is ~100 MB and `renzora-runtime_bg.wasm` ~72 MB, so the editor module sits within a few MB of GitHub's 100 MiB per-file hard limit: a push would start failing outright before long, and until then would add ~170 MB per night of history that can never be pruned. It is downloaded onto the droplet instead, the way the marketplace's preview wasm already was.
+
+Two consequences worth knowing:
+
+- **The symlink is load-bearing.** `engine/` is a bind mount into the app container, so replacing *that directory* would leave the container pinned to the old, unlinked inode, serving a build nobody can see on the host. The mount root never moves; only `current` inside it does, in one atomic rename.
+- **The build is served pre-compressed.** `.br` and `.gz` are written beside each file once, and `ServeDir::precompressed_*` hands them straight out. Without that, both nginx (`gzip_types` lists `application/wasm`) and the app's compression layer would compress 100 MB on *every request*, on a two-core VPS.
+
+To pin the site to a specific engine build, or to pull one by hand: **website → Actions → Engine WASM → Run workflow**, with a tag or with none for the newest release (nightlies included).
+
 ## Running it manually
 
 **Actions → Build Engine → Run workflow.** Pick a platform (or `all`) and a publish mode. `publish: none` builds and uploads GitHub *artifacts* (7-day retention) without creating a release — the right choice for checking that a platform still builds.
+
+A run that builds no wasm (any narrowed `platform` other than `all` or `wasm`) skips the website dispatch, since there would be no new bundle to publish.
 
 ## See also
 

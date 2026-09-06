@@ -1,6 +1,11 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(release): every nightly and release now refreshes the browser build at
+  renzora.com/engine. The `website` job dispatches the tag to renzora/website,
+  which pulls `web-wasm32.zip` onto the droplet and swaps it in behind a
+  symlink. The wasm is downloaded rather than committed: the editor module is
+  ~100 MB, against GitHub's 100 MiB per-file limit, and it changes nightly.
 - fix(terminal): a one-row terminal no longer takes the editor down. vt100 sets
   `scroll_bottom = rows - 1`, so a single-row grid has its scroll region ending
   at row 0, and `col_wrap` then computes `prev_pos.row -= scrolled` as `0 - 1`.

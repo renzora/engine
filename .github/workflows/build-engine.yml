@@ -21,6 +21,11 @@ name: Build Engine
 #   push (tag r1-*)     a real release, tagged with the version itself.
 #   workflow_dispatch   build only, or build + publish as either kind.
 #
+# Publishing also refreshes the playable web build at renzora.com/engine: the
+# `website` job at the bottom dispatches to renzora/website, which pulls
+# `web-wasm32.zip` onto the droplet. The wasm is never committed anywhere; see
+# that job for why.
+#
 # The version string is NOT written here — it is read out of
 # `crates/renzora/src/version.rs`, which is also what the running binary reports
 # and what the export downloader asks GitHub for. One source, three consumers.
@@ -740,3 +745,44 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat release-assets/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Put the new wasm build on renzora.com/engine ────────────────────────────
+  # Every nightly and every release refreshes the playable web build the website
+  # serves at /engine. This job only *tells* the website a new tag exists; the
+  # website's own `engine-wasm` workflow does the fetching, onto the droplet.
+  #
+  # It is a dispatch rather than a git push for one reason: size. The two modules
+  # in `web-wasm32.zip` are 72 MB and 100 MB unpacked, and the editor one is
+  # within a few MB of GitHub's 100 MiB per-file hard limit, so a push would
+  # start failing outright some week soon, and until then would add ~170 MB of
+  # unprunable history to renzora/website every single night. The droplet already
+  # fetches `renzora_preview_bg.wasm` from a release this way for the marketplace
+  # previews; this is the same path, for the whole engine.
+  #
+  # `WEBSITE_SYNC_TOKEN` is the same fine-grained PAT `sync-docs.yml` uses:
+  # renzora/website with Contents read/write, which is the permission
+  # `POST /repos/{owner}/{repo}/dispatches` requires.
+  #
+  # Never fatal. The release is already published by the time this runs, and a
+  # website that is one build stale is not a reason to redden a green release.
+  website:
+    needs: [setup, build, publish]
+    if: |
+      always()
+      && needs.publish.result == 'success'
+      && needs.build.result == 'success'
+      && needs.setup.outputs.containers == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell renzora/website about ${{ needs.setup.outputs.tag }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_SYNC_TOKEN }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          CHANNEL: ${{ needs.setup.outputs.publish }}
+        run: |
+          set -euo pipefail
+          jq -n --arg tag "$TAG" --arg channel "$CHANNEL" \
+            '{event_type: "engine-wasm", client_payload: {tag: $tag, channel: $channel}}' \
+            | gh api --method POST repos/renzora/website/dispatches --input -
+          echo "::notice::dispatched engine-wasm ($CHANNEL) for $TAG"
