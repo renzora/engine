@@ -222,6 +222,8 @@ commands.entity(content).add_children(&[item]);
 commands.entity(menu).add_children(&[row]);
 ```
 
+The entity `screen_menu` returns is the scroll *content*, not the card that carries the menu's background, border and corner radius. When you need the card too — to paint a menu on a different surface, say — use `screen_menu_parts(commands, x, y)`, which returns `(content, card)`; `menu_submenu_parts` is the same escape hatch one level down, returning `(row, content, panel)`. The top bar's hamburger dropdown is the one caller of both: it paints itself `window_bg()` so it continues the bar it drops out of, where every other menu keeps the lighter `popup_bg()` that separates it from the panel it covers.
+
 Every row — `menu_item`, `menu_header`, `menu_submenu` — shares one set of metrics (`MENU_ICON`, `MENU_TEXT`, `MENU_PAD_X/Y`, `MENU_GAP` in `popup.rs`): a glyph larger than the label on a thin row, so you pick a row by its icon and a long list still fits on screen. Change them there, not per builder.
 
 Three rules worth knowing when you touch this machinery:

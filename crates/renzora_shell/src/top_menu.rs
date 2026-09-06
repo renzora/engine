@@ -13,7 +13,7 @@ use bevy::prelude::*;
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
-use renzora_ember::theme::{rgb, text_muted, text_primary};
+use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
 
 use crate::bottom_dock::BottomDock;
 use crate::dock;
@@ -188,7 +188,7 @@ fn spawn_top_menu(
     account: Option<&str>,
     update_tag: Option<&str>,
 ) -> Entity {
-    let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
+    let (root, card) = renzora_ember::widgets::screen_menu_parts(commands, pos.x, pos.y);
     // The hamburger's dropdown is a panel, not a context menu: 184px is right
     // for a list of verbs and far too narrow for an identity block with a name
     // and a line of description under it. Only this one menu is widened —
@@ -199,6 +199,7 @@ fn spawn_top_menu(
             n.padding = UiRect::all(Val::Px(6.0));
             n.border_radius = BorderRadius::all(Val::Px(10.0));
         });
+        dark_card(commands, card);
     }
     let kids = build_menu_items(commands, fonts, kind, account, update_tag);
     commands.entity(root).add_children(&kids);
@@ -324,6 +325,22 @@ fn anchor_below(
 /// Build one menu's rows. `account` is the signed-in username (`None` = signed
 /// out) — the menu needs the name itself now, not just the fact of being signed
 /// in, because the hamburger's first row *is* the username.
+/// Repaint a menu card on the top bar's own surface.
+///
+/// Every other menu in the editor is a context menu that opens over a *panel*,
+/// so `surfaces.popup` is deliberately a step lighter than what is behind it:
+/// that lift is what separates the menu from the panel it covers. The hamburger
+/// drops out of the top bar instead, and the top bar is `surfaces.window`: two
+/// shades apart in the Dark theme (11,11,17 against 28,28,35), so the dropdown
+/// read as a grey card stuck onto near-black chrome. Painting it `window_bg`
+/// makes the menu continue the bar it came out of.
+///
+/// The border stays: it is the only thing separating the card from the bar now
+/// that the two share a fill, and it is what draws the rounded corner.
+fn dark_card(commands: &mut Commands, card: Entity) {
+    commands.entity(card).insert(BackgroundColor(rgb(window_bg())));
+}
+
 /// Open a menu row's padding out to panel proportions.
 ///
 /// The hamburger's dropdown is the app's front door and wants air; every other
@@ -454,6 +471,7 @@ fn panel_submenu(
         n.padding = UiRect::all(Val::Px(6.0));
         n.border_radius = BorderRadius::all(Val::Px(10.0));
     });
+    dark_card(commands, panel);
     for kid in &kids {
         spacious(commands, *kid);
     }

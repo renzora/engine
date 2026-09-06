@@ -50,6 +50,20 @@ pub(crate) const MENU_GAP: f32 = 7.0;
 /// scrollbar) instead of spilling off-screen. The returned entity is that scroll
 /// content — add items to it exactly as before.
 pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
+    screen_menu_anchored(commands, x, Val::Px(y), Val::Auto).0
+}
+
+/// [`screen_menu`] that also hands back the floating **card** — the node that
+/// carries the menu's background, border and corner radius — for a caller that
+/// needs to restyle it.
+///
+/// The card is a private detail for every other caller: items go in the scroll
+/// content, and a menu should not have to know there is a scroller between the
+/// two. The hamburger's dropdown is the exception, exactly as it is for
+/// [`menu_submenu_parts`](super::submenu::menu_submenu_parts) — it is a small
+/// panel rather than a context menu, and it paints itself on the top bar's own
+/// surface so the two read as one piece of chrome.
+pub fn screen_menu_parts(commands: &mut Commands, x: f32, y: f32) -> (Entity, Entity) {
     screen_menu_anchored(commands, x, Val::Px(y), Val::Auto)
 }
 
@@ -61,9 +75,9 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
 pub fn screen_menu_flip(commands: &mut Commands, x: f32, y: f32, win_h: f32) -> Entity {
     if y > win_h * 0.5 {
         // Pin the menu's bottom edge at the click; its items stack upward.
-        screen_menu_anchored(commands, x, Val::Auto, Val::Px((win_h - y).max(0.0)))
+        screen_menu_anchored(commands, x, Val::Auto, Val::Px((win_h - y).max(0.0))).0
     } else {
-        screen_menu_anchored(commands, x, Val::Px(y), Val::Auto)
+        screen_menu_anchored(commands, x, Val::Px(y), Val::Auto).0
     }
 }
 
@@ -96,8 +110,9 @@ pub fn screen_menu_under(commands: &mut Commands, rect: Rect, win_h: f32, est_h:
             Val::Auto,
             Val::Px((win_h - rect.min.y + 2.0).max(0.0)),
         )
+        .0
     } else {
-        screen_menu_anchored(commands, rect.min.x, Val::Px(rect.max.y + 2.0), Val::Auto)
+        screen_menu_anchored(commands, rect.min.x, Val::Px(rect.max.y + 2.0), Val::Auto).0
     }
 }
 
@@ -138,7 +153,15 @@ pub fn screen_menu_est_height(rows: usize, separators: usize) -> f32 {
 /// Shared body of [`screen_menu`] / [`screen_menu_flip`]: spawns the floating menu
 /// at `left = x` with the given vertical anchor (`top` for downward menus,
 /// `bottom` for upward ones — the other should be [`Val::Auto`]).
-fn screen_menu_anchored(commands: &mut Commands, x: f32, top: Val, bottom: Val) -> Entity {
+///
+/// Returns `(scroll content, card)`. Almost every caller wants only the first;
+/// [`screen_menu_parts`] is the one that needs the card too.
+fn screen_menu_anchored(
+    commands: &mut Commands,
+    x: f32,
+    top: Val,
+    bottom: Val,
+) -> (Entity, Entity) {
     // Scroll content column — callers add their menu items here.
     let content = commands
         .spawn((
@@ -194,7 +217,7 @@ fn screen_menu_anchored(commands: &mut Commands, x: f32, top: Val, bottom: Val) 
         ))
         .id();
     commands.entity(root).add_child(scroller);
-    content
+    (content, root)
 }
 
 /// Marks a floating UI surface (popup panel, dropdown list, context menu) that
