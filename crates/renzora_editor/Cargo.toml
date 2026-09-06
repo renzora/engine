@@ -75,7 +75,6 @@ editor = [
     "dep:renzora_level_presets",
     "dep:renzora_marketplace",
     "dep:renzora_material_editor",
-    "dep:renzora_mesh_edit",
     "dep:renzora_mixer",
     "dep:renzora_network_editor",
     "dep:renzora_particle_editor",
@@ -155,7 +154,6 @@ renzora_inspector          = { path = "../renzora_inspector", optional = true }
 renzora_level_presets      = { path = "../renzora_level_presets", optional = true }
 renzora_marketplace        = { path = "../renzora_marketplace", optional = true }
 renzora_material_editor    = { path = "../renzora_material_editor", optional = true }
-renzora_mesh_edit          = { path = "../renzora_mesh_edit", optional = true }
 renzora_mixer              = { path = "../renzora_mixer", optional = true }
 renzora_network_editor     = { path = "../renzora_network_editor", optional = true }
 renzora_particle_editor    = { path = "../renzora_particle_editor", optional = true }
