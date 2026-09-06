@@ -371,9 +371,44 @@ Three registration points in `renzora_ember::toolbar`, all free functions taking
 
 Choose by width. The tool strip has very little room left, so a group of two or three controls belongs there and anything that will wrap onto its own line belongs in a top strip — that is exactly why the terrain brush settings moved out of the strip. A tool group should `bind_display` its own root off when it is not relevant; an always-visible group takes space in every context. Keep a group's `key` stable across releases, or users' arranged toolbars reset.
 
+### A viewport mode
+
+A mode is only half a feature — the other half is the systems that make it do something, and those leave with your plugin. So modes are registered, not assumed:
+
+```rust
+use renzora::core::viewport_types::{ViewportMode, ViewportModeRegistry, ViewportView};
+
+app.init_resource::<ViewportModeRegistry>();
+app.world_mut()
+    .resource_mut::<ViewportModeRegistry>()
+    .register(ViewportMode::Sculpt, &[ViewportView::Three]);
+```
+
+`ViewportMode::for_view` holds the built-ins and the registry adds to them, so the Mode dropdown lists your mode only while your plugin is installed. This is not optional bookkeeping: `sanitize_mode_for_view` resets any mode the active view does not offer, so an unregistered mode cannot be entered at all — set it directly and it is gone again on the next frame.
+
+Gate your systems with `run_if` on the mode, and register the shortcut that enters it, the way `plugins/mesh_edit` does for Sculpt.
+
 ### Gizmos
 
 An ordinary `Gizmos` system draws into the viewport with no registration at all — read `EditorSelection`, draw around what is selected, and you have a viewport contribution in a dozen lines. Gate it with `in_three_view` / `in_two_view` if the visual only makes sense through one camera.
+
+### Switching the workspace
+
+`register_workspace` contributes a layout. `renzora_ember::workspace::WorkspaceSwitch` drives the one that is showing, in both directions: the shell writes `names` and `active` into it every frame, and takes `requested` back.
+
+```rust
+use renzora_ember::workspace::WorkspaceSwitch;
+
+fn go_to_materials(mut switch: ResMut<WorkspaceSwitch>) {
+    if switch.names.iter().any(|name| name == "Materials") {
+        switch.requested = Some("Materials".into());
+    }
+}
+```
+
+The switch happens on the next frame, and the layout you leave is saved into its slot first, so switching back restores the panels as you left them. Ask by **name**, never by index: the list changes as plugins register, and an index that is still in range then addresses a different workspace than you meant. A name that matches nothing is dropped with a warning.
+
+The list lives in `renzora_shell`'s `ShellLayouts`, which is `pub(crate)` and stays that way — a native plugin links `bevy`, `renzora` and `renzora_ember` and nothing else, so this resource is the seam between what a plugin can name and what the shell owns. It is the same arrangement `PendingWorkspaces` uses for registration, pointed the other way.
 
 ### Everything else
 

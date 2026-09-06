@@ -300,8 +300,23 @@ pub fn share_sky_to_secondary_viewports(
         (Entity, Option<&Skybox>),
         (With<ViewportCamera>, Without<PrimaryViewportCamera>),
     >,
+    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
     mut commands: Commands,
 ) {
+    // A shading mode that shows no environment takes the shared sky off the
+    // secondary views. Removing the `Skybox` is safe — it is an ordinary
+    // component that `renzora_skybox` adds and removes freely. The bake it came
+    // from is what must never be torn down (see the note above about the four
+    // racing bakes), and that is untouched here: the cubemap keeps being
+    // produced, the secondary views simply stop displaying it.
+    if suppressed.as_deref().is_some_and(|s| s.active) {
+        for (entity, skybox) in &consumers {
+            if skybox.is_some() {
+                commands.entity(entity).remove::<Skybox>();
+            }
+        }
+        return;
+    }
     let Ok(generated) = primary.single() else {
         return;
     };

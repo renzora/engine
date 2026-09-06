@@ -443,7 +443,27 @@ fn sync_skybox(
     mut images: ResMut<Assets<Image>>,
     has_data: Query<(), With<SkyboxData>>,
     mut removed: RemovedComponents<SkyboxData>,
+    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
 ) {
+    // A shading mode that shows no environment (wireframe, solid) asks for the
+    // sky to stand down. It cannot simply remove the `Skybox` itself: this
+    // system reconciles from `SkyboxData` every frame and would put it back.
+    //
+    // `removed` is still drained on this path. `RemovedComponents` is a reader
+    // over a queue, so a frame that returns without reading it leaves those
+    // removals to be re-read later — and a `SkyboxData` deleted while the sky
+    // was suppressed would then tear down a sky that had already been rebuilt.
+    if let Some(s) = suppressed.as_deref().filter(|s| s.active) {
+        let _ = removed.read().count();
+        for cam in cameras.iter() {
+            commands.entity(cam).remove::<Skybox>();
+        }
+        for mut camera in camera_query.iter_mut() {
+            camera.clear_color = ClearColorConfig::Custom(s.clear);
+        }
+        return;
+    }
+
     let had_removals = removed.read().count() > 0;
     if had_removals && has_data.is_empty() {
         for cam in cameras.iter() {

@@ -28,7 +28,7 @@ The camera moves slowly when you're close to something and faster when you're fa
 
 | Key | What it does |
 |-----|--------------|
-| `F` | Focus on the selected object (centers the camera on it) |
+| `F` | Frame the selected object — centres on its bounds, fits it to the view, and looks at it from near its own horizon |
 | `A` | Frame All — fit the whole scene into view |
 | `Home` | Reset the camera to its starting position |
 | `End` | Move the focus point to wherever your cursor is pointing |
@@ -128,20 +128,33 @@ It's the same shape list as the shape-library panel and the hierarchy's **Add En
 ### What a new shape looks like
 
 A shape you've just added has no material of its own yet, so it wears the
-**blockout grid**: rounded tiles with dark grout between them, a heavy black rule
-around every four-by-four section, and a cross marking that section's middle —
-all tinted by the shape's own colour. A default 1-unit cube shows four tiles a
-side, and the section rule lands on its edges.
+**blockout grid**: a flat field ruled into squares by thin bright lines, with a
+bright four-pointed star on every fourth intersection, tinted by the shape's own
+colour. Cells are 25 cm, so a default 1-unit cube shows four a side, and the
+stars land on the metre marks: count stars for the rough measure, cells for the
+exact one.
+
+The lines are *brighter* than the face they rule rather than darker. A greybox
+gets read at a glance for its proportions, and a light rule carries at distance
+and at grazing angles where dark grout closes up into a smear.
+
+Shapes start **white**, all of them, so the only colour in a blockout is colour
+you put there. The tint is per-shape and yours to set from the inspector — for
+colour-coding a route, marking what's walkable, separating one team's half from
+the other's.
 
 It's deliberately flat — a texture, not relief. It gives you a sense of scale to
 judge your greybox against, and nothing more; anything with visible depth to it
 would compete with the shape of the geometry you're actually blocking out.
 
-**Scaling doesn't stretch it.** The tiles stay the same size in world units
-however you scale the object, so a cube pulled out into a wall gets more tiles
-rather than four tall rectangles, and every surface in the scene measures the
-same. (That stops once you assign a material of your own — from then on the UVs
-are yours.)
+**Nothing you do to the shape stretches it.** The tiles stay the same size in
+world units however you scale the object, so a cube pulled out into a wall gets
+more tiles rather than four tall rectangles, and every surface in the scene
+measures the same. The same holds for modeling: extrude a ledge or inset a panel
+in [Edit mode](modeling.md) and the new faces come out tiled to match, because
+the grid is projected onto the geometry from the world rather than carried around
+in the mesh's own texture coordinates. (All of this stops once you assign a
+material of your own — from then on the UVs are yours.)
 
 The grid means *no texture*, so it disappears the moment you assign a
 [material](materials.md). It isn't a file in your project — the engine generates
@@ -225,6 +238,61 @@ The **Display** dropdown carries the rest: mesh, textures, lighting, shadows.
 lighting and shadows and swaps its maps for the [blockout
 grid](#what-a-new-shape-looks-like), so the scene reads as untextured geometry
 rather than as geometry in the dark.
+
+## The shading switch
+
+Four buttons sit centred on the viewport's top edge — the four ways you look at
+a scene while building it. They are a **ladder**: each one adds a single thing to
+the one below it.
+
+| | Adds | What you see |
+|---|---|---|
+| **Wireframe** | topology | Edges only, no mesh fill, on a flat dark background. |
+| **Solid** | form | Neutral clay under [matcap](#matcap) shading, with no materials or scene lighting in the way. This is the modeling view. |
+| **Material** | materials and lighting | Real materials and textures, lit, shadows included — your objects against a flat background. |
+| **Rendered** | the world | Sky, atmosphere and clouds around them. The final look. |
+
+They are **presets**: each one sets the same switches the Display dropdown does,
+so there is nothing extra to keep in sync. Change a toggle by hand and no button
+is lit, because you are no longer in any of the four — click one to get back.
+
+**Only Rendered shows the world environment.** That is the whole of what
+separates it from Material, which is otherwise the same render settings, and it
+is the reason to have both: Material is where you judge materials and lighting
+*without* a sky lighting and colouring everything you are trying to read. Turning
+the world off takes the skybox, the atmosphere (sky **and** its ground) and any
+cloud dome with it, and puts a flat dark background behind your scene. Nothing in
+the scene is edited, so clicking Rendered brings the environment back exactly as
+you left it — and it comes back on its own in play mode, then returns to whatever
+mode you were working in when you stop.
+
+## Visualization modes
+
+The **Display** dropdown's **Visualization** row replaces every material in the
+viewport with one that answers a single question: Normals, Roughness, Metallic,
+Depth, UV Checker, or Matcap. **None** puts the real materials back. They are a
+view, not an edit — nothing is written to your materials and nothing ships.
+
+### Matcap
+
+Pick **Matcap** when you are sculpting or judging a form. Two things about it
+are different from lit shading, and both matter:
+
+- **The lights are fixed to the camera, not to the world.** Under scene
+  lighting, orbiting a model changes its brightness, so half of what appears to
+  move is the light rather than the shape. With the lights on the camera the
+  same curvature reads the same way from every angle, and orbiting tells you
+  only about the form. This is what a matcap is for, and it is why every
+  sculpting tool has one.
+- **Creases are shaded by curvature, not by direction.** Diffuse shading is a
+  function of the surface normal, and a fine wrinkle barely changes the normal —
+  so it stays invisible under any number of lights. Matcap adds a term computed
+  from how fast the normal is *changing*, which is large exactly where the
+  surface folds, and darkens valleys and lifts ridges by it. Fine detail that is
+  simply not visible in the lit view appears.
+
+It is a neutral clay, deliberately: colour and texture hide form, which is the
+last thing you want while deciding whether a shape is right.
 
 ## The floor grid
 

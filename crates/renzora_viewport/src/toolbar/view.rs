@@ -114,11 +114,18 @@ pub(super) fn mode_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Enti
 /// `EmberDropdownOption::value` stays a stable index into `ALL`.
 pub(super) fn update_mode_options(
     settings: Option<Res<ViewportSettings>>,
+    modes: Option<Res<renzora::core::viewport_types::ViewportModeRegistry>>,
     mode_boxes: Query<Entity, With<ModeDropdown>>,
     mut options: Query<(&EmberDropdownOption, &mut Node)>,
 ) {
     let Some(settings) = settings else { return };
-    let allowed = ViewportMode::for_view(settings.viewport_view);
+    // Built-ins plus whatever a plugin contributed. A row for a mode nothing
+    // implements stays hidden, which is the point: the list describes what this
+    // editor can actually do, not what the enum can name.
+    let allowed: Vec<ViewportMode> = match &modes {
+        Some(registry) => registry.available(settings.viewport_view),
+        None => ViewportMode::for_view(settings.viewport_view).to_vec(),
+    };
     for (opt, mut node) in &mut options {
         if !mode_boxes.contains(opt.dropdown) {
             continue;
@@ -322,9 +329,16 @@ pub(super) fn update_three_d_only(
 /// falls back to Select, matching what the Mode dropdown offers. Covers
 /// every entry path — the dropdown, Tab shortcuts, and panels that set the
 /// mode directly.
-pub(super) fn sanitize_mode_for_view(settings: Option<ResMut<ViewportSettings>>) {
+pub(super) fn sanitize_mode_for_view(
+    settings: Option<ResMut<ViewportSettings>>,
+    modes: Option<Res<renzora::core::viewport_types::ViewportModeRegistry>>,
+) {
     let Some(mut s) = settings else { return };
-    if !ViewportMode::for_view(s.viewport_view).contains(&s.viewport_mode) {
+    let allowed = match &modes {
+        Some(registry) => registry.allows(s.viewport_view, s.viewport_mode),
+        None => ViewportMode::for_view(s.viewport_view).contains(&s.viewport_mode),
+    };
+    if !allowed {
         s.viewport_mode = ViewportMode::Scene;
     }
 }

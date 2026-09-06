@@ -82,6 +82,7 @@ fn sync_atmosphere(
     planet: Query<(Entity, Has<Atmosphere>), With<AtmospherePlanet>>,
     mut cam_settings: Query<&mut AtmosphereSettings>,
     routing: Res<renzora::EffectRouting>,
+    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
 ) {
     let routing_changed = routing.is_changed();
 
@@ -113,6 +114,16 @@ fn sync_atmosphere(
         }
     }
 
+    // A shading mode that shows no environment (wireframe, solid) forces the
+    // transparent medium — the same route a *disabled* source takes, and the
+    // only way this crate turns the sky off at all: removing `Atmosphere`
+    // crashes, which is why nothing here ever does. Folding it into
+    // `src_enabled` also means it flows through `key`, so flipping the flag
+    // reconciles like any other change to the source.
+    if suppressed.as_deref().is_some_and(|s| s.active) {
+        src_enabled = false;
+    }
+
     let planet_entity = planet.iter().next();
     let have_sky = planet_entity.is_some_and(|(_, has)| has);
 
@@ -121,6 +132,14 @@ fn sync_atmosphere(
     // (zero density → transmittance 1, inscattering 0) makes the resident
     // atmosphere show whatever's behind it (clear color / skybox) = the sky
     // "off", with NO component removal → no crash.
+    //
+    // The medium is only half of "off", because the atmosphere draws a **ground
+    // disc** below the horizon as well as sky above it, and that disc is
+    // `ground_albedo` lit by the sun rather than anything the medium scatters.
+    // Zeroing the density makes it *brighter*, not dimmer: transmittance goes to
+    // 1, so the lit ground reaches the camera unattenuated. The symptom was a
+    // cream lower half in wireframe shading that changed hue with the sun. So
+    // turning the sky off zeroes `ground_albedo` too (below).
     let (real, transparent) = media
         .get_or_insert_with(|| {
             (
@@ -141,7 +160,10 @@ fn sync_atmosphere(
             if src_enabled { real } else { transparent },
             settings.bottom_radius,
             settings.top_radius,
-            settings.ground_albedo,
+            // Off means off all the way down: an unlit ground as well as an
+            // unscattering sky. The authored albedo is untouched, so turning the
+            // sky back on restores it.
+            if src_enabled { settings.ground_albedo } else { 0.0 },
             settings.mode,
             settings.is_changed(),
             Some((*e, src_enabled)),
@@ -149,7 +171,7 @@ fn sync_atmosphere(
         // No source: only act if a planet already exists — don't spawn one just
         // to hide it. Default radii are fine; a transparent atmosphere shows the
         // background regardless of geometry.
-        None if have_sky => (transparent, 6_360_000.0, 6_460_000.0, 0.3, 0, false, None),
+        None if have_sky => (transparent, 6_360_000.0, 6_460_000.0, 0.0, 0, false, None),
         None => return,
     };
 

@@ -48,6 +48,7 @@ pub fn register(app: &mut App) {
     );
     crate::toolbar::register(app);
     crate::nav::register(app);
+    crate::shading::register(app);
     crate::height_ruler::register(app);
     crate::axis_gizmo::register(app);
 }
@@ -137,6 +138,11 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     // Nav overlay (pan/zoom drag + grid/scene-icon toggles), right edge.
     let nav = crate::nav::build(commands, fonts);
     commands.entity(content).add_child(nav);
+
+    // Shading switch, centred on the top edge — clear of the axis gizmo in the
+    // corner and of the nav cluster below it.
+    let shading = crate::shading::build(commands, fonts);
+    commands.entity(content).add_child(shading);
 
     // Axis-orientation gizmo, top-right — projected from this slot's own camera.
     let gizmo = crate::axis_gizmo::build(commands, fonts, index);

@@ -72,9 +72,20 @@ impl MaterialState {
     }
 }
 
+/// What [`update_render_toggles`] last acted on.
+///
+/// The visualization mode belongs here as much as the toggles do, even though
+/// this system never renders it: it decides whether the *swap* path owns the
+/// materials, and therefore whether this system leaves them mutated. Tracking
+/// the toggles alone made "nothing changed" wrong whenever only the
+/// visualization moved, and the restore that owed the materials their real
+/// colours back never ran. See the guard in `update_render_toggles`.
 #[derive(Resource, Default)]
 pub struct LastToggleState {
     toggles: Option<RenderToggles>,
+    viz: Option<VisualizationMode>,
+    /// Whether the mesh editor was open, which decides who draws the wires.
+    editing: Option<bool>,
 }
 
 /// Generated blockout grid used as the base-color texture when the Textures
@@ -138,6 +149,7 @@ impl<M: Asset> Default for LastVizState<M> {
 }
 
 const MODE_FLAT_CLAY: f32 = 5.0;
+const MODE_MATCAP: f32 = 6.0;
 
 fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
     match v {
@@ -147,6 +159,7 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
         VisualizationMode::Metallic => Some(2.0),
         VisualizationMode::Depth => Some(3.0),
         VisualizationMode::UvChecker => Some(4.0),
+        VisualizationMode::Matcap => Some(MODE_MATCAP),
     }
 }
 
@@ -215,7 +228,36 @@ pub fn update_render_toggles(
     mut material_events: MessageReader<AssetEvent<StandardMaterial>>,
 ) {
     let toggles = settings.render_toggles;
-    let toggles_changed = last_state.toggles != Some(toggles);
+    let viz = settings.visualization_mode;
+
+    // The mesh editor draws its own wires, so the global pipeline stands down
+    // while it is open.
+    //
+    // Both were drawing the same mesh: two white lines a fraction of a pixel
+    // apart, which reads as one thick smeared one. Worse, they disagree about
+    // what an edge is. The mesh editor draws the quads you are actually editing;
+    // the wireframe pipeline draws the triangles underneath them, so every face
+    // gained a diagonal that belongs to no edge you can select. Its overlay is
+    // the better of the two here, and it is the one that can colour a selection.
+    let editing = matches!(
+        settings.viewport_mode,
+        renzora::core::viewport_types::ViewportMode::Edit
+            | renzora::core::viewport_types::ViewportMode::Sculpt
+    );
+    let global_wireframe = toggles.wireframe && !editing;
+    // The visualization mode counts as a change here, not just the toggles.
+    //
+    // Wireframe leaves every `StandardMaterial` blanked (below) and hands the
+    // screen to the wireframe pipeline. Solid then hands them to the *swap*
+    // path, which returns early and leaves them blanked, correctly, because the
+    // debug material is what renders. Material and Rendered are the same
+    // toggles as Solid with the swap off, so with only the toggles tracked this
+    // read as "nothing changed", returned before the restore, and left every
+    // mesh in the scene discarding its own fragments — invisible, with no way
+    // back short of touching an unrelated toggle.
+    let toggles_changed = last_state.toggles != Some(toggles)
+        || last_state.viz != Some(viz)
+        || last_state.editing != Some(editing);
 
     let new_materials = material_events
         .read()
@@ -237,7 +279,9 @@ pub fn update_render_toggles(
             return;
         }
         last_state.toggles = Some(toggles);
-        wireframe_config.global = toggles.wireframe;
+        last_state.viz = Some(viz);
+        last_state.editing = Some(editing);
+        wireframe_config.global = global_wireframe;
 
         let ids: Vec<AssetId<StandardMaterial>> = materials.iter().map(|(id, _)| id).collect();
         for id in &ids {
@@ -262,7 +306,9 @@ pub fn update_render_toggles(
 
     if toggles_changed {
         last_state.toggles = Some(toggles);
-        wireframe_config.global = toggles.wireframe;
+        last_state.viz = Some(viz);
+        last_state.editing = Some(editing);
+        wireframe_config.global = global_wireframe;
     }
 
     if swap_active {

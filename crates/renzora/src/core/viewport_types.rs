@@ -632,6 +632,11 @@ impl ViewportMode {
     /// 2D keeps Paint and Erase. They look like the same two words but are the
     /// tilemap brush and its eraser, which is most of what a 2D viewport is for
     /// — dropping them would take tile editing with them.
+    /// These are the **built-in** modes. A plugin adds its own through
+    /// [`ViewportModeRegistry`], which is how `Sculpt` gets back into the 3D
+    /// list now that it belongs to `plugins/mesh_edit`: hardcoding it here
+    /// would offer a mode that does nothing in an editor without that plugin,
+    /// which is worse than not offering it.
     pub fn for_view(view: ViewportView) -> &'static [ViewportMode] {
         match view {
             ViewportView::Two => &[Self::Scene, Self::Edit, Self::Paint, Self::Erase],
@@ -646,6 +651,63 @@ impl ViewportMode {
             Self::Paint => "Paint",
             Self::Erase => "Erase",
         }
+    }
+}
+
+/// Viewport modes contributed by plugins, on top of [`ViewportMode::for_view`].
+///
+/// A mode is only half a feature: the other half is the systems that make it do
+/// something, and those can live in a plugin that may not be installed. The
+/// dropdown offering `Sculpt` in an editor with no sculpting is worse than not
+/// offering it, and `sanitize_mode_for_view` will not let anything *stay* in a
+/// mode the view does not list — so a plugin has to be able to say "this mode
+/// exists now" rather than the contract crate guessing.
+///
+/// Registration is additive and idempotent: registering a mode twice leaves one
+/// entry, which matters because a native plugin is rebuilt and re-initialised
+/// whenever its source changes.
+#[derive(Resource, Default)]
+pub struct ViewportModeRegistry {
+    entries: Vec<(ViewportMode, &'static [ViewportView])>,
+}
+
+impl ViewportModeRegistry {
+    /// Offer `mode` in each of `views`.
+    pub fn register(&mut self, mode: ViewportMode, views: &'static [ViewportView]) {
+        if let Some(slot) = self.entries.iter_mut().find(|(m, _)| *m == mode) {
+            slot.1 = views;
+            return;
+        }
+        self.entries.push((mode, views));
+    }
+
+    /// Take `mode` back out — for a plugin shutting down, so the dropdown stops
+    /// offering something nothing implements any more.
+    pub fn unregister(&mut self, mode: ViewportMode) {
+        self.entries.retain(|(m, _)| *m != mode);
+    }
+
+    /// Every mode this view offers: the built-ins first, in their existing
+    /// order, then whatever plugins added, so a saved habit of "second entry is
+    /// Edit" keeps holding.
+    pub fn available(&self, view: ViewportView) -> Vec<ViewportMode> {
+        let mut modes: Vec<ViewportMode> = ViewportMode::for_view(view).to_vec();
+        for (mode, views) in &self.entries {
+            if views.contains(&view) && !modes.contains(mode) {
+                modes.push(*mode);
+            }
+        }
+        modes
+    }
+
+    /// Whether `view` offers `mode` at all. The question
+    /// `sanitize_mode_for_view` asks every frame.
+    pub fn allows(&self, view: ViewportView, mode: ViewportMode) -> bool {
+        ViewportMode::for_view(view).contains(&mode)
+            || self
+                .entries
+                .iter()
+                .any(|(m, views)| *m == mode && views.contains(&view))
     }
 }
 
@@ -683,6 +745,16 @@ pub enum VisualizationMode {
     Metallic,
     Depth,
     UvChecker,
+    /// Fixed-to-camera studio lighting plus screen-space cavity: the shading a
+    /// sculptor works under.
+    ///
+    /// Not a lighting preference. Scene lighting is a function of the world, so
+    /// orbiting a form changes its brightness and half of what moves is the
+    /// light rather than the shape; and diffuse shading is a function of the
+    /// normal, which a fine crease barely changes, so a wrinkle is invisible
+    /// under any number of lights. A matcap fixes the lights to the camera and
+    /// adds a curvature term, which is what makes surface detail legible.
+    Matcap,
 }
 
 impl VisualizationMode {
@@ -693,6 +765,7 @@ impl VisualizationMode {
         Self::Metallic,
         Self::Depth,
         Self::UvChecker,
+        Self::Matcap,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -703,6 +776,7 @@ impl VisualizationMode {
             Self::Metallic => "Metallic",
             Self::Depth => "Depth",
             Self::UvChecker => "UV Checker",
+            Self::Matcap => "Matcap",
         }
     }
 }

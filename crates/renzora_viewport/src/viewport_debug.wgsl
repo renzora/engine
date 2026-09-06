@@ -7,9 +7,10 @@
 //   3 = Depth (distance-based grayscale)
 //   4 = UV Checker (procedural)
 //   5 = Flat Clay (textures-off: neutral gray with hemisphere shading)
+//   6 = Matcap (sculpting view: view-space lighting + screen-space cavity)
 
 #import bevy_pbr::mesh_functions
-#import bevy_pbr::view_transformations::position_world_to_clip
+#import bevy_pbr::view_transformations::{position_world_to_clip, direction_world_to_view}
 #import bevy_pbr::mesh_view_bindings as view_bindings
 
 // Self-contained vertex output. We deliberately do NOT use
@@ -137,6 +138,55 @@ fn mode_flat_clay(world_normal: vec3<f32>) -> vec3<f32> {
     return hemi * (0.6 + 0.4 * wrap);
 }
 
+// Matcap: the shading a sculptor works under.
+//
+// Two properties, and neither is available from scene lighting.
+//
+// First, the lights are fixed to the **camera**, not to the world. A world-lit
+// surface changes brightness as you orbit, so half of what you see moving is
+// the light rather than the form; with view-space lighting the same curvature
+// always reads the same way and orbiting tells you only about the shape. That
+// is what a matcap is, and why every sculpting tool has one.
+//
+// Second, cavity. Diffuse shading is a function of the normal, and a fine
+// crease barely changes the normal, so a wrinkle a millimetre deep is invisible
+// under any number of lights. Curvature is the *derivative* of the normal, and
+// it is large exactly where the surface folds. Screen-space partial derivatives
+// give it for free: `dpdx(n.x) + dpdy(n.y)` in view space is the divergence of
+// the normal field, negative in a valley and positive on a ridge. Darkening
+// valleys and lifting ridges by it is what makes detail legible.
+//
+// Analytic rather than a sampled matcap image: no asset to ship or to fail to
+// load, and the cavity term has to be computed here regardless.
+fn mode_matcap(world_normal: vec3<f32>) -> vec3<f32> {
+    let n = normalize(direction_world_to_view(normalize(world_normal)));
+
+    // Three-point studio rig, all in view space. The key from over the viewer's
+    // left shoulder is the convention every sculpting matcap uses; a form lit
+    // from anywhere else reads as unfamiliar even when it is correct.
+    let key = max(dot(n, normalize(vec3<f32>(-0.45, 0.55, 0.70))), 0.0);
+    let fill = max(dot(n, normalize(vec3<f32>(0.65, -0.25, 0.55))), 0.0);
+    // Rim: bright where the surface turns away, which is what draws the
+    // silhouette and makes a limb read as round rather than flat.
+    let rim = pow(1.0 - clamp(n.z, 0.0, 1.0), 3.0);
+
+    let clay = vec3<f32>(0.62, 0.60, 0.58);
+    var color = clay * (0.20 + 0.80 * pow(key, 0.8));
+    color += vec3<f32>(0.16, 0.18, 0.24) * fill;
+    color += vec3<f32>(0.30, 0.30, 0.33) * rim;
+
+    // Screen-space curvature. Scaled by the fragment's own screen-space size so
+    // the effect does not double every time you zoom in: derivatives are
+    // per-pixel, and without this a crease looks deeper the closer you get.
+    let curvature = (dpdx(n.x) + dpdy(n.y)) / max(fwidth(n.z) + 0.02, 0.02);
+    let cavity = clamp(curvature * params.extra.w, -1.0, 1.0);
+    // Valleys darken more than ridges brighten: a crease is a shadow, and
+    // lifting ridges as hard would wash the form out.
+    color *= 1.0 + select(cavity * 0.55, cavity * 0.30, cavity > 0.0);
+
+    return max(color, vec3<f32>(0.0));
+}
+
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let mode = i32(params.config.x + 0.5);
@@ -151,6 +201,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         color = mode_depth(in.world_position.xyz);
     } else if (mode == 4) {
         color = mode_uv_checker(in.uv);
+    } else if (mode == 6) {
+        color = mode_matcap(in.world_normal);
     } else {
         color = mode_flat_clay(in.world_normal);
     }

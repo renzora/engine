@@ -22,6 +22,7 @@ mod game_view;
 mod height_ruler;
 mod modal_hud;
 mod nav;
+mod shading;
 mod overlay_2d;
 mod panel;
 mod stats_overlay;
@@ -85,6 +86,10 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
+            // Owned here because the shading modes are what set it; the sky
+            // crates only read it, and take it as absent when nothing does.
+            .register_type::<renzora::core::EnvironmentSuppressed>()
+            .init_resource::<renzora::core::EnvironmentSuppressed>()
             .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
             .init_resource::<CameraOrbitSnapshot>()
             .init_resource::<renzora::core::InputFocusState>()
@@ -602,7 +607,13 @@ fn update_input_focus(
     // exactly the behaviour that lets a script's `is_key_*` see them. Stop is
     // still reachable via Esc (checked before this guard) and the Stop button.
     let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
-    input_focus.ui_wants_keyboard = ember_focused || drag_editing || code_focused || simulating;
+    // A plugin's claim on the keyboard, taken rather than read: the field is a
+    // per-frame claim that a plugin re-raises for as long as it wants the keys,
+    // so clearing it here is what lets the claim lapse when the plugin stops
+    // making it. See `InputFocusState::plugin_wants_keyboard`.
+    let plugin_claim = std::mem::take(&mut input_focus.plugin_wants_keyboard);
+    input_focus.ui_wants_keyboard =
+        ember_focused || drag_editing || code_focused || simulating || plugin_claim;
     // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
     // / popup). The viewport's own hover flag (which already excludes overlays)
     // is what gates per-viewport interaction, so this only needs to flag the

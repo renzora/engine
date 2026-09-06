@@ -9,12 +9,22 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
+/// How hard the matcap darkens creases and lifts ridges.
+///
+/// Tuned by eye against a sculpt: below about 0.5 a fine wrinkle stays
+/// invisible, which is the whole thing the term exists to fix, and much above
+/// 1.5 the mesh's own faceting starts reading as detail because a flat-shaded
+/// triangle boundary is a curvature discontinuity too.
+const MATCAP_CAVITY: f32 = 1.0;
+
 #[derive(Clone, Copy, Debug, ShaderType)]
 pub struct DebugParams {
-    /// x = mode (0=normals, 1=roughness, 2=metallic, 3=depth, 4=uv_checker)
+    /// x = mode (0=normals, 1=roughness, 2=metallic, 3=depth, 4=uv_checker,
+    /// 5=flat_clay, 6=matcap)
     /// y = scalar_roughness, z = scalar_metallic, w = has_mr_texture (0/1)
     pub config: Vec4,
-    /// x = depth_near, y = depth_far, z = checker_scale, w = unused
+    /// x = depth_near, y = depth_far, z = checker_scale, w = matcap cavity
+    /// strength (0 disables the curvature term)
     pub extra: Vec4,
 }
 
@@ -22,7 +32,7 @@ impl Default for DebugParams {
     fn default() -> Self {
         Self {
             config: Vec4::new(0.0, 0.5, 0.0, 0.0),
-            extra: Vec4::new(0.1, 50.0, 16.0, 0.0),
+            extra: Vec4::new(0.1, 50.0, 16.0, MATCAP_CAVITY),
         }
     }
 }
