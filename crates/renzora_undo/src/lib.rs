@@ -192,31 +192,31 @@ fn shortcut_input(
 /// with `&mut World` — bypasses the message bus so it works from deferred
 /// callers (toolbar clicks, menu items, command palette) without frame-timing
 /// concerns.
+/// The pop-run-push half moved to `renzora::undo` so a native plugin can reach
+/// it; this wrapper adds the two things that cannot live there.
+///
+/// [`UndoExhausted`] is a message defined in this crate and read by the editor,
+/// and the document-tab write needs `renzora_ui`. The contract-crate half
+/// instead sets `UndoStacks::scene_edited`, which [`drain_scene_edited`] turns
+/// into the same tab write one frame later — the arrangement `record` has used
+/// since it started being called from plugins.
 pub fn undo_once(world: &mut World) {
-    let active = world.resource::<UndoStacks>().active.clone();
-    let cmd = world.resource_mut::<UndoStacks>().pop_undo(&active);
-    let Some(mut cmd) = cmd else {
+    if !renzora::undo::undo_once(world) {
         world.write_message(UndoExhausted);
         return;
-    };
-    cmd.undo(world);
-    world.resource_mut::<UndoStacks>().push_redo(active.clone(), cmd);
-    if matches!(active, UndoContext::Scene) {
+    }
+    if matches!(renzora::undo::active_context(world), UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
 }
 
 /// Redo the most recently undone action on the active stack.
 pub fn redo_once(world: &mut World) {
-    let active = world.resource::<UndoStacks>().active.clone();
-    let cmd = world.resource_mut::<UndoStacks>().pop_redo(&active);
-    let Some(mut cmd) = cmd else {
+    if !renzora::undo::redo_once(world) {
         world.write_message(UndoExhausted);
         return;
-    };
-    cmd.execute(world);
-    world.resource_mut::<UndoStacks>().push_undo(active.clone(), cmd);
-    if matches!(active, UndoContext::Scene) {
+    }
+    if matches!(renzora::undo::active_context(world), UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
 }

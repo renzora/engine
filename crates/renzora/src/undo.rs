@@ -197,6 +197,69 @@ pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>
     }
 }
 
+/// Undo the most recent action on the active stack. Returns whether there was
+/// one to undo.
+///
+/// Here rather than in `renzora_undo` because a plugin needs it: an operation
+/// that records a topology change and then lets the user drag the result has to
+/// roll that record back when the drag is cancelled, or an escaped extrude
+/// leaves duplicated zero-length geometry behind. Everything it touches
+/// (`pop_undo`, `push_redo`, `active`) was already public here; only the
+/// function was on the far side of a crate a plugin cannot link.
+///
+/// `renzora_undo` keeps a wrapper that additionally writes `UndoExhausted` when
+/// this returns `false`, because that message's type lives with the plugin that
+/// reads it. The document-tab write is the `scene_edited` flag, exactly as
+/// [`record`] leaves it.
+pub fn undo_once(world: &mut World) -> bool {
+    apply_from_stack(world, true)
+}
+
+/// Redo the most recently undone action on the active stack. Returns whether
+/// there was one to redo.
+pub fn redo_once(world: &mut World) -> bool {
+    apply_from_stack(world, false)
+}
+
+/// The half `undo_once` and `redo_once` share: pop from one side, run the
+/// command in the matching direction, push to the other.
+fn apply_from_stack(world: &mut World, undoing: bool) -> bool {
+    if !world.contains_resource::<UndoStacks>() {
+        return false;
+    }
+    let active = world.resource::<UndoStacks>().active.clone();
+    let popped = {
+        let mut stacks = world.resource_mut::<UndoStacks>();
+        if undoing {
+            stacks.pop_undo(&active)
+        } else {
+            stacks.pop_redo(&active)
+        }
+    };
+    let Some(mut cmd) = popped else {
+        return false;
+    };
+
+    // Run it outside the resource borrow: a command takes the whole `&mut
+    // World`, and several of them touch `UndoStacks` themselves.
+    if undoing {
+        cmd.undo(world);
+    } else {
+        cmd.execute(world);
+    }
+
+    let mut stacks = world.resource_mut::<UndoStacks>();
+    if undoing {
+        stacks.push_redo(active.clone(), cmd);
+    } else {
+        stacks.push_undo(active.clone(), cmd);
+    }
+    if matches!(active, UndoContext::Scene) {
+        stacks.scene_edited = true;
+    }
+    true
+}
+
 /// Seal the back entry of `context` so the next `record` starts a fresh undo
 /// step instead of merging. Call this at a gesture boundary — mouse release,
 /// text-field commit — so two separate edits of the same field (e.g. scrub a
