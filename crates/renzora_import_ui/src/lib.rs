@@ -32,7 +32,9 @@ impl Plugin for ImportPlugin {
             use renzora::core::RenzoraShellExt;
             _app.init_resource::<overlay::ImportOverlayState>()
                 .init_resource::<renzora::core::FileDragHovering>()
-                .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain());
+                .init_resource::<renzora::core::ImportInPlaceQueue>()
+                .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain())
+                .add_systems(Update, drain_import_in_place_queue);
             window::register(_app);
             preview3d::register(_app);
             matpreview::register(_app);
@@ -46,6 +48,39 @@ impl Plugin for ImportPlugin {
                 render: import_status_segments,
             });
         }
+    }
+}
+
+/// Service [`renzora::core::ImportInPlaceQueue`]: run the import pipeline over
+/// every folder something asked to have imported.
+///
+/// An **exclusive** system, because `import_tree_in_place` takes `&mut World` —
+/// it writes `.material` assets and fires `PbrMaterialExtracted` per material,
+/// neither of which a parameterised system can express.
+///
+/// The queue is drained before the walk rather than after, so a pipeline that
+/// panics on one bad model does not leave that model queued to be retried on
+/// every subsequent frame. Empty is the overwhelmingly common case and costs one
+/// resource lookup.
+///
+/// This is the seam a crate that cannot link `renzora_import` uses — a native
+/// plugin links only `bevy`, `renzora` and `renzora_ember`, so pushing a path is
+/// the only way it can ask for a real import rather than leaving loose files in
+/// the project. See the resource's own documentation.
+#[cfg(not(target_arch = "wasm32"))]
+fn drain_import_in_place_queue(world: &mut World) {
+    let roots = {
+        let Some(mut queue) = world.get_resource_mut::<renzora::core::ImportInPlaceQueue>() else {
+            return;
+        };
+        if queue.0.is_empty() {
+            return;
+        }
+        std::mem::take(&mut queue.0)
+    };
+    for root in roots {
+        info!("[import] importing {} in place", root.display());
+        renzora_import::import_tree_in_place(world, &root);
     }
 }
 

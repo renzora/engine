@@ -170,6 +170,28 @@ pub struct DevMode(pub bool);
 #[derive(Resource)]
 pub struct ImportTargetDir(pub String);
 
+/// Folders whose model files should be run through the import pipeline in
+/// place, as soon as the editor gets a frame.
+///
+/// The same seam as [`ImportRequested`], for the case that request cannot
+/// express: files that are **already on disk** and need no dialog. The pipeline
+/// itself is `renzora_import::run_import_pipeline`, which takes `&mut World` and
+/// so is out of reach of anything that cannot link that crate — notably a native
+/// plugin, which links only `bevy`, `renzora` and `renzora_ember`.
+///
+/// That gap is not cosmetic. A downloader that writes a glTF into the project
+/// and stops has produced a model the engine loads *untextured*: no extracted
+/// `textures/`, no `.material` per material, and so no editable graphs. The
+/// files are all there and the import simply never happened, which is the
+/// failure that looks least like one.
+///
+/// Serviced by `renzora_import_ui`. Each path is walked for importable files and
+/// each is converted beside itself, so pushing a folder that holds one model or
+/// twenty means the same thing. Re-pushing a folder re-imports it, which is what
+/// re-importing has always meant here.
+#[derive(Resource, Default)]
+pub struct ImportInPlaceQueue(pub Vec<std::path::PathBuf>);
+
 /// The asset browser's current folder, project-relative and forward-slashed
 /// (`""` = project root; `None` = no browser/project active). The browser
 /// republishes it each frame so drag-and-drop imports land in the folder the

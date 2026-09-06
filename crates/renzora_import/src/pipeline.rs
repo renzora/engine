@@ -131,3 +131,69 @@ pub fn run_import_pipeline(
         }
     }
 }
+
+/// Put every model file under `root` through the import pipeline, in place.
+///
+/// `root` may be a single file or a folder; both are walked the same way,
+/// because the difference is the packaging a downloader happened to produce
+/// rather than anything about the asset.
+///
+/// Each source becomes a sibling `.glb` with its textures in `textures/` and a
+/// `.material` per material, which is the layout the engine loads. A source that
+/// is **already** GLB still goes through: the converter is what extracts the
+/// materials, and skipping it would leave a model that renders untextured.
+///
+/// Failures are logged per file and the rest continue. A model the pipeline
+/// cannot read is still on disk exactly as it was written, which is strictly
+/// better than reporting failure and leaving nothing.
+///
+/// # Why this is here and not beside a caller
+///
+/// It has three now, and they must agree exactly: a marketplace install, a model
+/// dropped into the viewport, and anything draining
+/// [`renzora::ImportInPlaceQueue`] — which is how a plugin that cannot link this
+/// crate asks for an import. Three copies that agree today is the shape that
+/// stops agreeing quietly.
+pub fn import_tree_in_place(world: &mut renzora::bevy::ecs::world::World, root: &Path) {
+    let Some(project) = world.get_resource::<renzora::CurrentProject>() else {
+        warn!("[import] no project open, so {:?} cannot be imported", root);
+        return;
+    };
+    let project_path = project.path.clone();
+
+    let mut sources: Vec<std::path::PathBuf> = Vec::new();
+    collect_models(root, &mut sources);
+    if sources.is_empty() {
+        return;
+    }
+    for source in sources {
+        let Some(model_dir) = source.parent().map(Path::to_path_buf) else {
+            continue;
+        };
+        let dest = source.with_extension("glb");
+        run_import_pipeline(world, &source, &dest, &model_dir, &project_path);
+        // The source is replaced by its GLB, not kept beside it — two files
+        // describing one model is what makes an asset browser show it twice.
+        if dest != source {
+            if let Err(e) = std::fs::remove_file(&source) {
+                warn!("[import] could not remove {}: {e}", source.display());
+            }
+        }
+    }
+}
+
+/// Every importable file at or under `path`, depth-first.
+fn collect_models(path: &Path, out: &mut Vec<std::path::PathBuf>) {
+    if path.is_file() {
+        if crate::detect_format(path).is_some() {
+            out.push(path.to_path_buf());
+        }
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        collect_models(&entry.path(), out);
+    }
+}
