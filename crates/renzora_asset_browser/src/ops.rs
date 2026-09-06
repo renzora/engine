@@ -11,7 +11,7 @@ use renzora_ember::reactive::Rx;
 
 use crate::interact::open_file;
 use crate::state::{
-    save_list, unique_path, CrumbNav, NativeAssets, NewAsset, ShortcutClick,
+    save_list, unique_path, AssetTile, CrumbNav, NativeAssets, NewAsset, ShortcutClick, TreeNav,
 };
 
 /// Create a new asset (folder or file) in the current folder + select it.
@@ -138,9 +138,25 @@ pub(crate) fn publish_cwd(
     mut cwd: ResMut<renzora::core::AssetBrowserCwd>,
     state: Res<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    hovering: Option<Res<renzora::core::FileDragHovering>>,
+    tiles: Query<(&Interaction, &AssetTile)>,
+    tree: Query<(&Interaction, &TreeNav)>,
+    crumbs: Query<(&Interaction, &CrumbNav)>,
 ) {
+    // While an OS file drag is over the window, the drop should land wherever
+    // the cursor is -- a tree row, a breadcrumb, a folder tile -- rather than
+    // always in the folder that happens to be open. Falling back to the open
+    // folder is what makes "drop on the empty grid" mean "drop in here".
+    //
+    // This is the same set of targets an *internal* drag uses (`drop_folder` in
+    // `drag_drop`), deliberately: one gesture, one set of places it can land.
+    let dragging = hovering.is_some_and(|h| h.0);
+    let hovered = dragging.then(|| hovered_folder(&tiles, &tree, &crumbs)).flatten();
+
     let val = project.as_ref().map(|project| {
-        let folder = state.current.clone().unwrap_or_else(|| project.path.clone());
+        let folder = hovered
+            .or_else(|| state.current.clone())
+            .unwrap_or_else(|| project.path.clone());
         folder
             .strip_prefix(&project.path)
             .ok()
@@ -150,6 +166,28 @@ pub(crate) fn publish_cwd(
     if cwd.0 != val {
         cwd.0 = val;
     }
+}
+
+/// The folder under the cursor, from any of the three places one is shown.
+///
+/// A copy of `drag_drop::drop_folder` in spirit but not in code, because that
+/// one runs on the release frame of an internal drag and accepts `Pressed` for
+/// it; an OS drag never presses anything, so this takes `Hovered` alone.
+fn hovered_folder(
+    tiles: &Query<(&Interaction, &AssetTile)>,
+    tree: &Query<(&Interaction, &TreeNav)>,
+    crumbs: &Query<(&Interaction, &CrumbNav)>,
+) -> Option<PathBuf> {
+    if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && **i == Interaction::Hovered) {
+        return Some(tile.path.clone());
+    }
+    if let Some((_, nav)) = tree.iter().find(|(i, _)| **i == Interaction::Hovered) {
+        return Some(nav.0.clone());
+    }
+    crumbs
+        .iter()
+        .find(|(i, _)| **i == Interaction::Hovered)
+        .map(|(_, c)| c.0.clone())
 }
 
 /// The folder being shown (the explicit nav target, else the project root).
@@ -233,5 +271,162 @@ pub(crate) fn crumb_click(
             state.current = Some(nav.0.clone());
             state.selected = None;
         }
+    }
+}
+
+// ── Paste from the system clipboard ─────────────────────────────────────────
+
+/// Copy files and folders that were copied in the OS file manager into the
+/// folder the browser is showing.
+///
+/// # What the clipboard actually gives us
+///
+/// A file manager advertises a copy under several targets at once:
+/// `text/uri-list`, a desktop-specific one (`x-special/gnome-copied-files`), and
+/// usually `text/plain` carrying the same URIs. `arboard` reads text, so this
+/// takes the text target and parses it. That covers the common case and needs no
+/// new dependency, at the cost of the one case it cannot cover: a file manager
+/// that publishes *only* `text/uri-list` and no plain text. There is nothing to
+/// paste there, and this reports that rather than failing silently.
+///
+/// Paths are copied, never moved. The clipboard says nothing about whether the
+/// user chose copy or cut, and guessing wrong destroys the original.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn paste_from_clipboard(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut state: ResMut<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    input_focus: Option<Res<renzora::core::InputFocusState>>,
+) {
+    let ctrl = keyboard.any_pressed([
+        KeyCode::ControlLeft,
+        KeyCode::ControlRight,
+        KeyCode::SuperLeft,
+        KeyCode::SuperRight,
+    ]);
+    if !ctrl || !keyboard.just_pressed(KeyCode::KeyV) {
+        return;
+    }
+    // A rename field or any other text input owns Ctrl+V while it has focus.
+    if state.renaming.is_some() || input_focus.is_some_and(|f| f.ui_wants_keyboard) {
+        return;
+    }
+
+    let Some(root) = project.map(|p| p.path.clone()) else {
+        return;
+    };
+    let dest = state.current.clone().unwrap_or_else(|| root.clone());
+
+    let Some(text) = renzora_ember::widgets::clipboard::get_text() else {
+        return;
+    };
+    let sources = clipboard_paths(&text);
+    if sources.is_empty() {
+        return;
+    }
+
+    let mut pasted = 0usize;
+    for source in &sources {
+        let Some(name) = source.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let is_dir = source.is_dir();
+        // Copying a folder into itself or its own descendant would recurse until
+        // the disk filled.
+        if is_dir && dest.starts_with(source) {
+            continue;
+        }
+        let target = unique_path(&dest, name, is_dir);
+        let ok = if is_dir {
+            copy_dir_recursive(source, &target).is_ok()
+        } else {
+            std::fs::copy(source, &target).is_ok()
+        };
+        if ok {
+            pasted += 1;
+        }
+    }
+    if pasted > 0 {
+        state.listing_dirty = true;
+    }
+}
+
+/// The existing paths named by a clipboard's text payload.
+///
+/// Accepts `file://` URIs and bare absolute paths, one per line, and ignores the
+/// `copy`/`cut` verb some desktops put on the first line. Anything that does not
+/// resolve to something on disk is dropped, which is what makes this safe to run
+/// against ordinary copied text: a paste of prose simply finds no paths.
+#[cfg(not(target_arch = "wasm32"))]
+fn clipboard_paths(text: &str) -> Vec<PathBuf> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && *l != "copy" && *l != "cut")
+        .filter_map(|line| {
+            let raw = line.strip_prefix("file://").unwrap_or(line);
+            let decoded = percent_decode(raw);
+            let path = PathBuf::from(decoded);
+            path.is_absolute().then_some(path)
+        })
+        .filter(|p| p.exists())
+        .collect()
+}
+
+/// Decode `%XX` escapes. A URI from a file manager percent-encodes spaces and
+/// anything non-ASCII, so without this every path with a space in it is dropped
+/// as "does not exist".
+#[cfg(not(target_arch = "wasm32"))]
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    #[test]
+    fn a_space_in_a_path_survives_the_uri_encoding() {
+        assert_eq!(percent_decode("/home/a%20b/c%2Ed"), "/home/a b/c.d");
+    }
+
+    /// The desktop-specific payload leads with the verb, which is not a path.
+    #[test]
+    fn the_copy_verb_is_not_mistaken_for_a_path() {
+        let paths = clipboard_paths("copy\nfile:///definitely/not/here");
+        assert!(paths.is_empty());
+    }
+
+    /// Ordinary copied text must not be read as a paste of files.
+    #[test]
+    fn prose_yields_no_paths() {
+        assert!(clipboard_paths("the quick brown fox\njumped over").is_empty());
+    }
+
+    /// Both the URI form and a bare absolute path resolve, and only if they
+    /// exist: this is what keeps a stale clipboard from creating empty files.
+    #[test]
+    fn only_existing_absolute_paths_are_accepted() {
+        let dir = std::env::temp_dir();
+        let probe = dir.join("renzora-paste-probe.txt");
+        std::fs::write(&probe, b"x").unwrap();
+        let uri = format!("file://{}", probe.display());
+        assert_eq!(clipboard_paths(&uri), vec![probe.clone()]);
+        assert_eq!(clipboard_paths(&probe.display().to_string()), vec![probe.clone()]);
+        assert!(clipboard_paths("relative/path").is_empty());
+        let _ = std::fs::remove_file(&probe);
     }
 }

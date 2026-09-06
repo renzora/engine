@@ -17,14 +17,42 @@ use renzora_editor_framework::{
     MaterialThumbnailRegistry, ModelThumbnailRegistry, SceneThumbnailRegistry,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, popup_bg, rgb, text_primary};
 use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
 
 use crate::ops::{asset_type_info, icon_for};
 use crate::state::{
-    file_name_of, thumb_kind, AssetTile, DragGhost, GridArea, NativeAssets, ThumbKind, TreeNav,
+    file_name_of, thumb_kind, AssetTile, CrumbNav, DragGhost, GridArea, NativeAssets, ThumbKind,
+    TreeNav,
 };
 use crate::thumbnails::ThumbnailCache;
+
+/// The accent wash a drop target wears while an asset drag is over it, or
+/// `None` when this is not that.
+///
+/// Every place a drop can land binds its background through this, so the answer
+/// to "can I let go here?" looks the same in the tree, the breadcrumbs and the
+/// grid. Before, a hovered folder mid-drag looked exactly like a hovered folder
+/// not mid-drag -- the ordinary hover wash -- so the only way to find out
+/// whether a drop would be accepted was to try it.
+///
+/// `is_dir` is a parameter rather than something read here because a file is
+/// never a target: lighting one up would promise a move that silently does
+/// nothing.
+///
+/// Accepts `Pressed` as well as `Hovered`: the button is held down for the whole
+/// of a drag, so the row under the cursor can report either.
+pub(crate) fn drop_target_tint(w: &Rx, hover_on: Entity, is_dir: bool) -> Option<Color> {
+    if !is_dir || w.get_resource::<renzora_editor_framework::AssetDragPayload>().is_none() {
+        return None;
+    }
+    matches!(
+        w.get::<Interaction>(hover_on),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed)
+    )
+    .then(|| rgb(accent()).with_alpha(0.55))
+}
 
 /// Drag a tile out toward the viewport: records the press, and once the cursor
 /// moves >5px inserts an `AssetDragPayload` (the viewport shows a live preview
@@ -33,6 +61,7 @@ use crate::thumbnails::ThumbnailCache;
 pub(crate) fn asset_drag(
     tiles: Query<(&Interaction, &AssetTile)>,
     tree: Query<(&Interaction, &TreeNav)>,
+    crumbs: Query<(&Interaction, &CrumbNav)>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     scrollbar: Res<ScrollbarBusy>,
@@ -45,7 +74,7 @@ pub(crate) fn asset_drag(
         // dragged file(s) into it instead of spawning into the viewport.
         if state.dragging {
             if let Some(payload) = payload.as_ref() {
-                if let Some(target) = drop_folder(&tiles, &tree) {
+                if let Some(target) = drop_folder(&tiles, &tree, &crumbs) {
                     let sources = payload.paths.clone();
                     commands.queue(move |w: &mut World| move_assets(w, &sources, &target));
                 }
@@ -178,9 +207,17 @@ const SPRING_DWELL_SECS: f32 = 0.35;
 
 /// The folder under the cursor to drop onto — a hovered grid folder tile, else a
 /// hovered tree folder row.
+/// The folder under the cursor at release, from any of the three places one is
+/// shown: a folder tile in the grid, a row in the tree, or a breadcrumb segment.
+///
+/// The breadcrumbs were the gap. They are the only on-screen representation of
+/// the folders *above* the one you are in, so without them the single most
+/// obvious move -- take this file and put it one level up -- meant navigating
+/// away from the file first.
 fn drop_folder(
     tiles: &Query<(&Interaction, &AssetTile)>,
     tree: &Query<(&Interaction, &TreeNav)>,
+    crumbs: &Query<(&Interaction, &CrumbNav)>,
 ) -> Option<PathBuf> {
     // Accept Hovered *or* Pressed: on the release frame the folder under the
     // cursor may still read Pressed (the button was down through the drag).
@@ -188,7 +225,10 @@ fn drop_folder(
     if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && over(i)) {
         return Some(tile.path.clone());
     }
-    tree.iter().find(|(i, _)| over(i)).map(|(_, nav)| nav.0.clone())
+    if let Some((_, nav)) = tree.iter().find(|(i, _)| over(i)) {
+        return Some(nav.0.clone());
+    }
+    crumbs.iter().find(|(i, _)| over(i)).map(|(_, c)| c.0.clone())
 }
 
 /// Move `sources` into `target` (drag-to-folder). Skips no-op / into-itself

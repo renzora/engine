@@ -19,6 +19,7 @@ use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_ember::widgets::text_input;
 
+use crate::drag_drop::drop_target_tint;
 use crate::ops::{asset_type_info, folder_color, icon_for};
 use crate::state::{
     handle_for, hash_path_set, thumb_kind, AssetNameLabel, AssetRenameInput, AssetTile,
@@ -347,7 +348,14 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
         ))
         .id();
     let path_bg = entry.path.clone();
+    let row_is_dir = entry.is_dir;
     bind_bg(commands, row, move |w| {
+        // A drop target under a live drag outranks selection: while you are
+        // holding something, the only question the row has to answer is
+        // "will it land here?".
+        if let Some(tint) = drop_target_tint(w, row, row_is_dir) {
+            return tint;
+        }
         let selected = w
             .get_resource::<NativeAssets>()
             .map(|s| s.is_selected(&path_bg))
@@ -442,7 +450,11 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         ))
         .id();
     let path_bg = entry.path.clone();
+    let col_is_dir = entry.is_dir;
     bind_bg(commands, col, move |w| {
+        if let Some(tint) = drop_target_tint(w, col, col_is_dir) {
+            return tint;
+        }
         let selected = w
             .get_resource::<NativeAssets>()
             .map(|s| s.is_selected(&path_bg))

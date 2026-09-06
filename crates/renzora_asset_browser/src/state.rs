@@ -181,7 +181,7 @@ impl Default for NativeAssets {
             hovered: None,
             last_click: None,
             zoom: 1.0,
-            tree_width: 180.0,
+            tree_width: 240.0,
             divider_drag: None,
             favorites: Vec::new(),
             recent: Vec::new(),
@@ -332,6 +332,12 @@ pub(crate) fn load_persisted(
     };
     state.favorites = load_list(&root, "favorites");
     state.recent = load_list(&root, "recent");
+    // The project root is a tree row like any other, so it collapses through
+    // the same `expanded` set. Seeded open here rather than special-cased in
+    // the snapshot: "expanded unless present" would make an empty set mean
+    // "open" and a set the user had emptied mean "closed", which is the same
+    // state twice.
+    state.expanded.insert(root.clone());
     state.loaded = true;
 }
 

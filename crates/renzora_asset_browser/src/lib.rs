@@ -230,6 +230,16 @@ impl Plugin for AssetBrowserPlugin {
             Update,
             ops::publish_cwd.run_if(in_state(SplashState::Editor)),
         );
+        // Paste files copied in the OS file manager into the folder on screen.
+        // Panel-gated: Ctrl+V means something different in every other panel,
+        // and this one must not answer for them.
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(
+            Update,
+            ops::paste_from_clipboard
+                .run_if(in_state(SplashState::Editor))
+                .run_if(panel_active("assets")),
+        );
         // After a drop-import, pin the grid to the bottom for a short window so the
         // freshly-copied file scrolls into view once the rescan surfaces it.
         // panel-systems-ungated: scroll-on-drop must land after an import that may complete while focus moved

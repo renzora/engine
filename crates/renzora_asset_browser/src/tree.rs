@@ -27,7 +27,7 @@ use crate::state::{
 };
 
 const TREE_INDENT: f32 = 12.0;
-const TREE_ROW_H: f32 = 20.0;
+const TREE_ROW_H: f32 = 24.0;
 const TREE_BASE_X: f32 = 4.0;
 const TREE_LINE_OFFSET: f32 = TREE_INDENT / 2.0 - 1.0; // 5.0
 const TREE_CENTER_Y: f32 = TREE_ROW_H / 2.0;
@@ -297,11 +297,34 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
         }
         TreeTab::Folders => {
             if query.is_empty() {
+                // The project itself is the first row, and everything else
+                // hangs off it.
+                //
+                // It was implicit before: the tree began with the project's
+                // *children*, so the folder you were actually in had no visible
+                // parent and there was nowhere to drop a file to put it at the
+                // top level. Making the root a row solves both at once, because
+                // a row carries `TreeNav` and `TreeNav` is already a drop target.
+                let root_open = expanded.contains(&root);
+                items.push(TreeItem::Folder(TreeRow {
+                    path: root.clone(),
+                    name: file_name_of(&root),
+                    depth: 0,
+                    expanded: root_open,
+                    has_children: true,
+                    // Nothing follows it at depth 0, so it draws the elbow and
+                    // no pass-through line.
+                    is_last: true,
+                    parent_lines: Vec::new(),
+                    is_file: false,
+                }));
                 // Files appear in the tree only in the narrow layout, where the
                 // tree IS the browser; the wide sidebar stays folders-only.
-                let mut rows = Vec::new();
-                flatten_dirs(&root, 0, &expanded, narrow, &mut Vec::new(), &mut rows);
-                items.extend(rows.into_iter().map(TreeItem::Folder));
+                if root_open {
+                    let mut rows = Vec::new();
+                    flatten_dirs(&root, 1, &expanded, narrow, &mut vec![false], &mut rows);
+                    items.extend(rows.into_iter().map(TreeItem::Folder));
+                }
             } else {
                 // Searching: a flat list of every matching file/folder under
                 // the project root, regardless of tree expansion.
@@ -373,7 +396,7 @@ fn tree_header(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
     let label = commands
         .spawn((
             Text::new(text),
-            ui_font(&fonts.ui, 9.0),
+            ui_font(&fonts.ui, 10.5),
             TextColor(rgb(text_muted())),
         ))
         .id();
@@ -413,20 +436,27 @@ fn shortcut_row(
             Name::new("tree-shortcut"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::border()),
-        _ => stripe,
+    bind_bg(commands, row, move |w| {
+        if let Some(tint) = crate::drag_drop::drop_target_tint(w, row, is_dir) {
+            return tint;
+        }
+        match w.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::border())
+            }
+            _ => stripe,
+        }
     });
     let (icon_name, icon_color) = if is_dir {
         ("folder", folder_color(name))
     } else {
         (icon_for(path, false), asset_type_info(path).0)
     };
-    let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 12.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 13.0);
     let label = commands
         .spawn((
             Text::new(name.to_string()),
-            ui_font(&fonts.ui, 11.0),
+            ui_font(&fonts.ui, 13.0),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
             Node {
@@ -515,14 +545,14 @@ fn tree_row(
         commands.entity(nav).insert(TreeNav(r.path.clone()));
     }
     let folder_icon = if r.is_file {
-        icon_text(commands, &fonts.phosphor, icon_for(&r.path, false), asset_type_info(&r.path).0, 13.0)
+        icon_text(commands, &fonts.phosphor, icon_for(&r.path, false), asset_type_info(&r.path).0, 14.0)
     } else {
         icon_text(
             commands,
             &fonts.phosphor,
             if r.expanded { "folder-open" } else { "folder" },
             folder_color(&r.name),
-            13.0,
+            14.0,
         )
     };
     let name = if is_renaming {
@@ -532,7 +562,7 @@ fn tree_row(
         commands.entity(f).insert(Node {
             flex_grow: 1.0,
             min_width: Val::Px(0.0),
-            height: Val::Px(22.0),
+            height: Val::Px(26.0),
             align_items: AlignItems::Center,
             padding: UiRect::horizontal(Val::Px(6.0)),
             border: UiRect::all(Val::Px(1.0)),
@@ -547,7 +577,7 @@ fn tree_row(
         commands
             .spawn((
                 Text::new(display_name(&r.name, false).to_string()),
-                ui_font(&fonts.ui, 11.0),
+                ui_font(&fonts.ui, 13.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
                 Node {
@@ -565,7 +595,7 @@ fn tree_row(
         commands
             .spawn((
                 Text::new(r.name.clone()),
-                ui_font(&fonts.ui, 11.0),
+                ui_font(&fonts.ui, 13.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
                 Pickable::IGNORE,
@@ -598,6 +628,12 @@ fn tree_row(
     let sel_path = r.path.clone();
     let is_file = r.is_file;
     bind_bg(commands, bg_visual, move |w| {
+        // Hover is read on `nav`, not on the background: `nav` is the row's
+        // interactive zone and the one `drop_folder` resolves against, so the
+        // highlight lights exactly when a release would land here.
+        if let Some(tint) = crate::drag_drop::drop_target_tint(w, nav, !is_file) {
+            return tint;
+        }
         let active = if is_file {
             w.get_resource::<NativeAssets>()
                 .map(|s| s.is_selected(&sel_path))
