@@ -1,6 +1,6 @@
 //! Renzora Camera — orbit camera controller for the editor viewport.
 //!
-//! Provides Blender/Unreal-style 3D navigation:
+//! Navigation:
 //! - Right-click + drag: look around (yaw/pitch)
 //! - Right-click + WASD: fly movement
 //! - Middle-click drag: orbit around focus point
@@ -9,12 +9,13 @@
 //! - Shift: move faster (2x)
 //! - Ctrl: move slower (0.25x)
 
+use bevy::camera::primitives::Aabb;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{
-    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode, ViewportMode,
+    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode,
     ViewportSettings, ViewportState, ViewportView,
 };
 use renzora::core::InputFocusState;
@@ -53,6 +54,21 @@ impl Default for OrbitCameraState {
     }
 }
 
+/// How far above the object's horizon F puts the camera, in radians (~10°).
+///
+/// Shallower than the default orbit pitch on purpose. Not level, though: dead
+/// side-on reads as flat and hides every top face.
+const FRAME_PITCH: f32 = 0.18;
+
+/// Slack around the fitted distance, so the framed object does not touch the
+/// edge of the viewport.
+const FRAME_MARGIN: f32 = 1.2;
+
+/// Closest F will place the camera, for an object with no size worth speaking of
+/// (a bounds-less light, or a mesh scaled to nothing). Without it, a zero radius
+/// puts the camera inside the object and the view goes blank.
+const MIN_FRAME_DISTANCE: f32 = 0.35;
+
 impl OrbitCameraState {
     /// Calculate camera position from orbit parameters.
     pub fn calculate_position(&self) -> Vec3 {
@@ -72,6 +88,27 @@ impl OrbitCameraState {
     /// Focus on a specific point.
     pub fn focus_on(&mut self, point: Vec3) {
         self.focus = point;
+    }
+
+    /// Frame a bounding sphere: centre on it, fit it, and look at it near
+    /// side-on.
+    ///
+    /// [`focus_on`](Self::focus_on) only re-aims the orbit, which is why F used
+    /// to leave a small object across the scene as the same speck it already
+    /// was, seen from the same angle. Distance comes from the object's own size
+    /// so framing is scale-independent, and the pitch drops to near its horizon
+    /// because F is for looking *at* something: from above, an object's height
+    /// foreshortens into nothing and its silhouette (the thing you are usually
+    /// checking) is unreadable.
+    pub fn frame_on(&mut self, center: Vec3, radius: f32, vertical_fov: f32) {
+        self.focus = center;
+        // Fit to the frustum's height. `tan` rather than `sin`, which would be
+        // the exact fit for a sphere: the sphere already over-estimates the
+        // object inside it, so an exact sphere fit frames the object itself with
+        // visible slack on every side. `FRAME_MARGIN` then buys back a border.
+        let half_fov = (vertical_fov * 0.5).clamp(0.05, 1.5);
+        self.distance = (radius / half_fov.tan() * FRAME_MARGIN).max(MIN_FRAME_DISTANCE);
+        self.pitch = FRAME_PITCH;
     }
 
     /// Zoom by delta (positive = closer).
@@ -531,6 +568,52 @@ fn handle_view_angle_keys(
     }
 }
 
+/// The world-space bounding sphere of `entity` together with its descendants.
+///
+/// The whole subtree, because an imported model is a parent holding nothing but
+/// its parts: measuring only the entity you clicked would frame an empty point.
+///
+/// `None` when nothing in the subtree has an [`Aabb`] — a light, a marker, an
+/// empty. Those have a position but no size, so there is nothing to fit to and
+/// the caller falls back to re-centring alone.
+fn selection_bounds(
+    entity: Entity,
+    children: &Query<&Children>,
+    bounds: &Query<(&GlobalTransform, &Aabb)>,
+) -> Option<(Vec3, f32)> {
+    let mut min = Vec3::splat(f32::INFINITY);
+    let mut max = Vec3::splat(f32::NEG_INFINITY);
+    let mut any = false;
+
+    let subtree = core::iter::once(entity).chain(children.iter_descendants::<Children>(entity));
+    for e in subtree {
+        let Ok((gt, aabb)) = bounds.get(e) else {
+            continue;
+        };
+        // All eight corners through the entity's own transform. An `Aabb` is in
+        // local space, so transforming just its min and max gives the wrong
+        // extent the moment the entity is rotated.
+        let center = Vec3::from(aabb.center);
+        let half = Vec3::from(aabb.half_extents);
+        for i in 0..8u32 {
+            let sign = Vec3::new(
+                if i & 1 == 0 { -1.0 } else { 1.0 },
+                if i & 2 == 0 { -1.0 } else { 1.0 },
+                if i & 4 == 0 { -1.0 } else { 1.0 },
+            );
+            let world = gt.transform_point(center + half * sign);
+            min = min.min(world);
+            max = max.max(world);
+        }
+        any = true;
+    }
+
+    any.then(|| {
+        let center = (min + max) * 0.5;
+        (center, (max - center).length())
+    })
+}
+
 /// Focus the camera on the currently selected entity (F key).
 fn focus_selected(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -540,7 +623,10 @@ fn focus_selected(
     selection: Res<EditorSelection>,
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
-    transforms: Query<&Transform, Without<EditorCamera>>,
+    transforms: Query<&GlobalTransform>,
+    children: Query<&Children>,
+    bounds: Query<(&GlobalTransform, &Aabb)>,
+    projections: Query<&Projection, With<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
@@ -557,12 +643,34 @@ fn focus_selected(
     }
 
     if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
-        if let Some(entity) = selection.get() {
-            if let Ok(transform) = transforms.get(entity) {
-                orbit.focus_on(transform.translation);
-                pivot_lock.0 = true;
+        let Some(entity) = selection.get() else { return };
+
+        // The viewport's own vertical fov, not an assumed one: framing computed
+        // against the wrong angle is wrong by exactly the ratio between them,
+        // and a project that widens the fov would find F leaving a margin it
+        // never asked for. Orthographic viewports have no fov to read, so they
+        // fall through to the default and still get sensible re-centring.
+        let vertical_fov = projections
+            .iter()
+            .find_map(|p| match p {
+                Projection::Perspective(p) => Some(p.fov),
+                _ => None,
+            })
+            .unwrap_or(std::f32::consts::FRAC_PI_4);
+
+        match selection_bounds(entity, &children, &bounds) {
+            Some((center, radius)) => orbit.frame_on(center, radius, vertical_fov),
+            // Nothing to measure. Centre on where it is and leave the distance
+            // alone rather than inventing one: for a light or an empty, how far
+            // back you want to be is a question about the scene around it, which
+            // this cannot see.
+            None => {
+                if let Ok(gt) = transforms.get(entity) {
+                    orbit.focus_on(gt.translation());
+                }
             }
         }
+        pivot_lock.0 = true;
     }
 }
 
@@ -856,13 +964,6 @@ fn camera_controller(
     // lerp the current velocity toward it. Runs every frame so motion eases
     // out for a few frames after release rather than stopping instantly.
     //
-    // In Edit mode we surrender E/Q to mesh-edit (E = extrude). WASD still
-    // flies the camera; users wanting vertical nav can scroll-dolly or
-    // middle-drag-pan.
-    let edit_mode_active = vp_settings
-        .as_ref()
-        .map(|s| s.viewport_mode == ViewportMode::Edit)
-        .unwrap_or(false);
     let mut target_velocity = Vec3::ZERO;
     if right_pressed && drag.dragging {
         let forward = Vec3::new(
@@ -893,14 +994,19 @@ fn camera_controller(
         // not with how much room is left below you. Ease from a quarter speed at
         // ground level up to full by `VERTICAL_FULL_SPEED_HEIGHT`, and treat
         // "ground" as y=0 (the editor grid's plane, and where scenes are built).
+        //
+        // E/Q are not surrendered in Edit mode, though `E` is also extrude
+        // there. Held right mouse is the whole gesture here, and the modeling
+        // shortcuts stand down while it is: giving up vertical navigation for
+        // the entire time Edit mode is open cost more than the clash did, and
+        // did not even fix it — `E` while flying still extruded, because the
+        // key was surrendered in the direction that kept the collision.
         let mut vertical = 0.0f32;
-        if !edit_mode_active {
-            if keyboard.pressed(KeyCode::KeyE) {
-                vertical += 1.0;
-            }
-            if keyboard.pressed(KeyCode::KeyQ) {
-                vertical -= 1.0;
-            }
+        if keyboard.pressed(KeyCode::KeyE) {
+            vertical += 1.0;
+        }
+        if keyboard.pressed(KeyCode::KeyQ) {
+            vertical -= 1.0;
         }
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;
@@ -1536,6 +1642,67 @@ mod tests {
 
     fn close(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-4
+    }
+
+    // ── framing (F) ──────────────────────────────────────────────────────────
+
+    /// Framing is scale-independent: a bigger object is framed from further
+    /// back, in exact proportion, so a chair and a cathedral both fill the
+    /// viewport the same way. This is the whole point of fitting to bounds
+    /// rather than re-centring, which is what F did before.
+    #[test]
+    fn framing_distance_scales_with_the_object() {
+        let mut small = OrbitCameraState::default();
+        small.frame_on(Vec3::ZERO, 1.0, FRAC_PI_4);
+
+        let mut large = OrbitCameraState::default();
+        large.frame_on(Vec3::ZERO, 10.0, FRAC_PI_4);
+
+        assert!(close(large.distance, small.distance * 10.0));
+    }
+
+    /// The object has to actually fit: at the fitted distance its bounding
+    /// sphere must lie inside the frustum's height, with the margin to spare.
+    #[test]
+    fn a_framed_object_fits_in_the_frame() {
+        for fov in [0.4f32, FRAC_PI_4, 1.2] {
+            for radius in [0.05f32, 1.0, 250.0] {
+                let mut orbit = OrbitCameraState::default();
+                orbit.frame_on(Vec3::ZERO, radius, fov);
+                // Half the frustum's height at the focus plane.
+                let half_height = orbit.distance * (fov * 0.5).tan();
+                assert!(
+                    half_height > radius,
+                    "radius {radius} at fov {fov} did not fit: half height {half_height}"
+                );
+            }
+        }
+    }
+
+    /// F centres on the bounds, not on the entity's origin, and looks from near
+    /// the object's own horizon. A model whose origin sits at its feet — most
+    /// imported ones — would otherwise be framed on the ground under it.
+    #[test]
+    fn framing_centres_on_the_bounds_and_looks_side_on() {
+        let mut orbit = OrbitCameraState {
+            pitch: 1.4,
+            ..default()
+        };
+        let center = Vec3::new(2.0, 5.0, -3.0);
+        orbit.frame_on(center, 2.0, FRAC_PI_4);
+
+        assert_eq!(orbit.focus, center);
+        assert!(close(orbit.pitch, FRAME_PITCH));
+        assert!(orbit.pitch < 0.4, "F should look from nearer the side");
+    }
+
+    /// A selection with no size must not put the camera inside itself. Zero
+    /// radius fits at zero distance, which is a blank viewport.
+    #[test]
+    fn a_sizeless_selection_keeps_the_camera_outside_it() {
+        let mut orbit = OrbitCameraState::default();
+        orbit.frame_on(Vec3::ZERO, 0.0, FRAC_PI_4);
+        assert!(orbit.distance >= MIN_FRAME_DISTANCE);
     }
 
     // ── orbit → position ─────────────────────────────────────────────────────
