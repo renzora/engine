@@ -158,12 +158,19 @@ impl Plugin for GizmoPlugin {
             .init_resource::<PerSlotGizmo>()
             .init_resource::<renzora::core::viewport_types::ViewportGizmoSpace>()
             .init_resource::<GizmoMode>()
+            // The plugin-borrowable gizmo (`renzora::GizmoTarget`). Owned here
+            // rather than in the contract crate because this is what reads it:
+            // an editor without the gizmo has nothing to lend.
+            .init_resource::<renzora::GizmoTarget>()
             .init_resource::<GizmoSpace>()
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
+            // `Last`, so a borrower reading `drag_started` / `drag_ended` in
+            // `Update` sees them whatever order the two systems ended up in.
+            .add_systems(Last, clear_gizmo_target_edges)
             .add_systems(PostStartup, meshes::setup_gizmo_meshes)
             // Selection shortcuts (Delete / Deselect / CreateNode) aren't
             // 3D-specific — Delete on a 2D entity should also work from
@@ -355,3 +362,13 @@ impl Plugin for GizmoPlugin {
 }
 
 renzora::add!(GizmoPlugin, Editor);
+
+/// Drop the one-frame `drag_started` / `drag_ended` edges on
+/// [`renzora::GizmoTarget`].
+fn clear_gizmo_target_edges(target: Option<ResMut<renzora::GizmoTarget>>) {
+    if let Some(mut target) = target {
+        if target.drag_started || target.drag_ended {
+            target.clear_edges();
+        }
+    }
+}

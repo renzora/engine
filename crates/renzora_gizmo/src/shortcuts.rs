@@ -391,9 +391,23 @@ pub(crate) fn switch_gizmo_mode(
     input_focus: Res<InputFocusState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
+    viewport_settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     mut mode: ResMut<GizmoMode>,
     mut active_tool: ResMut<renzora_editor_framework::ActiveTool>,
 ) {
+    // Scene mode only, for the same reason `modal_transform_input_system` is:
+    // any other mode belongs to whichever plugin drives it, and these keys are
+    // not free. `GizmoRotate` defaults to `E`, which is also mesh-edit's
+    // extrude — so pressing `E` in Edit mode both extruded the mesh and threw
+    // the scene tool over to Rotate, which `enter_edit_mode` then stomped back
+    // to `None` on the next frame. `R` (`GizmoScale`) collides with the loop
+    // cut's `Ctrl+R` the same way.
+    if !matches!(
+        viewport_settings.as_deref().map(|s| s.viewport_mode),
+        None | Some(renzora::core::viewport_types::ViewportMode::Scene)
+    ) {
+        return;
+    }
     if keybindings.rebinding.is_some() {
         return;
     }

@@ -42,8 +42,13 @@ fn release_drag_cursor(cursor_q: &mut Query<&mut CursorOptions, With<PrimaryWind
 
 /// Geometry queries shared by the drag system, bundled so `gizmo_drag` stays
 /// under Bevy's 16-parameter system limit.
+///
+/// [`target`](DragGeom::target) is in here for that reason alone, not because it
+/// is geometry: adding it as a seventeenth parameter is what pushed the system
+/// over the cap.
 #[derive(SystemParam)]
 pub(crate) struct DragGeom<'w, 's> {
+    pub(crate) target: Option<ResMut<'w, renzora::GizmoTarget>>,
     global: Query<'w, 's, &'static GlobalTransform, Without<EditorCamera>>,
     aabb: Query<'w, 's, &'static bevy::camera::primitives::Aabb>,
     pivot_aabbs: Query<
@@ -76,7 +81,7 @@ pub(crate) fn gizmo_drag(
             Without<GizmoMesh>,
         ),
     >,
-    geom: DragGeom,
+    mut geom: DragGeom,
     window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
@@ -92,7 +97,17 @@ pub(crate) fn gizmo_drag(
         .as_deref()
         .map(|s| s.snap)
         .unwrap_or_default();
-    if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
+    // A plugin may have borrowed the handles (`renzora::GizmoTarget`). Its mode
+    // is read from the target rather than from the global `GizmoMode`, which
+    // stays `None` so that click-picking and box selection remain disengaged —
+    // the borrower is doing its own picking. See the `GizmoTarget` module docs.
+    let borrowed = geom.target.as_deref().is_some_and(|t| t.engaged());
+    let mode: GizmoMode = if borrowed {
+        geom.target.as_deref().map(|t| t.mode).unwrap_or(*mode)
+    } else {
+        *mode
+    };
+    if matches!(mode, GizmoMode::Select | GizmoMode::None) {
         mouse_motion.clear();
         return;
     }
@@ -168,12 +183,23 @@ pub(crate) fn gizmo_drag(
                     pivot_n += 1;
                 }
             }
-            gizmo_state.drag_basis = gizmo_basis(*space, *mode, sel_world_rot);
+            gizmo_state.drag_basis = gizmo_basis(*space, mode, sel_world_rot);
             gizmo_state.drag_pivot = if pivot_n > 0 {
                 pivot_sum / pivot_n as f32
             } else {
                 Vec3::ZERO
             };
+            // A borrowed gizmo pivots where the borrower said, not on an
+            // entity's bounds — there may be no selected entity at all.
+            if let Some(t) = geom.target.as_deref_mut().filter(|t| t.engaged()) {
+                gizmo_state.drag_basis = gizmo_basis(*space, mode, t.basis);
+                gizmo_state.drag_pivot = t.pivot;
+                t.dragging = true;
+                t.drag_started = true;
+                t.translation = Vec3::ZERO;
+                t.rotation = Quat::IDENTITY;
+                t.scale = Vec3::ONE;
+            }
             // Reference point under the cursor on the dragged axis/plane, so
             // translate can keep it pinned to the pointer (cursor-locked drag).
             let pivot0 = gizmo_state.drag_pivot;
@@ -204,6 +230,18 @@ pub(crate) fn gizmo_drag(
 
     // End drag
     if mouse_button.just_released(MouseButton::Left) && gizmo_state.active_axis.is_some() {
+        if let Some(t) = geom.target.as_deref_mut().filter(|t| t.engaged()) {
+            // No `TransformCmd`: nothing here moved a Transform, and the
+            // borrower is the only thing that knows what its delta meant, so it
+            // records its own undo off this edge.
+            t.dragging = false;
+            t.drag_ended = true;
+            gizmo_state.active_axis = None;
+            gizmo_state.drag_starts.clear();
+            release_drag_cursor(&mut cursor_options);
+            mouse_motion.clear();
+            return;
+        }
         let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
         for (entity, old_t, old_r, old_s) in &gizmo_state.drag_starts {
             let Ok(t) = transform_q.get(*entity) else {
@@ -305,7 +343,7 @@ pub(crate) fn gizmo_drag(
     };
     let distance = (cam_gt.translation() - world_center).length();
 
-    match *mode {
+    match mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
             // Cursor-locked: pin the grabbed point under the pointer. Project the
@@ -323,7 +361,15 @@ pub(crate) fn gizmo_drag(
             else {
                 return;
             };
-            let total_offset = cur - gizmo_state.drag_grab;
+            let mut total_offset = cur - gizmo_state.drag_grab;
+            if let Some(t) = geom.target.as_deref_mut().filter(|t| t.engaged()) {
+                if snap.translate_enabled && snap.translate_snap > 0.0 {
+                    let step = snap.translate_snap;
+                    total_offset = (total_offset / step).round() * step;
+                }
+                t.translation = total_offset;
+                return;
+            }
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
                     let (start_t, start_r, start_s) = gizmo_state
@@ -384,6 +430,10 @@ pub(crate) fn gizmo_drag(
             gizmo_state.drag_angle_snapped = effective_angle;
             let world_rot = Quat::from_axis_angle(world_axis, effective_angle);
             let pivot = gizmo_state.drag_pivot;
+            if let Some(t) = geom.target.as_deref_mut().filter(|t| t.engaged()) {
+                t.rotation = world_rot;
+                return;
+            }
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
                     let (start_t, start_r, start_s) = gizmo_state
@@ -424,6 +474,21 @@ pub(crate) fn gizmo_drag(
             };
             let f = gizmo_state.drag_scale_factor;
             let pivot = gizmo_state.drag_pivot;
+            if let Some(t) = geom.target.as_deref_mut().filter(|t| t.engaged()) {
+                // Scale is reported as a multiplier from 1, not as the gizmo's
+                // additive handle offset: a borrower scaling geometry about a
+                // pivot needs a factor, and `1 + f` is what the entity path
+                // arrives at too (`start_scale + f` from a start of 1).
+                let mut v = Vec3::ONE;
+                match axis {
+                    GizmoAxis::X => v.x = apply(1.0 + f, snap_step),
+                    GizmoAxis::Y => v.y = apply(1.0 + f, snap_step),
+                    GizmoAxis::Z => v.z = apply(1.0 + f, snap_step),
+                    _ => v = Vec3::splat(apply(1.0 + f, snap_step)),
+                }
+                t.scale = v;
+                return;
+            }
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
                     let (start_t, start_r, start_scale) = gizmo_state

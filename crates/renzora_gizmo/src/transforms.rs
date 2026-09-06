@@ -52,6 +52,7 @@ pub(crate) fn update_gizmo_transforms(
     viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
     viewport_settings: Option<Res<ViewportSettings>>,
     vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    target: Option<Res<renzora::GizmoTarget>>,
     mut gizmo_state: ResMut<GizmoState>,
     mut per_slot: ResMut<PerSlotGizmo>,
     transforms: Query<&GlobalTransform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
@@ -68,31 +69,43 @@ pub(crate) fn update_gizmo_transforms(
 
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
     let selected = selection.get();
+
+    // A plugin can borrow the handles (see `renzora::GizmoTarget`). While it
+    // has them the gizmo draws where *it* says, in the mode *it* asks for, and
+    // whether an entity happens to be selected stops mattering.
+    //
+    // Deliberately not routed through the global `GizmoMode`: that would also
+    // re-engage click-picking and box selection, which the borrowing plugin has
+    // switched off via `ActiveTool::None` precisely because it is doing its own
+    // picking. `ActiveTool` decides who owns the mouse; this decides who owns
+    // the handles, and they are not the same question.
+    let borrow = target.as_deref().copied().filter(|t| t.engaged());
+    let mode = borrow.map_or(*mode, |t| t.mode);
     // Hide mesh gizmos during modal transform and when NOT in Translate mode
     // (rotate/scale are drawn via immediate line gizmos).
-    let show_meshes = selected.is_some()
+    let show_meshes = (selected.is_some() || borrow.is_some())
         && !modal.active
         && !editing_collider
-        && matches!(*mode, GizmoMode::Translate);
+        && matches!(mode, GizmoMode::Translate);
     // Lines (rotate/scale/plane) draw for any gizmo mode with a live selection.
-    let lines_active = selected.is_some()
+    let lines_active = (selected.is_some() || borrow.is_some())
         && !modal.active
         && !editing_collider
         && matches!(
-            *mode,
+            mode,
             GizmoMode::Translate | GizmoMode::Rotate | GizmoMode::Scale
         );
 
     // Toggle cone heads vs scale cubes based on mode (applies to every slot's set).
     for (part, mut vis) in gizmo_parts.iter_mut() {
         if part.is_translate_only() {
-            *vis = if *mode == GizmoMode::Translate {
+            *vis = if mode == GizmoMode::Translate {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
             };
         } else if part.is_scale_only() {
-            *vis = if *mode == GizmoMode::Scale {
+            *vis = if mode == GizmoMode::Scale {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
@@ -111,16 +124,22 @@ pub(crate) fn update_gizmo_transforms(
     // Selection pivot + world rotation (shared across slots — same object). The
     // handle *basis* is resolved per slot below, because each viewport can be in a
     // different Local/World space.
-    let sel_data = selected.and_then(|s| {
+    let sel_data = if let Some(t) = borrow {
+        // The borrower states its own pivot and basis; there is no entity whose
+        // bounds could stand in for them.
+        Some((t.pivot, t.basis))
+    } else {
+        selected.and_then(|s| {
         transforms.get(s).ok().map(|sel_gt| {
             // Anchor on the world-space AABB center so the gizmo lands on top of
             // the visible mesh even when the entity's pivot was authored at world
             // (0,0,0) (common for scene-style GLBs). Hover hit-test + line gizmos
             // use the same pivot so visual, pick, and drag agree.
             let sel_world = compute_gizmo_pivot(s, &aabbs, &children_q, sel_gt, pivot_bottom);
-            (sel_world, sel_gt.rotation())
+                (sel_world, sel_gt.rotation())
+            })
         })
-    });
+    };
 
     // Per-slot camera world positions (indexed by slot).
     let mut cam_pos: [Option<Vec3>; VIEWPORT_COUNT] = [None; VIEWPORT_COUNT];
@@ -179,7 +198,7 @@ pub(crate) fn update_gizmo_transforms(
 
         // Resolve the handle basis in THIS slot's own space (World-aligned or the
         // object's Local rotation).
-        let basis = gizmo_basis(slot_space(i), *mode, sel_rot);
+        let basis = gizmo_basis(slot_space(i), mode, sel_rot);
         let world_aligned = basis == Quat::IDENTITY;
         let dist = (cam - sel_world).length().max(0.1);
         let scale = dist / GIZMO_SCALE_REF_DIST;
