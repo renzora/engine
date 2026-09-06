@@ -326,6 +326,29 @@ pub struct InputFocusState {
     /// timeline with a keyframe selected). The entity-delete shortcut skips
     /// while this is set so Delete removes the keyframe, not the entity.
     pub suppress_entity_delete: bool,
+    /// Raised by a plugin that owns the keyboard this frame, and folded into
+    /// `ui_wants_keyboard` by the editor.
+    ///
+    /// The field exists because `ui_wants_keyboard` is *computed* every frame
+    /// from a fixed list of sources - focused ember text fields, an editing
+    /// drag value, a focused code editor, play mode - and a plugin cannot add
+    /// itself to that list. Writing `ui_wants_keyboard` directly does not work
+    /// either: whichever of the two systems runs second wins, and which one that
+    /// is depends on registration order.
+    ///
+    /// So this is a **claim, re-made every frame**. A plugin sets it while it
+    /// wants the keyboard; the editor ORs it into `ui_wants_keyboard` and clears
+    /// it again. That gives two properties worth the extra field: several
+    /// plugins can claim at once without one clearing another's claim, and a
+    /// plugin that stops running - or whose panel is no longer the active tab,
+    /// which stops its systems - releases the keyboard by doing nothing, rather
+    /// than by remembering to.
+    ///
+    /// The cost is that a claim raised after the editor read it lands one frame
+    /// late. That is invisible for what this is for (a terminal or a text
+    /// surface taking focus on a click), and the alternative is an ordering
+    /// constraint between the editor and code it has never linked.
+    pub plugin_wants_keyboard: bool,
 }
 
 /// HUD data for the modal transform overlay (written by gizmo crate, read by viewport).

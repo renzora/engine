@@ -193,6 +193,26 @@ The binding you pass is a *default*. It is seeded into `KeyBindings::plugin_bind
 
 Use an existing category (`"Camera"`, `"Tools"`, `"Transform"`, …) to group with the built-ins, or any string for a category of your own.
 
+### Taking the keyboard away from the shortcuts
+
+The other direction: a panel that reads raw keystrokes has to stop the editor's own shortcuts firing while the user types, or `g`, `s` and `Delete` reach the scene instead.
+
+```rust
+fn claim_keyboard(mine: Res<MyPanelState>, focus: Option<ResMut<renzora::InputFocusState>>) {
+    if mine.focused {
+        if let Some(mut focus) = focus {
+            focus.plugin_wants_keyboard = true;
+        }
+    }
+}
+```
+
+`plugin_wants_keyboard` is a **claim, re-made every frame**: the editor ORs it into `ui_wants_keyboard` (the flag every shortcut, the gizmo keys and the camera's WASD already check) and clears it again. Raise it for as long as you want the keys and do nothing when you do not.
+
+That shape, rather than a flag you set and reset, is what makes it safe from a plugin. `ui_wants_keyboard` itself is *computed* each frame from a fixed list of sources (focused text fields, an editing drag value, a focused code editor, play mode) that a plugin cannot join, so writing it directly is a race with whichever system runs second. A claim cannot be lost that way, several plugins can hold one at once without clearing each other's, and a plugin whose panel is no longer the active tab releases the keyboard by having stopped running. The cost is that a claim raised after the editor read it lands a frame late, which is invisible for taking focus on a click.
+
+Register the claiming system through `PanelScope::systems` (the default), not `.always`: a hidden panel that is still claiming the keyboard is a dead editor with no visible cause.
+
 ## Viewport tools
 
 A tool is a button on the viewport toolbar with predicates for visibility and active state:
