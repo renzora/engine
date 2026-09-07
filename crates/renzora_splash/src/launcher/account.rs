@@ -114,7 +114,7 @@ fn sign_in_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(ic).insert(FocusPolicy::Pass);
     let label = commands
         .spawn((
-            Text::new("Sign in".to_string()),
+            Text::new(renzora::lang::t("splash.sign_in")),
             ui_font(&fonts.ui, 12.5),
             TextColor(text()),
             FocusPolicy::Pass,
@@ -215,7 +215,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Interaction::default(),
             FocusPolicy::Block,
             SignOutBtn,
-            HoverTooltip::new("Sign out"),
+            HoverTooltip::new(renzora::lang::t("splash.sign_out")),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -310,7 +310,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
         .find(|m| m.code == active)
         .map(|m| if m.name.is_empty() { m.code.clone() } else { m.name.clone() })
         .unwrap_or_else(|| {
-            if active.is_empty() { "Language".to_string() } else { active.clone() }
+            if active.is_empty() { renzora::lang::t("splash.language") } else { active.clone() }
         });
 
     let icon = icon_text(commands, &fonts.phosphor, "globe", ICON_MUTED, 13.0);
@@ -411,10 +411,12 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
             FocusPolicy::Pass,
         ))
         .id();
-    let website = social_button(commands, fonts, "globe", "Website", WEBSITE_URL, false);
+    let website =
+        social_button(commands, fonts, "globe", &renzora::lang::t("splash.website"), WEBSITE_URL, false);
     let youtube = social_button(commands, fonts, "youtube-logo", "YouTube", YOUTUBE_URL, false);
     let discord = social_button(commands, fonts, "discord-logo", "Discord", DISCORD_URL, false);
-    let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
+    let star =
+        social_button(commands, fonts, "star", &renzora::lang::t("splash.star_github"), GITHUB_URL, true);
     commands.entity(right).add_children(&[website, youtube, discord, star]);
 
     commands.entity(bar).add_children(&[left, right]);
@@ -503,9 +505,10 @@ fn social_button(
     if starred {
         bind_text(commands, t, |w| {
             let stars = w.get_resource::<GithubStats>().and_then(|s| s.stars);
+            let label = renzora::lang::t("splash.star_github");
             match stars {
-                Some(n) => format!("Star us on GitHub  ({})", format_count(n)),
-                None => "Star us on GitHub".to_string(),
+                Some(n) => format!("{label}  ({})", format_count(n)),
+                None => label,
             }
         });
     }

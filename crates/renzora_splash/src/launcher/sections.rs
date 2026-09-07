@@ -46,8 +46,10 @@ pub struct SplashSection {
     pub id: &'static str,
     /// Phosphor icon name for the rail row.
     pub icon: &'static str,
-    /// Rail label. A `String`, not `&'static str`, so a page can build a
-    /// translated label with `renzora::lang::t()`.
+    /// Rail label, in English. Only a fallback: [`rail_entries`] prefers
+    /// `splash.section.<id>` from the active language pack, because a page
+    /// registers from `Plugin::build` and cannot know what language the rail
+    /// will end up being drawn in.
     pub label: String,
     /// Rail order, low first. The built-in pages claim 0 and 80, leaving room
     /// for registrations from elsewhere to land between them.
@@ -145,10 +147,24 @@ pub(crate) struct NavRow(String);
 pub(crate) type RailEntry = (&'static str, &'static str, String);
 
 /// Every registered page as a [`RailEntry`], rail order.
+///
+/// The label is resolved here, not at registration: a page registers from
+/// `Plugin::build`, which can run before the language packs are loaded and
+/// certainly runs before anyone picks a language. Reading `splash.section.<id>`
+/// on every rail build means the rail re-localizes with the rest of the
+/// dashboard, and a page whose id has no key keeps the label it registered.
 pub(crate) fn rail_entries(world: &World) -> Vec<RailEntry> {
     world
         .get_resource::<SplashSections>()
-        .map(|s| s.iter().map(|s| (s.id, s.icon, s.label.clone())).collect())
+        .map(|s| {
+            s.iter()
+                .map(|s| {
+                    let label =
+                        renzora::lang::t_or(&format!("splash.section.{}", s.id), &s.label);
+                    (s.id, s.icon, label)
+                })
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -185,7 +201,7 @@ pub(crate) fn build_rail(
         .id();
 
     let mut rows: Vec<Entity> = Vec::new();
-    rows.push(rail_heading(commands, fonts, "Dashboard"));
+    rows.push(rail_heading(commands, fonts, &renzora::lang::t("splash.dashboard")));
     for (id, icon, label) in entries {
         rows.push(nav_row(commands, fonts, id, icon, label));
     }

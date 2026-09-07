@@ -103,3 +103,5 @@ If you are running a build with no marketplace in it, the account block is not s
 ## Language
 
 The last row of the rail picks the interface language, from the built-in packs plus any `languages/*.toml` you have added. The choice is saved and is already in effect when the editor opens.
+
+It also takes effect **here**, immediately: the dashboard redraws in the language you picked rather than waiting for the editor. A page registered by a plugin is redrawn with the rest, and its rail label comes from `splash.section.<id>` in the active pack, falling back to whatever English label the page registered.

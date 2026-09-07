@@ -4,6 +4,11 @@
 - fix(import): dropping a file on the dashboard no longer crashes the app.
 - fix(editor): the editor UI no longer renders behind the dashboard, so dragging
   a file over it stops showing "Drop to import".
+- fix(splash): picking a language on the dashboard switches the dashboard to it
+  straight away.
+- feat(splash): the dashboard is translated, in every shipped language.
+- feat(splash): opening a project goes straight into it, with no iris transition
+  or power-on reveal.
 - fix(import): a spec-gloss glTF no longer imports as an untextured white model.
 - fix(import): importing a texture, sound, font or script no longer opens the
   model inspector.

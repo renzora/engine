@@ -335,7 +335,11 @@ fn build_letterbox(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let title = commands
-        .spawn((Text::new("Loading".to_string()), ui_font(&fonts.ui, 18.0), TextColor(c(240, 240, 248))))
+        .spawn((
+            Text::new(renzora::lang::t("splash.loading")),
+            ui_font(&fonts.ui, 18.0),
+            TextColor(c(240, 240, 248)),
+        ))
         .id();
     let detail = commands
         .spawn((Text::new(String::new()), ui_font(&fonts.ui, 12.0), TextColor(c(170, 175, 190)), LoadingDetail))

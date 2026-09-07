@@ -65,10 +65,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let header = page_header(
         commands,
         fonts,
-        "Changelog",
-        "Every release of the engine, newest first.",
+        &renzora::lang::t("splash.section.changelog"),
+        &renzora::lang::t("splash.changelog_subtitle"),
     );
-    let all = link_button(commands, fonts, "arrow-square-out", "All releases", RELEASES_URL);
+    let all = link_button(
+        commands,
+        fonts,
+        "arrow-square-out",
+        &renzora::lang::t("splash.all_releases"),
+        RELEASES_URL,
+    );
     commands.entity(top).add_children(&[header, all]);
 
     let list = commands
@@ -95,16 +101,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn releases_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(feed) = world.get_resource::<ReleaseFeed>() else {
-        return note_snapshot("The changelog is unavailable in this build.");
+        return note_snapshot(&renzora::lang::t("splash.changelog_unavailable"));
     };
     if !feed.loaded {
-        return note_snapshot("Fetching releases…");
+        return note_snapshot(&renzora::lang::t("splash.fetching_releases"));
     }
     if let Some(err) = feed.error.clone() {
         return note_snapshot(&err);
     }
     if feed.entries.is_empty() {
-        return note_snapshot("No releases published yet.");
+        return note_snapshot(&renzora::lang::t("splash.no_releases"));
     }
 
     use std::hash::{Hash, Hasher};
@@ -185,10 +191,22 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         chip(commands, fonts, &entry.tag, accent(), ca(110, 150, 255, 34)),
     ];
     if is_this_build(&entry.tag) {
-        head_kids.push(chip(commands, fonts, "This build", success(), ca(74, 200, 130, 34)));
+        head_kids.push(chip(
+            commands,
+            fonts,
+            &renzora::lang::t("splash.this_build"),
+            success(),
+            ca(74, 200, 130, 34),
+        ));
     }
     if entry.prerelease {
-        head_kids.push(chip(commands, fonts, "Prerelease", c(215, 175, 90), ca(215, 175, 90, 30)));
+        head_kids.push(chip(
+            commands,
+            fonts,
+            &renzora::lang::t("splash.prerelease"),
+            c(215, 175, 90),
+            ca(215, 175, 90, 30),
+        ));
     }
     let title = commands
         .spawn((
@@ -221,7 +239,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         kids.push(
             commands
                 .spawn((
-                    Text::new("No release notes.".to_string()),
+                    Text::new(renzora::lang::t("splash.no_release_notes")),
                     ui_font(&fonts.ui, 11.5),
                     TextColor(text_muted()),
                     FocusPolicy::Pass,
@@ -246,7 +264,13 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
             );
         }
     }
-    kids.push(link_button(commands, fonts, "github-logo", "View on GitHub", &entry.url));
+    kids.push(link_button(
+        commands,
+        fonts,
+        "github-logo",
+        &renzora::lang::t("splash.view_on_github"),
+        &entry.url,
+    ));
 
     commands.entity(card).add_children(&kids);
     card

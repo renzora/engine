@@ -22,8 +22,7 @@ use bevy::render::render_resource::{
     AsBindGroup, Extent3d, TextureDimension, TextureFormat, TextureUsages,
 };
 use bevy::shader::ShaderRef;
-use bevy::time::Real;
-use bevy::ui::{ComputedNode, FocusPolicy};
+use bevy::ui::ComputedNode;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::PrimaryWindow;
@@ -68,13 +67,10 @@ impl UiMaterial for PostMaterial {
 
 pub(crate) fn register(app: &mut App) {
     bevy::asset::embedded_asset!(app, "post.wgsl");
-    bevy::asset::embedded_asset!(app, "aperture.wgsl");
     bevy::asset::embedded_asset!(app, "haze.wgsl");
     app.add_plugins(UiMaterialPlugin::<PostMaterial>::default());
-    app.add_plugins(UiMaterialPlugin::<ApertureMaterial>::default());
     app.add_plugins(UiMaterialPlugin::<HazeMaterial>::default());
     app.add_systems(Startup, setup_post);
-    app.add_systems(OnEnter(SplashState::Editor), start_editor_intro);
     app.add_systems(
         Update,
         (
@@ -82,10 +78,6 @@ pub(crate) fn register(app: &mut App) {
             resize_post_target,
             attach_post_view,
             sync_post,
-            attach_aperture_view,
-            sync_aperture,
-            attach_editor_intro,
-            tick_editor_intro,
             attach_haze,
             sync_haze,
         ),
@@ -204,68 +196,10 @@ fn sync_post(
     }
 }
 
-// ── Spectral iris transition ───────────────────────────────────────────────────
-
-/// Marker for the fullscreen iris node (on the main camera, above the UI).
-#[derive(Component)]
-pub(crate) struct ApertureView;
-
-#[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(crate) struct ApertureMaterial {
-    /// x = progress 0..1, y = active (0/1), z = aspect (w/h).
-    #[uniform(0)]
-    params: Vec4,
-}
-
-impl UiMaterial for ApertureMaterial {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/aperture.wgsl".into()
-    }
-}
-
-/// The iris is a circle in screen space, so it needs the node's aspect ratio —
-/// without it the "circle" is drawn in UV space and comes out as an ellipse
-/// stretched to the window.
-fn node_aspect(node: &ComputedNode) -> f32 {
-    let size = node.size();
-    if size.y > 0.0 {
-        size.x / size.y
-    } else {
-        1.0
-    }
-}
-
-fn attach_aperture_view(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<ApertureMaterial>>,
-    views: Query<Entity, (With<ApertureView>, Without<MaterialNode<ApertureMaterial>>)>,
-) {
-    for e in &views {
-        let handle = materials.add(ApertureMaterial { params: Vec4::ZERO });
-        commands.entity(e).insert(MaterialNode(handle));
-    }
-}
-
-fn sync_aperture(
-    aperture: Option<Res<crate::Aperture>>,
-    mut materials: ResMut<Assets<ApertureMaterial>>,
-    views: Query<(&ComputedNode, &MaterialNode<ApertureMaterial>), With<ApertureView>>,
-) {
-    let (active, progress) = match aperture {
-        Some(ap) => (1.0, (ap.timer / crate::APERTURE_DURATION).clamp(0.0, 1.0)),
-        None => (0.0, 0.0),
-    };
-    for (node, mat) in &views {
-        if let Some(mut m) = materials.get_mut(&mat.0) {
-            m.params = Vec4::new(progress, active, node_aspect(node), 0.0);
-        }
-    }
-}
-
 // ── Drifting haze (loading screen background) ──────────────────────────────────
 
 /// Marker for the fullscreen haze node behind the loading terminal — the chamber's
-/// shafts and dust carried through to the screen after the iris.
+/// shafts and dust carried through to the screen that follows the splash.
 #[derive(Component)]
 pub(crate) struct HazeView;
 
@@ -304,105 +238,5 @@ fn sync_haze(
             let size = cn.size();
             m.params = Vec4::new(t, size.x, size.y, 0.0);
         }
-    }
-}
-
-// ── Editor power-on intro ──────────────────────────────────────────────────────
-
-/// Marker for the editor power-on overlay (runs the iris in reverse).
-#[derive(Component)]
-struct EditorIntroView;
-
-#[derive(Resource, Default)]
-struct EditorIntro {
-    /// Time held fully black, waiting for the editor to finish loading.
-    hold: f32,
-    /// Time spent in the reveal animation once started.
-    reveal: f32,
-    revealing: bool,
-}
-
-/// Minimum black hold (lets the editor begin), the max wait before revealing
-/// anyway, and the reveal length.
-const EDITOR_INTRO_HOLD_MIN: f32 = 0.3;
-const EDITOR_INTRO_HOLD_MAX: f32 = 8.0;
-const EDITOR_INTRO_REVEAL: f32 = 0.45;
-
-/// On entering the editor, drop a black overlay that quickly powers on (the iris
-/// opening from a point) so the editor doesn't pop in abruptly.
-fn start_editor_intro(mut commands: Commands) {
-    commands.insert_resource(EditorIntro::default());
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(0.0),
-            top: Val::Px(0.0),
-            right: Val::Px(0.0),
-            bottom: Val::Px(0.0),
-            ..default()
-        },
-        // Black until the material attaches (avoids a one-frame editor flash).
-        BackgroundColor(Color::BLACK),
-        GlobalZIndex(12000),
-        FocusPolicy::Pass,
-        EditorIntroView,
-        Name::new("editor-intro"),
-    ));
-}
-
-fn attach_editor_intro(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<ApertureMaterial>>,
-    views: Query<Entity, (With<EditorIntroView>, Without<MaterialNode<ApertureMaterial>>)>,
-) {
-    for e in &views {
-        // Start fully closed (progress 1 = black), active. Aspect is filled in by
-        // `tick_editor_intro` once the node has been laid out.
-        let handle = materials.add(ApertureMaterial { params: Vec4::new(1.0, 1.0, 1.0, 0.0) });
-        commands.entity(e).insert(MaterialNode(handle));
-    }
-}
-
-/// Hold the screen black until the editor has finished loading (its tab-decode
-/// overlay is no longer active, after a short minimum, or a max timeout), then
-/// power on (progress 1 → 0) so the reveal blends into a ready editor.
-fn tick_editor_intro(
-    time: Res<Time<Real>>,
-    intro: Option<ResMut<EditorIntro>>,
-    overlay: Option<Res<crate::EditorLoadingOverlayActive>>,
-    mut commands: Commands,
-    mut materials: ResMut<Assets<ApertureMaterial>>,
-    views: Query<(Entity, &ComputedNode, Option<&MaterialNode<ApertureMaterial>>), With<EditorIntroView>>,
-) {
-    let Some(mut intro) = intro else { return };
-    let dt = time.delta_secs();
-
-    let progress = if !intro.revealing {
-        intro.hold += dt;
-        let editor_busy = overlay.is_some_and(|o| o.0);
-        let ready = (intro.hold >= EDITOR_INTRO_HOLD_MIN && !editor_busy)
-            || intro.hold >= EDITOR_INTRO_HOLD_MAX;
-        if ready {
-            intro.revealing = true;
-        }
-        1.0 // stay fully black while waiting
-    } else {
-        intro.reveal += dt;
-        (1.0 - intro.reveal / EDITOR_INTRO_REVEAL).clamp(0.0, 1.0)
-    };
-
-    for (_, node, mat) in &views {
-        if let Some(m) = mat {
-            if let Some(mut mm) = materials.get_mut(&m.0) {
-                mm.params = Vec4::new(progress, 1.0, node_aspect(node), 0.0);
-            }
-        }
-    }
-
-    if intro.revealing && intro.reveal >= EDITOR_INTRO_REVEAL {
-        for (e, _, _) in &views {
-            commands.entity(e).try_despawn();
-        }
-        commands.remove_resource::<EditorIntro>();
     }
 }

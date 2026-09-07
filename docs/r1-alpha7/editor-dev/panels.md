@@ -273,6 +273,8 @@ For work that must continue while the panel is hidden, use `.always(..)` on the 
 
 Gate only **view** systems. Leave always-on work ungated — a console that must keep capturing logs while hidden, an async poll that has to drain in-flight requests, or a flag another panel reads each frame.
 
+Note that no panel exists at all until the dashboard is gone: the editor shell is spawned on entering `SplashState::Editor` and despawned on leaving it, so a panel's content is built the frame the project opens, not at startup. Don't reach for a panel entity from `Startup`, and don't assume one survives a project switch.
+
 "Visible" spans every dock area, not just the workspace one: `panel_active` counts a panel as active if it is the live tab in the primary [`Dock`], in the global bottom panel ([`FixedDock`]), or in any floating dock window. A panel dragged into the bottom panel keeps updating, as it must — it is on screen.
 
 #### Dock areas
@@ -414,9 +416,15 @@ replaces the first registration rather than adding a second rail row.
 
 Three things to know before writing one:
 
-- **The builder runs again every time the page is opened.** Anything live inside
-  it has to be a reactive binding (`bind_*`, `keyed_list`) reading a resource,
-  not a value read once at build time. See [Reactive content](#reactive-content).
+- **The builder runs again every time the page is opened,** and again whenever
+  the active language changes (the whole dashboard is rebuilt so it re-reads
+  `lang::t()`). Anything live inside it has to be a reactive binding (`bind_*`,
+  `keyed_list`) reading a resource, not a value read once at build time. See
+  [Reactive content](#reactive-content).
+- **Translate the rail label through `splash.section.<your id>`.** The label you
+  pass to `SplashSection::new` is only the English fallback: it is baked in at
+  `Plugin::build`, which happens before anyone has picked a language. Add the key
+  to your language packs and the rail row re-localizes with everything else.
 - **Your systems need `run_if(in_state(SplashState::Splash))`.** The page's
   clicks, polls and fetches are yours to schedule; registering a section
   schedules nothing.

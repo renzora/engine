@@ -1,6 +1,6 @@
 // Loading-screen backdrop — the Light Chamber's air, without the chamber.
 //
-// The iris closes on a corridor of spectral shafts and drifting dust, and this is
+// The splash leaves a corridor of spectral shafts and drifting dust, and this is
 // what's on the other side of it: the same shafts and the same dust, seen from
 // somewhere deeper in the fog, with the geometry gone. Purely 2D — there is no
 // scene to render at this point, and the loading screen must not compete for the
@@ -23,8 +23,8 @@ fn hash21(p: vec2<f32>) -> f32 {
     return fract((h.x + h.y) * h.x);
 }
 
-// Cosine palette — the same one the chamber and the iris use, so all three
-// screens draw their colour from one spectrum.
+// Cosine palette: the same one the chamber uses, so both screens draw their
+// colour from one spectrum.
 fn spectrum(t: f32) -> vec3<f32> {
     return 0.5 + 0.5 * cos(6.28318530718 * (vec3<f32>(0.0, 0.33, 0.67) + t));
 }
@@ -80,9 +80,9 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     }
 
     // ── Vignette ──
-    // Matches the splash's (`post.wgsl`) so the framing doesn't change across the
-    // iris, and steeper still, because the loading terminal sits in the middle of
-    // this and needs the edges to drop away behind it.
+    // Matches the splash's (`post.wgsl`) so the framing doesn't change on the cut
+    // into loading, and steeper still, because the loading terminal sits in the
+    // middle of this and needs the edges to drop away behind it.
     let vd = length(p) * 1.4142136;
     let vig = 1.0 - smoothstep(0.22, 1.02, vd);
     col = col * mix(0.10, 1.0, vig);

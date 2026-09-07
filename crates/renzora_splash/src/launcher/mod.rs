@@ -107,7 +107,6 @@ pub(crate) fn register(app: &mut App) {
             chrome::drag_handle,
             chrome::resize_zone_click,
             chrome::url_click,
-            tick_aperture,
             #[cfg(target_arch = "wasm32")]
             collect_web_project_pick,
         ),
@@ -143,10 +142,38 @@ fn reopen_last_project(
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-fn manage_splash(world: &mut World) {
+/// Spawn the dashboard while the splash is the screen, tear it down when it
+/// isn't, and rebuild it when the active language changes.
+///
+/// The rebuild is why this reads `lang::revision()`. Every string on the
+/// dashboard is resolved through `lang::t()` at *build* time and baked into a
+/// `Text`, so picking a language from the rail footer changed the shared table
+/// and left the screen exactly as it was: the picker did not even re-tick
+/// itself. Rebuilding is the same answer the editor chrome reaches for
+/// (`renzora_shell::relocalize_on_language_change`), and doing it here rather
+/// than from a separate despawn system means the respawn happens in the same
+/// pass, so there is no blank frame in between.
+///
+/// The counter is bumped by every pack registration too, so it ticks several
+/// times while the language runtime loads its built-ins; the first observed
+/// value is swallowed rather than treated as a change.
+fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Local<bool>) {
     let want = matches!(world.resource::<State<SplashState>>().get(), SplashState::Splash);
     let mut q = world.query_filtered::<Entity, With<SplashRoot>>();
-    let existing: Vec<Entity> = q.iter(world).collect();
+    let mut existing: Vec<Entity> = q.iter(world).collect();
+
+    let rev = renzora::lang::revision();
+    let language_changed = if *last_rev != rev {
+        *last_rev = rev;
+        std::mem::replace(&mut *seen_once, true)
+    } else {
+        false
+    };
+    if language_changed && want {
+        for e in existing.drain(..) {
+            world.entity_mut(e).despawn();
+        }
+    }
 
     if want && existing.is_empty() {
         if world.get_resource::<EmberFonts>().is_none() {
@@ -242,19 +269,7 @@ fn spawn_splash(
 
     let shell = build_shell(commands, fonts, rail);
 
-    // Iris transition overlay, above everything (idle = fully transparent, so it
-    // doesn't block input until a project is chosen).
-    let aperture = commands
-        .spawn((
-            fullscreen_abs(),
-            GlobalZIndex(700),
-            FocusPolicy::Pass,
-            crate::post::ApertureView,
-            Name::new("splash-aperture"),
-        ))
-        .id();
-
-    commands.entity(root).add_children(&[post_view, shell, aperture]);
+    commands.entity(root).add_children(&[post_view, shell]);
     chrome::build_resize_zones(commands, root);
 }
 
@@ -325,25 +340,11 @@ pub(crate) fn enter_project(world: &mut World, project: crate::project::CurrentP
         let _ = cfg.save();
     }
     world.insert_resource(project);
-    // Close the iris over the cinematic; `tick_aperture` switches to Loading when
-    // it finishes.
-    world.insert_resource(crate::Aperture::default());
-}
-
-/// Advance the iris close; when it completes, drop into the loading screen. Uses
-/// real time so it plays at a consistent speed.
-fn tick_aperture(
-    time: Res<Time<Real>>,
-    aperture: Option<ResMut<crate::Aperture>>,
-    mut commands: Commands,
-    mut next_state: ResMut<NextState<SplashState>>,
-) {
-    let Some(mut ap) = aperture else { return };
-    ap.timer += time.delta_secs();
-    if ap.timer >= crate::APERTURE_DURATION {
-        commands.remove_resource::<crate::Aperture>();
-        next_state.set(SplashState::Loading);
-    }
+    // Straight into loading. This used to insert an `Aperture` and let a
+    // spectral iris close over the cinematic for 0.55s first; picking a project
+    // is a decision already made, so the animation was 0.55s of nothing between
+    // the click and the work.
+    world.resource_mut::<NextState<SplashState>>().set(SplashState::Loading);
 }
 
 /// Finish a web Open Project once the browser's picker has resolved.

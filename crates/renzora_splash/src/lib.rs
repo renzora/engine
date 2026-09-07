@@ -210,17 +210,4 @@ fn maximize_for_editor() {}
 #[derive(Resource)]
 pub struct PendingProjectReopen;
 
-/// While present, the splash plays the spectral iris closing over the cinematic;
-/// when its timer reaches [`APERTURE_DURATION`], `launcher::tick_aperture` transitions
-/// to Loading. Inserted by `enter_project` (a project was chosen from the launcher).
-#[derive(Resource, Default)]
-pub(crate) struct Aperture {
-    pub timer: f32,
-}
-
-/// Duration (seconds) of the iris close. Long enough to read as a deliberate
-/// camera move rather than a cut, short enough that it never delays getting into
-/// the project.
-pub(crate) const APERTURE_DURATION: f32 = 0.55;
-
 renzora::add!(SplashPlugin, Editor);
