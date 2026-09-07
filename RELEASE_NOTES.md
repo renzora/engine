@@ -1,6 +1,8 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(editor): the viewport can be moved and clicked again after opening a
+  project from the File menu.
 - fix(shell): the editor leaves when it is told to. Quitting, **Restart Editor**
   after installing a plugin, and the update handoff all went through
   `std::process::exit`, which is not "exit now": it runs libc's atexit chain and

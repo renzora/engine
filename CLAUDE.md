@@ -351,6 +351,19 @@ profiling build that re-adds `trace_tracy`.
 - **Every new feature and every fix adds its line to `RELEASE_NOTES.md`** at the
   repo root, in the same change that ships it. Treat a missing note exactly like
   a missing docs update: the change is unfinished.
+- **Keep it to one short sentence.** What was added, changed or fixed — nothing
+  else. No root cause, no measurements, no rationale, no explanation of the
+  mechanism. This is a changelog a user skims, not a commit message and not a
+  post-mortem; the reasoning belongs in the commit body and the doc-comments,
+  where the people who need it will actually look.
+
+  ```markdown
+  - fix(editor): the viewport works again after opening a project from the File menu
+  - feat(export): a plugin can add its own export capability
+  ```
+
+  If a line needs a second sentence, it is usually two changes and should be two
+  lines.
 - This is not bookkeeping for its own sake. **A nightly publishes every day
   something lands on `main`**, so these notes are the only record of what any
   given nightly actually contains. Reconstructing that afterwards means reading

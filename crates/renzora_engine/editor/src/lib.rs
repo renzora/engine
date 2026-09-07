@@ -49,6 +49,29 @@ impl Plugin for EngineEditorPlugin {
                 )
                     .chain(),
             )
+            // …and torn down on the way out, because the spawn above is
+            // unconditional and `OnEnter(Editor)` fires again every time a
+            // project is reopened (Editor → Splash → Loading → Editor, via the
+            // File menu's New/Open Project). Without this, each reopen left the
+            // previous project's cameras alive beside the new ones: the scene
+            // still rendered, because one of them still held the slot's render
+            // target, but the ~45 systems that query `With<EditorCamera>` —
+            // orbit navigation, gizmo hover, click-to-select — then saw two and
+            // acted on the wrong one. The visible symptom was a viewport you
+            // could see but neither move nor click in, while the hierarchy and
+            // every UI button kept working.
+            //
+            // A guard on the spawn instead ("don't spawn if one exists") would
+            // stop the duplication but keep the *old* cameras, and the comment
+            // above is the reason that is wrong: prepass attachments are
+            // specialized at first render and cannot be retrofitted, so a
+            // project that switches Forward↔Deferred needs cameras built fresh
+            // against the mode it just loaded.
+            //
+            // `despawn_scene_entities` cannot do this job either — it excludes
+            // `EditorCamera` and `HideInHierarchy` on purpose, so a scene clear
+            // deliberately preserves exactly these entities.
+            .add_systems(OnExit(renzora::SplashState::Editor), despawn_editor_cameras)
             .add_systems(
                 Update,
                 (
@@ -172,5 +195,38 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
     };
     if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
         settings.viewport_view = target;
+    }
+}
+
+/// Despawn every editor viewport camera on the way out of the editor view.
+///
+/// Both spawners run on `OnEnter(SplashState::Editor)` and both spawn
+/// unconditionally, once per viewport slot. That is correct for the *first*
+/// entry and wrong for every one after it, because reopening a project passes
+/// back through Splash and Loading and enters the editor again. See the comment
+/// beside the `OnExit` registration for why this is a teardown rather than a
+/// guard on the spawn.
+///
+/// Matched by `ViewportCamera` / `ViewportCamera2d` rather than by
+/// `EditorCamera`, deliberately: only slot 0 carries `EditorCamera`, so keying
+/// on that would leave the other slots' cameras behind — the same leak in a
+/// quieter form, visible only once a second viewport is docked.
+fn despawn_editor_cameras(
+    mut commands: Commands,
+    cameras: Query<
+        Entity,
+        Or<(
+            With<renzora::ViewportCamera>,
+            With<renzora::ViewportCamera2d>,
+        )>,
+    >,
+) {
+    let mut n = 0;
+    for entity in &cameras {
+        commands.entity(entity).despawn();
+        n += 1;
+    }
+    if n > 0 {
+        info!("[editor] despawned {n} viewport camera(s) on leaving the editor view");
     }
 }
