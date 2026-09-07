@@ -21,6 +21,9 @@ use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition, UiTransform};
 
+use renzora::core::viewport_types::{
+    AXIS_NEG_X, AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
+};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
@@ -228,14 +231,16 @@ fn build_gizmo(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(root).add_child(backplate);
 
-    // (dir, colour, label, target yaw, target pitch, positive)
+    // (dir, colour, label, target yaw, target pitch, positive). The palette is
+    // the contract crate's, shared with the viewport's own orientation cube —
+    // two gizmos drawing the same convention, so one definition of it.
     let axes: [(Vec3, (u8, u8, u8), &str, f32, f32, bool); 6] = [
-        (Vec3::X, (237, 76, 92), "X", FRAC_PI_2, 0.0, true),
-        (Vec3::Y, (139, 201, 63), "Y", 0.0, FRAC_PI_2, true),
-        (Vec3::Z, (68, 138, 255), "Z", 0.0, 0.0, true),
-        (Vec3::NEG_X, (150, 50, 60), "", -FRAC_PI_2, 0.0, false),
-        (Vec3::NEG_Y, (80, 120, 40), "", 0.0, -FRAC_PI_2, false),
-        (Vec3::NEG_Z, (40, 80, 150), "", PI, 0.0, false),
+        (Vec3::X, AXIS_X, "X", FRAC_PI_2, 0.0, true),
+        (Vec3::Y, AXIS_Y, "Y", 0.0, FRAC_PI_2, true),
+        (Vec3::Z, AXIS_Z, "Z", 0.0, 0.0, true),
+        (Vec3::NEG_X, AXIS_NEG_X, "", -FRAC_PI_2, 0.0, false),
+        (Vec3::NEG_Y, AXIS_NEG_Y, "", 0.0, -FRAC_PI_2, false),
+        (Vec3::NEG_Z, AXIS_NEG_Z, "", PI, 0.0, false),
     ];
 
     // Lines under the tips, and only for the positive half — the negative axes

@@ -1,6 +1,7 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(viewport): the axis gizmo's colours are more vibrant.
 - fix(settings): View > Reset to Defaults puts autosave back to its default
   without needing a restart.
 - feat(settings): View > Reset to Defaults can clear everything installed

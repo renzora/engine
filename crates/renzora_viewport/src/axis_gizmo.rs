@@ -20,7 +20,8 @@ use bevy::prelude::*;
 use bevy::ui::{RelativeCursorPosition, UiTransform};
 
 use renzora::core::viewport_types::{
-    CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings,
+    CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings, AXIS_NEG_X,
+    AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -136,12 +137,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
 
     // (dir, color, label, target_yaw, target_pitch, positive)
     let axes: [(Vec3, (u8, u8, u8), &str, f32, f32, bool); 6] = [
-        (Vec3::X, (237, 76, 92), "X", FRAC_PI_2, 0.0, true),
-        (Vec3::Y, (139, 201, 63), "Y", 0.0, FRAC_PI_2, true),
-        (Vec3::Z, (68, 138, 255), "Z", 0.0, 0.0, true),
-        (Vec3::NEG_X, (150, 50, 60), "", -FRAC_PI_2, 0.0, false),
-        (Vec3::NEG_Y, (80, 120, 40), "", 0.0, -FRAC_PI_2, false),
-        (Vec3::NEG_Z, (40, 80, 150), "", PI, 0.0, false),
+        (Vec3::X, AXIS_X, "X", FRAC_PI_2, 0.0, true),
+        (Vec3::Y, AXIS_Y, "Y", 0.0, FRAC_PI_2, true),
+        (Vec3::Z, AXIS_Z, "Z", 0.0, 0.0, true),
+        (Vec3::NEG_X, AXIS_NEG_X, "", -FRAC_PI_2, 0.0, false),
+        (Vec3::NEG_Y, AXIS_NEG_Y, "", 0.0, -FRAC_PI_2, false),
+        (Vec3::NEG_Z, AXIS_NEG_Z, "", PI, 0.0, false),
     ];
 
     // Lines first (under the tips), then tips.

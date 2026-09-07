@@ -36,6 +36,8 @@ The camera moves slowly when you're close to something and faster when you're fa
 
 There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. The cluster is **Pan** and **Zoom**: press and drag them, dragging **up** on Zoom to move closer.
 
+Click one of the gizmo's balls to snap the camera to that axis, or drag the gizmo itself to orbit.
+
 **Reset View** and **Grid** used to be in that cluster. They now sit at the foot of the [tool shelf](#the-tool-shelf) on the left edge, under a rule:
 
 - **Reset View** — one click puts the camera back at its starting position, the same reset as the `Home` key.

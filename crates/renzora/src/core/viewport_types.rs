@@ -319,6 +319,25 @@ impl Default for NavOverlayState {
 pub const EDITOR_ZOOM_MIN: f32 = 0.5;
 pub const EDITOR_ZOOM_MAX: f32 = 100.0;
 
+/// The editor's axis palette — red X, green Y, blue Z, with a deeper tone for
+/// each negative direction.
+///
+/// Here rather than beside one of the gizmos that draw it because there are two
+/// of those: the viewport's orientation cube and the import window's model
+/// preview, in different crates, which each carried their own copy of these six
+/// tuples. Two copies of a colour convention is two of them to drift.
+///
+/// Saturated deliberately. These are read at a glance off a 12px ball over a
+/// rendered scene of every possible colour, which is the case a muted palette
+/// loses: a desaturated red and a desaturated green are the same grey once they
+/// are small enough and something busy is behind them.
+pub const AXIS_X: (u8, u8, u8) = (255, 56, 76);
+pub const AXIS_Y: (u8, u8, u8) = (133, 231, 35);
+pub const AXIS_Z: (u8, u8, u8) = (51, 128, 255);
+pub const AXIS_NEG_X: (u8, u8, u8) = (173, 31, 45);
+pub const AXIS_NEG_Y: (u8, u8, u8) = (91, 147, 26);
+pub const AXIS_NEG_Z: (u8, u8, u8) = (31, 84, 173);
+
 /// Camera orbit orientation, written by the camera system and read by the axis gizmo overlay.
 #[derive(Resource, Debug, Clone)]
 pub struct CameraOrbitSnapshot {
