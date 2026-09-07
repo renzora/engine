@@ -244,28 +244,58 @@ fn report_viewport_geometry(
     windows: Query<&Window, With<PrimaryWindow>>,
     req: Option<Res<ViewportResizeRequest>>,
     overlays: Query<(), With<renzora_ember::widgets::Overlay>>,
-    over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
 ) {
     let Some(req) = req else {
         return;
     };
-    // A modal overlay swallows pointer input — and so does any open floating
-    // overlay (dropdown / menu / popup) the cursor is currently over — so clicks
-    // and picking never reach the scene behind it.
+    // A modal swallows pointer input wherever the cursor is, so nothing reaches
+    // the scene behind it.
+    //
+    // **A floating overlay is not asked about here**, and this is the trap
+    // `PointerOverOverlay`'s own doc warns of: that resource says "the cursor is
+    // over *some* overlay surface", and the global bottom panel is itself an
+    // overlay surface. A viewport docked into the bottom panel therefore
+    // reported itself un-hovered whenever the cursor was inside it — so focus
+    // never moved to that slot and every camera gesture kept driving the
+    // workspace's viewport instead. The same viewport in the workspace dock
+    // worked fine, which is exactly the shape of the bug that was reported.
+    //
+    // Nothing is lost by dropping it: `correct_pointer_state` already clears
+    // `cursor_over` on any node the topmost overlay *covers*, so a dropdown open
+    // over the viewport still suppresses the hover — while a widget living
+    // *inside* an overlay surface keeps its own pointer state, which is the case
+    // the resource cannot distinguish and this one needs.
     let modal_open = !overlays.is_empty();
-    let over_overlay = over_overlay.is_some_and(|r| r.0);
     // Logical px from the window's top-left — the same space picking / camera
     // read `window.cursor_position()` in.
     let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    // Every slot starts the frame un-hovered, and only a node that is actually
+    // on screen puts its own flag back up.
+    //
+    // Nothing else clears these. A slot whose panel has been closed, or is a
+    // background tab, or is inside the collapsed bottom panel, has no node here
+    // to report for it — and `RelativeCursorPosition` is written by bevy's focus
+    // pass only for nodes it hit-tests, so a node that goes hidden *while
+    // hovered* keeps `cursor_over` set for as long as it stays hidden. Either
+    // way the stale `true` made `resolve_viewport_slots` focus a viewport that
+    // is not on screen, and every camera gesture then drove that one: the
+    // symptom is a viewport you can see and cannot control.
+    for slot in &req.slots {
+        slot.hovered.store(false, Ordering::Relaxed);
+    }
     for (cn, rcp, vp) in &viewports {
         let Some(slot) = req.slots.get(vp.0) else {
             continue;
         };
         let inv = cn.inverse_scale_factor();
         let size = cn.size() * inv; // logical
+        // A hidden node is laid out to nothing, which is the cheapest honest
+        // test for "is this panel on screen" available here.
+        let on_screen = size.x >= 1.0 && size.y >= 1.0;
         slot.width.store(size.x.max(1.0) as u32, Ordering::Relaxed);
         slot.height.store(size.y.max(1.0) as u32, Ordering::Relaxed);
-        slot.hovered.store(rcp.cursor_over && !modal_open && !over_overlay, Ordering::Relaxed);
+        slot.hovered
+            .store(on_screen && rcp.cursor_over && !modal_open, Ordering::Relaxed);
         // Derive the node's screen top-left from the cursor + its normalized
         // position in the node ((-0.5,-0.5) = top-left). Scale-invariant, so it
         // lands in logical px regardless of DPI — and avoids UI `GlobalTransform`

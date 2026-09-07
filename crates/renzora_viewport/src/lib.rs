@@ -560,7 +560,17 @@ fn resolve_viewport_slots(
     if let Some(i) = newly_hovered {
         viewports.focused = i;
     }
-    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    let mut focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    // Sticking is only right while the view is still there to stick to. A
+    // focused slot whose panel has since been closed, collapsed or switched away
+    // from would otherwise hold the `EditorCamera` marker off-screen, and every
+    // camera gesture would drive a view nobody can see — so hand focus to the
+    // first slot that is actually showing.
+    if !viewports.slots[focused].docked {
+        if let Some(i) = (0..VIEWPORT_COUNT).find(|&i| viewports.slots[i].docked) {
+            focused = i;
+        }
+    }
     viewports.focused = focused;
 
     // Mirror the focused slot into the singleton ViewportState.

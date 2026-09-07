@@ -1,6 +1,8 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(viewport): a viewport docked in the global bottom panel takes the camera
+  and the tools, instead of leaving them on the workspace's viewport.
 - feat(terrain): the sculpt, paint and foliage brush cursors are filled in, shaded
   by the brush's falloff, so you can see the brush and not just its outline.
 - fix(terrain): the foliage brush cursor follows the ground and honours the shape
