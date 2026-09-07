@@ -37,13 +37,14 @@ pub(crate) fn tree_toggle_click(
 
 pub(crate) fn tree_nav_click(
     q: Query<(&Interaction, &TreeNav)>,
+    names: Query<(&Interaction, &AssetNameLabel)>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     windows: Query<&Window>,
     project: Option<Res<renzora::core::CurrentProject>>,
     mut state: ResMut<NativeAssets>,
-    mut press: Local<Option<(PathBuf, Vec2)>>,
+    mut press: Local<Option<(PathBuf, Vec2, bool)>>,
     mut last_click: Local<Option<(PathBuf, f64)>>,
 ) {
     // While a rename field is open, the field owns clicks — don't navigate/re-arm.
@@ -56,13 +57,19 @@ pub(crate) fn tree_nav_click(
         if let (Some((_, nav)), Some(c)) =
             (q.iter().find(|(i, _)| **i == Interaction::Pressed), cursor)
         {
-            *press = Some((nav.0.clone(), c));
+            // Whether the press landed on the row's *name*, recorded now: the
+            // gesture is decided on release, by which time the label's
+            // `Interaction` has already fallen back to `Hovered`.
+            let on_name = names
+                .iter()
+                .any(|(i, l)| *i == Interaction::Pressed && l.path == nav.0);
+            *press = Some((nav.0.clone(), c, on_name));
         }
     }
     // Navigate on release only if it was a click (no drag) — a press that moved
     // >5px is a folder drag (handled by `asset_drag`), not a navigation.
     if mouse.just_released(MouseButton::Left) {
-        if let Some((path, origin)) = press.take() {
+        if let Some((path, origin, on_name)) = press.take() {
             let moved = cursor.map(|c| c.distance(origin) > 5.0).unwrap_or(false);
             if moved {
                 return;
@@ -96,10 +103,15 @@ pub(crate) fn tree_nav_click(
                     *last_click = None;
                     state.rename_arm = None;
                     state.current = Some(path.clone());
-                } else if was_sole {
-                    // Slow second click on the already-selected folder arms a
-                    // rename (fired by `rename_arm_fire` after the double-click
-                    // window) — the same gesture the grid uses.
+                } else if was_sole && on_name {
+                    // Slow second click on the already-selected folder's *name*
+                    // arms a rename (fired by `rename_arm_fire` after the
+                    // double-click window) — the same gesture the grid uses.
+                    //
+                    // The name, not the row: clicking anywhere else on an
+                    // already-selected folder has to stay the fold-the-branch
+                    // gesture below, or the only way to collapse a folder you
+                    // just opened is the caret.
                     state.rename_arm = Some((path.clone(), now, RenameSurface::Tree));
                     *last_click = Some((path, now));
                 } else {
@@ -167,8 +179,17 @@ pub(crate) fn tile_click(
     // gate for explorer-style click-the-name-to-rename (so the click that first
     // selects an item never renames). Captured before the loop mutates selection.
     let prev_sole = (state.selection.len() == 1).then(|| state.selected.clone()).flatten();
-    // The name label pressed this frame (its tile is also Pressed via FocusPolicy::Pass).
-    let name_pressed = names.iter().find(|(i, _)| **i == Interaction::Pressed).map(|(_, n)| n.0.clone());
+    // The name label pressed this frame (its tile is also Pressed via
+    // FocusPolicy::Pass), with the surface it is drawn on — a tree file row
+    // carries an `AssetTile` too, and its rename belongs to the tree.
+    let name_pressed = names
+        .iter()
+        .find(|(i, _)| **i == Interaction::Pressed)
+        .map(|(_, n)| (n.path.clone(), n.surface));
+    // The tile this press *single*-clicked, if any. Gating the rename arm on it
+    // (rather than on `last_click`, which survives the frame) keeps a name press
+    // on one surface from arming a rename for a stale click on the other.
+    let mut single_click: Option<PathBuf> = None;
     for (interaction, tile) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -204,21 +225,24 @@ pub(crate) fn tile_click(
             state.pending_single_select = Some(tile.path.clone());
             state.selected = Some(tile.path.clone());
             state.last_click = Some((tile.path.clone(), now));
+            single_click = Some(tile.path.clone());
         } else {
             // Single click selects (ctrl toggles, shift range-selects); a second
             // click within 0.4s opens / navigates.
             state.click_select(&tile.path, ctrl, shift);
             state.pending_single_select = None;
             state.last_click = Some((tile.path.clone(), now));
+            single_click = Some(tile.path.clone());
         }
     }
-    // Clicking the name label of the already-sole-selected item arms a rename.
-    // `last_click == Some(path)` confirms this was a single click (a double-click
-    // cleared it to None above), so double-click-to-open still wins.
-    if let Some(p) = name_pressed {
-        let single = state.last_click.as_ref().is_some_and(|(lp, _)| lp == &p);
+    // Clicking the name label of the already-sole-selected item arms a rename on
+    // the surface that label is drawn on. `single_click == Some(path)` confirms
+    // this press was a single click on that very tile (a double-click never sets
+    // it), so double-click-to-open still wins.
+    if let Some((p, surface)) = name_pressed {
+        let single = single_click.as_deref() == Some(p.as_path());
         if single && prev_sole.as_deref() == Some(p.as_path()) && state.rename_arm.is_none() {
-            state.rename_arm = Some((p, now, RenameSurface::Grid));
+            state.rename_arm = Some((p, now, surface));
         }
     }
 }

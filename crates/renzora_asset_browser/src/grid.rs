@@ -11,6 +11,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use bevy::picking::Pickable;
 use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -255,7 +256,7 @@ pub(crate) fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
     let (zoom, list_view, renaming) = world
         .get_resource::<NativeAssets>()
         .map(|s| {
-            let mine = (s.rename_surface == RenameSurface::Grid)
+            let mine = (s.active_rename_surface() == RenameSurface::Grid)
                 .then(|| s.renaming.clone())
                 .flatten();
             (s.zoom, s.list_view, mine)
@@ -383,7 +384,23 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
         }
     });
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, 15.0);
-    let name = if editing {
+    // The name column keeps the row's type/size columns pinned right (it is the
+    // one that grows), but the *label* inside it is sized to the text — clicking
+    // the gap between a short name and the type column is a plain row click, not
+    // a rename. See [`AssetNameLabel`].
+    let name = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
+        .id();
+    let name_child = if editing {
         rename_field(commands, fonts, entry)
     } else {
         commands
@@ -392,13 +409,14 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
-                Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+                Node { min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
                 Interaction::default(),
                 bevy::ui::FocusPolicy::Pass,
-                AssetNameLabel(entry.path.clone()),
+                AssetNameLabel { path: entry.path.clone(), surface: RenameSurface::Grid },
             ))
             .id()
     };
+    commands.entity(name).add_child(name_child);
     let ty = commands
         .spawn((
             Text::new(type_label),
@@ -773,7 +791,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                 },
                 Interaction::default(),
                 bevy::ui::FocusPolicy::Pass,
-                AssetNameLabel(entry.path.clone()),
+                AssetNameLabel { path: entry.path.clone(), surface: RenameSurface::Grid },
             ))
             .id()
     };

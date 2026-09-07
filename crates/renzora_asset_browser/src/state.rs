@@ -266,6 +266,23 @@ impl NativeAssets {
         self.rename_surface = surface;
     }
 
+    /// The surface the active rename must actually be *drawn* on.
+    ///
+    /// The narrow layout hides the grid outright (`bind_display` on the content
+    /// node), but the grid's keyed list keeps building tiles behind that hidden
+    /// node — so a `Grid` rename there spawned a focused text field nobody could
+    /// see, and the tree, which is the only visible surface, drew none. Every
+    /// caller that starts a rename tries to pick the right surface, and the ones
+    /// that forgot are exactly the bug; clamping it here means a hidden grid can
+    /// never win, whichever entry point asked for it.
+    pub(crate) fn active_rename_surface(&self) -> RenameSurface {
+        if self.narrow {
+            RenameSurface::Tree
+        } else {
+            self.rename_surface
+        }
+    }
+
     /// Apply a single-tile click with modifiers: ctrl toggles, shift selects the
     /// range from the anchor (using the grid's `visible_order`), plain replaces.
     pub(crate) fn click_select(&mut self, path: &Path, ctrl: bool, shift: bool) {
@@ -442,8 +459,19 @@ pub(crate) struct AssetRenameInput(pub(crate) PathBuf);
 /// the sole selection arms an inline rename (OS-explorer "slow second click").
 /// Uses `FocusPolicy::Pass` so the click still reaches the tile beneath it
 /// (selection / double-click-open keep working).
+///
+/// The label is deliberately sized to the *text* rather than stretched across
+/// the row: clicking the empty space beside a name is a plain click on the row
+/// (select, or fold the folder open), and only the name itself renames.
+///
+/// It carries its own [`RenameSurface`] because the same widget is built on
+/// both — the grid's tiles and rows, and the tree's file rows in the narrow
+/// layout — and the arm has to name the surface the field will be drawn on.
 #[derive(Component)]
-pub(crate) struct AssetNameLabel(pub(crate) PathBuf);
+pub(crate) struct AssetNameLabel {
+    pub(crate) path: PathBuf,
+    pub(crate) surface: RenameSurface,
+}
 #[derive(Component)]
 pub(crate) struct AssetBack;
 #[derive(Component)]

@@ -14,7 +14,7 @@ use renzora_ember::cursor_icon::HoverCursor;
 
 use super::components::{
     BadgeKind, HierAssetBadge, HierCaretToggle, HierDropEdge, HierLockToggle, HierRowArea,
-    HierRowClick, HierVisToggle,
+    HierRowClick, HierRowLabel, HierVisToggle,
 };
 use super::drag::HierDrag;
 
@@ -348,6 +348,10 @@ pub(crate) fn build_row(
                 TextColor(label_color),
                 bevy::text::TextLayout::no_wrap(),
                 Pickable::IGNORE,
+                // Not for picking (the click layer covers it) — for the rect the
+                // double-click-to-rename gesture is measured against. See
+                // [`HierRowLabel`].
+                HierRowLabel(s.entity),
             ))
             .id();
         commands.entity(label_box).add_child(label);

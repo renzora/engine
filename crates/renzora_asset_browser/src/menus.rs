@@ -201,7 +201,15 @@ pub(crate) fn track_hover(
     // The surface is recorded alongside the path: a right-click Rename has to
     // open its field where the thing you right-clicked is drawn, and by the time
     // the menu item fires there is nothing left to work that out from.
-    let mut surface = RenameSurface::Grid;
+    //
+    // A hovered tile is a *tree* row in the narrow layout: that is where the
+    // browser draws its files once the grid is hidden, and a `Grid` rename there
+    // opens a focused field behind a `Display::None` node.
+    let mut surface = if state.narrow {
+        RenameSurface::Tree
+    } else {
+        RenameSurface::Grid
+    };
     let hovered = tiles
         .iter()
         .find(|(i, _)| over(i))

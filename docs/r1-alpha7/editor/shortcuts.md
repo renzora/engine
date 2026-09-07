@@ -128,9 +128,11 @@ These act on the selected row, and only while the Hierarchy is the panel you las
 | `↑` / `↓` | Move the selection to the previous / next visible row |
 | `→` | Expand the selected branch; step into its first child if it's already open |
 | `←` | Collapse the selected branch; step out to the parent if it's already closed |
-| `F2` | Rename in place (double-click does the same) |
+| `F2` | Rename in place (double-clicking the row's **name** does the same) |
 
 `↑`/`↓` walk what you can see: a collapsed branch is stepped *past*, not through, and the list scrolls to follow the selection when it reaches an edge. `Shift`+`↑`/`↓` doesn't extend the selection — use `Shift`+click for a range.
+
+Only the name itself starts a rename. A double-click in the empty space beside it is two ordinary row clicks, so it folds the branch open and shut again rather than opening a text field you didn't ask for.
 
 > Clicking a row also folds it open (and shut again when the click deselects it). Turn that off at **Settings → Interface → Hierarchy → Toggle on Click** to leave folding entirely to the caret and these two keys.
 

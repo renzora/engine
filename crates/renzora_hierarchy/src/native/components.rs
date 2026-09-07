@@ -56,6 +56,19 @@ pub(crate) struct HierAssetBadge {
 #[derive(Component)]
 pub(crate) struct HierCaretToggle(pub Entity);
 
+/// The row's name text, carrying the entity it names.
+///
+/// Only a double-click on the *name* opens the inline rename; a double-click on
+/// the empty space beside it is two ordinary row clicks (select + fold open,
+/// then deselect + fold shut). The row's click layer covers the label, so this
+/// cannot be a picking question at all: [`super::systems::hierarchy_row_click`]
+/// tests the cursor against this node's rect instead. It is deliberately the
+/// horizontal extent only -- the text node is barely taller than the glyphs, and
+/// a rename that missed because the click was two pixels above them would read
+/// as the gesture being broken.
+#[derive(Component)]
+pub(crate) struct HierRowLabel(pub Entity);
+
 /// A sticky "parent stack" header row (the ancestor that pins to the top while
 /// you scroll a deep tree). Clicking it collapses that branch, keeps it selected,
 /// and scrolls the tree back to its real row. See [`super::pin`].

@@ -26,6 +26,11 @@ use crate::state::{
     RenameSurface, ShortcutClick, TreeNav, TreeTab, TreeToggle,
 };
 
+/// Row label size. A notch under the grid's 13px: the tree is a dense list of
+/// names in a narrow pane, so the smaller type fits more path in the same width
+/// and reads as secondary to the grid it navigates. One constant because the
+/// folder rows and the Recent/Favorites rows have to agree.
+const TREE_TEXT: f32 = 12.0;
 const TREE_INDENT: f32 = 12.0;
 const TREE_ROW_H: f32 = 24.0;
 const TREE_BASE_X: f32 = 4.0;
@@ -267,7 +272,7 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
     // surfaces show the same folder, and two fields fight over the focus. See
     // `state::RenameSurface`.
     let renaming = st.and_then(|s| {
-        (s.rename_surface == RenameSurface::Tree)
+        (s.active_rename_surface() == RenameSurface::Tree)
             .then(|| s.renaming.clone())
             .flatten()
     });
@@ -464,7 +469,7 @@ fn shortcut_row(
     let label = commands
         .spawn((
             Text::new(name.to_string()),
-            ui_font(&fonts.ui, 13.0),
+            ui_font(&fonts.ui, TREE_TEXT),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
             Node {
@@ -578,40 +583,32 @@ fn tree_row(
             ..default()
         });
         f
-    } else if r.is_file {
-        // File rows rename with the same gesture as the grid: an interactive
-        // `AssetNameLabel` that passes the click through to the row's `AssetTile`
-        // for selection while still registering the name press that arms rename.
+    } else {
+        // Both kinds of row rename with the same gesture as the grid: an
+        // interactive `AssetNameLabel` that passes the click through to the row
+        // beneath it (an `AssetTile` on a file row, a `TreeNav` on a folder) for
+        // selection while still registering the name press that arms rename.
+        //
+        // The label is sized to the text, never stretched across the row: the
+        // rest of a folder row has to stay a plain click that navigates and folds
+        // the branch open, and only the name itself may open the field. A file
+        // row's rename is a `Tree` rename even though the row carries an
+        // `AssetTile`, because the tree is where it is drawn -- the grid is
+        // hidden in the narrow layout that shows files here at all.
         commands
             .spawn((
-                Text::new(display_name(&r.name, false).to_string()),
-                ui_font(&fonts.ui, 13.0),
+                Text::new(display_name(&r.name, !r.is_file).to_string()),
+                ui_font(&fonts.ui, TREE_TEXT),
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
                 Node {
-                    flex_grow: 1.0,
                     min_width: Val::Px(0.0),
                     overflow: Overflow::clip(),
                     ..default()
                 },
                 Interaction::default(),
                 bevy::ui::FocusPolicy::Pass,
-                AssetNameLabel(r.path.clone()),
-            ))
-            .id()
-    } else {
-        commands
-            .spawn((
-                Text::new(r.name.clone()),
-                ui_font(&fonts.ui, 13.0),
-                TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::no_wrap(),
-                Pickable::IGNORE,
-                Node {
-                    min_width: Val::Px(0.0),
-                    overflow: Overflow::clip(),
-                    ..default()
-                },
+                AssetNameLabel { path: r.path.clone(), surface: RenameSurface::Tree },
             ))
             .id()
     };

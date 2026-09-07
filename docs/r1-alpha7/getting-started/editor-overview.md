@@ -140,6 +140,8 @@ What you can do here:
 - **Drag** a file onto a folder to move it, or out into the viewport to spawn it. Dragging a **scene** (`.bsn`) onto the viewport or the Hierarchy adds it as a nested **scene instance**. While mid-drag, **hover over another panel's tab** for a moment and that tab springs to the front — so you can reveal a drop target (the Viewport, the Inspector, …) that's hidden behind another tab without ever letting go of the drag.
 - **Right-click** any item for an **Open** action (routes to the matching editor; for a scene this is **Open Scene**, which loads it into its own tab), **Rename**, Duplicate, Favorite, Reveal in Explorer, Delete — and a color-coded **create-new** section (the same one the **Add** button opens) so you can make a new asset without reaching for the toolbar. New files land in the current folder.
 - To rename a file or folder inline, press **`F2`**, **click its name** while it's already selected, or pick **Rename** from the right-click menu. The whole name starts highlighted, so typing (or `Delete`) replaces it; press `Enter` to confirm or `Esc` to cancel.
+  - It really is the **name** that starts it, not the row: clicking the empty space beside a name is an ordinary click, so a second click there on a folder in the tree folds it shut rather than opening a text field.
+  - The field opens where you clicked. In the narrow tree-only layout there is no grid, so every rename — the name click, `F2`, the right-click menu, and the one a **New Folder** starts — opens in the tree.
   - **Extensions stay out of your way.** Tiles, list rows and the tree all label a file by its name alone — `main.bsn` reads as **main** — because the icon, its accent colour and the type label already tell you what it is. The rename field is seeded the same way, and the extension is put back when you confirm, so renaming `rock.png` to `boulder` gives you `boulder.png`.
   - Write an extension explicitly to change the type (`boulder.jpg`), or end the name with a dot (`boulder.`) to drop it entirely. Folder names are left exactly as typed — a dot in a folder name is part of the name. Search still matches the real file name, so typing `png` finds every PNG.
 - Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles. The **Add** menu (and the right-click menu) creates a **Material**, **Blueprint**, **Lua Script**, **Particle**, **Template** (HTML markup UI), or **Scene (BSN)** — each row color-coded to match its file type's accent on the tiles.
@@ -158,7 +160,7 @@ What you can do here:
 | **Project** | Project | Project, Global Scenes |
 | | Window | Window, Render Resolution |
 | | Rendering | 3D Rendering, 2D Rendering |
-| **Appearance** | Interface | Fonts, Language, Display, Hierarchy, Inspector, UI Workspace (incl. Document Tabs) |
+| **Appearance** | Interface | Fonts, Language, Display, Hierarchy, Inspector, UI Workspace (incl. Document Tabs and the bottom panel's drag behaviour) |
 | | Theme | Active Theme, Semantic Colors, Surfaces, Text, Widgets, Panels, Syntax Tokens, Editor Chrome, Widget Styles |
 | **Editor** | General | Developer, Renderer, Import |
 | | Auto-Save | Auto-Save |

@@ -16,7 +16,7 @@ use crate::state::EntityNode;
 
 use super::components::{
     BadgeKind, HierAssetBadge, HierCaretToggle, HierLockToggle, HierPinClick, HierRowClick,
-    HierVisToggle,
+    HierRowLabel, HierVisToggle,
 };
 use super::row::ROW_H;
 use super::{HierExpanded, HierRevealPending, HierScrollContent};
@@ -202,10 +202,17 @@ pub(crate) fn hierarchy_scroll_to_selection(
 /// deselects it) — unless `EditorSettings.hierarchy_toggle_on_click` is off, in
 /// which case selection and expansion are fully separate gestures and only the
 /// caret (or Left/Right — see [`hierarchy_arrow_keys`]) folds a branch.
+///
+/// The rename is the exception: it needs the double-click to have landed on the
+/// row's *name*. A row is much wider than the name on it, so a double-click in
+/// the empty space to the right used to open a rename field when what the
+/// gesture plainly meant was "fold this branch, twice".
 pub(crate) fn hierarchy_row_click(
     rows: Query<(&Interaction, &HierRowClick), Changed<Interaction>>,
     carets: Query<(&Interaction, &HierCaretToggle)>,
     pins: Query<&Interaction, With<HierPinClick>>,
+    labels: Query<(&HierRowLabel, &ComputedNode, &UiGlobalTransform)>,
+    windows: Query<&Window>,
     selection: Option<Res<EditorSelection>>,
     keys: Res<ButtonInput<KeyCode>>,
     cache: Res<HierarchyTreeCache>,
@@ -226,6 +233,7 @@ pub(crate) fn hierarchy_row_click(
     if pins.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
     let ctrl = keys.any_pressed([
         KeyCode::ControlLeft,
         KeyCode::ControlRight,
@@ -253,10 +261,12 @@ pub(crate) fn hierarchy_row_click(
         if rename.0 == Some(row.entity) {
             continue;
         }
-        // Double-click (no modifiers) → inline rename.
+        // Double-click on the row's name (no modifiers) → inline rename. Off the
+        // name it is just two clicks, which is the select/fold gesture below.
         if !ctrl && !shift {
             let now = time.elapsed_secs_f64();
-            if last_click.is_some_and(|(e, t)| e == row.entity && now - t < 0.4) {
+            let on_label = cursor.is_some_and(|c| on_row_label(&labels, row.entity, c));
+            if on_label && last_click.is_some_and(|(e, t)| e == row.entity && now - t < 0.4) {
                 *last_click = None;
                 rename.0 = Some(row.entity);
                 continue;
@@ -291,6 +301,29 @@ pub(crate) fn hierarchy_row_click(
             }
         }
     }
+}
+
+/// Is `cursor` over the name text of `row`'s label?
+///
+/// Horizontal extent only: the row the click landed on is already settled (the
+/// click layer resolved that), so the only open question is whether the pointer
+/// was on the glyphs or in the empty space beside them. Testing the label's
+/// height as well would make the gesture depend on hitting a ~16px band inside a
+/// 24px row, which is a rename that silently fails to start.
+fn on_row_label(
+    labels: &Query<(&HierRowLabel, &ComputedNode, &UiGlobalTransform)>,
+    row: Entity,
+    cursor: Vec2,
+) -> bool {
+    labels.iter().any(|(l, cn, ugt)| {
+        if l.0 != row {
+            return false;
+        }
+        let inv = cn.inverse_scale_factor();
+        let half = cn.size().x * inv * 0.5;
+        let cx = ugt.translation.x * inv;
+        cursor.x >= cx - half && cursor.x <= cx + half
+    })
 }
 
 /// Depth-first search for `target`'s node in the cached tree.
