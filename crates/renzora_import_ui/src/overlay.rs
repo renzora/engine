@@ -53,6 +53,12 @@ enum ImportMsg {
         total: usize,
         label: String,
     },
+    /// The worker has reached this file. Sent because the queue's rows want to
+    /// say which one of them is being worked on, and the `Progress` messages
+    /// cannot answer that: the texture-baking callback overwrites `current` and
+    /// `total` with a *per-texture* count, so the file index in them is not
+    /// even monotonic, let alone reliable.
+    FileStarted(PathBuf),
     Log(ImportLogEntry),
     /// A file has been converted and staged, and the worker is now blocked
     /// waiting for the user's verdict. Nothing has touched the project yet.
@@ -80,6 +86,9 @@ pub struct ImportOverlayState {
     pub log_entries: Vec<ImportLogEntry>,
     /// Background import task (if running).
     pub(crate) active_task: Option<ImportTask>,
+    /// The queued file the worker is on right now, so its row can say so and
+    /// the ones behind it can read as waiting. `None` while nothing is running.
+    pub converting: Option<PathBuf>,
     /// True once an import has been launched from the overlay and the modal has
     /// been dismissed into the corner progress toast. While set, the toast
     /// system owns polling + lifecycle (so the silent drag-drop auto-import path
@@ -133,6 +142,7 @@ impl Default for ImportOverlayState {
             progress: ImportProgress::Idle,
             log_entries: Vec::new(),
             active_task: None,
+            converting: None,
             toast_active: false,
             toast_dismiss_at: None,
             staged: Vec::new(),
@@ -158,6 +168,32 @@ pub(crate) struct ConvertedWith {
     pub settings: ImportSettings,
     pub target_directory: String,
     pub layout: ImportLayout,
+}
+
+impl ConvertedWith {
+    /// Snapshot the settings as they now stand, for comparison against what the
+    /// staged set was actually built from.
+    pub(crate) fn of(state: &ImportOverlayState) -> Self {
+        Self {
+            settings: state.settings.clone(),
+            target_directory: state.target_directory.clone(),
+            layout: state.layout,
+        }
+    }
+
+    /// Does this describe the given settings? The three fields are compared
+    /// through one method so a caller cannot forget the newest of them, which
+    /// is how the destination came to be silently ignored once already.
+    pub(crate) fn matches(
+        &self,
+        settings: &ImportSettings,
+        target_directory: &str,
+        layout: ImportLayout,
+    ) -> bool {
+        self.settings == *settings
+            && self.target_directory == target_directory
+            && self.layout == layout
+    }
 }
 
 impl ImportOverlayState {
@@ -290,6 +326,9 @@ pub(crate) fn poll_import_task(world: &mut World) {
                         label,
                     };
                 }
+                ImportMsg::FileStarted(path) => {
+                    state.converting = Some(path);
+                }
                 ImportMsg::Log(entry) => {
                     state.log_entries.push(entry);
                 }
@@ -308,6 +347,8 @@ pub(crate) fn poll_import_task(world: &mut World) {
 
         if finished {
             state.active_task = None;
+            // Nothing is being worked on any more, so no row should claim to be.
+            state.converting = None;
         }
     }
 }
@@ -326,6 +367,7 @@ pub(crate) fn close_overlay(world: &mut World) {
     state.progress = ImportProgress::Idle;
     state.log_entries.clear();
     state.active_task = None;
+    state.converting = None;
     state.toast_active = false;
     state.toast_dismiss_at = None;
     // The next window starts from nothing: leaving these set would have it
@@ -381,11 +423,8 @@ pub(crate) fn run_import(world: &mut World) {
                 state.last_files.push(f);
             }
         }
-        state.converted_with = Some(ConvertedWith {
-            settings: state.settings.clone(),
-            target_directory: state.target_directory.clone(),
-            layout: state.layout,
-        });
+        let converted_with = ConvertedWith::of(&state);
+        state.converted_with = Some(converted_with);
     };
 
     // Spawn background thread
@@ -650,6 +689,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
+        let _ = tx.send(ImportMsg::FileStarted(source_path.clone()));
 
         // Folder imports recreate the source tree under `dest`; single-file
         // picks land flat in `dest` (relative_dir empty).

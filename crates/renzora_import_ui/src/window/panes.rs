@@ -1,8 +1,7 @@
-//! The three regions inside the frame: the left list pane, the centre viewport
-//! and the right properties rail — plus the destination folder picker the
-//! Destination tab shows.
-
-use std::path::PathBuf;
+//! The three regions inside the frame: the left list pane (its file queue,
+//! model views and destination tree), the centre viewport with the preview's
+//! own lighting controls over it, and the right rail — the selection's
+//! properties, the import settings, and the footer that ends the window.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -11,7 +10,10 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{drag_value, dropdown, radio_group, scroll_view};
+use renzora_ember::widgets::{
+    drag_value, dropdown, folder_new_button, folder_picker_folded, progress_indeterminate,
+    radio_group, scroll_view,
+};
 
 use renzora_import::settings::{SceneStructure, UpAxis};
 
@@ -24,20 +26,14 @@ use super::lists::{
 };
 use super::rows::{active_tab, has_staged, showing_material, staged};
 use super::tree::scene_snapshot;
-use super::widgets::{field_row, g_settings, hover_cursor, s_settings, toggle_row};
+use super::widgets::{field_row, g_settings, s_settings, toggle_row};
 use super::{
-    DestFolderRow, FileBrowseBtn, FilesContainer, FolderBrowseBtn, ImportColumns, ImportTab,
-    LogContainer, Side,
+    FileBrowseBtn, FilesContainer, FolderBrowseBtn, ImportColumns, ImportTab, LogContainer, Side,
 };
 
 // ── Left pane ────────────────────────────────────────────────────────────────
 
-pub(super) fn build_left_pane(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    init: &Init,
-    has_project: bool,
-) -> Entity {
+pub(super) fn build_left_pane(commands: &mut Commands, fonts: &EmberFonts, init: &Init) -> Entity {
     let col = commands
         .spawn((
             Node {
@@ -45,7 +41,15 @@ pub(super) fn build_left_pane(
                 flex_shrink: 0.0,
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(10.0)),
+                // No padding on the right: the scroll views inside already
+                // inset their bar by 2px, so a pane margin on top of it left a
+                // strip of dead panel between the bar and the splitter.
+                padding: UiRect {
+                    left: Val::Px(10.0),
+                    right: Val::Px(0.0),
+                    top: Val::Px(10.0),
+                    bottom: Val::Px(10.0),
+                },
                 row_gap: Val::Px(8.0),
                 ..default()
             },
@@ -54,7 +58,7 @@ pub(super) fn build_left_pane(
         .id();
     bind_column_width(commands, col, Side::Left);
 
-    // Files — drop zone + queue.
+    // Files — the queue and everything converted, in one list.
     let files = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -66,6 +70,9 @@ pub(super) fn build_left_pane(
         })
         .id();
     bind_display(commands, files, |w| active_tab(w) == ImportTab::Files);
+    // "Files" and "Folder" read as a pair of nouns beside a tab of the same
+    // name, which said nothing about what pressing one does. They are verbs
+    // now, and the icons carry the distinction the labels used to have to.
     let browse_row = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -74,9 +81,9 @@ pub(super) fn build_left_pane(
             ..default()
         })
         .id();
-    let b1 = super::widgets::pill_button(commands, fonts, "file", "Files");
+    let b1 = super::widgets::pill_button(commands, fonts, "file-plus", "Add files");
     commands.entity(b1).insert(FileBrowseBtn);
-    let b2 = super::widgets::pill_button(commands, fonts, "folder-open", "Folder");
+    let b2 = super::widgets::pill_button(commands, fonts, "folder-plus", "Add folder");
     commands.entity(b2).insert(FolderBrowseBtn);
     commands.entity(browse_row).add_children(&[b1, b2]);
     let list = commands
@@ -84,7 +91,7 @@ pub(super) fn build_left_pane(
             Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(3.0),
+                row_gap: Val::Px(4.0),
                 ..default()
             },
             FilesContainer,
@@ -95,7 +102,7 @@ pub(super) fn build_left_pane(
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
+            row_gap: Val::Px(4.0),
             ..default()
         })
         .id();
@@ -104,7 +111,7 @@ pub(super) fn build_left_pane(
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(3.0),
+            row_gap: Val::Px(4.0),
             ..default()
         })
         .id();
@@ -120,6 +127,12 @@ pub(super) fn build_left_pane(
     let materials = list_pane(commands, ImportTab::Materials, materials_snapshot);
 
     // Destination — where a committed import lands.
+    //
+    // The layout choice leads, above the tree rather than under it. It decides
+    // what the tree's answer *means* — whether the picked folder receives a
+    // `<stem>/` per file or every file directly — so reading it second is
+    // reading the two halves in the wrong order, and a long tree pushed it out
+    // of sight entirely.
     let dest = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -131,22 +144,6 @@ pub(super) fn build_left_pane(
         })
         .id();
     bind_display(commands, dest, |w| active_tab(w) == ImportTab::Destination);
-    let mut dest_kids = Vec::new();
-    if has_project {
-        let tree = commands
-            .spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            })
-            .id();
-        let mut rows = vec![dest_folder_row(commands, fonts, String::new(), 0, "assets")];
-        for (rel, depth, name) in &init.dest_folders {
-            rows.push(dest_folder_row(commands, fonts, rel.clone(), depth + 1, name));
-        }
-        commands.entity(tree).add_children(&rows);
-        dest_kids.push(scroll_view(commands, tree));
-    }
     let org = radio_group(
         commands,
         &fonts.ui,
@@ -170,7 +167,51 @@ pub(super) fn build_left_pane(
             }
         },
     );
-    dest_kids.push(org);
+    let mut dest_kids = vec![org];
+    // Ember's own folder picker, not a tree of our own: it already walks,
+    // indents, scrolls, remembers what is collapsed, and — with
+    // `folder_new_button` — creates a folder and opens its name for editing in
+    // place. The hand-rolled version here could only pick from folders that
+    // already existed, so "import into a new folder" meant leaving the window,
+    // making the folder in the asset browser, and coming back.
+    if let Some(root) = init.project_root.clone() {
+        let selected = if init.target_dir.is_empty() {
+            root.clone()
+        } else {
+            init.target_dir
+                .split('/')
+                .fold(root.clone(), |acc, seg| acc.join(seg))
+        };
+        // Folded, because a project's `assets/` tree fully expanded is a
+        // hundred rows to scroll past to reach the one folder you wanted.
+        let picker = folder_picker_folded(commands, fonts, &root, &selected, 3);
+        // Flat, not a card. The widget draws itself as a bordered box with its
+        // own fill, which is right for the overlays it was built for — it is
+        // the only thing in them. Here it fills a pane that already has a
+        // background and a border of its own, and a second box inside that is
+        // just an inset rectangle around a list.
+        commands
+            .entity(picker)
+            .insert((BackgroundColor(Color::NONE), BorderColor::all(Color::NONE)));
+        // The New Folder button pins itself to its parent's left edge and full
+        // height, so it needs a relative row of its own rather than being
+        // dropped straight into the column.
+        let new_row = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                min_height: Val::Px(28.0),
+                position_type: PositionType::Relative,
+                flex_shrink: 0.0,
+                ..default()
+            })
+            .id();
+        let new_btn = folder_new_button(commands, fonts, picker);
+        commands.entity(new_row).add_child(new_btn);
+        // Under the tree, not over it: it acts on whichever folder the tree has
+        // selected, so it reads as something you do *after* choosing where.
+        dest_kids.push(picker);
+        dest_kids.push(new_row);
+    }
     commands.entity(dest).add_children(&dest_kids);
 
     commands
@@ -204,6 +245,12 @@ fn list_pane(commands: &mut Commands, tab: ImportTab, snapshot: fn(&Rx) -> Keyed
     commands.entity(holder).add_child(scroll);
     holder
 }
+
+/// Height of the two bars the centre shows: the conversion fill under the
+/// placeholder and the loading sweep on its card. Thicker than a hairline
+/// because each is the only thing on screen saying the window is still working,
+/// and at 5px that read as a divider rather than as progress.
+const PROGRESS_BAR_H: f32 = 8.0;
 
 // ── Centre ───────────────────────────────────────────────────────────────────
 
@@ -295,9 +342,10 @@ pub(super) fn build_centre(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     // Before anything is staged the centre explains what the window is for.
     let placeholder = commands
         .spawn(Node {
+            position_type: PositionType::Absolute,
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
-            row_gap: Val::Px(8.0),
+            row_gap: Val::Px(10.0),
             ..default()
         })
         .id();
@@ -328,12 +376,233 @@ pub(super) fn build_centre(commands: &mut Commands, fonts: &EmberFonts) -> Entit
             n => format!("{n} files queued"),
         }
     });
+    let ph_bar = conversion_bar(commands);
     commands
         .entity(placeholder)
-        .add_children(&[ph_icon, ph_text]);
+        .add_children(&[ph_icon, ph_text, ph_bar]);
 
-    commands.entity(centre).add_children(&[view, mat_view, placeholder]);
+    // The preview's own loading bar, over the (empty) viewport rather than
+    // beside it. A staged scene is often hundreds of megabytes and Bevy's
+    // loader gives no fraction to report, so this is the indeterminate bar:
+    // between staging finishing and the model appearing, the centre was
+    // otherwise a flat empty rectangle for several seconds and read as a
+    // preview that had failed.
+    // On a card, like the progress pill and the lighting panel. It floats over
+    // whatever the camera is already rendering — the previous model's last
+    // frame, or the clear colour — and bare text on that is at the mercy of
+    // what is behind it.
+    let loading = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(11.0),
+                padding: UiRect::axes(Val::Px(20.0), Val::Px(16.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(panel_bg()).with_alpha(0.92)),
+            BorderColor::all(rgb(border())),
+            FocusPolicy::Block,
+        ))
+        .id();
+    bind_display(commands, loading, |w| {
+        has_staged(w)
+            && !showing_material(w)
+            && w.get_resource::<crate::preview3d::ImportPreview>()
+                .is_some_and(|p| p.status == crate::preview3d::PreviewStatus::Loading)
+    });
+    let ld_text = commands
+        .spawn((
+            Text::new("Loading preview…".to_string()),
+            ui_font(&fonts.ui, 12.5),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    let ld_bar = progress_indeterminate(commands, 240.0, PROGRESS_BAR_H);
+    commands.entity(loading).add_children(&[ld_text, ld_bar]);
+
+    let env_bar = build_env_bar(commands, fonts);
+    let nav = super::gizmo::build(commands, fonts);
+
+    commands
+        .entity(centre)
+        .add_children(&[view, mat_view, placeholder, loading, env_bar, nav]);
     centre
+}
+
+/// The preview's lighting controls, floating over the bottom-right of the
+/// viewport.
+///
+/// They live here rather than in the settings rail because they change nothing
+/// about the import — the rail is what the file will *become*, and mixing a
+/// view setting into it would make every row there suspect. Over the thing they
+/// affect is where a viewport's own controls belong.
+///
+/// Bottom-right rather than top: the top-right corner is where the editor
+/// viewport puts its axis gizmo and navigation buttons, and those have the
+/// stronger claim on it — they are the controls you reach for without looking.
+fn build_env_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let bar = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(18.0),
+                right: Val::Px(18.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(panel_bg()).with_alpha(0.88)),
+            BorderColor::all(rgb(border())),
+            FocusPolicy::Block,
+        ))
+        .id();
+    // Both previews, not just the model: the material sphere is lit by the same
+    // environment and the same rig now, so the switches mean the same thing on
+    // either — and a material is judged by what it reflects, which makes the
+    // Environment switch matter most there.
+    bind_display(commands, bar, has_staged);
+
+    let head = commands
+        .spawn((
+            Text::new("PREVIEW".to_string()),
+            ui_font(&fonts.ui, 9.5),
+            TextColor(rgb(text_muted())),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let mut kids = vec![head];
+    for (label, get, set) in [
+        (
+            "Environment",
+            (|e: &crate::preview3d::ImportPreviewEnv| e.environment) as fn(&_) -> bool,
+            (|e: &mut crate::preview3d::ImportPreviewEnv, v: bool| e.environment = v)
+                as fn(&mut _, bool),
+        ),
+        (
+            "Lights",
+            |e| e.lights,
+            |e, v| e.lights = v,
+        ),
+        (
+            "Grid",
+            |e| e.grid,
+            |e, v| e.grid = v,
+        ),
+    ] {
+        kids.push(env_toggle_row(commands, fonts, label, get, set));
+    }
+    commands.entity(bar).add_children(&kids);
+    bar
+}
+
+/// One row of the preview toolbar: a label and a switch over
+/// [`ImportPreviewEnv`](crate::preview3d::ImportPreviewEnv).
+fn env_toggle_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    get: fn(&crate::preview3d::ImportPreviewEnv) -> bool,
+    set: fn(&mut crate::preview3d::ImportPreviewEnv, bool),
+) -> Entity {
+    use renzora_ember::widgets::toggle_switch;
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                column_gap: Val::Px(14.0),
+                min_height: Val::Px(22.0),
+                ..default()
+            },
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let t = commands
+        .spawn((
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_primary())),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let sw = toggle_switch(commands, get(&default()));
+    bind_2way(
+        commands,
+        sw,
+        move |w| {
+            w.get_resource::<crate::preview3d::ImportPreviewEnv>()
+                .map(get)
+                .unwrap_or(false)
+        },
+        move |w, v: &bool| {
+            if let Some(mut e) = w.get_resource_mut::<crate::preview3d::ImportPreviewEnv>() {
+                set(&mut e, *v);
+            }
+        },
+    );
+    commands.entity(row).add_children(&[t, sw]);
+    row
+}
+
+/// A determinate bar tracking the conversion worker's `[done/total]`, shown
+/// under the placeholder while files are converting and hidden otherwise.
+fn conversion_bar(commands: &mut Commands) -> Entity {
+    let track = commands
+        .spawn((
+            Node {
+                width: Val::Px(240.0),
+                height: Val::Px(PROGRESS_BAR_H),
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(PROGRESS_BAR_H / 2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(section_bg())),
+        ))
+        .id();
+    bind_display(commands, track, |w| {
+        w.get_resource::<ImportOverlayState>()
+            .is_some_and(|s| matches!(s.progress, ImportProgress::Working { .. }))
+    });
+    let fill = commands
+        .spawn((
+            Node {
+                width: Val::Percent(0.0),
+                height: Val::Percent(100.0),
+                border_radius: BorderRadius::all(Val::Px(PROGRESS_BAR_H / 2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+        ))
+        .id();
+    bind_with(
+        commands,
+        fill,
+        |w| {
+            // Rounded to whole percent: bindings compare by value and f32 is
+            // not `Eq`, so a raw fraction would rewrite the node every frame.
+            match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
+                Some(ImportProgress::Working { current, total, .. }) if total > 0 => {
+                    ((current as f32 / total as f32) * 100.0).round() as i32
+                }
+                _ => 0,
+            }
+        },
+        |world, e, pct| {
+            if let Some(mut n) = world.get_mut::<Node>(e) {
+                n.width = Val::Percent((*pct as f32).clamp(0.0, 100.0));
+            }
+        },
+    );
+    commands.entity(track).add_child(fill);
+    track
 }
 
 // ── Right rail ───────────────────────────────────────────────────────────────
@@ -562,9 +831,7 @@ pub(super) fn build_right_rail(commands: &mut Commands, fonts: &EmberFonts, init
 
     let mut kids = vec![s_head, scale_row, axis_row, structure_row];
     kids.extend(texture_set_row);
-    kids.extend([
-        flip, normals, e_head, e1, e2, e3, e4, o_head, o1, o2, o3,
-    ]);
+    kids.extend([flip, normals, e_head, e1, e2, e3, e4, o_head, o1, o2, o3]);
     // `add_children` takes a slice, and the settings column is past the
     // tuple-bundle limit, so build the vector and hand it over in one call.
     commands.entity(settings).add_children(&kids);
@@ -602,9 +869,67 @@ pub(super) fn build_right_rail(commands: &mut Commands, fonts: &EmberFonts, init
     commands
         .entity(inner)
         .add_children(&[props, findings, settings, results]);
+    // `scroll_view` already grows into a column parent (`flex_grow: 1`,
+    // `flex_basis: 0`), so the footer below it takes only the height it needs.
     let scroll = scroll_view(commands, inner);
-    commands.entity(col).add_child(scroll);
+    let footer = build_rail_footer(commands, fonts);
+    commands.entity(col).add_children(&[scroll, footer]);
     col
+}
+
+/// The rail's footer, which is the Reconvert notice and nothing else — Import
+/// is in the header now, beside the tabs and the window's Close.
+///
+/// The whole strip is display-bound, so it is absent rather than an empty
+/// bordered band for the great majority of the time that no reconvert is owed.
+///
+/// Reconvert is here rather than at the bottom of the settings scroll, which is
+/// the one place a notice cannot do its job: the moment it appeared it was below
+/// the fold, so the model sat there stale with nothing on screen saying so.
+fn build_rail_footer(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let footer = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(5.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                border: UiRect::top(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(panel_bg())),
+            BorderColor::all(rgb(border())),
+        ))
+        .id();
+    bind_display(commands, footer, super::rows::settings_are_stale);
+    let note = commands
+        .spawn((
+            Text::new("Settings changed since this was converted.".to_string()),
+            ui_font(&fonts.ui, 10.5),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let btn_row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            ..default()
+        })
+        .id();
+    let btn = super::frame::action_button(
+        commands,
+        fonts,
+        "arrows-clockwise",
+        "Reconvert",
+        (255, 255, 255),
+        1.0,
+    );
+    commands.entity(btn).insert(super::ReconvertBtn);
+    bind_bg(commands, btn, |_| rgb(accent()));
+    commands.entity(btn_row).add_child(btn);
+    commands.entity(footer).add_children(&[note, btn_row]);
+    footer
 }
 
 /// Keep a column's width in step with [`ImportColumns`].
@@ -646,71 +971,3 @@ fn group_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Enti
         .id()
 }
 
-// ── Destination picker ───────────────────────────────────────────────────────
-
-/// One selectable row in the destination folder tree. `rel` is the
-/// project-relative target path (`""` = project root); selection highlights the
-/// row whose path matches `ImportOverlayState::target_directory`.
-fn dest_folder_row(commands: &mut Commands, fonts: &EmberFonts, rel: String, depth: usize, name: &str) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(22.0),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::left(Val::Px(8.0 + depth as f32 * 14.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            DestFolderRow(rel.clone()),
-            hover_cursor(),
-        ))
-        .id();
-    let p = rel.clone();
-    bind_bg(commands, row, move |w| {
-        let selected = w.get_resource::<ImportOverlayState>().map(|s| s.target_directory == p).unwrap_or(false);
-        if selected {
-            rgb(accent()).with_alpha(0.20)
-        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
-            rgb(hover_bg())
-        } else {
-            Color::NONE
-        }
-    });
-    let icon = icon_text(commands, &fonts.phosphor, "folder", text_muted(), 12.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
-    commands.entity(row).add_children(&[icon, lbl]);
-    row
-}
-
-/// Recursively list the project's directories (two levels deep) as
-/// project-relative forward-slashed paths, skipping hidden / build / dependency
-/// folders. Mirrors the marketplace install picker's `scan_dirs`.
-pub(super) fn scan_dest_dirs(root: &std::path::Path) -> Vec<(String, usize, String)> {
-    fn rec(root: &std::path::Path, dir: &std::path::Path, depth: usize, max: usize, out: &mut Vec<(String, usize, String)>) {
-        if depth > max || out.len() > 300 {
-            return;
-        }
-        let Ok(read) = std::fs::read_dir(dir) else { return };
-        let mut entries: Vec<PathBuf> = read.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
-        entries.sort();
-        for path in entries {
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            if name.starts_with('.') || name == "target" || name == "node_modules" {
-                continue;
-            }
-            let rel = path.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            out.push((rel, depth, name));
-            rec(root, &path, depth + 1, max, out);
-        }
-    }
-    let mut out = Vec::new();
-    rec(root, root, 0, 1, &mut out);
-    out
-}

@@ -55,9 +55,14 @@ impl FolderPick {
     }
 }
 
-/// One row of the tree, carrying the directory it selects.
+/// One row of the tree, carrying the directory it selects and the picker it
+/// belongs to — the picker, because clicking a row folds it as well as picking
+/// it, and folding means asking that picker to redo its walk.
 #[derive(Component)]
-pub(crate) struct FolderPickRow(PathBuf);
+pub(crate) struct FolderPickRow {
+    path: PathBuf,
+    picker: Entity,
+}
 
 /// On the picker box: everything the walk needs to be redone. Creating a folder
 /// rebuilds the rows from disk rather than splicing one in — a new folder can
@@ -139,7 +144,29 @@ pub fn folder_picker(
     selected: &Path,
     max_depth: usize,
 ) -> Entity {
-    folder_picker_files(commands, fonts, root, selected, max_depth, &[])
+    build_picker(commands, fonts, root, selected, max_depth, &[], false)
+}
+
+/// [`folder_picker`] that opens with every branch **folded shut**, so only the
+/// root's own children are on screen and the rest is reached by its carets.
+///
+/// For a picker in a panel rather than an overlay, where a project with a deep
+/// `assets/` tree would otherwise open as a hundred rows the user has to scroll
+/// past to reach the one they want.
+///
+/// It is not the same as passing `max_depth: 0`, which is the trap here: the
+/// walk is what decides whether a row gets a caret at all (a folder "has
+/// children" exactly when the next entry in the flat walk is deeper), so a
+/// shallow walk produces a tree that is not closed but permanently *flat*. The
+/// walk still goes `max_depth` deep; the rows are hidden by the collapse set.
+pub fn folder_picker_folded(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    root: &Path,
+    selected: &Path,
+    max_depth: usize,
+) -> Entity {
+    build_picker(commands, fonts, root, selected, max_depth, &[], true)
 }
 
 /// [`folder_picker`] that also lists files with these extensions (lowercase, no
@@ -157,6 +184,21 @@ pub fn folder_picker_files(
     selected: &Path,
     max_depth: usize,
     exts: &[&str],
+) -> Entity {
+    build_picker(commands, fonts, root, selected, max_depth, exts, false)
+}
+
+/// Shared builder. `folded` seeds the collapse set with every folder the walk
+/// found, which shuts each branch without shortening the walk that gives its
+/// caret something to open.
+fn build_picker(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    root: &Path,
+    selected: &Path,
+    max_depth: usize,
+    exts: &[&str],
+    folded: bool,
 ) -> Entity {
     commands.insert_resource(FolderPick(Some(selected.to_path_buf())));
 
@@ -176,12 +218,21 @@ pub fn folder_picker_files(
         ))
         .id();
 
-    // Fully expanded, and the collapse set is reset per picker — the same way
-    // `FolderPick` is seeded above. Carrying folds between two different
-    // overlays would mean opening one and finding branches shut for a reason
-    // that happened somewhere else.
-    commands.insert_resource(FolderPickCollapsed::default());
+    // The collapse set is reset per picker — the same way `FolderPick` is seeded
+    // above. Carrying folds between two different overlays would mean opening
+    // one and finding branches shut for a reason that happened somewhere else.
     let ext_owned: Vec<String> = exts.iter().map(|e| e.to_lowercase()).collect();
+    let collapsed: std::collections::HashSet<PathBuf> = if folded {
+        let ext_refs: Vec<&str> = ext_owned.iter().map(String::as_str).collect();
+        folder_entries(root, max_depth, &ext_refs)
+            .into_iter()
+            .filter(|(p, _, _)| p.is_dir())
+            .map(|(p, _, _)| p)
+            .collect()
+    } else {
+        Default::default()
+    };
+    commands.insert_resource(FolderPickCollapsed(collapsed.clone()));
     let rows = spawn_rows(
         commands,
         fonts,
@@ -190,7 +241,7 @@ pub fn folder_picker_files(
         max_depth,
         None,
         &ext_owned,
-        &Default::default(),
+        &collapsed,
     );
     commands.entity(tree).add_children(&rows);
 
@@ -451,7 +502,7 @@ fn folder_row(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(22.0),
+                height: Val::Px(25.0),
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
@@ -463,7 +514,7 @@ fn folder_row(
             BackgroundColor(Color::NONE),
             Interaction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            FolderPickRow(path.clone()),
+            FolderPickRow { path: path.clone(), picker },
             Name::new("folder-picker-row"),
         ))
         .id();
@@ -503,7 +554,7 @@ fn folder_row(
         commands
             .spawn((
                 Text::new(name.to_string()),
-                ui_font(&fonts.ui, 11.0),
+                ui_font(&fonts.ui, 12.5),
                 TextColor(rgb(text_primary())),
             ))
             .id()
@@ -638,14 +689,38 @@ fn inline_name_field(
     input
 }
 
-/// Click a row → it becomes the pick.
+/// Click a row → it becomes the pick, **and** it folds or unfolds.
+///
+/// Both, from the one click. The caret is 12px wide and it is not the thing the
+/// eye aims at — the name is — so a tree where only the caret opens a branch is
+/// one where most clicks look like they did nothing. It is the same bargain the
+/// import window's scene tree strikes, and the same one a file manager's
+/// sidebar does.
 pub(crate) fn folder_pick_click(
     q: Query<(&Interaction, &FolderPickRow), Changed<Interaction>>,
     mut pick: ResMut<FolderPick>,
+    mut collapsed: ResMut<FolderPickCollapsed>,
+    fonts: Option<Res<EmberFonts>>,
+    children: Query<&Children>,
+    trees: Query<&FolderPickerTree>,
+    mut commands: Commands,
 ) {
     for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed && pick.0.as_deref() != Some(row.0.as_path()) {
-            pick.0 = Some(row.0.clone());
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if pick.0.as_deref() != Some(row.path.as_path()) {
+            pick.0 = Some(row.path.clone());
+        }
+        if !collapsed.0.remove(&row.path) {
+            collapsed.0.insert(row.path.clone());
+        }
+        // The rebuild is how every change to this tree is applied; see
+        // `refresh_rows`. A row with nothing under it has no visible fold
+        // state, so toggling it is harmless rather than something to guard.
+        let Some(fonts) = fonts.as_deref() else { continue };
+        if let Ok(spec) = trees.get(row.picker) {
+            refresh_rows(&mut commands, fonts, &children, row.picker, spec, None, &collapsed.0);
         }
     }
 }

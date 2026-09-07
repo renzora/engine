@@ -14,9 +14,10 @@
 //!
 //! | Module | What it holds |
 //! |---|---|
-//! | [`lifecycle`] | Spawn/despawn, the initial widget values, auto-convert, the settle timer |
+//! | [`lifecycle`] | Spawn/despawn, the initial widget values, auto-convert, closing when finished |
 //! | [`frame`] | The window chrome: scrim, title bar, tab bar, splitters |
-//! | [`panes`] | The three regions and the destination picker |
+//! | [`gizmo`] | The preview viewport's axis gizmo and zoom buttons |
+//! | [`panes`] | The three regions, the settings rail and its footer |
 //! | [`rows`] | The one row builder every list in the window uses |
 //! | [`tree`] | The scene tree: what is visible, what survives a prune |
 //! | [`lists`] | The keyed-list snapshots behind each pane |
@@ -29,6 +30,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 
 pub(crate) mod frame;
+pub(crate) mod gizmo;
 pub(crate) mod interaction;
 pub(crate) mod lifecycle;
 pub(crate) mod lists;
@@ -46,9 +48,12 @@ pub(super) const AMBER: (u8, u8, u8) = (223, 165, 74);
 
 /// Which tab the window's left pane is showing.
 ///
-/// `Files` is the pre-conversion state — the queue and the drop targets. The
-/// other three describe a *converted* model and only exist while one is staged,
-/// which is why the tab bar hides them until then.
+/// `Files` is what you always have: everything queued and everything converted,
+/// in one list. `Scene` / `Meshes` / `Materials` describe a *converted* model
+/// and only exist while one is staged, which is why the tab bar hides them
+/// until then. `Destination` is where the import will land — a folder tree that
+/// wants the left pane's full height, which is why it is a tab and not a row in
+/// the settings rail.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ImportTab {
     #[default]
@@ -99,6 +104,7 @@ impl ImportNav {
 }
 
 pub(crate) fn register(app: &mut App) {
+    gizmo::register(app);
     app.init_resource::<ImportNav>()
         .init_resource::<ImportColumns>()
         // Split in two: a system tuple caps out at 20 elements.
@@ -109,7 +115,7 @@ pub(crate) fn register(app: &mut App) {
                 toast::manage_import_toast,
                 interaction::file_browse_click,
                 interaction::folder_browse_click,
-                interaction::dest_folder_click,
+                interaction::dest_folder_sync,
                 interaction::tab_click,
                 frame::splitter_drag,
                 interaction::staged_row_click,
@@ -123,12 +129,13 @@ pub(crate) fn register(app: &mut App) {
             Update,
             (
                 interaction::commit_click,
-                interaction::skip_click,
-                interaction::discard_all_click,
+                interaction::discard_staged_click,
+                interaction::reconvert_click,
                 lifecycle::settings_watch,
                 crate::overlay::drive_reimport,
                 lifecycle::auto_start_import,
                 lifecycle::on_staged_changed,
+                lifecycle::close_when_finished,
                 interaction::cancel_click,
                 toast::toast_dismiss_click,
                 interaction::remove_file_click,
@@ -141,12 +148,6 @@ pub(crate) fn register(app: &mut App) {
 #[derive(Component)]
 pub(super) struct ImportRoot;
 
-/// The editor grid's visibility from before the window opened, restored on
-/// close. The grid's render pass is not confined to the main viewport's layer,
-/// so it draws through the preview's own camera and cuts a lattice across
-/// whatever is being inspected.
-#[derive(Resource)]
-pub(super) struct GridSuppressed(pub(super) bool);
 #[derive(Component)]
 pub(super) struct FileBrowseBtn;
 #[derive(Component)]
@@ -190,19 +191,20 @@ pub(super) struct MeshRow(pub(super) usize);
 /// A row in the material list.
 #[derive(Component, Clone, Copy)]
 pub(super) struct MatRow(pub(super) usize);
-/// Accept the staged file into the project.
+/// Accept every staged file into the project.
 #[derive(Component)]
 pub(super) struct CommitBtn;
-/// Discard this staged file, continue the queue.
+/// The trash on a staged row: throw this one converted file away.
+///
+/// This replaces the header's Skip and Discard-all pair. Those asked the user
+/// to hold in their head which file was "current" before either could be
+/// predicted, where the trash is simply on the row it deletes — and "discard
+/// all" is now what closing the window already does.
+#[derive(Component, Clone, Copy)]
+pub(super) struct DiscardStagedBtn(pub(super) usize);
+/// Reconvert every staged file with the settings as they now stand.
 #[derive(Component)]
-pub(super) struct SkipBtn;
-/// Discard this staged file and abandon the queue.
-#[derive(Component)]
-pub(super) struct DiscardAllBtn;
-/// A row in the destination folder tree. Holds the project-relative path it
-/// targets (forward-slashed, `""` = project root).
-#[derive(Component, Clone)]
-pub(super) struct DestFolderRow(pub(super) String);
+pub(super) struct ReconvertBtn;
 #[derive(Component)]
 pub(super) struct CancelBtn;
 #[derive(Component, Clone)]

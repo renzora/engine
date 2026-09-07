@@ -1,6 +1,50 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(import): a spec-gloss glTF no longer imports as an untextured white model.
+- fix(import): importing a texture, sound, font or script no longer opens the
+  model inspector.
+- fix(import): the import window closes itself once everything has been imported.
+- fix(import): changing an import setting no longer reconverts the model on its
+  own; a Reconvert button appears instead.
+- fix(import): clicking a file in the Files tab stays on the Files tab.
+- fix(import): the column dividers in the import window track the cursor.
+- feat(import): the import window's file list is readable, and each row has a
+  trash to discard just that file.
+- feat(import): a queued file shows a progress bar while it is being converted,
+  and the ones still waiting are greyed out.
+- fix(import): a converted file no longer appears twice in the import window's
+  file list.
+- feat(import): the import window shows a progress bar while a preview loads.
+- feat(import): the import window's tabs, its green **Import** button (was **Add
+  to project**) and its Close all move into one header row, and conversion
+  progress moves to the bottom of the preview.
+- feat(import): the material preview gets the same environment, lights, grid,
+  axis gizmo and zoom buttons as the model preview.
+- feat(import): clicking a mesh in the Meshes tab isolates it in the preview.
+- fix(import): the Meshes and Materials tabs show names alone, so a long name
+  has the row to itself.
+- fix(editor): clicking a folder in a folder picker opens and closes it, not
+  just the caret beside it.
+- feat(import): the model preview is lit by an environment matching the editor
+  viewport's sky and shows it behind the model, with Environment, Lights and
+  Grid switches over the viewport.
+- feat(import): the model preview has a grid, scaled to the model and placed at
+  its feet.
+- fix(import): the model preview's default view frames the model closely and
+  from a little further above it.
+- feat(import): the model preview has an axis gizmo in its top-right corner,
+  zoom buttons on its right edge and the lighting switches bottom-right.
+- fix(import): a long mesh or material name no longer wraps out of its row in
+  the import window's lists.
+- feat(import): the import window's Destination tree opens folded, without the
+  bordered box around it.
+- fix(import): an abandoned import no longer leaves its converted files in the
+  project cache forever; opening a project clears them.
+- feat(import): the import window's Destination tab uses the editor's folder
+  picker, so a new folder can be made without leaving the window.
+- fix(import): the Reconvert notice sits above the Import button instead of
+  below the fold at the bottom of the settings scroll.
 - fix(editor): the viewport can be moved and clicked again after opening a
   project from the File menu.
 - fix(shell): the editor leaves when it is told to. Quitting, **Restart Editor**

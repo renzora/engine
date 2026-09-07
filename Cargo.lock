@@ -7824,6 +7824,7 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_grid",
  "renzora_import",
  "rfd",
 ]

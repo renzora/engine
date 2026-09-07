@@ -8,7 +8,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
-use renzora_ember::widgets::checkbox;
+use renzora_ember::widgets::toggle_switch;
 
 use crate::overlay::ImportOverlayState;
 
@@ -45,11 +45,17 @@ pub(super) fn field_row(commands: &mut Commands, fonts: &EmberFonts, label: &str
     row
 }
 
-/// A boolean settings row: label on the left, checkbox on the right.
+/// A boolean settings row: label on the left, switch on the right.
+///
+/// A pill switch rather than a checkbox, because these rows are *options* in a
+/// settings rail, not items being ticked off a list — and the window's one real
+/// checkbox, the include-box in the scene tree, does mean exactly that. Two
+/// controls that looked alike and meant different things were the confusion
+/// worth removing.
 pub(super) fn toggle_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: fn(&renzora_import::settings::ImportSettings) -> bool, set: fn(&mut renzora_import::settings::ImportSettings, bool)) -> Entity {
-    let cb = checkbox(commands, false);
-    bind_2way(commands, cb, move |w| g_settings(w, get), move |w, v: &bool| s_settings(w, |s| set(s, *v)));
-    field_row(commands, fonts, label, cb)
+    let sw = toggle_switch(commands, false);
+    bind_2way(commands, sw, move |w| g_settings(w, get), move |w, v: &bool| s_settings(w, |s| set(s, *v)));
+    field_row(commands, fonts, label, sw)
 }
 
 pub(super) fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {

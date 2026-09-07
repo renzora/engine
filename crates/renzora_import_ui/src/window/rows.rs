@@ -45,6 +45,24 @@ pub(super) fn active_tab(w: &Rx) -> ImportTab {
         .unwrap_or(ImportTab::Files)
 }
 
+/// True when the settings on screen no longer describe the staged model, which
+/// is when a reconvert is worth offering.
+///
+/// Only ever true while something is staged and nothing is running: before the
+/// first conversion the settings are simply what the next one will use, and
+/// during one they are already on their way in.
+pub(super) fn settings_are_stale(w: &Rx) -> bool {
+    let Some(s) = w.get_resource::<ImportOverlayState>() else {
+        return false;
+    };
+    if s.staged.is_empty() || s.active_task.is_some() || s.reimport_requested {
+        return false;
+    }
+    s.converted_with
+        .as_ref()
+        .is_some_and(|c| !c.matches(&s.settings, &s.target_directory, s.layout))
+}
+
 /// A scene-tree row's include-checkbox: what it draws, and what it toggles.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct RowCheck {
@@ -84,6 +102,39 @@ impl RowSpec<'_> {
     }
 }
 
+/// Shorten a label to `max` characters, keeping both ends.
+///
+/// Imported names are long and differ at the *tail* — a scanned building gives
+/// forty meshes called `TexturesCom_WindowsBacklit0019_13_M_0`, where every
+/// distinguishing character is in the last eight. A plain right-clip would throw
+/// away exactly the part worth reading, so the middle goes instead.
+///
+/// Truncating the string rather than clipping the node is deliberate: bevy_ui
+/// has no text-overflow ellipsis, so the alternatives are a hard clip with no
+/// indication anything was cut, or what this used to do — wrap, out of a fixed
+/// 22px row and over the row beneath it.
+pub(super) fn elide(label: &str, max: usize) -> String {
+    let n = label.chars().count();
+    if n <= max {
+        return label.to_string();
+    }
+    // Two thirds from the front: the head says what kind of thing it is, the
+    // tail says which one.
+    let keep = max.saturating_sub(1);
+    let head = keep * 2 / 3;
+    let tail = keep - head;
+    let chars: Vec<char> = label.chars().collect();
+    let mut out: String = chars[..head].iter().collect();
+    out.push('…');
+    out.extend(&chars[n - tail..]);
+    out
+}
+
+/// How much of a name a row shows before it is elided. The panes are resizable,
+/// so this cannot be exact — it is set for the default 310px left column, where
+/// anything longer overruns the detail text beside it.
+const LABEL_MAX: usize = 30;
+
 pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpec) -> Entity {
     let row = commands
         .spawn((
@@ -96,6 +147,10 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
                 column_gap: Val::Px(4.0),
                 padding: UiRect::left(Val::Px(4.0 + spec.depth as f32 * 13.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
+                // Belt and braces with the elide above: a resized pane can make
+                // any label too long, and a row that clips is recoverable where
+                // a row that wraps takes the next one with it.
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(if spec.selected {
@@ -150,9 +205,14 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
     kids.push(ic);
     let nm = commands
         .spawn((
-            Text::new(spec.label.to_string()),
+            Text::new(elide(spec.label, LABEL_MAX)),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(label_color)),
+            TextLayout {
+                linebreak: bevy::text::LineBreak::NoWrap,
+                ..default()
+            },
+            Node { flex_shrink: 0.0, ..default() },
             FocusPolicy::Pass,
         ))
         .id();
@@ -163,7 +223,11 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
                 Text::new(spec.detail.to_string()),
                 ui_font(&fonts.ui, 10.0),
                 TextColor(rgb(text_muted())),
-                Node { flex_grow: 1.0, ..default() },
+                TextLayout {
+                    linebreak: bevy::text::LineBreak::NoWrap,
+                    ..default()
+                },
+                Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
                 FocusPolicy::Pass,
             ))
             .id();

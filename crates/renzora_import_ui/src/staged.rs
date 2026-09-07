@@ -476,6 +476,30 @@ pub fn staging_dir(project_root: &Path, index: usize) -> PathBuf {
         .join(format!("{:04}", index))
 }
 
+/// Delete everything left in the staging directory.
+///
+/// Closing the window discards what it staged, but that is the *tidy* exit.
+/// Quitting the editor with an import still open, a crash, or a kill leaves the
+/// whole converted tree — GLB, extracted textures and all — sitting in the
+/// project cache with nothing referencing it and nothing that would ever look
+/// at it again. It is not small: one abandoned session of four scanned models
+/// measured **775 MB**, and every later session added its own on top, because
+/// slot numbering restarts at zero per process and only overwrites the slots it
+/// actually reuses.
+///
+/// So this runs when a project opens, which is the one moment nothing can be
+/// staged yet and therefore the one moment a blanket delete is safe.
+pub fn sweep_staging(project_root: &Path) {
+    let dir = project_root.join(STAGING_SUBDIR);
+    if !dir.exists() {
+        return;
+    }
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => log::info!("[import] cleared stale staging at {}", dir.display()),
+        Err(e) => log::warn!("[import] could not clear {}: {e}", dir.display()),
+    }
+}
+
 /// Move everything in `from` into `to`, creating directories as needed and
 /// merging into whatever is already there.
 ///

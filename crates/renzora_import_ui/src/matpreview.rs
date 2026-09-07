@@ -19,7 +19,9 @@ use bevy::camera::{Hdr, RenderTarget};
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
+use bevy::light::GeneratedEnvironmentMapLight;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
+use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 
@@ -44,6 +46,47 @@ pub struct MaterialPreviewOrbit {
     yaw: f32,
     pitch: f32,
     distance: f32,
+}
+
+/// The zoom limits, which the sphere's fixed size makes absolute rather than
+/// relative to a framed distance the way the model preview's are.
+const MAT_NEAR: f32 = 1.35;
+const MAT_FAR: f32 = 8.0;
+/// Where the sphere sits when framed, and what the Fit button returns to.
+const MAT_FRAMED: f32 = 2.9;
+
+impl MaterialPreviewOrbit {
+    /// Read by the axis gizmo, which draws whichever preview is on screen.
+    /// There is no smoothing here — the sphere is small and the ease the model
+    /// preview needs would only make a swatch feel sluggish — so the live angle
+    /// *is* the displayed one.
+    pub fn yaw(&self) -> f32 {
+        self.yaw
+    }
+
+    pub fn pitch(&self) -> f32 {
+        self.pitch
+    }
+
+    /// Swing to an axis view, from a gizmo tip.
+    pub fn set_view(&mut self, yaw: f32, pitch: f32) {
+        self.yaw = yaw;
+        self.pitch = pitch.clamp(-1.45, 1.45);
+    }
+
+    /// Orbit by a mouse delta, from a gizmo backplate drag.
+    pub fn nudge(&mut self, dx: f32, dy: f32) {
+        self.yaw -= dx * 0.008;
+        self.pitch = (self.pitch + dy * 0.008).clamp(-1.45, 1.45);
+    }
+
+    /// Multiply the distance, from a zoom button. `None` refits.
+    pub fn zoom(&mut self, factor: Option<f32>) {
+        self.distance = match factor {
+            Some(f) => (self.distance * f).clamp(MAT_NEAR, MAT_FAR),
+            None => MAT_FRAMED,
+        };
+    }
 }
 
 impl Default for MaterialPreviewOrbit {
@@ -85,7 +128,7 @@ struct MatPreviewSphere;
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<MaterialPreviewShown>()
         .init_resource::<MaterialPreviewOrbit>()
-        .add_systems(Startup, setup)
+        .add_systems(Startup, setup.after(crate::preview3d::setup))
         .add_systems(
             Update,
             (
@@ -110,6 +153,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    env_map: Res<crate::preview3d::StudioCubemap>,
 ) {
     let size = Extent3d {
         width: RTT,
@@ -145,16 +189,29 @@ fn setup(
         },
         RenderTarget::Image(handle.into()),
         Transform::from_xyz(0.0, 0.35, 2.6).looking_at(Vec3::ZERO, Vec3::Y),
+        // The same studio environment the model preview stands in, from the
+        // same cubemap. A material is judged by what it reflects, so this is
+        // the preview that needs it most — and sharing it means a texture looks
+        // the same on the sphere as it will on the model.
+        //
+        // Attached at spawn and only ever changed by `intensity`, like the
+        // model preview's: the camera's bind group layout locks on its first
+        // rendered frame with the IBL slots present only if this was there.
+        GeneratedEnvironmentMapLight {
+            environment_map: env_map.0.clone(),
+            intensity: crate::preview3d::ENV_INTENSITY,
+            ..default()
+        },
         AmbientLight {
             color: Color::srgb(0.85, 0.88, 1.0),
-            // Generous on purpose. Without an environment map a PBR surface has
-            // nothing to reflect, and this is a swatch to judge a texture by,
-            // not a lighting study.
-            brightness: 1200.0,
+            // A floor under the environment, so switching it off leaves a lit
+            // sphere rather than a silhouette.
+            brightness: 300.0,
             affects_lightmapped_meshes: false,
         },
         RenderLayers::layer(MAT_LAYER),
-        MatPreviewCamera,
+        // Grouped: the spawn is at the bundle-tuple limit.
+        (MatPreviewCamera, crate::preview3d::PreviewEnvCamera),
         IsolatedCamera,
         HideInHierarchy,
         EditorLocked,
@@ -183,6 +240,9 @@ fn setup(
                 shadow_maps_enabled: false,
                 ..default()
             },
+            // The authored brightness, so the toolbar's Lights switch can put
+            // it back after dimming it to zero.
+            crate::preview3d::PreviewRigLight { illuminance },
             transform,
             RenderLayers::layer(MAT_LAYER),
             HideInHierarchy,
@@ -190,6 +250,29 @@ fn setup(
             Name::new("Material Preview Light"),
         ));
     }
+
+    // A floor for the sphere, on this layer and one radius below it — the
+    // sphere is a unit sphere at the origin, so a grid through zero would
+    // bisect it. Fixed spacing rather than framed like the model preview's:
+    // the subject is always the same size.
+    commands.spawn((
+        InfiniteGrid,
+        InfiniteGridSettings {
+            x_axis_color: Color::srgb(0.75, 0.35, 0.38),
+            z_axis_color: Color::srgb(0.35, 0.55, 0.85),
+            minor_line_color: Color::srgba(0.55, 0.58, 0.64, 0.42),
+            major_line_color: Color::srgba(0.72, 0.76, 0.82, 0.72),
+            fadeout_distance: 24.0,
+            dot_fadeout_strength: 0.25,
+            scale: 2.0,
+        },
+        Transform::from_xyz(0.0, -1.0, 0.0),
+        RenderLayers::layer(MAT_LAYER),
+        crate::preview3d::PreviewGrid,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Material Preview Grid"),
+    ));
 
     // A UV sphere rather than an icosphere: the seam and pole layout is what
     // makes a wrongly-oriented or wrongly-tiled texture obvious.
@@ -304,7 +387,7 @@ fn orbit_input(
         orbit.pitch = (orbit.pitch + d.y * 0.008).clamp(-1.45, 1.45);
     }
     if over && scroll.delta.y != 0.0 {
-        orbit.distance = (orbit.distance * 0.9f32.powf(scroll.delta.y)).clamp(1.35, 8.0);
+        orbit.distance = (orbit.distance * 0.9f32.powf(scroll.delta.y)).clamp(MAT_NEAR, MAT_FAR);
     }
 }
 

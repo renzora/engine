@@ -11,8 +11,7 @@ use renzora_import::settings::{SceneStructure, UpAxis};
 
 use crate::overlay::{poll_import_task, run_import, ImportLayout, ImportOverlayState, ImportProgress};
 
-use super::panes::scan_dest_dirs;
-use super::{GridSuppressed, ImportNav, ImportRoot, ImportTab, TreeItem};
+use super::{ImportNav, ImportRoot, ImportTab, TreeItem};
 
 pub(super) fn manage_import_modal(world: &mut World) {
     let visible = world.get_resource::<ImportOverlayState>().is_some_and(|s| s.visible);
@@ -25,7 +24,6 @@ pub(super) fn manage_import_modal(world: &mut World) {
 
     if visible && existing.is_empty() {
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
-        let has_project = world.get_resource::<renzora::core::CurrentProject>().is_some();
         // Always open on Files — the first thing the user does is add files,
         // and a stale tab from a previous open would be confusing.
         {
@@ -49,26 +47,16 @@ pub(super) fn manage_import_modal(world: &mut World) {
                 s.settings.scale = 1.0;
             }
         }
-        if let Some(mut vp) = world.get_resource_mut::<renzora::core::viewport_types::ViewportSettings>() {
-            let was = vp.show_grid;
-            vp.show_grid = false;
-            world.insert_resource(GridSuppressed(was));
-        }
         let init = Init::read(&Rx::new(&*world));
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            super::frame::spawn_modal(&mut commands, &fonts, &init, has_project);
+            super::frame::spawn_modal(&mut commands, &fonts, &init);
         }
         queue.apply(world);
     } else if !visible && !existing.is_empty() {
         for e in existing {
             world.entity_mut(e).despawn();
-        }
-        if let Some(prev) = world.remove_resource::<GridSuppressed>() {
-            if let Some(mut vp) = world.get_resource_mut::<renzora::core::viewport_types::ViewportSettings>() {
-                vp.show_grid = prev.0;
-            }
         }
     }
 }
@@ -79,9 +67,12 @@ pub(super) struct Init {
     pub(super) up_axis: usize,
     pub(super) layout: usize,
     pub(super) structure: usize,
-    /// Project directory tree for the destination picker: (rel_path, depth, name),
-    /// `rel_path` forward-slashed and relative to the project root (`""` = root).
-    pub(super) dest_folders: Vec<(String, usize, String)>,
+    /// The open project's root, which the destination picker walks. `None`
+    /// with no project open, and the picker is then not built at all.
+    pub(super) project_root: Option<std::path::PathBuf>,
+    /// Where the import currently targets, project-relative and
+    /// forward-slashed (`""` = project root), so the picker opens on it.
+    pub(super) target_dir: String,
     /// Sibling texture sets offered for a geometry-only queue: (stem, roles).
     /// Empty when the queue has no such model, which hides the row entirely.
     pub(super) texture_sets: Vec<(String, String)>,
@@ -91,10 +82,9 @@ pub(super) struct Init {
 impl Init {
     fn read(world: &Rx) -> Self {
         let s = world.resource::<ImportOverlayState>();
-        let dest_folders = world
+        let project_root = world
             .get_resource::<renzora::core::CurrentProject>()
-            .map(|p| scan_dest_dirs(&p.path))
-            .unwrap_or_default();
+            .map(|p| p.path.clone());
         let texture_sets = queue_texture_sets(s);
         let texture_set = s
             .settings
@@ -120,7 +110,8 @@ impl Init {
                 SceneStructure::FlatPerMesh => 1,
                 SceneStructure::Combined => 2,
             },
-            dest_folders,
+            project_root,
+            target_dir: s.target_directory.clone(),
         }
     }
 }
@@ -149,10 +140,13 @@ fn queue_texture_sets(s: &ImportOverlayState) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// When a file stages, open it: switch to the Scene tab, expand the roots so
-/// the tree is not a single collapsed line, and point the 3D preview at the
-/// staged GLB. When the verdict clears it, tear the preview down so its camera
-/// stops rendering.
+/// When a file stages, open it: expand the tree's roots so it is not a single
+/// collapsed line, and point the 3D preview at the staged GLB. When the verdict
+/// clears it, tear the preview down so its camera stops rendering.
+///
+/// The tab is left where the user put it. This used to switch to Scene on every
+/// staged file, which in a batch meant being thrown out of the Files list once
+/// per file as they finished converting.
 pub(super) fn on_staged_changed(world: &mut World) {
     let path = world
         .get_resource::<ImportOverlayState>()
@@ -175,7 +169,6 @@ pub(super) fn on_staged_changed(world: &mut World) {
             .map(|st| st.roots.clone())
             .unwrap_or_default();
         if let Some(mut nav) = world.get_resource_mut::<ImportNav>() {
-            nav.tab = ImportTab::Scene;
             nav.reset_selection();
             nav.expanded.extend(roots.into_iter().map(TreeItem::Node));
         }
@@ -223,102 +216,71 @@ pub(super) fn auto_start_import(world: &mut World) {
     run_import(world);
 }
 
-/// How long the settings have to stop changing before the window reconverts.
-/// Long enough to drag a scale field across its range as one edit rather than
-/// forty.
-const SETTINGS_SETTLE_SECS: f64 = 0.9;
-
-/// Reconvert when the import settings change under a staged model.
+/// Keep the settings rail honest about whether the model on screen was built
+/// with the values it is showing.
 ///
-/// Without this the settings rail would be dead controls after the first
-/// conversion: the model on screen was built with the old values, and the only
-/// thing that could rebuild it was the Reimport button this replaces. Making it
-/// automatic is what lets the window be "it converts, you adjust, you add".
+/// This used to *do* the reconversion, on a settle timer. That read well for
+/// the scale field and badly for everything else: ticking "Overdraw" in the
+/// Optimize group threw away a converted 900k-triangle scene and rebuilt it for
+/// half a minute, over an option that changes what is written rather than what
+/// is on screen. Flipping four of them in a row meant four rebuilds, and each
+/// one reset the preview camera.
 ///
-/// The destination counts as a setting here — the worker bakes the final paths
-/// into each staged import and into the `.material` writes it is holding, so
-/// pointing the window at another folder has to rebuild them too.
-pub(super) fn settings_watch(
-    world: &mut World,
-    mut seen: Local<Option<crate::overlay::ConvertedWith>>,
-    mut due: Local<Option<f64>>,
-) {
+/// So the reconvert is a button now (see `panes::build_reconvert_row`), and
+/// what is left here is the one thing that still has to happen automatically:
+/// once nothing is staged, the settings *are* what the next conversion will
+/// use, so the "stale" state has to clear rather than sit there claiming a
+/// rebuild is owed for a model that no longer exists.
+///
+/// The destination counts as a setting for this purpose — the worker bakes the
+/// final paths into each staged import and into the `.material` writes it is
+/// holding, so pointing the window at another folder genuinely does need a
+/// rebuild before Import means what it says.
+pub(super) fn settings_watch(world: &mut World) {
     let Some(state) = world.get_resource::<ImportOverlayState>() else {
         return;
     };
-    if !state.visible {
-        *seen = None;
-        *due = None;
-        return;
-    }
-    let now = crate::overlay::ConvertedWith {
-        settings: state.settings.clone(),
-        target_directory: state.target_directory.clone(),
-        layout: state.layout,
-    };
-    let changed_this_frame = seen.as_ref().is_some_and(|prev| *prev != now);
-    let differs = state.converted_with.as_ref().is_some_and(|c| *c != now);
-    let idle = state.active_task.is_none() && !state.reimport_requested;
-    let staged = !state.staged.is_empty();
-    *seen = Some(now);
-
-    let elapsed = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs_f64())
-        .unwrap_or(0.0);
-    if !differs {
-        // Back to what is already on disk — including a value edited away and
-        // then edited back, which needs no work at all.
-        *due = None;
-        return;
-    }
-    // Push the deadline out on every keystroke or drag tick, so a value being
-    // scrubbed reconverts once, when it settles.
-    if changed_this_frame || due.is_none() {
-        *due = Some(elapsed + SETTINGS_SETTLE_SECS);
-    }
-    let Some(at) = *due else { return };
-    // A change made *during* a conversion stays armed rather than being
-    // dropped: the run in flight is building the model with the old value, so
-    // the reconvert is still owed once it finishes.
-    if elapsed < at || !idle || !staged {
-        return;
-    }
-    *due = None;
-    crate::overlay::request_reimport(world);
-    if let Some(mut nav) = world.get_resource_mut::<ImportNav>() {
-        nav.reset_selection();
+    if state.staged.is_empty() && state.active_task.is_none() && state.converted_with.is_some() {
+        world.resource_mut::<ImportOverlayState>().converted_with = None;
     }
 }
 
-/// Header label reflecting the queue: uniform-kind queues get a specific title,
-/// empty / mixed queues get the generic "Import Assets".
-pub(super) fn import_title(w: &Rx) -> String {
-    use crate::kinds::{detect_kind, AssetKind};
-    let Some(state) = w.get_resource::<ImportOverlayState>() else {
-        return "Import Assets".to_string();
+/// Close the window once the last staged file has been dealt with and there is
+/// nothing left on its way in.
+///
+/// Pressing Import used to take the files and leave the window sitting there
+/// empty, which reads as a dialog that has failed to notice it is finished —
+/// and the corner toast, the asset browser scrolling to the new files and the
+/// thumbnails appearing all say more about the result than an empty modal does.
+/// A window with files still queued or converting stays up, because that one
+/// really does have something left to show.
+pub(super) fn close_when_finished(world: &mut World) {
+    let summary = {
+        let Some(s) = world.get_resource::<ImportOverlayState>() else {
+            return;
+        };
+        let quiet = s.visible
+            && s.staged.is_empty()
+            && s.pending_files.is_empty()
+            && s.active_task.is_none()
+            && !s.reimport_requested;
+        // Something has to have happened: a window the user has only just
+        // opened is in exactly this state and must stay open. A run that
+        // reported a failure keeps it open too, since the Results list in the
+        // rail is the only place that failure is written down.
+        let succeeded = !s.log_entries.is_empty() && s.log_entries.iter().all(|e| e.success);
+        if !(quiet && succeeded) {
+            return;
+        }
+        match s.log_entries.len() {
+            1 => "Imported 1 file".to_string(),
+            n => format!("Imported {n} files"),
+        }
     };
-    if state.pending_files.is_empty() {
-        return "Import Assets".to_string();
-    }
-    let kinds: Vec<AssetKind> = state
-        .pending_files
-        .iter()
-        .filter_map(|q| detect_kind(&q.path))
-        .collect();
-    let first = kinds.first().copied();
-    let uniform = first.is_some_and(|k| kinds.iter().all(|&x| x == k));
-    match first.filter(|_| uniform) {
-        Some(AssetKind::Model) => "Import 3D Models",
-        Some(AssetKind::Image) => "Import Images",
-        Some(AssetKind::Audio) => "Import Audio",
-        Some(AssetKind::Scene) => "Import Scenes",
-        Some(AssetKind::Particle) => "Import Particles",
-        Some(AssetKind::Material) => "Import Materials",
-        Some(AssetKind::Font) => "Import Fonts",
-        Some(AssetKind::Script) => "Import Scripts",
-        Some(AssetKind::GaussianSplat) => "Import Gaussian Splats",
-        None => "Import Assets",
-    }
-    .to_string()
+    // Hand the result to the corner toast on the way out, so closing the window
+    // is not the same as the import going unremarked.
+    crate::overlay::close_overlay(world);
+    let mut s = world.resource_mut::<ImportOverlayState>();
+    s.progress = ImportProgress::Done(summary);
+    s.toast_active = true;
 }

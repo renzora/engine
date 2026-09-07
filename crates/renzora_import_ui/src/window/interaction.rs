@@ -6,10 +6,38 @@ use crate::overlay::{close_overlay, ImportOverlayState, ImportProgress};
 
 use super::tree::{subtree_of, tree_row_parts};
 use super::{
-    CancelBtn, CommitBtn, DestFolderRow, DiscardAllBtn, FileBrowseBtn, FolderBrowseBtn, ImportNav,
-    ImportTab, MatRow, MeshRow, RemoveFileBtn, SkipBtn, StagedRow, TabBtn, TreeCheck, TreeItem,
-    TreeRow,
+    CancelBtn, CommitBtn, DiscardStagedBtn, FileBrowseBtn, FolderBrowseBtn, ImportNav, MatRow,
+    MeshRow, ReconvertBtn, RemoveFileBtn, StagedRow, TabBtn, TreeCheck, TreeItem, TreeRow,
 };
+
+/// Turn ember's folder pick into the import's target directory.
+///
+/// [`FolderPick`](renzora_ember::widgets::FolderPick) is a single global
+/// resource shared by every picker in the editor and it outlives the overlay
+/// that seeded it, so this is deliberately narrow: only while the import window
+/// is up, and only for a path that is actually inside the open project. A pick
+/// left behind by the marketplace's install dialog must not silently repoint an
+/// import.
+pub(super) fn dest_folder_sync(
+    pick: Option<Res<renzora_ember::widgets::FolderPick>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    mut state: Option<ResMut<ImportOverlayState>>,
+) {
+    let (Some(pick), Some(project), Some(state)) = (pick, project, state.as_mut()) else {
+        return;
+    };
+    if !state.visible {
+        return;
+    }
+    let Some(path) = pick.0.as_deref() else { return };
+    let Ok(rel) = path.strip_prefix(&project.path) else {
+        return;
+    };
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    if state.target_directory != rel {
+        state.target_directory = rel;
+    }
+}
 
 pub(super) fn tab_click(
     q: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
@@ -146,6 +174,11 @@ pub(super) fn mat_row_click(
 
 /// Switch the window to another staged model. Selections are per-file, so they
 /// reset — index 4 in one model is unrelated to index 4 in the next.
+///
+/// The tab is deliberately left alone. Clicking a row used to jump to Scene,
+/// which threw you out of the list you were working down every time you picked
+/// the next file out of it — the row's own highlight and the preview changing
+/// are the feedback that the click landed.
 pub(super) fn staged_row_click(
     q: Query<(&Interaction, &StagedRow), Changed<Interaction>>,
     mut state: Option<ResMut<ImportOverlayState>>,
@@ -153,23 +186,17 @@ pub(super) fn staged_row_click(
 ) {
     let Some(state) = state.as_mut() else { return };
     for (i, r) in &q {
-        if *i == Interaction::Pressed && r.0 < state.staged.len() {
-            let changed = state.active != r.0;
+        if *i == Interaction::Pressed && r.0 < state.staged.len() && state.active != r.0 {
             state.active = r.0;
             if let Some(nav) = nav.as_mut() {
-                if changed {
-                    nav.reset_selection();
-                }
-                // Always move to Scene, so clicking a row that is already
-                // active still does something visible rather than sitting dead.
-                nav.tab = ImportTab::Scene;
+                nav.reset_selection();
             }
         }
     }
 }
 
-/// Answer the blocked worker and reset the window back to its file-picking
-/// state, since the next staged file (if any) arrives fresh.
+/// Act on one staged file and keep the window's selection valid, since whatever
+/// takes its place at that index is a different model.
 fn decide(world: &mut World, decision: crate::staged::PreviewDecision) {
     if world.resource::<ImportOverlayState>().staged.is_empty() {
         return;
@@ -180,30 +207,62 @@ fn decide(world: &mut World, decision: crate::staged::PreviewDecision) {
     }
 }
 
+/// Import: take **every** staged file into the project, not just the one on
+/// show.
+///
+/// One button per file was the old shape, and it made a batch import a row of
+/// identical decisions the user had already made by queueing the files. What is
+/// left is per-file *rejection* (the trash on each row), which is the choice
+/// that actually differs between them.
 pub(super) fn commit_click(
     q: Query<&Interaction, (With<CommitBtn>, Changed<Interaction>)>,
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(|w: &mut World| decide(w, crate::staged::PreviewDecision::Commit));
+        commands.queue(|w: &mut World| {
+            // Always commit index 0: `apply_decision` removes what it takes, so
+            // the set shortens under the loop rather than being walked.
+            while !w.resource::<ImportOverlayState>().staged.is_empty() {
+                w.resource_mut::<ImportOverlayState>().active = 0;
+                decide(w, crate::staged::PreviewDecision::Commit);
+            }
+        });
     }
 }
 
-pub(super) fn skip_click(
-    q: Query<&Interaction, (With<SkipBtn>, Changed<Interaction>)>,
+/// The trash on a staged row: delete that one converted tree, leave the rest.
+pub(super) fn discard_staged_click(
+    q: Query<(&Interaction, &DiscardStagedBtn), Changed<Interaction>>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(|w: &mut World| decide(w, crate::staged::PreviewDecision::Skip));
-    }
+    let Some(index) = q
+        .iter()
+        .find(|(i, _)| **i == Interaction::Pressed)
+        .map(|(_, b)| b.0)
+    else {
+        return;
+    };
+    commands.queue(move |w: &mut World| {
+        if index >= w.resource::<ImportOverlayState>().staged.len() {
+            return;
+        }
+        w.resource_mut::<ImportOverlayState>().active = index;
+        decide(w, crate::staged::PreviewDecision::Skip);
+    });
 }
 
-pub(super) fn discard_all_click(
-    q: Query<&Interaction, (With<DiscardAllBtn>, Changed<Interaction>)>,
+/// Rebuild every staged file with the settings as they now stand.
+pub(super) fn reconvert_click(
+    q: Query<&Interaction, (With<ReconvertBtn>, Changed<Interaction>)>,
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(|w: &mut World| decide(w, crate::staged::PreviewDecision::CancelAll));
+        commands.queue(|w: &mut World| {
+            crate::overlay::request_reimport(w);
+            if let Some(mut nav) = w.get_resource_mut::<ImportNav>() {
+                nav.reset_selection();
+            }
+        });
     }
 }
 
@@ -278,15 +337,3 @@ pub fn pick_and_queue_folder(world: &mut World) -> bool {
     world.resource_mut::<ImportOverlayState>().enqueue(&assets)
 }
 
-/// Click a destination folder row → it becomes the import target directory.
-pub(super) fn dest_folder_click(
-    q: Query<(&Interaction, &DestFolderRow), Changed<Interaction>>,
-    mut state: Option<ResMut<ImportOverlayState>>,
-) {
-    let Some(state) = state.as_mut() else { return };
-    for (i, row) in &q {
-        if *i == Interaction::Pressed && state.target_directory != row.0 {
-            state.target_directory = row.0.clone();
-        }
-    }
-}

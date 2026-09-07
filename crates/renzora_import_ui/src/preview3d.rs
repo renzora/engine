@@ -25,9 +25,14 @@ use bevy::camera::{Hdr, RenderTarget};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::anti_alias::taa::TemporalAntiAliasing;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
-use bevy::light::{CascadeShadowConfig, CascadeShadowConfigBuilder};
+use bevy::core_pipeline::Skybox;
+use bevy::light::{
+    CascadeShadowConfig, CascadeShadowConfigBuilder, EnvironmentMapLight,
+    GeneratedEnvironmentMapLight,
+};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
+use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
@@ -49,8 +54,22 @@ use renzora::core::viewport_types::IMPORT_PREVIEW_LAYER as PREVIEW_LAYER;
 const RTT_W: u32 = 1280;
 const RTT_H: u32 = 800;
 
-/// How much of the frame the model's bounding sphere should fill.
-const FILL_FRACTION: f32 = 0.82;
+/// How much of the frame the model should fill on whichever axis binds.
+///
+/// Close to 1 because the fit is a real box fit against the real aspect: the
+/// old sphere fit could not go past ~0.8 without clipping, since for anything
+/// long and thin most of the sphere is empty space.
+const FILL_FRACTION: f32 = 0.95;
+/// The default view: a three-quarter angle looking slightly down on the model.
+///
+/// About 21°, which is enough for the grid to read as ground the model stands
+/// on rather than a couple of lines near its feet, and shallow enough that the
+/// model is still seen mostly from the *side*. The two are in tension and the
+/// balance moved twice: it looked flat at this pitch only because the framing
+/// was far too far away, and once the framing was fixed a steeper 27.5° was
+/// looking down at the roof of a car instead of at the car.
+const DEFAULT_YAW: f32 = 0.6;
+const DEFAULT_PITCH: f32 = 0.37;
 /// tan(half vertical FOV) for Bevy's default 45° perspective.
 const FOV_HALF_TAN: f32 = 0.4142;
 
@@ -75,6 +94,7 @@ pub struct ImportPreviewImage {
 struct ImportPreviewRig {
     camera: Entity,
     turntable: Entity,
+    grid: Entity,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -105,6 +125,27 @@ struct PreviewPivot;
 /// The one shadow-casting light, whose cascades follow the model's size.
 #[derive(Component)]
 struct PreviewKeyLight;
+/// One light of a preview's rig, remembering the illuminance it was built with
+/// so the Lights toggle has something to restore. Shared with the material
+/// preview.
+#[derive(Component)]
+pub(crate) struct PreviewRigLight {
+    pub(crate) illuminance: f32,
+}
+/// A ground grid on one of the preview layers. Shared with the material
+/// preview so [`apply_env`] drives both from the one Grid switch.
+#[derive(Component)]
+pub(crate) struct PreviewGrid;
+
+/// A camera whose environment [`apply_env`] owns. Both previews carry it, so
+/// the toolbar's switches mean the same thing in either.
+#[derive(Component)]
+pub(crate) struct PreviewEnvCamera;
+
+/// The studio cubemap, so the material preview lights its sphere from the same
+/// environment the model preview stands in rather than building a second one.
+#[derive(Resource)]
+pub(crate) struct StudioCubemap(pub(crate) Handle<Image>);
 
 /// Marker for the UI node the preview texture is drawn into. Camera input is
 /// gated on this node's `Interaction` rather than a geometric cursor test, so
@@ -137,16 +178,47 @@ pub struct ImportPreviewOrbit {
     snap: bool,
 }
 
+impl ImportPreviewOrbit {
+    /// Where the camera actually *is*, which is what an overlay describing the
+    /// view has to be drawn from. The target fields lead it by however much is
+    /// left of the current ease, so a gizmo drawn from those arrives at a
+    /// snapped view several frames before the model does.
+    pub fn smooth_yaw(&self) -> f32 {
+        self.smooth_yaw
+    }
+
+    pub fn smooth_pitch(&self) -> f32 {
+        self.smooth_pitch
+    }
+
+    /// The distance framing chose for this model, which zoom is bounded
+    /// against — an absolute limit would mean something different for a 20 cm
+    /// prop and a 200 m street.
+    pub fn framed_distance(&self) -> f32 {
+        self.framed_distance
+    }
+
+    /// Move to this view over the next few frames rather than cutting to it.
+    ///
+    /// Eased is what an overlay control wants: a jump between two axis views
+    /// tells you nothing about how they relate, and learning which way round
+    /// the model is is the whole point of clicking one. `snap` stays reserved
+    /// for framing, where there is no previous view worth relating to.
+    pub fn ease_to_view(&mut self) {
+        self.snap = false;
+    }
+}
+
 impl Default for ImportPreviewOrbit {
     fn default() -> Self {
         Self {
-            yaw: 0.6,
-            pitch: 0.35,
+            yaw: DEFAULT_YAW,
+            pitch: DEFAULT_PITCH,
             distance: 3.0,
             target: Vec3::ZERO,
             framed_distance: 3.0,
-            smooth_yaw: 0.6,
-            smooth_pitch: 0.35,
+            smooth_yaw: DEFAULT_YAW,
+            smooth_pitch: DEFAULT_PITCH,
             smooth_distance: 3.0,
             smooth_target: Vec3::ZERO,
             snap: true,
@@ -169,12 +241,14 @@ enum Drag {
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<ImportPreview>()
         .init_resource::<ImportPreviewOrbit>()
+        .init_resource::<ImportPreviewEnv>()
         .add_systems(Startup, setup)
         .add_systems(
             Update,
             (
                 sync_camera_active,
                 match_viewport_size,
+                apply_env,
                 poll_gltf,
                 isolate_selection,
                 frame_model,
@@ -184,6 +258,258 @@ pub(crate) fn register(app: &mut App) {
                 .chain(),
         )
         .add_observer(on_scene_ready);
+}
+
+/// How the preview is lit and what is behind it, which is the user's to choose.
+///
+/// An import preview shows models made for every kind of scene, and one fixed
+/// rig cannot serve them: a car's paint needs an environment to reflect before
+/// it reads as paint at all, while a hand-lit prop is easier to judge against
+/// nothing but the key. So the rig is three parts, and the toolbar over the
+/// viewport turns each on and off. All three are on by default — the defaults
+/// are what a model should look like, not a bare stage you have to assemble.
+#[derive(Resource)]
+pub struct ImportPreviewEnv {
+    /// The studio cubemap: image-based lighting, the sky it is drawn from, and
+    /// the backdrop behind it, as one switch.
+    ///
+    /// It was three, and each split was wrong for its own reason. The lighting
+    /// half changed a surface subtly enough that against the key light it read
+    /// as doing nothing at all. A visible sky with no reflections (or
+    /// reflections with no visible sky) is not a state anyone wants. And the
+    /// backdrop colour was only ever seen with the sky *off*, so it was a
+    /// control that appeared to do nothing until another one was changed
+    /// first. An environment is what you see and what lights you; there is one
+    /// switch for it.
+    pub environment: bool,
+    /// The three-point directional rig, and with it the only shadows.
+    pub lights: bool,
+    /// The ground the model stands on, which is what gives its size a scale to
+    /// be read against — a chair and a warehouse frame identically otherwise.
+    pub grid: bool,
+}
+
+impl Default for ImportPreviewEnv {
+    fn default() -> Self {
+        Self {
+            environment: true,
+            lights: true,
+            grid: true,
+        }
+    }
+}
+
+/// What the camera clears to, seen only with the environment switched off — the
+/// sky covers it otherwise.
+///
+/// Near-black on purpose. Switching the environment off is asking to see the
+/// model with the stage taken away, and leaving a bright backdrop behind was
+/// only half of that: it read as the sky having been swapped for a flat wall
+/// rather than removed. With this, off leaves the model and the grid and
+/// nothing else.
+const BACKDROP: Color = Color::srgb(0.08, 0.085, 0.10);
+
+/// How bright the studio environment lights the model when it is on.
+///
+/// In cd/m², against a key light of 9000 lux. High enough to open the shadow
+/// side up properly — the old `AmbientLight`-only fill was set when nothing
+/// else filled at all, and it left everything unlit reading as a silhouette.
+pub(crate) const ENV_INTENSITY: f32 = 1400.0;
+
+/// How bright the same cubemap is when it is *drawn* rather than sampled.
+///
+/// Also cd/m², and chosen so the numbers below mean something readable. Bevy's
+/// default camera exposure is `Exposure::BLENDER` (EV100 9.7), whose scale is
+/// `1 / (2^9.7 * 1.2)` ≈ 1/998 — so at 1000 the palette below lands on screen
+/// as very nearly the values written, and each one can be read as the colour it
+/// will be rather than as an offset into a curve.
+///
+/// It also keeps every channel under 1.0, which is the part that matters: the
+/// tonemapper desaturates what it compresses, and an earlier 1500 pushed a
+/// saturated blue past the knee and returned pale haze that read as fog.
+const SKYBOX_BRIGHTNESS: f32 = 1000.0;
+
+/// Apply [`ImportPreviewEnv`] to the rig. Cheap and unconditional rather than
+/// change-detected: it is three component writes over four entities, and the
+/// alternative is a `Changed` filter that misses the frame the camera spawns.
+fn apply_env(
+    mut commands: Commands,
+    env: Res<ImportPreviewEnv>,
+    mut cameras: Query<
+        (
+            Entity,
+            &mut Camera,
+            &mut GeneratedEnvironmentMapLight,
+            Option<&mut EnvironmentMapLight>,
+            Has<Skybox>,
+        ),
+        With<PreviewEnvCamera>,
+    >,
+    mut lights: Query<(&mut DirectionalLight, &PreviewRigLight)>,
+    mut grid: Query<&mut Visibility, With<PreviewGrid>>,
+) {
+    for (entity, mut cam, mut ibl, derived, has_skybox) in &mut cameras {
+        // The sky half: added and removed outright, unlike the lighting half
+        // below. `Skybox` is a standalone render pass rather than a mesh-view
+        // binding, so it is not subject to the bind-group-layout lock —
+        // `renzora_engine`'s shared-sky fan-out relies on the same thing.
+        // Toggling by `brightness` would not work here anyway: brightness zero
+        // paints black, which would swallow the backdrop colour.
+        if env.environment != has_skybox {
+            if env.environment {
+                commands.entity(entity).insert(Skybox {
+                    image: Some(ibl.environment_map.clone()),
+                    brightness: SKYBOX_BRIGHTNESS,
+                    rotation: Quat::IDENTITY,
+                });
+            } else {
+                commands.entity(entity).remove::<Skybox>();
+            }
+        }
+        // The lighting half: toggled by intensity, never by adding or removing
+        // the component. The camera's bind group layout is fixed the first
+        // frame it renders, with the IBL slots present only if the component
+        // was there — so attaching one later is a wgpu validation failure, not
+        // a relight.
+        let want = if env.environment { ENV_INTENSITY } else { 0.0 };
+        if ibl.intensity != want {
+            ibl.intensity = want;
+        }
+        // ...and written to the *derived* component as well, which is what
+        // actually made the toggle do something. `generate_environment_map_light`
+        // runs once, on a `Without<EnvironmentMapLight>` query: it copies the
+        // intensity into the `EnvironmentMapLight` it inserts and then never
+        // looks again, because the entity now has the component that filtered
+        // it out. Writing only the source left that copy frozen at whatever it
+        // was on the camera's first frame.
+        if let Some(mut derived) = derived {
+            if derived.intensity != want {
+                derived.intensity = want;
+            }
+        }
+        // `ClearColorConfig` is not `PartialEq`, so compare the colour we are
+        // about to write rather than the config wrapping it.
+        let current = match cam.clear_color {
+            ClearColorConfig::Custom(c) => Some(c),
+            _ => None,
+        };
+        if current != Some(BACKDROP) {
+            cam.clear_color = ClearColorConfig::Custom(BACKDROP);
+        }
+    }
+    for (mut light, rig) in &mut lights {
+        let want = if env.lights { rig.illuminance } else { 0.0 };
+        if light.illuminance != want {
+            light.illuminance = want;
+        }
+    }
+    for mut vis in &mut grid {
+        let want = if env.grid {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
+/// A studio cubemap, built rather than shipped.
+///
+/// Six 64px faces of a vertical gradient — a bright sky above, a warm horizon,
+/// a darker floor below — plus a soft hot spot where the key light is, so a
+/// glossy surface has a highlight to catch. It costs one 64×64×6 `Rgba16Float`
+/// image (192 KB) and no asset file, which matters because the alternative is
+/// an HDRI in the repo that every export template would then carry.
+fn studio_cubemap() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::image::Image as BevyImage;
+    use bevy::render::render_resource::TextureDimension;
+
+    const FACE: u32 = 64;
+    // +X, -X, +Y, -Y, +Z, -Z, each as (forward, up, right); the same basis the
+    // reflection-probe reprojection uses, so the two agree about orientation.
+    let faces: [(Vec3, Vec3, Vec3); 6] = [
+        (Vec3::X, Vec3::Y, Vec3::NEG_Z),
+        (Vec3::NEG_X, Vec3::Y, Vec3::Z),
+        (Vec3::Y, Vec3::NEG_Z, Vec3::X),
+        (Vec3::NEG_Y, Vec3::Z, Vec3::X),
+        (Vec3::Z, Vec3::Y, Vec3::X),
+        (Vec3::NEG_Z, Vec3::Y, Vec3::NEG_X),
+    ];
+    let mut image = BevyImage::new_fill(
+        Extent3d {
+            width: FACE,
+            height: FACE,
+            depth_or_array_layers: 6,
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 0, 0, 0, 0, 0],
+        TextureFormat::Rgba16Float,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    // Where the key light sits, so the environment agrees with it.
+    let key = Vec3::new(4.0, 6.0, 5.0).normalize();
+    for (layer, (forward, up, right)) in faces.iter().enumerate() {
+        for y in 0..FACE {
+            for x in 0..FACE {
+                let u = (x as f32 + 0.5) / FACE as f32 * 2.0 - 1.0;
+                let v = (y as f32 + 0.5) / FACE as f32 * 2.0 - 1.0;
+                let dir = (*forward + *right * u - *up * v).normalize();
+                // -1 (straight down) .. 1 (straight up).
+                let t = dir.y;
+                // Two bands with a horizon between them, not one ramp through a
+                // shared colour. Sky and floor each have their own pair of
+                // endpoints and never meet in the middle.
+                //
+                // Every earlier version failed the same way, and it is worth
+                // naming because it is not obvious: they lerped *outward from* a
+                // common horizon colour, so everything near the horizon was that
+                // one colour — and a camera framed on a model looks very
+                // slightly down, so it sees almost nothing but the horizon.
+                // Whatever that shared colour was became the entire backdrop and
+                // the interesting colours at the two extremes sat off-screen.
+                //
+                // The values are matched to the editor viewport's own sky, which
+                // is Bevy's procedural `Atmosphere` — pale haze at the horizon
+                // climbing to a light desaturated blue, over flat warm tan. They
+                // are *matched* rather than shared on purpose: the viewport's
+                // sky follows the project's World Environment, so borrowing it
+                // would make a preview look different depending on the time of
+                // day the user's scene is set to, and dark at midnight.
+                let sky = Vec3::new(0.86, 0.84, 0.76)
+                    .lerp(Vec3::new(0.42, 0.62, 0.82), t.max(0.0).powf(0.4));
+                // Warm tan, near-flat: the ground the model stands on, and the
+                // fill light on everything facing down. A dark floor here meant
+                // a sky over a pit and undersides that went to nothing.
+                let ground = Vec3::new(0.72, 0.62, 0.48)
+                    .lerp(Vec3::new(0.60, 0.51, 0.39), (-t).max(0.0).powf(0.7));
+                // Smoothstepped across a two-degree band rather than cut hard:
+                // a face is only 64px, so a hard edge stair-steps.
+                let k = ((t + 0.02) / 0.04).clamp(0.0, 1.0);
+                let base = ground.lerp(sky, k * k * (3.0 - 2.0 * k));
+                // A broad soft highlight around the key direction.
+                let hot = dir.dot(key).max(0.0).powf(24.0) * 2.4;
+                let c = base + Vec3::splat(hot);
+                let _ = image.set_color_at_3d(
+                    x,
+                    y,
+                    layer as u32,
+                    Color::linear_rgb(c.x, c.y, c.z),
+                );
+            }
+        }
+    }
+    // Six array layers is not by itself a cubemap. `GeneratedEnvironmentMapLight`
+    // does not care, but `Skybox` checks the *view* dimension and silently skips
+    // an image whose view is the default 2D-array — the only sign is a
+    // `warn_once!` and a backdrop that never appears.
+    image.texture_view_descriptor = Some(bevy::render::render_resource::TextureViewDescriptor {
+        dimension: Some(bevy::render::render_resource::TextureViewDimension::Cube),
+        ..default()
+    });
+    image
 }
 
 /// Read the preview texture for the UI binding.
@@ -238,7 +564,9 @@ fn despawn_scene(world: &mut World) {
     preview.framed = false;
 }
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+pub(crate) fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    let env_map = images.add(studio_cubemap());
+    commands.insert_resource(StudioCubemap(env_map.clone()));
     let size = Extent3d {
         width: RTT_W,
         height: RTT_H,
@@ -273,16 +601,23 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             },
             RenderTarget::Image(handle.into()),
             Transform::from_xyz(0.0, 0.7, 3.2).looking_at(Vec3::ZERO, Vec3::Y),
-            // Imported models often arrive with no environment map. Without a
-            // per-camera ambient lift their shadow side reads as crushed
-            // black, which looks like a broken import rather than a lighting
-            // choice.
+            // Real image-based lighting off a procedural studio cubemap.
+            // Attached here and only ever toggled by `intensity` (see
+            // `apply_env`): the camera's bind group layout is fixed on its
+            // first rendered frame with the IBL slots present only if this
+            // component was there, so adding one later is a wgpu validation
+            // failure rather than a relight.
+            GeneratedEnvironmentMapLight {
+                environment_map: env_map,
+                intensity: ENV_INTENSITY,
+                ..default()
+            },
+            // A flat ambient floor under the IBL. Small now that the
+            // environment does the real filling — it exists so that turning the
+            // environment off leaves a lit model rather than a silhouette.
             AmbientLight {
                 color: Color::srgb(0.85, 0.88, 1.0),
-                // Enough to keep the shadow side off pure black, but low
-                // enough that the key's shadows actually read. The old 350
-                // was set when nothing cast.
-                brightness: 160.0,
+                brightness: 120.0,
                 affects_lightmapped_meshes: false,
             },
             // TAA needs the motion-vector prepass above and `Msaa::Off`, both
@@ -291,7 +626,8 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             // metal and the foliage edges crawl.
             TemporalAntiAliasing::default(),
             RenderLayers::layer(PREVIEW_LAYER),
-            PreviewCamera,
+            // Grouped: the spawn is at the 16-element bundle-tuple limit.
+            (PreviewCamera, PreviewEnvCamera),
             IsolatedCamera,
             HideInHierarchy,
             EditorLocked,
@@ -336,6 +672,10 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
                 shadow_maps_enabled: shadows,
                 ..default()
             },
+            // The authored brightness, so the Lights toggle can put it back.
+            // Dimming to zero rather than hiding the entity keeps the light out
+            // of the visibility churn a scene spawn already causes.
+            PreviewRigLight { illuminance },
             transform,
             CascadeShadowConfigBuilder {
                 num_cascades: 4,
@@ -353,6 +693,30 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         ));
     }
 
+    // The ground grid, on the preview's own layer. The editor's grid entity is
+    // on layer 0 and the renderer honours `RenderLayers`, so the two never see
+    // each other — this one is sized to the model in `frame_model`, which the
+    // editor's (sized to the viewport camera's height) could never be.
+    let grid = commands
+        .spawn((
+            InfiniteGrid,
+            InfiniteGridSettings {
+                x_axis_color: Color::srgb(0.75, 0.35, 0.38),
+                z_axis_color: Color::srgb(0.35, 0.55, 0.85),
+                minor_line_color: Color::srgba(0.55, 0.58, 0.64, 0.42),
+                major_line_color: Color::srgba(0.72, 0.76, 0.82, 0.72),
+                fadeout_distance: 50.0,
+                dot_fadeout_strength: 0.25,
+                scale: 1.0,
+            },
+            RenderLayers::layer(PREVIEW_LAYER),
+            PreviewGrid,
+            HideInHierarchy,
+            EditorLocked,
+            Name::new("Import Preview Grid"),
+        ))
+        .id();
+
     let turntable = commands
         .spawn((
             Transform::default(),
@@ -365,7 +729,11 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         ))
         .id();
 
-    commands.insert_resource(ImportPreviewRig { camera, turntable });
+    commands.insert_resource(ImportPreviewRig {
+        camera,
+        turntable,
+        grid,
+    });
 }
 
 /// Only render while something is actually being previewed — an always-on
@@ -506,14 +874,19 @@ fn frame_model(
     rig: Option<Res<ImportPreviewRig>>,
     mut cascades: Query<&mut CascadeShadowConfig, With<PreviewKeyLight>>,
     mut transforms: Query<&mut Transform>,
+    // Separate from `transforms` (no `Transform` access) so the two queries
+    // cannot conflict on the grid entity, which both would otherwise match.
+    mut grid_settings: Query<&mut InfiniteGridSettings, With<PreviewGrid>>,
     children_q: Query<&Children>,
     aabb_q: Query<(&Aabb, &GlobalTransform)>,
     mesh_q: Query<(), With<Mesh3d>>,
+    target: Option<Res<ImportPreviewImage>>,
+    images: Res<Assets<Image>>,
 ) {
     if !preview.scene_ready || preview.framed {
         return;
     }
-    let (Some(_rig), Some(root)) = (rig, preview.scene_root) else {
+    let (Some(rig), Some(root)) = (rig, preview.scene_root) else {
         return;
     };
 
@@ -534,14 +907,25 @@ fn frame_model(
                 }
                 return;
             };
-            let centre = gt.transform_point(Vec3::from(aabb.center));
+            // The eight corners, transformed. This used to grow the bound by
+            // each mesh's *sphere* radius on every axis, which is fine for
+            // framing (it only over-pads) and wrong for anything that needs a
+            // real edge: the grid is placed at `min.y`, and a sphere radius
+            // below a wide flat model is a long way below its feet — the model
+            // hung in the air over its own floor.
+            let c = Vec3::from(aabb.center);
             let he = Vec3::from(aabb.half_extents);
-            // Conservative: scale the half-extent by the transform's largest
-            // axis rather than rotating the box, which is enough for framing.
-            let scale = gt.scale().abs().max_element();
-            let r = he.length() * scale;
-            min = min.min(centre - Vec3::splat(r));
-            max = max.max(centre + Vec3::splat(r));
+            for i in 0..8 {
+                let corner = c + he
+                    * Vec3::new(
+                        if i & 1 == 0 { -1.0 } else { 1.0 },
+                        if i & 2 == 0 { -1.0 } else { 1.0 },
+                        if i & 4 == 0 { -1.0 } else { 1.0 },
+                    );
+                let world = gt.transform_point(corner);
+                min = min.min(world);
+                max = max.max(world);
+            }
             found = true;
         }
         if let Ok(kids) = children_q.get(e) {
@@ -561,15 +945,65 @@ fn frame_model(
     if let Ok(mut t) = transforms.get_mut(root) {
         t.translation = -centre;
     }
-    // Pull back far enough that the bounding sphere fills FILL_FRACTION of the
-    // frame's vertical extent.
-    let distance = radius / (FOV_HALF_TAN * FILL_FRACTION);
-    orbit.yaw = 0.6;
-    orbit.pitch = 0.35;
+    let (yaw, pitch) = (DEFAULT_YAW, DEFAULT_PITCH);
+    // Fit the model's *box* as the default view sees it, not its bounding
+    // sphere.
+    //
+    // The sphere is what a turntable needs — it cannot clip a corner into frame
+    // whatever the spin — but nothing here spins, and for the shapes that
+    // actually get imported it wastes most of the frame. A car is long, low and
+    // thin: its bounding sphere is close to its *length*, so fitting the sphere
+    // to the frame height left the car occupying about a third of the width
+    // with the rest empty sky.
+    //
+    // For an axis-aligned box the projected half-extent along a screen axis is
+    // the dot of the box's half-extents with that axis's absolute components,
+    // which is exact and cheap.
+    let half = (max - min) * 0.5;
+    let (sy, cy) = yaw.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    // The camera's own basis at the default angle, from `apply_orbit`'s eye
+    // vector: it looks from `(cp*sy, sp, cp*cy)` back at the origin.
+    let forward = Vec3::new(-cp * sy, -sp, -cp * cy);
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    let up = right.cross(forward);
+    let extent = |axis: Vec3| half.x * axis.x.abs() + half.y * axis.y.abs() + half.z * axis.z.abs();
+    // The render target's real aspect, not an assumed one. `match_viewport_size`
+    // resizes it earlier in this same chain, so it is the panel's current shape
+    // — and it matters: the preview is a wide region, so a guessed square would
+    // hold every model back by the difference and waste most of the width.
+    let aspect = target
+        .and_then(|t| images.get(&t.handle).map(|i| i.size()))
+        .filter(|s| s.y > 0)
+        .map(|s| s.x as f32 / s.y as f32)
+        .unwrap_or(RTT_W as f32 / RTT_H as f32);
+    let need_v = extent(up) / (FOV_HALF_TAN * FILL_FRACTION);
+    let need_h = extent(right) / (FOV_HALF_TAN * aspect * FILL_FRACTION);
+    // Whichever axis binds. Fitting the box on both is what lets the fraction
+    // sit near 1 without clipping — the sphere fit could not go past ~0.8
+    // because for anything long and thin the sphere was mostly empty space.
+    let distance = need_v.max(need_h).max(radius * 0.05);
+    orbit.yaw = yaw;
+    orbit.pitch = pitch;
     orbit.distance = distance;
     orbit.framed_distance = distance;
     orbit.target = Vec3::ZERO;
     orbit.snap = true;
+
+    // Drop the grid to the model's *feet* — the recentred AABB's minimum Y — so
+    // the model stands on it rather than being bisected by a plane through its
+    // middle. `min` is measured before the recentre, hence the offset.
+    if let Ok(mut g) = transforms.get_mut(rig.grid) {
+        g.translation = Vec3::new(0.0, min.y - centre.y, 0.0);
+    }
+    // Scale the line spacing and the fade to the model, which is the whole
+    // reason this grid is not the editor's: a coin and a warehouse both need a
+    // floor that reads, and one fixed metre spacing gives one of them a blank
+    // plane and the other a grey haze. Roughly eight squares across the model.
+    if let Ok(mut s) = grid_settings.single_mut() {
+        s.scale = (4.0 / radius).clamp(0.02, 100.0);
+        s.fadeout_distance = (distance * 2.5).max(10.0);
+    }
 
     // Cascades cover the model plus headroom. Sized from the bounding sphere so
     // a 20 cm prop gets tight, detailed cascades and a 200 m street still gets
@@ -617,7 +1051,17 @@ fn isolate_selection(
     let (Some(state), Some(nav)) = (state, nav) else {
         return;
     };
-    let selection = nav.sel_item;
+    // Which list is driving. The Scene tab selects nodes, meshes and surfaces;
+    // the Meshes tab selects a mesh, and clicking one there should isolate it
+    // exactly as clicking it in the tree does — it is the same mesh and the
+    // same question ("what is this one?"). The other tabs isolate nothing: the
+    // Materials tab has the sphere in the centre instead, and Files and
+    // Destination are about the import as a whole.
+    let selection = match nav.tab {
+        crate::window::ImportTab::Scene => nav.sel_item,
+        crate::window::ImportTab::Meshes => nav.sel_mesh.map(crate::window::TreeItem::Mesh),
+        _ => None,
+    };
     if *last == Some(selection) {
         return;
     }

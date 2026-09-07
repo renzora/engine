@@ -9,6 +9,10 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 renzora_import = { path = "../renzora_import" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+# For the preview's ground grid only. The plugin itself is added once by
+# `renzora_grid::GridPlugin`; this crate just spawns an entity on its own layer,
+# the way the marketplace model viewer does.
+renzora_grid = { path = "../renzora_grid" }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

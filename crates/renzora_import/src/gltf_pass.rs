@@ -1378,7 +1378,7 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
 /// response at all, lit only by environment reflection, which renders a stone
 /// interior as a flat wash of the sky. Two Sketchfab scans did that; a
 /// conventional metal-rough model beside them was fine.
-fn pbr_block_is_default(pbr: &serde_json::Value) -> bool {
+pub(crate) fn pbr_block_is_default(pbr: &serde_json::Value) -> bool {
     let Some(o) = pbr.as_object() else {
         return true;
     };

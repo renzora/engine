@@ -107,11 +107,16 @@ defaults to the `dev` profile and creates a *second* full set of artefacts under
 ```sh
 cargo renzora            # build + stage + run   ← the normal way to work
 cargo renzora xr         # same, but XR-capable (headset editing; not pipelined)
-cargo renzora dist       # build + stage, don't launch
 cargo check  --profile dist [-p <crate>]
 cargo clippy --profile dist [-p <crate>]
 cargo test   --profile dist -p <crate>
 ```
+
+**To build or test, always use `cargo renzora`, never `cargo renzora dist`.**
+The two build the same thing; the difference is that `dist` stops after staging
+and `cargo renzora` launches what it built. Stopping short means the change is
+never seen running, which is the only thing that tells you it worked — a build
+that compiles is not a change that works. Use `cargo renzora`.
 
 **Why this is a hard rule and not a preference.** On 2026-08-11 `target/` reached
 **314.5 GB** and filled a 929 GB disk to 1.38 GB free, because `dev` and `dist`
@@ -617,7 +622,9 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 - **`cargo renzora` to build and run, `cargo check --profile dist` /
   `cargo clippy --profile dist` to iterate, `renzora test` to verify.** Docker is
   for cross-compiling export templates, not for installing the engine on your own
-  machine.
+  machine. Building or testing means **`cargo renzora`**, never
+  `cargo renzora dist` — the plain form launches what it built, and a change that
+  is never seen running has not been checked (§2).
 - **Never build the `dev` profile.** Every cargo command takes `--profile dist`;
   a bare one creates a second 300 GB `target/debug/` and a full disk shows up as
   nonsense compile errors in untouched crates, not as a disk error (§2).

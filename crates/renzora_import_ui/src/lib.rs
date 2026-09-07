@@ -34,7 +34,7 @@ impl Plugin for ImportPlugin {
                 .init_resource::<renzora::core::FileDragHovering>()
                 .init_resource::<renzora::core::ImportInPlaceQueue>()
                 .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain())
-                .add_systems(Update, drain_import_in_place_queue);
+                .add_systems(Update, (drain_import_in_place_queue, sweep_stale_staging));
             window::register(_app);
             preview3d::register(_app);
             matpreview::register(_app);
@@ -175,10 +175,16 @@ fn collect_dropped_files(
     // De-dup + unit-scale detection live on the state itself so this path and
     // the overlay's Browse buttons can't drift apart.
     state.enqueue(&dropped);
-    // When the user hasn't opted into silent auto-import, a drop opens the
-    // modal so they can confirm; otherwise the orchestrator imports silently.
+    // When the user hasn't opted into silent auto-import, a drop of something
+    // that *has* an inspection opens the modal so they can confirm; otherwise
+    // the orchestrator imports silently. A texture, a sound or a script has no
+    // conversion, no scene tree and no preview — the window would be a
+    // confirmation dialog over a file copy.
     let auto_import = settings.map(|s| s.auto_import_on_drop).unwrap_or(true);
-    if !auto_import {
+    let has_model = dropped
+        .iter()
+        .any(|q| renzora_import::formats::detect_format(&q.path).is_some());
+    if !auto_import && has_model {
         state.visible = true;
     }
 }
@@ -232,17 +238,30 @@ fn import_orchestrate_system(world: &mut World) {
             overlay::ImportProgress::Error(_)
         );
         if picked || has_pending || reported {
-            world.resource_mut::<overlay::ImportOverlayState>().visible = true;
+            // The window is the *model inspector*: a scene tree, a preview, and
+            // per-mesh include boxes. A queue of textures, sounds, fonts or
+            // scripts has none of those — importing one is a file copy — so
+            // that queue takes the silent path with the corner toast, exactly
+            // as a drag-and-drop of the same files does. Opening a modal to
+            // confirm a copy is the thing this window was doing wrong.
+            let idle = world
+                .resource::<overlay::ImportOverlayState>()
+                .active_task
+                .is_none();
+            let inspectable = has_pending_model(world);
+            {
+                let mut state = world.resource_mut::<overlay::ImportOverlayState>();
+                // An error worth reading opens the window whatever is queued;
+                // it is the only place that message is shown.
+                state.visible = inspectable || reported;
+                state.toast_active = !state.visible && idle;
+            }
             // Start converting straight away. Every model stages to the project
             // cache and blocks for a verdict, so the work is already done by the
             // time the user has finished looking at it and accepting is a
             // same-volume rename. Making them click Import first would only add
             // a wait between choosing a file and seeing it.
-            let idle = world
-                .resource::<overlay::ImportOverlayState>()
-                .active_task
-                .is_none();
-            if idle && has_pending_model(world) {
+            if idle && has_pending {
                 overlay::run_import(world);
             }
         }
@@ -285,6 +304,30 @@ fn import_orchestrate_system(world: &mut World) {
             state.log_entries.clear();
         }
     }
+}
+
+/// Clear the project's import staging directory when a project opens.
+///
+/// Nothing can be staged at that moment, which is what makes a blanket delete
+/// safe — and it is the only moment that is true. An import abandoned by
+/// quitting, crashing or being killed leaves its whole converted tree behind
+/// (see [`crate::staged::sweep_staging`]), and until this ran nothing ever
+/// collected it.
+///
+/// Keyed on the project path rather than `Res::is_changed`, because the
+/// resource is touched for reasons that are not "a different project is now
+/// open", and re-sweeping mid-session would delete a live staged import.
+#[cfg(not(target_arch = "wasm32"))]
+fn sweep_stale_staging(
+    project: Option<Res<renzora::core::CurrentProject>>,
+    mut swept: Local<Option<std::path::PathBuf>>,
+) {
+    let Some(project) = project else { return };
+    if swept.as_deref() == Some(project.path.as_path()) {
+        return;
+    }
+    crate::staged::sweep_staging(&project.path);
+    *swept = Some(project.path.clone());
 }
 
 /// True when the queue holds at least one model — only those are converted and
