@@ -92,7 +92,10 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::Wrap,
-            column_gap: Val::Px(8.0),
+            // Percent, so it adds up with the cards' percentage basis below to
+            // exactly four per row at every width. Same grid as Settings →
+            // Plugins, same arithmetic.
+            column_gap: Val::Percent(1.0),
             row_gap: Val::Px(8.0),
             ..default()
         })
@@ -167,15 +170,18 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                     .spawn((
                         Node {
                             // Four columns, expressed as a percentage basis
-                            // rather than a pixel one. 22% × 4 = 88%, and the
-                            // three 8px gaps between them fit in the remaining
-                            // 12% at any realistic panel width — so four wrap
-                            // onto a row and a fifth cannot, whatever the dialog
-                            // is resized to. `flex_grow` then shares the leftover
-                            // space so the row still fills edge to edge. A pixel
-                            // basis would give four columns at exactly one width.
-                            flex_basis: Val::Percent(22.0),
-                            flex_grow: 1.0,
+                            // rather than a pixel one: 24% × 4 = 96%, plus the
+                            // three 1% gaps the row sets, plus 1% of slack for
+                            // rounding. Four wrap onto a row and a fifth cannot,
+                            // whatever the dialog is resized to. A pixel basis
+                            // would give four columns at exactly one width.
+                            //
+                            // No `flex_grow`: it shares leftover space per
+                            // *line*, so the last line — often one card — took
+                            // the whole width and the grid ended in one card
+                            // four times the size of the rest.
+                            flex_basis: Val::Percent(24.0),
+                            flex_grow: 0.0,
                             min_width: Val::Px(0.0),
                             flex_direction: FlexDirection::Column,
                             row_gap: Val::Px(6.0),

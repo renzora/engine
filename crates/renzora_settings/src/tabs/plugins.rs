@@ -96,7 +96,11 @@ pub(crate) fn plugins_section(
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
                 flex_wrap: FlexWrap::Wrap,
-                column_gap: Val::Px(8.0),
+                // Percent, so it adds up with the cards' percentage basis to
+                // exactly four per row at every width (see `plugin_card`). A
+                // pixel gap beside a percentage card is arithmetic that only
+                // works out at one panel width.
+                column_gap: Val::Percent(1.0),
                 row_gap: Val::Px(8.0),
                 padding: UiRect::all(Val::Px(8.0)),
                 ..default()
@@ -204,10 +208,11 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     let root = commands
         .spawn((
             Node {
-                // Four columns, and a percentage basis is what pins it there.
-                // 22% × 4 = 88%, leaving 12% for the three 8px gaps at any
-                // realistic panel width — so four fit on a row and a fifth
-                // cannot, whatever the settings pane is resized to.
+                // Four columns, and a percentage basis is what pins it there:
+                // 24% × 4 = 96%, leaving the three 1% gaps (the row sets them in
+                // percent too, so this arithmetic holds at any panel width) and
+                // 1% of slack against sub-pixel rounding. Four fit on a row and
+                // a fifth cannot, whatever the settings pane is resized to.
                 //
                 // A pixel basis was the previous attempt and is why this comment
                 // exists: `flex_basis` is what the wrap decision measures, so a
@@ -216,10 +221,15 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
                 // ragged empty column it replaced (a fixed 210 px card) was the
                 // same problem one step earlier.
                 //
-                // `flex_grow` still shares the leftover space, so a row fills the
-                // panel rather than leaving the remainder at its right edge.
-                flex_basis: Val::Percent(22.0),
-                flex_grow: 1.0,
+                // **No `flex_grow`.** It shared the leftover space so a row would
+                // fill the panel, which is right for a full row and wrong for the
+                // last one: flex distributes that space per *line*, so a line
+                // holding one card gave it the whole width. The grid ended in a
+                // single card four times the size of every other. A card is a
+                // fixed share of the row now, and a short last row simply stops
+                // early — which is what a grid does.
+                flex_basis: Val::Percent(24.0),
+                flex_grow: 0.0,
                 // Without this a long plugin name pushes the card wider than its
                 // share and the row wraps one card early.
                 min_width: Val::Px(0.0),

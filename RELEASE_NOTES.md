@@ -1,6 +1,141 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(shell): the editor leaves when it is told to. Quitting, **Restart Editor**
+  after installing a plugin, and the update handoff all went through
+  `std::process::exit`, which is not "exit now": it runs libc's atexit chain and
+  then every loaded shared object's destructors first. Measured from an AppImage
+  build with a project open, that was **7.6 seconds** from the decision to the
+  process actually being gone, against 0.4 s for the same teardown done by the
+  kernel alone. Restart spawns the successor before that stall, which is why a
+  restart put a second editor on screen beside the first one instead of
+  replacing it. All three paths now exit immediately, and a restart from an
+  AppImage relaunches the `.AppImage` rather than the executable inside its own
+  disappearing mount.
+- fix(shell): `Alt+F4`, the taskbar's Close and the window manager's × close the
+  editor the way its own × does. Bevy answered those by despawning the window,
+  which skipped both halves of the editor's quit: the unsaved-changes prompt
+  (edits went silently) and the fast exit (the World unwound the slow way, with
+  the window already gone).
+- fix(export, settings): the plugin grid stops ending in one giant card. The
+  cards shared out leftover row space, and flex shares it per row, so a last row
+  holding one card handed it the full width. Four equal columns now, however
+  many are on the final row.
+- feat(setup): the plugin-building window that comes up before the editor now
+  looks like the splash screen it precedes: the same title bar, with the icon,
+  the product name, the version and the window controls, in place of the OS
+  frame that said "setup". The "Setting up Renzora" heading is gone (the bar
+  says the name), the progress bar is taller, the caption above it is bigger,
+  and the build log fills the window instead of ending in a band of dead space.
+- fix(export): the save-before-export prompt gets the padding, the sizing and
+  the accent on "Save and export" that every other confirmation in the editor
+  has. Its message sat flush against the card border, and the two buttons read
+  as interchangeable.
+- fix(physics): stairs, ramps, wedges and seventeen other building blocks get a
+  collider shaped like the mesh instead of one shaped like its bounding box.
+  `stairs` was a solid unit cuboid, so a flight scaled to 6 x 13.6 x 14 was a
+  13.6 m vertical wall at the bottom step with a flat lid floating over the
+  treads: it could be neither walked up nor jumped onto, and the parkour probe
+  saw one ledge too high to mantle where six climbable ones were drawn. A ramp
+  was a flat slab, a doorway was a solid panel filling its own opening, pipes
+  and torus and funnel were solid, and a hemisphere's collider sank half a
+  sphere below the floor it stood on. All now default to a trimesh. Existing
+  scene objects keep whatever was saved with them; switch the shape to Mesh in
+  the Physics inspector to pick up the fix.
+- fix(scripting): a Rust script that fails to compile now says so in the
+  Problems panel, against the file and on the line rustc named. It only ever
+  reached the Console and the log before, so the panel went on reporting the
+  file as clean while the editor quietly kept running the last good build:
+  every save appeared to do nothing, with no surface anywhere saying why.
+- fix(console): `read_console` returns what the Console panel is showing. It
+  read the global log buffer, which is a one-frame handoff queue the Console
+  drains empty on every frame, so it reported an empty console however much had
+  been logged. The Console now mirrors what it ingests into a history that
+  nothing drains, and that is what the tool reads.
+- fix(parkour): climbing down a ladder no longer drops the character through
+  the world. A ladder climb warps the character, which does no collision at
+  all, and the only guard at the bottom was the probe's grounded flag — which
+  the auto-attach re-grab defeated: stepping off re-mounted the same ladder on
+  the very next frame (the cooldown for exactly this was written and never
+  read), and one climb step then took the capsule from above a thin floor slab
+  to penetrating it, where `ignore_origin_penetration` makes the grounded cast
+  report nothing at all. From that frame the descent was unbounded; measured
+  63 m below a 12 mm ground plane, still climbing. The climb is now bounded by
+  the ladder's own collider, unioned over its subtree so an imported model
+  counts, which needs no floor to be there at all: a ladder over a gap or a
+  hatch ends where the ladder ends. Stepping off now also holds the
+  `auto_attach` cooldown it always set.
+- fix(parkour): a mantle now scales to what it is climbing. Both the duration
+  and the arc were constants, so stepping onto a kerb took the same
+  `mantle_duration` as hauling over a 2.3 m wall and lifted the character the
+  same 0.35 m above the destination on the way up — on a low lip the overshoot
+  alone could be most of the height being climbed, which reads as a slow floaty
+  hop over something you should have stepped onto. Both now scale with the
+  rise, floored at 30% so a shallow climb does not become a teleport and the
+  arc still clears the lip.
+- feat(parkour): the diagnostic gizmos now highlight the *surface* an action
+  would use, not just the point the probe found it at. A vault or mantle
+  hatches the top face it would clear or land on, a wall run hatches the
+  stretch of wall it would ride (grey when the wall is only jumpable), a ladder
+  is marked over its climbable height, and a rope anchor in range draws its
+  swing arc. A cross told you the controller found *something*; these say which
+  surface it resolved to, which is the question when a mantle aims at the wrong
+  shelf or a `Parkour Ladder` sits on the wrong ancestor. Rope anchors are
+  found by proximity rather than the forward probe, so they never appear in
+  `ParkourProbe` and are queried directly.
+- fix(scene): instancing a scene whose path is also the Boot Scene is no longer
+  refused as a reference cycle. `spawn_scene_instance`'s guard compared the
+  source against `main_scene` rather than the scene being edited, so dropping a
+  character prefab into a level while that prefab was still set as Boot Scene
+  looked like a self-reference and was declined — and a genuine cycle in the
+  open scene went unnoticed for the same reason. Both now compare against
+  `editor_last_scene`. Same root cause as the save fix below: `main_scene`
+  answers "what does a game boot into", and three places were using it to mean
+  "what am I editing".
+- fix(scene): pressing Play no longer overwrites an unrelated scene file.
+  `save_current_scene` — what the play-mode pre-save and the editor's
+  `SaveCurrentScene` event both go through — wrote to `main_scene`
+  unconditionally, never consulting the tabs. That is only correct while the
+  boot scene and the open scene happen to be the same file. With `main_scene`
+  pointing anywhere else, every press of Play serialized the whole scene being
+  edited over the top of it: silently, once per press, into a file the user was
+  not looking at. It now targets `editor_last_scene`, the active scene tab's
+  path and the same source `Ctrl+S` already used, falling back to `main_scene`
+  when there is no scene tab.
+- fix(scripts): a Rust script outside `scripts/` rebuilds on save. The watcher
+  polled `<project>/scripts/` flat while `collect_project_scripts` — the walk
+  the project-open build and the exporter share — covered the whole tree, so a
+  script kept beside the model it drives compiled at startup and shipped in an
+  export but silently stopped hot-reloading: the edit did nothing, the previous
+  image stayed loaded, and nothing was logged. The watcher now uses the same
+  walk, and tracks mtimes by path rather than by file name so two folders may
+  each hold a `player.rs`.
+- feat(parkour): `ParkourInput` is reflected and registered, so the Inspector
+  shows what a character is being *asked* to do — `move_dir`, `sprint` and the
+  three buffered one-shots — beside the `ParkourReadState` that says what it
+  did. A character that will not move looks the same whether the script never
+  called `parkour_move()` or called it and the controller declined; this is the
+  one place that distinction exists. It also lets a tool drive the controller
+  without a keyboard.
+- fix(animation): a side-loaded `.anim` now binds to its skeleton every time,
+  instead of roughly half the time. A track is routed to a bone by name, but the
+  importer wrote the source's spelling (`mixamorig:Hips`) while
+  `enforce_entity_ids` renamed the live entity to its canonical form
+  (`mixamorig_hips`) a frame or so later, unordered against the systems that
+  tag bones. Tag first and every curve bound; rename first and none did, and
+  `ensure_animation_targets` froze the loser because it only ever filled in
+  *absent* ids. The symptom was a character stuck in its bind pose while the
+  animator, the current clip and the timeline all reported the clip playing —
+  none of which can see whether a curve found a bone. Both sides now go through
+  `renzora_animation::bone_target`, which normalizes with the same `sanitize_id`
+  the rename uses; it is idempotent, so the two spellings collapse onto one key
+  and the ordering stops mattering. Retargeting is unaffected: the key is still
+  the bone name and nothing else, which is what lets one `.anim` drive a
+  skeleton imported from a different file.
+- feat(assets): animation clips get their own icon and colour. A `.anim` shows
+  the same runner glyph the hierarchy puts on an animated entity and a `.animsm`
+  a node tree, both in teal, and an `animations/` folder takes that teal too.
+  They previously fell through to the generic page icon and an "ANIM" label.
 - feat(release): every nightly and release now refreshes the browser build at
   renzora.com/engine. The `website` job dispatches the tag to renzora/website,
   which pulls `web-wasm32.zip` onto the droplet and swaps it in behind a
