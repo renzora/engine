@@ -1,6 +1,8 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(ember): a flat numeric field shows a selection highlight when you click
+  it, so you can tell it is being edited.
 - feat(ember): a numeric field with a range fills with colour as its value
   rises, instead of showing a rail and grabber along its bottom edge.
 - fix(ember): scrubbing a ranged numeric field no longer runs its fill ahead of

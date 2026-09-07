@@ -59,8 +59,10 @@ pub(crate) struct EmberDragValue {
     /// first keystroke (or Delete/Backspace) replaces it wholesale (Godot-style).
     select_all: bool,
     /// Full-field highlight shown while `select_all` (the "everything selected"
-    /// look); `None` for the flat variant.
-    highlight: Option<Entity>,
+    /// look). Every variant has one: it is the only thing a *flat* field can
+    /// show to say it is being edited, having neither a border nor a background
+    /// to put a focus ring on.
+    highlight: Entity,
     /// A thin vertical-line text caret, shown while editing (and not selected) so
     /// an emptied field reads as a cursor rather than a lone axis label.
     caret: Entity,
@@ -357,29 +359,33 @@ fn drag_value_impl(
 
     // Full-field selection highlight (behind the text), shown only while the
     // freshly-clicked value reads as "selected". Hidden by default.
-    let highlight = if flat {
-        None
-    } else {
-        Some(
-            commands
-                .spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(0.0),
-                        top: Val::Px(0.0),
-                        right: Val::Px(0.0),
-                        bottom: Val::Px(0.0),
-                        display: Display::None,
-                        border_radius: BorderRadius::all(Val::Px(3.0)),
-                        ..default()
-                    },
-                    BackgroundColor(rgb(accent()).with_alpha(0.35)),
-                    bevy::ui::FocusPolicy::Pass,
-                    Name::new("drag-value-highlight"),
-                ))
-                .id(),
-        )
-    };
+    //
+    // **Both variants get one**, unlike the value fill above. The fill is a
+    // gauge and needs a field to be drawn inside, which is why the flat variant
+    // has none; this is a *text-editing* affordance and needs nothing but the
+    // box every variant already has. Skipping it for flat meant a flat field
+    // had no editing indicator whatsoever: it has no border and no background
+    // to draw a focus ring on, and the caret is deliberately hidden while the
+    // whole value is selected — so clicking one of the toolbar's snap steps or
+    // the camera-speed field put it in an editing state with nothing at all on
+    // screen to say so, until the first keystroke replaced the selection.
+    let highlight = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent()).with_alpha(0.35)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("drag-value-highlight"),
+        ))
+        .id();
 
     // A thin vertical-line caret to the right of the value while editing.
     let caret = commands
@@ -406,9 +412,7 @@ fn drag_value_impl(
     if let Some((well, _)) = fill {
         kids.push(well);
     }
-    if let Some(h) = highlight {
-        kids.push(h);
-    }
+    kids.push(highlight);
     if !axis.is_empty() {
         kids.push(text_node(commands, font, axis, 11.0, axis_color));
     }
@@ -824,16 +828,14 @@ pub(crate) fn drag_value_edit(
         // Sync the full-field selection highlight + the caret to the final state.
         // While everything is selected the highlight shows (no caret); once the
         // selection is replaced the caret takes over.
-        if let Some(h) = dv.highlight {
-            if let Ok(mut n) = nodes.get_mut(h) {
-                let d = if dv.editing && dv.select_all {
-                    Display::Flex
-                } else {
-                    Display::None
-                };
-                if n.display != d {
-                    n.display = d;
-                }
+        if let Ok(mut n) = nodes.get_mut(dv.highlight) {
+            let d = if dv.editing && dv.select_all {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if n.display != d {
+                n.display = d;
             }
         }
         if let Ok(mut n) = nodes.get_mut(dv.caret) {
