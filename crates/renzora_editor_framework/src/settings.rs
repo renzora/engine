@@ -301,6 +301,18 @@ pub struct EditorSettings {
     /// you are on, not of the game.
     pub doc_tabs_dropdown: bool,
 
+    /// What the global bottom panel does after an asset drag that auto-hid it.
+    ///
+    /// Dragging a file out of the Assets tab slides the panel shut so you can
+    /// see what you are aiming at. `true` (the shipped behaviour) brings it back
+    /// when you let go; `false` leaves it closed, for the workflow where the
+    /// drag *was* the reason the panel was open and having it spring back over
+    /// the thing you just dropped is the opposite of what you want.
+    ///
+    /// Only governs the panel the drag hid itself. A drag that starts with the
+    /// panel already closed never opens it either way.
+    pub bottom_panel_reopen_after_drag: bool,
+
     /// Max entries the editor console retains before dropping the oldest. Small
     /// by default (100) because the console panel spawns a UI row per entry, so
     /// a long backlog costs frames. Pushed into the shared log buffer's cap by
@@ -383,6 +395,7 @@ impl Default for EditorSettings {
             code_word_wrap: false,
             code_open_switch_layout: false,
             doc_tabs_dropdown: false,
+            bottom_panel_reopen_after_drag: true,
             console_log_limit: renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES,
         }
     }

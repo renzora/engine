@@ -66,10 +66,10 @@ pub(crate) struct BottomDock {
 /// gone with it.
 ///
 /// Opening always goes to [`default_open_height`] rather than to the height the
-/// panel last had, for the same reason clicking a collapsed tab does: the
-/// remembered height can be anything, including the near-minimum a drag-to-close
-/// leaves behind, and a shortcut that opens the panel to a sliver reads as
-/// broken. The chevron is the control that reopens at the remembered height.
+/// panel last had, for the same reason clicking a collapsed tab does: a
+/// shortcut is a request to *see* the panel, and the remembered height can be
+/// as little as the minimum if that is where you last left it. The chevron is
+/// the control that reopens at the remembered height.
 pub(crate) fn toggle_bottom_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Option<Res<KeyBindings>>,
@@ -230,9 +230,16 @@ const BOTTOM_DOCK_REVEAL_BAND: f32 = 48.0;
 ///
 /// It writes `open` and nothing else, so the panel *slides* out of the way
 /// rather than blinking, and every other system continues to see one ordinary
-/// open/closed panel. The state the drag found is restored when the drag ends,
-/// wherever it was dropped — an auto-hide that outlived its gesture would just
-/// be the panel closing itself for no reason the user can see.
+/// open/closed panel.
+///
+/// What happens at the end of the gesture is
+/// [`EditorSettings::bottom_panel_reopen_after_drag`]. By default the state the
+/// drag found is restored, because an auto-hide that outlived its gesture is
+/// the panel closing itself for no reason the user can see. Turned off, the
+/// panel stays shut — for the workflow where the drag *was* what the panel was
+/// open for, and having it spring back over the thing you just dropped is the
+/// opposite of helpful. Either way the panel is only ever left in a state this
+/// system put it in: a drag that began with it closed still never opens it.
 ///
 /// Shape-library drags are included because that panel is a bottom-panel tab
 /// too, and the gesture — drag out of the bottom panel, aim at the viewport — is
@@ -240,6 +247,7 @@ const BOTTOM_DOCK_REVEAL_BAND: f32 = 48.0;
 pub(crate) fn bottom_dock_drag_reveal(
     asset_drag: Option<Res<renzora_ui::AssetDragPayload>>,
     shape_drag: Option<Res<renzora_ui::ShapeDragState>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     wraps: Query<(&ComputedNode, &UiGlobalTransform), With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
@@ -250,8 +258,14 @@ pub(crate) fn bottom_dock_drag_reveal(
     let dragging = asset_drag.is_some_and(|d| d.is_detached)
         || shape_drag.is_some_and(|s| s.dragging_shape.is_some());
     if !dragging {
+        // `take` regardless of the setting: the flag is what says "this system
+        // hid the panel", and leaving it set would make the *next* drag think
+        // it was already mid-hide and skip its own open check.
         if let Some(open) = hide.restore.take() {
-            bottom.open = open;
+            let reopen = settings.is_none_or(|s| s.bottom_panel_reopen_after_drag);
+            if reopen {
+                bottom.open = open;
+            }
         }
         return;
     }
@@ -786,6 +800,20 @@ pub(crate) fn bottom_dock_resize_drag(
         // px would play a transition *behind* a cursor that has finished
         // moving, and read as lag rather than as the panel leaving.
         bottom.slide = 0.0;
+        // Forget the sliver. `height` is the *remembered* height — what the
+        // collapsed strip's chevron reopens to — and the last value this drag
+        // wrote is a few px above the minimum, which is not a height anyone
+        // chose. It is the shape the panel passed through on its way out. Left
+        // there, dragging the panel shut and then reopening it gave you a
+        // sliver, and the panel looked broken rather than closed.
+        //
+        // The collapse *button* deliberately leaves `height` alone, which is
+        // what makes the chevron a restore: press it and you get back the
+        // panel you had. This gesture has no such height to keep, so it hands
+        // back the default instead.
+        if let Some(h) = default_open_height(&wraps) {
+            bottom.height = h;
+        }
         resize.active = None;
         return;
     }
@@ -1052,9 +1080,8 @@ pub(crate) fn collapsed_bottom_tab_click(
         bottom.open = true;
         // Open to the standard share of the dock region rather than the height
         // it last had. Clicking a *tab* is a request to look at that panel, and
-        // the remembered height could be anything — including the near-minimum a
-        // drag-to-close leaves behind, which would reopen to a sliver of the
-        // panel the click was asking to see.
+        // reopening at a minimum-height remembered from last time would show a
+        // sliver of the very panel the click was asking to see.
         if let Some(h) = default_open_height(&wraps) {
             bottom.height = h;
         }
@@ -1066,6 +1093,11 @@ pub(crate) fn collapsed_bottom_tab_click(
 
 /// Click the collapsed strip's open chevron → open the bottom panel at its
 /// remembered height.
+///
+/// "Remembered" is only ever a height the panel was actually left at: the
+/// gestures that close it *without* choosing one — the snap-shut drag — put the
+/// default back on the way out, so this can restore unconditionally without
+/// having to know which of them ran.
 pub(crate) fn collapsed_bottom_open_click(
     btns: Query<&Interaction, (With<CollapsedBottomOpenBtn>, Changed<Interaction>)>,
     mut bottom: ResMut<BottomDock>,

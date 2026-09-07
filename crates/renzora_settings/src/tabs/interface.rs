@@ -262,6 +262,28 @@ pub(crate) fn tab_interface(
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.doc_tabs"), dd);
+
+    // Dragging an asset out of the bottom panel hides it so you can see the
+    // viewport / hierarchy / inspector slot you are aiming at. This is what
+    // happens when you let go. A dropdown rather than a toggle: "on" and "off"
+    // say nothing about which of the two states the panel ends up in.
+    let after_drag_opts = [
+        tr("settings.opt.bottom_drag_reopen"),
+        tr("settings.opt.bottom_drag_stay_closed"),
+    ];
+    let after_drag_refs: Vec<&str> = after_drag_opts.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &after_drag_refs,
+        usize::from(!settings.bottom_panel_reopen_after_drag),
+        |w| usize::from(!w.resource::<EditorSettings>().bottom_panel_reopen_after_drag),
+        |w, &i| {
+            w.resource_mut::<EditorSettings>().bottom_panel_reopen_after_drag = i == 0;
+        },
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.bottom_drag"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.bottom_drag"));
 }
 
 fn inspector_expand_index(v: InspectorExpandDefault) -> usize {
