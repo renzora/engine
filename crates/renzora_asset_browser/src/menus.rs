@@ -44,7 +44,27 @@ pub(crate) fn create_asset_click(
             std::fs::write(&path, kind.content(boilerplate)).is_ok()
         };
         if ok {
-            state.selected = Some(path);
+            // Force the rescan rather than waiting on the half-second throttle:
+            // the tile has to exist before the keyed-list rebuild can put a
+            // rename field in it, and a New Folder that appears half a second
+            // after the click reads as the click having missed.
+            state.listing_dirty = true;
+            // Straight into the rename, matching the menu row that creates the
+            // same thing ([`crate::ops::create_asset`]) — this button was the
+            // one entry point that only selected the new folder, so New Folder
+            // from the toolbar meant finding it again and pressing F2.
+            //
+            // The narrow layout has no grid to draw the field on (the tree
+            // shows files there instead), the same exception `rename_shortcut`
+            // makes for F2.
+            if kind.is_folder() {
+                let surface = if state.narrow {
+                    RenameSurface::Tree
+                } else {
+                    RenameSurface::Grid
+                };
+                state.begin_rename(&path, surface);
+            }
         }
     }
 }

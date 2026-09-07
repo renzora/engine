@@ -45,26 +45,22 @@ pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
         std::fs::write(&path, kind.content(boilerplate)).is_ok()
     };
     if ok {
+        // A new *folder* goes straight into its rename; a new file does not.
+        // The name is the whole point of a folder, where a file arrives with an
+        // extension the field would have to be careful of and a template that
+        // already says what it is.
         let start_naming = kind.is_folder();
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
             s.selected = Some(path.clone());
             s.listing_dirty = true;
             if start_naming {
-                // Full selection state, not just `renaming`: the field is built
-                // by the keyed list for the *selected* tile, and an armed rename
-                // whose path isn't the sole selection is cancelled on sight by
-                // `rename_arm_fire`'s siblings.
-                s.selection.clear();
-                s.selection.insert(path.clone());
-                s.selection_anchor = Some(path.clone());
-                s.rename_arm = None;
-                s.renaming = Some(path);
                 // The narrow layout has no grid to draw the field in.
-                s.rename_surface = if s.narrow {
+                let surface = if s.narrow {
                     crate::state::RenameSurface::Tree
                 } else {
                     crate::state::RenameSurface::Grid
                 };
+                s.begin_rename(&path, surface);
             }
         }
     }

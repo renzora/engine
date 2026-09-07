@@ -22,8 +22,8 @@ use renzora_ember::widgets::text_input;
 use crate::drag_drop::drop_target_tint;
 use crate::ops::{asset_type_info, folder_color, icon_for};
 use crate::state::{
-    handle_for, hash_path_set, thumb_kind, AssetNameLabel, AssetRenameInput, AssetTile,
-    NativeAssets, RenameSurface, SortMode, TILE_W,
+    handle_for, hash_path_set, is_hidden_name, thumb_kind, AssetNameLabel, AssetRenameInput,
+    AssetTile, NativeAssets, RenameSurface, SortMode, TILE_W,
 };
 use crate::thumbnails::ThumbnailCache;
 
@@ -151,7 +151,7 @@ fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
         return Vec::new();
     };
     list.into_iter()
-        .filter(|e| !e.name.starts_with('.'))
+        .filter(|e| !is_hidden_name(&e.name))
         .filter(|e| search.is_empty() || e.name.to_lowercase().contains(search))
         .map(|e| Entry {
             path: folder.join(&e.name),
@@ -170,7 +170,7 @@ fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
         for e in rd.flatten() {
             let path = e.path();
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
+            if is_hidden_name(&name) {
                 continue;
             }
             if !search.is_empty() && !name.to_lowercase().contains(search) {

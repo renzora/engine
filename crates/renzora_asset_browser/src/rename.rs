@@ -21,12 +21,7 @@ use crate::state::{file_name_of, AssetRenameInput, AssetRoot, NativeAssets, Rena
 /// [`RenameSurface`] documents. The caller knows where the gesture happened.
 pub(crate) fn start_rename(world: &mut World, path: &Path, surface: RenameSurface) {
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
-        s.selection.clear();
-        s.selection.insert(path.to_path_buf());
-        s.selected = Some(path.to_path_buf());
-        s.selection_anchor = Some(path.to_path_buf());
-        s.renaming = Some(path.to_path_buf());
-        s.rename_surface = surface;
+        s.begin_rename(path, surface);
     }
 }
 

@@ -243,6 +243,29 @@ impl Default for NativeAssets {
 }
 
 impl NativeAssets {
+    /// Make `path` the sole selection and put it into an inline rename on
+    /// `surface`.
+    ///
+    /// On the resource rather than behind `&mut World` because the two callers
+    /// reach it differently: a gesture handler has the world (see
+    /// [`crate::rename::start_rename`]), and the toolbar's create handler has
+    /// only `ResMut<NativeAssets>`. Both have to set the same five fields, and a
+    /// rename that sets four of them is a field with the wrong item selected
+    /// underneath it.
+    pub(crate) fn begin_rename(&mut self, path: &Path, surface: RenameSurface) {
+        self.selection.clear();
+        self.selection.insert(path.to_path_buf());
+        self.selected = Some(path.to_path_buf());
+        self.selection_anchor = Some(path.to_path_buf());
+        // The field is built by the keyed list for the *selected* tile, so the
+        // selection is as much a part of starting a rename as `renaming` is: an
+        // armed rename whose path is not the sole selection is cancelled on
+        // sight by `rename_arm_fire`.
+        self.rename_arm = None;
+        self.renaming = Some(path.to_path_buf());
+        self.rename_surface = surface;
+    }
+
     /// Apply a single-tile click with modifiers: ctrl toggles, shift selects the
     /// range from the anchor (using the grid's `visible_order`), plain replaces.
     pub(crate) fn click_select(&mut self, path: &Path, ctrl: bool, shift: bool) {
@@ -301,6 +324,26 @@ impl NativeAssets {
     pub(crate) fn is_selected(&self, path: &Path) -> bool {
         self.selection.contains(path) || self.selected.as_deref() == Some(path)
     }
+}
+
+/// Whether an entry called `name` is one the browser hides.
+///
+/// Dotfiles, and the project manifest. `project.toml` is not an asset: it is the
+/// file the *editor* writes as you work — the project name, the main scene, the
+/// window config — and every one of those fields has a UI of its own. Sitting in
+/// the grid it read as content, and the one thing you could usefully do with it
+/// there was corrupt it by hand.
+///
+/// By name rather than by comparing against the open project's root, which is
+/// the exact answer and needs the root threaded through five scan sites. Inside
+/// a project that name means one thing; a nested one would be a second project
+/// this browser has no way to open anyway.
+///
+/// One definition because there are five scans — the grid's native and web
+/// listings, the tree's two, and the tree's search walk — and a file hidden by
+/// four of them is a file that reappears when you search for it.
+pub(crate) fn is_hidden_name(name: &str) -> bool {
+    name.starts_with('.') || name == "project.toml"
 }
 
 pub(crate) fn file_name_of(p: &Path) -> String {

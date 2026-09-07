@@ -1,6 +1,9 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(assets): New Folder in the toolbar opens the rename field, like the menu
+  row already did.
+- feat(assets): `project.toml` is hidden in the Assets panel.
 - feat(viewport): the axis gizmo's colours are more vibrant.
 - fix(settings): View > Reset to Defaults puts autosave back to its default
   without needing a restart.

@@ -22,8 +22,8 @@ use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use crate::grid::{display_name, rename_field_for};
 use crate::ops::{asset_type_info, current_folder, folder_color, icon_for, project_root};
 use crate::state::{
-    file_name_of, hash_path_set, AssetNameLabel, AssetTile, NativeAssets, RenameSurface,
-    ShortcutClick, TreeNav, TreeTab, TreeToggle,
+    file_name_of, hash_path_set, is_hidden_name, AssetNameLabel, AssetTile, NativeAssets,
+    RenameSurface, ShortcutClick, TreeNav, TreeTab, TreeToggle,
 };
 
 const TREE_INDENT: f32 = 12.0;
@@ -62,7 +62,7 @@ fn dir_kinds(dir: &Path) -> Vec<(PathBuf, String, bool)> {
     rd.flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
+            if is_hidden_name(&name) {
                 return None;
             }
             let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
@@ -78,7 +78,7 @@ fn dir_kinds(dir: &Path) -> Vec<(PathBuf, String, bool)> {
     renzora_webfs::list_dir(dir)
         .unwrap_or_default()
         .into_iter()
-        .filter(|e| !e.name.starts_with('.'))
+        .filter(|e| !is_hidden_name(&e.name))
         .map(|e| (dir.join(&e.name), e.name, e.is_dir))
         .collect()
 }
@@ -187,7 +187,7 @@ fn search_tree(dir: &Path, query: &str, visited: &mut usize, out: &mut Vec<TreeR
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
+            if is_hidden_name(&name) {
                 continue;
             }
             let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
