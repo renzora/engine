@@ -10,18 +10,16 @@
 //! (e.g. from a keyed list row whose hash is the content).
 //!
 //! Links open in the system browser ([`markdown_link_click`]); images download
-//! via the [`MarkdownImages`] cache ([`markdown_images_sync`]). Both systems
+//! via the shared [`WebImages`] cache ([`markdown_images_sync`]). Both systems
 //! are registered by `WidgetsPlugin`. Relative `/paths` resolve against the
 //! [`MarkdownBaseUrl`] resource (default `https://renzora.com`).
 
-use std::collections::{HashMap, HashSet};
-
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
+
+use super::web_image::WebImages;
 
 use super::code_editor::highlight::tokenize;
 
@@ -797,123 +795,15 @@ pub struct MarkdownImage {
 #[derive(Component)]
 pub(crate) struct MarkdownImageAlt;
 
-struct DownloadedImage {
-    url: String,
-    rgba: Vec<u8>,
-    width: u32,
-    height: u32,
-}
-
-/// Async URL → `Handle<Image>` cache for markdown images (same design as the
-/// hub's thumbnail cache): `request` starts a background download,
-/// [`markdown_images_sync`] registers finished images each frame.
-#[derive(Resource)]
-pub struct MarkdownImages {
-    handles: HashMap<String, Handle<Image>>,
-    in_flight: HashSet<String>,
-    failed: HashSet<String>,
-    tx: Sender<Result<DownloadedImage, String>>,
-    rx: Receiver<Result<DownloadedImage, String>>,
-}
-
-impl Default for MarkdownImages {
-    fn default() -> Self {
-        let (tx, rx) = unbounded();
-        Self {
-            handles: HashMap::new(),
-            in_flight: HashSet::new(),
-            failed: HashSet::new(),
-            tx,
-            rx,
-        }
-    }
-}
-
-impl MarkdownImages {
-    /// The loaded handle for `url`, or `None` if not ready / failed.
-    pub fn get(&self, url: &str) -> Option<Handle<Image>> {
-        self.handles.get(url).cloned()
-    }
-
-    /// Whether `url` failed to download or decode.
-    pub fn failed(&self, url: &str) -> bool {
-        self.failed.contains(url)
-    }
-
-    /// Start downloading `url` if not already loaded / in flight / failed.
-    pub fn request(&mut self, url: &str) {
-        if self.handles.contains_key(url) || self.in_flight.contains(url) || self.failed.contains(url) {
-            return;
-        }
-        self.in_flight.insert(url.to_string());
-        start_download(url.to_string(), self.tx.clone());
-    }
-
-    /// Drain finished downloads into `Image` assets.
-    fn poll(&mut self, images: &mut Assets<Image>) {
-        let mut done = Vec::new();
-        while let Ok(res) = self.rx.try_recv() {
-            done.push(res);
-        }
-        for res in done {
-            match res {
-                Ok(d) => {
-                    self.in_flight.remove(&d.url);
-                    let image = Image::new(
-                        Extent3d { width: d.width, height: d.height, depth_or_array_layers: 1 },
-                        TextureDimension::D2,
-                        d.rgba,
-                        TextureFormat::Rgba8UnormSrgb,
-                        default(),
-                    );
-                    self.handles.insert(d.url, images.add(image));
-                }
-                Err(url) => {
-                    self.in_flight.remove(&url);
-                    self.failed.insert(url);
-                }
-            }
-        }
-    }
-}
-
-#[cfg(all(feature = "editor_tools", not(target_arch = "wasm32")))]
-fn start_download(url: String, tx: Sender<Result<DownloadedImage, String>>) {
-    std::thread::spawn(move || {
-        let result = (|| -> Result<DownloadedImage, String> {
-            // The 10 MiB cap is enforced by the backend as the body arrives,
-            // not after: this URL came from a server, and a limit applied once
-            // the bytes are already in memory protects nothing.
-            let response = renzora_net::Request::get(&url)
-                .max_bytes(10 * 1024 * 1024)
-                .send()
-                .map_err(|_| url.clone())?;
-            if !response.is_ok() {
-                return Err(url.clone());
-            }
-            let img = image::load_from_memory(&response.body).map_err(|_| url.clone())?;
-            let rgba = img.to_rgba8();
-            let (width, height) = rgba.dimensions();
-            Ok(DownloadedImage { url: url.clone(), rgba: rgba.into_raw(), width, height })
-        })();
-        let _ = tx.send(result);
-    });
-}
-
-#[cfg(not(all(feature = "editor_tools", not(target_arch = "wasm32"))))]
-fn start_download(_url: String, _tx: Sender<Result<DownloadedImage, String>>) {}
-
-/// Per-frame: drain finished downloads, then give every pending
+/// Per-frame: give every pending
 /// [`MarkdownImage`] its `ImageNode` (or leave the muted alt text on failure).
 pub(crate) fn markdown_images_sync(
     mut commands: Commands,
-    mut cache: ResMut<MarkdownImages>,
+    mut cache: ResMut<WebImages>,
     base: Res<MarkdownBaseUrl>,
-    mut images: ResMut<Assets<Image>>,
     mut q: Query<(Entity, &mut MarkdownImage, Option<&Children>)>,
     alts: Query<(), With<MarkdownImageAlt>>,
 ) {
-    cache.poll(&mut images);
     for (entity, mut md, children) in &mut q {
         if md.done {
             continue;

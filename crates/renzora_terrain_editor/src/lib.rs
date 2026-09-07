@@ -1,6 +1,6 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
-mod brush_bar;
+mod bar_widgets;
 mod brush_gizmo;
 mod brush_layer_paint;
 mod generate_bar;
@@ -9,7 +9,6 @@ mod panel;
 mod plane_terrain;
 mod region_tool;
 mod settings_overlay;
-mod shelf;
 mod spline_gizmos;
 mod systems;
 mod terrain_inspector;
@@ -31,107 +30,34 @@ pub struct TerrainEditorPlugin;
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
-        // Native (bevy_ui/ember) terrain tools panel (id "terrain_tools").
+        // The terrain tools, as the Terrain component's inspector body.
         app.add_plugins(panel::TerrainToolsPanel);
         app.register_inspector(terrain_data_entry())
             .register_inspector(terrain_layers_ui::terrain_layers_entry())
             .init_resource::<TerrainInspectorTab>()
             .init_resource::<terrain_layers_ui::ActiveBrushLayer>();
 
-        // The terrain mode row, in the strip across the viewport's top edge —
-        // visible whenever a terrain exists in the scene (even if not currently
-        // selected). Clicking selects the terrain, switches the inspector tab,
-        // and activates the brush tool. Clicking the active button again reverts
-        // to Select.
+        // **The terrain modes are not on the viewport shelf.** They were buttons
+        // there next to the gizmos, until the brushes moved into this component:
+        // picking a brush now arms its own mode
+        // (`panel::systems::sculpt_tool_click`), so a separate mode button was a
+        // second click for what the first one had already done.
         //
-        // These stay on the strip while their brushes live on the shelf, because
-        // they are what *opens* the shelf: one row you can always see that says
-        // which terrain mode is on, above the palette that mode reveals.
-        //
-        // Resize Terrain and Generate Terrain are the exceptions and live on
-        // the shelf instead — neither opens a palette of its own, and there
-        // they sit together as the operations that act on the terrain as a
-        // whole. See [`shelf::register`].
-        // Make Terrain — the same row's entry point from the other direction:
-        // it shows when the selection is a flat mesh rather than a terrain, and
-        // turns that mesh into one in place. Ordered before Sculpt so it reads
-        // as the step that comes first; the two are never visible together for
-        // the same entity, since converting is what makes the rest appear.
+        // **Make Terrain is the exception, and stays.** It is the one entry here
+        // that acts on something that is *not* a terrain — it converts a
+        // selected plane into one — so there is no Terrain component for it to
+        // live in. Without a shelf button it would have nowhere at all.
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_from_plane",
                 plane_terrain::TOOL_ICON,
                 "Make Terrain — sculpt this plane as terrain",
-                ToolSection::Terrain,
+                ToolSection::Shelf("terrain.0-make"),
             )
-            .order(-1)
             .visible_if(plane_terrain::plane_selected)
             .on_activate(plane_terrain::convert_selected),
         );
-        app.register_tool(
-            ToolEntry::new(
-                "builtin.terrain_sculpt",
-                "mountains",
-                "Sculpt Terrain",
-                ToolSection::Terrain,
-            )
-            .order(0)
-            .visible_if(terrain_exists_in_scene)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied() == Some(ActiveTool::TerrainSculpt)
-            })
-            .on_activate(|w| {
-                activate_terrain_tool(w, TerrainInspectorTab::Sculpt, ActiveTool::TerrainSculpt)
-            }),
-        );
-        app.register_tool(
-            ToolEntry::new(
-                "builtin.terrain_paint",
-                "paint-brush",
-                "Paint Terrain Layers",
-                ToolSection::Terrain,
-            )
-            .order(1)
-            .visible_if(terrain_exists_in_scene)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied() == Some(ActiveTool::TerrainPaint)
-            })
-            .on_activate(|w| {
-                activate_terrain_tool(w, TerrainInspectorTab::Paint, ActiveTool::TerrainPaint)
-            }),
-        );
-        app.register_tool(
-            ToolEntry::new(
-                "builtin.foliage_paint",
-                "tree",
-                "Paint Foliage",
-                ToolSection::Terrain,
-            )
-            .order(2)
-            .visible_if(terrain_exists_in_scene)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied() == Some(ActiveTool::FoliagePaint)
-            })
-            .on_activate(|w| {
-                activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)
-            }),
-        );
-        // The brush palette on the viewport's left shelf, and the active brush's
-        // settings as a group in the viewport toolbar. Between them these are the
-        // surfaces that make the brushes *findable* — the Terrain Tools dock panel
-        // still works and still shares their state, but it is no longer the only
-        // way to reach a brush.
-        shelf::register(app);
-        brush_bar::register();
         generate_bar::register(app);
-        app.add_systems(
-            Update,
-            (brush_bar::shape_click, brush_bar::falloff_click)
-                .run_if(renzora::core::not_in_play_mode),
-        );
 
         // Terrain Settings overlay — the deferred-apply editor for grid size,
         // resolution and height range.
@@ -260,19 +186,6 @@ fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -
     move |tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| *t == expected)
 }
 
-/// Toolbar visibility predicate: a terrain exists AND the viewport is in
-/// Scene mode. The mesh Edit/Sculpt modes have their own toolbar section;
-/// showing terrain brushes there reads as the wrong tool set (they don't
-/// operate on the edited mesh).
-fn terrain_exists_in_scene(world: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
-    let scene_mode = world
-        .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_mode == ViewportMode::Scene)
-        .unwrap_or(true);
-    scene_mode && first_terrain_entity(world).is_some()
-}
-
 fn first_terrain_entity(world: &World) -> Option<Entity> {
     // `&World` can't build cached queries, so walk archetypes directly.
     let terrain_id = world
@@ -366,11 +279,40 @@ fn terrain_data_entry() -> InspectorEntry {
                 },
                 set_fn: |_, _, _| {},
             },
+            // The three whole-terrain operations. They were a group on the
+            // viewport shelf, which put them a column away from the terrain they
+            // act on and left that column with a ragged three-button block.
+            // Here they sit under the terrain they will act on, which is the
+            // only terrain they could have meant.
             FieldDef {
                 name: "Edit Terrain…",
                 field_type: FieldType::Button { icon: "resize" },
                 get_fn: |_, _| None,
                 set_fn: |w, e, _| settings_overlay::open(w, e),
+            },
+            FieldDef {
+                name: "Generate",
+                field_type: FieldType::Button { icon: generate_tool::TOOL_ICON },
+                get_fn: |_, _| None,
+                set_fn: |w, _, _| {
+                    activate_terrain_tool(
+                        w,
+                        TerrainInspectorTab::Generate,
+                        ActiveTool::TerrainGenerate,
+                    )
+                },
+            },
+            FieldDef {
+                name: "Resize",
+                field_type: FieldType::Button { icon: "selection-plus" },
+                get_fn: |_, _| None,
+                set_fn: |w, _, _| {
+                    activate_terrain_tool(
+                        w,
+                        TerrainInspectorTab::Region,
+                        ActiveTool::TerrainRegion,
+                    )
+                },
             },
             FieldDef {
                 name: "Min Height",

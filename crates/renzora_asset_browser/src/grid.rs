@@ -23,7 +23,7 @@ use crate::drag_drop::drop_target_tint;
 use crate::ops::{asset_type_info, folder_color, icon_for};
 use crate::state::{
     handle_for, hash_path_set, thumb_kind, AssetNameLabel, AssetRenameInput, AssetTile,
-    NativeAssets, SortMode, TILE_W,
+    NativeAssets, RenameSurface, SortMode, TILE_W,
 };
 use crate::thumbnails::ThumbnailCache;
 
@@ -227,6 +227,7 @@ pub(crate) fn grid_token(world: &Rx) -> u64 {
         ((st.zoom * 20.0).round() as i64).hash(&mut h);
         st.list_view.hash(&mut h);
         st.renaming.hash(&mut h);
+        st.rename_surface.hash(&mut h);
         hash_path_set(st.favorites.iter()).hash(&mut h);
     }
     h.finish()
@@ -248,9 +249,17 @@ pub(crate) fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
             }),
         };
     }
+    // Only a rename that belongs to *this* surface draws a field here. Without
+    // the check the tree builds one for the same folder at the same time and
+    // steals the focus; see `state::RenameSurface`.
     let (zoom, list_view, renaming) = world
         .get_resource::<NativeAssets>()
-        .map(|s| (s.zoom, s.list_view, s.renaming.clone()))
+        .map(|s| {
+            let mine = (s.rename_surface == RenameSurface::Grid)
+                .then(|| s.renaming.clone())
+                .flatten();
+            (s.zoom, s.list_view, mine)
+        })
         .unwrap_or((1.0, false, None));
     let zoom_q = (zoom * 20.0).round() as u64;
     let favs: HashSet<PathBuf> = world

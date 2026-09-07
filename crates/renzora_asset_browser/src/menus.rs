@@ -19,7 +19,7 @@ use crate::ops::{
 use crate::rename::start_rename;
 use crate::state::{
     unique_path, AddMenuBtn, AssetRoot, AssetTile, ImportBtn, NativeAssets, NewAsset, NewAssetBtn,
-    SortMenuBtn, SortMode, TreeAddBtn, TreeNav,
+    RenameSurface, SortMenuBtn, SortMode, TreeAddBtn, TreeNav,
 };
 
 pub(crate) fn create_asset_click(
@@ -178,11 +178,23 @@ pub(crate) fn track_hover(
     // A hovered grid/list tile takes priority; otherwise a hovered tree folder
     // row — so right-click targeting (and the context-menu delete) works over the
     // folder tree too, not just the grid.
+    // The surface is recorded alongside the path: a right-click Rename has to
+    // open its field where the thing you right-clicked is drawn, and by the time
+    // the menu item fires there is nothing left to work that out from.
+    let mut surface = RenameSurface::Grid;
     let hovered = tiles
         .iter()
         .find(|(i, _)| over(i))
         .map(|(_, t)| t.path.clone())
-        .or_else(|| tree.iter().find(|(i, _)| over(i)).map(|(_, n)| n.0.clone()));
+        .or_else(|| {
+            tree.iter().find(|(i, _)| over(i)).map(|(_, n)| {
+                surface = RenameSurface::Tree;
+                n.0.clone()
+            })
+        });
+    if state.hovered_surface != surface {
+        state.hovered_surface = surface;
+    }
     // Clear over empty space rather than letting the last hover stick. A sticky
     // path made a right-click on the empty grid open the per-asset menu (Rename /
     // Duplicate / Delete) for whatever the pointer happened to brush past on the
@@ -252,7 +264,8 @@ pub(crate) fn asset_context_menu(
         }),
         menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("assets.context.rename"), {
             let path = path.clone();
-            move |w| start_rename(w, &path)
+            let surface = state.hovered_surface;
+            move |w| start_rename(w, &path, surface)
         }),
         menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("assets.context.duplicate"), {
             let path = path.clone();
@@ -287,10 +300,16 @@ pub(crate) fn asset_context_menu(
     commands.entity(menu).add_children(&kids);
 }
 
-/// Right-click empty space → the menu for the folder you are *in*: New Folder,
-/// Import, the create-asset list and Reveal. None of the per-asset actions
-/// (Favorite / Rename / Duplicate / Delete) belong here, because there is no
-/// asset for them to act on.
+/// Right-click empty space → the menu for the folder you are *in*: the
+/// create-asset list, then New Folder, Import and Reveal. None of the per-asset
+/// actions (Favorite / Rename / Duplicate / Delete) belong here, because there
+/// is no asset for them to act on.
+///
+/// Create Asset leads, here and in [`add_menu_open`], because it is what the
+/// menu is *for*. Making something is the common case and New Folder is the
+/// housekeeping around it, but the housekeeping is one line each and the
+/// create list is a block of cards, so putting the short rows first buried the
+/// answer under the question every time.
 fn background_context_menu(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -301,16 +320,16 @@ fn background_context_menu(
     // Same upward flip as the per-asset menu: the create-asset list is tall
     // enough to be clipped by a click low in the window.
     let menu = screen_menu_flip(commands, cursor.x, cursor.y, win_h);
-    let mut kids = vec![menu_item(
+    let mut kids = new_asset_menu_items(commands, fonts);
+    kids.push(menu_sep(commands));
+    kids.push(menu_item(
         commands,
         fonts,
         "folder-plus",
         &renzora::lang::t("assets.new_folder"),
         |w| create_asset(w, NewAsset::Folder),
-    )];
+    ));
     kids.extend(import_menu_items(commands, fonts));
-    kids.push(menu_sep(commands));
-    kids.extend(new_asset_menu_items(commands, fonts));
     if let Some(folder) = state.current.clone() {
         kids.push(menu_sep(commands));
         kids.push(menu_item(
@@ -325,9 +344,10 @@ fn background_context_menu(
 }
 
 /// Click an "Add" button → open the shared ember menu of new-asset types at the
-/// cursor. The tree strip's "+" ([`TreeAddBtn`]) leads that list with New Folder
-/// and Import: in the tree-only layout it is the *only* action key on screen, so
-/// the menu has to carry everything the hidden toolbar would have offered.
+/// cursor. The tree strip's "+" ([`TreeAddBtn`]) follows that list with New
+/// Folder and Import: in the tree-only layout it is the *only* action key on
+/// screen, so the menu has to carry everything the hidden toolbar would have
+/// offered. See [`background_context_menu`] for why Create Asset comes first.
 pub(crate) fn add_menu_open(
     q: Query<
         (
@@ -364,8 +384,9 @@ pub(crate) fn add_menu_open(
     } else {
         screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0)
     };
-    let mut kids = Vec::new();
+    let mut kids = new_asset_menu_items(&mut commands, &fonts);
     if file_actions {
+        kids.push(menu_sep(&mut commands));
         kids.push(menu_item(
             &mut commands,
             &fonts,
@@ -374,9 +395,7 @@ pub(crate) fn add_menu_open(
             |w| create_asset(w, NewAsset::Folder),
         ));
         kids.extend(import_menu_items(&mut commands, &fonts));
-        kids.push(menu_sep(&mut commands));
     }
-    kids.extend(new_asset_menu_items(&mut commands, &fonts));
     commands.entity(menu).add_children(&kids);
 }
 

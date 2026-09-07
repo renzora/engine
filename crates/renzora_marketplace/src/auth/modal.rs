@@ -7,8 +7,8 @@ use bevy::ecs::world::CommandQueue;
 use bevy::ui::FocusPolicy;
 
 use renzora_ember::reactive::Rx;
-use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::theme::{accent, border, popup_bg, rgb, text_muted, text_primary};
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::theme::{accent, border, divider, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     bind_text_input, password_input, text_input, EmberForm, EmberTextInput, OverlaySurface,
 };
@@ -30,6 +30,9 @@ struct AuthSubmit;
 struct AuthLink(AuthView);
 #[derive(Component)]
 struct AuthFirstField;
+/// The header's X.
+#[derive(Component)]
+struct AuthClose;
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
@@ -42,6 +45,7 @@ pub(crate) fn register(app: &mut App) {
             auth_submit_click,
             auth_link_click,
             auth_backdrop_click,
+            auth_close_click,
             auth_escape,
         ),
     );
@@ -133,11 +137,11 @@ fn spawn_modal(commands: &mut Commands) {
     let panel = commands
         .spawn((
             Node {
-                width: Val::Px(320.0),
+                width: Val::Px(392.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(16.0)),
+                padding: UiRect::all(Val::Px(28.0)),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(12.0)),
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
@@ -147,7 +151,7 @@ fn spawn_modal(commands: &mut Commands) {
         ))
         .id();
     let content = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() }, AuthContent { sig: None }))
+        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(14.0), ..default() }, AuthContent { sig: None }))
         .id();
     commands.entity(panel).add_child(content);
     commands.entity(backdrop).add_child(panel);
@@ -197,52 +201,186 @@ fn rebuild_auth_modal(world: &mut World) {
 }
 
 fn build_content(commands: &mut Commands, fonts: &EmberFonts, container: Entity, view: AuthView, status: Option<&str>, error: Option<&str>, loading: bool) {
-    let title = match view {
-        AuthView::SignIn => "Sign In",
-        AuthView::Register => "Create Account",
-        AuthView::ForgotPassword => "Reset Password",
+    // Each view says what it is *and* what it gets you. A modal that only says
+    // "Sign In" over two boxes leaves the obvious question unanswered, which is
+    // why anyone is being asked at all — the subtitle is the answer, and it is
+    // also what stops the panel reading as a bare form.
+    let (title, subtitle, glyph) = match view {
+        AuthView::SignIn => (
+            "Sign In",
+            "Sign in to install, publish and manage marketplace content.",
+            "user-circle",
+        ),
+        AuthView::Register => (
+            "Create Account",
+            "A renzora.com account is free, and is only needed for the marketplace.",
+            "user-plus",
+        ),
+        AuthView::ForgotPassword => (
+            "Reset Password",
+            "Enter your email and we'll send you a link to set a new password.",
+            "key",
+        ),
     };
-    let mut kids: Vec<Entity> = Vec::new();
-    kids.push(text_node(commands, fonts, title, 15.0, text_primary()));
+    let mut kids: Vec<Entity> = vec![header(commands, fonts, title, subtitle, glyph)];
 
     if let Some(msg) = status {
-        kids.push(text_node(commands, fonts, msg, 11.0, GREEN));
+        kids.push(banner(commands, fonts, msg, GREEN));
     }
     if let Some(err) = error {
-        kids.push(text_node(commands, fonts, err, 11.0, RED));
+        kids.push(banner(commands, fonts, err, RED));
     }
 
+    // The fields as one block with their own tighter rhythm, so the gap between
+    // Email and Password reads as smaller than the gap between the block and the
+    // button — the grouping does the work a heavier border would.
+    let fields = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(12.0),
+            ..default()
+        })
+        .id();
     let submit;
+    let mut field_kids: Vec<Entity> = Vec::new();
+    let mut footer: Vec<Entity> = Vec::new();
     match view {
         AuthView::SignIn => {
-            kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
-            kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
-            kids.push(link_row(commands, fonts, None, "Forgot password?", AuthView::ForgotPassword, true));
-            submit = submit_button(commands, fonts, if loading { "Signing in..." } else { "Sign In" });
-            kids.push(submit);
-            kids.push(link_row(commands, fonts, Some("Don't have an account?"), "Register", AuthView::Register, false));
+            field_kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
+            field_kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
+            field_kids.push(link_row(commands, fonts, None, "Forgot password?", AuthView::ForgotPassword, true));
+            submit = submit_button(commands, fonts, if loading { "Signing in..." } else { "Sign In" }, loading);
+            footer.push(link_row(commands, fonts, Some("Don't have an account?"), "Register", AuthView::Register, false));
         }
         AuthView::Register => {
-            kids.push(field(commands, fonts, "Username", "Username", g_username, s_username, false, true));
-            kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, false));
-            kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
-            kids.push(field(commands, fonts, "Confirm Password", "Confirm password", g_confirm, s_confirm, true, false));
-            submit = submit_button(commands, fonts, if loading { "Creating account..." } else { "Create Account" });
-            kids.push(submit);
-            kids.push(link_row(commands, fonts, Some("Already have an account?"), "Sign In", AuthView::SignIn, false));
+            field_kids.push(field(commands, fonts, "Username", "Username", g_username, s_username, false, true));
+            field_kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, false));
+            field_kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
+            field_kids.push(field(commands, fonts, "Confirm Password", "Confirm password", g_confirm, s_confirm, true, false));
+            submit = submit_button(commands, fonts, if loading { "Creating account..." } else { "Create Account" }, loading);
+            footer.push(link_row(commands, fonts, Some("Already have an account?"), "Sign In", AuthView::SignIn, false));
         }
         AuthView::ForgotPassword => {
-            kids.push(text_node(commands, fonts, "Enter your email and we'll send you a link to reset your password.", 11.0, text_muted()));
-            kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
-            submit = submit_button(commands, fonts, if loading { "Sending..." } else { "Send Reset Link" });
-            kids.push(submit);
-            kids.push(link_row(commands, fonts, None, "Back to Sign In", AuthView::SignIn, false));
+            field_kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
+            submit = submit_button(commands, fonts, if loading { "Sending..." } else { "Send Reset Link" }, loading);
+            footer.push(link_row(commands, fonts, None, "Back to Sign In", AuthView::SignIn, false));
         }
+    }
+    commands.entity(fields).add_children(&field_kids);
+    kids.push(fields);
+    kids.push(submit);
+    if !footer.is_empty() {
+        kids.push(rule(commands));
+        kids.extend(footer);
     }
 
     // Tab cycles the fields; Enter in any of them presses the submit button.
     commands.entity(container).insert(EmberForm { submit });
     commands.entity(container).add_children(&kids);
+}
+
+/// Title block: the view's icon inline beside its name, a close button on the
+/// right of that row, and a line underneath saying what the view is for.
+///
+/// The icon used to sit in a tinted rounded badge on its own line above the
+/// title. It made the header three rows tall for two pieces of information, and
+/// the badge was decoration standing in for a product mark it was not. Inline it
+/// reads as one heading.
+fn header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitle: &str, glyph: &str) -> Entity {
+    let col = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            margin: UiRect::bottom(Val::Px(2.0)),
+            ..default()
+        })
+        .id();
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            ..default()
+        })
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, glyph, accent(), 22.0);
+    let t = text_node(commands, fonts, title, 21.0, text_primary());
+    let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    // Escape and a backdrop click already close this (`auth_escape`,
+    // `auth_backdrop_click`), but neither is visible. A modal with no way out you
+    // can see reads as one you are stuck in.
+    let close = commands
+        .spawn((
+            Node {
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            AuthClose,
+            Name::new("auth-close"),
+        ))
+        .id();
+    let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 14.0);
+    commands.entity(close_icon).insert(FocusPolicy::Pass);
+    commands.entity(close).add_child(close_icon);
+    commands.entity(row).add_children(&[ic, t, spacer, close]);
+    let s = commands
+        .spawn((
+            Text::new(subtitle.to_string()),
+            ui_font(&fonts.ui, 12.5),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    commands.entity(col).add_children(&[row, s]);
+    col
+}
+
+/// A status or error message as a tinted, rounded strip rather than a loose line
+/// of coloured text — at this size a bare sentence reads as body copy, and an
+/// error has to be the thing you see first.
+fn banner(commands: &mut Commands, fonts: &EmberFonts, msg: &str, color: (u8, u8, u8)) -> Entity {
+    let (r, g, b) = color;
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(11.0), Val::Px(9.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba_u8(r, g, b, 30)),
+            BorderColor::all(Color::srgba_u8(r, g, b, 90)),
+        ))
+        .id();
+    let t = text_node(commands, fonts, msg, 12.0, color);
+    commands.entity(row).add_child(t);
+    row
+}
+
+/// A hairline between the form and the "switch to the other view" footer.
+fn rule(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(divider())),
+        ))
+        .id()
 }
 
 fn text_node(commands: &mut Commands, fonts: &EmberFonts, text: &str, size: f32, color: (u8, u8, u8)) -> Entity {
@@ -260,20 +398,29 @@ fn field(
     password: bool,
     first: bool,
 ) -> Entity {
-    let col = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
-    let lbl = text_node(commands, fonts, label, 11.0, text_muted());
+    let col = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), ..default() }).id();
+    let lbl = text_node(commands, fonts, label, 12.0, text_muted());
     let input = if password {
         password_input(commands, &fonts.ui, placeholder, "")
     } else {
         text_input(commands, &fonts.ui, placeholder, "")
     };
+    // Replacing the widget's own `Node` wholesale, which is why every property it
+    // set is restated here: the shared input is sized for a dense inspector row,
+    // and this is a standalone form where a 28px box looks cramped.
+    //
+    // The horizontal padding must stay `PAD_X`. The caret and the click-to-caret
+    // math measure from that constant rather than from the box's real padding,
+    // so widening it here drew the caret to the left of the first character and
+    // put every click a couple of characters off.
     commands.entity(input).insert(Node {
         width: Val::Percent(100.0),
-        height: Val::Px(28.0),
+        height: Val::Px(38.0),
         align_items: AlignItems::Center,
-        padding: UiRect::horizontal(Val::Px(8.0)),
+        padding: UiRect::horizontal(Val::Px(renzora_ember::widgets::PAD_X)),
         border: UiRect::all(Val::Px(1.0)),
-        border_radius: BorderRadius::all(Val::Px(4.0)),
+        border_radius: BorderRadius::all(Val::Px(7.0)),
+        overflow: bevy::ui::Overflow::clip(),
         ..default()
     });
     if first {
@@ -284,25 +431,32 @@ fn field(
     col
 }
 
-fn submit_button(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+/// The primary action. Dimmed while a request is in flight, so "Signing in..."
+/// looks like a button that is busy rather than one you should press again.
+fn submit_button(commands: &mut Commands, fonts: &EmberFonts, text: &str, loading: bool) -> Entity {
+    let (r, g, b) = accent();
+    let fill = if loading {
+        Color::srgba_u8(r, g, b, 150)
+    } else {
+        rgb(accent())
+    };
     let btn = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(32.0),
+                height: Val::Px(42.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                margin: UiRect::vertical(Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(rgb(accent())),
+            BackgroundColor(fill),
             Interaction::default(),
             AuthSubmit,
             Name::new("auth-submit"),
         ))
         .id();
-    let t = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    let t = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 14.5), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
     commands.entity(btn).add_child(t);
     btn
 }
@@ -322,12 +476,12 @@ fn link_row(commands: &mut Commands, fonts: &EmberFonts, prefix: Option<&str>, l
         .id();
     let mut kids = Vec::new();
     if let Some(p) = prefix {
-        kids.push(text_node(commands, fonts, p, 11.0, text_muted()));
+        kids.push(text_node(commands, fonts, p, 12.5, text_muted()));
     }
     let link_e = commands
         .spawn((
             Text::new(link.to_string()),
-            ui_font(&fonts.ui, 11.0),
+            ui_font(&fonts.ui, 12.5),
             TextColor(rgb(accent())),
             Interaction::default(),
             AuthLink(target),
@@ -437,6 +591,17 @@ fn auth_link_click(q: Query<(&Interaction, &AuthLink), Changed<Interaction>>, mu
 }
 
 fn auth_backdrop_click(q: Query<&Interaction, (With<AuthBackdrop>, Changed<Interaction>)>, mut auth: Option<ResMut<AuthState>>) {
+    let Some(auth) = auth.as_mut() else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        auth.window_open = false;
+    }
+}
+
+/// The header's X closes the modal, the same way Escape does.
+fn auth_close_click(
+    q: Query<&Interaction, (With<AuthClose>, Changed<Interaction>)>,
+    mut auth: Option<ResMut<AuthState>>,
+) {
     let Some(auth) = auth.as_mut() else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
         auth.window_open = false;

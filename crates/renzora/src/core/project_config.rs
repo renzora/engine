@@ -175,10 +175,6 @@ impl RendererBackend {
 /// On-disk wrapper so the preference file stays forward-compatible
 /// (`backend = "dx12"`, with room to grow).
 #[derive(Serialize, Deserialize, Default)]
-struct RendererPrefFile {
-    backend: RendererBackend,
-}
-
 /// Web no-ops for the whole `save_*` family.
 ///
 /// Every `load_*` in this module already handles wasm internally and returns a
@@ -245,59 +241,31 @@ pub use wasm_prefs::*;
 /// env vars (`HOME`, falling back to Windows' `USERPROFILE`) so `renzora`
 /// core keeps its dep list to bevy + serialization (no `dirs`).
 #[cfg(not(target_arch = "wasm32"))]
-fn renderer_pref_path() -> Option<std::path::PathBuf> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from)?;
-    Some(home.join(".renzora").join("renderer.toml"))
-}
-
 /// Load the persisted renderer backend preference, defaulting to
 /// [`RendererBackend::Auto`] when the file is absent or unreadable.
 pub fn load_renderer_backend() -> RendererBackend {
-    #[cfg(target_arch = "wasm32")]
-    {
-        RendererBackend::Auto
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let Some(path) = renderer_pref_path() else {
-            return RendererBackend::Auto;
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return RendererBackend::Auto;
-        };
-        toml::from_str::<RendererPrefFile>(&text)
-            .map(|f| f.backend)
-            .unwrap_or_default()
+    match editor_field("renderer_backend").and_then(|v| v.as_str().map(str::to_string)) {
+        Some(s) if s == "Vulkan" => RendererBackend::Vulkan,
+        Some(s) if s == "Dx12" => RendererBackend::Dx12,
+        Some(s) if s == "Metal" => RendererBackend::Metal,
+        Some(s) if s == "Gl" => RendererBackend::Gl,
+        _ => RendererBackend::Auto,
     }
 }
 
-/// Persist the renderer backend preference. Takes effect on the next launch.
-/// No-op error on wasm (no writable home dir).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn save_renderer_backend(backend: RendererBackend) -> std::io::Result<()> {
-    let Some(path) = renderer_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for renderer preference",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let text = toml::to_string_pretty(&RendererPrefFile { backend }).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
-/// On-disk wrapper for per-user editor preferences (`~/.renzora/editor.toml`).
-/// These are machine-local — UI scale depends on the user's monitor, not the
-/// project — so they live next to the renderer preference rather than in
-/// `project.toml`.
+/// The `[app]` section of `~/.renzora/settings.toml`: the per-user preferences
+/// that are neither `EditorSettings` nor anything a project owns.
+///
+/// The language you read, the plugins you turned off, the update you dismissed,
+/// the tutorial you finished, the autosave interval, the stats refresh rates and
+/// the status-bar toggles. Things about *you*, in other words, rather than about
+/// the editor's configuration — which is why a reset leaves them alone.
+///
+/// It was `~/.renzora/editor.toml`, a file of its own, and it carried a second
+/// copy of eight `EditorSettings` fields. Both are gone: one file, and each
+/// value in exactly one section of it.
 #[derive(Serialize, Deserialize)]
 struct EditorPrefFile {
-    #[serde(default = "default_ui_scale")]
-    ui_scale: f32,
     #[serde(default = "default_system_monitor_ms")]
     stats_system_monitor_ms: u32,
     #[serde(default = "default_render_stats_ms")]
@@ -314,12 +282,6 @@ struct EditorPrefFile {
     status_show_rendering_mode: bool,
     #[serde(default = "default_true")]
     status_show_gpu_name: bool,
-    /// Developer mode — unlocks dev/profiling tooling hidden from a normal
-    /// editing session. Persisted here so a distribution plugin can read the
-    /// host's dev-mode state via [`load_dev_mode`] at startup (the gated
-    /// the `plugins/tracy` profiler bridge does exactly this). Generic host flag.
-    #[serde(default)]
-    dev_mode: bool,
     /// Group order of the UI editor's toolbar, by [`ArrangeKey`] — the same
     /// drag-to-arrange the viewport toolbar has. The viewport keeps its order in
     /// `ViewportSettings`; the UI editor has no per-panel settings blob of its
@@ -327,6 +289,17 @@ struct EditorPrefFile {
     /// than one you cannot.
     #[serde(default)]
     ui_toolbar_order: Vec<String>,
+    /// Order the inspector shows component sections in, by the registry's
+    /// `type_id` (a reflection-generated section uses its type path). Written
+    /// when a section is dragged by its grip; empty means "never rearranged",
+    /// and the inspector then uses its built-in order.
+    ///
+    /// A ranking of every type the user has ever moved, not a per-entity list:
+    /// two components that never appear on the same entity still have to agree
+    /// on an order the next time one of them does, and a per-entity record would
+    /// have nothing to say about a pair it had never seen together.
+    #[serde(default)]
+    inspector_component_order: Vec<String>,
     /// Plugins the user has turned off, by [`renzora::PluginEntry::id`].
     ///
     /// Read by BOTH loaders before they open anything, which is why it lives
@@ -350,51 +323,6 @@ struct EditorPrefFile {
     /// per-user preference, not a project property, hence it lives here.
     #[serde(default = "default_language")]
     language: String,
-    /// Play-button target: `true` = Play launches the game in its own runtime
-    /// window (with the project's configured title/resolution/mode), `false` =
-    /// Play runs inside the editor viewport panel. Set from the Play button's
-    /// target dropdown; per-user because it's a workflow preference, not a
-    /// project property.
-    /// Play launches the game as a separate process rather than inside the
-    /// editor's viewport.
-    ///
-    /// Defaults **on**. In-editor play shares the editor's `World`, so what it
-    /// spawns lands in the hierarchy the user is editing — and a game that
-    /// spawns anything at startup grows that hierarchy every time Play is
-    /// pressed. A separate process cannot touch the scene it was launched from,
-    /// which is the property that matters more than the convenience of playing
-    /// in a panel.
-    #[serde(default = "default_true")]
-    play_runtime_window: bool,
-    /// Where the open-document tabs are shown: `false` (default) is the strip
-    /// under the top bar, `true` folds them into a dropdown in the top bar
-    /// beside Play. Per-user because it's a matter of how much vertical room
-    /// you're willing to spend on them, not a project property.
-    #[serde(default)]
-    doc_tabs_dropdown: bool,
-    /// Clicking a hierarchy row also expands/collapses its subtree (on by
-    /// default), on top of selecting it. Turning it off leaves the caret as the
-    /// only way to open a branch, which is what you want when you click through
-    /// a deep model and don't want every row you touch unfolding under you.
-    /// Per-user because it's a navigation habit, not a project property.
-    #[serde(default = "default_true")]
-    hierarchy_toggle_on_click: bool,
-    /// Play launches the scene into a VR headset (external runtime process
-    /// with `--vr`). Layered above `play_runtime_window`: when set, the Play
-    /// button's target is "VR Headset" regardless of the window preference.
-    #[serde(default)]
-    play_vr: bool,
-    /// Multiplier on panel scrolling (mouse wheel / arrow keys / middle-drag);
-    /// defaults to 1.5. Per-user because scroll feel is a property of the
-    /// user's mouse and habits, not the project.
-    #[serde(default = "default_scroll_speed")]
-    scroll_speed: f32,
-    /// Max entries the editor console retains. Per-user because it trades memory
-    /// / per-frame console-panel cost against scrollback depth — a preference of
-    /// the machine, not the project. Defaults small (100) so a chatty log can't
-    /// drop frames; users who want deeper history raise it in Settings.
-    #[serde(default = "default_console_log_limit")]
-    console_log_limit: u32,
     /// Which releases the updater offers: `"stable"`, `"nightly"`, or `"auto"`.
     ///
     /// `"auto"` — the default — means *follow the channel this build came from*:
@@ -440,15 +368,6 @@ fn default_autosave_interval_secs() -> u32 {
     300
 }
 
-fn default_ui_scale() -> f32 {
-    1.0
-}
-fn default_scroll_speed() -> f32 {
-    1.5
-}
-fn default_console_log_limit() -> u32 {
-    super::console_log::DEFAULT_MAX_LOG_ENTRIES as u32
-}
 fn default_system_monitor_ms() -> u32 {
     200
 }
@@ -465,8 +384,8 @@ fn default_true() -> bool {
 impl Default for EditorPrefFile {
     fn default() -> Self {
         Self {
-            ui_scale: 1.0,
             ui_toolbar_order: Vec::new(),
+            inspector_component_order: Vec::new(),
             stats_system_monitor_ms: default_system_monitor_ms(),
             stats_render_stats_ms: default_render_stats_ms(),
             stats_ecs_stats_ms: default_ecs_stats_ms(),
@@ -475,17 +394,10 @@ impl Default for EditorPrefFile {
             status_show_gpu: true,
             status_show_rendering_mode: true,
             status_show_gpu_name: true,
-            dev_mode: false,
             disabled_plugins: Vec::new(),
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
-            play_runtime_window: true,
-            doc_tabs_dropdown: false,
-            hierarchy_toggle_on_click: true,
-            play_vr: false,
-            scroll_speed: default_scroll_speed(),
-            console_log_limit: default_console_log_limit(),
             update_channel: default_update_channel(),
             skipped_update: String::new(),
             tutorial_completed: false,
@@ -494,149 +406,74 @@ impl Default for EditorPrefFile {
     }
 }
 
-/// Path to the persisted editor preferences: `~/.renzora/editor.toml`.
 #[cfg(not(target_arch = "wasm32"))]
-fn editor_pref_path() -> Option<std::path::PathBuf> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from)?;
-    Some(home.join(".renzora").join("editor.toml"))
+/// The `[app]` section of `~/.renzora/settings.toml`, or its defaults.
+///
+/// These nineteen preferences are the ones that are neither `EditorSettings`
+/// (the Settings panel's own contents) nor anything a project owns: the
+/// language, the disabled plugins, the update channel, the tutorial's progress,
+/// the autosave interval, the stats refresh rates and the status-bar toggles.
+///
+/// They lived in `~/.renzora/editor.toml` behind thirty-eight hand-written
+/// read-modify-write helpers. Both halves of that are gone: the file is now one
+/// section of `settings.toml` beside every other preference, and the helpers
+/// below all funnel through this pair rather than each opening the file itself.
+/// One field of the `[editor]` section, read straight off disk.
+///
+/// Three things need an editor setting *before* there is an `App` to hold
+/// `EditorSettings`: the renderer backend (chosen before the renderer is
+/// created), dev mode (read by the plugin loaders while the `App` is still being
+/// assembled) and the console cap (seeded into the log buffer at plugin build).
+/// They read the section generically rather than through the type, because the
+/// type lives in `renzora_editor_framework`, which depends on this crate.
+///
+/// **`[editor]` is the one home for these.** Each used to have a copy in
+/// `editor.toml` — and the renderer backend a whole file of its own,
+/// `renderer.toml` — beside the copy in `EditorSettings`. Two homes for one
+/// value is two answers to the same question the moment either is written.
+#[cfg(not(target_arch = "wasm32"))]
+fn editor_field(key: &str) -> Option<toml::Value> {
+    crate::core::settings_file::load_section::<toml::Table>("editor")?
+        .remove(key)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn editor_field(_key: &str) -> Option<toml::Value> {
+    None
+}
+
+fn app_prefs() -> EditorPrefFile {
+    crate::core::settings_file::load_section("app").unwrap_or_default()
+}
+
+/// Write the `[app]` section back, leaving every other section alone.
+#[cfg(not(target_arch = "wasm32"))]
+fn save_app_prefs(prefs: &EditorPrefFile) -> std::io::Result<()> {
+    crate::core::settings_file::save_section("app", prefs)
 }
 
 /// Load the persisted editor UI scale multiplier (1.0 = system DPI),
 /// defaulting to 1.0 when the file is absent or unreadable.
-pub fn load_ui_scale() -> f32 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        1.0
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let Some(path) = editor_pref_path() else {
-            return 1.0;
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return 1.0;
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.ui_scale)
-            .unwrap_or(1.0)
-            .clamp(0.5, 3.0)
-    }
-}
-
 /// Persist the editor UI scale multiplier.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_ui_scale(ui_scale: f32) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    // Read-modify-write so future fields in the file survive a scale edit.
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.ui_scale = ui_scale;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Load the persisted panel scroll-speed multiplier, defaulting to 1.5 (the
 /// editor's default feel) when the file is absent or unreadable.
-pub fn load_scroll_speed() -> f32 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        default_scroll_speed()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let Some(path) = editor_pref_path() else {
-            return default_scroll_speed();
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return default_scroll_speed();
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.scroll_speed)
-            .unwrap_or_else(|_| default_scroll_speed())
-            .clamp(0.1, 5.0)
-    }
-}
-
 /// Persist the panel scroll-speed multiplier (read-modify-write so other prefs
 /// in the file survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_scroll_speed(scroll_speed: f32) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.scroll_speed = scroll_speed;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Load the persisted console log-entry limit, defaulting to
 /// [`console_log::DEFAULT_MAX_LOG_ENTRIES`] when the file is absent or
 /// unreadable. Floored at 10 so the console can never be capped to nothing.
 pub fn load_console_log_limit() -> usize {
-    let default = super::console_log::DEFAULT_MAX_LOG_ENTRIES;
-    #[cfg(target_arch = "wasm32")]
-    {
-        default
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let Some(path) = editor_pref_path() else {
-            return default;
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return default;
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.console_log_limit as usize)
-            .unwrap_or(default)
-            .max(10)
-    }
+    editor_field("console_log_limit")
+        .and_then(|v| v.as_integer())
+        .map(|n| (n as usize).max(10))
+        .unwrap_or(super::console_log::DEFAULT_MAX_LOG_ENTRIES)
 }
 
 /// Persist the console log-entry limit (read-modify-write so other prefs in the
 /// file survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_console_log_limit(limit: usize) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.console_log_limit = limit as u32;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Load the persisted UI language code, defaulting to `"en"` when the file is
 /// absent or unreadable. Called by the localization runtime at startup.
 pub fn load_language() -> String {
@@ -646,15 +483,7 @@ pub fn load_language() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = editor_pref_path() else {
-            return default_language();
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return default_language();
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.language)
-            .unwrap_or_else(|_| default_language())
+        app_prefs().language
     }
 }
 
@@ -662,22 +491,10 @@ pub fn load_language() -> String {
 /// file survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_language(code: &str) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.language = code.to_string();
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Load the persisted updater channel — `"auto"`, `"stable"` or `"nightly"`.
@@ -690,37 +507,17 @@ pub fn load_update_channel() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = editor_pref_path() else {
-            return default_update_channel();
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return default_update_channel();
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.update_channel)
-            .unwrap_or_else(|_| default_update_channel())
+        app_prefs().update_channel
     }
 }
 
 /// Persist the updater channel (read-modify-write so other prefs survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_update_channel(channel: &str) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.update_channel = channel.to_string();
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// The release tag the user chose to skip, if any.
@@ -735,9 +532,7 @@ pub fn load_skipped_update() -> Option<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        Some(app_prefs())
             .map(|f| f.skipped_update)
             .filter(|s| !s.is_empty())
     }
@@ -747,22 +542,10 @@ pub fn load_skipped_update() -> Option<String> {
 /// the other prefs survive.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_skipped_update(tag: Option<&str>) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.skipped_update = tag.unwrap_or_default().to_string();
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Has the onboarding tutorial been engaged with (finished *or* skipped) by this
@@ -775,15 +558,7 @@ pub fn load_tutorial_completed() -> bool {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = editor_pref_path() else {
-            return false;
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return false;
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.tutorial_completed)
-            .unwrap_or(false)
+        app_prefs().tutorial_completed
     }
 }
 
@@ -791,22 +566,10 @@ pub fn load_tutorial_completed() -> bool {
 /// again (read-modify-write so other prefs in the file survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_tutorial_completed(completed: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.tutorial_completed = completed;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Which tutorial chapters this user has finished. Drives the picker's ticks and
@@ -818,37 +581,17 @@ pub fn load_tutorial_chapters() -> Vec<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = editor_pref_path() else {
-            return Vec::new();
-        };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return Vec::new();
-        };
-        toml::from_str::<EditorPrefFile>(&text)
-            .map(|f| f.tutorial_chapters)
-            .unwrap_or_default()
+        app_prefs().tutorial_chapters
     }
 }
 
 /// Persist the finished-chapter list (read-modify-write so other prefs survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_tutorial_chapters(chapters: &[String]) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.tutorial_chapters = chapters.to_vec();
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Per-user refresh intervals (ms) for the editor's live stat readouts. Higher
@@ -894,10 +637,7 @@ pub fn load_stats_refresh() -> StatsRefreshSettings {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let prefs = editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .unwrap_or_default();
+        let prefs = app_prefs();
         StatsRefreshSettings {
             system_monitor_ms: prefs.stats_system_monitor_ms.clamp(16, 10_000),
             render_stats_ms: prefs.stats_render_stats_ms.clamp(16, 10_000),
@@ -911,23 +651,12 @@ pub fn load_stats_refresh() -> StatsRefreshSettings {
     }
 }
 
-/// Persist the stat-refresh intervals (read-modify-write, so `ui_scale` and any
-/// future fields in the file survive).
+/// Persist the stat-refresh intervals and the status-bar toggles
+/// (read-modify-write, so every other field in `[app]` survives).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.stats_system_monitor_ms = settings.system_monitor_ms;
     prefs.stats_render_stats_ms = settings.render_stats_ms;
     prefs.stats_ecs_stats_ms = settings.ecs_stats_ms;
@@ -936,47 +665,54 @@ pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()
     prefs.status_show_gpu = settings.show_gpu;
     prefs.status_show_rendering_mode = settings.show_rendering_mode;
     prefs.status_show_gpu_name = settings.show_gpu_name;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Load the persisted developer-mode flag (default `false`). The editor seeds
 /// `EditorSettings.dev_mode` from this at startup, and a distribution plugin can
 /// read it directly (e.g. `plugins/tracy`).
 pub fn load_dev_mode() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        false
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .map(|f| f.dev_mode)
-            .unwrap_or(false)
-    }
+    editor_field("dev_mode").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 /// Persist the developer-mode flag (read-modify-write, so other fields survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
+/// Put the *settings* half of the `[app]` section back to its defaults, leaving
+/// the identity half alone.
+///
+/// `[app]` is the section with no resource behind it: the stat-refresh
+/// intervals, the status-bar toggles and the autosave pair are read from here at
+/// boot and written back only by whoever edits them. Every other section resets
+/// by replacing its resource and letting that resource's own debounced save
+/// write it out (see `renzora_shell`'s `reset_defaults_buttons`); this one has
+/// to be written by hand, and that is the only reason it exists.
+///
+/// **What it keeps, and why.** `language`, `update_channel`, `skipped_update`,
+/// `disabled_plugins`, `ui_toolbar_order`, `inspector_component_order` and the
+/// two tutorial fields are not settings in the sense the Settings panel means.
+/// They are what the user *is* and what they have already answered: the language
+/// they read, the plugins they chose to turn off, the update they dismissed, the
+/// tutorial they have done, the arrangements they dragged into place. Reset
+/// should hand back a default editor, not a new user.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reset_editor_settings_prefs() -> std::io::Result<()> {
+    let existing = app_prefs();
+    // Built from `default()` and then given back the fields that survive, rather
+    // than by assigning defaults field by field: a field added to the file later
+    // is then reset by default, and only stays if someone deliberately lists it
+    // here. The other way round, a new field would silently never reset.
+    let prefs = EditorPrefFile {
+        language: existing.language,
+        update_channel: existing.update_channel,
+        skipped_update: existing.skipped_update,
+        disabled_plugins: existing.disabled_plugins,
+        ui_toolbar_order: existing.ui_toolbar_order,
+        inspector_component_order: existing.inspector_component_order,
+        tutorial_completed: existing.tutorial_completed,
+        tutorial_chapters: existing.tutorial_chapters,
+        ..EditorPrefFile::default()
     };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.dev_mode = dev_mode;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Saved group order for the UI editor's toolbar. Empty means "never
@@ -988,9 +724,7 @@ pub fn load_ui_toolbar_order() -> Vec<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        Some(app_prefs())
             .map(|f| f.ui_toolbar_order)
             .unwrap_or_default()
     }
@@ -1000,22 +734,40 @@ pub fn load_ui_toolbar_order() -> Vec<String> {
 /// survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_ui_toolbar_order(order: &[String]) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.ui_toolbar_order = order.to_vec();
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
+}
+
+/// Saved order of the inspector's component sections, by `type_id`. Empty means
+/// "never rearranged" — the inspector then uses its built-in order.
+pub fn load_inspector_component_order() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Some(app_prefs())
+            .map(|f| f.inspector_component_order)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the inspector's component order (read-modify-write, so other prefs
+/// survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_inspector_component_order(order: &[String]) -> std::io::Result<()> {
+
+    let mut prefs = app_prefs();
+    prefs.inspector_component_order = order.to_vec();
+    save_app_prefs(&prefs)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn save_inspector_component_order(_order: &[String]) -> std::io::Result<()> {
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1035,9 +787,7 @@ pub fn load_disabled_plugins() -> Vec<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        Some(app_prefs())
             .map(|f| f.disabled_plugins)
             .unwrap_or_default()
     }
@@ -1068,186 +818,34 @@ pub fn save_disabled_plugins(disabled: &[String]) -> std::io::Result<()> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = editor_pref_path() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "could not resolve home directory for editor preferences",
-            ));
-        };
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let mut prefs = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .unwrap_or_default();
+        let mut prefs = app_prefs();
         let mut list: Vec<String> = disabled.to_vec();
         list.sort();
         list.dedup();
         prefs.disabled_plugins = list;
-        let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-        std::fs::write(&path, text)
+        save_app_prefs(&prefs)
     }
 }
 
 /// Load the persisted Play-button target (default `false` = in-viewport play).
 /// The editor seeds `EditorSettings.external_play_window` from this at startup
 /// so the Play dropdown's choice survives restarts.
-pub fn load_play_runtime_window() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        false
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .map(|f| f.play_runtime_window)
-            // No preferences file yet — external play, matching the field's own
-            // default. A fresh install should not start by mutating the scene it
-            // is playing.
-            .unwrap_or(true)
-    }
-}
-
 /// Load where the document tabs are shown (default `false` = the strip under
 /// the top bar; `true` = a dropdown in the top bar beside Play). The shell seeds
 /// `EditorSettings.doc_tabs_dropdown` from this at startup.
-pub fn load_doc_tabs_dropdown() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        false
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .map(|f| f.doc_tabs_dropdown)
-            .unwrap_or(false)
-    }
-}
-
 /// Persist where the document tabs are shown (read-modify-write, so other
 /// fields survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_doc_tabs_dropdown(dropdown: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.doc_tabs_dropdown = dropdown;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Load whether a hierarchy row click also toggles its subtree (default `true`).
 /// `EditorSettings.hierarchy_toggle_on_click` is seeded from this at startup.
-pub fn load_hierarchy_toggle_on_click() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        true
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .map(|f| f.hierarchy_toggle_on_click)
-            .unwrap_or(true)
-    }
-}
-
 /// Persist the hierarchy click-to-toggle preference (read-modify-write, so
 /// other fields survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_hierarchy_toggle_on_click(toggle: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.hierarchy_toggle_on_click = toggle;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Load the persisted VR play target (default `false`).
-pub fn load_play_vr() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        false
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .map(|f| f.play_vr)
-            .unwrap_or(false)
-    }
-}
-
 /// Persist the VR play target (read-modify-write, so other fields survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_play_vr(play_vr: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.play_vr = play_vr;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Persist the Play-button target (read-modify-write, so other fields survive).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_play_runtime_window(runtime_window: bool) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
-    prefs.play_runtime_window = runtime_window;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
-}
-
 /// Auto-save preferences, persisted per-user in `~/.renzora/editor.toml`.
 ///
 /// A contract resource (rather than living in `EditorSettings`) so the
@@ -1278,10 +876,7 @@ pub fn load_autosave() -> AutoSaveSettings {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let prefs = editor_pref_path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-            .unwrap_or_default();
+        let prefs = app_prefs();
         AutoSaveSettings {
             enabled: prefs.autosave_enabled,
             // Clamp to a sane floor so a corrupt/0 value can't busy-save.
@@ -1293,23 +888,11 @@ pub fn load_autosave() -> AutoSaveSettings {
 /// Persist the auto-save preferences (read-modify-write, so other fields survive).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_autosave(settings: &AutoSaveSettings) -> std::io::Result<()> {
-    let Some(path) = editor_pref_path() else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not resolve home directory for editor preferences",
-        ));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut prefs = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
-        .unwrap_or_default();
+
+    let mut prefs = app_prefs();
     prefs.autosave_enabled = settings.enabled;
     prefs.autosave_interval_secs = settings.interval_secs;
-    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
-    std::fs::write(&path, text)
+    save_app_prefs(&prefs)
 }
 
 /// Build a run condition that fires at most once per the interval returned by
@@ -1719,24 +1302,64 @@ fn audio_is_empty(a: &AudioConfig) -> bool {
     a.buses.is_empty()
 }
 
+/// One project's editor state, stored per-user in `settings.toml` under
+/// `[projects."<absolute path>"]`.
+///
+/// Keyed by absolute path, so a project that moves loses its entry. That is the
+/// same thing that happens to its row in the recents list, and it is the price
+/// of not writing editor state into a file the game ships with.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct ProjectEditorState {
+    /// The scene the editor had open when the project was last closed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_scene: Option<String>,
+    /// Every document tab that was open, in display order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open_tabs: Vec<EditorOpenTab>,
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
     pub name: String,
     pub version: String,
+    /// The engine version that created this project ([`crate::version::ENGINE_VERSION`]
+    /// at the moment the folder was made, e.g. `"r1-alpha7"`).
+    ///
+    /// Written once, by the New Project flow, and never rewritten afterwards:
+    /// the question it answers is "which version's defaults and file formats did
+    /// this project start from", which is exactly what a load failure or a
+    /// migration needs and what the last-opened version cannot tell you. `None`
+    /// for every project made before r1-alpha7, and for a project unpacked from
+    /// a template (it carries the template author's `project.toml`, so the value
+    /// would be theirs, not yours).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_with: Option<String>,
     pub main_scene: String,
     /// The scene the editor had open when the project was last closed. Editor
     /// reopens this on project load, falling back to `main_scene` if absent.
     /// Runtime / exported builds always use `main_scene` (this field is
     /// editor-only and ignored by the runtime).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// **Read but never written.** It lives in the per-user settings file now
+    /// (`[projects."<path>"]`), because which scene *you* had open is not part of
+    /// the game. Still deserialized so a project written before the move keeps
+    /// its answer: it loads from here, and the first save drops it from
+    /// `project.toml` and writes it to the settings file instead — the migration
+    /// is the round trip.
+    #[serde(default, skip_serializing)]
     pub editor_last_scene: Option<String>,
     /// Every document tab the editor had open when the project was last used
     /// (in display order). Restored on project load so open materials/scripts/
     /// scenes survive a reload; the *active* scene still comes from
     /// `editor_last_scene`. Editor-only — the runtime ignores it and export
     /// strips it from shipped builds.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// Read but never written, for the same reason as
+    /// [`Self::editor_last_scene`]: which documents you had open is yours, not
+    /// the project's.
+    #[serde(default, skip_serializing)]
     pub editor_open_tabs: Vec<EditorOpenTab>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
@@ -1779,10 +1402,6 @@ pub struct ProjectConfig {
     /// with no bus graph routes every custom-bus emitter to the SFX fallback.
     #[serde(default, skip_serializing_if = "audio_is_empty")]
     pub audio: AudioConfig,
-    /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
-    /// The runtime ignores this section; export strips it from shipped builds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editor: Option<crate::core::viewport_types::EditorPrefs>,
 }
 
 impl Default for ProjectConfig {
@@ -1790,6 +1409,11 @@ impl Default for ProjectConfig {
         Self {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
+            // Deliberately not `ENGINE_VERSION`: this default is also what an
+            // in-memory config falls back to for an *existing* project, and
+            // stamping it there would have the next save claim someone else's
+            // project was created by whatever build happened to open it.
+            created_with: None,
             main_scene: "scenes/main.bsn".to_string(),
             editor_last_scene: None,
             editor_open_tabs: Vec::new(),
@@ -1803,9 +1427,34 @@ impl Default for ProjectConfig {
             ui_font: None,
             network: None,
             audio: AudioConfig::default(),
-            editor: None,
         }
     }
+}
+
+/// Where the save-time snapshot of a scene is cached, from the project root and
+/// the scene's project-relative path.
+///
+/// `("/games/demo", "scenes/level.bsn")` →
+/// `/games/demo/.cache/thumbnails/scenes/scenes/level.bsn.png`.
+///
+/// It lives in the contract crate because two unrelated callers derive it: the
+/// editor (`renzora_editor_framework::scene_thumb_path`, which resolves an
+/// absolute scene path first) and the splash, which has no project open at all
+/// and only ever knows a folder and the `main_scene` key it read out of a
+/// `project.toml`. A second copy of the rule in the splash would go stale the
+/// first time the cache layout moved, and the symptom would be a dashboard full
+/// of blank tiles with nothing logged.
+///
+/// The extension is **appended**, not replaced: a project mid-BSN-migration can
+/// hold `level.bsn` and `level.ron` side by side, and replacing would collapse
+/// both onto one `level.png`.
+pub fn scene_thumbnail_path(project_root: &Path, scene_rel: &str) -> PathBuf {
+    let rel = scene_rel.strip_prefix("assets/").unwrap_or(scene_rel);
+    project_root
+        .join(".cache")
+        .join("thumbnails")
+        .join("scenes")
+        .join(format!("{rel}.png"))
 }
 
 /// Runtime resource holding the currently open project
@@ -1829,7 +1478,50 @@ impl CurrentProject {
         let toml_path = self.path.join("project.toml");
         let content = toml::to_string_pretty(&self.config)?;
         std::fs::write(&toml_path, content)?;
+        // The two editor-only fields go to the per-user settings file instead of
+        // into the file above — they are `skip_serializing`, so this is the only
+        // thing that writes them anywhere. Saved alongside rather than on their
+        // own change, because everything that moves them already saves the
+        // config in the same breath.
+        self.save_editor_state();
         Ok(())
+    }
+
+    /// This project's editor state, as it is stored per-user.
+    ///
+    /// A struct of its own rather than reusing `ProjectConfig`, so the settings
+    /// file carries exactly the two fields that belong to the user and gains
+    /// nothing else if `ProjectConfig` grows.
+    fn editor_state(&self) -> ProjectEditorState {
+        ProjectEditorState {
+            last_scene: self.config.editor_last_scene.clone(),
+            open_tabs: self.config.editor_open_tabs.clone(),
+        }
+    }
+
+    /// Write this project's editor state into `[projects."<path>"]`.
+    pub fn save_editor_state(&self) {
+        if let Err(e) =
+            crate::core::settings_file::save_project_section(&self.path, &self.editor_state())
+        {
+            bevy::log::warn!("[project] could not save editor state: {e}");
+        }
+    }
+
+    /// Overlay the per-user editor state for this project, if there is any.
+    ///
+    /// Called after loading `project.toml`. The settings file wins when it has an
+    /// entry, and the values parsed out of `project.toml` stand when it does not
+    /// — which is what carries a pre-move project across without a migration
+    /// step of its own.
+    pub fn load_editor_state(&mut self) {
+        let Some(saved) =
+            crate::core::settings_file::load_project_section::<ProjectEditorState>(&self.path)
+        else {
+            return;
+        };
+        self.config.editor_last_scene = saved.last_scene;
+        self.config.editor_open_tabs = saved.open_tabs;
     }
 
     /// Convert an absolute path to a project-relative path (e.g. `assets/textures/foo.png`).
@@ -1901,6 +1593,7 @@ mod tests {
         let original = ProjectConfig {
             name: "Demo".into(),
             version: "0.2.1".into(),
+            created_with: Some("r1-alpha7".into()),
             main_scene: "scenes/intro.ron".into(),
             editor_last_scene: Some("scenes/wip.ron".into()),
             editor_open_tabs: vec![
@@ -1939,11 +1632,49 @@ mod tests {
                     color: Some([120, 200, 80]),
                 }],
             },
-            editor: Some(crate::core::viewport_types::EditorPrefs::default()),
         };
         let s = toml::to_string_pretty(&original).expect("serialize");
         let parsed: ProjectConfig = toml::from_str(&s).expect("parse");
-        assert_eq!(original, parsed);
+
+        // **The two editor-only fields do not survive the round trip, on
+        // purpose.** They are `skip_serializing`: a project file is what a game
+        // ships with, and which scene you had open is not part of the game. They
+        // are written to `~/.renzora/settings.toml` under `[projects."<path>"]`
+        // instead, and are still *deserialized* here so a project written before
+        // that move is read once and carried across.
+        assert_eq!(parsed.editor_last_scene, None);
+        assert!(parsed.editor_open_tabs.is_empty());
+        assert!(
+            !s.contains("editor_last_scene") && !s.contains("editor_open_tabs"),
+            "editor state must not be written into project.toml"
+        );
+
+        // Everything that genuinely belongs to the game does round-trip.
+        let expected = ProjectConfig {
+            editor_last_scene: None,
+            editor_open_tabs: Vec::new(),
+            ..original
+        };
+        assert_eq!(expected, parsed);
+    }
+
+    /// The other half of the move: a `project.toml` written by an older build
+    /// still hands its editor state over, once, so nobody loses their open tabs
+    /// on upgrading.
+    #[test]
+    fn legacy_editor_state_is_still_read() {
+        let s = r#"
+            name = "MyProject"
+            version = "1.0.0"
+            main_scene = "scenes/main.ron"
+            editor_last_scene = "scenes/wip.ron"
+            [[editor_open_tabs]]
+            path = "scenes/wip.ron"
+            kind = "scene"
+        "#;
+        let parsed: ProjectConfig = toml::from_str(s).expect("parse legacy");
+        assert_eq!(parsed.editor_last_scene.as_deref(), Some("scenes/wip.ron"));
+        assert_eq!(parsed.editor_open_tabs.len(), 1);
     }
 
     #[test]
@@ -1977,9 +1708,46 @@ mod tests {
         assert_eq!(parsed.editor_last_scene, None);
         assert_eq!(parsed.icon, None);
         assert_eq!(parsed.network, None);
-        assert_eq!(parsed.editor, None);
+        // Every project made before r1-alpha7 is one of these: nothing stamped
+        // the field, and nothing invents a value for it afterwards.
+        assert_eq!(parsed.created_with, None);
         // window has its own #[serde(default)] so it should default cleanly.
         assert_eq!(parsed.window, WindowConfig::default());
+    }
+
+    // ── Scene thumbnail paths ─────────────────────────────────────────────
+
+    /// The editor writes these and the splash reads them without ever opening
+    /// the project, so the rule has to be one rule. See
+    /// [`super::scene_thumbnail_path`].
+    #[test]
+    fn scene_thumbnail_path_appends_png_under_the_project_cache() {
+        assert_eq!(
+            scene_thumbnail_path(Path::new("/games/demo"), "scenes/level.bsn"),
+            PathBuf::from("/games/demo/.cache/thumbnails/scenes/scenes/level.bsn.png"),
+        );
+    }
+
+    /// A scene under `assets/` is cached by its path *inside* assets, so the
+    /// same scene resolves the same whether the caller found it through the
+    /// asset root or through the project root.
+    #[test]
+    fn scene_thumbnail_path_drops_the_assets_prefix() {
+        assert_eq!(
+            scene_thumbnail_path(Path::new("/games/demo"), "assets/scenes/level.bsn"),
+            scene_thumbnail_path(Path::new("/games/demo"), "scenes/level.bsn"),
+        );
+    }
+
+    /// `.bsn` and `.ron` copies of one scene coexist during the BSN migration;
+    /// replacing the extension instead of appending would give them one cache
+    /// entry and each save would overwrite the other's picture.
+    #[test]
+    fn scene_thumbnail_path_keeps_the_scene_extension() {
+        assert_ne!(
+            scene_thumbnail_path(Path::new("/p"), "scenes/a.bsn"),
+            scene_thumbnail_path(Path::new("/p"), "scenes/a.ron"),
+        );
     }
 
     // ── WindowConfig / NetworkProjectConfig defaults ──────────────────────

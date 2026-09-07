@@ -1,6 +1,76 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(settings): View > Reset to Defaults puts autosave back to its default
+  without needing a restart.
+- feat(settings): View > Reset to Defaults can clear everything installed
+  plugins have saved.
+- fix(editor): moving the cursor into File > Recent Projects no longer closes the
+  menu.
+- feat(editor): a hovered menu row is filled with the theme's accent colour.
+- feat(viewport): Reset View and Grid moved from the nav cluster to the foot of
+  the tool shelf.
+- feat(viewport): the Grid button tints its icon while the grid is on instead of
+  filling its background.
+- feat(viewport): the height ruler moved to the bottom left, and its bar fills
+  upwards as the camera climbs.
+- feat(editor): the Renzora mark leads the top bar, and opens About when clicked.
+- feat(editor): About credits the engine's GitHub contributors.
+- feat(editor): About is darker, leads with the Renzora mark, and lays the
+  upstream projects out as a grid.
+- feat(settings): every editor preference lives in one `~/.renzora/settings.toml`,
+  and an older install's settings move across on first launch.
+- fix(settings): the two thirds of the Settings pages that were forgotten on
+  restart now persist, including every code-editor preference.
+- fix(shortcuts): a rebound keyboard shortcut survives a restart.
+- feat(settings): camera sensitivity, the grid, gizmos and snapping are per user
+  instead of per project.
+- feat(project): `project.toml` holds only what a shipped game needs; the scene
+  and tabs you had open move to your own settings.
+- feat(plugin-api): a standalone plugin can save and load its own settings
+  (ABI MINOR 4.11).
+- feat(editor): File > Recent Projects opens a recent project without leaving the
+  editor.
+- feat(editor): leaving a project for another one prompts to save unsaved changes
+  first.
+- fix(setup): closing the plugin-build window quits instead of reopening it.
+- feat(inspector): drag a component section by its grip to reorder it, and the
+  order sticks across selections and restarts.
+- feat(splash): recent projects are a grid of cards, each showing the last
+  snapshot of its main scene.
+- feat(project): a new project records the engine version it was created with.
+- feat(viewport): the shading buttons move off the scene and onto the toolbar,
+  left of Maximize.
+- feat(viewport): the select, move, rotate and scale tools move to the shelf down
+  the viewport's left edge.
+- feat(terrain): the sculpt, paint and foliage modes move to the shelf, above the
+  brushes they open.
+- fix(terrain): picking a gizmo leaves the terrain mode you were in, instead of
+  the mode putting itself straight back.
+- feat(editor): Reset to Defaults can reset the tutorial, and resetting settings
+  puts the theme back to Dark.
+- feat(assets): the Create Asset list leads the Add and right-click menus.
+- feat(assets): Rust Script joins the create-asset list.
+- feat(assets): New Folder opens its rename field straight away.
+- fix(assets): renaming a folder from the grid no longer types into the tree.
+- fix(assets): Reveal in Explorer opens the folder you picked instead of the one
+  above it.
+- feat(shell): the collapsed bottom panel shows its shortcut beside the caret,
+  and the whole thing is clickable.
+- feat(editor): View has a Reset to Defaults, with a switch per thing it can
+  reset: workspaces, editor settings, viewport and camera, and shortcuts.
+- fix(editor): resetting editor settings now resets the ones saved between
+  sessions too, instead of reading them straight back off disk.
+- feat(editor): the UI workspace sits next to Scene.
+- feat(inspector): the empty Camera 3D section is gone.
+- feat(inspector): UI components are only offered on entities inside a UI canvas.
+- feat(shell): the Simulate play target is now called Scripts.
+- feat(marketplace): the sign-in and register overlay is redesigned, and has a
+  close button.
+- fix(ember): the text caret sits on the first character in an input whose box
+  has been restyled.
+- feat(level-presets): the description block under the grid is gone; the
+  description is on each card instead.
 - fix(import): dropping a file on the dashboard no longer crashes the app.
 - fix(editor): the editor UI no longer renders behind the dashboard, so dragging
   a file over it stops showing "Drop to import".

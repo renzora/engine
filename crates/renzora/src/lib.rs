@@ -273,3 +273,22 @@ pub enum SplashState {
 /// validates, updates recent projects, and transitions state.
 #[derive(bevy::prelude::Resource)]
 pub struct RequestOpenProject;
+
+/// Request: open the project rooted at this path, with no file dialog.
+///
+/// [`RequestOpenProject`]'s sibling for a project the user has *already* named
+/// — File > Recent Projects picks the path off [`RecentProjects`], so asking
+/// them to find the same `project.toml` in an OS dialog would be the whole
+/// point of the list undone.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestOpenProjectPath(pub std::path::PathBuf);
+
+/// The recently-opened project roots, most recent first.
+///
+/// Mirrored out of the launcher's `AppConfig` by the splash plugin, which owns
+/// the on-disk list. It lives here because the File menu is built in
+/// `renzora_shell`, and the shell must not depend on the splash crate to read
+/// one `Vec<PathBuf>`. Empty in a build with no splash plugin, which is exactly
+/// what the menu should show there.
+#[derive(bevy::prelude::Resource, Default, Clone)]
+pub struct RecentProjects(pub Vec<std::path::PathBuf>);

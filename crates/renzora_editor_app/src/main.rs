@@ -13,14 +13,17 @@
 //! would mismatch. "Editor as a removable file" becomes "editor as a separate
 //! executable"; removing editor code from a shipped game is now a property of
 //! which binary you ship, not of which files you delete beside it.
-
-
-/// The first-run setup window, which unpacks the SDK and builds the source-only
-/// plugins. Desktop-only, following `renzora_native_plugin::prebuild` that it
-/// drives — a browser can run neither half, and there is no SDK beside a wasm
-/// bundle to unpack in the first place.
-#[cfg(not(target_arch = "wasm32"))]
-mod setup_ui;
+//!
+//! # No setup window here
+//!
+//! This package builds for **wasm only** (`required-features = ["wasm"]`), and
+//! the first-run setup that unpacks the SDK and compiles the source-only native
+//! plugins is desktop-only: a browser can run neither half, there is no SDK
+//! beside a wasm bundle to unpack, and no process to relaunch afterwards. It
+//! used to carry its own copy of that window behind a
+//! `cfg(not(target_arch = "wasm32"))` that could never be true here, so the copy
+//! drifted from the live one in the root binary's `src/setup_ui.rs` and was
+//! never compiled by anything. That is where setup lives; this binary has none.
 
 fn main() {
     // The editor always keeps a console: its log output is the primary
@@ -28,24 +31,6 @@ fn main() {
     // `windows_subsystem = "windows"` precisely so shipped games don't get one.
     renzora_runtime::renzora_engine::crash::install_panic_hook(true);
     renzora_runtime::attach_console();
-
-    // ── Setup, before Bevy ───────────────────────────────────────────────────
-    // A downloaded release arrives with the SDK still compressed and every native
-    // plugin still source-only, so the first launch after an install or update
-    // has real work to do. It has to happen HERE, before `App` assembly: that is
-    // when `NativePluginLoader` loads plugins, so unpacking any later would be
-    // too late for the very thing that needed it.
-    //
-    // Ordinary launches answer `needed() == false` after a couple of directory
-    // stats and fall straight through. See `renzora_native_plugin::prebuild`.
-    // Gated off the web for the same reason the runtime binary's copy is: there
-    // is no SDK beside a wasm bundle, no rustc in a browser to drive if there
-    // were, and no process to relaunch afterwards.
-    #[cfg(not(target_arch = "wasm32"))]
-    if renzora_native_plugin::prebuild::needed() {
-        setup_ui::run();
-        renzora_native_plugin::prebuild::restart();
-    }
 
     let mut app = renzora_runtime::init_app();
     renzora_runtime::add_default_rendering(&mut app, true);
@@ -62,6 +47,20 @@ fn main() {
     // No `statics`: linking plugins in is an export-time choice for a shipped
     // game, and it would cost the editor the thing it needs most from them —
     // hot reload, which needs a file on disk to watch and swap.
+    // Where a C-ABI plugin's settings go. A late-bound hook because
+    // `renzora_plugin` is the bottom of the stack — it cannot name the settings
+    // file, which belongs to `renzora`, which depends on it. Installed here
+    // because this is the one place that has both.
+    app.insert_resource(renzora_plugin::host::PluginSettingsStore {
+        load: renzora::core::settings_file::load_plugin_settings,
+        save: |key, blob| {
+            renzora::core::settings_file::save_plugin_settings(key, blob)
+                .map_err(|e| e.to_string())
+        },
+        clear: |key| {
+            renzora::core::settings_file::clear_plugin_settings(key).map_err(|e| e.to_string())
+        },
+    });
     app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
         is_editor: true,
         statics: Vec::new(),

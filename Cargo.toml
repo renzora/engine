@@ -443,6 +443,10 @@ uuid = "1"
 # on `renzora_plugin` with default features and gets zero deps; the engine opts
 # into `host` for the interface impl, dispatcher and dlopen loader.
 renzora_plugin = { path = "crates/renzora_plugin", features = ["host"] }
+# Named directly so the plugin settings store can be installed beside the host
+# plugin: `renzora_plugin` cannot reach the settings file (it is the bottom of
+# the stack and `renzora` depends on *it*), so the binary wires the two together.
+renzora = { path = "crates/renzora", default-features = false }
 # The generated list of plugins linked into the binary. Optional because it is
 # empty (and so pure overhead) in every build but a lean export that asked for
 # static plugins — see the `static_plugins` feature above.

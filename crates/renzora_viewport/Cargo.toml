@@ -27,6 +27,9 @@ renzora_engine = { path = "../renzora_engine" }
 renzora_import = { path = "../renzora_import" }
 renzora_ember_editor = { path = "../renzora_ember/editor" }
 serde_json = "1"
+# Reading the legacy `[editor].viewport` table straight out of a project.toml
+# during migration — see `persistence::legacy_viewport_prefs`.
+toml = "0.8"
 bytemuck = { version = "1.5", features = ["derive"] }
 
 [lints]

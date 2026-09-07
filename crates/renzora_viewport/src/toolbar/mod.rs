@@ -383,28 +383,53 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     groups.push((view_group, "viewport"));
     let holders = renzora_ember::widgets::arrange_row_items(commands, fonts, bar, &groups);
 
-    // Maximize floats to the right edge, outside the arrangement.
+    // The right-hand cluster: the shading switch, then Maximize hard against the
+    // edge. It floats to the right, outside the arrangement.
     //
-    // `margin-left: auto` eats the free space on its line, so it sits hard
-    // against the right of the bar however many groups are to its left — and on
-    // the right of the last line when the bar wraps. It deliberately isn't one
-    // of the arrangeable groups: those are ordered by the user and remembered,
-    // and this one has a *position* as part of what it is. Being unkeyed is also
-    // what keeps it there — `arrange_restore` rewrites the row's children with
-    // the keyed holders in saved order and everything else appended after them.
+    // `margin-left: auto` eats the free space on its line, so the cluster sits
+    // hard against the right of the bar however many groups are to its left —
+    // and on the right of the last line when the bar wraps. It deliberately
+    // isn't one of the arrangeable groups: those are ordered by the user and
+    // remembered, and this one has a *position* as part of what it is. Being
+    // unkeyed is also what keeps it there — `arrange_restore` rewrites the row's
+    // children with the keyed holders in saved order and everything else
+    // appended after them.
+    //
+    // Shading is primary-slot only, for the reason the shelf and the ruler are:
+    // it writes the shared `ViewportSettings`, so a copy per slot would be four
+    // switches driving one piece of state. Maximize is genuinely per-slot and
+    // stays on every bar.
+    let right = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                margin: UiRect::left(Val::Auto),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("vp-toolbar-right"),
+        ))
+        .id();
+    if slot == 0 {
+        let shading = crate::shading::build_strip(commands, fonts);
+        commands.entity(right).add_child(shading);
+    }
     let maximize = build_maximize(commands, fonts, slot);
     // Patched onto the button's own `Node` rather than inserted as a new one:
     // `action_btn` sized and rounded it, and a fresh `Node` would drop all of it.
     commands.queue(move |world: &mut World| {
         if let Some(mut node) = world.get_mut::<Node>(maximize) {
-            node.margin.left = Val::Auto;
             node.flex_shrink = 0.0;
         }
     });
-    commands.entity(bar).add_children(&[maximize]);
+    commands.entity(right).add_child(maximize);
+    commands.entity(bar).add_children(&[right]);
     // Hidden with the rest of the toolbar while the game runs. It's a child of
     // the bar rather than of a holder, so the loop below doesn't cover it.
-    renzora_ember::reactive::tracked::bind_display(commands, maximize, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, right, |w| {
         !w.get_resource::<renzora::core::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)

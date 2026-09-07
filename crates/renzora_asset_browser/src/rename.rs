@@ -10,18 +10,23 @@ use renzora_ember::widgets::EmberTextInput;
 
 use crate::grid::display_name;
 use crate::ops::delete_asset;
-use crate::state::{file_name_of, AssetRenameInput, AssetRoot, NativeAssets};
+use crate::state::{file_name_of, AssetRenameInput, AssetRoot, NativeAssets, RenameSurface};
 
-/// Begin an inline rename of `path`: select it (so it's the visible target) and
-/// arm `renaming`, which makes the keyed-list rebuild that tile with a focused
-/// text field (`AssetRenameInput`).
-pub(crate) fn start_rename(world: &mut World, path: &Path) {
+/// Begin an inline rename of `path` on `surface`: select it (so it's the visible
+/// target) and arm `renaming`, which makes the keyed-list rebuild that tile with
+/// a focused text field (`AssetRenameInput`).
+///
+/// `surface` is not optional and has no sensible default at this level: a folder
+/// is drawn on both surfaces, and getting it wrong is exactly the bug
+/// [`RenameSurface`] documents. The caller knows where the gesture happened.
+pub(crate) fn start_rename(world: &mut World, path: &Path, surface: RenameSurface) {
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
         s.selection.clear();
         s.selection.insert(path.to_path_buf());
         s.selected = Some(path.to_path_buf());
         s.selection_anchor = Some(path.to_path_buf());
         s.renaming = Some(path.to_path_buf());
+        s.rename_surface = surface;
     }
 }
 
@@ -31,7 +36,7 @@ pub(crate) fn start_rename(world: &mut World, path: &Path) {
 pub(crate) fn rename_arm_fire(time: Res<Time>, mut state: ResMut<NativeAssets>) {
     // Just over the 0.4s double-click window, so an open always cancels first.
     const DELAY: f64 = 0.45;
-    let Some((path, t)) = state.rename_arm.clone() else {
+    let Some((path, t, surface)) = state.rename_arm.clone() else {
         return;
     };
     let sole = state.selection.len() == 1 && state.selected.as_deref() == Some(path.as_path());
@@ -53,17 +58,28 @@ pub(crate) fn rename_arm_fire(time: Res<Time>, mut state: ResMut<NativeAssets>) 
     if time.elapsed_secs_f64() - t >= DELAY {
         state.rename_arm = None;
         state.renaming = Some(path);
+        state.rename_surface = surface;
     }
 }
 
 /// F2 starts an inline rename of the primary selection (folder or file), unless
 /// one is already in progress.
+///
+/// A keypress carries no surface with it, so it edits on the grid — the surface
+/// the selection was almost certainly made on, and the one showing files as well
+/// as folders. The exception is the narrow layout, where the grid is hidden
+/// entirely and a field spawned there would be a rename with nothing on screen.
 pub(crate) fn rename_shortcut(keys: Res<ButtonInput<KeyCode>>, mut state: ResMut<NativeAssets>) {
     if !keys.just_pressed(KeyCode::F2) || state.renaming.is_some() {
         return;
     }
     if let Some(path) = state.selected.clone() {
         state.renaming = Some(path);
+        state.rename_surface = if state.narrow {
+            RenameSurface::Tree
+        } else {
+            RenameSurface::Grid
+        };
     }
 }
 

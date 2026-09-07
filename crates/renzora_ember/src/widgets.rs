@@ -85,6 +85,7 @@ mod avatar;
 mod chip;
 pub mod clipboard;
 mod file_image;
+mod web_image;
 mod folder_picker;
 mod grid;
 mod image;
@@ -200,6 +201,7 @@ pub use pagination::*;
 pub use avatar::*;
 pub use chip::*;
 pub use file_image::*;
+pub use web_image::*;
 pub use folder_picker::*;
 pub use grid::*;
 pub use image::*;
@@ -270,7 +272,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::DragValueConfig>();
         app.init_resource::<drag_value::AnyDragValueEditing>();
         app.init_resource::<file_image::FileImages>();
-        app.init_resource::<markdown::MarkdownImages>();
+        app.init_resource::<web_image::WebImages>();
         app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
         app.init_resource::<scroll_area::DraggedThumb>();
@@ -458,12 +460,21 @@ impl Plugin for WidgetsPlugin {
                 drag_window::drag_handle_move,
             ),
         );
-        // Markdown widget: open clicked links in the browser, swap image
-        // placeholders for their downloaded textures.
+        // Downloaded images: ask for whatever is on screen, register what
+        // finished, then let the markdown widget swap its placeholders for the
+        // textures that just landed. Chained so an image is never one frame
+        // later than it needs to be.
         app.add_systems(
             Update,
-            (markdown::markdown_link_click, markdown::markdown_images_sync),
+            (
+                web_image::request_web_images,
+                web_image::poll_web_images,
+                markdown::markdown_images_sync,
+            )
+                .chain(),
         );
+        // Markdown widget: open clicked links in the browser.
+        app.add_systems(Update, markdown::markdown_link_click);
         // On-disk thumbnails: ask for whatever is on screen, then register what
         // finished decoding. `request` before `poll` so a tile spawned this frame
         // is in flight by the next one.

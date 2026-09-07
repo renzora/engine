@@ -24,8 +24,10 @@ The default page, and what the launcher used to be on its own.
 - **New Project** — choose a folder; it becomes the project root and takes the folder's name.
 - **New from Template** — opens the [Templates](#templates) page, to start from a finished project instead of an empty one. Hidden in a build without the Marketplace.
 - **Open Project** — pick a `project.toml`.
-- **Recent Projects** — everything you have opened, newest first. Click a row to open it. The **✕** on a row removes it from this list and *does not* touch the folder on disk. A project whose folder has moved or gone is shown greyed out and marked `(missing)`.
-- The search box filters the recents list by name or path.
+- **Recent Projects** — everything you have opened, newest first, as a grid of cards. Click a card to open it. The **✕** in a card's corner removes it from this list and *does not* touch the folder on disk. A project whose folder has moved or gone is shown greyed out and marked `(missing)`.
+- The search box filters the recents by name or path.
+
+Each card shows the last picture the editor took of that project's **main scene** — the same snapshot the asset browser puts on a scene tile, taken from the viewport every time you save. A project you have never saved, or whose main scene has not been open since, keeps a folder glyph instead. The grid takes as many columns as the window is wide enough for.
 
 In the browser build, "New" and "Open" both go through the directory picker, and a recent entry reopens through the folder handle the browser remembers — which asks you to re-grant permission.
 

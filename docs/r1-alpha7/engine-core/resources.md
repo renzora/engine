@@ -140,6 +140,7 @@ pub struct CurrentProject {
 pub struct ProjectConfig {
     pub name: String,
     pub version: String,
+    pub created_with: Option<String>,  // engine version that made the project
     pub main_scene: String,            // e.g. "scenes/main.ron"
     pub editor_last_scene: Option<String>, // editor-only, ignored by exports
     pub editor_open_tabs: Vec<EditorOpenTab>, // editor-only, ignored by exports
@@ -148,6 +149,12 @@ pub struct ProjectConfig {
     // window / viewport / rendering / network / editor sub-configs ...
 }
 ```
+
+### `created_with` — the version that made the project
+
+New Project stamps the engine version it was created with (`created_with = "r1-alpha7"`) and nothing rewrites it afterwards, so a project still says which version's defaults and file formats it started from long after a newer editor has saved it. That is the value a load failure or a migration needs; the version that last *opened* the project cannot tell you.
+
+It is absent from projects made before r1-alpha7, and from one started from a template — a template brings its own `project.toml`, so the value there would be the template author's, not yours. Treat `None` as "unknown", never as "old".
 
 ### `[audio]` — the mixer bus graph
 

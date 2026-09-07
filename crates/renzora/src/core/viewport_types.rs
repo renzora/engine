@@ -1471,26 +1471,29 @@ fn default_gizmo_drag_opacity() -> f32 {
     0.25
 }
 
-/// Editor-only preferences persisted in `project.toml` under `[editor]`.
-/// The runtime ignores this section, and `renzora_export` strips it from
-/// shipped builds.
+/// **Gone from `project.toml`.** Editor preferences used to live in a project's
+/// own file under `[editor]`: the viewport settings, and once the tutorial's
+/// progress. Both are per-user, so both moved to `~/.renzora/settings.toml` —
+/// the viewport into its `[viewport]` section, the tutorial into `[app]` — and
+/// `ProjectConfig` has no `editor` field any more. A project file is what a game
+/// ships with, and none of that describes the game.
+///
+/// The type survives only so the two migrations can name the old shape while
+/// reading a `project.toml` written before the move; see
+/// `renzora_viewport::persistence::legacy_viewport_prefs` and
+/// `renzora_tutorial::persistence::legacy_tutorial_prefs`. Nothing serializes it
+/// any more.
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct EditorPrefs {
     pub viewport: PersistedViewportSettings,
     /// **Legacy, read-only.** Tutorial progress used to live per-project, which
     /// meant the onboarding overlay re-launched at every new project the user
-    /// made. It is now per-user, in `~/.renzora/editor.toml` — see
-    /// [`project_config::load_tutorial_completed`]. This field is still parsed
-    /// so `renzora_tutorial` can migrate an existing project's answer into the
-    /// per-user file once, and is never written again.
-    ///
-    /// [`project_config::load_tutorial_completed`]: super::project_config::load_tutorial_completed
+    /// made. It is now per-user.
     #[serde(default)]
     pub tutorial_completed: bool,
     /// **Legacy, read-only.** The finished-chapter list that went with
-    /// `tutorial_completed`; migrated into `~/.renzora/editor.toml` for the same
-    /// reason and likewise never written again.
+    /// `tutorial_completed`.
     #[serde(default)]
     pub tutorial_chapters: Vec<String>,
 }

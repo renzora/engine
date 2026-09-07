@@ -13,7 +13,8 @@ use bevy::prelude::*;
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
-use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
+use renzora_ember::reactive::Rx;
+use renzora_ember::theme::{accent, divider, rgb, text_muted, text_primary, window_bg};
 
 use crate::bottom_dock::BottomDock;
 use crate::dock;
@@ -28,9 +29,19 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<OpenTopMenu>();
     app.add_systems(
         Update,
-        (top_menu_open, top_menu_hover, top_menu_sync, update_chip_click),
+        (
+            top_menu_open,
+            top_menu_hover,
+            top_menu_sync,
+            update_chip_click,
+            brand_mark_click,
+        ),
     );
 }
+
+/// The Renzora mark at the head of the top bar; opens the About overlay.
+#[derive(Component)]
+struct BrandMarkBtn;
 
 /// The top bar's "Update available" chip. Shown only while
 /// [`renzora::core::UpdateAvailable`] is present; opens the Software Update
@@ -110,6 +121,124 @@ pub(crate) fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::Fo
     item
 }
 
+/// The Renzora mark that opens the top bar: the real icon, with a glyph standing
+/// in where the file is not there. Clicking it opens About.
+///
+/// Loaded through ember's on-disk image cache rather than the `AssetServer`,
+/// because the asset root is the open *project*'s and this is the engine's own
+/// mark. The icon is staged beside the executable as `resources/icon.png` (see
+/// `xtask`'s staging step), so it is present in every staged and downloaded
+/// build and absent from a bare `cargo run` — which is what the glyph is for.
+/// The splash's title bar does the same thing for the same reasons; see
+/// `renzora_splash`'s `build_mark`.
+///
+/// About was reachable only from Help, two hovers deep in a menu whose other
+/// rows are documentation links. A product's mark is where people already look
+/// for what version they are running.
+pub(crate) fn brand_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    const MARK: f32 = 18.0;
+
+    let button = commands
+        .spawn((
+            Node {
+                width: Val::Px(MARK + 10.0),
+                height: Val::Px(MARK + 6.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            BrandMarkBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("brand-mark"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, button, move |w| {
+        match w.get::<Interaction>(button) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::hover_bg())
+            }
+            _ => Color::NONE,
+        }
+    });
+
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(path) = brand_icon_path() {
+        let img = commands
+            .spawn((
+                ImageNode::default(),
+                Node {
+                    width: Val::Px(MARK),
+                    height: Val::Px(MARK),
+                    // Revealed by the binding below once the decode lands, so a
+                    // blank `ImageNode` never flashes as a white square.
+                    display: Display::None,
+                    ..default()
+                },
+                // Let the click through to the button, or a press on the mark
+                // itself (i.e. anywhere you would aim) never reaches it.
+                bevy::ui::FocusPolicy::Pass,
+                bevy::picking::Pickable::IGNORE,
+                renzora_ember::widgets::FileImageWanted(path.clone()),
+            ))
+            .id();
+        renzora_ember::reactive::tracked::bind_with(
+            commands,
+            img,
+            move |w| {
+                w.get_resource::<renzora_ember::widgets::FileImages>()
+                    .and_then(|c| c.get(&path))
+            },
+            |w, e, handle: &Option<Handle<Image>>| {
+                let Some(h) = handle else { return };
+                if let Some(mut n) = w.get_mut::<ImageNode>(e) {
+                    if n.image != *h {
+                        n.image = h.clone();
+                    }
+                }
+                if let Some(mut node) = w.get_mut::<Node>(e) {
+                    node.display = Display::Flex;
+                }
+            },
+        );
+        commands.entity(button).add_child(img);
+        return button;
+    }
+
+    let fallback = icon_text(commands, &fonts.phosphor, "cube", accent(), 15.0);
+    commands
+        .entity(fallback)
+        .insert((bevy::ui::FocusPolicy::Pass, bevy::picking::Pickable::IGNORE));
+    commands.entity(button).add_child(fallback);
+    button
+}
+
+/// Absolute path of the icon staged beside the executable, if this build has one.
+///
+/// Shared with the About overlay, which draws the same mark larger.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn brand_icon_path() -> Option<std::path::PathBuf> {
+    let path = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .join("resources")
+        .join("icon.png");
+    path.is_file().then_some(path)
+}
+
+/// Click the mark → open About.
+fn brand_mark_click(
+    q: Query<&Interaction, (With<BrandMarkBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(crate::about::ShowAboutRequested);
+    }
+}
+
 /// The top bar's "Update available" chip: an accent-tinted pill that appears
 /// when an engine update is waiting and opens the Software Update overlay.
 ///
@@ -179,14 +308,33 @@ fn update_chip_click(
     }
 }
 
+/// What a menu needs to know about the world it is being built in, read once
+/// per menu-open.
+///
+/// The rows are plain `Text` baked at build time, so none of this can be a
+/// reactive binding; gathering it in one struct is what stops each new piece
+/// from adding a parameter to `spawn_top_menu`, `build_menu_items` and both
+/// systems that call them.
+struct MenuContext<'a> {
+    /// The signed-in username (`None` = signed out). The hamburger's first row
+    /// *is* the name, so the fact of being signed in is not enough.
+    account: Option<&'a str>,
+    /// Release tag of a pending engine update, when `renzora_update`'s
+    /// background check found one, so Help names the version instead of making
+    /// you open a dialog to find out.
+    update_tag: Option<&'a str>,
+    /// Recently-opened project roots, most recent first — File > Recent
+    /// Projects. Empty in a build with no splash plugin.
+    recents: &'a [std::path::PathBuf],
+}
+
 /// Spawn a top-menu dropdown anchored at `pos` and return its root.
 fn spawn_top_menu(
     commands: &mut Commands,
     fonts: &EmberFonts,
     kind: TopMenuKind,
     pos: Vec2,
-    account: Option<&str>,
-    update_tag: Option<&str>,
+    ctx: &MenuContext,
 ) -> Entity {
     let (root, card) = renzora_ember::widgets::screen_menu_parts(commands, pos.x, pos.y);
     // The hamburger's dropdown is a panel, not a context menu: 184px is right
@@ -201,7 +349,7 @@ fn spawn_top_menu(
         });
         dark_card(commands, card);
     }
-    let kids = build_menu_items(commands, fonts, kind, account, update_tag);
+    let kids = build_menu_items(commands, fonts, kind, ctx);
     commands.entity(root).add_children(&kids);
     root
 }
@@ -228,6 +376,7 @@ fn top_menu_open(
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
     update: Option<Res<renzora::core::UpdateAvailable>>,
+    recents: Option<Res<renzora::RecentProjects>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -236,6 +385,11 @@ fn top_menu_open(
     };
     let account = account_name(&bridge);
     let update_tag = update.as_ref().map(|u| u.0.clone());
+    let ctx = MenuContext {
+        account: account.as_deref(),
+        update_tag: update_tag.as_deref(),
+        recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
+    };
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -252,7 +406,7 @@ fn top_menu_open(
             open.kind = None;
             continue;
         };
-        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref(), update_tag.as_deref()));
+        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, &ctx));
         open.kind = Some(menu.0);
     }
 }
@@ -270,6 +424,7 @@ fn top_menu_hover(
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
     update: Option<Res<renzora::core::UpdateAvailable>>,
+    recents: Option<Res<renzora::RecentProjects>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -277,6 +432,11 @@ fn top_menu_hover(
     let Some(fonts) = fonts else { return };
     let account = account_name(&bridge);
     let update_tag = update.as_ref().map(|u| u.0.clone());
+    let ctx = MenuContext {
+        account: account.as_deref(),
+        update_tag: update_tag.as_deref(),
+        recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
+    };
     for (interaction, menu, rcp, cn) in &q {
         if *interaction == Interaction::Hovered && menu.0 != open_kind {
             if let Some(e) = open.menu.take() {
@@ -286,7 +446,7 @@ fn top_menu_hover(
                 open.kind = None;
                 return;
             };
-            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref(), update_tag.as_deref()));
+            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, &ctx));
             open.kind = Some(menu.0);
             return;
         }
@@ -322,9 +482,6 @@ fn anchor_below(
     Some(Vec2::new(top_left.x, top_left.y + size.y + 2.0))
 }
 
-/// Build one menu's rows. `account` is the signed-in username (`None` = signed
-/// out) — the menu needs the name itself now, not just the fact of being signed
-/// in, because the hamburger's first row *is* the username.
 /// Repaint a menu card on the top bar's own surface.
 ///
 /// Every other menu in the editor is a context menu that opens over a *panel*,
@@ -479,15 +636,69 @@ fn panel_submenu(
     spacious(commands, row)
 }
 
+/// File > Recent Projects: one row per entry in [`renzora::RecentProjects`],
+/// each opening that project without going near a file dialog.
+///
+/// The dashboard has had this list since there was a dashboard, but it is only
+/// reachable by leaving the project you are in — so from inside the editor the
+/// way back to yesterday's project was to remember where you put it and find it
+/// in an OS picker.
+///
+/// Rows are labelled with the folder name rather than the full path: the path
+/// is what a 230px menu cannot show anyway, and the folder *is* the project's
+/// name (that is how New Project names one). The empty case gets a muted row
+/// instead of no submenu at all, so the entry means the same thing on a fresh
+/// install as it does later.
+fn recent_projects_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    recents: &[std::path::PathBuf],
+) -> Entity {
+    use renzora_ember::widgets::{menu_item, menu_item_styled};
+
+    let kids: Vec<Entity> = if recents.is_empty() {
+        vec![menu_item_styled(
+            commands,
+            fonts,
+            "folder-dashed",
+            &renzora::lang::t("splash.no_recent"),
+            text_muted(),
+            text_muted(),
+            |_| {},
+        )]
+    } else {
+        recents
+            .iter()
+            .map(|root| {
+                let label = root
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| root.to_string_lossy().to_string());
+                let path = root.clone();
+                menu_item(commands, fonts, "folder", &label, move |w| {
+                    w.insert_resource(crate::save_prompts::ProjectSwitchRequest(
+                        crate::save_prompts::ProjectSwitch::Recent(path.clone()),
+                    ));
+                })
+            })
+            .collect()
+    };
+
+    panel_submenu(
+        commands,
+        fonts,
+        "clock-counter-clockwise",
+        &renzora::lang::t("splash.recent"),
+        kids,
+    )
+}
+
 fn build_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
     kind: TopMenuKind,
-    account: Option<&str>,
-    // Release tag of a pending engine update, when `renzora_update`'s background
-    // check found one. Read per menu-open like `account`, so Help names the
-    // version instead of making you go and look.
-    update_tag: Option<&str>,
+    ctx: &MenuContext,
 ) -> Vec<Entity> {
     use renzora_ember::widgets::{menu_item, menu_sep};
     match kind {
@@ -510,7 +721,7 @@ fn build_menu_items(
         TopMenuKind::Main => {
             let mut rows: Vec<Entity> = Vec::new();
 
-            rows.push(menu_account_header(commands, fonts, account));
+            rows.push(menu_account_header(commands, fonts, ctx.account));
             rows.push(menu_sep(commands));
 
             for (icon, label, sub) in [
@@ -519,7 +730,7 @@ fn build_menu_items(
                 ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
                 ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
             ] {
-                let kids = build_menu_items(commands, fonts, sub, account, update_tag);
+                let kids = build_menu_items(commands, fonts, sub, ctx);
                 rows.push(panel_submenu(commands, fonts, icon, &label, kids));
             }
 
@@ -576,7 +787,7 @@ fn build_menu_items(
             // position, and the right one: they are the only rows here that end
             // a session rather than start a task.
             rows.push(menu_sep(commands));
-            if account.is_some() {
+            if ctx.account.is_some() {
                 let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
                     if let Some(mut dock) = w.get_resource_mut::<Dock>() {
                         dock.tree.focus_or_add_panel("hub_library");
@@ -599,12 +810,22 @@ fn build_menu_items(
             rows
         }
         TopMenuKind::File => vec![
+            // Both of these leave the project, so they ask
+            // `save_prompts::process_project_switch_request` for it rather than
+            // doing it: it closes every open document, and doing that on one
+            // click with unsaved edits in them is the loss the window's × has
+            // always prompted about.
             menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| {
-                renzora_editor_framework::handle_new_project(w)
+                w.insert_resource(crate::save_prompts::ProjectSwitchRequest(
+                    crate::save_prompts::ProjectSwitch::New,
+                ));
             }),
             menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| {
-                renzora_editor_framework::handle_open_project(w)
+                w.insert_resource(crate::save_prompts::ProjectSwitchRequest(
+                    crate::save_prompts::ProjectSwitch::Pick,
+                ));
             }),
+            recent_projects_submenu(commands, fonts, ctx.recents),
             menu_sep(commands),
             menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| {
                 w.insert_resource(renzora::core::NewSceneRequested);
@@ -675,6 +896,8 @@ fn build_menu_items(
             menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), reset_layout_action),
             menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), reset_workspace_action),
             menu_item(commands, fonts, "rows", &renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks"), reset_global_docks_action),
+            menu_sep(commands),
+            menu_item(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"), reset_defaults_action),
         ],
         TopMenuKind::Help => vec![
             menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| {
@@ -701,7 +924,7 @@ fn build_menu_items(
                 commands,
                 fonts,
                 "download-simple",
-                &match update_tag {
+                &match ctx.update_tag {
                     Some(tag) => format!("{} {tag}", renzora::lang::t("menu.help.update_to")),
                     None => renzora::lang::t("menu.help.check_updates"),
                 },
@@ -812,5 +1035,519 @@ fn reset_global_docks_action(w: &mut World) {
         bottom.height = dock::BOTTOM_DOCK_HEIGHT;
         bottom.mode = dock::BottomDockMode::default();
         bottom.open = true;
+    }
+}
+
+// ── Reset everything ─────────────────────────────────────────────────────────
+
+/// What the reset prompt is currently set to reset.
+///
+/// A resource rather than state on the dialog's entities, because the toggles
+/// bind through `bind_2way`, which reads and writes the world. It outlives the
+/// dialog on purpose: reopening the prompt remembers the last set of boxes, so
+/// somebody resetting one thing repeatedly does not re-tick them each time.
+#[derive(Resource, Clone, Copy)]
+pub(crate) struct ResetDefaultsChoice {
+    workspaces: bool,
+    editor_settings: bool,
+    viewport: bool,
+    keybindings: bool,
+    plugin_settings: bool,
+    tutorial: bool,
+}
+
+impl Default for ResetDefaultsChoice {
+    fn default() -> Self {
+        Self {
+            workspaces: true,
+            editor_settings: true,
+            viewport: true,
+            keybindings: true,
+            // Off by default, like the tutorial and for a related reason: a
+            // plugin's settings are not the editor's configuration, they are
+            // whatever that plugin was told, and some of it (an endpoint, a
+            // chosen device, a path) is work the user did once and would have to
+            // do again. "Put the editor back" should not silently include it.
+            plugin_settings: false,
+            // Off by default, unlike the other four. Redoing the tutorial is a
+            // thing you ask for, not a thing you want thrown in with "put my
+            // panels back" -- and having it re-offer itself unasked after an
+            // unrelated reset is exactly the behaviour onboarding gets hated for.
+            tutorial: false,
+        }
+    }
+}
+
+impl ResetDefaultsChoice {
+    fn any(self) -> bool {
+        self.workspaces
+            || self.editor_settings
+            || self.viewport
+            || self.keybindings
+            || self.plugin_settings
+            || self.tutorial
+    }
+}
+
+/// The confirm button on the reset-to-defaults prompt.
+#[derive(Component)]
+pub(crate) struct ResetDefaultsConfirmBtn;
+
+/// The overlay the confirm button has to close when it fires.
+#[derive(Component)]
+pub(crate) struct ResetDefaultsOverlay(Entity);
+
+/// View ▸ Reset to Defaults. Asks first, and asks *what*, because the four
+/// things it can reset are not wanted together as often as you would think.
+///
+/// The three resets above it in the menu each undo one thing. This is the "I
+/// have made a mess of the editor" button, and it is the only one whose damage
+/// is not obvious from its name, so it gets a prompt that lists what goes and
+/// lets each part be left alone.
+fn reset_defaults_action(w: &mut World) {
+    let Some(fonts) = w.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    w.get_resource_or_insert_with(ResetDefaultsChoice::default);
+    let mut queue = bevy::ecs::world::CommandQueue::default();
+    let mut commands = Commands::new(&mut queue, w);
+    // `Val::Auto` height, not a fixed one: the card was 250px tall around about
+    // 130px of content, so the dialog sat there with a third of itself empty
+    // below the buttons. There is no scrolling here and the rows never change,
+    // so the content is the right thing to size to.
+    let (root, content) = renzora_ember::widgets::overlay_val(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"),
+        Val::Px(480.0),
+        Val::Auto,
+        true,
+    );
+    // `overlay_val`'s content node carries no padding of its own — every caller
+    // sets its own — so without this the body starts hard against the card's
+    // left edge, which is what it was doing.
+    let body = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            padding: UiRect::axes(Val::Px(18.0), Val::Px(16.0)),
+            row_gap: Val::Px(14.0),
+            ..default()
+        })
+        .id();
+
+    // The warning first, and as the largest thing in the card. This is the one
+    // item in the View menu that throws work away, so the dialog leads with the
+    // consequence rather than with a paragraph the eye skips.
+    let warn_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            ..default()
+        })
+        .id();
+    let badge = commands
+        .spawn((
+            Node {
+                width: Val::Px(34.0),
+                height: Val::Px(34.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(9.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba_u8(WARN.0, WARN.1, WARN.2, 38)),
+        ))
+        .id();
+    let badge_icon = icon_text(&mut commands, &fonts.phosphor, "warning", WARN, 18.0);
+    commands.entity(badge).add_child(badge_icon);
+    let warn_text = commands
+        .spawn((
+            Text::new(renzora::lang::t_or(
+                "menu.view.reset_defaults_warning",
+                "Choose what to reset. This cannot be undone.",
+            )),
+            ui_font(&fonts.ui, 14.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    commands.entity(warn_row).add_children(&[badge, warn_text]);
+
+    let list = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(4.0),
+            ..default()
+        })
+        .id();
+    let rows = vec![
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "browsers",
+            &renzora::lang::t_or("menu.view.reset_opt_workspaces", "Workspaces and panels"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_workspaces_sub",
+                "Every workspace layout, the floating windows and the bottom panel",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.workspaces),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.workspaces = v;
+                }
+            },
+        ),
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "sliders",
+            &renzora::lang::t_or("menu.view.reset_opt_settings", "Editor settings"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_settings_sub",
+                "Everything in Settings, the theme back to Dark, including saved ones",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.editor_settings),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.editor_settings = v;
+                }
+            },
+        ),
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "video-camera",
+            &renzora::lang::t_or("menu.view.reset_opt_viewport", "Viewport and camera"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_viewport_sub",
+                "Look, orbit, pan and zoom sensitivity, the grid, gizmos and snapping",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.viewport),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.viewport = v;
+                }
+            },
+        ),
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "keyboard",
+            &renzora::lang::t_or("menu.view.reset_opt_keys", "Keyboard shortcuts"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_keys_sub",
+                "Every shortcut back to its shipped key",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.keybindings),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.keybindings = v;
+                }
+            },
+        ),
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "puzzle-piece",
+            &renzora::lang::t_or("menu.view.reset_opt_plugins", "Plugin settings"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_plugins_sub",
+                "Everything installed plugins have saved. Which plugins are on stays as it is",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.plugin_settings),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.plugin_settings = v;
+                }
+            },
+        ),
+        reset_option_row(
+            &mut commands,
+            &fonts,
+            "graduation-cap",
+            &renzora::lang::t_or("menu.view.reset_opt_tutorial", "Tutorial progress"),
+            &renzora::lang::t_or(
+                "menu.view.reset_opt_tutorial_sub",
+                "Forget which chapters are done, so the tutorial offers itself again",
+            ),
+            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.tutorial),
+            |w: &mut World, v: bool| {
+                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
+                    c.tutorial = v;
+                }
+            },
+        ),
+    ];
+    commands.entity(list).add_children(&rows);
+
+    let rule = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Px(1.0), ..default() },
+            BackgroundColor(rgb(divider())),
+        ))
+        .id();
+
+    // What survives, said as plainly as what does not. The reassurance is half
+    // the reason to open this dialog at all.
+    let keep_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(9.0),
+            ..default()
+        })
+        .id();
+    let keep_icon = icon_text(&mut commands, &fonts.phosphor, "check-circle", KEEP, 14.0);
+    let keep_text = commands
+        .spawn((
+            Text::new(renzora::lang::t_or(
+                "menu.view.reset_defaults_kept",
+                "Your language, which plugins are installed, and your projects are untouched.",
+            )),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    commands.entity(keep_row).add_children(&[keep_icon, keep_text]);
+
+    let buttons = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::FlexEnd,
+            column_gap: Val::Px(8.0),
+            margin: UiRect::top(Val::Px(2.0)),
+            ..default()
+        })
+        .id();
+    let cancel = renzora_ember::widgets::button(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t("common.cancel"),
+    );
+    commands
+        .entity(cancel)
+        .insert(crate::plugin_install::DismissOverlayBtn(root));
+    let confirm = destructive_button(
+        &mut commands,
+        &fonts,
+        &renzora::lang::t_or("menu.view.reset_defaults_confirm", "Reset Selected"),
+    );
+    commands
+        .entity(confirm)
+        .insert((ResetDefaultsConfirmBtn, ResetDefaultsOverlay(root)));
+    // Nothing ticked, nothing to do: dim the button rather than letting a press
+    // close the dialog having silently done nothing.
+    renzora_ember::reactive::tracked::bind_bg(&mut commands, confirm, |w| {
+        let on = w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.any());
+        let (r, g, b) = DESTRUCTIVE;
+        if on { Color::srgb_u8(r, g, b) } else { Color::srgba_u8(r, g, b, 90) }
+    });
+    commands.entity(buttons).add_children(&[cancel, confirm]);
+
+    commands
+        .entity(body)
+        .add_children(&[warn_row, list, rule, keep_row, buttons]);
+    commands.entity(content).add_child(body);
+    queue.apply(w);
+}
+
+/// One tickable scope: icon, name, a line of what it covers, and a switch.
+#[allow(clippy::too_many_arguments)]
+fn reset_option_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    glyph: &str,
+    label: &str,
+    sub: &str,
+    get: impl Fn(&Rx) -> bool + Send + Sync + 'static,
+    set: impl Fn(&mut World, bool) + Send + Sync + 'static,
+) -> Entity {
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            padding: UiRect::vertical(Val::Px(5.0)),
+            ..default()
+        })
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, glyph, text_muted(), 15.0);
+    let col = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    let name = commands
+        .spawn((
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 12.5),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    let detail = commands
+        .spawn((
+            Text::new(sub.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    commands.entity(col).add_children(&[name, detail]);
+    let sw = renzora_ember::widgets::toggle_switch(commands, true);
+    renzora_ember::reactive::tracked::bind_2way(commands, sw, get, move |w, v: &bool| set(w, *v));
+    commands.entity(row).add_children(&[ic, col, sw]);
+    row
+}
+
+/// Amber for the warning badge, green for the "kept" line. Fixed rather than
+/// themed: both are status colours carrying a meaning, and a theme that
+/// recoloured them would be saying something different.
+const WARN: (u8, u8, u8) = (230, 170, 60);
+const KEEP: (u8, u8, u8) = (74, 200, 130);
+const DESTRUCTIVE: (u8, u8, u8) = (200, 62, 62);
+
+/// A red confirm button, for the action you would regret misclicking.
+///
+/// Built here rather than from `widgets::button`, which carries `EmberButton` +
+/// `Styled(Role::Button)` and is repainted from the theme every frame — a
+/// background set on one of those is overwritten before it is ever drawn. The
+/// two buttons in this row are deliberately different weights: Cancel is the
+/// ordinary one, and the destructive option should not look like the default.
+fn destructive_button(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    let (r, g, b) = DESTRUCTIVE;
+    let btn = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(7.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(r, g, b)),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("destructive-button"),
+        ))
+        .id();
+    let t = commands
+        .spawn((
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 12.5),
+            TextColor(Color::WHITE),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(btn).add_child(t);
+    btn
+}
+
+/// Do the reset once the prompt is confirmed, for the scopes that are ticked.
+///
+/// **Resetting the resource is usually all it takes**, now that every preference
+/// round-trips through one `~/.renzora/settings.toml` section and a debounced
+/// system writes that section whenever its resource changes: `EditorSettings`
+/// (`[editor]`), `ViewportSettings` (`[viewport]`) and `KeyBindings`
+/// (`[keybindings]`) each save themselves within a second of being replaced
+/// here.
+///
+/// The two that need a second half are the two that are not one resource with
+/// one section. `[app]` holds preferences that have no live resource at all (and
+/// identity — the language, the disabled plugins — that a reset must *not*
+/// touch), so it is rewritten field by field by
+/// [`reset_editor_settings_prefs`]. `AutoSaveSettings` is the mirror case: a
+/// live resource whose values live in `[app]`, so it is replaced here too or the
+/// running editor keeps the old interval until the next launch.
+pub(crate) fn reset_defaults_buttons(
+    confirm: Query<(&Interaction, &ResetDefaultsOverlay), (With<ResetDefaultsConfirmBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    for (interaction, overlay) in &confirm {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let overlay = overlay.0;
+        commands.queue(move |w: &mut World| {
+            let choice = w.get_resource::<ResetDefaultsChoice>().copied().unwrap_or_default();
+            if !choice.any() {
+                return;
+            }
+            if let Ok(e) = w.get_entity_mut(overlay) {
+                e.despawn();
+            }
+            let mut done: Vec<&str> = Vec::new();
+            if choice.workspaces {
+                reset_workspace_action(w);
+                reset_global_docks_action(w);
+                done.push("workspaces");
+            }
+            if choice.editor_settings {
+                w.insert_resource(renzora_editor_framework::EditorSettings::default());
+                // Autosave is the one preference the reset owns that does *not*
+                // live in `EditorSettings`: it is its own resource, seeded from
+                // `[app]` at boot and written back only when its Settings row is
+                // edited. Resetting the file alone left the running editor on
+                // the old interval, with the Settings panel still showing it,
+                // until the next launch — every other scope here takes effect
+                // the moment it is confirmed.
+                w.insert_resource(renzora::AutoSaveSettings::default());
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Err(e) = renzora::core::project_config::reset_editor_settings_prefs() {
+                    warn!("[editor] could not reset saved editor preferences: {e}");
+                }
+                // The theme is a Settings tab, so it resets with the rest of
+                // them. "Dark" by name rather than `Theme::dark()` directly:
+                // `load_theme` is what clears `active_theme_dir` and the
+                // unsaved-changes flag alongside the palette, and a half-reset
+                // theme still resolving assets out of the old theme's folder is
+                // worse than not resetting it.
+                if let Some(mut tm) = w.get_resource_mut::<renzora_theme::ThemeManager>() {
+                    tm.load_theme("Dark");
+                }
+                done.push("settings");
+            }
+            if choice.viewport {
+                w.insert_resource(renzora::core::viewport_types::ViewportSettings::default());
+                done.push("viewport");
+            }
+            if choice.keybindings {
+                w.insert_resource(renzora::core::keybindings::KeyBindings::default());
+                done.push("shortcuts");
+            }
+            // Only the saved blobs. A plugin holds its settings in its own
+            // memory and writes them back when it next changes them, so one
+            // that is loaded right now keeps working with what it has until it
+            // is next started — there is no host-side handle to reach into it,
+            // which is the whole point of the C-ABI boundary.
+            #[cfg(not(target_arch = "wasm32"))]
+            if choice.plugin_settings {
+                match renzora::core::settings_file::clear_all_plugin_settings() {
+                    // Nothing had been saved: say nothing rather than report a
+                    // reset of something that was never there.
+                    Ok(false) => {}
+                    Ok(true) => done.push("plugin settings"),
+                    Err(e) => warn!("[editor] could not clear plugin settings: {e}"),
+                }
+            }
+            if choice.tutorial {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let _ = renzora::save_tutorial_completed(false);
+                    let _ = renzora::save_tutorial_chapters(&[]);
+                }
+                done.push("tutorial");
+            }
+            renzora::core::console_log::console_info(
+                "Editor",
+                format!("Reset to defaults: {}", done.join(", ")),
+            );
+        });
     }
 }

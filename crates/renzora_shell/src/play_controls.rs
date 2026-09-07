@@ -372,7 +372,7 @@ impl PlayLaunchChoice {
             Self::Viewport => renzora::lang::t_or("shell.play_button.viewport", "Play Viewport"),
             Self::Window => renzora::lang::t("common.play"),
             Self::Vr => renzora::lang::t_or("shell.play_button.vr", "Play VR"),
-            Self::Simulate => renzora::lang::t("common.simulate"),
+            Self::Simulate => renzora::lang::t_or("shell.play_target.scripts", "Scripts"),
         }
     }
 }
@@ -446,10 +446,13 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
             renzora::lang::t_or("shell.play_target.vr", "VR Headset"),
         ));
     }
+    // "Scripts", not "Simulate". The mode ticks your scripts with the editor
+    // left live, and "Simulate" reads as a physics-only preview next to a Play
+    // button — the one thing it is *not* mainly for.
     choices.push((
         PlayLaunchChoice::Simulate,
         "flask",
-        renzora::lang::t_or("common.simulate", "Simulate"),
+        renzora::lang::t_or("shell.play_target.scripts", "Scripts"),
     ));
 
     let mut rows = Vec::new();
@@ -548,15 +551,12 @@ pub(crate) fn play_target_option_click(
                 PlayLaunchChoice::Vr => {
                     s.play_launch_simulate = false;
                     s.play_launch_vr = true;
-                    let _ = renzora::save_play_vr(true);
                 }
                 PlayLaunchChoice::Viewport | PlayLaunchChoice::Window => {
                     s.play_launch_simulate = false;
                     s.play_launch_vr = false;
-                    let _ = renzora::save_play_vr(false);
                     let runtime_window = opt.choice == PlayLaunchChoice::Window;
                     s.external_play_window = runtime_window;
-                    let _ = renzora::save_play_runtime_window(runtime_window);
                 }
             }
         }

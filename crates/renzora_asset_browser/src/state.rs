@@ -165,10 +165,38 @@ pub(crate) struct NativeAssets {
     /// The asset being inline-renamed (its grid tile / list row shows a text
     /// field instead of the name label). `None` = no active rename.
     pub(crate) renaming: Option<PathBuf>,
-    /// A pending name-click rename `(path, click time)`: set when the name of the
-    /// already-sole-selected item is clicked, fired by `rename_arm_fire` after a
-    /// short delay — unless a double-click opens the item first (which clears it).
-    pub(crate) rename_arm: Option<(PathBuf, f64)>,
+    /// Which surface the active rename belongs to. Meaningless while `renaming`
+    /// is `None`; see [`RenameSurface`] for why it has to exist at all.
+    pub(crate) rename_surface: RenameSurface,
+    /// A pending name-click rename `(path, click time, surface)`: set when the
+    /// name of the already-sole-selected item is clicked, fired by
+    /// `rename_arm_fire` after a short delay — unless a double-click opens the
+    /// item first (which clears it).
+    pub(crate) rename_arm: Option<(PathBuf, f64, RenameSurface)>,
+    /// Which surface [`Self::hovered`] was found on, so a right-click menu knows
+    /// where the asset it is acting on is drawn.
+    pub(crate) hovered_surface: RenameSurface,
+}
+
+/// Which of the panel's two surfaces an inline rename is happening on.
+///
+/// A folder appears in the tree *and* in the grid, and each side decided whether
+/// to draw a text field by comparing its own path against `renaming`. Renaming a
+/// folder therefore built two rename fields, both auto-focused by
+/// `focus_asset_rename`. The one spawned second won the focus, so a rename
+/// started from the grid put the caret in the tree's field: you typed into the
+/// tree while watching the grid's field sit there unchanged.
+///
+/// Recording the surface makes the rename belong to one of them. It is not
+/// derivable after the fact -- both surfaces have an equally good claim to the
+/// path -- so every entry point into a rename says which one it is.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+pub(crate) enum RenameSurface {
+    /// The file grid / list view on the right.
+    #[default]
+    Grid,
+    /// The folder tree on the left.
+    Tree,
 }
 
 impl Default for NativeAssets {
@@ -207,7 +235,9 @@ impl Default for NativeAssets {
             pre_marquee: HashSet::new(),
             visible_order: Vec::new(),
             renaming: None,
+            rename_surface: RenameSurface::Grid,
             rename_arm: None,
+            hovered_surface: RenameSurface::Grid,
         }
     }
 }
@@ -431,6 +461,7 @@ pub(crate) enum NewAsset {
     Material,
     Blueprint,
     Lua,
+    Rust,
     Particle,
     Template,
     Bsn,
@@ -439,10 +470,14 @@ pub(crate) enum NewAsset {
 impl NewAsset {
     /// The creatable file types offered by the Add button + right-click menu,
     /// in display order. `Folder` is excluded — it has its own toolbar button.
-    pub(crate) const MENU: [NewAsset; 6] = [
+    pub(crate) const MENU: [NewAsset; 7] = [
         NewAsset::Material,
         NewAsset::Blueprint,
         NewAsset::Lua,
+        // Next to Lua: the two are the same choice (`renzora_rust_script`
+        // claims `.rs` the way the Lua plugin claims `.lua`), and picking
+        // between them is the first thing anyone scripting has to do.
+        NewAsset::Rust,
         NewAsset::Particle,
         NewAsset::Template,
         NewAsset::Bsn,
@@ -454,6 +489,7 @@ impl NewAsset {
             NewAsset::Material => "NewMaterial.material",
             NewAsset::Blueprint => "NewBlueprint.blueprint",
             NewAsset::Lua => "new_script.lua",
+            NewAsset::Rust => "new_script.rs",
             NewAsset::Particle => "NewParticle.particle",
             NewAsset::Template => "NewTemplate.html",
             NewAsset::Bsn => "NewScene.bsn",
@@ -472,6 +508,7 @@ impl NewAsset {
             // see `renzora_blueprint::starter`.
             NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
             NewAsset::Lua => renzora_scripting::starter_lua(boilerplate),
+            NewAsset::Rust => renzora_scripting::starter_rust(boilerplate),
             NewAsset::Particle => "(name: \"New Particle\")".to_string(),
             NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
@@ -485,6 +522,7 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
             NewAsset::Lua => renzora::lang::t("assets.new.lua"),
+            NewAsset::Rust => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle"),
             NewAsset::Template => renzora::lang::t("assets.new.template"),
             NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
@@ -498,6 +536,7 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
             NewAsset::Lua => renzora::lang::t("assets.new.lua"),
+            NewAsset::Rust => renzora::lang::t_or("assets.new.rust_sub", "Rust Script"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle_sub"),
             NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
             NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
@@ -509,7 +548,7 @@ impl NewAsset {
             NewAsset::Folder => "folder-plus",
             NewAsset::Material => "palette",
             NewAsset::Blueprint => "blueprint",
-            NewAsset::Lua | NewAsset::Template => "code",
+            NewAsset::Lua | NewAsset::Rust | NewAsset::Template => "code",
             NewAsset::Particle => "sparkle",
             NewAsset::Bsn => "film-slate",
         }
@@ -523,6 +562,9 @@ impl NewAsset {
             NewAsset::Material => (0, 200, 130),
             NewAsset::Blueprint => (100, 180, 255),
             NewAsset::Lua => (120, 170, 255),
+            // Matches `file_kind::type_info`'s `.rs` accent, so the menu card and
+            // the tile the file lands as are the same colour.
+            NewAsset::Rust => (230, 140, 90),
             NewAsset::Particle => (230, 160, 90),
             NewAsset::Template => (230, 120, 90),
             NewAsset::Bsn => (115, 191, 242),

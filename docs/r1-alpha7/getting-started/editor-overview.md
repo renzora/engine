@@ -12,7 +12,7 @@ When you open a project, the editor fills the window with a few main areas.
 
 From the screenshot above:
 
-- **Top bar** — on the left, the **menu button** (☰) and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not in the top bar itself — they're the strip directly under it, spanning the window (or, if you'd rather keep that row, a dropdown beside Play — see [Document tabs](/docs/r1-alpha7/editor/scenes#working-with-document-tabs)).
+- **Top bar** — on the left, the **Renzora mark** (click it for **About**: the version you're running and the credits), the **menu button** (☰), and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not in the top bar itself — they're the strip directly under it, spanning the window (or, if you'd rather keep that row, a dropdown beside Play — see [Document tabs](/docs/r1-alpha7/editor/scenes#working-with-document-tabs)).
 - **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. Other panels keep their tools the same way, in their own header; the strip under the top bar is your open document tabs.
 - **Left** — the **3D viewport** where you see and move your world, taking most of the window.
 - **Right** — one column, the **Scene** tree (everything in the current level) stacked over the **Inspector** (the settings of whatever you click). They're paired because that's the loop: pick an entity above, edit it below.
@@ -21,6 +21,10 @@ From the screenshot above:
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 
 Click the **☰ menu button** to open the main menu. Your account is the first row — your username when you're signed in (hover it for **My Library** and **Sign Out**), or **Sign In** when you're not — followed by `File`, `Edit`, `View`, and `Help`. Hover one of those and its items slide out beside it, so everything that used to sit across the top bar is now one click away in a single dropdown. **Settings** is the last row — top-level, not buried in `File`; the gear button beside the hamburger opens the same panel in one click. **Notifications** moved in here too, under your username, now that the top bar has no bell.
+
+`File` opens with **New Project**, **Open Project…** and **Recent Projects** — the same list the [dashboard](/docs/r1-alpha7/getting-started/dashboard) shows, up to the last ten, most recent first. Hover it and click a project to switch straight to it: no file dialog, and no going back out to the dashboard to find one. Each row is the project's folder name, and opening a project moves it back to the top of the list. A project whose folder has since moved or been deleted says so and leaves you where you are.
+
+Leaving a project closes every document in it, so all three of those rows — **New Project**, **Open Project…** and a recent one — ask first when anything is unsaved: **Save & Open** / **Don't Save** / **Cancel**, the same confirmation the window's × has always shown. If the save turns into a Save-As you then cancel, the switch is abandoned rather than your edits.
 
 The workspace ribbon has a **fixed width** so it can't be pushed around: add a tenth workspace and the ribbon stays exactly where it was. The document tabs on the row below get the window's full width instead. Either way, whatever no longer fits folds into a **caret button** (`⌄`) at the end of the strip, which opens a menu of the hidden tabs — click one to jump straight to it. The tab you're currently on never folds.
 
@@ -41,13 +45,26 @@ The tabs in the center of the top bar are **workspaces**. Each one is a ready-ma
 
 Click a tab to switch — and if you have more workspaces than the ribbon's width allows, the last ones fold into the caret menu at its end. You can drag tabs to reorder them — a blue insertion line shows where the tab will land as you drag — right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
 
-Three reset actions live under the **View** menu:
+Three narrower reset actions live under the **View** menu, each undoing one thing:
 
 - **Reset Layout** restores the *active* workspace's panel arrangement to its built-in default.
 - **Reset Workspace** rebuilds the *entire* ribbon — discarding any workspaces you added, removed, renamed, or reordered and restoring every default workspace's layout.
 - **Reset Global Docks** restores the [global bottom panel](/docs/r1-alpha7/editor/panels-windows#the-bottom-panel): one set named **Default**, holding Assets, Timeline, Console, Mixer and Shape Library, opened at its default height.
 
 The first two never touch the bottom panel, and Reset Global Docks never touches a workspace. The bottom panel is global — it belongs to the editor rather than to any workspace — so restoring the shipped Scene arrangement doesn't cost you the panel set you built alongside it, and vice versa.
+
+A fourth item, **Reset to Defaults**, is the "I have made a mess of the editor" button. It asks first, and asks *what* — each part can be left alone:
+
+| | What goes |
+|---|---|
+| Workspaces and panels | Every workspace layout, the floating windows and the bottom panel |
+| Editor settings | Every preference on the Settings pages, plus the theme |
+| Viewport | Camera speed, snapping, the grid, gizmos |
+| Keyboard shortcuts | Every shortcut back to its shipped key |
+| Plugin settings | Everything installed plugins have saved |
+| Tutorial progress | Which chapters are done, so the tutorial offers itself again |
+
+Plugin settings and Tutorial progress start **unticked**; the other four are on. Your language, which plugins are installed and enabled, your projects, and the update you dismissed are never touched — a reset hands back a default editor, not a new user. Everything takes effect immediately, without a restart.
 
 ## Panels can go anywhere
 
@@ -153,7 +170,26 @@ What you can do here:
 | | Shortcuts | One section per shortcut category |
 | **Plugins** | *one per plugin* | Whatever the plugin registers |
 
-Everything under **Project** is stored in the project's `project.toml` and travels with the project; everything else is per-user, in `~/.renzora/editor.toml`.
+Everything under **Project** is stored in the project's `project.toml` and travels with the project; everything else is per-user, in `~/.renzora/settings.toml`.
+
+### Where your settings live
+
+One file, `~/.renzora/settings.toml`, in sections:
+
+| Section | Holds |
+|---|---|
+| `[app]` | Language, disabled plugins, update channel, tutorial progress, auto-save, the stats refresh rates and status-bar toggles |
+| `[editor]` | Everything on the Settings pages above — including the code-editor preferences |
+| `[viewport]` | Camera look / orbit / pan / zoom sensitivity, the grid, gizmos and snapping |
+| `[keybindings]` | Only the shortcuts you have actually rebound |
+| `[projects."<path>"]` | Per project: the scene you had open, and your document tabs |
+| `[plugins]` | One entry per standalone plugin that saves settings |
+
+It is plain TOML and safe to read or hand-edit; the editor rewrites a section when something in it changes and leaves the others alone.
+
+Three things are deliberately *not* in it. `project.toml` holds only what a shipped game needs — window, rendering, audio, the starting scene — so nothing about you travels with a project you publish. `~/.renzora/layout.json` keeps the dock layout, which is a tree rather than a list of preferences. And themes stay their own `.toml` files under the themes directory, since a theme is something you share.
+
+Upgrading from an older build moves your old `~/.renzora/editor.toml` across automatically the first time you start. The old file is left where it is rather than deleted.
 
 **Window vs Render Resolution** trips people up, because both have a width and a height. The **window** is the OS surface your shipped game opens — its size, whether it's resizable, and windowed / fullscreen / borderless. The **render resolution** is what the camera actually renders at before being scaled onto that window, and it only takes effect once **Stretch Mode** is set to *Viewport*. Leave Stretch Mode disabled and the two are the same thing. Turn it on and set the resolution to, say, 320×180, and you get chunky pixel-art upscaled to a 1080p window.
 

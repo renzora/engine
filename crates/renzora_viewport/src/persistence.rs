@@ -1,73 +1,126 @@
-//! Persist viewport header settings into `project.toml` under `[editor]`.
+//! Persist viewport settings into `~/.renzora/settings.toml` under `[viewport]`.
 //!
-//! These are editor-only fields. The runtime ignores them and export strips
-//! them from shipped builds. See `PersistedViewportSettings` and
-//! `EditorPrefs` in `renzora::core::viewport_types`.
+//! **These are per-user, not per-project.** They used to live in each
+//! `project.toml` under `[editor].viewport`, which put camera sensitivity — how
+//! fast the view turns under *your* hand, on *your* mouse — into a file the game
+//! ships with, and made it something you had to set again in every project you
+//! opened. It is a property of the person, like the UI scale beside it.
+//!
+//! That also empties the last editor-only table out of `project.toml`, so
+//! `renzora_export` has nothing left to strip from a shipped build.
+//!
+//! See [`PersistedViewportSettings`] for what is saved and what is deliberately
+//! left as session state.
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{EditorPrefs, PersistedViewportSettings, ViewportSettings};
+use renzora::core::settings_file;
+use renzora::core::viewport_types::{PersistedViewportSettings, ViewportSettings};
 use renzora::core::CurrentProject;
 
-/// Applies `project.toml` editor prefs to `ViewportSettings` whenever a new
-/// `CurrentProject` is inserted (project load / project switch).
-pub fn apply_prefs_on_project_load(
-    project: Option<Res<CurrentProject>>,
-    mut settings: ResMut<ViewportSettings>,
-    mut last_applied: Local<Option<std::path::PathBuf>>,
-) {
-    let Some(project) = project else { return };
-    if last_applied.as_ref() == Some(&project.path) {
-        return;
+/// The section name in `settings.toml`.
+const SECTION: &str = "viewport";
+
+/// Load the saved viewport settings once, at startup.
+///
+/// Startup rather than on project load, which is when they used to be applied:
+/// they are no longer the project's, so there is nothing about opening one that
+/// should change them.
+pub fn apply_saved_settings(mut settings: ResMut<ViewportSettings>) {
+    if let Some(saved) = settings_file::load_section::<PersistedViewportSettings>(SECTION) {
+        saved.apply(&mut settings);
     }
-    if let Some(prefs) = &project.config.editor {
-        prefs.viewport.apply(&mut settings);
-    }
-    *last_applied = Some(project.path.clone());
 }
 
-/// Debounced save: when `ViewportSettings` changes, mirror into
-/// `CurrentProject.config.editor.viewport` and rewrite `project.toml`.
-pub fn save_on_change(
-    mut project: Option<ResMut<CurrentProject>>,
-    settings: Res<ViewportSettings>,
-    mut last_save: Local<f64>,
-    time: Res<Time>,
+/// Fold a project's old `[editor].viewport` table into the per-user section,
+/// once, the first time that project is opened after the move.
+///
+/// Only when the user has no `[viewport]` section yet: the first project opened
+/// donates its settings and every later one leaves them alone. Taking the last
+/// project opened instead would mean your sensitivity silently changing every
+/// time you switched projects, which is the behaviour being removed.
+///
+/// The table is left in the project's `project.toml`. Rewriting every project a
+/// user opens, to delete two lines the loader now ignores, is a lot of writes to
+/// files under version control for no gain — and `ProjectConfig` no longer
+/// deserializes it, so it is inert either way.
+pub fn migrate_project_prefs(
+    project: Option<Res<CurrentProject>>,
+    mut settings: ResMut<ViewportSettings>,
+    mut done: Local<bool>,
 ) {
-    if !settings.is_changed() {
+    if *done {
         return;
     }
-    let Some(project) = project.as_mut() else {
+    let Some(project) = project else { return };
+    *done = true;
+    if settings_file::load_section::<PersistedViewportSettings>(SECTION).is_some() {
+        return;
+    }
+    let Some(legacy) = legacy_viewport_prefs(&project.path) else {
         return;
     };
+    legacy.apply(&mut settings);
+    if let Err(e) = settings_file::save_section(SECTION, &legacy) {
+        warn!("[viewport] could not migrate viewport settings: {e}");
+    } else {
+        info!(
+            "[viewport] migrated viewport settings out of {}",
+            project.path.join("project.toml").display()
+        );
+    }
+}
 
+/// Read `[editor].viewport` straight out of a project's `project.toml`.
+///
+/// Parsed from the raw file rather than from `ProjectConfig`, which no longer
+/// has the field: this is the one place that still needs to see the old shape,
+/// and giving the config struct a field back just to migrate it would keep the
+/// editor table alive in the type that defines what a shipped project is.
+fn legacy_viewport_prefs(root: &std::path::Path) -> Option<PersistedViewportSettings> {
+    let text = std::fs::read_to_string(root.join("project.toml")).ok()?;
+    let table = text.parse::<toml::Table>().ok()?;
+    table
+        .get("editor")?
+        .get("viewport")?
+        .clone()
+        .try_into::<PersistedViewportSettings>()
+        .ok()
+}
+
+/// Debounced save: when `ViewportSettings` changes, write the `[viewport]`
+/// section back.
+///
+/// Debounced because a sensitivity slider mutates the resource every frame of a
+/// drag, and each write is a read-modify-write of the settings file.
+pub fn save_on_change(
+    settings: Res<ViewportSettings>,
+    time: Res<Time>,
+    mut last_save: Local<f64>,
+    mut pending: Local<bool>,
+) {
+    if settings.is_changed() {
+        *pending = true;
+    }
+    if !*pending {
+        return;
+    }
     let now = time.elapsed_secs_f64();
     if *last_save != 0.0 && now - *last_save < 0.75 {
         return;
     }
+    *last_save = now;
+    *pending = false;
 
     let persisted = PersistedViewportSettings::from_settings(&settings);
-
-    // Read-only compare first. Only if the persisted snapshot actually
-    // differs do we call DerefMut (which would mark `CurrentProject` as
-    // changed and cascade into `sync_project_asset_path` log spam).
-    let needs_save = match &project.as_ref().config.editor {
-        Some(prefs) => prefs.viewport != persisted,
-        None => persisted != PersistedViewportSettings::default(),
-    };
-    if !needs_save {
+    // Compare against what is on disk before writing: the resource is marked
+    // changed by plenty that this snapshot does not carry, and a write per frame
+    // of camera motion would be a file write per frame.
+    if settings_file::load_section::<PersistedViewportSettings>(SECTION).as_ref() == Some(&persisted)
+    {
         return;
     }
-
-    *last_save = now;
-
-    let prefs = project
-        .config
-        .editor
-        .get_or_insert_with(EditorPrefs::default);
-    prefs.viewport = persisted;
-
-    if let Err(e) = project.save_config() {
-        warn!("[viewport] couldn't save project.toml: {e}");
+    if let Err(e) = settings_file::save_section(SECTION, &persisted) {
+        warn!("[viewport] couldn't save viewport settings: {e}");
     }
 }

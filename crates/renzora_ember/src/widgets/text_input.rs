@@ -14,7 +14,14 @@ use crate::theme::*;
 
 /// Horizontal padding inside the input box (matches the box's `padding` x), so
 /// the caret/click math measures from where the text actually starts.
-const PAD_X: f32 = 8.0;
+///
+/// **A caller that replaces the input's `Node` must keep this as its horizontal
+/// padding.** The caret, the selection highlight and click-to-caret all position
+/// from `PAD_X`, not from the box's actual padding, so a different value renders
+/// the text at one offset and the caret at another — the caret sits outside the
+/// first glyph and every click lands a character or two off. Public for exactly
+/// that reason: a caller restyling the box needs to be able to name it.
+pub const PAD_X: f32 = 8.0;
 /// Caret height + vertical offset (the box is `padding` y = 5 over a ~12px font).
 const CARET_H: f32 = 14.0;
 const CARET_TOP: f32 = 6.0;

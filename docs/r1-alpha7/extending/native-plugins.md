@@ -91,6 +91,8 @@ The editor compiles a plugin the first time it sees one, and again whenever the 
 
 That build happens before the editor exists, so it gets a window of its own: the setup window, which carries the same title bar as the splash screen (the mark, the product name, the version, and the window controls), a progress bar, and the build log underneath it. It says which plugin is compiling and what the compiler said, and it closes into the editor on its own when the work is done — a plugin that failed to compile is skipped rather than holding the window open, and is waiting for you in **Settings ▸ Editor ▸ Plugins**. The one thing it stops for is a missing Rust toolchain, which it offers to install.
 
+Closing that window ends the launch. Nothing is lost — the plugins it had not reached are simply still unbuilt, so the next launch opens it again and picks up where it left off — but it does mean × is a way out of a long build, not a way to skip it.
+
 **Do not run `cargo build` in a native plugin directory.** `plugins/` sits outside the engine workspace, so cargo would resolve it a fresh Bevy from crates.io — a different compilation with different `TypeId`s. The result builds cleanly, loads, and corrupts the World. The `bevy` and `renzora` entries in your `Cargo.toml` are there so rust-analyzer can resolve them while you author, and so Bevy's derive macros can read the manifest; the plugin itself is compiled by `rustc` against the SDK, and cargo is never pointed at those entries. (Your *other* dependencies are built by cargo — from a stripped manifest that mentions no Bevy. See [Crates from crates.io](#crates-from-cratesio).)
 
 ### The SDK

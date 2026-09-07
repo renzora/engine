@@ -76,7 +76,15 @@ impl Plugin for SplashPlugin {
                 Update,
                 loading::auto_advance_to_editor.run_if(in_state(SplashState::Loading)),
             )
-            .add_systems(Update, handle_request_open_project)
+            .init_resource::<renzora::RecentProjects>()
+            .add_systems(
+                Update,
+                (
+                    handle_request_open_project,
+                    handle_request_open_project_path,
+                    mirror_recent_projects,
+                ),
+            )
             .add_systems(
                 OnEnter(SplashState::Loading),
                 (loading::log_loading_entered, maximize_for_editor),
@@ -151,6 +159,77 @@ fn handle_request_open_project(
         commands.remove_resource::<renzora::RequestOpenProject>();
         warn!("Open Project is not available in the browser");
     }
+}
+
+/// Consume `renzora::RequestOpenProjectPath` — File > Recent Projects, which
+/// already knows the root and so skips the dialog `handle_request_open_project`
+/// opens. Everything after the pick is the same, deliberately: the entry is
+/// re-recorded so opening a project moves it back to the top of the list.
+///
+/// A recents entry can name a folder that has since been moved or deleted, so
+/// the failure here is ordinary rather than exceptional — say so and leave the
+/// editor where it is, exactly as an invalid pick does.
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_request_open_project_path(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestOpenProjectPath>>,
+    mut app_config: ResMut<AppConfig>,
+    mut next_state: ResMut<NextState<SplashState>>,
+) {
+    let Some(request) = request else { return };
+    let root = request.0.clone();
+    commands.remove_resource::<renzora::RequestOpenProjectPath>();
+
+    let project = match project::open_project(&root.join("project.toml")) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to open recent project {}: {}", root.display(), e);
+            rfd::MessageDialog::new()
+                .set_title("Project Unavailable")
+                .set_description(format!("Could not open {}:\n{}", root.display(), e))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
+    };
+
+    app_config.add_recent_project(project.path.clone());
+    let _ = app_config.save();
+    commands.insert_resource(project);
+    commands.insert_resource(PendingProjectReopen);
+    next_state.set(SplashState::Splash);
+    info!("Opening recent project {}", root.display());
+}
+
+/// Web: a recents entry is a folder *name*, and reopening it goes back through
+/// the directory handle the browser stored when it was first picked — the same
+/// route the dashboard's recents cards take.
+#[cfg(target_arch = "wasm32")]
+fn handle_request_open_project_path(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestOpenProjectPath>>,
+) {
+    let Some(request) = request else { return };
+    let root = request.0.clone();
+    commands.remove_resource::<renzora::RequestOpenProjectPath>();
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| root.to_string_lossy().to_string());
+    renzora_webfs::reopen_project(name);
+}
+
+/// Publish the launcher's recents list to the contract crate, so the editor's
+/// File > Recent Projects submenu can read it without depending on this crate.
+///
+/// A copy rather than a move because `AppConfig` is what is written to disk and
+/// what the dashboard's cards are built from; this is the read-only view of it
+/// that crosses a crate boundary.
+fn mirror_recent_projects(cfg: Res<AppConfig>, mut recents: ResMut<renzora::RecentProjects>) {
+    if !cfg.is_changed() {
+        return;
+    }
+    recents.0 = cfg.recent_projects.clone();
 }
 
 /// Startup: honor a `--project <path>` argument by opening that project and

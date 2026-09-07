@@ -274,6 +274,11 @@ pub const VERSION_MAJOR: u32 = 4;
 ///          anticipated. It is boundary surface rather than a `crate::audio`
 ///          domain for the reason `add_script_backend` is: the host calls into
 ///          the backend and needs an answer, which a command queue cannot say.
+/// 10 -> 11 appended `load_settings` and `save_settings` — somewhere for a
+///          plugin to keep its configuration. It could already *draw* a settings
+///          section (MINOR 7) and had nowhere to put what the user changed on
+///          it, so every C-ABI plugin's settings were session-only unless it
+///          wrote a file of its own outside the engine's.
 /// 9 -> 10 appended `add_net_backend`, [`NetBackendDesc`], [`NetCall`],
 ///          [`NetOp`] and [`NetStatus`] — the HTTP client as a plugin, on the
 ///          same reasoning as the line above. It is the one that finally takes
@@ -312,7 +317,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 10;
+pub const VERSION_MINOR: u32 = 11;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -717,6 +722,35 @@ interface! {
     /// mean a session's cookies and connection pool split across two of them.
     add_net_backend:
         unsafe extern "C" fn(host: *mut Host, desc: *const NetBackendDesc) -> RegisterStatus,
+
+    // ── Added in MINOR 4.11 ───────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
+    // the very end, under a new header. See `boundary_layouts_are_pinned` in
+    // `tests/abi_order.rs`.
+    /// Read this plugin's saved settings blob into `out`.
+    ///
+    /// Returns the blob's length in bytes. At most `cap` bytes are written; a
+    /// return **greater than `cap`** means nothing was written and the caller
+    /// should ask again with a buffer that size. `0` means nothing is saved.
+    ///
+    /// An opaque byte blob rather than a typed shape, because the host has no
+    /// business knowing what a plugin's settings are — only where to keep them.
+    /// The plugin picks the encoding; TOML or JSON keeps the file readable,
+    /// which matters because these land in the user's own `settings.toml`.
+    ///
+    /// No plugin id parameter: the host knows which plugin is calling from
+    /// `host`, and keys the section on the plugin's own library path. A plugin
+    /// that could name its own key could also name someone else's.
+    load_settings: unsafe extern "C" fn(host: *mut Host, out: *mut u8, cap: usize) -> usize,
+
+    /// Save this plugin's settings blob, replacing whatever was there.
+    ///
+    /// `len == 0` clears the entry. Written into the same
+    /// `~/.renzora/settings.toml` as everything else, under
+    /// `[plugins."<name>"]`, so a user can read and edit it beside the editor's
+    /// own preferences rather than hunting for a file per plugin.
+    save_settings:
+        unsafe extern "C" fn(host: *mut Host, data: *const u8, len: usize) -> RegisterStatus,
 }
 
 /// How the inspector should edit one numeric field.

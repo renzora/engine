@@ -57,6 +57,33 @@ pub fn overlay_val(
     height: Val,
     bordered: bool,
 ) -> (Entity, Entity) {
+    let p = overlay_val_parts(commands, fonts, title, width, height, bordered);
+    (p.root, p.content)
+}
+
+/// Every node [`overlay_val`] builds, for the caller that restyles its own
+/// chrome.
+///
+/// The card and its title bar are a private detail for every other overlay —
+/// they are a dialog's frame, and a dialog should not have to think about it.
+/// About is the exception: it is the product's own face rather than a dialog,
+/// and it repaints both to sit a shade darker than the panels behind it.
+pub struct OverlayParts {
+    pub root: Entity,
+    pub card: Entity,
+    pub titlebar: Entity,
+    pub content: Entity,
+}
+
+/// [`overlay_val`], handing back all four nodes. See [`OverlayParts`].
+pub fn overlay_val_parts(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    width: Val,
+    height: Val,
+    bordered: bool,
+) -> OverlayParts {
     let root = commands
         .spawn((
             Node {
@@ -155,7 +182,7 @@ pub fn overlay_val(
 
     commands.entity(card).add_children(&[titlebar, content]);
     commands.entity(root).add_child(card);
-    (root, content)
+    OverlayParts { root, card, titlebar, content }
 }
 
 /// Escape, a backdrop click (outside the card), or the X closes the overlay.

@@ -280,6 +280,12 @@ fn inspector_signature(
     if let Some(s) = world.get_resource::<EditorSettings>() {
         (s.inspector_expand_default as u8).hash(&mut h);
     }
+    // A section dropped somewhere new changes nothing about the *set* of
+    // components, so the drag records a revision and this is what turns it into
+    // a rebuilt (and therefore reordered) panel.
+    if let Some(o) = world.get_resource::<super::order::InspectorSectionOrder>() {
+        o.revision.hash(&mut h);
+    }
     match entity {
         Some(e) => {
             1u8.hash(&mut h);

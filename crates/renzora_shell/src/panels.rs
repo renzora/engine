@@ -73,8 +73,11 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("network_entities", "Net Entities", "users-three", "Network"),
     ("network_settings", "Net Settings", "gear", "Network"),
     // Terrain / foliage / navigation
-    ("terrain_tools", "Terrain", "mountains", "Terrain"),
-    ("foliage_painting", "Foliage", "tree", "Terrain"),
+    //
+    // No "terrain_tools" or "foliage_painting" entries: the terrain brushes,
+    // the foliage tools and their settings are the Terrain *component's*
+    // inspector body now, so selecting the terrain is how you get them. A panel
+    // id nothing registers content for opens empty.
     ("navmesh", "Navmesh", "path", "Navigation"),
     // Input
     ("gamepad", "Gamepad", "game-controller", "Input"),

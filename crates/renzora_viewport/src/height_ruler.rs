@@ -1,5 +1,5 @@
-//! The height ruler — a vertical scale that slides in on the right of the
-//! viewport while you drag the Zoom button, showing how high the camera is.
+//! The height ruler — a vertical scale that slides in at the **bottom left** of
+//! the viewport while you drag the Zoom button, showing how high the camera is.
 //!
 //! Dragging to zoom moves the camera through a scene with no other reference to
 //! read: the grid fades with distance, and nothing tells you whether you're two
@@ -7,12 +7,19 @@
 //! shape editors have settled on — a fixed strip of ticks whose *labels* scroll
 //! past a marked centre line, so the numbers move and the marker stays put.
 //!
-//! Beside the ticks is a white track showing where the zoom sits between its
-//! limits ([`EDITOR_ZOOM_MIN`]..[`EDITOR_ZOOM_MAX`]) — the ticks tell you where
-//! you are, the bar tells you how much room is left before the drag stops
-//! moving. Without it, hitting the clamp reads as the drag having broken. The
-//! marker riding it also **grows taller with altitude**, so height registers
-//! peripherally without reading a single number.
+//! Beside the ticks is a white track that **fills upwards from the floor** as
+//! the camera climbs, out of [`EDITOR_ZOOM_MAX`] at the top. A bar that fills
+//! is read the way a tank gauge is — level, without a number and without
+//! finding a marker first — where the blob that used to ride this track had to
+//! be located before it could be read, and reported the *zoom distance* rather
+//! than the height the ticks beside it were counting.
+//!
+//! It hangs in the corner it does because that is where a gauge belongs, and
+//! because it is out of the way of the drag: the Zoom button is on the right
+//! edge, and a readout under the cursor is a readout with a hand over it. It
+//! stacks above the [statistics readout](super::stats_overlay) when that is on,
+//! measured rather than assumed — the stats block grows a row when the scene has
+//! a terrain.
 //!
 //! The scale stops at **0 m**. Ticks that would fall below the ground blank out
 //! rather than counting into negatives: the grid plane is the floor everything
@@ -33,13 +40,15 @@ use std::sync::atomic::Ordering;
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{
-    CameraOrbitSnapshot, NavOverlayState, EDITOR_ZOOM_MAX, EDITOR_ZOOM_MIN,
-};
+use bevy::ui::ComputedNode;
+
+use renzora::core::viewport_types::{NavOverlayState, EDITOR_ZOOM_MAX};
 use renzora::core::EditorCamera;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb, text_muted};
+
+use crate::stats_overlay::StatsOverlayRoot;
 
 /// How many ticks the ruler draws. Odd, so one of them is the centre.
 const TICKS: usize = 9;
@@ -47,13 +56,14 @@ const TICKS: usize = 9;
 const TICK_GAP: f32 = 26.0;
 /// How long the ruler lingers after the drag ends, in seconds.
 const LINGER: f32 = 0.6;
-/// Width of the zoom-range track, in logical px.
+/// Width of the altitude track, in logical px.
 const TRACK_W: f32 = 3.0;
-/// Marker length at ground level and at [`EDITOR_ZOOM_MAX`] altitude, in logical
-/// px. It stretches between the two, so how high you are is legible from the
-/// bar's length alone.
-const MARKER_H_MIN: f32 = 4.0;
-const MARKER_H_MAX: f32 = 46.0;
+/// Shortest the fill ever draws, in logical px. At ground level the true height
+/// is zero, and a bar of nothing reads as a broken widget rather than as the
+/// floor.
+const FILL_H_MIN: f32 = 4.0;
+/// Inset from the viewport's left edge and from whatever it stacks above.
+const MARGIN: f32 = 8.0;
 
 /// The ruler's root, hidden until a zoom drag starts.
 #[derive(Component)]
@@ -62,8 +72,8 @@ pub(crate) struct HeightRuler {
     readout: Entity,
     /// Each tick's dash, top to bottom, hidden below ground.
     marks: Vec<Entity>,
-    /// The marker riding the zoom-range track; its length tracks altitude.
-    marker: Entity,
+    /// The bar that fills the track from the floor up, by altitude.
+    fill: Entity,
 }
 
 /// Counts down from [`LINGER`] once the drag ends.
@@ -75,18 +85,16 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(Update, update_height_ruler.run_if(in_state(SplashState::Editor)));
 }
 
-/// Build the ruler for a viewport's content node. Absolutely positioned on the
-/// left edge, centred vertically.
+/// Build the ruler for a viewport's content node. Absolutely positioned in the
+/// bottom-left corner; `update_height_ruler` lifts it above the statistics
+/// readout when that is on screen.
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                // Right edge, clear of the nav buttons and the axis gizmo above
-                // them; vertically centred so the marked line sits at eye level.
-                right: Val::Px(14.0),
-                top: Val::Percent(50.0),
-                margin: UiRect::top(Val::Px(-(TICKS as f32 * TICK_GAP) / 2.0)),
+                left: Val::Px(MARGIN),
+                bottom: Val::Px(MARGIN),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::FlexStart,
                 column_gap: Val::Px(6.0),
@@ -101,11 +109,14 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
 
     // The ticks live in their own column so the track can sit beside them.
+    // Left-aligned, and the track goes *first*: the ruler hangs off the
+    // viewport's left edge now, so the scale reads outwards from the bar the
+    // way it read inwards from it on the right.
     let scale = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Column,
-                align_items: AlignItems::FlexEnd,
+                align_items: AlignItems::FlexStart,
                 ..default()
             },
             Name::new("vp-height-scale"),
@@ -121,7 +132,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 Node {
                     height: Val::Px(TICK_GAP),
                     align_items: AlignItems::Center,
-                    justify_content: JustifyContent::FlexEnd,
+                    justify_content: JustifyContent::FlexStart,
                     column_gap: Val::Px(6.0),
                     ..default()
                 },
@@ -155,9 +166,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ))
                 .id();
             readout = Some(label);
-            // Label first, dash second: the scale reads against the track on
-            // the right, so the marks are the rightmost thing in each row.
-            commands.entity(row).add_children(&[label, mark]);
+            // Dash first, label second: the scale reads against the track on
+            // its left, so the marks are the leftmost thing in each row.
+            commands.entity(row).add_children(&[mark, label]);
         } else {
             commands.entity(row).add_child(mark);
         }
@@ -166,9 +177,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     }
     let readout = readout.expect("TICKS is odd, so there is always a centre row");
 
-    // The zoom-range track: a white bar spanning the ruler, with a marker
-    // riding it. Top is fully zoomed out, bottom fully in — matching the ticks,
-    // where up is further away.
+    // The altitude track: an empty channel spanning the ruler, filled from the
+    // bottom up. The floor is at the bottom, matching the ticks, where up is
+    // further from the ground.
     let track = commands
         .spawn((
             Node {
@@ -182,29 +193,31 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("vp-height-track"),
         ))
         .id();
-    let marker = commands
+    let fill = commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(-2.0),
                 right: Val::Px(-2.0),
-                top: Val::Px(0.0),
-                height: Val::Px(MARKER_H_MIN),
+                // Anchored to the floor, so growing the height grows it upwards
+                // and the bar's top edge is the reading.
+                bottom: Val::Px(0.0),
+                height: Val::Px(FILL_H_MIN),
                 border_radius: BorderRadius::all(Val::Px(TRACK_W)),
                 ..default()
             },
             BackgroundColor(Color::WHITE),
-            Name::new("vp-height-marker"),
+            Name::new("vp-height-fill"),
         ))
         .id();
-    commands.entity(track).add_child(marker);
+    commands.entity(track).add_child(fill);
 
-    commands.entity(root).add_children(&[scale, track]);
+    commands.entity(root).add_children(&[track, scale]);
 
     commands.entity(root).insert(HeightRuler {
         readout,
         marks,
-        marker,
+        fill,
     });
     root
 }
@@ -214,10 +227,13 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn update_height_ruler(
     time: Res<Time>,
     nav: Res<NavOverlayState>,
-    orbit: Option<Res<CameraOrbitSnapshot>>,
     mut linger: ResMut<RulerLinger>,
     camera: Query<&GlobalTransform, With<EditorCamera>>,
     rulers: Query<(Entity, &HeightRuler)>,
+    // `Entity` + `ComputedNode`, and the display read through `nodes` below: a
+    // `&Node` here would alias the `&mut Node` this system already takes, which
+    // bevy refuses at startup rather than at the call site.
+    stats: Query<(Entity, &ComputedNode), With<StatsOverlayRoot>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
@@ -231,11 +247,30 @@ fn update_height_ruler(
     }
     let show = linger.0 > 0.0;
 
+    // Both live in this corner, so the ruler sits on top of whatever the stats
+    // block currently measures. Measured, not assumed: it grows a row when the
+    // scene has a terrain, and it is hidden entirely by a Settings toggle and by
+    // play mode.
+    let stats_h = stats
+        .iter()
+        .filter(|(e, _)| {
+            nodes
+                .get(*e)
+                .map(|n| n.display != Display::None)
+                .unwrap_or(false)
+        })
+        .map(|(_, cn)| cn.size().y * cn.inverse_scale_factor())
+        .fold(0.0f32, f32::max);
+    let want_bottom = Val::Px(if stats_h > 0.0 { MARGIN * 2.0 + stats_h } else { MARGIN });
+
     for (root, ruler) in &rulers {
         if let Ok(mut node) = nodes.get_mut(root) {
             let want = if show { Display::Flex } else { Display::None };
             if node.display != want {
                 node.display = want;
+            }
+            if node.bottom != want_bottom {
+                node.bottom = want_bottom;
             }
         }
         if !show {
@@ -268,29 +303,14 @@ fn update_height_ruler(
                 text.0 = next;
             }
         }
-        // Marker: fully zoomed OUT sits at the top, fully in at the bottom, so
-        // it travels the same way the tick numbers do.
-        let distance = orbit
-            .as_ref()
-            .map(|o| o.distance)
-            .unwrap_or(EDITOR_ZOOM_MIN)
-            .clamp(EDITOR_ZOOM_MIN, EDITOR_ZOOM_MAX);
-        let span = (EDITOR_ZOOM_MAX - EDITOR_ZOOM_MIN).max(f32::EPSILON);
-        let t = 1.0 - (distance - EDITOR_ZOOM_MIN) / span;
-        // Marker length from altitude, not from the zoom: they usually move
+        // Fill from altitude, not from the zoom distance: the two usually move
         // together, but a camera looking along the ground can pull a long way
-        // back without climbing, and it's the height the bar is reporting.
-        let h = (height.max(0.0) / EDITOR_ZOOM_MAX).clamp(0.0, 1.0);
-        let marker_h = MARKER_H_MIN + (MARKER_H_MAX - MARKER_H_MIN) * h;
-        // Travel is shortened by the marker's own length, so a long marker at
-        // the bottom of the range doesn't hang off the end of the track.
-        let travel = (TICKS as f32 * TICK_GAP - marker_h).max(0.0);
-        if let Ok(mut node) = nodes.get_mut(ruler.marker) {
-            let want_top = Val::Px(t * travel);
-            if node.top != want_top {
-                node.top = want_top;
-            }
-            let want_h = Val::Px(marker_h);
+        // back without climbing, and height is what the ticks beside this bar
+        // are counting.
+        let h = (height / EDITOR_ZOOM_MAX).clamp(0.0, 1.0);
+        let fill_h = (h * TICKS as f32 * TICK_GAP).max(FILL_H_MIN);
+        if let Ok(mut node) = nodes.get_mut(ruler.fill) {
+            let want_h = Val::Px(fill_h);
             if node.height != want_h {
                 node.height = want_h;
             }

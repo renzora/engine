@@ -204,6 +204,18 @@ pub fn section_bg() -> (u8, u8, u8) {
 pub fn hover_bg() -> (u8, u8, u8) {
     palette().hover_bg
 }
+/// Hover fill for a **menu row** (dropdowns, context menus, submenus): the
+/// theme's accent rather than the neutral [`hover_bg`] every other hoverable
+/// surface uses.
+///
+/// A menu row is the one place a hover is also a *selection* — the thing that
+/// will happen if you let the button go — and the grey fill read as "this row is
+/// under the cursor" rather than "this is the one". Rows tinted this way switch
+/// their icon and label to [`on_accent`] while hovered; nothing else should use
+/// it, or the accent stops meaning "about to act".
+pub fn menu_hover_bg() -> (u8, u8, u8) {
+    palette().accent
+}
 pub fn card_bg() -> (u8, u8, u8) {
     palette().card_bg
 }

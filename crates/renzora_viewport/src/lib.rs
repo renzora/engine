@@ -208,11 +208,15 @@ impl Plugin for ViewportPlugin {
                 handle_play_shortcuts,
                 hide_cursor_for_brushes,
                 (
-                    persistence::apply_prefs_on_project_load,
-                    persistence::save_on_change
-                        .after(persistence::apply_prefs_on_project_load),
+                    persistence::migrate_project_prefs,
+                    persistence::save_on_change.after(persistence::migrate_project_prefs),
                 ),
             ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+
+        // The viewport's own settings are per-user now, so they load once rather
+        // than on every project load. `PreStartup` so they are in place before
+        // anything reads a camera sensitivity or a grid size.
+        app.add_systems(PreStartup, persistence::apply_saved_settings);
 
         // Always-on panel-visibility gates — toggle is_active on the offscreen
         // cameras when their panels are / are not in the current dock tree so

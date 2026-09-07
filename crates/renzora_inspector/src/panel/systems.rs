@@ -87,6 +87,7 @@ pub(super) fn expand_all_click(
 pub(super) fn stripe_collapsed_headers(
     root: Query<&Children, With<InspectorRoot>>,
     sections: Query<&Children>,
+    drag: Res<super::reorder::SectionDrag>,
     mut headers: Query<(&Section, &InspectorSectionHeader, &mut BackgroundColor)>,
 ) {
     // Derive the stripe index from the LIVE child order rather than a baked-in
@@ -98,6 +99,11 @@ pub(super) fn stripe_collapsed_headers(
         return;
     };
     for (i, section_root) in children.iter().enumerate() {
+        // The section being dragged wears the drag's own tint until it is
+        // dropped; repainting it here would erase that every frame.
+        if drag.dragged() == Some(section_root) {
+            continue;
+        }
         // A section's header is its first child (see `build_section`).
         let Some(header) = sections.get(section_root).ok().and_then(|c| c.iter().next()) else {
             continue;
@@ -294,6 +300,28 @@ fn open_add_component(world: &mut World) {
     // is selected, so they don't show on a cube where they'd silently do nothing.
     let is_camera = world.get::<Camera3d>(entity).is_some();
 
+    // The `"ui"` set (~31 entries: layout, text, images, the widget behaviours)
+    // is `bevy_ui` state, and `bevy_ui` only lays out a node that is inside a UI
+    // tree. Added to a mesh in the scene they do exactly nothing, while being by
+    // far the biggest category in the list — so on any ordinary entity they were
+    // most of what Add Component offered and none of what it could do.
+    //
+    // "In a UI tree" is the canvas test, walked up the hierarchy: a widget three
+    // levels inside a canvas is as much a UI entity as the canvas itself, and
+    // that is where these components are normally wanted.
+    let in_ui_canvas = {
+        let mut e = Some(entity);
+        let mut found = false;
+        while let Some(cur) = e {
+            if world.get::<renzora_ember::game_ui::UiCanvas>(cur).is_some() {
+                found = true;
+                break;
+            }
+            e = world.get::<ChildOf>(cur).map(|c| c.parent());
+        }
+        found
+    };
+
     let mut entries: Vec<renzora_ember::widgets::SearchEntry> = Vec::new();
     for (label, icon, category, has_fn, add_fn, remove_fn) in specs {
         if has_fn(world, entity) {
@@ -301,6 +329,9 @@ fn open_add_component(world: &mut World) {
         }
         if matches!(category, "camera" | "post_process") && !is_camera {
             continue; // per-camera effect on a non-camera entity
+        }
+        if category == "ui" && !in_ui_canvas {
+            continue; // bevy_ui state on an entity no UI layout will ever reach
         }
         entries.push(renzora_ember::widgets::SearchEntry::new(
             icon,

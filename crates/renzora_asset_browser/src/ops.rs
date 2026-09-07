@@ -15,6 +15,14 @@ use crate::state::{
 };
 
 /// Create a new asset (folder or file) in the current folder + select it.
+///
+/// A new **folder** opens its rename field immediately, with the placeholder
+/// name selected. Every OS file manager does this, and the reason is that
+/// `New Folder` never produces the folder you wanted: the name is the entire
+/// point of the thing you just made, so leaving `New Folder` sitting there just
+/// means a second gesture to fix it. The other kinds don't, because a `.lua` or
+/// a `.material` is opened and edited straight after creating it and a rename
+/// field in the way is one more thing to dismiss.
 pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
     let folder = world
         .get_resource::<NativeAssets>()
@@ -37,9 +45,27 @@ pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
         std::fs::write(&path, kind.content(boilerplate)).is_ok()
     };
     if ok {
+        let start_naming = kind.is_folder();
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
-            s.selected = Some(path);
+            s.selected = Some(path.clone());
             s.listing_dirty = true;
+            if start_naming {
+                // Full selection state, not just `renaming`: the field is built
+                // by the keyed list for the *selected* tile, and an armed rename
+                // whose path isn't the sole selection is cancelled on sight by
+                // `rename_arm_fire`'s siblings.
+                s.selection.clear();
+                s.selection.insert(path.clone());
+                s.selection_anchor = Some(path.clone());
+                s.rename_arm = None;
+                s.renaming = Some(path);
+                // The narrow layout has no grid to draw the field in.
+                s.rename_surface = if s.narrow {
+                    crate::state::RenameSurface::Tree
+                } else {
+                    crate::state::RenameSurface::Grid
+                };
+            }
         }
     }
 }
@@ -110,19 +136,51 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 }
 
 /// Open the OS file manager at `path` (selecting it where supported).
+/// Show `path` in the OS file manager.
+///
+/// **A folder opens; a file is revealed inside its folder.** The two are not the
+/// same gesture, and treating them the same is what made this wrong: every
+/// platform arm reached for the *parent*, so right-clicking `plugins` in a
+/// project at `~/Documents/hello` opened `hello`, and Reveal on the empty grid
+/// (which passes the folder you are looking at) opened `~/Documents` — one level
+/// above the project, every time.
+///
+/// Selecting a folder inside its parent is technically "revealing" it, but
+/// nobody asking to see a folder in their file manager means "show me the folder
+/// next to its siblings". They mean open it.
 pub(crate) fn reveal_in_explorer(path: &Path) {
+    let is_dir = path.is_dir();
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer").arg("/select,").arg(path).spawn();
+        if is_dir {
+            let _ = std::process::Command::new("explorer").arg(path).spawn();
+        } else {
+            // No space after the comma, and one argument: `explorer` parses
+            // `/select,<path>` as a single token.
+            let _ = std::process::Command::new("explorer")
+                .arg(format!("/select,{}", path.display()))
+                .spawn();
+        }
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+        let mut cmd = std::process::Command::new("open");
+        if !is_dir {
+            cmd.arg("-R");
+        }
+        let _ = cmd.arg(path).spawn();
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let dir = path.parent().unwrap_or(path);
-        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+        // `xdg-open` has no "select this file" mode: handed a file it *launches*
+        // it in the default app, which is the one thing Reveal must not do. So a
+        // file opens its containing folder, without the file selected in it.
+        let target = if is_dir {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
     }
 }
 

@@ -1,11 +1,18 @@
 //! The viewport shading switch — wireframe / solid / material / rendered.
 //!
-//! Four buttons centred on the viewport's top edge. They are the four ways you
-//! look at a scene while building it, under the names every 3D tool gives them.
+//! Four buttons on the toolbar, immediately left of Maximize. They are the four
+//! ways you look at a scene while building it, under the names every 3D tool
+//! gives them.
 //!
-//! Centred rather than tucked into the top-right corner, which is where they
-//! started: the axis gizmo already lives there and the two collided. The top
-//! edge's middle is the one part of the viewport frame nothing else claims.
+//! They floated over the scene before this: centred on the viewport's top edge,
+//! translucent, as their own overlay. That put a permanent row of chrome across
+//! the middle of the picture the viewport exists to show, and it needed
+//! `OverlaySurface` to stop camera orbit and box-select arming underneath it.
+//! On the bar they cost the scene nothing, they sit with the other view controls
+//! rather than on top of the view, and the pointer handling goes away with the
+//! overlay. They are still *view* state rather than a session action, which is
+//! why they sit beside Maximize on the right of the bar rather than among the
+//! draggable tool groups on the left.
 //!
 //! # Presets, not a fifth piece of state
 //!
@@ -46,14 +53,11 @@
 //! afterwards, which could not tell those two apart.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::viewport_types::{RenderToggles, ViewportSettings, VisualizationMode};
 use renzora_ember::font::{icon_text, EmberFonts};
-use renzora_ember::theme::{accent, hover_bg, panel_bg, rgb};
-use renzora_ember::widgets::OverlaySurface;
 
-const BTN: f32 = 30.0;
+use crate::tool_buttons::{SIDE_BTN, SIDE_ICON};
 
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Shading {
@@ -138,10 +142,14 @@ impl Shading {
     }
 }
 
-fn resting() -> Color {
-    let (r, g, b) = panel_bg();
-    Color::srgba(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.55)
-}
+/// The button's icon, so [`shading_visuals`] can recolour it.
+///
+/// The glyph used to be a fixed near-white, which was fine while these buttons
+/// were translucent dark chips floating over the scene. On the toolbar they rest
+/// transparent on the bar's own fill, so the icon has to follow the theme the
+/// way every other toolbar button's does, or it disappears on a light one.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct ShadingGlyph(Entity);
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
@@ -159,46 +167,26 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-/// Build the strip, centred on the viewport's top edge.
-pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    // A full-width row that centres the strip, so the buttons stay centred
-    // whatever their number without anyone hand-computing half their width.
-    //
-    // The wrapper must not swallow the pointer: it spans the whole top edge,
-    // and marking *that* as an overlay surface would kill camera orbit and
-    // box-select across the full width of the viewport. Only the strip inside
-    // it claims the cursor.
-    let wrap = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                right: Val::Px(0.0),
-                top: Val::Px(8.0),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            bevy::picking::Pickable::IGNORE,
-            Name::new("shading-overlay-wrap"),
-        ))
-        .id();
-
+/// Build the four-button strip for the viewport toolbar.
+///
+/// A plain row, mounted by [`crate::toolbar`] into the right-hand cluster next
+/// to Maximize. No absolute wrapper and no `OverlaySurface`: both existed only
+/// because this floated over the rendered image, and the bar is chrome beside
+/// that image rather than on top of it.
+pub(crate) fn build_strip(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let strip = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
                 column_gap: Val::Px(1.0),
+                flex_shrink: 0.0,
                 ..default()
             },
-            RelativeCursorPosition::default(),
-            // Hovering the strip must suppress viewport hover, or the camera
-            // orbits and box-select arms under the buttons.
-            OverlaySurface,
-            Name::new("shading-overlay"),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("shading-strip"),
         ))
         .id();
-    commands.entity(wrap).add_child(strip);
 
     let buttons: Vec<Entity> = Shading::ALL
         .into_iter()
@@ -208,57 +196,84 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Gone in play mode: the point of play mode is to see the game, and a
     // shading switch is an authoring control.
-    renzora_ember::reactive::tracked::bind_display(commands, wrap, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, strip, |w| {
         !w.get_resource::<renzora::core::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)
     });
-    wrap
+    strip
 }
 
 fn shading_btn(commands: &mut Commands, fonts: &EmberFonts, mode: Shading) -> Entity {
     let b = commands
         .spawn((
             Node {
-                width: Val::Px(BTN),
-                height: Val::Px(BTN),
+                width: Val::Px(SIDE_BTN),
+                height: Val::Px(SIDE_BTN),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(resting()),
+            BackgroundColor(Color::NONE),
             Interaction::default(),
             mode,
             Name::new("shading-btn"),
         ))
         .id();
-    let g = icon_text(commands, &fonts.phosphor, mode.icon(), (235, 235, 240), 15.0);
+    let g = icon_text(commands, &fonts.phosphor, mode.icon(), (235, 235, 240), SIDE_ICON);
     // Clicks must reach the button, not stop at the glyph in its dead centre —
     // the same trap the nav buttons hit.
     commands.entity(g).insert(bevy::picking::Pickable::IGNORE);
     commands.entity(b).add_child(g);
+    commands.entity(b).insert(ShadingGlyph(g));
     b
 }
 
 /// Accent the active mode, wash on hover.
+///
+/// Fill *and* glyph, both from the theme, matching `tool_buttons`'s scheme
+/// exactly so a shading button and a tool button next to each other on the same
+/// bar are the same button.
 pub(crate) fn shading_visuals(
     settings: Option<Res<ViewportSettings>>,
     suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
-    mut buttons: Query<(&Shading, &Interaction, &mut BackgroundColor)>,
+    theme: Option<Res<renzora_theme::ThemeManager>>,
+    mut buttons: Query<(&Shading, &Interaction, &ShadingGlyph, &mut BackgroundColor)>,
+    mut glyphs: Query<&mut TextColor>,
 ) {
+    let Some(theme) = theme else { return };
+    let col = |c: renzora_theme::ThemeColor| {
+        let [r, g, b, _a] = c.to_array();
+        Color::srgb_u8(r, g, b)
+    };
+    let accent = col(theme.active_theme.semantic.accent);
+    let hovered = col(theme.active_theme.widgets.hovered_bg);
+    let icon_active = col(theme.active_theme.widgets.active_fg);
+    let icon_inactive = col(theme.active_theme.text.secondary);
+
     let environment = !suppressed.as_deref().is_some_and(|s| s.active);
     let active = settings
         .as_deref()
         .and_then(|s| Shading::current(s, environment));
-    for (mode, interaction, mut bg) in &mut buttons {
-        bg.0 = if active == Some(*mode) {
-            rgb(accent())
+    for (mode, interaction, glyph, mut bg) in &mut buttons {
+        let is_active = active == Some(*mode);
+        let want = if is_active {
+            accent
         } else if *interaction == Interaction::Hovered {
-            rgb(hover_bg())
+            hovered
         } else {
-            resting()
+            Color::NONE
         };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+        let want_icon = if is_active { icon_active } else { icon_inactive };
+        if let Ok(mut tc) = glyphs.get_mut(glyph.0) {
+            if tc.0 != want_icon {
+                tc.0 = want_icon;
+            }
+        }
     }
 }
 

@@ -104,6 +104,11 @@ pub(crate) fn register(app: &mut App) {
         .add_systems(Update, update_stats);
 }
 
+/// The readout's root, so the height ruler — which shares this corner — can
+/// measure it and sit above it instead of through it.
+#[derive(Component)]
+pub(crate) struct StatsOverlayRoot;
+
 /// Build the readout for a viewport's content node. Slot 0 only — the numbers
 /// describe the scene, not the view, so four copies would say the same thing
 /// four times.
@@ -130,6 +135,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(panel_bg()).with_alpha(0.72)),
             bevy::picking::Pickable::IGNORE,
             bevy::ui::FocusPolicy::Pass,
+            StatsOverlayRoot,
             Name::new("vp-stats"),
         ))
         .id();

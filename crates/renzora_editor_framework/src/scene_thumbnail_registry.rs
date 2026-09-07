@@ -109,6 +109,10 @@ impl SceneThumbnailRegistry {
 /// [`crate::model_thumb_path`] does): a project mid-BSN-migration can hold
 /// `level.bsn` and `level.ron` side by side, and `set_extension` would collapse
 /// both onto one `level.png` so each save would overwrite the other's preview.
+///
+/// The layout rule itself is [`renzora::core::scene_thumbnail_path`] — the
+/// splash derives the same path from a folder it has never opened, so the two
+/// have to agree.
 pub fn scene_thumb_path(scene_abs: &Path, project: &CurrentProject) -> PathBuf {
     let rel = project.make_relative(scene_abs).unwrap_or_else(|| {
         scene_abs
@@ -116,6 +120,5 @@ pub fn scene_thumb_path(scene_abs: &Path, project: &CurrentProject) -> PathBuf {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default()
     });
-    let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
-    crate::thumbnail_cache_dir(project, "scenes").join(format!("{rel}.png"))
+    renzora::core::scene_thumbnail_path(&project.path, &rel)
 }

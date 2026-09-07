@@ -44,7 +44,7 @@ pub(crate) struct InstallConfirmBtn;
 
 /// Closes the given overlay root (Cancel / OK buttons).
 #[derive(Component)]
-pub(crate) struct DismissOverlayBtn(Entity);
+pub(crate) struct DismissOverlayBtn(pub(crate) Entity);
 
 /// `File → Install Plugin…` menu action — web arm.
 ///

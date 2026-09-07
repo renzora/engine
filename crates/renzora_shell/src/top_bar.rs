@@ -19,7 +19,7 @@ use crate::doc_tabs::build_doc_tab_menu_group;
 use crate::play_controls::build_play_group;
 use crate::ribbon::{ribbon_snapshot, WorkspaceAddBtn, WorkspaceDropZone, RIBBON_W};
 use crate::status_bar::ChromeBar;
-use crate::top_menu::{build_update_chip, hamburger_menu_item};
+use crate::top_menu::{brand_mark, build_update_chip, hamburger_menu_item};
 use crate::window_chrome::{MaximizeIcon, WindowDragHandle};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -86,6 +86,9 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // viewport action. This bar is on screen in every workspace. The document
     // tabs used to fill the rest of this zone; they now sit at the top of the
     // viewport panel (see `build_doc_tabs`).
+    // The Renzora mark leads the bar, ahead of the menu — the spot every desktop
+    // application puts its identity, and a click on it opens About.
+    let brand = brand_mark(commands, fonts);
     let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
@@ -96,7 +99,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     let docs = build_doc_tab_menu_group(commands, fonts, font);
     commands
         .entity(left)
-        .add_children(&[hamburger, session, settings, play, docs]);
+        .add_children(&[brand, hamburger, session, settings, play, docs]);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);

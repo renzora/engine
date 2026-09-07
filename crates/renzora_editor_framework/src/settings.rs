@@ -1,9 +1,10 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Currently selected settings tab. A tab is a *page group*, not a sidebar row:
 /// the settings sidebar splits several of these into finer categories (see
 /// `CATS` in `renzora_settings`), and one category may stack several sections.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SettingsTab {
     #[default]
     Project,
@@ -20,7 +21,7 @@ pub enum SettingsTab {
 /// What a viewport click resolves to when the raycast hits a mesh inside a
 /// larger imported hierarchy. The picker walks up from the hit mesh toward the
 /// scene root; this decides where it stops.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SelectionGranularity {
     /// The exact leaf mesh the ray hit — never bubbles up to a parent.
     Mesh,
@@ -55,7 +56,7 @@ impl SelectionGranularity {
 /// change, so this is the *initial* open state each time — the user can still
 /// collapse/expand any section by hand, and the expand/collapse-all button
 /// overrides it for the current view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum InspectorExpandDefault {
     /// Only the most-edited components (Name, Transform, Scripts) start open;
     /// everything else starts collapsed so long inspectors stay scannable.
@@ -100,7 +101,7 @@ impl InspectorExpandDefault {
 }
 
 /// Available proportional (UI) font families.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum UiFont {
     /// The operating system's default UI font (Segoe UI on Windows, San
     /// Francisco on macOS, …), resolved via Parley's system-font discovery.
@@ -140,7 +141,7 @@ impl UiFont {
 }
 
 /// Available monospace (code) font families.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum MonoFont {
     #[default]
     JetBrainsMono,
@@ -185,9 +186,16 @@ pub struct CustomFonts {
 ///
 /// Cross-cutting settings that don't belong to any specific editor plugin.
 /// Viewport, camera, grid, and keybinding settings live in their own crates.
-#[derive(Resource, Clone, PartialEq)]
+#[derive(Resource, Clone, PartialEq, Serialize, Deserialize)]
+// Every field defaults, so a settings file written by an older build — or one
+// missing a key because the user hand-edited it — loads with the shipped value
+// for whatever is absent rather than failing the whole section.
+#[serde(default)]
 pub struct EditorSettings {
-    /// Currently selected settings tab
+    /// Currently selected settings tab. Session-only: which tab you had open
+    /// is not a preference, and restoring it puts you somewhere you did not ask
+    /// to be on the next launch.
+    #[serde(skip)]
     pub settings_tab: SettingsTab,
     /// What a viewport click selects within an imported model hierarchy
     pub selection_granularity: SelectionGranularity,
@@ -196,12 +204,12 @@ pub struct EditorSettings {
     /// Base font size in points
     pub font_size: f32,
     /// Editor UI scale multiplier applied on top of the OS DPI scale
-    /// (1.0 follows the system). Persisted per-user in `~/.renzora/editor.toml`
-    /// because it's a property of the user's display, not the project.
+    /// (1.0 follows the system). Per-user rather than per-project because it is
+    /// a property of the user's display, not of the game.
     pub ui_scale: f32,
     /// Panel scroll-speed multiplier (mouse wheel / arrow keys / middle-drag);
     /// 1.0 = default feel. Pushed into ember's `ScrollConfig` by the settings
-    /// panel and persisted per-user in `~/.renzora/editor.toml`.
+    /// panel.
     pub scroll_speed: f32,
     /// Selected UI (proportional) font family
     pub ui_font: UiFont,
@@ -220,7 +228,7 @@ pub struct EditorSettings {
     /// Uses the packaged `renzora-runtime` sibling when one exists, otherwise
     /// relaunches this same binary with `--no-editor` (the engine is one
     /// binary either way). Chosen from the Play button's target dropdown (or
-    /// Settings → Scripting) and persisted per-user in `~/.renzora/editor.toml`.
+    /// Settings → Scripting).
     pub external_play_window: bool,
     /// The Play button launches Simulate (scripts + physics with the editor
     /// live) instead of full play. Chosen in the Play dropdown; session-only —
@@ -259,12 +267,14 @@ pub struct EditorSettings {
     /// A hierarchy row click expands/collapses its subtree as well as selecting
     /// it. Off leaves the caret (and the Left/Right arrow keys) as the only way
     /// to fold a branch, so clicking through a deep model doesn't unfold every
-    /// row you touch. Persisted per-user in `~/.renzora/editor.toml`.
+    /// row you touch.
     pub hierarchy_toggle_on_click: bool,
     /// Which component sections start expanded when the inspector is built for a
     /// newly selected entity.
     pub inspector_expand_default: InspectorExpandDefault,
-    /// Whether the settings overlay is open
+    /// Whether the settings overlay is open. Session-only, obviously: an editor
+    /// that reopened the settings window every launch would be a bug.
+    #[serde(skip)]
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
     pub plugins_dir: String,
@@ -286,16 +296,53 @@ pub struct EditorSettings {
 
     /// Where the open-document tabs live: `false` (default) is the strip under
     /// the top bar, `true` folds them into a dropdown in the top bar beside
-    /// Play, giving the row back to the dock. Persisted per-user in
-    /// `~/.renzora/editor.toml` — how much vertical room the tabs are worth is
-    /// a property of the screen you're on, not of the project.
+    /// Play, giving the row back to the dock. Per-user rather than per-project:
+    /// how much vertical room the tabs are worth is a property of the screen
+    /// you are on, not of the game.
     pub doc_tabs_dropdown: bool,
 
     /// Max entries the editor console retains before dropping the oldest. Small
     /// by default (100) because the console panel spawns a UI row per entry, so
-    /// a long backlog costs frames. Persisted per-user in `~/.renzora/editor.toml`
-    /// and pushed into the shared log buffer's cap by the settings panel.
+    /// a long backlog costs frames. Pushed into the shared log buffer's cap by
+    /// the settings panel.
     pub console_log_limit: usize,
+}
+
+impl EditorSettings {
+    /// What the editor boots with: the settings as last saved, with the shipped
+    /// values for anything absent.
+    ///
+    /// **This, not `default()`, is the startup path.** The two were one function
+    /// once, which made `EditorSettings::default()` mean "the shipped values,
+    /// except for some that quietly come back off disk" — a trap for anything
+    /// trying to *reset* to defaults, because the fields it silently failed to
+    /// reset were exactly the ones that survive a restart, and therefore the
+    /// only ones anybody would notice. `Default` is now honestly the shipped
+    /// values and the disk read lives here.
+    ///
+    /// **The whole struct round-trips.** It used to seed exactly nine fields
+    /// from `~/.renzora/editor.toml`, each through its own `load_*` helper, and
+    /// the other twenty-four simply did not survive a restart — you could turn
+    /// on word wrap or the minimap, watch it stick for the session, and find it
+    /// gone next launch. One `#[serde(default)]` section of
+    /// `~/.renzora/settings.toml` replaces the nine helpers and covers all
+    /// thirty-three.
+    ///
+    /// The two session-only fields (`settings_tab`, `show_settings`) are
+    /// `#[serde(skip)]` and so take their `Default` here regardless.
+    pub fn from_disk() -> Self {
+        renzora::core::settings_file::load_section("editor").unwrap_or_default()
+    }
+
+    /// Write the whole section. Cheap enough to call on change: it is a
+    /// read-modify-write of one small file, debounced by
+    /// [`persist_editor_settings`] so a slider drag writes once rather than once
+    /// per frame.
+    pub fn save(&self) {
+        if let Err(e) = renzora::core::settings_file::save_section("editor", self) {
+            bevy::log::warn!("[settings] could not save editor settings: {e}");
+        }
+    }
 }
 
 impl Default for EditorSettings {
@@ -305,33 +352,27 @@ impl Default for EditorSettings {
             selection_granularity: SelectionGranularity::default(),
             selection_boundary_on_top: false,
             font_size: 17.0,
-            ui_scale: renzora::load_ui_scale(),
-            scroll_speed: renzora::load_scroll_speed(),
+            ui_scale: 1.0,
+            scroll_speed: 1.5,
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
-            // Seeded from the persisted contract flag so dev mode (and anything
-            // gated on it, e.g. the `plugins/tracy` profiler) survives restarts.
-            dev_mode: renzora::load_dev_mode(),
+            dev_mode: false,
             script_rerun_on_ready_on_reload: true,
             hide_cursor_in_play_mode: true,
-            // Seeded from the persisted per-user pref (the Play dropdown's
-            // choice); defaults to in-viewport play.
-            external_play_window: renzora::load_play_runtime_window(),
+            external_play_window: true,
             play_launch_simulate: false,
-            play_launch_vr: renzora::load_play_vr(),
+            play_launch_vr: false,
             maximize_viewport_on_play: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
-            // Seed the UI's working copy from the persisted preference so the
-            // settings panel shows what the renderer actually booted with.
-            renderer_backend: renzora::load_renderer_backend(),
+            renderer_backend: renzora::RendererBackend::default(),
             // Off: the backdrop needs a viewport panel on screen to have
             // anything to show — an undocked viewport slot renders at 64×64 —
             // and the UI workspace ships without one.
             ui_preview_by_default: false,
             new_file_boilerplate: true,
             hierarchy_parent_stacking: true,
-            hierarchy_toggle_on_click: renzora::load_hierarchy_toggle_on_click(),
+            hierarchy_toggle_on_click: true,
             inspector_expand_default: InspectorExpandDefault::default(),
             show_settings: false,
             plugins_dir: "plugins".to_string(),
@@ -341,12 +382,8 @@ impl Default for EditorSettings {
             code_show_whitespace: false,
             code_word_wrap: false,
             code_open_switch_layout: false,
-            // Seeded from the per-user pref so the shell builds the chrome the
-            // way the last session left it, on the first frame.
-            doc_tabs_dropdown: renzora::load_doc_tabs_dropdown(),
-            // Seed from the persisted per-user pref so the console cap the buffer
-            // enforces matches what the settings panel shows.
-            console_log_limit: renzora::load_console_log_limit(),
+            doc_tabs_dropdown: false,
+            console_log_limit: renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES,
         }
     }
 }

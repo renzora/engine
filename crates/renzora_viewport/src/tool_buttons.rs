@@ -13,11 +13,12 @@
 //! a second copy of that system would double the per-frame archetype scan for no
 //! benefit. [`update_tool_buttons`] handles every button on screen in one pass.
 
+use bevy::color::Hsla;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 use std::sync::Arc;
 
-use renzora_editor_framework::{EditorCommands, ToolEntry};
+use renzora_editor_framework::{EditorCommands, ToolActiveStyle, ToolEntry};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, EmberFonts};
 use renzora_ember::theme::{border, rgb, text_primary};
@@ -37,6 +38,7 @@ pub(crate) struct ToolButton {
     pub glyph: Entity,
     pub visible: Arc<dyn Fn(&World) -> bool + Send + Sync>,
     pub is_active: Arc<dyn Fn(&World) -> bool + Send + Sync>,
+    pub active_style: ToolActiveStyle,
     pub activate: Arc<dyn Fn(&mut World) + Send + Sync>,
 }
 
@@ -106,6 +108,7 @@ pub(crate) fn tool_button(
                 glyph,
                 visible: entry.visible.clone(),
                 is_active: entry.is_active.clone(),
+                active_style: entry.active_style,
                 activate: entry.activate.clone(),
             },
             HoverCursor(SystemCursorIcon::Pointer),
@@ -125,7 +128,8 @@ pub(crate) fn tool_separator(commands: &mut Commands) -> Entity {
 }
 
 /// A horizontal rule between groups of the vertical shelf. Full-width so it
-/// reads as a division of the column rather than a stray tick beside it.
+/// reads as a division of the column rather than a stray tick beside it, and so
+/// the group after it starts on a fresh row.
 pub(crate) fn shelf_separator(commands: &mut Commands, width: f32) -> Entity {
     commands
         .spawn((
@@ -152,12 +156,26 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
     if collected.is_empty() {
         return;
     }
-    let (accent, hovered, icon_active, icon_inactive) = {
+    let (accent, accent_glyph, hovered, icon_active, icon_inactive) = {
         let Some(tm) = world.get_resource::<ThemeManager>() else {
             return;
         };
+        let accent = col(tm.active_theme.semantic.accent);
         (
-            col(tm.active_theme.semantic.accent),
+            accent,
+            // A step lighter than the fill uses. The accent is chosen to carry
+            // white text on top of it, which makes it dark enough that a glyph
+            // *drawn in* it reads as dim rather than lit — the opposite of what
+            // an on-toggle should say. Lightening it is what puts the tinted
+            // icon at the same visual weight as the filled button beside it.
+            //
+            // In **HSL**, not `Luminance::lighter`: that works in Lab, where
+            // raising lightness pulls the colour toward white and takes the
+            // chroma with it. The result was a pale grey-blue that read as
+            // washed out rather than lit — brighter, and less blue, which is
+            // the one thing this colour has to be. HSL lifts the lightness and
+            // leaves the saturation where the theme put it.
+            lighten(accent, 0.1),
             col(tm.active_theme.widgets.hovered_bg),
             // White-ish on the accent fill when active; a clear neutral otherwise
             // (so tool icons stay legible on light themes).
@@ -170,14 +188,22 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
         .map(|(e, b, inter)| {
             let visible = (b.visible)(world);
             let active = (b.is_active)(world);
-            let bg = if active {
-                accent
-            } else if *inter == Interaction::Hovered {
-                hovered
-            } else {
-                Color::NONE
+            let hover = *inter == Interaction::Hovered;
+            // A tool takes the accent as a *fill*: it is the one thing the
+            // viewport is set to do, and the fill is what says only one of a
+            // group can be lit. A toggle tints its glyph instead — see
+            // `ToolActiveStyle`.
+            let tint = b.active_style == ToolActiveStyle::Tint;
+            let bg = match (active && !tint, hover) {
+                (true, _) => accent,
+                (false, true) => hovered,
+                (false, false) => Color::NONE,
             };
-            let icol = if active { icon_active } else { icon_inactive };
+            let icol = match (active, tint) {
+                (true, true) => accent_glyph,
+                (true, false) => icon_active,
+                (false, _) => icon_inactive,
+            };
             (*e, visible, bg, b.glyph, icol)
         })
         .collect();
@@ -263,4 +289,15 @@ pub(crate) fn tool_button_click(
 fn col(c: renzora_theme::ThemeColor) -> Color {
     let [r, g, b, _a] = c.to_array();
     Color::srgb_u8(r, g, b)
+}
+
+/// Raise a colour's HSL lightness by `amount`, keeping its hue and saturation.
+///
+/// The cap matters as much as the lift: past about 0.75 an HSL colour is on its
+/// way to white whatever its saturation says, so a theme whose accent is already
+/// pale gets no lift rather than a white glyph that reads as "off".
+fn lighten(c: Color, amount: f32) -> Color {
+    let mut hsl = Hsla::from(c);
+    hsl.lightness = (hsl.lightness + amount).min(0.75);
+    Color::from(hsl)
 }

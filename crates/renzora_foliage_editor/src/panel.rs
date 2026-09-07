@@ -1,18 +1,23 @@
-//! Bevy-native (ember) port of the egui `FoliagePanel` (panel id
-//! "foliage_painting"): an enable toggle over three collapsible sections —
-//! Foliage Types (a selectable list + Add/Remove), Brush (Paint/Erase toggle +
-//! Size/Strength/Falloff scrub fields) and Properties (the selected type's Name,
-//! Density, Height Range, Wind Strength and Enabled). Every control writes back
-//! into the same resources the egui panel mutates: [`FoliageToolState`],
+//! The foliage tools: three collapsible sections — Foliage Types (a selectable
+//! list + Add/Remove), Brush (Paint/Erase toggle + Size/Strength/Falloff scrub
+//! fields) and Properties (the selected type's Name, Density, Height Range, Wind
+//! Strength and Enabled).
+//!
+//! **Mounted as the Terrain component's Foliage tab**, by
+//! `renzora_terrain_editor`. It was a dock panel of its own with a palette on
+//! the viewport shelf beside it, then briefly its own inspector section; both
+//! read as a separate feature when it is a third way of painting one terrain,
+//! next to Sculpt and Paint. The dependency runs terrain-editor → here only.
+//!
+//! Every control writes into the resources the foliage systems read:
 //! [`FoliagePaintSettings`] and [`FoliageConfig`].
 
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora_editor_framework::SplashState;
+use renzora_editor_framework::{ActiveTool, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_list};
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
@@ -35,8 +40,10 @@ pub struct FoliagePanel;
 
 impl Plugin for FoliagePanel {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("foliage_painting", true, build)
-            .systems(
+        // No panel and no inspector section of its own: `build` is mounted by
+        // `renzora_terrain_editor` as the Terrain component's **Foliage** tab.
+        // This plugin is only the systems behind those controls.
+        app.add_systems(
                 Update,
                 (
                     foliage_type_select,
@@ -52,20 +59,6 @@ impl Plugin for FoliagePanel {
 
 // ── State accessors (mirror the egui panel's `get_resource` reads) ───────────
 
-fn tool_active(w: &Rx) -> bool {
-    w.get_resource::<FoliageToolState>()
-        .map(|t| t.active)
-        .unwrap_or_default()
-}
-
-fn set_tool_active(w: &mut World, active: bool) {
-    let mut t = w
-        .get_resource::<FoliageToolState>()
-        .copied()
-        .unwrap_or_default();
-    t.active = active;
-    w.insert_resource(t);
-}
 
 fn settings(w: &Rx) -> FoliagePaintSettings {
     w.get_resource::<FoliagePaintSettings>()
@@ -101,7 +94,10 @@ fn hasher() -> std::collections::hash_map::DefaultHasher {
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The foliage tools, built into whatever wants them. Public because the
+/// **Terrain** component mounts this as its Foliage tab — foliage is a third way
+/// of painting a terrain, not a component of its own.
+pub fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
             Node {
@@ -115,48 +111,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // ── Enable toggle row ────────────────────────────────────────────────────
-    let header = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            ..default()
-        })
-        .id();
-    // `false` is a transient seed — `bind_2way` corrects it from the live world
-    // on its first run (state → model wins the initial tie).
-    let enable = checkbox(commands, false);
-    bind_2way(commands, enable, tool_active, |w, v: &bool| {
-        set_tool_active(w, *v)
-    });
-    let tree_icon = icon_text(commands, &fonts.phosphor, "tree", text_primary(), 14.0);
-    let title = commands
-        .spawn((
-            Text::new("Foliage Painting"),
-            ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    commands
-        .entity(header)
-        .add_children(&[enable, tree_icon, title]);
+    // No enable checkbox and no "enable to paint foliage" hint. This body only
+    // exists because the terrain it paints onto is selected, so the gate asked a
+    // question the inspector had already answered -- and answering it wrong left
+    // a section of greyed-out controls with a checkbox you had to find first.
+    // Picking a brush is the enable.
 
-    // ── Inactive hint (shown only when the tool is off) ──────────────────────
-    let hint = commands
-        .spawn((
-            Text::new("Enable to paint foliage on terrain."),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::top(Val::Px(2.0)),
-                ..default()
-            },
-        ))
-        .id();
-    bind_display(commands, hint, |w| !tool_active(w));
-
-    // ── Sections wrapper (shown only when the tool is on) ────────────────────
+    // ── Sections ────────────────────────────────────────────────────────────
     let sections = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -164,7 +125,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    bind_display(commands, sections, tool_active);
 
     let types_sec = types_section(commands, fonts);
     let brush_sec = brush_section(commands, fonts);
@@ -173,9 +133,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .entity(sections)
         .add_children(&[types_sec, brush_sec, props_sec]);
 
-    commands
-        .entity(root)
-        .add_children(&[header, hint, sections]);
+    commands.entity(root).add_child(sections);
     root
 }
 
@@ -818,9 +776,19 @@ fn foliage_remove_type(
     });
 }
 
+/// Picking a foliage brush also **arms foliage painting**.
+///
+/// It used to only set `brush_type`: the mode came from a separate button on the
+/// viewport shelf, which is gone now that the tools are in the terrain's
+/// inspector. Without this a brush click set what *would* be painted and left
+/// the viewport unable to paint it, which is a click that does nothing.
+///
+/// `ActiveTool` directly rather than through a tab, because foliage has no tab
+/// of its own — it is a section beside the Sculpt/Paint tabs, not one of them.
 fn foliage_brush_select(
     q: Query<(&Interaction, &BrushModeBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
+    mut active: Option<ResMut<ActiveTool>>,
 ) {
     let Some(settings) = settings.as_mut() else {
         return;
@@ -828,6 +796,11 @@ fn foliage_brush_select(
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.brush_type = btn.mode;
+            if let Some(active) = active.as_mut() {
+                if **active != ActiveTool::FoliagePaint {
+                    **active = ActiveTool::FoliagePaint;
+                }
+            }
         }
     }
 }

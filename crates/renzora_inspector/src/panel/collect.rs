@@ -212,6 +212,13 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
     // expect regardless of plugin registration order. A stable sort keeps every
     // other component in its original registry order behind them.
     out.sort_by_key(|s| section_priority(s.title));
+
+    // Then the user's own arrangement on top of that, if they have dragged
+    // anything. It runs last and moves whole sections, so the built-in order
+    // above is what an untouched component still falls back to.
+    if let Some(order) = world.get_resource::<super::order::InspectorSectionOrder>() {
+        order.sort(&mut out);
+    }
     out
 }
 

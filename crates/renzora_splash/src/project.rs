@@ -15,6 +15,9 @@ pub fn create_project(
     let config = ProjectConfig {
         name: name.to_string(),
         version: "0.1.0".to_string(),
+        // Stamped at creation and never touched again, so a project made three
+        // versions ago still says so after today's editor has saved it.
+        created_with: Some(renzora::version::ENGINE_VERSION.to_string()),
         main_scene: "scenes/main.bsn".to_string(),
         ..Default::default()
     };
@@ -34,4 +37,37 @@ pub fn create_project(
         path: path.to_path_buf(),
         config,
     })
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    /// The stamp has to survive to disk, not just to the returned config: the
+    /// value's whole job is to still be there in a `project.toml` someone opens
+    /// three versions from now.
+    #[test]
+    fn a_new_project_records_the_engine_version_that_made_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "renzora-new-project-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = create_project(&dir, "Demo").expect("create");
+        assert_eq!(
+            project.config.created_with.as_deref(),
+            Some(renzora::version::ENGINE_VERSION)
+        );
+
+        let written = std::fs::read_to_string(dir.join("project.toml")).expect("read back");
+        let parsed: ProjectConfig = toml::from_str(&written).expect("parse");
+        assert_eq!(
+            parsed.created_with.as_deref(),
+            Some(renzora::version::ENGINE_VERSION)
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -1,9 +1,10 @@
 //! Viewport toolbar registry — lets plugins add buttons to the vertical tool
 //! overlay without editing the viewport crate.
 //!
-//! Built-in tools (Select/Translate/Rotate/Scale and the terrain / modeling mode
-//! buttons on the strip; the brushes, select modes and ops those modes open on
-//! the shelf) register through this same registry at editor plugin build time.
+//! Built-in tools (the terrain / modeling mode buttons on the strip;
+//! Select/Translate/Rotate/Scale and the brushes, select modes and ops those
+//! modes open on the shelf) register through this same registry at editor plugin
+//! build time.
 //! Community plugins register their own tools the same way via
 //! `App::register_tool()`.
 //!
@@ -16,21 +17,27 @@ use std::sync::Arc;
 
 /// Logical grouping on the toolbar. Entries within a section share a divider.
 ///
-/// Sections also choose *which surface* an entry renders on. `Transform` and
-/// `Custom` land in the horizontal strip across the viewport's top edge;
-/// [`ToolSection::Shelf`] lands in the vertical two-column shelf down its left
-/// edge. Everything else about an entry is identical either way, so moving a
-/// tool between surfaces is a one-word change.
+/// Sections also choose *which surface* an entry renders on. `Transform`,
+/// `Terrain` and `Custom` land in the horizontal strip across the viewport's top
+/// edge; [`ToolSection::Shelf`] lands in the vertical two-column shelf down its
+/// left edge. Everything else about an entry is identical either way, so moving
+/// a tool between surfaces is a one-word change.
 ///
 /// The two surfaces split by **depth, not by feature**. A tool that *opens* a
 /// set of other tools stays on the strip — the terrain modes, mesh Edit/Sculpt —
 /// so there is one row you can always see that says what the viewport is set to
-/// do. What that choice reveals goes on the shelf: the brushes, the select
-/// modes, the ops. Left as one flat list on the strip those wrap it into a
-/// second row and push Play and the view controls down with them.
+/// do. What you actually hold goes on the shelf: the gizmos, the brushes, the
+/// select modes, the ops. Left as one flat list on the strip those wrap it into
+/// a second row and push Play and the view controls down with them.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ToolSection {
-    /// Gizmo tools: select, translate, rotate, scale.
+    /// The strip's leading section.
+    ///
+    /// The built-in gizmos (select / translate / rotate / scale) used to be
+    /// registered here and are now on the shelf, so nothing in the engine claims
+    /// this section any more. It stays because it is part of the contract a
+    /// plugin registers against, and because it is still the right home for a
+    /// tool that wants to lead the strip.
     Transform,
     /// Context-sensitive terrain/foliage tools. Visible when a terrain is selected.
     Terrain,
@@ -54,6 +61,24 @@ pub enum ToolSection {
     Shelf(&'static str),
 }
 
+/// How a button shows that it is active.
+///
+/// The distinction is what "active" *means* for that button. A tool is the one
+/// thing the viewport is currently set to do, so it takes the accent as a fill:
+/// it is selected out of its group, and the fill is what says only one of these
+/// can be lit at a time. A **toggle** is not selected out of anything — the grid
+/// is simply on — and a filled square in a column of tools reads as "the grid is
+/// the tool in your hand", which it never is. Tinting the glyph says on/off
+/// without claiming membership of a selection.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ToolActiveStyle {
+    /// Accent fill behind the glyph. The default, and right for a tool.
+    #[default]
+    Fill,
+    /// Accent-tinted glyph, no fill. For a toggle.
+    Tint,
+}
+
 pub type ToolPredicate = Arc<dyn Fn(&World) -> bool + Send + Sync>;
 pub type ToolActivator = Arc<dyn Fn(&mut World) + Send + Sync>;
 
@@ -73,6 +98,8 @@ pub struct ToolEntry {
     pub visible: ToolPredicate,
     /// Whether this tool is the active one (renders highlighted).
     pub is_active: ToolPredicate,
+    /// How `is_active` is drawn: a fill for a tool, a tinted glyph for a toggle.
+    pub active_style: ToolActiveStyle,
     /// Called when the user clicks the button. Runs as a deferred EditorCommand.
     pub activate: ToolActivator,
 }
@@ -92,6 +119,7 @@ impl ToolEntry {
             order: 0,
             visible: Arc::new(|_| true),
             is_active: Arc::new(|_| false),
+            active_style: ToolActiveStyle::Fill,
             activate: Arc::new(|_| {}),
         }
     }
@@ -108,6 +136,13 @@ impl ToolEntry {
 
     pub fn active_if(mut self, f: impl Fn(&World) -> bool + Send + Sync + 'static) -> Self {
         self.is_active = Arc::new(f);
+        self
+    }
+
+    /// Draw the active state as a tinted glyph rather than a fill — for a
+    /// toggle. See [`ToolActiveStyle`].
+    pub fn active_style(mut self, style: ToolActiveStyle) -> Self {
+        self.active_style = style;
         self
     }
 

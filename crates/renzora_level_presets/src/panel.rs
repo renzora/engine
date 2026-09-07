@@ -203,66 +203,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, grid, cards_snapshot);
 
-    // ── Pinned detail for the selected template ──────────────────────────────
-    //
-    // This used to be two loose lines of text at the bottom of the *scrolled*
-    // column, under the cards. Which meant the description of the template you
-    // had just clicked was somewhere below the fold, and the static note under
-    // it read as a caption for whichever card happened to be last. Pinned
-    // outside the scroll and given a surface of its own, it is a panel about
-    // the selection — always visible, always about the card that is lit up.
-    let detail_name = commands
-        .spawn((
-            Text::new(""),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    bind_text(commands, detail_name, |w| {
-        w.resource::<LevelPresetsState>().selected.label().to_string()
-    });
-    let desc = commands
-        .spawn((
-            Text::new(""),
-            ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    bind_text(commands, desc, |w| {
-        w.resource::<LevelPresetsState>().selected.description().to_string()
-    });
-    let note = commands
-        .spawn((
-            Text::new("Spawns meshes, lights, and a camera as scene entities"),
-            ui_font(&fonts.ui, 9.0),
-            TextColor(rgb(placeholder())),
-        ))
-        .id();
-    let detail = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(section_bg())),
-            Name::new("level-presets-detail"),
-        ))
-        .id();
-    commands
-        .entity(detail)
-        .add_children(&[detail_name, desc, note]);
+    // No pinned detail panel under the grid. It restated the card you had just
+    // clicked -- its name, a one-line description, and a static note about what
+    // spawning does -- in a block as tall as two rows of cards, on a panel whose
+    // whole job is the cards. The description belongs on the card, where the
+    // cursor already is; see `card`'s tooltip.
 
-    // The grid scrolls; the detail below it does not.
     let scroll = renzora_ember::widgets::scroll_view(commands, grid);
 
     commands
         .entity(root)
-        .add_children(&[header, scale_row, scroll, detail]);
+        .add_children(&[header, scale_row, scroll]);
     root
 }
 
@@ -299,6 +250,11 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
             BorderColor::all(Color::NONE),
             Interaction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            // Where the description lives now that the pinned detail panel is
+            // gone: on the card, under the cursor that is already asking about
+            // it, instead of in a block that describes one card and sits under
+            // all of them.
+            renzora_ember::widgets::HoverTooltip::new(preset.description()),
             PresetCard(preset),
             Name::new(format!("preset:{}", preset.label())),
         ))

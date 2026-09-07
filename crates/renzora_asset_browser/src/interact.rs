@@ -14,8 +14,8 @@ use renzora_ember::widgets::EmberTextInput;
 
 use crate::ops::track_recent;
 use crate::state::{
-    thumb_kind, AssetBack, AssetNameLabel, AssetSearch, AssetTile, NativeAssets, ThumbKind,
-    TreeNav, TreeSearch, TreeTabBtn, TreeToggle,
+    thumb_kind, AssetBack, AssetNameLabel, AssetSearch, AssetTile, NativeAssets, RenameSurface,
+    ThumbKind, TreeNav, TreeSearch, TreeTabBtn, TreeToggle,
 };
 use crate::tree::flat_folder_order;
 use crate::thumbnails::ThumbnailCache;
@@ -100,7 +100,7 @@ pub(crate) fn tree_nav_click(
                     // Slow second click on the already-selected folder arms a
                     // rename (fired by `rename_arm_fire` after the double-click
                     // window) — the same gesture the grid uses.
-                    state.rename_arm = Some((path.clone(), now));
+                    state.rename_arm = Some((path.clone(), now, RenameSurface::Tree));
                     *last_click = Some((path, now));
                 } else {
                     // First click: navigate, select this folder, toggle expansion.
@@ -218,7 +218,7 @@ pub(crate) fn tile_click(
     if let Some(p) = name_pressed {
         let single = state.last_click.as_ref().is_some_and(|(lp, _)| lp == &p);
         if single && prev_sole.as_deref() == Some(p.as_path()) && state.rename_arm.is_none() {
-            state.rename_arm = Some((p, now));
+            state.rename_arm = Some((p, now, RenameSurface::Grid));
         }
     }
 }

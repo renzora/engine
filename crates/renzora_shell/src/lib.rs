@@ -32,6 +32,7 @@ pub mod dock;
 
 mod about;
 mod bottom_dock;
+mod contributors;
 mod doc_tabs;
 mod panel_sets;
 mod panels;
@@ -77,7 +78,8 @@ use ribbon::{
 };
 use save_prompts::{
     close_tab_prompt_buttons, exit_on_os_close, exit_prompt_buttons, pending_close_after_save,
-    pending_exit_after_save, process_exit_request, process_tab_close_request,
+    pending_exit_after_save, pending_switch_after_save, process_exit_request,
+    process_project_switch_request, process_tab_close_request, switch_prompt_buttons,
 };
 use status_bar::{apply_chrome_style, build_status_bar, ThemeMenuOpen};
 use theme_bridge::{apply_theme_effects, palette_from_theme, sync_theme_menu_open, theme_bridge};
@@ -228,6 +230,8 @@ impl Plugin for ShellPlugin {
         // reads exactly like a resize handle that isn't being hit.
         app.init_resource::<BottomDockResize>();
         app.init_resource::<BottomDockDragHide>();
+        // Empty until the first About open asks GitHub for it.
+        app.init_resource::<contributors::Contributors>();
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
         app.init_resource::<BottomSetRename>();
@@ -254,6 +258,7 @@ impl Plugin for ShellPlugin {
                 content_dispatch,
                 (play_btn_click, update_play_button, vr_active_overlay),
                 plugin_install::install_buttons,
+                top_menu::reset_defaults_buttons,
                 palette_btn_click,
                 (theme_bridge, sync_theme_menu_open),
                 apply_chrome_style,
@@ -287,7 +292,19 @@ impl Plugin for ShellPlugin {
             (
                 about::process_about_request,
                 about::about_credit_click,
-                about::about_credit_hover,
+                (
+                    contributors::poll_contributors,
+                    about::about_contributors_fill,
+                )
+                    .chain(),
+                // The third save prompt (File > New/Open/Recent Project). Here
+                // rather than beside the other two only because the tuple above
+                // is full.
+                (
+                    process_project_switch_request,
+                    switch_prompt_buttons,
+                    pending_switch_after_save,
+                ),
                 // Web-only: the fullscreen toggle that stands in for the
                 // window controls.
                 #[cfg(target_arch = "wasm32")]

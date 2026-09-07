@@ -35,9 +35,13 @@ pub(super) fn populate_tools(world: &mut World) {
     };
 
     // Build the ordered section list: Transform, Terrain, then custom sections.
-    // These are the *mode* buttons — the ones that say what the viewport is set
-    // to do. What each mode opens (brushes, select modes, ops) renders on the
-    // shelf instead; see `native_tool_shelf`.
+    //
+    // **Nothing built-in registers any of them any more.** The gizmos and the
+    // terrain modes both moved to the shelf, which is now the one place tools
+    // are picked — see [`crate::tool_shelf`] for why. All three sections are
+    // still read, and still render here when something fills them, because they
+    // are the contract a plugin registers a strip tool against; an empty section
+    // contributes no buttons and no separator, so the strip simply has none.
     let mut sections: Vec<Vec<renzora_editor_framework::ToolEntry>> = Vec::new();
     let by_section = |sec| {
         let mut v: Vec<_> = registry

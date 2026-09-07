@@ -545,6 +545,11 @@ const GOLDEN: &[Golden] = &[
             // `renzora.http` service, which is the same protocol pointed the
             // other way (a plugin asking the host to fetch).
             "add_net_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const NetBackendDesc) -> RegisterStatus",
+            // MINOR 4.11. Somewhere for a plugin to keep its configuration: it
+            // could already draw a settings section (MINOR 4.7) and had nowhere
+            // to put what the user changed on it.
+            "load_settings: unsafe extern \"C\" fn(host: *mut Host, out: *mut u8, cap: usize) -> usize",
+            "save_settings: unsafe extern \"C\" fn(host: *mut Host, data: *const u8, len: usize) -> RegisterStatus",
         ],
     },
     Golden {

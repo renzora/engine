@@ -244,6 +244,16 @@ Shelf groups render **alphabetically by group string**, globally across all crat
 
 `on_activate` runs as a deferred editor command, so it gets `&mut World` safely from a click handler that is `&World`-only.
 
+An active tool is drawn with an accent **fill**, which is what says only one tool in a group can be lit at a time. A **toggle** is not chosen out of a group — it is simply on — so it asks for the tinted-glyph style instead, the way the viewport's Grid button does:
+
+```rust
+use renzora::editor_contract::ToolActiveStyle;
+
+ToolEntry::new("my_plugin.snap", "magnet", "Snap", ToolSection::Shelf("myplugin.z-view"))
+    .active_if(|world| world.resource::<MyMode>().snapping)
+    .active_style(ToolActiveStyle::Tint)
+```
+
 This is the *contract-crate* way to add a toolbar button. The [ember toolbar functions](panels.md#viewport-toolbar-and-strips) are the other way, and they differ: `ToolEntry` gives you a standard icon button with the editor's own predicates and arrangement; `register_viewport_tool_group` gives you a blank slate to build any widget into. Use `ToolEntry` unless you need a control the button shape cannot express.
 
 ## Console output

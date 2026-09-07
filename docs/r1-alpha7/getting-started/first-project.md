@@ -30,7 +30,7 @@ There's more than one chapter. Finish the first and **Help → Getting Started T
 
 Chapters unlock in order: finishing one opens the next, so you're never staring at seven titles wondering which to open. Finished ones get a green tick.
 
-Progress is tracked **per user**, not per project — it lives in `~/.renzora/editor.toml` alongside your other editor preferences. The walkthrough teaches the editor, so once you've done it (or skipped it) every project you make afterwards opens straight into the editor. To run it again, use **Help → Getting Started Tutorial**.
+Progress is tracked **per user**, not per project — it lives in `~/.renzora/settings.toml` alongside your other editor preferences. The walkthrough teaches the editor, so once you've done it (or skipped it) every project you make afterwards opens straight into the editor. To run it again, use **Help → Getting Started Tutorial**.
 
 **Skip** moves past a single step you can't do right now — no model to import, no marketplace account — without losing the chapter. The **X** in the header closes the tutorial entirely, and counts as "seen" so it won't auto-open again.
 
@@ -61,7 +61,10 @@ You usually never touch `project.toml` by hand — the editor's Settings panel m
 name = "My Game"
 version = "0.1.0"
 main_scene = "scenes/main.ron"   # the scene that loads at startup
+created_with = "r1-alpha7"       # the engine version that made this project
 ```
+
+`created_with` is stamped once, when the folder is made, and never rewritten — so it keeps saying which version you started on however many times a newer editor saves the project. It is your own version key, not the engine's: `version` is your game's, and it is yours to bump.
 
 There's a `[window]` section for size and an optional autoload list and more. You can leave all of that alone for now and let the editor's Settings panel manage it.
 

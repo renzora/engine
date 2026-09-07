@@ -377,7 +377,10 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(text_rich_entry());
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
-    registry.register(camera3d_entry());
+    // No `camera3d` section either, for the same reason as `mesh3d` below: its
+    // one field was a read-only "Perspective 3D", on an entity the Camera
+    // section above it is already describing. It said the entity is a 3D camera
+    // to someone who selected it in a list that shows a camera icon.
     // No `mesh3d` section: its one field was a read-only "Mesh attached", which
     // told you nothing the Material section and the viewport didn't already.
     registry.register(environment_map_light_entry());
@@ -1847,30 +1850,6 @@ fn camera_presets_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: Vec::new(),
-    }
-}
-
-fn camera3d_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "camera3d",
-        display_name: "Camera 3D",
-        icon: "aperture",
-        category: "camera",
-        has_fn: |world, entity| world.get::<Camera3d>(entity).is_some(),
-        add_fn: None,
-        remove_fn: None,
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Type",
-            field_type: FieldType::ReadOnly,
-            get_fn: |world, entity| {
-                world
-                    .get::<Camera3d>(entity)
-                    .map(|_| FieldValue::ReadOnly("Perspective 3D".to_string()))
-            },
-            set_fn: |_, _, _| {},
-        }],
     }
 }
 

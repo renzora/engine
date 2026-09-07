@@ -27,17 +27,15 @@ use renzora_ember::widgets::toggle_switch;
 use renzora_terrain::data::{NoiseMode, StampBlendMode};
 use renzora_terrain::generate::{next_seed, GenSource, HeightmapFit, TerrainGenSettings};
 
-use crate::brush_bar::{
+use crate::bar_widgets::{
     cluster, context_bar_bg, labelled_drag, labelled_dropdown, labelled_slider, tool_is,
 };
 
-/// Stacking order among the viewport's full-width bars — one past the brush
-/// bar, so if both were ever visible the generator's would sit under it. They
-/// aren't, but the order still has to be defined.
-const BAR_ORDER: i32 = 101;
-
 pub fn register(app: &mut App) {
-    renzora_ember::toolbar::register_viewport_top_strip(BAR_ORDER, build);
+    // No `register_viewport_top_strip` any more: this was a full-width bar
+    // across the top of the scene, and it is a section of the Terrain
+    // component's inspector body now (see `panel::build`). `build` is unchanged
+    // -- the same row, mounted somewhere else.
     app.add_systems(
         Update,
         (
@@ -51,7 +49,7 @@ pub fn register(app: &mut App) {
     );
 }
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
             Node {

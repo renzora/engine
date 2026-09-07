@@ -22,40 +22,12 @@ use crate::terrain_inspector::TerrainInspectorTab;
 
 use super::sculpt::{flatten_mode_label, stamp_blend_label};
 use super::{
-    set_settings, AddLayerBtn, EnableToggle, FalloffTypeBtn, FlattenModeCombo, HeightmapExportBtn,
+    set_settings, AddLayerBtn, FalloffTypeBtn, FlattenModeCombo, HeightmapExportBtn,
     HeightmapImportBtn, LayerRow, MaterialClearBtn, MaterialDropZone, NoiseModeCombo, PaintToolBtn,
     SculptToolBtn, ShapeBtn, ShapeTarget, StampBlendCombo, StampLoadBtn, StampPresetCombo, TabBtn,
     MATERIAL_EXTS,
 };
 
-pub(super) fn enable_toggle_click(
-    q: Query<&Interaction, (With<EnableToggle>, Changed<Interaction>)>,
-    mut tool: Option<ResMut<TerrainToolState>>,
-    settings: Option<Res<TerrainSettings>>,
-    mut inspector_tab: Option<ResMut<TerrainInspectorTab>>,
-    selection: Option<Res<EditorSelection>>,
-    terrains: Query<Entity, With<TerrainData>>,
-) {
-    let Some(tool) = tool.as_mut() else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
-        return;
-    }
-    tool.active = !tool.active;
-
-    // The toggle is not just cosmetic: turning it on arms the current tab's
-    // tool (via the inspector-tab resource `sync_active_tool_system` reads),
-    // turning it off drops back to Select.
-    let Some(tab) = inspector_tab.as_mut() else { return };
-    if tool.active {
-        **tab = match settings.map(|s| s.tab).unwrap_or_default() {
-            TerrainTab::Sculpt => TerrainInspectorTab::Sculpt,
-            TerrainTab::Paint => TerrainInspectorTab::Paint,
-        };
-        select_first_terrain_if_needed(selection.as_deref(), &terrains);
-    } else {
-        **tab = TerrainInspectorTab::Size;
-    }
-}
 
 pub(super) fn tab_click(
     q: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
@@ -74,6 +46,7 @@ pub(super) fn tab_click(
                 **tab = match btn.tab {
                     TerrainTab::Sculpt => TerrainInspectorTab::Sculpt,
                     TerrainTab::Paint => TerrainInspectorTab::Paint,
+                    TerrainTab::Foliage => TerrainInspectorTab::Foliage,
                 };
             }
             select_first_terrain_if_needed(selection.as_deref(), &terrains);
@@ -134,15 +107,29 @@ pub(super) fn follow_active_tool(
     }
 }
 
+/// Picking a sculpt brush also **arms sculpt mode**.
+///
+/// It used to only set `brush_type`, and the mode came from a separate button on
+/// the viewport shelf. With the brushes in the Terrain component that button is
+/// gone, and a brush that set what would be painted without arming the painting
+/// was a click that visibly did nothing. Clicking a tool is the whole gesture:
+/// it picks the tool *and* puts the viewport in the mode that uses it.
 pub(super) fn sculpt_tool_click(
     q: Query<(&Interaction, &SculptToolBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
     mut stamp: Option<ResMut<StampBrushData>>,
+    mut tab: Option<ResMut<TerrainInspectorTab>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.brush_type = btn.brush;
+            // Through the tab, not `ActiveTool` directly: `sync_active_tool_system`
+            // re-derives the tool from the tab every frame while a terrain is
+            // selected, so a tool set behind its back is overwritten next frame.
+            if let Some(tab) = tab.as_mut() {
+                **tab = TerrainInspectorTab::Sculpt;
+            }
             // Picking Stamp with nothing loaded gets a default shape so the
             // brush works immediately instead of silently no-opping.
             if btn.brush == TerrainBrushType::Stamp {
@@ -156,14 +143,19 @@ pub(super) fn sculpt_tool_click(
     }
 }
 
+/// Picking a paint brush also arms paint mode — see [`sculpt_tool_click`].
 pub(super) fn paint_tool_click(
     q: Query<(&Interaction, &PaintToolBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<SurfacePaintSettings>>,
+    mut tab: Option<ResMut<TerrainInspectorTab>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.brush_type = btn.brush;
+            if let Some(tab) = tab.as_mut() {
+                **tab = TerrainInspectorTab::Paint;
+            }
         }
     }
 }

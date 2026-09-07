@@ -9,6 +9,9 @@ renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_terrain = { path = "../renzora_terrain" }
+# The Foliage tab in the Terrain component is built by this crate. The
+# dependency runs this way only: foliage knows nothing of the terrain editor.
+renzora_foliage_editor = { path = "../renzora_foliage_editor" }
 renzora_undo = { path = "../renzora_undo" }
 serde_json = "1"
 

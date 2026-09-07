@@ -422,5 +422,11 @@ pub fn open_project(project_toml_path: &Path) -> Result<CurrentProject, Box<dyn 
         .ok_or("Invalid project path")?
         .to_path_buf();
 
-    Ok(CurrentProject { path, config })
+    let mut project = CurrentProject { path, config };
+    // The scene that was open and the document tabs are per-user, so they come
+    // from `settings.toml` rather than from the file just parsed. A project
+    // written before the move keeps whatever `project.toml` said, because that
+    // is still deserialized and this only overwrites it when there is an entry.
+    project.load_editor_state();
+    Ok(project)
 }

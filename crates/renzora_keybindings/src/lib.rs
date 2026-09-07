@@ -16,12 +16,63 @@ pub struct KeybindingsPlugin;
 impl Plugin for KeybindingsPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] KeybindingsPlugin");
+        // `init_resource` and then *apply over the top*, never `insert_resource`.
+        // A native plugin calls `register_shortcut` during the runtime phase,
+        // before this plugin runs, and that seeds its default into the same
+        // resource (see `AppEditorExt::register_shortcut`, which documents the
+        // arrangement). Replacing the resource here would throw those away.
         app.init_resource::<KeyBindings>();
+        // Rebinding a shortcut used to last exactly as long as the session:
+        // nothing ever wrote this anywhere. The saved deltas go on now.
+        if let Some(saved) = renzora::core::settings_file::load_section::<
+            std::collections::BTreeMap<String, PersistedBinding>,
+        >("keybindings")
+        {
+            app.world_mut()
+                .resource_mut::<KeyBindings>()
+                .apply_persisted(&saved);
+        }
+        app.add_systems(Update, persist_keybindings);
         // Programmatic dispatches are consumed on read in
         // `KeyBindings::just_pressed` / `is_plugin_dispatched`, so there's
         // no need for a per-frame sweep — and having one created a frame-
         // timing issue where dispatches made from EguiPrimaryContextPass
         // were wiped before any Update-schedule consumer could see them.
+    }
+}
+
+/// Save the rebound shortcuts shortly after they change.
+///
+/// Debounced like `persist_editor_settings`: the rebind dialog writes the
+/// resource as the user picks a key, and `rebinding` churns it on the way in and
+/// out of that dialog. Waiting for it to settle turns a rebind into one write.
+///
+/// Only the deltas from the shipped defaults are written — see
+/// [`KeyBindings::to_persisted`].
+fn persist_keybindings(
+    bindings: Res<KeyBindings>,
+    time: Res<Time<bevy::time::Real>>,
+    mut dirty_at: Local<Option<f64>>,
+) {
+    const DEBOUNCE: f64 = 0.5;
+    let now = time.elapsed_secs_f64();
+    if bindings.is_changed() {
+        *dirty_at = Some(now);
+        return;
+    }
+    let Some(t) = *dirty_at else { return };
+    if now - t < DEBOUNCE {
+        return;
+    }
+    *dirty_at = None;
+    // Mid-rebind is not a state worth saving: the user is between two bindings.
+    if bindings.rebinding.is_some() || bindings.plugin_rebinding.is_some() {
+        return;
+    }
+    if let Err(e) =
+        renzora::core::settings_file::save_section("keybindings", &bindings.to_persisted())
+    {
+        warn!("[keybindings] could not save shortcuts: {e}");
     }
 }
 

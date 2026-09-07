@@ -29,7 +29,8 @@ pub mod material_nodes; // the material node catalogue, as data
 pub mod material_ref; // pointing an entity at a .material file
 pub mod play_mode; // Play / Simulate / Edit state and its run conditions
 pub mod plugin_inventory; // what plugins were found on disk, and their state
-pub mod project_config; // project.toml model + editor preferences
+pub mod project_config;
+pub mod settings_file; // project.toml model + editor preferences
 pub mod script_bridge; // the inboxes scripting drains each frame
 pub mod session; // process kind + the editor's one-shot requests
 pub mod shapes; // built-in shape registry (mesh factories by id)

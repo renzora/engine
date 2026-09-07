@@ -458,6 +458,57 @@ impl App {
         self
     }
 
+    /// This plugin's saved settings, or `None` if it has never saved any.
+    ///
+    /// The blob is opaque to the host — you choose the encoding. Prefer a
+    /// readable one: it is stored in the user's own `~/.renzora/settings.toml`
+    /// under `[plugins]`, beside the editor's preferences, where they can open
+    /// and edit it.
+    ///
+    /// There is no key parameter, and that is deliberate: the host derives one
+    /// from this plugin's library filename, so a plugin cannot read another
+    /// plugin's settings by naming them.
+    ///
+    /// Requires ABI MINOR 4.11. Answers `None` on a host that has no settings
+    /// file at all, which is a legitimate way to embed the plugin loader rather
+    /// than an error.
+    pub fn settings(&self) -> Option<alloc::vec::Vec<u8>> {
+        // Two calls: the first asks the size, the second fills the buffer. The
+        // host answers with the blob's true length either way, so a blob that
+        // does not fit tells us exactly how much to allocate rather than making
+        // us guess and grow.
+        // SAFETY: the host owns the blob; we only hand it a buffer we own.
+        let len = unsafe {
+            ((*self.ctx.iface).load_settings)(self.ctx.host, core::ptr::null_mut(), 0)
+        };
+        if len == 0 {
+            return None;
+        }
+        let mut buf = alloc::vec![0u8; len];
+        // SAFETY: `buf` has exactly `len` bytes, which is the size just reported.
+        let written =
+            unsafe { ((*self.ctx.iface).load_settings)(self.ctx.host, buf.as_mut_ptr(), len) };
+        // A blob that grew between the two calls is not ours to race with;
+        // reporting nothing is better than handing back a truncated one.
+        (written == len).then_some(buf)
+    }
+
+    /// Save this plugin's settings, replacing whatever was there.
+    ///
+    /// An empty slice clears the entry, so a plugin can genuinely forget its
+    /// settings rather than leaving an empty one behind. Bytes that are not
+    /// UTF-8 are refused: this lands in a file shared with the editor's own
+    /// preferences, and a plugin must not be able to corrupt it.
+    ///
+    /// Returns whether the host accepted it.
+    pub fn save_settings(&mut self, blob: &[u8]) -> bool {
+        // SAFETY: the host copies the bytes before returning.
+        let status = unsafe {
+            ((*self.ctx.iface).save_settings)(self.ctx.host, blob.as_ptr(), blob.len())
+        };
+        status == sys::RegisterStatus::Ok
+    }
+
     /// Register a scripting language.
     ///
     /// The descriptor comes from the `script_backend!` macro, which owns the

@@ -377,6 +377,7 @@ fn collect_web_project_pick(mut commands: Commands) {
                 let config = crate::project::ProjectConfig {
                     name: picked.name.clone(),
                     version: "0.1.0".to_string(),
+                    created_with: Some(renzora::version::ENGINE_VERSION.to_string()),
                     main_scene: "scenes/main.bsn".to_string(),
                     ..Default::default()
                 };

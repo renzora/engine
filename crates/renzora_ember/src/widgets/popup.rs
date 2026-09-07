@@ -13,7 +13,7 @@ use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition, UiGlobalTransf
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::reactive::tracked::bind_bg;
+use crate::reactive::tracked::{bind_bg, bind_text_color};
 use crate::theme::*;
 
 
@@ -348,7 +348,7 @@ pub(crate) fn menu_row_visual(
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(menu_hover_bg()),
         _ => Color::NONE,
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
@@ -359,8 +359,28 @@ pub(crate) fn menu_row_visual(
             TextColor(rgb(text_color)),
         ))
         .id();
+    // The accent fill is a solid colour, so a row's own icon/label colours stop
+    // being readable on it — a muted grey, and a destructive red most of all.
+    // Both switch to `on_accent` for as long as the fill is there.
+    menu_row_hover_text(commands, row, ic, icon_color);
+    menu_row_hover_text(commands, row, t, text_color);
     commands.entity(row).add_children(&[ic, t]);
     row
+}
+
+/// Bind one of `row`'s text entities to `on_accent` while the row is hovered,
+/// and to `rest` otherwise. Shared by every row that takes the accent fill,
+/// including [`menu_submenu`](super::submenu::menu_submenu)'s.
+pub(crate) fn menu_row_hover_text(
+    commands: &mut Commands,
+    row: Entity,
+    text: Entity,
+    rest: (u8, u8, u8),
+) {
+    bind_text_color(commands, text, move |w| match w.get::<Interaction>(row) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(on_accent()),
+        _ => rgb(rest),
+    });
 }
 
 /// A rich, Unreal "Place Actors"-style menu row: a thumbnail icon box, a colored

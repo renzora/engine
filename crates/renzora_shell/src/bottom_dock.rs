@@ -841,10 +841,11 @@ pub(crate) fn sync_collapsed_bottom_bar(
     sets: Res<BottomPanelSets>,
     fonts: Option<Res<EmberFonts>>,
     registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    keys: Option<Res<renzora::core::keybindings::KeyBindings>>,
     bars: Query<Entity, With<CollapsedBottomBar>>,
     mut nodes: Query<&mut Node>,
     mut commands: Commands,
-    mut built: Local<Option<(Entity, Vec<String>, String)>>,
+    mut built: Local<Option<(Entity, Vec<String>, String, String)>>,
 ) {
     let (Some(fonts), Ok(bar)) = (fonts, bars.single()) else {
         return;
@@ -875,12 +876,23 @@ pub(crate) fn sync_collapsed_bottom_bar(
     } else {
         String::new()
     };
+    // The shortcut that reopens the panel, spelled the way the user has it
+    // bound rather than as a hardcoded "Ctrl + Space" — rebinding
+    // `ToggleBottomPanel` in Settings would otherwise leave a strip advertising
+    // a key that no longer does anything. In the rebuild key for that reason.
+    let shortcut = keys
+        .and_then(|k| {
+            k.get(renzora::core::keybindings::EditorAction::ToggleBottomPanel)
+                .map(|b| b.display())
+        })
+        .unwrap_or_default();
     // Keyed on the bar entity too: a theme/language chrome respawn creates a
     // fresh (childless) bar, which must rebuild even for the same tab set.
-    if built.as_ref() == Some(&(bar, ids.clone(), empty_label.clone())) {
+    let key = (bar, ids.clone(), empty_label.clone(), shortcut.clone());
+    if built.as_ref() == Some(&key) {
         return;
     }
-    *built = Some((bar, ids.clone(), empty_label.clone()));
+    *built = Some(key);
 
     commands.entity(bar).despawn_related::<Children>();
     if !empty_label.is_empty() {
@@ -967,14 +979,20 @@ pub(crate) fn sync_collapsed_bottom_bar(
             Name::new("closed-bottom-filler"),
         ))
         .id();
-    let chev = icon_text(&mut commands, &fonts.phosphor, "caret-up", text_muted(), 13.0);
+    // The shortcut label sits *inside* the open button rather than beside it, so
+    // the text and the chevron are one target: the label is the wider half of
+    // the control and the obvious thing to aim at, and a hint you cannot click
+    // next to a button you can is a smaller button pretending to be a bigger
+    // one. It also means the hover cursor and (later) any hover fill cover both.
     let open_btn = commands
         .spawn((
             Node {
                 height: Val::Percent(100.0),
-                width: Val::Px(24.0),
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -985,7 +1003,27 @@ pub(crate) fn sync_collapsed_bottom_bar(
             Name::new("closed-bottom-open"),
         ))
         .id();
-    commands.entity(open_btn).add_child(chev);
+    let mut open_kids = Vec::new();
+    if !shortcut.is_empty() {
+        open_kids.push(
+            commands
+                .spawn((
+                    Text::new(shortcut),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(placeholder())),
+                    bevy::text::TextLayout::no_wrap(),
+                    // The press has to land on the button, not stop at the text
+                    // in the middle of it.
+                    bevy::picking::Pickable::IGNORE,
+                    Name::new("closed-bottom-shortcut"),
+                ))
+                .id(),
+        );
+    }
+    let chev = icon_text(&mut commands, &fonts.phosphor, "caret-up", text_muted(), 13.0);
+    commands.entity(chev).insert(bevy::picking::Pickable::IGNORE);
+    open_kids.push(chev);
+    commands.entity(open_btn).add_children(&open_kids);
     commands.entity(bar).add_children(&[strip_filler, open_btn]);
 }
 

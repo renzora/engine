@@ -27,6 +27,8 @@
 //! | [`undo`] | The four undo commands for add / remove / enable |
 //! | [`spec`] | What a section and a field are, before either is built |
 //! | [`collect`] | Reading the registry (and reflection) into those specs |
+//! | [`order`] | The user's own component order, and how it is saved |
+//! | [`reorder`] | Dragging a section by its grip to change that order |
 //! | [`rebuild`] | The signature, the exclusive rebuild, the top bar |
 //! | [`section`] | Building one section, and filling its body on expand |
 //! | [`cull`] | Throwing away the rows of sections scrolled off screen |
@@ -47,7 +49,9 @@ pub(crate) mod assets;
 pub(crate) mod collect;
 pub(crate) mod cull;
 pub(crate) mod fields;
+pub(crate) mod order;
 pub(crate) mod rebuild;
+pub(crate) mod reorder;
 pub(crate) mod section;
 pub(crate) mod spec;
 pub(crate) mod systems;
@@ -218,6 +222,11 @@ pub fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<InspectorState>();
     app.init_resource::<InspectorSectionsOpen>();
+    app.init_resource::<reorder::SectionDrag>();
+    // Read from disk rather than defaulted: a component order the user dragged
+    // into place is a per-user arrangement, like the UI editor's toolbar, and one
+    // that forgot on restart would be worse than none.
+    app.insert_resource(order::InspectorSectionOrder::from_disk());
     // Reflection-generated sections (see `collect::append_reflected_sections`).
     // Settable from the environment so the hand-written and generated renderings
     // of the same component can be compared without a settings-UI round trip:
@@ -307,6 +316,11 @@ pub fn register(app: &mut App) {
             systems::stripe_collapsed_headers,
             systems::remember_inspector_sections,
             systems::apply_expand_policy_change,
+            // Nested: the surrounding tuple is at bevy's 20-element ceiling.
+            (
+                reorder::section_reorder_drag,
+                reorder::section_reorder_autoscroll,
+            ),
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),

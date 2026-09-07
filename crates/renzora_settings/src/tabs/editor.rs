@@ -32,7 +32,6 @@ pub(crate) fn tab_editor(
             w.resource_mut::<EditorSettings>().dev_mode = v;
             // Persist so dev mode (and plugins gated on it, e.g. plugins/tracy)
             // survive a restart.
-            let _ = renzora::save_dev_mode(v);
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.dev_mode"), t);
@@ -50,7 +49,6 @@ pub(crate) fn tab_editor(
             w.resource_mut::<EditorSettings>().console_log_limit = limit;
             // Apply immediately to the live buffer cap, then persist.
             renzora::core::console_log::set_max_log_entries(limit);
-            let _ = renzora::save_console_log_limit(limit);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.console_log_limit"), dv);
@@ -109,7 +107,6 @@ pub(crate) fn tab_editor(
         move |w, &i| {
             if let Some(b) = av2.get(i).copied() {
                 w.resource_mut::<EditorSettings>().renderer_backend = b;
-                let _ = renzora::save_renderer_backend(b);
             }
         },
     );

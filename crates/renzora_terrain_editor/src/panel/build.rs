@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
 
@@ -12,7 +12,7 @@ use renzora_terrain::data::TerrainTab;
 
 use super::paint::paint_content;
 use super::sculpt::sculpt_content;
-use super::{settings_tab, tool_active, EnableToggle, TabBtn};
+use super::{settings_tab, TabBtn};
 
 pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
@@ -28,82 +28,14 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // ── Enable / disable toggle (full-width pill) ────────────────────────────
-    let toggle = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(32.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(6.0),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
-            HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            EnableToggle,
-            Name::new("terrain-enable"),
-        ))
-        .id();
-    bind_bg(commands, toggle, move |w| {
-        if tool_active(w) {
-            rgb(accent())
-        } else if matches!(
-            w.get::<Interaction>(toggle),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
-        ) {
-            rgb(hover_bg())
-        } else {
-            rgb(card_bg())
-        }
-    });
-    let toggle_icon = icon_text(commands, &fonts.phosphor, "mountains", text_primary(), 14.0);
-    bind_text_color(commands, toggle_icon, |w| {
-        if tool_active(w) {
-            Color::WHITE
-        } else {
-            rgb(text_primary())
-        }
-    });
-    let toggle_label = commands
-        .spawn((
-            Text::new("Enable Terrain Mode"),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    bind_text(commands, toggle_label, |w| {
-        if tool_active(w) {
-            "Terrain Mode Active".to_string()
-        } else {
-            "Enable Terrain Mode".to_string()
-        }
-    });
-    bind_text_color(commands, toggle_label, |w| {
-        if tool_active(w) {
-            Color::WHITE
-        } else {
-            rgb(text_primary())
-        }
-    });
-    commands
-        .entity(toggle)
-        .add_children(&[toggle_icon, toggle_label]);
+    // No enable toggle, and no "select a terrain and enable terrain mode" hint.
+    // This body only exists because the Terrain component is on screen, which
+    // means a terrain is selected -- so the gate was asking a question the
+    // inspector had already answered, and answering it wrong left a panel of
+    // greyed-out tools with a button you had to find first. Clicking a brush is
+    // the enable now: it acts on the entity whose component you are looking at.
 
-    // ── Inactive hint (shown only when the tool is off) ──────────────────────
-    let hint = commands
-        .spawn((
-            Text::new("Select a terrain entity and enable terrain mode to begin editing."),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    bind_display(commands, hint, |w| !tool_active(w));
-
-    // ── Active body (tabs + content; shown only when the tool is on) ─────────
+    // ── Tabs + content ──────────────────────────────────────────────────────
     let body = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -112,7 +44,6 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    bind_display(commands, body, tool_active);
 
     let tabs = tab_bar(commands, fonts);
 
@@ -121,10 +52,25 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, sculpt, |w| settings_tab(w) == TerrainTab::Sculpt);
     let paint = paint_content(commands, fonts);
     bind_display(commands, paint, |w| settings_tab(w) == TerrainTab::Paint);
+    // Built by `renzora_foliage_editor`. It was briefly a **Foliage** inspector
+    // section of its own, sitting under Terrain — which read as a second
+    // component on an entity that only has one. It is a third way of painting
+    // the same terrain, so it is a third tab.
+    let foliage = renzora_foliage_editor::panel::build(commands, fonts);
+    bind_display(commands, foliage, |w| settings_tab(w) == TerrainTab::Foliage);
 
-    commands.entity(body).add_children(&[tabs, sculpt, paint]);
+    // The generator, as a section rather than the full-width bar it used to be
+    // across the top of the scene. Shown only while the Generate tool is the
+    // active one, the same gate the bar carried.
+    let generate = crate::generate_bar::build(commands, fonts);
+    bind_display(commands, generate, |w| {
+        w.get_resource::<renzora_editor_framework::ActiveTool>().copied()
+            == Some(renzora_editor_framework::ActiveTool::TerrainGenerate)
+    });
 
-    commands.entity(root).add_children(&[toggle, hint, body]);
+    commands.entity(body).add_children(&[tabs, sculpt, paint, foliage, generate]);
+
+    commands.entity(root).add_child(body);
     root
 }
 
@@ -141,7 +87,8 @@ fn tab_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let sculpt = tab_button(commands, fonts, "mountains", "Sculpt", TerrainTab::Sculpt);
     let paint = tab_button(commands, fonts, "paint-brush", "Paint", TerrainTab::Paint);
-    commands.entity(row).add_children(&[sculpt, paint]);
+    let foliage = tab_button(commands, fonts, "tree", "Foliage", TerrainTab::Foliage);
+    commands.entity(row).add_children(&[sculpt, paint, foliage]);
     row
 }
 

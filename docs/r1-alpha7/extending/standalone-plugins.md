@@ -1301,6 +1301,40 @@ Put `PanelActionId { action: N }` on a widget and clicks reach `on_action`, wher
 
 Do **not** set `PanelActionId`'s `panel` field. It indexes a list that spans every loaded plugin, so its correct value depends on what else is in `plugins/`; the host stamps it when the panel is spawned.
 
+## Saving your settings
+
+A plugin can keep a blob of its own configuration in the user's settings file:
+
+```rust
+impl Plugin for FlockPlugin {
+    fn build(&self, app: &mut App) {
+        // `None` the first time — nothing saved yet.
+        let cfg: FlockConfig = app
+            .settings()
+            .and_then(|blob| serde_json::from_slice(&blob).ok())
+            .unwrap_or_default();
+
+        app.insert_resource(cfg);
+    }
+}
+
+// Whenever it changes:
+fn save(app: &mut App, cfg: &FlockConfig) {
+    app.save_settings(&serde_json::to_vec(cfg).unwrap());
+}
+```
+
+Three things worth knowing:
+
+- **The blob is opaque to the engine.** You choose the encoding. Prefer something readable — it lands in the user's own `~/.renzora/settings.toml`, under `[plugins]`, beside their editor preferences, and they can open it. Bytes that are not UTF-8 are refused rather than written.
+- **You do not name your own key.** The host derives it from your library's filename, so one plugin cannot read or overwrite another's settings. That is why neither call takes an id.
+- **Saving an empty slice clears the entry**, so a plugin can genuinely forget its settings rather than leaving an empty one behind.
+- **The user can clear it too**, from *View ▸ Reset to Defaults* — the whole `[plugins]` table goes when its box is ticked (it starts unticked). Your next `load_settings` returns `None`, so treat that as the fresh-install case rather than as an error, exactly as you do on first run.
+
+This pairs with `add_settings_section`, which puts your controls on the Settings overlay's Plugins tab. Before this existed you could draw that page and had nowhere to put what the user changed on it, so plugin settings were session-only.
+
+Requires ABI **MINOR 4.11**. A plugin built against an older header keeps loading — it simply never reads the new fields — and one built against 4.11 running on an older host is refused at load rather than calling into the wrong function. See [Versioning](#versioning).
+
 ## Third-party crates
 
 A standalone plugin is an ordinary Rust crate, so it can depend on anything on crates.io:

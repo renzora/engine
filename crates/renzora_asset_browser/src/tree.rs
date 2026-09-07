@@ -22,8 +22,8 @@ use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use crate::grid::{display_name, rename_field_for};
 use crate::ops::{asset_type_info, current_folder, folder_color, icon_for, project_root};
 use crate::state::{
-    file_name_of, hash_path_set, AssetNameLabel, AssetTile, NativeAssets, ShortcutClick, TreeNav,
-    TreeTab, TreeToggle,
+    file_name_of, hash_path_set, AssetNameLabel, AssetTile, NativeAssets, RenameSurface,
+    ShortcutClick, TreeNav, TreeTab, TreeToggle,
 };
 
 const TREE_INDENT: f32 = 12.0;
@@ -239,6 +239,7 @@ pub(crate) fn tree_token(world: &Rx) -> u64 {
         st.tree_tab.hash(&mut h);
         st.tree_search.hash(&mut h);
         st.renaming.hash(&mut h);
+        st.rename_surface.hash(&mut h);
     }
     if let Some(root) = project_root(world) {
         root.hash(&mut h);
@@ -262,7 +263,14 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
     let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
     let narrow = st.map(|s| s.narrow).unwrap_or(false);
     let tree_tab = st.map(|s| s.tree_tab).unwrap_or(TreeTab::Folders);
-    let renaming = st.and_then(|s| s.renaming.clone());
+    // A rename started on the grid draws its field there, not here: both
+    // surfaces show the same folder, and two fields fight over the focus. See
+    // `state::RenameSurface`.
+    let renaming = st.and_then(|s| {
+        (s.rename_surface == RenameSurface::Tree)
+            .then(|| s.renaming.clone())
+            .flatten()
+    });
     // The search box only exists in the narrow layout — ignore its (possibly
     // stale) value in the wide sidebar so it can't invisibly filter the tree.
     let query = if narrow {

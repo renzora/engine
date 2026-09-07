@@ -29,7 +29,9 @@ use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
 
-use super::popup::{OverlaySurface, MENU_GAP, MENU_ICON, MENU_PAD_X, MENU_PAD_Y, MENU_TEXT};
+use super::popup::{
+    menu_row_hover_text, OverlaySurface, MENU_GAP, MENU_ICON, MENU_PAD_X, MENU_PAD_Y, MENU_TEXT,
+};
 
 /// Same cap as [`screen_menu`](super::popup::screen_menu): a long submenu (the
 /// shape list, say) scrolls instead of running off the screen.
@@ -39,6 +41,26 @@ const SUBMENU_MAX_H: f32 = 420.0;
 /// small overlap means a cursor moving diagonally toward the submenu never
 /// crosses a gap of dead space (which would close it mid-travel).
 const OVERLAP: f32 = 3.0;
+
+/// Stacking depth of a *first-level* submenu panel: above the 9700 of the menu
+/// root it hangs off, and below the crash overlay (9800). Each further level of
+/// nesting adds one, written by [`submenu_reveal`].
+///
+/// A nested panel MUST outrank the panel it opens from, and a shared depth is
+/// not enough: `ComputedStackIndex` breaks a tie by tree order, and a submenu's
+/// panel is built *before* the panel it ends up inside (a caller fills a row's
+/// content, then wraps it in a row of its own), so the parent won every tie.
+/// That is not merely a paint-order detail — `correct_pointer_state` clears
+/// `cursor_over` on whatever the topmost overlay covers, so in the few px where
+/// the child panel slides back over its parent the child read as *not* hovered
+/// while the cursor was no longer on its row either. Both halves of "keep this
+/// open" were false at once and the whole chain collapsed, which is what a
+/// cursor moving from `File > Recent` into its list hit every time.
+const SUBMENU_Z: i32 = 9750;
+
+/// Ceiling for [`SUBMENU_Z`] + nesting depth, so a pathological chain can never
+/// climb over the crash overlay at 9800.
+const SUBMENU_Z_MAX: i32 = 9790;
 
 /// A row that reveals `panel` while it (or anything deeper in its submenu chain)
 /// is hovered.
@@ -126,7 +148,7 @@ pub fn menu_submenu_parts(
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(menu_hover_bg()),
         _ => Color::NONE,
     });
 
@@ -138,6 +160,11 @@ pub fn menu_submenu_parts(
             TextColor(rgb(text_primary())),
         ))
         .id();
+    // Same as an action row: readable on the accent fill. The caret too, or the
+    // one part of the row that says "there is more here" is the part that
+    // disappears into the highlight.
+    menu_row_hover_text(commands, row, ic, icon_color);
+    menu_row_hover_text(commands, row, text, text_primary());
     // Pushes the caret to the row's trailing edge whatever the label's width.
     let spacer = commands
         .spawn(Node {
@@ -147,6 +174,7 @@ pub fn menu_submenu_parts(
         })
         .id();
     let caret = icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 10.0);
+    menu_row_hover_text(commands, row, caret, text_muted());
     commands.entity(row).add_children(&[ic, text, spacer, caret]);
 
     let content = commands
@@ -174,9 +202,9 @@ pub fn menu_submenu_parts(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            // Above the 9700 of the menu root it belongs to, and still below the
-            // crash overlay (9800). Moves with it — see the note on `screen_menu`.
-            GlobalZIndex(9750),
+            // Above the menu root it belongs to; raised again per nesting level
+            // by `submenu_reveal`. See `SUBMENU_Z`.
+            GlobalZIndex(SUBMENU_Z),
             OverlaySurface,
             // Spawn-time (not via an `Added` pass) for the same reason the menu
             // root does it: a menu torn down the same frame would leave the
@@ -218,17 +246,30 @@ pub(crate) fn submenu_reveal(
     // origin — reading that put every submenu in the window's top-left corner.
     geom: Query<(&UiGlobalTransform, &ComputedNode)>,
     mut nodes: Query<&mut Node>,
+    mut depths: Query<&mut GlobalZIndex>,
 ) {
     if rows.is_empty() {
         return;
     }
 
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+
     // Rows kept open by the cursor being on them or on their own panel.
     let mut open: HashSet<Entity> = HashSet::default();
     for (row, interaction, sub) in &rows {
+        // `cursor_over` is not enough on its own: a panel that another overlay
+        // covers has it cleared (`correct_pointer_state`), and the panel a
+        // submenu slides back over is precisely such an overlay. Testing the
+        // rect we placed the panel at last frame is immune to that, and a single
+        // frame of "not open" here is not a flicker but a closed menu — the
+        // cursor is by then past the row, so nothing reopens it.
         let over_panel = panels
             .get(sub.panel)
-            .map(|(rcp, _, _)| rcp.cursor_over)
+            .map(|(rcp, cn, _)| {
+                rcp.cursor_over
+                    || cursor.zip(nodes.get(sub.panel).ok().and_then(|n| panel_rect(n, cn)))
+                        .is_some_and(|(c, rect)| rect.contains(c))
+            })
             .unwrap_or(false);
         if *interaction != Interaction::None || over_panel {
             open.insert(row);
@@ -256,6 +297,14 @@ pub(crate) fn submenu_reveal(
 
     for (row, _, sub) in &rows {
         let show = open.contains(&row);
+        // One rank per level of nesting, so a panel always outranks the one it
+        // opens from — for hit-testing as much as for paint (see `SUBMENU_Z`).
+        let want_z = (SUBMENU_Z + nesting_depth(row, &parents, &panels)).min(SUBMENU_Z_MAX);
+        if let Ok(mut z) = depths.get_mut(sub.panel) {
+            if z.0 != want_z {
+                z.0 = want_z;
+            }
+        }
         let Ok(mut node) = nodes.get_mut(sub.panel) else {
             continue;
         };
@@ -301,6 +350,42 @@ pub(crate) fn submenu_reveal(
             node.top = top;
         }
     }
+}
+
+/// A visible panel's on-screen rect in logical window px, read back from the
+/// placement [`submenu_reveal`] wrote last frame. `None` while it is hidden or
+/// has not been laid out yet.
+fn panel_rect(node: &Node, cn: &ComputedNode) -> Option<Rect> {
+    if node.display == Display::None {
+        return None;
+    }
+    let (Val::Px(x), Val::Px(y)) = (node.left, node.top) else {
+        return None;
+    };
+    let size = cn.size() * cn.inverse_scale_factor();
+    (size.x > 0.0 && size.y > 0.0)
+        .then(|| Rect::from_corners(Vec2::new(x, y), Vec2::new(x, y) + size))
+}
+
+/// How many submenu panels `row` sits inside: 0 for a row in a menu root, 1 for
+/// one in that root's submenu, and so on.
+fn nesting_depth(
+    row: Entity,
+    parents: &Query<&ChildOf>,
+    panels: &Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+) -> i32 {
+    let mut depth = 0;
+    let mut cur = row;
+    while let Some(owner) = owner_row(cur, parents, panels) {
+        depth += 1;
+        // A chain deep enough to matter is a bug elsewhere; stop rather than
+        // spin if one ever manages to close on itself.
+        if depth >= SUBMENU_Z_MAX - SUBMENU_Z {
+            break;
+        }
+        cur = owner;
+    }
+    depth
 }
 
 /// The row owning the submenu panel `e` sits inside, if any.

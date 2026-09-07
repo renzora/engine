@@ -82,6 +82,20 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     let statics = renzora_static_plugins::plugins();
     #[cfg(not(feature = "static_plugins"))]
     let statics = Vec::new();
+    // Where a C-ABI plugin's settings go. A late-bound hook because
+    // `renzora_plugin` is the bottom of the stack — it cannot name the settings
+    // file, which belongs to `renzora`, which depends on it. Installed here
+    // because this is the one place that has both.
+    app.insert_resource(renzora_plugin::host::PluginSettingsStore {
+        load: renzora::core::settings_file::load_plugin_settings,
+        save: |key, blob| {
+            renzora::core::settings_file::save_plugin_settings(key, blob)
+                .map_err(|e| e.to_string())
+        },
+        clear: |key| {
+            renzora::core::settings_file::clear_plugin_settings(key).map_err(|e| e.to_string())
+        },
+    });
     app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
         is_editor,
         statics,
@@ -195,10 +209,19 @@ fn main() {
     // looks like a hang. A game exported without modding has no SDK at all, so
     // `needed()` answers false after a couple of directory stats and no window
     // ever appears. The condition is "is there work", not "who am I".
+    //
+    // Closing that window means stop, not start over. The restart is only for
+    // the run that finished: an interrupted build leaves `needed()` true, so
+    // relaunching would open the same window again — which is what pressing ×
+    // during a build used to do, over and over.
     #[cfg(not(target_arch = "wasm32"))]
     if renzora_runtime::renzora_native_plugin::prebuild::needed() {
-        setup_ui::run();
-        renzora_runtime::renzora_native_plugin::prebuild::restart();
+        match setup_ui::run() {
+            setup_ui::Outcome::Finished => {
+                renzora_runtime::renzora_native_plugin::prebuild::restart()
+            }
+            setup_ui::Outcome::Cancelled => return,
+        }
     }
 
     // Windows release is `windows_subsystem = "windows"` (no console). Editor

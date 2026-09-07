@@ -993,7 +993,9 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     d.0 = on;
                 }
             }
-            let _ = renzora::save_dev_mode(on);
+            // No explicit save: `sync_dev_mode` mirrors `DevMode` onto
+            // `EditorSettings.dev_mode`, and `persist_editor_settings` writes
+            // that section. One resource write, saved once, in one place.
         },
     );
 

@@ -243,7 +243,9 @@ BackgroundColor(rgb(card_bg()))
 TextColor(rgb(text_muted()))
 ```
 
-The full set: `window_bg`, `panel_bg`, `faint_bg`, `header_bg`, `section_bg`, `card_bg`, `popup_bg`, `hover_bg`, `row_even`, `row_odd`, `tab_active`, `tab_hover`, `selection`, `border`, `divider`, `tree_line`, `text_primary`, `text_muted`, `value_text`, `placeholder`, `accent`, `on_accent`, `play_green`, `warn_amber`, `close_red`. `mix(a, b, t)` blends two of them; `rgba([r, g, b, a])` takes an alpha.
+The full set: `window_bg`, `panel_bg`, `faint_bg`, `header_bg`, `section_bg`, `card_bg`, `popup_bg`, `hover_bg`, `menu_hover_bg`, `row_even`, `row_odd`, `tab_active`, `tab_hover`, `selection`, `border`, `divider`, `tree_line`, `text_primary`, `text_muted`, `value_text`, `placeholder`, `accent`, `on_accent`, `play_green`, `warn_amber`, `close_red`. `mix(a, b, t)` blends two of them; `rgba([r, g, b, a])` takes an alpha.
+
+`menu_hover_bg` is the accent fill a *menu row* takes on hover (a hover there is also the selection you are about to commit), and the rows using it flip their icon and label to `on_accent` for the duration. Every other hoverable surface wants the neutral `hover_bg`.
 
 These are *functions*, not constants, because the palette is swapped when the user changes theme. Read them inside `build` and inside bindings — never cache one in a `static`.
 

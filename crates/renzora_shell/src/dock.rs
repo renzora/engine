@@ -539,12 +539,15 @@ pub fn write_layout(json: &str) -> std::io::Result<()> {
 pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     vec![
         ("Scene".into(), scene_layout()),
+        // Straight after Scene: it is the other place you *lay things out*, and
+        // the two are the same three-column loop over two kinds of scene. The
+        // rest of the ribbon is authoring one asset at a time.
+        ("UI".into(), layout_ui()),
         ("Scripting".into(), layout_scripting()),
         ("Blueprints".into(), layout_blueprints()),
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
-        ("UI".into(), layout_ui()),
     ]
 }
 

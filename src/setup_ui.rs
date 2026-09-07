@@ -49,6 +49,7 @@
 //! publishes progress through a mutex the render loop samples each frame.
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use bevy::asset::RenderAssetUsages;
@@ -171,16 +172,42 @@ fn product_name() -> String {
         .unwrap_or_else(|| "Renzora".to_string())
 }
 
-/// Run setup with a window, returning once the user starts the editor.
+/// How the setup window ended, which is the caller's whole decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The work finished (or failed and was reported) and the window closed
+    /// itself. Restart into the editor.
+    Finished,
+    /// The user closed the window while it was still working.
+    ///
+    /// This has to be told apart from [`Finished`](Self::Finished), because the
+    /// caller's answer to that one is to relaunch the process — and an
+    /// interrupted build leaves `prebuild::needed()` true, so relaunching puts
+    /// the same window straight back up. Closing the window looked like it
+    /// spawned another one.
+    Cancelled,
+}
+
+/// Set when the user closes the window, read once [`run`]'s `App` has ended.
 ///
-/// Not once the *work* is complete: the window ends on a **Start Editor**
-/// button, so a build failure stays readable instead of flashing past on the
-/// frame before the restart. Closing the window is the same as pressing it.
+/// An `Arc<AtomicBool>` rather than a resource read afterwards because
+/// `App::run` consumes the app: by the time it returns there is no `World` left
+/// to ask. `AppExit` cannot carry the answer either — the finish path writes the
+/// same `AppExit::Success`.
+#[derive(Resource, Clone)]
+struct Cancelled(Arc<AtomicBool>);
+
+/// Run setup with a window, returning how it ended.
+///
+/// The window closes itself when the work is done — see the note in [`tick`] —
+/// so returning normally means "setup ran". The exception is the user closing
+/// it, which is [`Outcome::Cancelled`] and means "stop", not "start over".
 ///
 /// The caller restarts afterwards; this function does not, so that the decision
 /// stays in `main` where the rest of the boot sequence is visible.
-pub fn run() {
+pub fn run() -> Outcome {
     let shared = Arc::new(Mutex::new(Shared::default()));
+    let cancelled = Arc::new(AtomicBool::new(false));
 
     spawn_worker(shared.clone());
 
@@ -203,9 +230,32 @@ pub fn run() {
         }))
         .insert_resource(ClearColor(WINDOW_BG))
         .insert_resource(Work(shared))
+        .insert_resource(Cancelled(cancelled.clone()))
         .add_systems(Startup, spawn_ui)
-        .add_systems(Update, (tick, chrome_input))
+        .add_systems(Update, (tick, chrome_input, cancel_on_os_close))
         .run();
+
+    if cancelled.load(Ordering::Relaxed) {
+        Outcome::Cancelled
+    } else {
+        Outcome::Finished
+    }
+}
+
+/// Alt+F4, the taskbar's Close, the window manager's own × — the window has no
+/// decorations, but every one of those still arrives, and each means what the
+/// bar's × means.
+///
+/// Bevy's `close_when_requested` answers them by despawning the window, which
+/// ends the app with the same `AppExit::Success` the finish path writes. Without
+/// this the flag would be unset and the caller would relaunch.
+fn cancel_on_os_close(
+    mut closes: MessageReader<bevy::window::WindowCloseRequested>,
+    cancelled: Res<Cancelled>,
+) {
+    if closes.read().next().is_some() {
+        cancelled.0.store(true, Ordering::Relaxed);
+    }
 }
 
 // The splash screen's palette. Copied rather than imported: `launcher::style`
@@ -703,14 +753,16 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
 
 /// Drag the window by its bar, and answer the two controls.
 ///
-/// Closing is `AppExit`, which is what the OS close button did before the
-/// decorations came off: `main` restarts into the editor either way, and a
-/// failure is on stderr and in the plugin inventory by then.
+/// Closing ends the app AND records that the user asked for it, so `main` quits
+/// instead of relaunching. It used to only write `AppExit`, and `main` restarted
+/// either way — which, mid-build, meant the relaunched process found the work
+/// still outstanding and opened this window again. Pressing × spawned a window.
 fn chrome_input(
     drag: Query<&Interaction, (Changed<Interaction>, With<DragHandle>)>,
     mut buttons: Query<(&Interaction, &mut BackgroundColor, &WinBtn), Changed<Interaction>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
+    cancelled: Res<Cancelled>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let mut handed_to_wm = false;
@@ -733,6 +785,7 @@ fn chrome_input(
         }
         match kind {
             WinBtn::Close => {
+                cancelled.0.store(true, Ordering::Relaxed);
                 exit.write(AppExit::Success);
             }
             WinBtn::Minimize => {

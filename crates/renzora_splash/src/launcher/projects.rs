@@ -6,15 +6,20 @@
 //! because opening a project is still the reason the window exists — the other
 //! pages are things you do *while* you are here, not instead.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::{FocusPolicy, RelativeCursorPosition, RepeatedGridTrack};
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, keyed_list};
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_with, keyed_list};
 use renzora_ember::reactive::{react, KeyedSnapshot, Rx};
-use renzora_ember::widgets::{bind_text_input, scroll_view, text_input, HoverTooltip};
+use renzora_ember::widgets::{
+    bind_text_input, scroll_view, text_input, FileImageWanted, FileImages, HoverTooltip,
+};
 
 use crate::config::AppConfig;
 // Desktop-only: the browser opens a project through a directory handle
@@ -27,26 +32,60 @@ use super::style::*;
 
 pub(crate) const SECTION_ID: &str = "projects";
 
+/// Never fewer than two cards across. One column is a list wearing a grid's
+/// clothes, and the window cannot get narrow enough to make one card readable
+/// but two not.
+const MIN_COLUMNS: u16 = 2;
+/// Widest a card is allowed to get before the grid takes another column. A
+/// snapshot is 16:9, so this is also what fixes the tile's height; much past it
+/// and four recents fill the page.
+const COLUMN_TARGET: f32 = 250.0;
+/// Corner radius of a card, and of the snapshot's top two corners with it. Bevy
+/// clips overflow to a rectangle, so the image has to round its own corners or
+/// it squares off the card it sits in.
+const CARD_RADIUS: f32 = 10.0;
+
 #[derive(Component)]
 struct NewProjectBtn;
 #[derive(Component)]
 struct NewFromTemplateBtn;
 #[derive(Component)]
 struct OpenProjectBtn;
-/// A recent-project row — a spectral sheen travels around its border on hover.
+/// A recent-project card — a spectral sheen travels around its border on hover.
 #[derive(Component)]
 struct RecentRow;
+/// The grid the cards are laid out in. Marked so [`size_recent_grid`] can pick
+/// a column count from the width the page actually got.
+#[derive(Component)]
+struct RecentGrid;
 #[derive(Component, Clone)]
-struct RecentOpen(std::path::PathBuf);
+struct RecentOpen(PathBuf);
 #[derive(Component, Clone)]
-struct RecentRemove(std::path::PathBuf);
+struct RecentRemove(PathBuf);
 
 /// The recents search/filter text.
 #[derive(Resource, Default)]
 pub(crate) struct SplashFilter(String);
 
+/// Project root → the cached snapshot of its **main scene**, as written by the
+/// last save inside the editor.
+///
+/// Resolving one means reading that project's `project.toml` for `main_scene`,
+/// which is a file read and a TOML parse per project. The card builder runs
+/// inside a reactive list that rebuilds whenever anything it hashes changes, and
+/// the empty-state binding re-runs the same query *every frame*, so doing the
+/// resolve there would re-read ten `project.toml`s per frame. It is done once
+/// per change to the recents list instead, by [`refresh_recent_thumbs`].
+///
+/// A path in here is not a promise the PNG exists: whether the file loads is
+/// left to `FileImages`, which already remembers its failures, so a project that
+/// has never been saved simply keeps the folder glyph.
+#[derive(Resource, Default)]
+pub(crate) struct RecentThumbs(HashMap<PathBuf, PathBuf>);
+
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<SplashFilter>();
+    app.init_resource::<RecentThumbs>();
     super::sections::register_splash_section(
         app,
         super::sections::SplashSection::new("projects", "folders", "Projects", 0, build),
@@ -65,6 +104,8 @@ pub(crate) fn systems(app: &mut App) {
             recent_open_click,
             recent_remove_click,
             animate_recent_borders,
+            refresh_recent_thumbs,
+            size_recent_grid,
         ),
     );
 }
@@ -138,18 +179,28 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // The list fills whatever height is left; the scroll view is what stops a
-    // long recents list from pushing the page off the bottom of the window.
+    // A grid of cards, not a list of rows: every recent project now carries a
+    // picture of itself, and a picture is what you recognise a project by long
+    // before you have read its path. Rows would have had to shrink the snapshot
+    // to a strip to keep ten of them on screen.
+    //
+    // Equal `flex` tracks rather than fixed-width tiles that wrap, so the grid
+    // always meets both edges of the page whatever column count the window
+    // works out to — `size_recent_grid` picks the count.
     let list = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
+                display: Display::Grid,
+                grid_template_columns: vec![RepeatedGridTrack::flex(MIN_COLUMNS, 1.0)],
+                align_content: AlignContent::FlexStart,
+                row_gap: Val::Px(12.0),
+                column_gap: Val::Px(12.0),
                 padding: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
             FocusPolicy::Pass,
+            RecentGrid,
         ))
         .id();
     keyed_list(commands, list, recents_snapshot);
@@ -275,15 +326,19 @@ fn pill_button(
 #[derive(Clone)]
 struct RowData {
     name: String,
-    path: std::path::PathBuf,
+    path: PathBuf,
     path_display: String,
     exists: bool,
+    /// The main scene's cached snapshot, from [`RecentThumbs`]. `None` until it
+    /// has been resolved, and for a project whose folder is gone.
+    thumb: Option<PathBuf>,
 }
 
 fn all_rows(world: &Rx) -> Vec<RowData> {
     let Some(cfg) = world.get_resource::<AppConfig>() else {
         return Vec::new();
     };
+    let thumbs = world.get_resource::<RecentThumbs>();
     cfg.recent_projects
         .iter()
         .map(|p| {
@@ -297,9 +352,53 @@ fn all_rows(world: &Rx) -> Vec<RowData> {
             let exists = p.join("project.toml").exists();
             #[cfg(target_arch = "wasm32")]
             let exists = true;
-            RowData { name, path: p.clone(), path_display, exists }
+            let thumb = thumbs.and_then(|t| t.0.get(p).cloned());
+            RowData { name, path: p.clone(), path_display, exists, thumb }
         })
         .collect()
+}
+
+/// Resolve each recent project's main-scene snapshot, once per change to the
+/// recents list. See [`RecentThumbs`] for why this is not done in the builder.
+///
+/// Entries the map already holds are kept: the resolve depends only on
+/// `main_scene`, and re-reading every `project.toml` because one entry was
+/// removed would put a file read on the frame a user clicked the ✕.
+fn refresh_recent_thumbs(cfg: Res<AppConfig>, mut thumbs: ResMut<RecentThumbs>) {
+    if !cfg.is_changed() {
+        return;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    for root in &cfg.recent_projects {
+        if thumbs.0.contains_key(root) {
+            continue;
+        }
+        if let Some(path) = main_scene_thumb(root) {
+            thumbs.0.insert(root.clone(), path);
+        }
+    }
+    // The browser never reaches this loop: a recent entry there is a folder
+    // *name* the directory handle is looked up by, not a path, and the handle
+    // needs the user's permission before anything under it can be read. Web
+    // keeps the glyph.
+    thumbs.0.retain(|root, _| cfg.recent_projects.contains(root));
+}
+
+/// Where `root`'s main scene keeps its snapshot, read out of its `project.toml`.
+///
+/// Parsed as a loose `toml::Value` rather than a `ProjectConfig` on purpose: the
+/// only key that matters here is `main_scene`, and a strict parse would throw
+/// away a perfectly good thumbnail because some *other* section of the file was
+/// written by a newer editor.
+#[cfg(not(target_arch = "wasm32"))]
+fn main_scene_thumb(root: &Path) -> Option<PathBuf> {
+    let src = std::fs::read_to_string(root.join("project.toml")).ok()?;
+    let main_scene = src
+        .parse::<toml::Value>()
+        .ok()
+        .and_then(|v| v.get("main_scene")?.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "scenes/main.bsn".to_string());
+    Some(renzora::core::scene_thumbnail_path(root, &main_scene))
 }
 
 fn filtered_rows(world: &Rx) -> Vec<RowData> {
@@ -331,41 +430,47 @@ fn recents_snapshot(world: &Rx) -> KeyedSnapshot {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             r.name.hash(&mut h);
             r.exists.hash(&mut h);
+            // Hashed so a card built before `refresh_recent_thumbs` had resolved
+            // the snapshot is rebuilt once it has, rather than keeping the glyph
+            // until something else happens to touch the list.
+            r.thumb.hash(&mut h);
             (key, h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |commands, fonts, i| build_recent_row(commands, fonts, &rows[i])),
+        build: Box::new(move |commands, fonts, i| build_recent_card(commands, fonts, &rows[i])),
     }
 }
 
-fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) -> Entity {
-    let container = commands
+/// One project in the grid: the main scene's snapshot over its name and path.
+fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) -> Entity {
+    let card = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(56.0),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(13.0),
-                padding: UiRect::horizontal(Val::Px(14.0)),
+                flex_direction: FlexDirection::Column,
                 border: UiRect::all(Val::Px(1.5)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
+                border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)),
+                overflow: Overflow::clip(),
+                // A grid item's automatic minimum size is its *content's*, so
+                // without this the longest path in the recents decides how wide
+                // every column is and a deep folder pushes the grid off the
+                // right edge of the page. Explicit zero, then clip.
+                min_width: Val::Px(0.0),
                 ..default()
             },
             BackgroundColor(ca(16, 18, 28, 220)),
             card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225)),
             BorderColor::all(border_soft()),
             Interaction::default(),
-            // `cursor_over` — not `Interaction` — drives the row's hover sheen:
+            // `cursor_over` — not `Interaction` — drives the card's hover sheen:
             // the ✕ blocks, so `Interaction` correctly drops to `None` the moment
             // the pointer crosses onto it, and keying the sheen off that would
             // make the card flatten out under your own cursor. Bevy fills
             // `RelativeCursorPosition` for every node containing the pointer
             // regardless of who captures the press, which is exactly the "is the
-            // pointer anywhere over this row" signal the visual wants.
+            // pointer anywhere over this card" signal the visual wants.
             RelativeCursorPosition::default(),
             FocusPolicy::Block,
             RecentRow,
@@ -373,34 +478,30 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         .id();
     if row.exists {
         commands
-            .entity(container)
+            .entity(card)
             .insert((RecentOpen(row.path.clone()), HoverCursor(SystemCursorIcon::Pointer)));
     }
 
-    let icon = icon_text(
-        commands,
-        &fonts.phosphor,
-        "folder",
-        if row.exists { ICON_ACCENT } else { ICON_MUTED },
-        21.0,
-    );
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    let thumb = build_card_thumb(commands, fonts, row);
 
     let info = commands
         .spawn((
             Node {
-                flex_grow: 1.0,
+                width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(3.0),
+                padding: UiRect::axes(Val::Px(11.0), Val::Px(9.0)),
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
                 ..default()
             },
             FocusPolicy::Pass,
         ))
         .id();
     let name_txt = if row.exists {
-        row.name.clone()
+        elide(&row.name, 28)
     } else {
-        format!("{}  (missing)", row.name)
+        format!("{}  (missing)", elide(&row.name, 20))
     };
     let name = commands
         .spawn((
@@ -412,30 +513,127 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         .id();
     let path = commands
         .spawn((
-            Text::new(elide_path(&row.path_display, 70)),
-            ui_font(&fonts.mono, 10.0),
+            Text::new(elide_path(&row.path_display, 34)),
+            ui_font(&fonts.mono, 9.5),
             TextColor(text_muted()),
             FocusPolicy::Pass,
         ))
         .id();
     commands.entity(info).add_children(&[name, path]);
 
+    commands.entity(card).add_children(&[thumb, info]);
+    card
+}
+
+/// The card's picture: the main scene's snapshot if one has ever been saved, a
+/// folder glyph otherwise.
+///
+/// The glyph is always spawned and the image layered over it, rather than one
+/// being swapped for the other, because the decode lands some frames after the
+/// card is built — a card that started empty and filled in would make the whole
+/// grid jump on the first paint.
+fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) -> Entity {
+    let frame = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                // A viewport snapshot is centre-cropped to a square when it is
+                // written, so this shows the middle of one. 16:9 keeps the card
+                // the shape of the window the scene was framed in.
+                aspect_ratio: Some(16.0 / 9.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius {
+                    top_left: Val::Px(CARD_RADIUS - 1.5),
+                    top_right: Val::Px(CARD_RADIUS - 1.5),
+                    bottom_left: Val::Px(0.0),
+                    bottom_right: Val::Px(0.0),
+                },
+                ..default()
+            },
+            BackgroundColor(ca(8, 9, 15, 220)),
+            FocusPolicy::Pass,
+        ))
+        .id();
+
+    let glyph = icon_text(
+        commands,
+        &fonts.phosphor,
+        "folder",
+        if row.exists { ICON_ACCENT } else { ICON_MUTED },
+        30.0,
+    );
+    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(frame).add_child(glyph);
+
+    if let Some(thumb_path) = row.thumb.clone().filter(|_| row.exists) {
+        let img = commands
+            .spawn((
+                ImageNode::default().with_mode(bevy::ui::widget::NodeImageMode::Stretch),
+                Node {
+                    position_type: PositionType::Absolute,
+                    // A square image cropped to a 16:9 frame, not squashed into
+                    // one: the snapshot on disk is always a centre-crop square
+                    // (`renzora_scene::thumbnail`), and stretching it to 16:9
+                    // would make every object in the shot 78% too wide.
+                    //
+                    // Full width, square, and pulled up by half the overhang so
+                    // the middle band shows and the frame clips the rest. The
+                    // offset is a percentage of the frame's *height*: with
+                    // width W the image is W tall against a W*9/16 frame, so
+                    // (H - W)/2 comes to -7/18 of H.
+                    left: Val::Px(0.0),
+                    top: Val::Percent(-100.0 * 7.0 / 18.0),
+                    width: Val::Percent(100.0),
+                    aspect_ratio: Some(1.0),
+                    // Revealed by the binding below once the decode lands, so a
+                    // blank `ImageNode` never flashes as a white rectangle.
+                    display: Display::None,
+                    ..default()
+                },
+                FocusPolicy::Pass,
+                FileImageWanted(thumb_path.clone()),
+            ))
+            .id();
+        bind_with(
+            commands,
+            img,
+            move |w| w.get_resource::<FileImages>().and_then(|c| c.get(&thumb_path)),
+            |w, e, handle: &Option<Handle<Image>>| {
+                let Some(h) = handle else { return };
+                if let Some(mut n) = w.get_mut::<ImageNode>(e) {
+                    if n.image != *h {
+                        n.image = h.clone();
+                    }
+                }
+                if let Some(mut node) = w.get_mut::<Node>(e) {
+                    node.display = Display::Flex;
+                }
+            },
+        );
+        commands.entity(frame).add_child(img);
+    }
+
     let remove = commands
         .spawn((
             Node {
-                width: Val::Px(26.0),
-                height: Val::Px(26.0),
+                position_type: PositionType::Absolute,
+                top: Val::Px(6.0),
+                right: Val::Px(6.0),
+                width: Val::Px(24.0),
+                height: Val::Px(24.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(Color::NONE),
+            BackgroundColor(ca(6, 7, 12, 170)),
             Interaction::default(),
-            // Without this the press also reaches the row behind it, which opens
+            // Without this the press also reaches the card behind it, which opens
             // the project — the reported bug. It only *looked* correct for a
             // project whose folder had been deleted by hand, because a missing
-            // project's row carries no `RecentOpen` for the press to land on.
+            // project's card carries no `RecentOpen` for the press to land on.
             FocusPolicy::Block,
             RecentRemove(row.path.clone()),
             // The ✕ removes the entry from this list; it does not touch the
@@ -446,25 +644,43 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         ))
         .id();
     let rc = remove;
+    // A plate, not a tint: the ✕ sits over the snapshot now, and a 40-alpha wash
+    // over an arbitrary frame of someone's game is not reliably visible.
     bind_bg(commands, remove, move |w| {
-        if is_hovered(w, rc) { ca(239, 68, 68, 40) } else { Color::NONE }
+        if is_hovered(w, rc) { ca(220, 50, 50, 225) } else { ca(6, 7, 12, 170) }
     });
-    let rx = icon_text(commands, &fonts.phosphor, "x", ICON_MUTED, 13.0);
+    let rx = icon_text(commands, &fonts.phosphor, "x", ICON_MUTED, 12.0);
     commands.entity(rx).insert(FocusPolicy::Pass);
-    bind_text_color_on_hover(commands, rx, remove);
+    bind_text_color_on_hover(commands, rx, remove, white());
     commands.entity(remove).add_child(rx);
+    commands.entity(frame).add_child(remove);
 
-    commands.entity(container).add_children(&[icon, info, remove]);
-    container
+    frame
 }
 
-fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity) {
+/// Pick the grid's column count from the width the page actually has, so the
+/// cards keep roughly [`COLUMN_TARGET`] and the grid still meets both edges.
+fn size_recent_grid(mut grid: Query<(&ComputedNode, &mut Node), With<RecentGrid>>) {
+    for (cn, mut node) in &mut grid {
+        let width = cn.size().x * cn.inverse_scale_factor();
+        if width <= 0.0 {
+            continue;
+        }
+        let n = ((width / COLUMN_TARGET).floor() as u16).clamp(MIN_COLUMNS, 5);
+        let want = vec![RepeatedGridTrack::flex(n, 1.0)];
+        if node.grid_template_columns != want {
+            node.grid_template_columns = want;
+        }
+    }
+}
+
+fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity, hover: Color) {
     react(commands, move |world: &mut World| {
         if world.get_entity(text_e).is_err() || world.get_entity(btn).is_err() {
             return false;
         }
         let col = if is_hovered(&Rx::new(&*world), btn) {
-            error_color()
+            hover
         } else {
             text_muted()
         };

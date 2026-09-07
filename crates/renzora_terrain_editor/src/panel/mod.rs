@@ -17,11 +17,11 @@
 use bevy::prelude::*;
 
 use renzora_editor_framework::SplashState;
-use renzora_ember::panel::RegisterPanelContent;
+use renzora::AppEditorExt;
 use renzora_ember::reactive::Rx;
 
 use renzora_terrain::data::{
-    BrushFalloffType, BrushShape, TerrainBrushType, TerrainSettings, TerrainTab, TerrainToolState,
+    BrushFalloffType, BrushShape, TerrainBrushType, TerrainSettings, TerrainTab,
 };
 use renzora_terrain::paint::{PaintBrushType, SurfacePaintSettings};
 
@@ -36,13 +36,34 @@ pub(super) const MATERIAL_EXTS: &[&str] = &["material"];
 
 pub struct TerrainToolsPanel;
 
+/// The tools as the **Terrain component's** inspector body.
+///
+/// This tree used to be a dock panel of its own ("terrain_tools"), which meant
+/// the brushes and their settings existed in three places at once: here, as icon
+/// grids on the viewport shelf, and as a context group in the viewport toolbar.
+/// Three surfaces over one set of resources is why the shelf came out cluttered
+/// -- it was the copy with no room for labels.
+///
+/// The component is the one that earns it. These controls act on *the terrain
+/// you have selected*, selecting it is already how you get into terrain editing,
+/// and the inspector has the width for named rows instead of 21 unlabelled
+/// glyphs. It is where Unity puts the same thing, for the same reason.
+///
+/// Nothing inside changed: `build` is the panel's own builder, and every system
+/// below finds its widgets by component rather than by where they are parented,
+/// so they drive this exactly as they drove the panel.
+fn terrain_tools_native(world: &mut World, _entity: Entity) -> Entity {
+    renzora_ember::inspector::inspector_body(world, build::build)
+}
+
 impl Plugin for TerrainToolsPanel {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("terrain_tools", true, build::build)
-            .systems(
+        // Registered against `terrain_data`, the inspector entry that already
+        // carried the terrain's Size / Edit Terrain… / height rows.
+        app.register_native_inspector_ui("terrain_data", terrain_tools_native);
+        app.add_systems(
             Update,
             (
-                systems::enable_toggle_click,
                 systems::tab_click,
                 systems::follow_active_tool,
                 systems::sculpt_tool_click,
@@ -69,11 +90,6 @@ impl Plugin for TerrainToolsPanel {
 
 // ── State accessors ──────────────────────────────────────────────────────────
 
-pub(super) fn tool_active(w: &Rx) -> bool {
-    w.get_resource::<TerrainToolState>()
-        .map(|t| t.active)
-        .unwrap_or_default()
-}
 
 pub(super) fn settings_tab(w: &Rx) -> TerrainTab {
     w.get_resource::<TerrainSettings>()
@@ -111,8 +127,6 @@ pub(super) fn hasher() -> std::collections::hash_map::DefaultHasher {
 
 // ── Markers ──────────────────────────────────────────────────────────────────
 
-#[derive(Component)]
-pub(super) struct EnableToggle;
 
 #[derive(Component)]
 pub(super) struct TabBtn {

@@ -17,6 +17,7 @@ use renzora_ember::widgets::{toggle_switch, Section};
 
 use super::cull::SectionCull;
 use super::fields::build_field_row;
+use super::reorder::{build_grip, InspectorSectionRoot};
 use super::spec::{comp_name_loc, tracked_read, FieldSpec, SectionSpec};
 use super::undo::EnableToggleCmd;
 use super::{empty_label, phosphor_glyph, GetFn, InspectorSectionHeader, Mutate, SetFn};
@@ -222,6 +223,16 @@ pub(super) fn build_section(
         type_id: sec.type_id,
         header_bg: sec.header_bg,
     });
+    // Names the section for the drag: what a drop records is a ranking of
+    // component types, not a list of entities (see [`super::order`]).
+    commands.entity(root).insert(InspectorSectionRoot {
+        type_id: sec.type_id,
+        header,
+    });
+    // The grip goes ahead of the caret — the far-left column every list that can
+    // be dragged puts it in.
+    let grip = build_grip(commands, fonts, root);
+    commands.entity(header).insert_children(0, &[grip]);
     // Compact the shared section for the inspector: kill the widget's 8px
     // bottom margin + header↔body gap so component cards stack flush, and
     // tighten the header's vertical padding. (Full `Node` overrides — mirror

@@ -65,6 +65,8 @@ pub(crate) static IFACE: sys::Interface = sys::Interface {
     add_audio_backend,
     add_settings_section,
     add_net_backend,
+    load_settings,
+    save_settings,
 };
 
 // ── Interface implementations ────────────────────────────────────────────────
@@ -568,6 +570,94 @@ unsafe extern "C" fn add_audio_backend(
             owner,
         });
         sys::RegisterStatus::Ok
+    })
+}
+
+/// The settings key for the plugin registering through `host`.
+///
+/// Derived from the library's file stem rather than from anything the plugin
+/// says, so a plugin cannot name another plugin's section — the whole reason
+/// neither call takes an id. Two plugins installed under one name is already
+/// impossible: `renzora_marketplace::install` renames a colliding install to
+/// `name_2`, and the loader keys its slots on the path.
+unsafe fn settings_store(host: *mut sys::Host) -> Option<crate::host::PluginSettingsStore> {
+    let ctx = &mut *(host as *mut HostCtx);
+    ctx.world
+        .get_resource::<crate::host::PluginSettingsStore>()
+        .cloned()
+}
+
+unsafe fn settings_key(host: *mut sys::Host) -> Option<String> {
+    let ctx = &mut *(host as *mut HostCtx);
+    let slot = ctx.slot;
+    let plugins = ctx.world.get_resource::<crate::host::loader::LoadedPlugins>()?;
+    let stem = plugins
+        .0
+        .get(slot)?
+        .path
+        .file_stem()?
+        .to_string_lossy()
+        .to_string();
+    (!stem.is_empty()).then_some(stem)
+}
+
+unsafe extern "C" fn load_settings(host: *mut sys::Host, out: *mut u8, cap: usize) -> usize {
+    guard_host("load_settings", 0usize, || {
+        let (Some(key), Some(store)) = (settings_key(host), settings_store(host)) else {
+            return 0;
+        };
+        let Some(blob) = (store.load)(&key) else {
+            return 0;
+        };
+        let bytes = blob.as_bytes();
+        // The blob's length is the answer whether or not it fitted: a caller
+        // with too small a buffer gets told how big to make it, which is the
+        // only way to ask twice without guessing.
+        if bytes.len() <= cap && !out.is_null() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len());
+        }
+        bytes.len()
+    })
+}
+
+unsafe extern "C" fn save_settings(
+    host: *mut sys::Host,
+    data: *const u8,
+    len: usize,
+) -> sys::RegisterStatus {
+    guard_host("save_settings", sys::RegisterStatus::Invalid, || {
+        let (Some(key), Some(store)) = (settings_key(host), settings_store(host)) else {
+            return sys::RegisterStatus::Invalid;
+        };
+        // Empty clears the entry rather than writing an empty string, so a
+        // plugin can genuinely forget its settings.
+        if len == 0 {
+            return match (store.clear)(&key) {
+                Ok(()) => sys::RegisterStatus::Ok,
+                Err(e) => {
+                    error!("plugin {key} could not clear its settings: {e}");
+                    sys::RegisterStatus::Invalid
+                }
+            };
+        }
+        if data.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let bytes = std::slice::from_raw_parts(data, len);
+        // Stored as text, because it lands in the user's own `settings.toml`
+        // where they can read it. A plugin that writes non-UTF-8 is refused
+        // rather than corrupting the file it shares with everything else.
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            error!("plugin {key} tried to save settings that are not UTF-8");
+            return sys::RegisterStatus::Invalid;
+        };
+        match (store.save)(&key, text) {
+            Ok(()) => sys::RegisterStatus::Ok,
+            Err(e) => {
+                error!("plugin {key} could not save its settings: {e}");
+                sys::RegisterStatus::Invalid
+            }
+        }
     })
 }
 

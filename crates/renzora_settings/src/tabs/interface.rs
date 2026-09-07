@@ -139,7 +139,6 @@ pub(crate) fn tab_interface(
         |w, &i| {
             let v = UI_SCALE_STEPS.get(i).copied().unwrap_or(1.0);
             w.resource_mut::<EditorSettings>().ui_scale = v;
-            let _ = renzora::save_ui_scale(v);
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.ui_scale"), dd);
@@ -156,7 +155,6 @@ pub(crate) fn tab_interface(
         |w, &v| {
             let v = v.clamp(0.25, 4.0);
             w.resource_mut::<EditorSettings>().scroll_speed = v;
-            let _ = renzora::save_scroll_speed(v);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.scroll_speed"), dv);
@@ -177,7 +175,6 @@ pub(crate) fn tab_interface(
         |w| w.resource::<EditorSettings>().hierarchy_toggle_on_click,
         |w, &v| {
             w.resource_mut::<EditorSettings>().hierarchy_toggle_on_click = v;
-            let _ = renzora::save_hierarchy_toggle_on_click(v);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.toggle_on_click"), t);
@@ -262,7 +259,6 @@ pub(crate) fn tab_interface(
         |w, &i| {
             let dropdown = i == 1;
             w.resource_mut::<EditorSettings>().doc_tabs_dropdown = dropdown;
-            let _ = renzora::save_doc_tabs_dropdown(dropdown);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.doc_tabs"), dd);

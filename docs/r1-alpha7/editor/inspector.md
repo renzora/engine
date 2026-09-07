@@ -36,16 +36,25 @@ Each object is made of **components** — small bundles of settings like *Transf
 
 In a section header you'll find:
 
+- A **grip** (⠿) on the far left — drag it to move the component up or down the list.
 - A **caret** to fold the section open or closed.
 - An **icon** and the component's name.
 - An **on/off toggle** (on components that support it) so you can switch a feature off without deleting it.
 - A **trash** button to remove the component entirely. (**Scripts** and **Material** don't have one — they manage their own contents, with a per-script remove and the material binding controls instead.)
 
-Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
+Inside each section are the editable fields. The most-used components start pinned to the top in a fixed order — **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below, and you can rearrange any of it.
 
 > The object's ID, icon, label colour and visibility are *not* in this list — they aren't components you can add or remove, so they live in the [entity header](#the-entity-header) above it instead.
 
 The top bar holds three things: the **Add Component** button, a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click that once to open every section, again to collapse them all; it resets when you select a different object.
+
+### Rearranging the list
+
+Grab the **grip** on the left of any component header and drag it up or down. A blue line shows where the section will land; let go to drop it there. The sections don't shuffle around under the cursor while you drag — only the line moves — and dragging near the top or bottom edge scrolls the list, so you can move a component past what fits on screen.
+
+The order is remembered **per component type, for you**, not per object: put *Material* above *Transform* once and it stays above it on every object that has both, in every project, after a restart. It's saved in `~/.renzora/editor.toml` alongside your other editor preferences, and it survives a settings reset — like the rest of the arrangements you've dragged into place, it's yours rather than a setting.
+
+Components you've never dragged keep the neighbour they already had, so rearranging a couple of things doesn't scramble everything else. To put a component back, drag it back.
 
 ### Which sections start open
 

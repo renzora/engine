@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 use renzora_ember::reactive::Rx;
-use renzora::{EditorSelection, InspectorEntry, ToolEntry, ToolSection};
+use renzora::InspectorEntry;
 
 use renzora_physics::{
     ColliderEditMode, CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
@@ -104,31 +104,11 @@ pub fn register_physics_inspectors(app: &mut App) {
         (edit_collider_click, stamp_strip_click).run_if(bevy::prelude::in_state(renzora::SplashState::Editor)),
     );
 
-    app.register_tool(
-        ToolEntry::new(
-            "physics.edit_collider",
-            "pencil-simple",
-            "Edit Collider — drag handles to resize/move",
-            ToolSection::Custom("physics"),
-        )
-        .visible_if(|world| {
-            let Some(sel) = world.resource::<EditorSelection>().get() else {
-                return false;
-            };
-            world.get::<CollisionShapeData>(sel).is_some()
-        })
-        .active_if(|world| {
-            world
-                .get_resource::<ColliderEditMode>()
-                .map(|c| c.active)
-                .unwrap_or(false)
-        })
-        .on_activate(|world| {
-            if let Some(mut m) = world.get_resource_mut::<ColliderEditMode>() {
-                m.active = !m.active;
-            }
-        }),
-    );
+    // No shelf or strip entry for Edit Collider. It is the Collision Shape
+    // component's own row, and that component is on screen exactly when there is
+    // a collider to edit — a second copy on a tool surface would be one toggle
+    // with two homes, which is what the terrain tooling has just been untangled
+    // from.
 
     // Spawn presets
     app.register_entity_preset(EntityPreset {

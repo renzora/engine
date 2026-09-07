@@ -4,6 +4,7 @@
 //! editor plugin DLLs can use these types without depending on each other.
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
@@ -840,6 +841,82 @@ impl KeyBindings {
     /// when a plugin reloads.
     pub fn set_plugin_default(&mut self, id: &'static str, binding: KeyBinding) {
         self.plugin_bindings.entry(id).or_insert(binding);
+    }
+}
+
+// ── Persistence ─────────────────────────────────────────────────────────────
+
+/// One binding as it is written to `settings.toml`.
+///
+/// Spelled out rather than serializing [`KeyBinding`] directly, because `key` is
+/// Bevy's `KeyCode` and its serialized form is Bevy's business, not a file
+/// format worth being pinned to across engine upgrades. [`key_name`] is already
+/// the stable name the Settings UI shows, so it is the name on disk too: what
+/// you read in the file is what the rebind dialog said.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct PersistedBinding {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ctrl: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shift: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alt: bool,
+}
+
+impl KeyBindings {
+    /// The rebound actions, keyed by action name.
+    ///
+    /// **Only what differs from the shipped default is written.** A file listing
+    /// every action would freeze today's defaults into every user's settings:
+    /// change a default in a later release and nobody would receive it, because
+    /// their file would keep asserting the old one. Recording only the deltas
+    /// means an untouched action follows the engine.
+    pub fn to_persisted(&self) -> std::collections::BTreeMap<String, PersistedBinding> {
+        let defaults = Self::default();
+        let mut out = std::collections::BTreeMap::new();
+        for action in EditorAction::all() {
+            let Some(b) = self.get(action) else { continue };
+            if defaults.get(action) == Some(b) {
+                continue;
+            }
+            out.insert(
+                format!("{action:?}"),
+                PersistedBinding {
+                    key: key_name(b.key).to_string(),
+                    ctrl: b.ctrl,
+                    shift: b.shift,
+                    alt: b.alt,
+                },
+            );
+        }
+        out
+    }
+
+    /// Apply saved bindings over the defaults.
+    ///
+    /// An entry naming an action or a key this build does not have is skipped: a
+    /// settings file outlives the release that wrote it, and one stale line
+    /// should cost that line rather than every shortcut in the file.
+    pub fn apply_persisted(
+        &mut self,
+        saved: &std::collections::BTreeMap<String, PersistedBinding>,
+    ) {
+        for (name, p) in saved {
+            let Some(action) = EditorAction::all()
+                .into_iter()
+                .find(|a| format!("{a:?}") == *name)
+            else {
+                continue;
+            };
+            let Some(key) = bindable_keys().into_iter().find(|k| key_name(*k) == p.key) else {
+                continue;
+            };
+            self.set(
+                action,
+                KeyBinding { key, ctrl: p.ctrl, shift: p.shift, alt: p.alt },
+            );
+        }
     }
 }
 

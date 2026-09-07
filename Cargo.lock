@@ -7158,6 +7158,7 @@ dependencies = [
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "log",
+ "renzora",
  "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
@@ -7523,6 +7524,7 @@ dependencies = [
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "log",
+ "renzora",
  "renzora_editor",
  "renzora_native_plugin",
  "renzora_plugin",
@@ -7544,6 +7546,7 @@ dependencies = [
  "renzora_theme",
  "renzora_ui",
  "rfd",
+ "serde",
 ]
 
 [[package]]
@@ -8636,6 +8639,7 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_foliage_editor",
  "renzora_terrain",
  "renzora_undo",
  "rfd",
@@ -8731,6 +8735,7 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_theme",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -8796,6 +8801,7 @@ dependencies = [
  "renzora_ui",
  "renzora_undo",
  "serde_json",
+ "toml 0.8.23",
 ]
 
 [[package]]

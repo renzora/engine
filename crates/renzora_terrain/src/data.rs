@@ -10,6 +10,10 @@ pub enum TerrainTab {
     #[default]
     Sculpt,
     Paint,
+    /// Painting foliage onto the terrain. The controls are built by
+    /// `renzora_foliage_editor`, which is a separate crate but the same tool:
+    /// foliage is one of the things you paint a terrain with.
+    Foliage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]

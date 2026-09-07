@@ -1,9 +1,11 @@
-//! The two "you have unsaved changes" confirmations: closing the **window**, and
-//! closing a single **document tab**.
+//! The three "you have unsaved changes" confirmations: closing the **window**,
+//! closing a single **document tab**, and leaving the **project** (File > New
+//! Project / Open Project / Recent Projects).
 //!
-//! Both follow the same three-way shape — Save & Close / Don't Save / Cancel —
-//! and both defer the destructive half until the scene-save has actually landed,
-//! so a Save-As the user cancelled aborts the close instead of losing the edits.
+//! All three follow the same three-way shape — Save & <verb> / Don't Save /
+//! Cancel — and all three defer the destructive half until the scene-save has
+//! actually landed, so a Save-As the user cancelled aborts the close instead of
+//! losing the edits. The card itself is built once, by [`spawn_prompt`].
 
 use bevy::prelude::*;
 
@@ -113,17 +115,21 @@ pub(crate) fn process_exit_request(
     spawn_exit_prompt(&mut commands, &fonts, count);
 }
 
-/// Build the centered "unsaved changes" confirmation overlay.
-fn spawn_exit_prompt(commands: &mut Commands, fonts: &EmberFonts, count: usize) {
+/// The card every one of these prompts is: a message over a right-aligned
+/// Cancel / Don't Save / *confirm* row.
+///
+/// Returns `(root, cancel, discard, confirm)` for the caller to tag with its own
+/// markers — what differs between the three flows is the wording and what the
+/// buttons act on, never the card. The accent goes on the confirm button so
+/// `apply_theme` paints it the highlight color rather than the plain one.
+fn spawn_prompt(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    body: String,
+    confirm_label: &str,
+) -> (Entity, Entity, Entity, Entity) {
     let (root, content) =
         renzora_ember::widgets::overlay_sized(commands, fonts, "Unsaved Changes", 440.0, 188.0, true);
-    commands.entity(root).insert(ExitPromptRoot);
-
-    let body = if count == 1 {
-        "You have unsaved changes. Save before closing?".to_string()
-    } else {
-        format!("You have unsaved changes in {count} documents. Save before closing?")
-    };
 
     // Pad the content and lay out the message above a right-aligned button row.
     commands.entity(content).insert(Node {
@@ -155,19 +161,29 @@ fn spawn_exit_prompt(commands: &mut Commands, fonts: &EmberFonts, count: usize) 
         .id();
 
     let cancel = renzora_ember::widgets::button(commands, &fonts.ui, "Cancel");
-    commands.entity(cancel).insert(ExitPromptCancel);
     let discard = renzora_ember::widgets::button(commands, &fonts.ui, "Don't Save");
-    commands.entity(discard).insert(ExitPromptDiscard);
-    let save = renzora_ember::widgets::button(commands, &fonts.ui, "Save & Close");
-    // Tag it as the accent (primary) action so `apply_theme` paints it the
-    // highlight color instead of the plain button color.
-    commands.entity(save).insert((
-        ExitPromptSave,
-        renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
-    ));
+    let confirm = renzora_ember::widgets::button(commands, &fonts.ui, confirm_label);
+    commands
+        .entity(confirm)
+        .insert(renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent));
 
-    commands.entity(row).add_children(&[cancel, discard, save]);
+    commands.entity(row).add_children(&[cancel, discard, confirm]);
     commands.entity(content).add_children(&[message, row]);
+    (root, cancel, discard, confirm)
+}
+
+/// Build the centered "unsaved changes" confirmation overlay.
+fn spawn_exit_prompt(commands: &mut Commands, fonts: &EmberFonts, count: usize) {
+    let body = if count == 1 {
+        "You have unsaved changes. Save before closing?".to_string()
+    } else {
+        format!("You have unsaved changes in {count} documents. Save before closing?")
+    };
+    let (root, cancel, discard, save) = spawn_prompt(commands, fonts, body, "Save & Close");
+    commands.entity(root).insert(ExitPromptRoot);
+    commands.entity(cancel).insert(ExitPromptCancel);
+    commands.entity(discard).insert(ExitPromptDiscard);
+    commands.entity(save).insert(ExitPromptSave);
 }
 
 /// Drive the overlay's buttons. (Escape / backdrop click / the title × are
@@ -302,53 +318,12 @@ pub(crate) fn process_tab_close_request(
 
 /// Build the centered "unsaved changes" prompt for closing a single tab.
 fn spawn_close_tab_prompt(commands: &mut Commands, fonts: &EmberFonts, id: u64, name: &str) {
-    let (root, content) =
-        renzora_ember::widgets::overlay_sized(commands, fonts, "Unsaved Changes", 440.0, 188.0, true);
-    commands.entity(root).insert(CloseTabPromptRoot(id));
-
     let body = format!("\"{name}\" has unsaved changes. Save before closing?");
-
-    // Pad the content and lay out the message above a right-aligned button row.
-    commands.entity(content).insert(Node {
-        width: Val::Percent(100.0),
-        flex_grow: 1.0,
-        min_height: Val::Px(0.0),
-        flex_direction: FlexDirection::Column,
-        justify_content: JustifyContent::SpaceBetween,
-        padding: UiRect::all(Val::Px(16.0)),
-        ..default()
-    });
-
-    let message = commands
-        .spawn((
-            Text::new(body),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-
-    let row = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            justify_content: JustifyContent::FlexEnd,
-            column_gap: Val::Px(8.0),
-            ..default()
-        })
-        .id();
-
-    let cancel = renzora_ember::widgets::button(commands, &fonts.ui, "Cancel");
+    let (root, cancel, discard, save) = spawn_prompt(commands, fonts, body, "Save & Close");
+    commands.entity(root).insert(CloseTabPromptRoot(id));
     commands.entity(cancel).insert(CloseTabPromptCancel);
-    let discard = renzora_ember::widgets::button(commands, &fonts.ui, "Don't Save");
     commands.entity(discard).insert(CloseTabPromptDiscard);
-    let save = renzora_ember::widgets::button(commands, &fonts.ui, "Save & Close");
-    commands.entity(save).insert((
-        CloseTabPromptSave,
-        renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
-    ));
-
-    commands.entity(row).add_children(&[cancel, discard, save]);
-    commands.entity(content).add_children(&[message, row]);
+    commands.entity(save).insert(CloseTabPromptSave);
 }
 
 /// Drive the close prompt's buttons. (Escape / backdrop click / the title × are
@@ -413,5 +388,186 @@ pub(crate) fn pending_close_after_save(
     // cancelled, so keep the tab open and don't lose the edits.
     if !state.tabs[idx].is_modified {
         close_doc_tab_by_id(&mut state, id, &mut commands);
+    }
+}
+
+// ── Switch-project save prompt ───────────────────────────────────────────────
+
+/// Where File wants to go when it leaves the current project.
+///
+/// The File menu asks for *this* rather than acting, because leaving a project
+/// closes every document in it — the same loss the window's × prompts about, and
+/// until this existed it happened on one click with no warning at all.
+#[derive(Clone)]
+pub(crate) enum ProjectSwitch {
+    /// File > New Project: back to the dashboard to make one.
+    New,
+    /// File > Open Project: the OS picker.
+    Pick,
+    /// File > Recent Projects > one of them.
+    Recent(std::path::PathBuf),
+}
+
+impl ProjectSwitch {
+    /// The verb for the confirm button, so it names what is about to happen
+    /// rather than a generic "OK".
+    fn confirm_label(&self) -> &'static str {
+        match self {
+            ProjectSwitch::New => "Save & New Project",
+            ProjectSwitch::Pick | ProjectSwitch::Recent(_) => "Save & Open",
+        }
+    }
+
+    /// Actually leave. Queued rather than run inline because two of the three
+    /// are `&mut World` handlers owned by `renzora_editor_framework` — the same
+    /// ones the menu used to call directly.
+    fn perform(self, commands: &mut Commands) {
+        match self {
+            ProjectSwitch::New => {
+                commands.queue(|w: &mut World| renzora_editor_framework::handle_new_project(w));
+            }
+            ProjectSwitch::Pick => {
+                commands.queue(|w: &mut World| renzora_editor_framework::handle_open_project(w));
+            }
+            ProjectSwitch::Recent(path) => {
+                commands.insert_resource(renzora::RequestOpenProjectPath(path));
+            }
+        }
+    }
+}
+
+/// Set by a File menu row that leaves the project. Consumed by
+/// [`process_project_switch_request`], which either switches straight away or
+/// opens the prompt first.
+#[derive(Resource)]
+pub(crate) struct ProjectSwitchRequest(pub(crate) ProjectSwitch);
+
+/// Set after "Save & …" while we wait for the scene-save to land before leaving
+/// (see [`pending_switch_after_save`]). Carries where we were going.
+#[derive(Resource)]
+pub(crate) struct PendingSwitchAfterSave(ProjectSwitch);
+
+/// Backdrop root of the switch-project prompt, holding the destination so the
+/// buttons know what to act on.
+#[derive(Component)]
+pub(crate) struct SwitchPromptRoot(ProjectSwitch);
+
+/// The prompt's three actions.
+#[derive(Component)]
+pub(crate) struct SwitchPromptSave;
+#[derive(Component)]
+pub(crate) struct SwitchPromptDiscard;
+#[derive(Component)]
+pub(crate) struct SwitchPromptCancel;
+
+/// Handle a pending [`ProjectSwitchRequest`]: switch immediately when nothing is
+/// dirty, otherwise open the save-confirmation prompt.
+pub(crate) fn process_project_switch_request(
+    req: Option<Res<ProjectSwitchRequest>>,
+    tabs: Option<Res<renzora_ui::DocumentTabState>>,
+    fonts: Option<Res<EmberFonts>>,
+    open: Query<(), With<SwitchPromptRoot>>,
+    mut commands: Commands,
+) {
+    let Some(req) = req else { return };
+    // A prompt is already up — leave the request until it's resolved.
+    if !open.is_empty() {
+        return;
+    }
+    let switch = req.0.clone();
+    commands.remove_resource::<ProjectSwitchRequest>();
+
+    let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
+    // Nothing unsaved (or we can't render the prompt) → go straight there. The
+    // second half matters: a missing font must not be a reason a menu row does
+    // nothing at all.
+    if !dirty || fonts.is_none() {
+        switch.perform(&mut commands);
+        return;
+    }
+    let fonts = fonts.unwrap();
+    let count = tabs
+        .map(|t| t.tabs.iter().filter(|x| x.is_modified).count())
+        .unwrap_or(0);
+    spawn_switch_prompt(&mut commands, &fonts, switch, count);
+}
+
+/// Build the centered "unsaved changes" prompt for leaving the project.
+fn spawn_switch_prompt(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    switch: ProjectSwitch,
+    count: usize,
+) {
+    let body = if count == 1 {
+        "You have unsaved changes. Save before switching projects?".to_string()
+    } else {
+        format!("You have unsaved changes in {count} documents. Save before switching projects?")
+    };
+    let label = switch.confirm_label();
+    let (root, cancel, discard, save) = spawn_prompt(commands, fonts, body, label);
+    commands.entity(root).insert(SwitchPromptRoot(switch));
+    commands.entity(cancel).insert(SwitchPromptCancel);
+    commands.entity(discard).insert(SwitchPromptDiscard);
+    commands.entity(save).insert(SwitchPromptSave);
+}
+
+/// Drive the switch prompt's buttons. (Escape / backdrop click / the title × are
+/// handled by ember's generic `overlay_dismiss`, which despawns the root — same
+/// as Cancel: the project stays open.)
+pub(crate) fn switch_prompt_buttons(
+    save: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptSave>)>,
+    discard: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptDiscard>)>,
+    cancel: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptCancel>)>,
+    roots: Query<(Entity, &SwitchPromptRoot)>,
+    mut commands: Commands,
+) {
+    let save = save.iter().any(|i| *i == Interaction::Pressed);
+    let discard = discard.iter().any(|i| *i == Interaction::Pressed);
+    let cancel = cancel.iter().any(|i| *i == Interaction::Pressed);
+
+    if !(save || discard || cancel) {
+        return;
+    }
+
+    // The destination lives on the root; capture it before despawning.
+    let target = roots.iter().next().map(|(_, r)| r.0.clone());
+    for (e, _) in &roots {
+        commands.entity(e).despawn();
+    }
+    let Some(switch) = target else { return };
+
+    if save {
+        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(PendingSwitchAfterSave(switch));
+    } else if discard {
+        switch.perform(&mut commands);
+    }
+    // cancel → nothing; the switch is abandoned.
+}
+
+/// After "Save & …", wait for the scene-save to complete, then leave. If the
+/// save was redirected to a Save-As dialog the user cancelled (something is
+/// still dirty), abort the switch instead of losing work — the same conservative
+/// ending [`pending_exit_after_save`] has, and for the same reason: `Save` saves
+/// the *active* scene, so anything still unsaved means the answer to "may I
+/// throw this away" is still no.
+pub(crate) fn pending_switch_after_save(
+    pending: Option<Res<PendingSwitchAfterSave>>,
+    save_req: Option<Res<renzora::core::SaveSceneRequested>>,
+    save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
+    tabs: Option<Res<renzora_ui::DocumentTabState>>,
+    mut commands: Commands,
+) {
+    let Some(pending) = pending else { return };
+    // Still saving (or prompting for a path) — keep waiting.
+    if save_req.is_some() || save_as_req.is_some() {
+        return;
+    }
+    let switch = pending.0.clone();
+    commands.remove_resource::<PendingSwitchAfterSave>();
+
+    if !tabs.is_some_and(|t| any_unsaved(&t)) {
+        switch.perform(&mut commands);
     }
 }

@@ -1141,8 +1141,10 @@ fn export_worker(
     export_config.window.mode = window_mode;
     export_config.window.resizable = matches!(window_mode, WindowMode::Windowed);
     export_config.console_logging = console_logging;
-    // Editor-only fields shouldn't ship in exported builds.
-    export_config.editor = None;
+    // Editor-only fields shouldn't ship in exported builds. Both of these are
+    // `skip_serializing` now, so a fresh `project.toml` never carries them —
+    // this clears them from the in-memory copy anyway, because an export can be
+    // built from a config parsed out of a file written before that changed.
     export_config.editor_last_scene = None;
     export_config.editor_open_tabs = Vec::new();
 

@@ -34,13 +34,16 @@ The camera moves slowly when you're close to something and faster when you're fa
 | `End` | Move the focus point to wherever your cursor is pointing |
 | `[` / `]` | Slow down / speed up the camera |
 
-There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. Top to bottom, the cluster is:
+There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. The cluster is **Pan** and **Zoom**: press and drag them, dragging **up** on Zoom to move closer.
 
-- **Home** — one click puts the camera back at its starting position, the same reset as the `Home` key.
-- **Pan** and **Zoom** — press and drag them, dragging **up** on Zoom to move closer.
-- **Grid** — toggles the floor grid, and lights up while it's on. The same switch lives in the toolbar's Display dropdown and in *Settings → Viewport*; this one is here because the grid gets flipped often enough while modelling that a dropdown is two clicks too many.
+**Reset View** and **Grid** used to be in that cluster. They now sit at the foot of the [tool shelf](#the-tool-shelf) on the left edge, under a rule:
 
-While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Scene Icons circle that used to sit down there is gone — that flag already has switches in the toolbar's Gizmos dropdown and in *Settings → Viewport*.)
+- **Reset View** — one click puts the camera back at its starting position, the same reset as the `Home` key.
+- **Grid** — toggles the floor grid. It **tints its icon** while the grid is on, rather than filling the button the way a picked tool does: the grid being on is a property of the view, not the thing your next click will do. The same switch lives in the toolbar's Display dropdown and in *Settings → Viewport*; this one is here because the grid gets flipped often enough while modelling that a dropdown is two clicks too many.
+
+Both are single clicks, and the cluster they left is a press-and-drag control — which is the whole reason they moved. Both are 3D-only, so neither shows in the 2D view.
+
+While you're dragging Zoom, a **height ruler** slides in at the **bottom left**: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its left edge **fills upwards from the floor** as the camera climbs, so altitude registers at a glance without reading the number. It sits above the statistics readout when that's on, and fades out shortly after you let go. (The Scene Icons circle that used to sit down there is gone — that flag already has switches in the toolbar's Gizmos dropdown and in *Settings → Viewport*.)
 
 Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain modes **Sculpt / Paint Layers / Paint Foliage** — plus **Make Terrain** whenever the selection is a flat mesh, which [turns that plane into a terrain](terrain.md#making-a-terrain-out-of-a-plane) — mesh **Edit Mode** and **X Symmetry**, and any modes plugins add), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle and World/Local controls, left to right, wrapping onto another line when they need to. The **maximize** button is the exception: it floats hard against the **right edge** of the bar, whatever else is on it. It hides during play mode, all except Play, which becomes Stop and stays where it is.
 
@@ -62,8 +65,11 @@ Down the **left edge of the viewport** sits the **tool shelf**: a two-column pal
 | Terrain — sculpt | Sculpt Terrain is the active tool | all 17 sculpt brushes |
 | Terrain — paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
 | Foliage | Paint Foliage is active | Paint / Erase, then one button per foliage type |
+| View | any 3D view | Reset View, Grid |
 
-Pick up the terrain sculpt tool in the toolbar and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes. Enter Edit mode and you get the two draw tools, the select modes, and the ops. The shelf collapses completely when nothing in it applies.
+The **View** group is last whatever else is showing, so those two sit in the same place however the shelf above them changes.
+
+Pick up the terrain sculpt tool in the toolbar and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes. Enter Edit mode and you get the two draw tools, the select modes, and the ops. In the 2D view, where none of it applies, the shelf collapses completely.
 
 Every group is an even number of buttons, so none of them ends on a half-empty row — which is why Loop Cut sits with the select modes rather than with the ops (it's modal like they are: it arms and previews, where the four ops fire on click), and why **Generate Terrain** and **Resize Terrain** are on the shelf rather than in the toolbar's terrain row. Neither opens a palette of its own, so up there each was a mode button with nothing under it; here they sit together as the operations that act on the terrain *as a whole* — fill it with procedural mountains, drag its extent out, or type that extent in via **Terrain Size & Resolution**. Like everything else on the shelf, the group appears once a terrain tool is in hand: pick any terrain mode in the toolbar and the whole column comes up together, this group included.
 
@@ -474,7 +480,7 @@ The small **caret next to the Play button** opens the play-target menu:
 
 **The button says where it will run.** Its label follows the selected target, so you can see the choice without opening the menu: **Play Viewport**, **Play VR**, **Simulate**, and plain **Play** for the runtime window (launching the game in its own window is what a play button ordinarily means). While the game is running it reads **Stop** as usual.
 
-The choice is remembered across sessions (per-user, in `~/.renzora/editor.toml`) and every following Play uses it. The same switch also lives in **Settings → Scripting → External Window**.
+The choice is remembered across sessions (per-user, in `~/.renzora/settings.toml`) and every following Play uses it. The same switch also lives in **Settings → Scripting → External Window**.
 
 A few things to know about the runtime window:
 

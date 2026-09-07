@@ -22,6 +22,7 @@ renzora_theme = { path = "../renzora_theme" }
 # `features = ["editor"]` so the editor CONTRACT (registries, EditorSelection,
 # field macros, AppEditorExt) that folded into `renzora` core is visible here
 # and re-exported at `renzora_editor_framework::*` for back-compat.
+serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_postprocess = { path = "../renzora_postprocess" }
 

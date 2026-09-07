@@ -59,6 +59,10 @@ renzora_editor = { path = "../renzora_editor" }
 # C-ABI plugin host — the surviving dynamic-plugin mechanism. These link no Bevy
 # at all, so they keep working unchanged in a statically linked host.
 renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+# Named directly so the plugin settings store can be installed beside the host
+# plugin: `renzora_plugin` cannot reach the settings file (it is the bottom of
+# the stack and `renzora` depends on *it*), so the binary wires the two together.
+renzora = { path = "../renzora", default-features = false }
 # Native plugins. Depended on here only for `prebuild`, which runs BEFORE the
 # `App` exists: the SDK has to be unpacked and every stale plugin compiled before
 # the loader (which runs during `App` assembly) goes looking for them.

@@ -30,8 +30,8 @@ pub use renzora::{
     EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, HierarchyExpandRequests,
     HierarchyOrder, InspectableComponent, InspectorEntry, InspectorRegistry, NativeInspectorDrawer,
     NativeInspectorRegistry, SceneStarter, SceneStarterRegistry, ShortcutEntry, ShortcutHandler,
-    ShortcutRegistry, SpawnRegistry, ToolActivator, ToolEntry, ToolPredicate, ToolSection,
-    ToolbarRegistry,
+    ShortcutRegistry, SpawnRegistry, ToolActiveStyle, ToolActivator, ToolEntry, ToolPredicate,
+    ToolSection, ToolbarRegistry,
 };
 pub use renzora::{
     bool_field, color_rgba_field, enum_u32_field, float_field, int_field, string_field,
@@ -302,7 +302,12 @@ impl Plugin for RenzoraEditorPlugin {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_plugins(plugin_dialog::PluginDialogBridge);
 
-        app.init_resource::<EditorSettings>()
+        // Before the first read of anything: folds `~/.renzora/editor.toml` into
+        // `settings.toml` if that has not happened yet. A no-op afterwards.
+        renzora::core::settings_file::migrate_legacy_prefs();
+        // `from_disk`, not `init_resource`: `Default` is the shipped values, and
+        // the saved ones have to be read off disk at boot.
+        app.insert_resource(EditorSettings::from_disk())
             .init_resource::<renzora::core::DevMode>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
@@ -323,6 +328,7 @@ impl Plugin for RenzoraEditorPlugin {
             )
             .add_observer(show_script_reload_toasts)
             .add_observer(show_hot_plugin_toasts)
+            .add_systems(Update, persist_editor_settings)
             .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
             .add_systems(
                 Update,
@@ -413,6 +419,35 @@ fn enforce_entity_ids(
 /// so its value is the real answer and the default `DevMode(false)` is not.
 /// After that only one side is ever `is_changed()`. Both branches write only on a
 /// real difference, so neither re-triggers the other.
+/// Write `EditorSettings` back to `settings.toml` shortly after it changes.
+///
+/// Debounced, because a scrub of the UI-scale slider mutates the resource every
+/// frame and each write is a read-modify-write of the file. Waiting for the
+/// changes to stop turns a drag into one write instead of sixty.
+///
+/// This is what replaced twenty-odd `renzora::save_*` calls scattered through
+/// the settings panel: a field only persisted if whoever wrote its row
+/// remembered to call the matching helper, which is why two thirds of them did
+/// not. Nothing has to remember now — changing the resource *is* saving it.
+fn persist_editor_settings(
+    settings: Res<EditorSettings>,
+    time: Res<Time<bevy::time::Real>>,
+    mut dirty_at: Local<Option<f64>>,
+) {
+    /// Quiet period after the last change before the write.
+    const DEBOUNCE: f64 = 0.5;
+    let now = time.elapsed_secs_f64();
+    if settings.is_changed() {
+        *dirty_at = Some(now);
+        return;
+    }
+    let Some(t) = *dirty_at else { return };
+    if now - t >= DEBOUNCE {
+        *dirty_at = None;
+        settings.save();
+    }
+}
+
 fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora::core::DevMode>) {
     if settings.is_changed() && dev.0 != settings.dev_mode {
         dev.0 = settings.dev_mode;
@@ -521,8 +556,11 @@ fn reset_ui_scale_shortcut(
         return;
     }
     if settings.ui_scale != 1.0 {
+        // No explicit save: `persist_editor_settings` writes the whole section
+        // shortly after any change to it. That is the point of the change —
+        // a setting used to persist only if whoever touched it remembered a
+        // matching `save_*` call, and most did not.
         settings.ui_scale = 1.0;
-        let _ = renzora::save_ui_scale(1.0);
     }
 }
 
@@ -679,6 +717,18 @@ fn visible_when_not_2d(w: &World) -> bool {
         .unwrap_or(true)
 }
 
+/// Hide in the 2D view only — for the view controls, which unlike the gizmos
+/// are as useful while editing a mesh as they are outside one. Both of them act
+/// on the 3D view specifically: `pending_camera_home` is consumed by the orbit
+/// controller, and `show_grid` is the floor grid, not the 2D editor's own
+/// `show_grid_2d`.
+fn visible_in_3d(w: &World) -> bool {
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+    w.get_resource::<ViewportSettings>()
+        .map(|s| s.viewport_view != ViewportView::Two)
+        .unwrap_or(true)
+}
+
 /// Hide in the mesh Edit/Sculpt modes only — for Select, which unlike the
 /// gizmo tools stays useful in the 2D view.
 fn visible_outside_mesh_modes(w: &World) -> bool {
@@ -688,18 +738,47 @@ fn visible_outside_mesh_modes(w: &World) -> bool {
         .unwrap_or(true)
 }
 
+/// Where the gizmo tools render.
+///
+/// The shelf, not the top strip. They are the tools you hold rather than a mode
+/// that opens other tools, and the left edge is where every image and 3D editor
+/// puts the thing in your hand — so the shelf is the surface that matches what
+/// they are, and it leaves the strip to the mode buttons and the view controls.
+///
+/// The group id sorts before `terrain.*`, which puts the gizmos at the top of
+/// the shelf: shelf groups render in alphabetical order of this string, globally
+/// across every crate that registers one (see [`ToolSection::Shelf`]). These are
+/// the tools that are there whatever else is, so they are the block everything
+/// contextual appears underneath.
+const GIZMO_TOOLS: ToolSection = ToolSection::Shelf("builtin.a-transform");
+
+/// Where the view controls (home, grid) render: the foot of the same shelf.
+///
+/// The `zz-` prefix is the whole point of the id. Shelf groups sort
+/// alphabetically and *globally* across every crate that registers one, so this
+/// is what keeps these two under the contextual groups a mode brings with it
+/// (`terrain.*` and anything a plugin adds) instead of between them. They are
+/// not tools you hold — nothing here changes what a click in the viewport does —
+/// which is why they sit apart, below the rule, rather than among the gizmos.
+///
+/// They were a pair of circular buttons in the nav cluster on the right edge,
+/// with pan and zoom. Home and Grid are the two in that cluster that are plain
+/// clicks rather than press-and-drag, so they were the two that had no reason to
+/// be there rather than with every other click-once control in the editor.
+const VIEW_TOOLS: ToolSection = ToolSection::Shelf("zz-view");
+
 /// Called once at plugin build time.
 fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     // Icons are kebab-case Phosphor names resolved by the native toolbar renderer.
 
-    // Transform section — Select stays in all views; the move/rotate/scale
-    // gizmo tools hide in 2D. Everything hides in mesh Edit/Sculpt modes.
+    // Gizmo tools — Select stays in all views; the move/rotate/scale tools hide
+    // in 2D. Everything hides in mesh Edit/Sculpt modes.
     registry.register(
         ToolEntry::new(
             "builtin.select",
             "cursor",
             "Select (Q)",
-            ToolSection::Transform,
+            GIZMO_TOOLS,
         )
         .order(0)
         .visible_if(visible_outside_mesh_modes)
@@ -716,7 +795,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             "builtin.translate",
             "arrows-out-cardinal",
             "Move (W)",
-            ToolSection::Transform,
+            GIZMO_TOOLS,
         )
         .order(1)
         .visible_if(visible_when_not_2d)
@@ -733,7 +812,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             "builtin.rotate",
             "arrows-counter-clockwise",
             "Rotate (E)",
-            ToolSection::Transform,
+            GIZMO_TOOLS,
         )
         .order(2)
         .visible_if(visible_when_not_2d)
@@ -750,7 +829,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             "builtin.scale",
             "arrows-out-simple",
             "Scale (R)",
-            ToolSection::Transform,
+            GIZMO_TOOLS,
         )
         .order(3)
         .visible_if(visible_when_not_2d)
@@ -766,6 +845,40 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     // Terrain tools (builtin.terrain_sculpt / terrain_paint / foliage_paint) are
     // registered by `renzora_terrain_editor::TerrainEditorPlugin` so their
     // activators can reach `TerrainData` and the inspector tab state directly.
+
+    // View controls, at the foot of the shelf — see `VIEW_TOOLS`.
+    registry.register(
+        ToolEntry::new("builtin.camera_home", "house", "Reset View", VIEW_TOOLS)
+            .order(0)
+            .visible_if(visible_in_3d)
+            // Raise the flag rather than move the camera: the orbit state lives
+            // in `renzora_camera`, and the controller consumes this next frame.
+            .on_activate(|w| {
+                use renzora::core::viewport_types::ViewportSettings;
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.pending_camera_home = true;
+                }
+            }),
+    );
+    registry.register(
+        ToolEntry::new("builtin.show_grid", "grid-four", "Grid", VIEW_TOOLS)
+            .order(1)
+            .visible_if(visible_in_3d)
+            // A toggle, not a tool: the grid being on is a property of the view,
+            // not the thing your next click will do.
+            .active_style(ToolActiveStyle::Tint)
+            .active_if(|w| {
+                use renzora::core::viewport_types::ViewportSettings;
+                w.get_resource::<ViewportSettings>()
+                    .is_some_and(|s| s.show_grid)
+            })
+            .on_activate(|w| {
+                use renzora::core::viewport_types::ViewportSettings;
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.show_grid = !s.show_grid;
+                }
+            }),
+    );
 }
 
 /// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read

@@ -11,6 +11,8 @@ description = "Interactive first-run onboarding tutorial. Editor-only plugin: te
 # are wired — `add!(TutorialPlugin, Editor)` self-registers via inventory.
 
 [dependencies]
+# Reading the legacy [editor] table out of a project.toml during migration.
+toml = "0.8"
 bevy = { workspace = true }
 # `editor` features pulled in: EditorSelection, CurrentProject, SplashState,
 # TutorialRequested, HideInHierarchy/EditorLocked markers + EditorPrefs.

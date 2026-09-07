@@ -33,6 +33,25 @@
 //! - [`reload`] — hot-reload: layout checks, retirement, generation gating
 //! - [`schema`] — what the host records about plugin types, and name lookup
 
+/// Where a plugin's settings blob is read and written.
+///
+/// **A late-bound hook, because this crate cannot reach the settings file.**
+/// `~/.renzora/settings.toml` is owned by `renzora`, and `renzora` depends on
+/// *this* crate — the C-ABI is the bottom of the stack by design, so the
+/// dependency cannot run the other way. The engine installs the three functions
+/// at startup; `load_settings` / `save_settings` in [`iface`] call through them.
+///
+/// Absent means "no store installed", and both calls answer as if nothing were
+/// saved rather than failing — a host embedding the plugin loader without a
+/// settings file is a legitimate configuration, not an error.
+#[cfg(feature = "host")]
+#[derive(bevy::prelude::Resource, Clone, Copy)]
+pub struct PluginSettingsStore {
+    pub load: fn(&str) -> Option<String>,
+    pub save: fn(&str, &str) -> Result<(), String>,
+    pub clear: fn(&str) -> Result<(), String>,
+}
+
 /// The live-rebuild source watcher. Desktop-only: it drives `cargo` over plugin
 /// source and watches the filesystem for saves, and a browser has neither. Its
 /// `notify` dependency is target-scoped to match (see `Cargo.toml`), so on wasm
