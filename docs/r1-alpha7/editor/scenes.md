@@ -172,6 +172,8 @@ The bar spans the window, so nothing folds away until the tabs genuinely fill it
 
 A tab with unsaved edits shows a **`*`** after its name, and the **save button** in the top bar turns **amber** — it's greyed out while the active tab is clean, so the color is the at-a-glance cue that the scene has work in it you haven't written to disk.
 
+**Closing the editor asks the same question**, with **Save & Close** / **Don't Save** / **Cancel** across every open document at once. It does not matter how you close it: the title bar's **×**, `Alt+F4`, the taskbar's Close and the window manager's own button all arrive at the same prompt. (They didn't always — an OS close request used to go straight past it.) With nothing unsaved the editor exits immediately, and immediately means immediately: it leaves without unwinding, so there is no window sitting on screen after you have asked it to go.
+
 ## Saving your scene
 
 Press `Ctrl+S` to save. Scenes are stored as `.ron` files, kept by convention in your project's `scenes/` folder. You almost never edit these by hand — the editor writes them for you — but they are plain text if you ever want to peek.
@@ -190,13 +192,15 @@ Snapshots live in `<project>/.cache/thumbnails/scenes/`, alongside the texture, 
 
 The editor saves for you on a timer — **on by default**, every 5 minutes. Adjust it under **Settings → Auto-Save** (in the sidebar's **Editor** group): toggle it off, or change the interval (in seconds). In the last few seconds before each save the bottom-left status bar replaces **Ready** with a live **Auto save in Ns** countdown; when it reaches zero the scene is saved — through the exact same path as `Ctrl+S`, so a focused asset tab (a material, script, etc.) is never overwritten — and the label returns to **Ready**. Auto-save pauses while you're in Play mode.
 
-Your project picks which scene loads first when the game runs. That's set in `project.toml` with a single `main_scene` line:
+Your project picks which scene loads first when the game runs. That's set in **Settings → Project → Boot Scene**, and written to `project.toml` as a single `main_scene` line:
 
 ```toml
 name = "My Game"
 version = "0.1.0"
 main_scene = "scenes/main.ron"
 ```
+
+> **`main_scene` is the scene a *game* boots into, not the one you are editing.** The two are independent and often differ — you can edit any scene with any boot scene set. Every save the editor performs targets the scene tab you have focused: `Ctrl+S`, auto-save, and the save Play performs before it starts. Nothing writes to `main_scene` unless that is the tab you are on.
 
 ### Global scenes
 

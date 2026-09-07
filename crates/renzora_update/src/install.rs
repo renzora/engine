@@ -498,11 +498,14 @@ pub fn launch_sidecar(staged_source: &Path, layout: &InstallLayout) -> Result<()
     cmd.spawn()
         .map_err(|e| format!("Could not start the update helper: {e}"))?;
 
-    // The sidecar is waiting on this PID, so exiting IS the handoff. `exit`
-    // rather than `AppExit` for the same reason the editor's own quit path uses
-    // it: a full Bevy teardown can hang on a plugin's `FreeLibrary`, and an
-    // editor that never dies is an update that never happens.
-    std::process::exit(0);
+    // The sidecar is waiting on this PID, so exiting IS the handoff. An
+    // immediate exit rather than `AppExit` for the same reason the editor's own
+    // quit path uses one: a full Bevy teardown can hang on a plugin's
+    // `FreeLibrary`, and an editor that never dies is an update that never
+    // happens. `renzora::exit_now` rather than `std::process::exit` because the
+    // latter still runs libc's atexit chain and every DSO's destructors, which
+    // is seconds the sidecar spends watching a PID that is already finished.
+    renzora::exit_now(0);
 }
 
 fn hex(bytes: &[u8]) -> String {

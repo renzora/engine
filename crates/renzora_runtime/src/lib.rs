@@ -518,6 +518,19 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     fit_canvas_to_parent: true,
                     ..default()
                 }),
+                // The editor answers an OS close request itself; the shipped
+                // game lets Bevy do it.
+                //
+                // Bevy's own handler despawns the window and nothing else, so an
+                // Alt+F4 (or a taskbar Close, or the WM's ×) reached neither the
+                // unsaved-changes prompt nor the fast exit: it discarded edits
+                // silently and then took the slow way out, unwinding the World
+                // and running every DSO destructor on the way. The editor's own
+                // × has always routed through `ExitRequest`; this makes the OS
+                // request the same request. `renzora_shell::exit_on_os_close`
+                // is the other half, and `renzora_ember`'s dock already handles
+                // its float windows' close requests for its own reasons.
+                close_when_requested: !is_editor,
                 ..default()
             });
     // Log layer:
@@ -1099,6 +1112,10 @@ fn apply_window_icon(
 /// Belt to the `ManuallyDrop` braces in `renzora_plugin`'s loader: that fixes
 /// the plugin images specifically, this keeps the whole teardown off the table.
 /// `Last`, so it runs after every other system in the final frame.
+///
+/// Leaves through [`renzora::exit_now`], which skips libc's atexit chain and the
+/// dynamic loader's destructors as well as the World — `std::process::exit` ran
+/// both, and they were seconds of their own.
 /// `RENZORA_FULL_TEARDOWN=1` restores the unwinding exit for debugging.
 fn fast_exit_on_app_exit(mut exits: MessageReader<bevy::app::AppExit>) {
     let Some(exit) = exits.read().last().cloned() else {
@@ -1112,7 +1129,7 @@ fn fast_exit_on_app_exit(mut exits: MessageReader<bevy::app::AppExit>) {
         bevy::app::AppExit::Error(n) => i32::from(n.get()),
     };
     info!("[exit] fast exit (code {code})");
-    std::process::exit(code);
+    renzora::exit_now(code);
 }
 
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {

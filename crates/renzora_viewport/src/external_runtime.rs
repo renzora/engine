@@ -331,16 +331,21 @@ pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntim
 /// Reads `AppExit` events rather than firing on `Drop` because by the
 /// time the `App` is being torn down, ECS resources are already gone.
 ///
-/// The `std::process::exit` is deliberate: letting the editor unwind
-/// normally tears down the whole World on the main thread — FreeLibrary of
-/// the editor bundle + plugin dlls, wgpu device destruction, worker-thread
-/// cleanup — which stalls for tens of seconds ("Not Responding" on Windows,
-/// "didn't close properly" on macOS). None of that teardown does anything
-/// the OS doesn't already do at process exit, and nothing in the engine
-/// saves state from a `Drop` impl (saves happen on user action; the one
-/// AppExit consumer is this system). Runs in `Last`, after every system in
-/// the final frame. Set `RENZORA_FULL_TEARDOWN=1` to get the old unwinding
-/// exit back when debugging teardown itself.
+/// The immediate exit is deliberate: letting the editor unwind normally tears
+/// down the whole World on the main thread — FreeLibrary of the editor bundle +
+/// plugin dlls, wgpu device destruction, worker-thread cleanup — which stalls
+/// for tens of seconds ("Not Responding" on Windows, "didn't close properly" on
+/// macOS). None of that teardown does anything the OS doesn't already do at
+/// process exit, and nothing in the engine saves state from a `Drop` impl (saves
+/// happen on user action; the one AppExit consumer is this system). Runs in
+/// `Last`, after every system in the final frame.
+///
+/// It leaves through [`renzora::exit_now`] rather than `std::process::exit`,
+/// which was still slow for a reason this system could not see: `exit` runs
+/// libc's atexit chain and every shared object's destructors first, 7.2 s of
+/// them with a project open from an AppImage build. See that function.
+/// Set `RENZORA_FULL_TEARDOWN=1` to get the old unwinding exit back when
+/// debugging teardown itself.
 pub fn kill_on_app_exit(
     mut exits: MessageReader<bevy::app::AppExit>,
     mut runtime: ResMut<ExternalRuntime>,
@@ -357,7 +362,7 @@ pub fn kill_on_app_exit(
         bevy::app::AppExit::Error(n) => i32::from(n.get()),
     };
     info!("[exit] fast exit (code {code})");
-    std::process::exit(code);
+    renzora::exit_now(code);
 }
 
 /// How long winit waits between forced wakeups while the editor is paused.

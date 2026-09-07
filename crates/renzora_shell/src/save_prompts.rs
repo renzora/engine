@@ -42,6 +42,35 @@ fn any_unsaved(tabs: &renzora_ui::DocumentTabState) -> bool {
     tabs.tabs.iter().any(|t| t.is_modified)
 }
 
+/// An OS close request for the **primary** window is the same request the title
+/// bar's × makes.
+///
+/// Alt+F4, the taskbar's Close, the window manager's own × — all of them arrive
+/// as `WindowCloseRequested`, and until this system existed Bevy's
+/// `close_when_requested` answered them by despawning the window. That skipped
+/// both halves of the editor's quit: the unsaved-changes prompt (edits went
+/// silently) and the fast exit (the World unwound the slow way, seconds of
+/// `FreeLibrary` and driver teardown with the window already gone). The editor
+/// turns that handler off — see `renzora_runtime::add_default_rendering` — and
+/// routes the request here instead.
+///
+/// Float dock windows are deliberately not touched: `renzora_ember`'s
+/// `process_dock_window_closes` already answers their close requests, and it has
+/// to, because their camera and UI root must go in the same command batch.
+pub(crate) fn exit_on_os_close(
+    mut closes: MessageReader<bevy::window::WindowCloseRequested>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    mut commands: Commands,
+) {
+    let Ok(primary) = primary.single() else {
+        closes.clear();
+        return;
+    };
+    if closes.read().any(|e| e.window == primary) {
+        commands.insert_resource(ExitRequest);
+    }
+}
+
 /// Handle a pending [`ExitRequest`]: exit immediately when nothing is dirty,
 /// otherwise open the save-confirmation overlay.
 pub(crate) fn process_exit_request(

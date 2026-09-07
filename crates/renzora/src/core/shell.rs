@@ -165,6 +165,79 @@ impl ShellActionInvoked {
 /// other to agree on a string.
 pub const ACTION_MARKETPLACE: &str = "marketplace.open";
 
+/// Leave the process **now**, running no exit handler on the way out.
+///
+/// `std::process::exit` is not "exit now". It runs libc's `atexit` chain and
+/// then `_dl_fini`, which walks every loaded shared object calling its
+/// destructors: the GPU driver's, every plugin image's, every vendored C
+/// library's. Measured on one machine, with a project open, closing the editor
+/// from an AppImage build:
+///
+/// | how it left | time from the decision to the process being gone |
+/// |---|---|
+/// | `std::process::exit` | **7.59 s** |
+/// | `SIGKILL` (kernel teardown alone) | **0.40 s** |
+///
+/// Seven of those seconds are userspace teardown, and for all seven the window
+/// is still on screen. After **Restart Editor** it is worse than slow: the
+/// successor is already spawned, so the old editor sits beside the new one for
+/// the whole stall, which is exactly what it looks like when nothing has
+/// happened.
+///
+/// `_exit` is the SIGKILL row without the signal: the kernel reclaims the
+/// address space, the file handles, the sockets and the GPU contexts, which it
+/// does whichever way a process dies. Nothing here needs the handlers it skips
+/// — no `Drop` in the engine saves state (saves are user actions), and the
+/// plugin loader deliberately never drops a loaded image anyway.
+///
+/// stdout and stderr are flushed first, because `_exit` skips that too and the
+/// last log line is usually the one saying why the editor is leaving.
+///
+/// Set `RENZORA_FULL_TEARDOWN=1` to get the unwinding exit back when debugging
+/// teardown itself; it is the same switch the fast-exit systems read.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn exit_now(code: i32) -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+
+    if std::env::var_os("RENZORA_FULL_TEARDOWN").is_some() {
+        std::process::exit(code);
+    }
+
+    #[cfg(unix)]
+    unsafe {
+        _exit(code)
+    }
+
+    #[cfg(windows)]
+    unsafe {
+        TerminateProcess(GetCurrentProcess(), code as u32);
+        // Not reached: `TerminateProcess` on one's own process does not return.
+        // The fallback is here because the compiler cannot know that, and a
+        // slow exit beats a caller that carries on believing it exited.
+        std::process::exit(code)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    std::process::exit(code)
+}
+
+// Declared here rather than taken from `libc` because this is the contract
+// crate and it has no dependencies beyond Bevy and serde.
+#[cfg(all(unix, not(target_arch = "wasm32")))]
+extern "C" {
+    /// POSIX `_exit(2)`: terminate immediately, running neither the `atexit`
+    /// chain nor any shared object's destructors.
+    fn _exit(code: i32) -> !;
+}
+
+#[cfg(all(windows, not(target_arch = "wasm32")))]
+extern "system" {
+    fn GetCurrentProcess() -> *mut core::ffi::c_void;
+    fn TerminateProcess(process: *mut core::ffi::c_void, exit_code: u32) -> i32;
+}
+
 /// Relaunch this executable with the same arguments and exit.
 ///
 /// Here in the contract crate because more than one thing needs it and none of
@@ -178,13 +251,25 @@ pub const ACTION_MARKETPLACE: &str = "marketplace.open";
 /// redundant entry in the task list for the whole of the next session. It also
 /// matters on Windows, where a plugin file cannot be replaced while a process
 /// holds it open: the successor starts as this one is leaving.
+///
+/// Leaving is [`exit_now`], and it has to be: the successor is spawned first, so
+/// any stall on the way out is a stall with two editors on screen.
+///
+/// **`$APPIMAGE` wins over `current_exe`.** Inside an AppImage the executable is
+/// a path in a FUSE mount that belongs to *this* process; relaunching it hands
+/// the successor a filesystem that is being pulled out from under it, and leaks
+/// the mount when it is not. The variable holds the `.AppImage` itself, which
+/// starts a clean instance with a mount of its own.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn restart_process() -> ! {
-    if let Ok(exe) = std::env::current_exe() {
+    let exe = std::env::var_os("APPIMAGE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_exe().ok());
+    if let Some(exe) = exe {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let _ = std::process::Command::new(exe).args(args).spawn();
     }
-    std::process::exit(0)
+    exit_now(0)
 }
 
 /// Overrides the status bar's left-hand **"Ready"** label. The host owns the

@@ -76,8 +76,8 @@ use ribbon::{
     workspace_add_click, workspace_drop_to_new, RibbonDrag, RibbonRename,
 };
 use save_prompts::{
-    close_tab_prompt_buttons, exit_prompt_buttons, pending_close_after_save, pending_exit_after_save,
-    process_exit_request, process_tab_close_request,
+    close_tab_prompt_buttons, exit_on_os_close, exit_prompt_buttons, pending_close_after_save,
+    pending_exit_after_save, process_exit_request, process_tab_close_request,
 };
 use status_bar::{apply_chrome_style, build_status_bar, ThemeMenuOpen};
 use theme_bridge::{apply_theme_effects, palette_from_theme, sync_theme_menu_open, theme_bridge};
@@ -275,7 +275,9 @@ impl Plugin for ShellPlugin {
                 ),
                 (workspace_add_click, workspace_drop_to_new),
                 (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
-                (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
+                // `exit_on_os_close` first: an Alt+F4 this frame should be
+                // answered this frame, not next.
+                (exit_on_os_close, process_exit_request, exit_prompt_buttons, pending_exit_after_save).chain(),
             ),
         );
         // Kept as its own `add_systems` call: the tuple above is already at the
