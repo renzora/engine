@@ -341,7 +341,6 @@ impl Plugin for WidgetsPlugin {
                     // Nested to keep this tuple within Bevy's 20-system limit.
                     (
                         drag_value::drag_value_apply,
-                        drag_value::drag_value_handle_vis,
                         drag_value::track_drag_value_editing,
                     ),
                     toggle_switch::switch_interact,

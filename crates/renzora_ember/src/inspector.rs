@@ -136,6 +136,17 @@ pub fn inspector_body(
     root
 }
 
+/// Corner radius of a colour swatch: half its 16-18px height, so the chip is a
+/// **pill** rather than a rounded rectangle.
+///
+/// That shape is doing a job. A colour row draws a saturated block at the left
+/// of the value column, and a ranged number draws its value bar in exactly the
+/// same place — at a squared-off 3px they were the same object at a glance, and
+/// a half-lit blue swatch read as a slider sitting at 40%. Nothing else in the
+/// inspector is a pill, so the shape alone says "this is a colour, not a
+/// quantity", at any size and in any theme.
+const SWATCH_RADIUS: f32 = 8.0;
+
 /// A compact color field: a live swatch that opens a proper HSV picker popup
 /// (sat/val square + hue strip), two-way bound to an RGB `[f32; 3]` (0..1) via
 /// `get`/`set`. Returns a relative wrapper (swatch + popup) to drop into a row.
@@ -204,7 +215,7 @@ fn color_field_anchored(
                 width: Val::Px(if compact { 18.0 } else { 44.0 }),
                 height: Val::Px(if compact { 18.0 } else { 16.0 }),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(SWATCH_RADIUS)),
                 ..default()
             },
             BackgroundColor(rgb(placeholder())),
@@ -314,7 +325,7 @@ pub fn color_field_rgba(
                 width: Val::Px(44.0),
                 height: Val::Px(16.0),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(SWATCH_RADIUS)),
                 ..default()
             },
             BackgroundColor(rgb(placeholder())),

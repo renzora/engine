@@ -74,7 +74,8 @@ This sets the *starting* state each time the Inspector rebuilds for a new select
 
 Different settings get different controls, picked automatically to match the value:
 
-- **Numbers** — drag left/right to scrub the value, or click to type an exact number.
+- **Numbers** — drag left/right to scrub the value, or click to type an exact number. Hold **Shift** while dragging to scrub ten times finer.
+  - A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum: a column of them reads at a glance without stopping to compare digits. Dragging one moves the fill with your cursor — the width of the field is the whole range, so dragging from one edge to the other covers it exactly once.
 - **X / Y / Z** — three colored drag boxes for things like position and rotation.
 - **Toggles** — a simple on/off switch.
 - **Colors** — a color picker (with an alpha option where it makes sense).

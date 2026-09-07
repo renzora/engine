@@ -398,6 +398,8 @@ let m = scroll_area_keyed(commands, content, 260.0, "status-theme-menu"); // cap
 
 The offset is saved in the `ScrollMemory` resource under that key and restored — once the content is laid out — when an identically-keyed view spawns again. Use one **unique** key per logical list; two unrelated lists sharing a key would fight over the same saved offset.
 
+**Scrubbing a ranged field.** Give a `drag_value` a `DragRange` and it draws a fill bar for the value and maps **its own width to the range**, so one pixel of drag is one pixel of bar and the fill keeps pace with the cursor. The widget's authored `step` still sets the feel of an *unranged* field, where there is no width to map. Holding **Shift** scrubs at a tenth of the rate, in both cases.
+
 **Wheel over a numeric field.** A `drag_value` (and the markup `drag_value=` kernel) only scrubs its value on **Shift+wheel**. A plain wheel is always handed to the enclosing scroll area, so dragging the panel scrollbar past a field never snags on it and silently changes the number — the panel scroll always wins, and value-scrubbing is an explicit opt-in gesture.
 
 **Three gestures, one target.** The wheel, holding **↑/↓** while hovering, and **middle-click drag** (grab-the-content panning, both axes on `scroll_view_xy` views) all scroll the same view: the frontmost scroll area under the cursor, honoring modal/overlay confinement. Arrow-key scroll stands down while anything owns the arrows as caret keys (focused text input, code editor, editing drag-value). All three multiply by the `ScrollConfig` resource's `speed` — the editor's Settings panel pushes its *Scroll Speed* preference into it (ember can't read `EditorSettings`), the same one-way sync as `DragValueConfig`.

@@ -1,10 +1,22 @@
 //! Drag-value — a scrubbable numeric field (drag horizontally to change).
 //!
 //! Beyond scrubbing, it behaves like Godot's SpinBox:
-//!  * a thin slider line at the bottom shows the value within its [`DragRange`]
-//!    (only drawn when a range is set), and
+//!  * the field **fills** with the accent colour to show the value within its
+//!    [`DragRange`] (only when a range is set), and
 //!  * a click (press without a drag) enters keyboard-edit mode — type a number,
 //!    `Enter`/click-away to commit, `Esc` to cancel.
+//!
+//! The fill used to be a 2px rail along the bottom edge with a round grabber
+//! riding it. A 2px line at the very bottom of a 22px field is the least
+//! readable place to put the one thing the row is about: in a stack of inspector
+//! rows you read the numbers and the rail registers as chrome. Filling the field
+//! itself puts the value where the eye already is, and a column of rows reads as
+//! a bar chart of how full each one is.
+//!
+//! The bar sits in a small inset well rather than filling the field edge to
+//! edge. Full-bleed, it stopped reading as a bar at all — the field simply
+//! looked like it had turned blue, and a panel of them was a wall of accent. The
+//! gap on all four sides keeps the field's own background visible around it.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseWheel;
@@ -22,14 +34,11 @@ use super::common::{format_num, text_node};
 pub(crate) struct EmberDragValue {
     step: f32,
     text: Entity,
-    /// Bottom slider track (the faint full-width line); `None` for the flat
-    /// variant. Shown only while a [`DragRange`] is present.
-    track: Option<Entity>,
-    /// The filled portion of the bottom slider (accent color); its width tracks
-    /// the value's fraction within the range.
+    /// The value bar behind the number (accent colour): its width is the value's
+    /// fraction of the range, measured across the inset well it sits in, so a
+    /// full bar is the range's max. `None` for the flat variant; hidden until a
+    /// [`DragRange`] is present, since without one there is no fraction to draw.
     fill: Option<Entity>,
-    /// The round grabber riding the track at the value's fraction.
-    handle: Option<Entity>,
     last_x: Option<f32>,
     /// Cursor X at press start — used to tell a click (edit) from a drag (scrub).
     press_x: Option<f32>,
@@ -59,7 +68,7 @@ pub(crate) struct EmberDragValue {
 
 /// Optional inclusive clamp for a [`drag_value`]. Insert alongside the widget
 /// to bound its scrub range (matches egui's `DragValue::range`). When present it
-/// also lights up the bottom slider line (Godot-style).
+/// also fills the field to show where the value sits in that range.
 #[derive(Component, Clone, Copy)]
 pub struct DragRange {
     pub min: f32,
@@ -93,8 +102,24 @@ fn apply_snap(v: f32, snap: Option<&DragSnap>) -> f32 {
 /// (which enters keyboard edit) rather than a drag (which scrubs).
 const CLICK_SLOP: f32 = 3.0;
 /// Bottom band (logical px) of a boxed field that counts as the slider rail — a
-/// press here drives the value absolutely (the quick min→max sweep).
+/// press here drives the value absolutely (the quick min→max sweep). The band is
+/// no longer drawn (the value fills the whole field now); it is still where the
+/// sweep lives.
 const RAIL_PX: f32 = 6.0;
+/// Gap (logical px) between the field's edge and the value fill, horizontally
+/// and vertically. The vertical one is larger because that is the one doing the
+/// work: it slims the bar down off the field's full height, which is what keeps
+/// a filled row from reading as a solid block of accent.
+const FILL_INSET_X: f32 = 2.0;
+const FILL_INSET_Y: f32 = 3.0;
+/// Opacity of the value bar. It is a tint over the field's own background, not a
+/// solid block of accent: at full opacity a panel of ranged fields was a column
+/// of saturated bars competing with the numbers they were behind, and a filled
+/// bar read as a *coloured object* — indistinguishable at a glance from the
+/// colour swatch a `Color` row draws in the same place. Backing off to a tint
+/// leaves one saturated thing per row, and it is the one that is actually a
+/// colour.
+const FILL_ALPHA: f32 = 0.34;
 
 /// Settings for the drag-value widget. `rail_quick_drag` toggles the boxed
 /// field's bottom-rail "sweep": when on, a press on the bottom slider rail sets
@@ -110,6 +135,43 @@ impl Default for DragValueConfig {
     fn default() -> Self {
         Self { rail_quick_drag: true }
     }
+}
+
+/// Multiplier on the scrub step while Shift is held: a tenth of the travel per
+/// pixel, so the same drag that crosses the whole range covers a tenth of it.
+const FINE_SCRUB: f32 = 0.1;
+
+/// Value change per pixel of horizontal drag.
+///
+/// A field that draws a fill maps its **own width** to its range, so the bar
+/// keeps pace with the cursor. It used to scrub at the widget's authored `step`
+/// regardless, and a step coarser than `span / width` (0.01/px on a 0..1 field
+/// ~170px wide is 1.7 ranges per sweep) ran the fill visibly ahead of the
+/// pointer: you dragged 40px and watched the bar fill past your cursor and pin
+/// itself at max.
+///
+/// Everything else keeps the authored step. An unranged field has no width to
+/// map (there is no end to drag to), and a flat one draws no bar to keep pace
+/// with, so in both cases the step is the only thing that defines the feel.
+fn scrub_step(
+    dv: &EmberDragValue,
+    range: Option<&DragRange>,
+    computed: &bevy::ui::ComputedNode,
+    fine: bool,
+) -> f32 {
+    let mut step = dv.step;
+    if let (Some(r), true) = (range, dv.fill.is_some()) {
+        // The well the bar travels in, not the box: that is the span a full bar
+        // actually covers.
+        let w = computed.size().x * computed.inverse_scale_factor() - 2.0 * FILL_INSET_X;
+        if w > 1.0 {
+            step = (r.max - r.min) / w;
+        }
+    }
+    if fine {
+        step *= FINE_SCRUB;
+    }
+    step
 }
 
 /// Map a press's normalized X within the box to a range value, accounting for
@@ -222,8 +284,9 @@ fn drag_value_impl(
                     UiRect::all(Val::Px(1.0))
                 },
                 border_radius: BorderRadius::all(Val::Px(4.0)),
-                // No clip: the round grabber rides the rail and hangs slightly
-                // below the box, so it must be free to overflow.
+                // Still no clip now that nothing hangs outside the box: a number
+                // too wide for a narrow field should spill rather than be cut
+                // mid-digit, which is what it has always done.
                 ..default()
             },
             BackgroundColor(if flat { Color::NONE } else { rgb(popup_bg()) }),
@@ -246,68 +309,50 @@ fn drag_value_impl(
     }
     let text = text_node(commands, font, &format_num(value), 12.0, text_primary());
 
-    // Godot-style bottom slider: a faint track inset off the rounded corners,
-    // an accent fill, and a round grabber riding the fill's end. Only the boxed
-    // variant draws it; it's hidden until a `DragRange` is seen.
-    let (track, fill, handle) = if flat {
-        (None, None, None)
+    // The value fill: the field itself, filled from the left to the value's
+    // fraction of its range. Only the boxed variant draws it (the flat one has
+    // no field to fill), and it stays hidden until a `DragRange` is seen.
+    //
+    // It rides inside an inset well rather than filling the box edge to edge: a
+    // full-bleed bar reads as the field having changed colour, and a column of
+    // them is a wall of accent. The gap keeps the field's own dark background
+    // visible all the way round, so the bar stays a *value* drawn inside a field.
+    //
+    // The well is what the width percentage is measured against. Insetting the
+    // bar itself instead would make 100% overflow the box by the inset.
+    let fill = if flat {
+        None
     } else {
-        let fill_e = commands
+        let well = commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    bottom: Val::Px(0.0),
-                    height: Val::Percent(100.0),
-                    width: Val::Percent(0.0),
+                    left: Val::Px(FILL_INSET_X),
+                    right: Val::Px(FILL_INSET_X),
+                    top: Val::Px(FILL_INSET_Y),
+                    bottom: Val::Px(FILL_INSET_Y),
                     ..default()
                 },
-                BackgroundColor(rgb(accent())),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("drag-value-fill-well"),
+            ))
+            .id();
+        let bar = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(0.0),
+                    height: Val::Percent(100.0),
+                    display: Display::None,
+                    border_radius: BorderRadius::all(Val::Px(2.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(accent()).with_alpha(FILL_ALPHA)),
                 bevy::ui::FocusPolicy::Pass,
                 Name::new("drag-value-fill"),
             ))
             .id();
-        let handle_e = commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Percent(0.0),
-                    // Center an 8px circle on the 2px rail (rail center sits 1px
-                    // up): vertically bottom = 1 - 4, horizontally margin -4.
-                    bottom: Val::Px(-3.0),
-                    margin: UiRect::left(Val::Px(-4.0)),
-                    width: Val::Px(8.0),
-                    height: Val::Px(8.0),
-                    border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::all(Val::Percent(50.0)),
-                    ..default()
-                },
-                BackgroundColor(rgb(accent())),
-                BorderColor::all(rgb(text_primary())),
-                bevy::ui::FocusPolicy::Pass,
-                Name::new("drag-value-handle"),
-            ))
-            .id();
-        let track_e = commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    // Inset off the box's 4px corner radius so the rail and
-                    // grabber clear the rounded corners.
-                    left: Val::Px(4.0),
-                    right: Val::Px(4.0),
-                    bottom: Val::Px(0.0),
-                    height: Val::Px(2.0),
-                    display: Display::None,
-                    ..default()
-                },
-                BackgroundColor(rgb(border()).with_alpha(0.6)),
-                bevy::ui::FocusPolicy::Pass,
-                Name::new("drag-value-track"),
-            ))
-            .id();
-        commands.entity(track_e).add_children(&[fill_e, handle_e]);
-        (Some(track_e), Some(fill_e), Some(handle_e))
+        commands.entity(well).add_child(bar);
+        Some((well, bar))
     };
 
     // Full-field selection highlight (behind the text), shown only while the
@@ -346,14 +391,21 @@ fn drag_value_impl(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb(accent())),
+            // Text-coloured, not accent: the value fill behind it is accent, and
+            // an accent caret on a maxed-out field is invisible exactly when you
+            // are typing into it.
+            BackgroundColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("drag-value-caret"),
         ))
         .id();
 
     let mut kids = Vec::new();
-    // Highlight first so it paints behind the number and the slider rail.
+    // Fill first, then the select-all highlight over it, then the number: the
+    // value fill is the field's background, not something drawn on the text.
+    if let Some((well, _)) = fill {
+        kids.push(well);
+    }
     if let Some(h) = highlight {
         kids.push(h);
     }
@@ -362,16 +414,11 @@ fn drag_value_impl(
     }
     kids.push(text);
     kids.push(caret);
-    if let Some(track_e) = track {
-        kids.push(track_e);
-    }
     commands.entity(box_e).insert((
         EmberDragValue {
             step,
             text,
-            track,
-            fill,
-            handle,
+            fill: fill.map(|(_, bar)| bar),
             last_x: None,
             press_x: None,
             moved: false,
@@ -506,8 +553,13 @@ pub(crate) fn drag_value_scroll(
 
 /// Drag → update the model (`Bound<f32>`, clamped by an optional [`DragRange`]).
 /// A press that never moves past [`CLICK_SLOP`] is a click and enters edit mode.
+///
+/// Hold **Shift** while dragging for the fine scrub ([`FINE_SCRUB`]) — the same
+/// gesture on a field whose range is huge (a planet radius) or tiny (a 0..1
+/// softness) as on any other.
 pub(crate) fn drag_value_drag(
     windows: Query<&Window>,
+    keys: Res<ButtonInput<KeyCode>>,
     config: Option<Res<DragValueConfig>>,
     mut values: Query<(
         &Interaction,
@@ -525,6 +577,7 @@ pub(crate) fn drag_value_drag(
         .map(|p| p.x);
     // On unless a Settings toggle turns it off.
     let rail_enabled = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);
+    let fine = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     for (interaction, mut dv, mut bound, range, snap, styled, mut cursor, rel, computed) in
         &mut values
     {
@@ -541,7 +594,9 @@ pub(crate) fn drag_value_drag(
                     // Rail sweep: a boxed, ranged field whose press lands in the
                     // bottom rail band drives the value absolutely from here on.
                     dv.rail_drag = false;
-                    if rail_enabled && dv.handle.is_some() {
+                    // `fill.is_some()` is the boxed-variant test: the flat field
+                    // has no fill and no rail band.
+                    if rail_enabled && dv.fill.is_some() {
                         if let (Some(r), Some(norm)) = (range, rel.normalized) {
                             let h = computed.size().y * computed.inverse_scale_factor();
                             if (1.0 - norm.y) * h <= RAIL_PX {
@@ -586,7 +641,8 @@ pub(crate) fn drag_value_drag(
                                     // deriving each step from it would round the
                                     // fine motion away and make slow drags stick).
                                     let base = dv.scrub_val.unwrap_or(bound.0);
-                                    let mut v = base + delta * dv.step;
+                                    let step = scrub_step(&dv, range, computed, fine);
+                                    let mut v = base + delta * step;
                                     if let Some(r) = range {
                                         v = v.clamp(r.min, r.max);
                                     }
@@ -745,6 +801,26 @@ pub(crate) fn drag_value_edit(
             }
         }
 
+        // The value bar stands down while the field is being typed into. Both it
+        // and the select-all highlight are translucent accent washes over the
+        // same field, so together they read as one confusing half-lit box —
+        // and an editing field is a text box, not a gauge. `drag_value_apply`
+        // owns the bar the rest of the time; this runs on the frame the edit
+        // ends too (the commit clears `editing` above), so the bar comes back
+        // even when the value it was showing never changed.
+        if let Some(f) = dv.fill {
+            if let Ok(mut n) = nodes.get_mut(f) {
+                let d = if dv.editing || range.is_none() {
+                    Display::None
+                } else {
+                    Display::Flex
+                };
+                if n.display != d {
+                    n.display = d;
+                }
+            }
+        }
+
         // Sync the full-field selection highlight + the caret to the final state.
         // While everything is selected the highlight shows (no caret); once the
         // selection is replaced the caret takes over.
@@ -773,35 +849,8 @@ pub(crate) fn drag_value_edit(
     }
 }
 
-/// Show the round grabber only when rail-sweep is enabled (and the field has a
-/// range to sweep) — with the setting off the handle is non-functional, so it's
-/// hidden, leaving just the fill line as a value indicator. Cheap, guarded
-/// writes; runs every frame so both the live toggle and freshly-built fields
-/// pick up the current setting.
-pub(crate) fn drag_value_handle_vis(
-    config: Option<Res<DragValueConfig>>,
-    values: Query<(&EmberDragValue, Option<&DragRange>)>,
-    mut nodes: Query<&mut Node>,
-) {
-    let on = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);
-    for (dv, range) in &values {
-        if let Some(handle) = dv.handle {
-            if let Ok(mut n) = nodes.get_mut(handle) {
-                let want = if on && range.is_some() {
-                    Display::Flex
-                } else {
-                    Display::None
-                };
-                if n.display != want {
-                    n.display = want;
-                }
-            }
-        }
-    }
-}
-
-/// Model (`Bound<f32>`) → displayed text + the bottom slider line (drag or
-/// external `bind_2way` push). The slider line shows only for ranged fields.
+/// Model (`Bound<f32>`) → displayed text + the value fill (drag or external
+/// `bind_2way` push). The fill shows only for ranged fields.
 pub(crate) fn drag_value_apply(
     values: Query<(&EmberDragValue, &Bound<f32>, Option<&DragRange>), Changed<Bound<f32>>>,
     mut texts: Query<&mut Text>,
@@ -814,26 +863,19 @@ pub(crate) fn drag_value_apply(
                 *text = Text::new(format_num(b.0));
             }
         }
-        if let (Some(track), Some(fill), Some(handle)) = (dv.track, dv.fill, dv.handle) {
-            match range {
-                Some(r) => {
-                    if let Ok(mut n) = nodes.get_mut(track) {
-                        n.display = Display::Flex;
-                    }
-                    let f = ((b.0 - r.min) / (r.max - r.min).max(1e-4)).clamp(0.0, 1.0);
-                    if let Ok(mut n) = nodes.get_mut(fill) {
-                        n.width = Val::Percent(f * 100.0);
-                    }
-                    if let Ok(mut n) = nodes.get_mut(handle) {
-                        n.left = Val::Percent(f * 100.0);
-                    }
-                }
-                None => {
-                    if let Ok(mut n) = nodes.get_mut(track) {
-                        n.display = Display::None;
-                    }
-                }
+        let Some(fill) = dv.fill else {
+            continue;
+        };
+        let Ok(mut n) = nodes.get_mut(fill) else {
+            continue;
+        };
+        match range {
+            Some(r) => {
+                let f = ((b.0 - r.min) / (r.max - r.min).max(1e-4)).clamp(0.0, 1.0);
+                n.display = Display::Flex;
+                n.width = Val::Percent(f * 100.0);
             }
+            None => n.display = Display::None,
         }
     }
 }
