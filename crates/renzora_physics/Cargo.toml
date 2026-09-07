@@ -14,11 +14,8 @@ default = []
 # Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
 # it, so the whole engine agrees on one answer.
 scripting = ["dep:renzora_scripting"]
-# Forwarded rather than owned. The backends live in `renzora::physics` now, so
-# picking a dimension here has to reach through: a `dep:avian3d` on this crate
-# would compile a SECOND avian and leave the engine with two `Collider` types.
-avian3d = ["renzora/avian3d"]
-avian2d = ["renzora/avian2d"]
+avian3d = ["dep:avian3d"]
+avian2d = ["dep:avian2d"]
 
 [dependencies]
 # Engine side of the C ABI's physics surface (`plugin_bridge`). `physics` is the
@@ -26,18 +23,33 @@ avian2d = ["renzora/avian2d"]
 renzora_plugin = { path = "../renzora_plugin", features = ["host", "physics"] }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-# The whole subsystem lives here now: the authored data, the read-state mirrors,
-# the spatial bridge, both avian backends and `PhysicsPlugin` itself. This crate
-# keeps only the `ScriptExtension` that cannot move (it is defined over
-# `renzora_scripting`, which depends on `renzora`, so moving it would close a
-# cycle) and re-exports everything else from its old path.
-renzora = { path = "../renzora", default-features = false, features = ["physics"] }
+renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
-# No `avian3d` / `avian2d` entries. They moved to `renzora` with the backends,
-# and a second declaration here would compile a second avian: two `Collider`
-# types, two `RigidBody`s, and a solver reading components nothing else writes.
-# The `avian3d` / `avian2d` features above forward to `renzora`'s instead.
+# From crates.io, not a vendored copy. Avian was vendored when it had no release
+# targeting Bevy 0.19; 0.7.0 does, so the fork (and its four vendored ecosystem
+# crates) is just a copy to keep in sync. Both backends resolve one `bevy_heavy`,
+# `bevy_transform_interpolation` and `glam_matrix_extras` from the registry, so
+# there is exactly one of each in the graph — a path copy alongside a registry
+# copy would be two distinct types with the same name.
+[dependencies.avian3d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+# The 2D sibling backend. A separate crate (not a feature of avian3d), so both
+# simulations can coexist in one app — their `RigidBody`/`Collider`/`Physics`
+# types are distinct. Entities are routed to one backend or the other by
+# `auto_init_physics` (2D = sprite / `Node2d` ancestry / explicit `Physics2d`).
+[dependencies.avian2d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["2d", "f32", "default-collider", "parry-f32"]
+
+# Lua types referenced in the PhysicsScriptExtension trait impl.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 
 # Tests only: system/param names in ECS validation errors, so a failing
 # headless physics test says WHICH resource is missing.

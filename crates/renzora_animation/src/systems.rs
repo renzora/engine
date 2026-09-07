@@ -313,11 +313,70 @@ pub fn auto_play_default(
 // Command processing: play/stop/pause/resume from scripts & blueprints
 // ============================================================================
 
-/// The command vocabulary moved to `renzora::core::animation` so a native
-/// plugin can drive a skeleton without linking this crate. Re-exported here so
-/// `renzora_animation::AnimationCommand` still resolves for the three crates
-/// that already push into the queue.
-pub use renzora::{AnimationCommand, AnimationCommandQueue};
+/// Animation command to be processed this frame.
+#[derive(Debug)]
+pub enum AnimationCommand {
+    Play {
+        entity: Entity,
+        name: String,
+        looping: bool,
+        speed: f32,
+    },
+    Stop {
+        entity: Entity,
+    },
+    Pause {
+        entity: Entity,
+    },
+    Resume {
+        entity: Entity,
+    },
+    SetSpeed {
+        entity: Entity,
+        speed: f32,
+    },
+    /// Seek playback to an absolute time (seconds).
+    Seek {
+        entity: Entity,
+        time: f32,
+    },
+    /// Crossfade to a new clip with explicit duration.
+    Crossfade {
+        entity: Entity,
+        name: String,
+        duration: f32,
+        looping: bool,
+    },
+    /// Set a float parameter on the state machine.
+    SetParam {
+        entity: Entity,
+        name: String,
+        value: f32,
+    },
+    /// Set a bool parameter on the state machine.
+    SetBoolParam {
+        entity: Entity,
+        name: String,
+        value: bool,
+    },
+    /// Fire a trigger parameter on the state machine.
+    Trigger {
+        entity: Entity,
+        name: String,
+    },
+    /// Set a layer's weight.
+    SetLayerWeight {
+        entity: Entity,
+        layer_name: String,
+        weight: f32,
+    },
+}
+
+/// Resource that collects animation commands each frame.
+#[derive(Resource, Default)]
+pub struct AnimationCommandQueue {
+    pub commands: Vec<AnimationCommand>,
+}
 
 /// System that processes animation commands.
 pub fn process_animation_commands(

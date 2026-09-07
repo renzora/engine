@@ -98,17 +98,6 @@ pub mod audio;
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
 
-// The physics contract: what a body and collider are, what the simulation
-// reported, and the one bridge in this crate that passes function pointers
-// rather than data. Here rather than in `renzora_physics` because a plugin
-// reaches only `bevy`, `renzora` and `renzora_ember`, and a character
-// controller is exactly the kind of thing someone writes as a plugin. The
-// systems that act on all of it stay put, and `renzora_physics` re-exports
-// every name from its old path. NOT glob re-exported: `SpatialHit`, `RayCast`
-// and `Slide` are query vocabulary, not crate-root names.
-#[cfg(feature = "physics")]
-pub mod physics;
-
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened
@@ -156,13 +145,6 @@ mod plugin_meta;
 /// the macro's expansion and the loader that reads the symbol name it.
 pub use plugin_meta::NativePluginScope;
 /// What a Rust script is handed — see [`script_ctx::ScriptCtx`].
-// Script verbs a PLUGIN declares, as plain data. A workspace crate declares
-// through `renzora_scripting::extension::ScriptExtension`; a plugin cannot
-// reach that trait without this crate compiling the script wire codec, so the
-// same declaration is expressed here and `renzora_scripting` translates. NOT
-// glob re-exported: `ScriptFn` and `ScriptArg` are declaration vocabulary.
-pub mod script_fns;
-
 pub mod script_ctx;
 pub use script_ctx::ScriptCtx;
 /// The lifecycle events a Rust script can receive — see [`script_hook::ScriptHook`].

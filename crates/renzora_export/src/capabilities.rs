@@ -422,6 +422,16 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
+        id: "parkour",
+        section: "simulation",
+        label: "Parkour traversal",
+        help: "Vault/mantle/ledge-hang/ladder/wall-run/swing character controller. 3D only, and it pulls in 3D physics on its own.",
+        bevy_features: &[],
+        runtime_features: &["parkour"],
+        default_on: true,
+        group: None,
+    },
+    Capability {
         id: "gaussian_splatting",
         section: "render_3d",
         label: "Gaussian splatting",
@@ -988,6 +998,13 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "nav_stop",
         ],
         "ragdoll" => &["renzora_ragdoll::", "enable_ragdoll"],
+        "parkour" => &[
+            "renzora_parkour::",
+            "parkour_move",
+            "parkour_sprint",
+            "parkour_jump",
+            "parkour_action",
+        ],
         "animation" => &[
             "renzora_animation::",
             "bevy_animation::",
@@ -1469,6 +1486,7 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "lumen",
     "cloth",
     "ragdoll",
+    "parkour",
     "gaussian_splatting",
     "forward_decal",
     // Hardware ray tracing is bevy_pbr's, so it cannot outlive it either.

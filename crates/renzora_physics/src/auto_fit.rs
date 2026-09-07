@@ -7,19 +7,19 @@
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use crate::physics::data::{CollisionShapeData, CollisionShapeType};
+use crate::{CollisionShapeData, CollisionShapeType};
 
 /// Marker added on `CollisionShapeData` insert. Removed once auto-fit succeeds
 /// or when the user has manually edited the shape values.
 #[derive(Component)]
 pub struct PendingAutoFit;
 
-/// The opt-out marker lives in [`data`](crate::physics::data) beside the shape
-/// it suppresses the fit for, since a crate generating exact colliders in bulk
-/// needs it and has no reason to know this pass exists. `PendingAutoFit` above
-/// stays here: it is set and cleared within this pass and nothing outside could
-/// act on it.
-pub use crate::physics::data::SkipAutoFit;
+/// Opt-out: spawn this alongside a `CollisionShapeData` whose values are
+/// already exact (e.g. the tilemap's merged tile colliders). Without it the
+/// shape would be tagged `PendingAutoFit` and — having no render AABB to fit
+/// to — sit in the retry query forever.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct SkipAutoFit;
 
 /// Tag the entity with `PendingAutoFit` so the next frame tries to size it to mesh.
 pub fn mark_new_collision_shapes(

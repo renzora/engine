@@ -33,7 +33,7 @@ use bevy::prelude::*;
 use renzora_plugin::host::PluginServiceCalls;
 use renzora_plugin::physics::{PhysicsCommand, PhysicsOp, PhysicsState};
 
-use renzora::physics::read_state::{CollisionReadState, PhysicsReadState};
+use crate::read_state::{CollisionReadState, PhysicsReadState};
 
 /// Numeric physics state, readable from a standalone plugin.
 ///
@@ -205,6 +205,6 @@ pub fn install(app: &mut App) {
     app.add_systems(Update, drain_plugin_physics_commands);
     app.add_systems(
         Update,
-        sync_plugin_physics_state.after(renzora::physics::read_state::auto_init_physics_read_state),
+        sync_plugin_physics_state.after(crate::read_state::auto_init_physics_read_state),
     );
 }

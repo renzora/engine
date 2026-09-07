@@ -5,7 +5,7 @@
 //! the two simulations coexist in one app without touching each other.
 //! `auto_init_physics` (lib.rs) decides per entity which backend to spawn:
 //! anything that is a sprite, sits under a `Node2d`, or carries the explicit
-//! [`crate::physics::Physics2d`] marker gets this backend; everything else keeps 3D.
+//! [`crate::Physics2d`] marker gets this backend; everything else keeps 3D.
 //!
 //! The same serializable `PhysicsBodyData` / `CollisionShapeData` components
 //! drive both backends — the 2D mapping just reads the XY of the Vec3 fields
@@ -17,7 +17,7 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
-use crate::physics::data::*;
+use crate::data::*;
 
 /// Adds Avian 2D physics plugins.
 pub struct Avian2dBackendPlugin {
@@ -81,7 +81,7 @@ fn pause_physics(mut time: ResMut<Time<Physics>>) {
 
 #[cfg(feature = "avian3d")]
 fn mirror_physics_properties_2d(
-    state: Res<crate::physics::properties::PhysicsPropertiesState>,
+    state: Res<crate::properties::PhysicsPropertiesState>,
     mut gravity: ResMut<Gravity>,
     mut time: ResMut<Time<Physics>>,
     mut substeps: ResMut<SubstepCount>,

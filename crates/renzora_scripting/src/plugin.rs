@@ -88,12 +88,6 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptReloadEvents>()
             .init_resource::<ScriptsActive>()
             .init_resource::<crate::extension::ScriptExtensions>()
-            // Native plugins declare their verbs as data; pick them up every
-            // frame, since a plugin can load long after this plugin built.
-            .add_systems(
-                bevy::prelude::Update,
-                crate::plugin_extensions::drain_plugin_script_fns,
-            )
             .init_resource::<crate::get_handler::AssetProgressBridge>()
             .init_resource::<crate::get_handler::SceneLoadBridge>()
             .init_resource::<renzora::ScriptSceneInbox>()

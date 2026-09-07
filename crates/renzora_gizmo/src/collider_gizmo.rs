@@ -199,10 +199,76 @@ fn draw_side_diagonals(
     }
 }
 
-/// Moved to `renzora::editor_contract` alongside [`OverlayGizmoGroup`], so a
-/// plugin drawing a character capsule draws the identical shape rather than its
-/// own approximation of one. Re-exported for the call sites in this crate.
-pub use renzora::draw_capsule;
+pub fn draw_capsule(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    rot: Quat,
+    radius: f32,
+    half_height: f32,
+    color: Color,
+) {
+    let up = rot * Vec3::Y;
+    let right = rot * Vec3::X;
+    let fwd = rot * Vec3::Z;
+    let top = center + up * half_height;
+    let bot = center - up * half_height;
+
+    // Equator circles at the cap joins.
+    gizmos.circle(
+        Isometry3d::new(
+            top,
+            rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        ),
+        radius,
+        color,
+    );
+    gizmos.circle(
+        Isometry3d::new(
+            bot,
+            rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        ),
+        radius,
+        color,
+    );
+
+    // Vertical connecting lines between the cap joins.
+    gizmos.line(top + right * radius, bot + right * radius, color);
+    gizmos.line(top - right * radius, bot - right * radius, color);
+    gizmos.line(top + fwd * radius, bot + fwd * radius, color);
+    gizmos.line(top - fwd * radius, bot - fwd * radius, color);
+
+    // Hemisphere arcs — drawn by hand as line segments for reliability across
+    // Bevy versions. Two arcs per cap (one in XY plane, one in ZY plane of the
+    // capsule's local space), each spanning 180°.
+    draw_hemi_arc(gizmos, top, up, right, radius, color);
+    draw_hemi_arc(gizmos, top, up, fwd, radius, color);
+    draw_hemi_arc(gizmos, bot, -up, right, radius, color);
+    draw_hemi_arc(gizmos, bot, -up, fwd, radius, color);
+
+    draw_side_diagonals(gizmos, center, rot, radius, half_height, color);
+}
+
+/// Draw a 180° arc from `center - side*radius` up over `center + up*radius` to
+/// `center + side*radius`, using segmented lines.
+fn draw_hemi_arc(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    up: Vec3,
+    side: Vec3,
+    radius: f32,
+    color: Color,
+) {
+    const SEGS: usize = 16;
+    let mut prev = center - side * radius;
+    for i in 1..=SEGS {
+        let t = i as f32 / SEGS as f32;
+        let angle = std::f32::consts::PI * t;
+        // Starts at -side (angle=0) → +up at angle=PI/2 → +side at angle=PI.
+        let p = center + (-side * angle.cos() + up * angle.sin()) * radius;
+        gizmos.line(prev, p, color);
+        prev = p;
+    }
+}
 
 fn draw_cylinder(
     gizmos: &mut Gizmos<OverlayGizmoGroup>,

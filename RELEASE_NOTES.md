@@ -1,48 +1,6 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
-- feat(physics): the whole subsystem moves to `renzora::physics`, so a native
-  plugin can use all of it. The authored `PhysicsBodyData` / `CollisionShapeData`,
-  the `PhysicsReadState` / `CollisionReadState` mirrors, `SkipAutoFit`, the
-  gravity presets, the auto-fit pass, both avian backends, `PhysicsPlugin`
-  itself — and **avian re-exported**, so a plugin names the real `Collider`,
-  `RigidBody` and `LinearVelocity`, and takes `SpatialQuery` as an ordinary
-  system parameter. It has to come through the contract crate rather than a
-  plugin's own manifest: the dependency resolver refuses anything pulling a
-  `bevy_*` crate, and a second avian would be a second `Collider` the solver
-  never reads. Every type keeps its old `renzora_physics::` path.
-  Two things stayed behind, both because moving them would close a dependency
-  cycle or drag the plugin host into the crate every other crate depends on: the
-  physics `ScriptExtension` (defined over `renzora_scripting`, which depends on
-  `renzora`) and the C-ABI `plugin_bridge` (needs `renzora_plugin/host`, which
-  pulls `libloading` and a file watcher).
-  `SpatialQueries` remains for callers that want to survive a change of backend
-  or do not know the dimension ahead of time. Its entry points take `&mut World`,
-  because a cast is a question answered from the collider tree rather than a
-  value anyone can hand over; that makes a caller exclusive, which is why the
-  real avian is the better option now that it is reachable.
-- feat(scripting): a plugin can declare script verbs. `renzora::script_fns`
-  carries the same declaration `ScriptExtension` does, as plain data, and
-  `renzora_scripting` translates it into identical bindings — same duplicate
-  handling, same autocomplete, and every language backend gets them. Drained
-  every frame rather than once, so a plugin installed mid-session or rebuilt
-  after an edit still contributes its functions.
-- refactor(parkour): the traversal controller moves to a native plugin.
-  `crates/renzora_parkour` and its editor half are gone; `plugins/parkour/`
-  replaces both, and the diagnostic overlay comes with it rather than staying a
-  second plugin — a native plugin exports one constructor and therefore has one
-  scope. Removes ~2,800 lines from the workspace, drops the `parkour` export
-  capability and the runtime feature, and is the demonstration that a full
-  character controller needs no more of the engine than the three crates a
-  plugin may link. Existing scenes keep working: they name the components by
-  their old `renzora_parkour::` paths, which `renzora_bsn` resolves by short
-  name.
-- feat(animation): `AnimationCommand` and `AnimationCommandQueue` move to
-  `renzora`, so a plugin can crossfade a skeleton without linking
-  `renzora_animation`. Re-exported from the old path.
-- feat(gizmo): `OverlayGizmoGroup` and `draw_capsule` move to `renzora`, so a
-  plugin draws into the group the editor already configures instead of
-  declaring one Bevy has never given a render layer or a depth bias.
 - fix(shell): the editor leaves when it is told to. Quitting, **Restart Editor**
   after installing a plugin, and the update handoff all went through
   `std::process::exit`, which is not "exit now": it runs libc's atexit chain and
