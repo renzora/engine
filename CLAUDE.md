@@ -58,8 +58,10 @@ with `!` in the prompt so its output lands in the session.
 
 **`cargo renzora` is how you install and run Renzora on your own machine.**
 It builds the workspace natively, stages `dist/<platform>/` exactly the way the
-container's `build-all.sh` does, and launches it. No Docker, no image pull, no
-container. `rust-toolchain.toml` pins rustc so a native build matches the images.
+container's `build-all.sh` does, and launches it; `cargo renzora dist` is the
+same up to the launch, and is the form to use from here. No Docker, no image
+pull, no container. `rust-toolchain.toml` pins rustc so a native build matches
+the images.
 
 **Docker is a cross-compiler, not the install path.** Its job is producing
 **export templates for platforms you do not own** — building a macOS or Android
@@ -105,18 +107,22 @@ defaults to the `dev` profile and creates a *second* full set of artefacts under
 `target/debug/`, and this workspace is far too large for two of them to coexist.
 
 ```sh
-cargo renzora            # build + stage + run   ← the normal way to work
-cargo renzora xr         # same, but XR-capable (headset editing; not pipelined)
+cargo renzora dist       # build + stage      ← the normal way to work
+cargo renzora            # same, then launches the editor
+cargo renzora xr         # launches XR-capable (headset editing; not pipelined)
 cargo check  --profile dist [-p <crate>]
 cargo clippy --profile dist [-p <crate>]
 cargo test   --profile dist -p <crate>
 ```
 
-**To build or test, always use `cargo renzora`, never `cargo renzora dist`.**
-The two build the same thing; the difference is that `dist` stops after staging
-and `cargo renzora` launches what it built. Stopping short means the change is
-never seen running, which is the only thing that tells you it worked — a build
-that compiles is not a change that works. Use `cargo renzora`.
+**To build or test, use `cargo renzora dist`, not `cargo renzora`.** The two
+build and stage exactly the same thing; the difference is that the plain form
+then *launches* the editor. Launching is the user's to do: they are usually
+running their own editor already, and a second one started from here fights for
+the build lock, opens a window they did not ask for, and takes over a session
+they were in the middle of. Build with `dist`, say the build is staged, and let
+them run it and look. If a change genuinely needs to be seen running before you
+can call it done, ask rather than launching.
 
 **Why this is a hard rule and not a preference.** On 2026-08-11 `target/` reached
 **314.5 GB** and filled a 929 GB disk to 1.38 GB free, because `dev` and `dist`
@@ -140,8 +146,11 @@ If `target/` has already grown a `debug/` directory, delete it —
 
 ### What runs where
 
-- ✅ **`cargo renzora`** — native build + stage + run on the host platform. The
-  normal way to work. Uses `--profile dist`. **Launches with `RENZORA_NO_XR=1`**:
+- ✅ **`cargo renzora dist`** — native build + stage on the host platform, the
+  normal way to work. Uses `--profile dist`. Stops before launching, which is
+  what you want: see the note above.
+- ✅ **`cargo renzora`** — the same build, then runs it. The user's command, not
+  yours. **Launches with `RENZORA_NO_XR=1`**:
   merely having an OpenXR runtime installed and set as the system default
   otherwise takes the XR-capable boot, which disables `PipelinedRenderingPlugin`
   and serializes the render sub-app onto the main thread (~11.6 ms of a 27 ms
@@ -619,12 +628,12 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 - **Trust the constraints.** The one-definition contract crate, the two-layer
   C-ABI negotiation, and the frozen-vs-current docs split are all load-bearing.
   Work *with* them.
-- **`cargo renzora` to build and run, `cargo check --profile dist` /
+- **`cargo renzora dist` to build, `cargo check --profile dist` /
   `cargo clippy --profile dist` to iterate, `renzora test` to verify.** Docker is
   for cross-compiling export templates, not for installing the engine on your own
-  machine. Building or testing means **`cargo renzora`**, never
-  `cargo renzora dist` — the plain form launches what it built, and a change that
-  is never seen running has not been checked (§2).
+  machine. Building means **`cargo renzora dist`**, never plain `cargo renzora`:
+  that one launches the editor, which is the user's to start and not yours to
+  take over (§2).
 - **Never build the `dev` profile.** Every cargo command takes `--profile dist`;
   a bare one creates a second 300 GB `target/debug/` and a full disk shows up as
   nonsense compile errors in untouched crates, not as a disk error (§2).

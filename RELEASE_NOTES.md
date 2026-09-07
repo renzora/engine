@@ -1,12 +1,35 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(ember): a numeric field with a range fills with colour as its value
+  rises, instead of showing a rail and grabber along its bottom edge.
+- fix(ember): scrubbing a ranged numeric field no longer runs its fill ahead of
+  the cursor.
+- feat(ember): hold Shift while dragging a numeric field to scrub ten times
+  finer.
+- feat(ember): a colour swatch is a pill, so it no longer reads as a numeric
+  field's value bar.
+- fix(assets): only clicking an item's name starts a rename, so clicking beside
+  it folds the folder instead.
+- fix(assets): a rename in the narrow tree-only layout opens its field in the
+  tree, not behind the hidden grid.
+- fix(hierarchy): only double-clicking a row's name starts a rename.
+- feat(assets): the folder tree labels its rows a size smaller, so more of a path
+  fits the pane.
+- fix(terrain): a painted layer renders its material, procedural graphs included,
+  instead of a flat white overlay.
+- fix(terrain): a painted layer tiles its material in world units instead of
+  stretching one repeat across the whole terrain.
+- feat(terrain): a paint layer has a Tile Size, the metres of ground one repeat
+  of its material covers.
+- fix(terrain): a painted layer no longer casts a hard-edged shadow of its own
+  faded rim, so brush edges stop looking pixelated.
+- feat(material): `MaterialAlphaOverride` renders one entity's shared material at
+  its own alpha mode.
+- fix(material): a procedural graph multiplies vertex color into base color, the
+  way the non-procedural path already did.
 - fix(viewport): a viewport docked in the global bottom panel takes the camera
   and the tools, instead of leaving them on the workspace's viewport.
-- feat(terrain): the sculpt, paint and foliage brush cursors are filled in, shaded
-  by the brush's falloff, so you can see the brush and not just its outline.
-- fix(terrain): the foliage brush cursor follows the ground and honours the shape
-  and falloff its toolbar sets.
 - fix(viewport): the toolbar's move / rotate / scale snap steps accept decimals
   again, so a 0.25 grid is typeable.
 - fix(assets): New Folder in the toolbar opens the rename field, like the menu
@@ -21,10 +44,14 @@
 - fix(editor): moving the cursor into File > Recent Projects no longer closes the
   menu.
 - feat(editor): a hovered menu row is filled with the theme's accent colour.
-- feat(viewport): Reset View and Grid moved from the nav cluster to the foot of
-  the tool shelf.
-- feat(viewport): the Grid button tints its icon while the grid is on instead of
-  filling its background.
+- feat(settings): choose whether the bottom panel reopens or stays closed after
+  you drag an asset out of it.
+- fix(shell): reopening the bottom panel after dragging it shut gives it the
+  usual height instead of a sliver.
+- feat(viewport): Reset View, Pan, Zoom and Grid are one group on the viewport's
+  right edge, on a single translucent rounded background.
+- feat(viewport): the Grid button lights up while the grid is on, instead of
+  taking the solid fill a held drag button gets.
 - feat(viewport): the height ruler moved to the bottom left, and its bar fills
   upwards as the camera climbs.
 - feat(editor): the Renzora mark leads the top bar, and opens About when clicked.
