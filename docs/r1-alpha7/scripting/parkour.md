@@ -1,6 +1,8 @@
 # Parkour & Traversal
 
-Vaulting a rail, mantling onto a roof, hanging off a ledge and shimmying along it, climbing a ladder, running along a wall and kicking off it, swinging from a rope — provided by the `renzora_parkour` plugin.
+Vaulting a rail, mantling onto a roof, hanging off a ledge and shimmying along it, climbing a ladder, running along a wall and kicking off it, swinging from a rope — provided by the **Parkour** plugin.
+
+> **It is a plugin, not part of the engine.** Parkour ships as a native plugin in `plugins/parkour/` rather than compiled into the binary, so a project that does not use it carries none of it and there is no export capability to switch off. It is written against the same seams any plugin has — `renzora::physics::spatial` for the casts, `renzora::script_fns` for the five verbs below, `renzora::AnimationCommandQueue` for the crossfades — which means a character controller of your own can be written the same way. See [Native plugins](/docs/r1-alpha7/extending/plugins).
 
 Almost none of it needs authoring. Ledges, walls and their heights are found by casting rays at whatever collision geometry is already in the scene, so ordinary level meshes are vaultable and climbable the moment a character with a `Parkour Controller` runs at them. Only two things need a marker, because no cast can infer them: a **ladder** (a ladder and a fence are the same shape) and a **swing anchor** (a point in space with nothing to touch).
 

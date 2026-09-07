@@ -329,7 +329,7 @@ end
 
 ## Parkour
 
-Provided by `renzora_parkour`. These **replace** `move_controller` for the entity: the parkour controller owns gravity, ground contact and collision itself, because a ledge hang and a rope swing are positions it has to set rather than forces it can ask for. Driving one entity with both fights over its `Transform`.
+Provided by the **Parkour** plugin (`plugins/parkour/`), which declares them through `renzora::script_fns` rather than being compiled into the engine — so they exist when the plugin is installed and not otherwise. These **replace** `move_controller` for the entity: the parkour controller owns gravity, ground contact and collision itself, because a ledge hang and a rope swing are positions it has to set rather than forces it can ask for. Driving one entity with both fights over its `Transform`.
 
 | Function | Description |
 |----------|-------------|
@@ -505,7 +505,7 @@ Verbs that are actually observed in the current code:
 | Audio (`renzora_audio`) | `play_sound`, `play_music`, `stop_music`, `stop_all_sounds`, `play_audio_player` |
 | Networking (`renzora_network`) | `net_connect`, `net_disconnect`, `net_rpc` (`net_send`, `net_send_message`, `net_spawn`, `net_host_server` are stubs) |
 | Physics (`renzora_physics`) | `kinematic_slide`, `apply_force`, `apply_impulse`, `set_velocity` |
-| Parkour (`renzora_parkour`) | `parkour_move`, `parkour_sprint`, `parkour_jump`, `parkour_action`, `parkour_release` |
+| Parkour (`plugins/parkour`) | `parkour_move`, `parkour_sprint`, `parkour_jump`, `parkour_action`, `parkour_release` |
 | Navmesh (`renzora_navmesh`) | `nav_set_destination`, `nav_clear_destination` |
 | Wind (`renzora_wind`) | `set_wind`, `set_wind_gusts` |
 | Animation (`renzora_animation`) | `set_anim_param`, `set_anim_bool`, `set_anim_trigger` |

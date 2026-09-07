@@ -50,6 +50,35 @@ audio = []
 # any build carrying either of those, and a lean export stripping both still
 # carries none of it.
 diagnostics = []
+# The physics contract: authored body/collider data, the per-frame read-state
+# mirrors, and the backend-agnostic spatial-query bridge. The dimension-free
+# half, so it compiles in a 2D build, a 3D build and a headless one alike.
+physics = []
+# The SIMULATION, re-exported. `renzora::physics::avian3d` is the real avian, so
+# a native plugin can name `Collider`, `RigidBody`, `LinearVelocity`, a joint, a
+# sensor, a collision event, and take `SpatialQuery` as an ordinary system
+# parameter instead of going through the `&mut World` bridge.
+#
+# It has to be re-exported from HERE and cannot simply be a dependency of the
+# plugin: `renzora_native_build::deps` refuses any dependency whose graph
+# contains a `bevy_*` crate, and avian's does. Reaching it through the contract
+# crate is reaching the engine's own copy, which is the whole point — a second
+# compilation would give the plugin a different `Collider` from the one the
+# solver reads.
+#
+# Split by dimension because the two are separate crates with separate
+# `RigidBody` types, and a 2D game must not link parry3d (or the reverse).
+# `renzora_physics` forwards whichever backend it was asked for, so the engine
+# still has one answer.
+#
+# Named after the crates they pull, matching `renzora_physics`'s own features
+# exactly. That is deliberate rather than incidental: the backend modules moved
+# here verbatim and are full of `#[cfg(feature = "avian3d")]`, and a feature
+# named anything else would leave every one of those gates quietly false — the
+# code would compile, the plugin would install nothing, and physics would simply
+# not run with no error anywhere.
+avian3d = ["physics", "dep:avian3d"]
+avian2d = ["physics", "dep:avian2d"]
 # Compile the project's Rust scripts INTO the binary instead of loading each as
 # a dylib. Changes only what `script!` emits: without it the entry point is
 # `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is
@@ -143,6 +172,26 @@ naga = { version = "29", features = ["termcolor", "wgsl-in"] }
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).
 renzora_macros = { path = "../renzora_macros", optional = true }
+
+# The simulation, so `renzora::physics` can re-export it (see the `physics_3d` /
+# `physics_2d` features). Optional and off by default, so a build with no
+# physics — a lean 2D export, a headless server, the docs build — links neither.
+#
+# No cycle risk: avian's dependency graph is bevy plus third-party crates and
+# contains no `renzora_*`, which is the invariant the note above the dep list is
+# protecting. Versions and features are copied from `renzora_physics` verbatim;
+# the two must agree or the engine and a plugin would resolve different avians.
+[dependencies.avian3d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+[dependencies.avian2d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["2d", "f32", "default-collider", "parry-f32"]
 
 [lints]
 workspace = true

@@ -4,6 +4,9 @@ mod component;
 mod context;
 mod engine;
 pub mod extension;
+/// The plugin-facing half of [`extension`]: `renzora::script_fns` declarations,
+/// translated into the same bindings a workspace crate registers directly.
+pub mod plugin_extensions;
 pub mod get_handler;
 pub mod http;
 pub mod plugin_backend;

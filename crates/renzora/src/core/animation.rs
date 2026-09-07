@@ -465,6 +465,87 @@ pub struct TransformWriteQueue {
     pub writes: Vec<TransformWrite>,
 }
 
+/// One request to the animator, queued rather than applied.
+///
+/// Here rather than in `renzora_animation` because asking a skeleton to
+/// crossfade is something a plugin does: a character controller that owns its
+/// own state machine has to be able to say "play the vault clip" without
+/// linking the crate that owns `AnimationPlayer`.
+///
+/// Queued, and not a direct write, for a reason that predates plugins. Two
+/// systems both reaching at `AnimationPlayer` in the same frame is a race with
+/// no winner: whichever ran last sets the pose, which depends on schedule
+/// ordering nobody declared. Going through [`AnimationCommandQueue`] means a
+/// controller's crossfade and a script's `crossfade_animation()` are the same
+/// kind of request, resolved in one place, in order.
+#[derive(Debug)]
+pub enum AnimationCommand {
+    Play {
+        entity: bevy::prelude::Entity,
+        name: String,
+        looping: bool,
+        speed: f32,
+    },
+    Stop {
+        entity: bevy::prelude::Entity,
+    },
+    Pause {
+        entity: bevy::prelude::Entity,
+    },
+    Resume {
+        entity: bevy::prelude::Entity,
+    },
+    SetSpeed {
+        entity: bevy::prelude::Entity,
+        speed: f32,
+    },
+    /// Seek playback to an absolute time (seconds).
+    Seek {
+        entity: bevy::prelude::Entity,
+        time: f32,
+    },
+    /// Crossfade to a new clip with explicit duration.
+    Crossfade {
+        entity: bevy::prelude::Entity,
+        name: String,
+        duration: f32,
+        looping: bool,
+    },
+    /// Set a float parameter on the state machine.
+    SetParam {
+        entity: bevy::prelude::Entity,
+        name: String,
+        value: f32,
+    },
+    /// Set a bool parameter on the state machine.
+    SetBoolParam {
+        entity: bevy::prelude::Entity,
+        name: String,
+        value: bool,
+    },
+    /// Fire a trigger parameter on the state machine.
+    Trigger {
+        entity: bevy::prelude::Entity,
+        name: String,
+    },
+    /// Set a layer's weight.
+    SetLayerWeight {
+        entity: bevy::prelude::Entity,
+        layer_name: String,
+        weight: f32,
+    },
+}
+
+/// Resource that collects animation commands each frame.
+///
+/// Drained by `renzora_animation::systems::process_animation_commands`. A build
+/// with no animation crate never drains it, which is why every producer takes
+/// it as `Option<ResMut<..>>` and does nothing when it is absent.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct AnimationCommandQueue {
+    pub commands: Vec<AnimationCommand>,
+}
+
 /// Write an AnimClip to a `.anim` file (RON format).
 pub fn write_anim_file(clip: &AnimClip, path: &std::path::Path) -> Result<(), String> {
     let ron_str = ron::ser::to_string_pretty(clip, ron::ser::PrettyConfig::default())

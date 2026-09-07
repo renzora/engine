@@ -1,17 +1,23 @@
-//! Per-entity physics mirror component.
+//! Per-entity physics mirrors, refreshed each frame by the backend.
 //!
-//! [`PhysicsReadState`] holds a script-/blueprint-readable snapshot of the current
-//! physics state for each entity with [`PhysicsBodyData`]. It's populated each
-//! frame so that Lua's `get("PhysicsReadState.grounded")` and blueprint
-//! `physics/is_grounded` nodes have an up-to-date value without having to query
-//! Avian directly.
+//! [`PhysicsReadState`] and [`CollisionReadState`] hold a script- and
+//! blueprint-readable snapshot of what the simulation did, so Lua's
+//! `get("PhysicsReadState.grounded")` and a blueprint's `physics/is_grounded`
+//! have an up-to-date value without querying avian directly.
+//!
+//! The components and the systems that fill them both live here. Reading a
+//! velocity means naming avian's `LinearVelocity`, and there are two of those,
+//! one per dimension — so each updater is gated on the backend it reads, and a
+//! build with neither compiles only the components.
+
+use std::collections::HashSet;
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::data::PhysicsBodyData;
+use crate::physics::data::PhysicsBodyData;
 #[cfg(any(feature = "avian3d", feature = "avian2d"))]
-use crate::data::RuntimePhysics2d;
+use crate::physics::data::RuntimePhysics2d;
 
 /// Snapshot of per-entity physics state, refreshed each frame.
 ///
@@ -30,6 +36,53 @@ pub struct PhysicsReadState {
     pub speed: f32,
     /// Contact normal from the most recent ground hit (or `Vec3::Y` if airborne).
     pub ground_normal: Vec3,
+}
+
+/// Per-entity collision snapshot, refreshed each frame from the backend's
+/// contact pairs. Reflect-registered so blueprint `event/on_collision_enter` /
+/// `_exit` (and Lua `get("CollisionReadState.entered")`) can read it by name.
+///
+/// Only the *first* entity entered/exited this frame is surfaced by name (the
+/// blueprint event has a single `other` output); `colliding` reflects whether
+/// any contact is currently active.
+#[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component, Default)]
+pub struct CollisionReadState {
+    /// True while at least one contact is active this frame.
+    pub colliding: bool,
+    /// True on the frame a new contact began.
+    pub entered: bool,
+    /// True on the frame a contact ended.
+    pub exited: bool,
+    /// Name of the first entity that started touching this frame ("" if none).
+    pub entered_name: String,
+    /// Name of the first entity that stopped touching this frame ("" if none).
+    pub exited_name: String,
+    /// Last frame's colliding set, used to diff enter/exit. Not reflected.
+    #[reflect(ignore)]
+    prev: HashSet<Entity>,
+}
+
+impl CollisionReadState {
+    /// Fold this frame's contact set in, computing the enter/exit edges.
+    ///
+    /// A method rather than a free function in the backend because `prev` is
+    /// the one field here that is bookkeeping rather than an answer: exposing
+    /// it would let a caller desynchronise the edges from the set they were
+    /// derived from, and both backends need exactly this fold anyway.
+    ///
+    /// `name_of` is passed in rather than a `Query<&Name>` taken, so this stays
+    /// free of any particular system's borrows.
+    pub fn apply_contacts(&mut self, current: HashSet<Entity>, name_of: impl Fn(Entity) -> String) {
+        let entered: Vec<Entity> = current.difference(&self.prev).copied().collect();
+        let exited: Vec<Entity> = self.prev.difference(&current).copied().collect();
+        self.colliding = !current.is_empty();
+        self.entered = !entered.is_empty();
+        self.exited = !exited.is_empty();
+        self.entered_name = entered.first().copied().map(&name_of).unwrap_or_default();
+        self.exited_name = exited.first().copied().map(&name_of).unwrap_or_default();
+        self.prev = current;
+    }
 }
 
 /// Auto-inserts `PhysicsReadState` on any entity that has `PhysicsBodyData`
@@ -86,33 +139,6 @@ pub fn update_physics_read_state_2d(
     }
 }
 
-/// Per-entity collision snapshot, refreshed each frame from Avian's contact
-/// pairs. Reflect-registered so blueprint `event/on_collision_enter`/`_exit`
-/// (and Lua `get("CollisionReadState.entered")`) can read it by name. This is
-/// the engine's first real collision-event source — previously the scripting
-/// `on_collision` hook was an unpopulated stub.
-///
-/// Only the *first* entity entered/exited this frame is surfaced by name (the
-/// blueprint event has a single `other` output); `colliding` reflects whether
-/// any contact is currently active.
-#[derive(Component, Clone, Debug, Default, Reflect)]
-#[reflect(Component, Default)]
-pub struct CollisionReadState {
-    /// True while at least one contact is active this frame.
-    pub colliding: bool,
-    /// True on the frame a new contact began.
-    pub entered: bool,
-    /// True on the frame a contact ended.
-    pub exited: bool,
-    /// Name of the first entity that started touching this frame ("" if none).
-    pub entered_name: String,
-    /// Name of the first entity that stopped touching this frame ("" if none).
-    pub exited_name: String,
-    /// Last frame's colliding set, used to diff enter/exit. Not reflected.
-    #[reflect(ignore)]
-    prev: std::collections::HashSet<Entity>,
-}
-
 /// Auto-inserts `CollisionReadState` on any entity with `PhysicsBodyData`.
 pub fn auto_init_collision_read_state(
     mut commands: Commands,
@@ -145,7 +171,7 @@ pub fn update_collision_read_state(
             };
             current.insert(other);
         }
-        diff_collision_state(&mut rs, current, &names);
+        rs.apply_contacts(current, |e| name_of(&names, e));
     }
 }
 
@@ -166,28 +192,16 @@ pub fn update_collision_read_state_2d(
             };
             current.insert(other);
         }
-        diff_collision_state(&mut rs, current, &names);
+        rs.apply_contacts(current, |e| name_of(&names, e));
     }
 }
 
-/// Shared enter/exit diff for both backends' collision updaters.
+/// The `Name` of an entity, or `""` — what `CollisionReadState`'s two name
+/// fields carry. Shared by both backends' updaters.
 #[cfg(any(feature = "avian3d", feature = "avian2d"))]
-fn diff_collision_state(
-    rs: &mut CollisionReadState,
-    current: std::collections::HashSet<Entity>,
-    names: &Query<&Name>,
-) {
-    let name_of = |e: Option<&Entity>| {
-        e.and_then(|x| names.get(*x).ok())
-            .map(|n| n.as_str().to_string())
-            .unwrap_or_default()
-    };
-    let entered: Vec<Entity> = current.difference(&rs.prev).copied().collect();
-    let exited: Vec<Entity> = rs.prev.difference(&current).copied().collect();
-    rs.colliding = !current.is_empty();
-    rs.entered = !entered.is_empty();
-    rs.exited = !exited.is_empty();
-    rs.entered_name = name_of(entered.first());
-    rs.exited_name = name_of(exited.first());
-    rs.prev = current;
+fn name_of(names: &Query<&Name>, entity: Entity) -> String {
+    names
+        .get(entity)
+        .map(|n| n.as_str().to_string())
+        .unwrap_or_default()
 }

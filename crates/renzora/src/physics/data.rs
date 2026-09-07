@@ -1,3 +1,11 @@
+//! What a body and a collider are, as the scene stores them.
+//!
+//! Backend-agnostic by design. These are what a `.scene` round-trips and what
+//! the Inspector edits; a backend system turns them into avian components at
+//! runtime and never the other way round. That indirection is what lets the
+//! simulation be swapped without rewriting every scene, and it is why the
+//! authored types are here while the avian ones are not.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -172,6 +180,19 @@ pub struct RuntimePhysics2d;
 /// avian2d automatically; this marker covers 2D physics entities with no visual
 /// of their own — e.g. the merged static colliders a tilemap layer generates,
 /// or an invisible trigger area in a 2D scene.
-#[derive(Component, Clone, Copy, Debug, Default, Reflect, serde::Serialize, serde::Deserialize)]
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Default, Serialize, Deserialize)]
 pub struct Physics2d;
+
+/// Opt-out: spawn this alongside a [`CollisionShapeData`] whose values are
+/// already exact (e.g. the tilemap's merged tile colliders). Without it the
+/// shape would be tagged for auto-fit and — having no render AABB to fit to —
+/// sit in the retry query forever.
+///
+/// Here rather than beside the auto-fit pass that reads it because the crates
+/// that need to *say* this are the ones generating colliders in bulk, and one
+/// of them is now a plugin. The `PendingAutoFit` tag it suppresses stays in
+/// `renzora_physics`: that one is set and cleared inside a single pass and
+/// nothing outside could act on it.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct SkipAutoFit;

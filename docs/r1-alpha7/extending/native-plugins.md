@@ -189,6 +189,73 @@ renzora::undo::record(world, renzora::undo::UndoContext::Scene, Box::new(cmd));
 
 Record, don't mutate: an edit applied directly is one the user cannot take back, and in an editor that is a bug rather than a shortcut. `undo_once` is there for the case where your own operation has to roll itself back — an op that records a topology change and then lets the user drag the result must undo that record if the drag is cancelled.
 
+### Physics: all of it
+
+The whole subsystem lives in `renzora::physics` — the authored data, the read-state mirrors, both avian backends, `PhysicsPlugin` itself, and **avian re-exported**. So a plugin gets the real thing:
+
+```rust
+use renzora::physics::avian3d::prelude::*;
+
+// An ordinary system. No `&mut World`, nothing exclusive.
+fn push(mut q: Query<&mut LinearVelocity, With<RigidBody>>, spatial: SpatialQuery) {
+    if let Some(hit) = spatial.cast_ray(origin, dir, 10.0, true, &default()) { … }
+}
+```
+
+Colliders, rigid bodies, joints, sensors, collision events, `SpatialQuery` as a system parameter — everything `renzora_physics` could do.
+
+**It has to be reached through `renzora`, not declared as a dependency.** `renzora_native_build::deps` refuses any dependency whose graph contains a `bevy_*` crate, and avian's does. That refusal is right: a separately compiled avian has a different `Collider` and a different `RigidBody` from the ones the solver reads, so the plugin would build, load, and quietly write components nothing simulates. The re-export is the engine's own copy, so there is one of each.
+
+Pick the dimension with `renzora`'s `avian3d` / `avian2d` features. They are separate crates with distinct `RigidBody` types and can coexist in one app.
+
+#### The backend-agnostic bridge
+
+`renzora::physics::spatial::SpatialQueries` is still there, and is still the right choice for two cases: code that should survive a change of backend, and code that runs in a build where the dimension is not known ahead of time. It is a resource of four entry points, each taking `&mut World`.
+
+```rust
+use renzora::physics::spatial::{RayCast, SpatialFilter, SpatialQueries};
+
+fn look_down(world: &mut World, character: Entity, from: Vec3) -> Option<f32> {
+    // Copy the table out before you start handing `&mut World` around: holding
+    // a `Res` borrow would make every entry point uncallable.
+    let q = SpatialQueries::get(world)?;
+    let hit = q.ray(
+        world,
+        &RayCast { origin: from, direction: Dir3::NEG_Y, max_distance: 5.0, solid: true },
+        &SpatialFilter { excluded: &[character] },
+    )?;
+    Some(hit.distance)
+}
+```
+
+- `ray` / `shape` / `slide_shape` / `aabb` — a ray cast, a shape sweep, a collide-and-slide move, and an entity's collider bounds.
+- A sweep takes a `SweepShape` (`Sphere`, `Capsule`, `Cuboid`), not an authored collider. The shape a controller sweeps is deliberately not the shape the artist put on the model.
+- `SpatialQueries::get` returns `None` when no 3D backend is running — a 2D-only build, or a lean export with physics stripped. Do nothing rather than assume.
+- **Exclude the character's whole subtree, not just the entity.** An imported model keeps its collider on a child mesh, and a capsule that collides with its own body cannot move at all. That failure is silent.
+
+**Every entry point wants `&mut World`, so a system that casts has to be exclusive.** That is the real cost, and it is why the queue-and-resolve-next-frame alternative was rejected: a frame of lag in the code that moves a character walks it through corners. The pattern is to enumerate what you need through a cached `SystemState`, then read each entity's components out of the world, run your logic, and write back.
+
+The authored types come along too: `renzora::physics::{PhysicsBodyData, CollisionShapeData, PhysicsReadState, CollisionReadState, SkipAutoFit}`. So a plugin can spawn a rigid body, read whether it is grounded, and cast against the world without naming the backend once.
+
+`plugins/parkour/` is the worked example — a full traversal character controller built on nothing but this, `renzora::script_fns` and `renzora::AnimationCommandQueue`.
+
+### Script verbs from a plugin
+
+An in-workspace crate declares script functions by implementing `renzora_scripting`'s `ScriptExtension`. A plugin cannot reach that trait, so it declares the same thing as data:
+
+```rust
+use renzora::script_fns::{DeclareScriptFns, ScriptArgKind, ScriptFn};
+
+app.declare_script_fns("mything", vec![
+    ScriptFn::action("mything_go").xyz().doc("Head somewhere."),
+    ScriptFn::action("mything_stop").arg("hard", ScriptArgKind::Bool),
+]);
+```
+
+`renzora_scripting` drains the queue every frame and registers them exactly as the trait would have, so they are indistinguishable from the engine's own: same duplicate-name handling, same editor autocomplete, and **every** language backend gets them. Draining every frame rather than once is deliberate — a plugin installed mid-session, or rebuilt after an edit, still contributes its verbs.
+
+Fire them by observing `renzora::ScriptAction` for your own names. Reads need no declaration at all: a reflected component is already reachable as `get("MyReadState.field")`.
+
 ### What "belongs in `renzora`" actually means
 
 The **vocabulary** moves; the **implementation** stays. That distinction is what

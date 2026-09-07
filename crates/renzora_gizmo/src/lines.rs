@@ -23,9 +23,11 @@ use crate::types::{
 };
 use crate::{GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
-#[derive(Default, Reflect, GizmoConfigGroup)]
-#[reflect(Default)]
-pub struct OverlayGizmoGroup;
+/// The shared overlay group moved to `renzora::editor_contract` so a native
+/// plugin can draw into the same one the editor configures. Re-exported here
+/// because nine modules in this crate name it by this path, and because the
+/// systems that give it its render layer and depth bias are still ours.
+pub use renzora::OverlayGizmoGroup;
 
 /// Dedicated group for transform gizmo line elements (rotate circles, scale
 /// cubes). Always renders on top of the scene, independent of the

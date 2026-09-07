@@ -1,8 +1,8 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::data::*;
-use crate::properties::*;
+use crate::physics::data::*;
+use crate::physics::properties::*;
 
 /// Adds Avian 3D physics plugins and backend-specific systems.
 pub struct AvianBackendPlugin {
