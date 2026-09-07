@@ -253,30 +253,50 @@ pub fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
         "cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
         "capsule" => CollisionShapeData::capsule(0.5, 0.25),
         "cone" => CollisionShapeData::cylinder(0.5, 0.5),
-        "hemisphere" => CollisionShapeData::sphere(0.5),
         "plane" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.001, 0.5)),
-        "wedge" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
         "wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "ramp" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 1.0)),
-        "doorway" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "window_wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
         "pillar" => CollisionShapeData::cylinder(0.15, 1.0),
-        "l_shape" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "t_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.5)),
-        "cross_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.75)),
         "corner" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "stairs" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "half_cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
-        "quarter_pipe" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "curved_wall" => CollisionShapeData::cylinder(0.5, 1.0),
-        "spiral_stairs" => CollisionShapeData::cylinder(0.5, 1.0),
-        "pipe" => CollisionShapeData::cylinder(0.5, 0.5),
-        "ring" => CollisionShapeData::cylinder(0.5, 0.1),
-        "funnel" => CollisionShapeData::cylinder(0.5, 0.5),
-        "gutter" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 0.5)),
-        "torus" => CollisionShapeData::cylinder(0.5, 0.15),
-        "prism" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "pyramid" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+
+        // ── Shapes whose point IS their surface ──────────────────────────
+        //
+        // A primitive here is not an approximation, it is a different object.
+        // `stairs` was a solid unit cuboid: scaled to a 6 x 13.6 x 14 flight it
+        // gave a 13.6 m vertical wall at the bottom step and a flat lid
+        // floating over the treads, so a staircase could be neither walked up
+        // nor jumped onto and the parkour probe read one ledge, too high to
+        // mantle, where six climbable ones were drawn. Every shape below had
+        // the same kind of hole: a ramp was a flat slab, a doorway was a solid
+        // panel filling its own opening, a pipe and a funnel and a torus were
+        // solid, and a hemisphere's collider sank half a sphere below the floor
+        // it was standing on.
+        //
+        // The trade-off is real and worth stating: a trimesh is heavier than a
+        // primitive, and avian trimeshes are hollow, which makes them a poor
+        // fit for a *dynamic* body. These are level-building blocks and are
+        // static in practice; anything spun up as a dynamic prop should be
+        // given a primitive by hand in the inspector, which is exactly what the
+        // shape dropdown is for.
+        "stairs" => CollisionShapeData::mesh(),
+        "spiral_stairs" => CollisionShapeData::mesh(),
+        "ramp" => CollisionShapeData::mesh(),
+        "wedge" => CollisionShapeData::mesh(),
+        "quarter_pipe" => CollisionShapeData::mesh(),
+        "pyramid" => CollisionShapeData::mesh(),
+        "prism" => CollisionShapeData::mesh(),
+        "half_cylinder" => CollisionShapeData::mesh(),
+        "hemisphere" => CollisionShapeData::mesh(),
+        "l_shape" => CollisionShapeData::mesh(),
+        "t_shape" => CollisionShapeData::mesh(),
+        "cross_shape" => CollisionShapeData::mesh(),
+        "curved_wall" => CollisionShapeData::mesh(),
+        "doorway" => CollisionShapeData::mesh(),
+        "window_wall" => CollisionShapeData::mesh(),
+        "pipe" => CollisionShapeData::mesh(),
+        "ring" => CollisionShapeData::mesh(),
+        "torus" => CollisionShapeData::mesh(),
+        "funnel" => CollisionShapeData::mesh(),
+        "gutter" => CollisionShapeData::mesh(),
         _ => return None,
     })
 }

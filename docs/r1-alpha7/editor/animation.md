@@ -94,7 +94,25 @@ An `.anim` file is RON-serialized `AnimClip`: a name, a duration in seconds, and
 )
 ```
 
-> Bone names must match the `Name` of the corresponding entity in the imported skeleton — that's how curves are routed to bones (`AnimationTargetId::from_name`).
+### How a curve finds its bone
+
+A track is routed to a bone **by name alone**, and nothing else — not by position in the hierarchy, not by index. Both sides of that match are normalized through the same `sanitize_id` the editor applies to every entity name, so `mixamorig:Hips`, `mixamorig_hips` and `Mixamorig:Hips` are one key.
+
+That normalization is what makes the match reliable rather than a coin flip. The importer records the name as the source file spells it (`mixamorig:Hips`, straight out of the FBX or glTF node), while the editor renames every entity in the world to its canonical form (`mixamorig_hips`) a frame or so after the skeleton spawns. Comparing the raw spelling against the live `Name` meant binding depended on which of those two ran first: win the race and every curve bound, lose it and none did — with no error either way, because a clip playing into no bones looks exactly like one that is working. Normalizing both sides removes the race.
+
+**Matching on the name alone is deliberate**, and it is why `.anim` deviates from Bevy's own animation targets, which hash the whole path from the animation root. A path would tie a clip to one skeleton's hierarchy. Names let a clip extracted from one file drive a skeleton loaded from another — which is the entire point of the Mixamo workflow below.
+
+> The one thing to watch is a rig whose bone names collide *after* normalizing: `Bone:L` and `Bone-L` both canonicalize to `bone_l`, so the editor renames the second entity to `bone_l_1` and no track will name it. Rename one of them at the source.
+
+### Retargeting: one skeleton, many animation files
+
+Clips and skeletons need not come from the same file, and usually do not:
+
+1. Import the character on its own — mesh and skeleton, no animations.
+2. Import the animation files on their own — no mesh. (Mixamo's "without skin" downloads, or any `.bvh`.)
+3. Add an **Animator** to the character and point its clip slots at the extracted `.anim` files.
+
+The clips bind to the skeleton because both name the same bones. Nothing records which file a clip came from, so the same `.anim` drives any rig that names its bones the same way.
 
 ## Editor panels
 

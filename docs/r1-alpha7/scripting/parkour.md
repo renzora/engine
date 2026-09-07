@@ -105,6 +105,10 @@ Add **Parkour Ladder** to the ladder object — or to any ancestor of its collid
 
 While climbing, `y` in `parkour_move()` is the climb axis and the horizontal part is ignored: a ladder is a rail, and letting the stick push the character sideways off it mid-climb is the most common way ladder controllers feel broken.
 
+**The climb is bounded by the ladder's own collider**, unioned over its whole subtree, so an imported model with the collider on a child mesh is measured correctly. The character cannot go above the top of that shape or below the bottom of it, and pushing down at the bottom steps off. This is deliberately independent of whether there is a floor there: a ladder over a gap, a hatch or water still ends where the ladder ends. A ladder with no collider anywhere in its subtree has no measurable height and falls back to stepping off when the ground probe reports ground.
+
+Stepping off any ladder blocks `auto_attach` for a third of a second, so the ladder you just left does not immediately grab you back while the stick is still pushed toward it.
+
 ### Wall running and wall jumps
 
 Both come from `wall_run`. A wall run needs a near-vertical surface within about a third of a metre of the character, a horizontal speed above 80% of `walk_speed`, and movement input; it lasts `wall_run_duration` seconds under the much weaker `wall_run_gravity`, which is what makes it read as running rather than sliding. Starting one sheds most of the jump’s climb, so the run holds its height instead of carrying the character metres up the wall.
@@ -185,8 +189,18 @@ It is drawn upright and unscaled, because that is how the controller casts it. I
 | Second green cross beyond a lip | Where a vault would land |
 | Pink line from the chest | A wall in reach, at the distance sensed |
 | Violet arc | The path a traversal is following, and where it ends |
+| Hatched patch on a top face | The surface a vault or mantle would use, in that action's colour |
+| Hatched patch on a wall | The stretch of wall a run would ride — pink if runnable, grey for a wall you can only jump off |
+| Hatched patch up a ladder | The `Parkour Ladder` the probe resolved to, over its climbable height |
+| Amber cross + circle | A rope anchor in range, and the arc the character would swing through |
+
+The patches answer a different question from the crosses. A cross says *where* the controller found something; a patch says *which surface* it would act on — which is what you need when a mantle aims at the wrong shelf, or a wall run refuses beside something that looks like a perfectly good wall. Ladder and rope highlights also confirm which **object** resolved: a `Parkour Ladder` on the wrong ancestor looks exactly like no ladder at all without them.
 
 Everything after the capsule comes from what the controller recorded on its last frame, not from fresh casts — so it shows what the state machine actually decided from, and it only appears while the simulation is running.
+
+### Intent, in the Inspector
+
+`ParkourReadState` says what the controller *did*. **`Parkour Input`** — the same component the `parkour_*` functions write — says what it was *asked* to do: `move_dir`, `sprint`, and the three buffered one-shots. It is transient and never saved, and it is shown for one reason: a character that will not move looks identical whether the script never called `parkour_move()` or called it and the controller declined. Watching the intent separates those in one glance, and it is what lets a test drive the controller with no keyboard attached.
 
 ### Collider colours
 

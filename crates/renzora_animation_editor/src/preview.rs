@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-use bevy::animation::AnimationTargetId;
 use bevy::prelude::*;
 
 use renzora_animation::AnimatorState;
@@ -227,7 +226,10 @@ fn add_targets_recursive(
     let mut stack = vec![entity];
     while let Some(e) = stack.pop() {
         if let Ok(name) = name_query.get(e) {
-            let target_id = AnimationTargetId::from_name(name);
+            // The same key the runtime binds with, or the timeline preview would
+            // animate a rig that play mode leaves in its bind pose — the one
+            // place a disagreement is guaranteed to be blamed on the clip.
+            let target_id = renzora_animation::bone_target(name.as_str());
             commands.entity(e).try_insert(target_id);
         }
         if let Ok(children) = children_query.get(e) {

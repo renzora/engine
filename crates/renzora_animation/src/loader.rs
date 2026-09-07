@@ -3,7 +3,6 @@
 use std::fmt;
 
 use bevy::animation::animation_curves::AnimatableCurve;
-use bevy::animation::AnimationTargetId;
 use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::math::curve::UnevenSampleAutoCurve;
 use bevy::prelude::*;
@@ -69,7 +68,7 @@ impl AssetLoader for AnimClipLoader {
         clip.set_duration(anim_clip.duration);
 
         for track in &anim_clip.tracks {
-            let target = AnimationTargetId::from_name(&Name::new(track.bone_name.clone()));
+            let target = crate::bone_target(&track.bone_name);
 
             // Translations
             if track.translations.len() >= 2 {

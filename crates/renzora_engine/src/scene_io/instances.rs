@@ -268,9 +268,24 @@ pub fn spawn_scene_instance(
     // every entity including the camera, and nothing crashed because the loader
     // caught the *inner* recursion. A guard three callers have to remember is
     // one a fourth will not.
-    let host_and_root = world
-        .get_resource::<CurrentProject>()
-        .map(|p| (p.main_scene_path(), p.path.clone()));
+    // The host is the scene being *edited*, not the one a game boots into.
+    //
+    // This read `main_scene_path()`, which is right only while the two agree.
+    // When they don't, the guard compares the source against the wrong file and
+    // gets both answers wrong: it refuses a legitimate instance whose source
+    // happens to be the boot scene — the exact case of dropping a character
+    // prefab into a level while that prefab is still set as Boot Scene — and it
+    // misses a real cycle in the scene actually open. `editor_last_scene` is
+    // the active scene tab, the same source the save path uses.
+    let host_and_root = world.get_resource::<CurrentProject>().map(|p| {
+        let host = p
+            .config
+            .editor_last_scene
+            .as_deref()
+            .map(|scene| p.resolve_path(scene))
+            .unwrap_or_else(|| p.main_scene_path());
+        (host, p.path.clone())
+    });
     if let Some((host, root)) = host_and_root {
         let cycles = world.resource_scope(|_w, mut cache: Mut<SceneReferenceCache>| {
             would_create_reference_cycle(&mut cache, &root, &host, source_path)

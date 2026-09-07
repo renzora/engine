@@ -48,6 +48,10 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
         "lua" | "rs" | "py" | "js" | "ts" => "code",
         "scene" | "bsn" | "ron" | "scn" => "film-slate",
+        // The same runner the hierarchy puts on an animated entity, so a clip on
+        // disk and the thing that plays it read as one feature.
+        "anim" => "person-simple-run",
+        "animsm" => "tree-structure",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
         "particle" => "sparkle",
         "ply" | "gcloud" | "sog" | "ssog" => "cloud",
@@ -76,6 +80,8 @@ pub fn type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         }
         "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
         "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
+        "anim" => ((90, 215, 205), "Animation"),
+        "animsm" => ((90, 215, 205), "State Machine"),
         "particle" => ((230, 160, 90), "Particle"),
         "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
@@ -120,6 +126,15 @@ mod tests {
     fn a_directory_is_a_folder_whatever_its_name_looks_like() {
         // `models/tree.glb/` would otherwise read as a model.
         assert_eq!(icon_for(Path::new("models/tree.glb"), true), "folder");
+    }
+
+    #[test]
+    fn animation_clips_are_not_plain_files() {
+        // `.anim` is RON inside, but it must not fall through to the scene arm
+        // (which matches `ron`) nor to the generic "ANIM" label.
+        assert_eq!(icon_for(Path::new("models/character/Idle.anim"), false), "person-simple-run");
+        assert_eq!(type_info(Path::new("models/character/Idle.anim")).1, "Animation");
+        assert_eq!(icon_for(Path::new("locomotion.animsm"), false), "tree-structure");
     }
 
     #[test]

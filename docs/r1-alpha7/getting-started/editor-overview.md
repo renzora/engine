@@ -113,6 +113,8 @@ The **Assets** browser along the bottom is a file explorer for your project: a f
 
 Tiles show the asset, not a generic icon: textures show themselves, `.material` and `.glb` files show a rendered preview, and a scene shows [the viewport snapshot taken when you last saved it](/docs/r1-alpha7/editor/scenes#scene-thumbnails). **Folders** show a mosaic of up to four images found inside them — the folder's own images first, then a couple of levels down — so a texture library reads as its contents instead of forty identical folder glyphs. The mosaic sits inset from the tile edge with a small folder badge in its corner, in the folder's own accent colour, so a previewing folder still reads as a folder and not as a texture. A folder with no images keeps its plain centred icon.
 
+Anything without a preview falls back to a **type icon in that type's accent colour** — an orange cube for a model, a green swatch for a material, a teal runner for an animation clip (`.anim`) and a teal node tree for a state machine (`.animsm`) — with the same colour on the type label under the name. Well-known folder names take the matching accent too, so an `animations/` folder is the same teal as the clips inside it.
+
 What you can do here:
 
 - **Double-click** a folder to open it, or a file to open it in its editor (materials, blueprints, scripts, particles, …). Double-clicking a **scene** (`.bsn`) opens it in its own scene tab, loaded from disk.

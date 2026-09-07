@@ -451,7 +451,11 @@ fn simulation_running(play_mode: Option<Res<PlayModeState>>) -> bool {
 #[allow(clippy::type_complexity)]
 fn init_parkour(
     mut commands: Commands,
-    fresh: Query<(Entity, &Transform), (With<ParkourController>, Without<ParkourMotion>)>,
+    // `GlobalTransform`, because `ParkourMotion::facing` is a world yaw and the
+    // drive system integrates it as one. A character from a scene instance is
+    // parented under the instance root, so its local rotation is its offset
+    // from that root rather than the direction it faces.
+    fresh: Query<(Entity, &GlobalTransform), (With<ParkourController>, Without<ParkourMotion>)>,
     resized: Query<(Entity, &ParkourController), Changed<ParkourController>>,
 ) {
     for (entity, transform) in &fresh {
@@ -459,7 +463,7 @@ fn init_parkour(
             ParkourMotion {
                 // Start facing where the entity was placed, so the first turn
                 // is from the authored pose rather than from due north.
-                facing: drive::yaw_of(*transform.forward()),
+                facing: drive::yaw_of(transform.forward().as_vec3()),
                 ..Default::default()
             },
             ParkourInput::default(),
@@ -527,7 +531,11 @@ impl Plugin for ParkourPlugin {
         info!("[runtime] ParkourPlugin (traversal character controller)");
 
         app.register_type::<ParkourState>()
-            .register_type::<ParkourReadState>();
+            .register_type::<ParkourReadState>()
+            // Not for saving — it is cleared every frame. Registered so the
+            // inspector and the editor's tooling can see, and drive, what the
+            // character is being asked to do. See [`ParkourInput`].
+            .register_type::<ParkourInput>();
 
         #[cfg(feature = "editor")]
         {

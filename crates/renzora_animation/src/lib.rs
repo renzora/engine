@@ -45,6 +45,49 @@ pub use tween::{EasingFunction, ProceduralTween, TweenProperty};
 
 use bevy::prelude::*;
 
+/// The retarget key for one bone, from either side of the binding.
+///
+/// # Why a single name, and not Bevy's path
+///
+/// Bevy addresses a curve with [`AnimationTargetId::from_names`] over the whole
+/// chain of names from the animation root, which is right for a clip embedded in
+/// the glTF that also holds the skeleton. A `.anim` is not that. The workflow
+/// this format exists for is a character downloaded with no animations and its
+/// animations downloaded with no character — separate files, imported
+/// separately — and a path hash from the animation's file could never match a
+/// skeleton spawned from the model's. Matching on the bone name alone *is* the
+/// retargeting, which is why one clip can drive any rig that names its bones the
+/// same way.
+///
+/// # Why it is sanitized
+///
+/// Because the name the importer wrote and the name the entity ends up with are
+/// not the same string. Every importer records the source's spelling
+/// (`mixamorig:Hips`, from the FBX or glTF node), while
+/// `renzora_editor_framework`'s `enforce_entity_ids` runs [`renzora::sanitize_id`]
+/// over every `Name` in the world and turns that into `mixamorig_hips`.
+///
+/// Hashing the raw string on one side and the live `Name` on the other made
+/// binding a race between the tagging systems below and that rename, unordered
+/// with respect to each other: tag first and every curve bound, rename first and
+/// none did, and `ensure_animation_targets` froze whichever won because it only
+/// ever filled in *absent* ids. The visible symptom was a character in its bind
+/// pose with a clip that was genuinely playing, at full weight, into nothing —
+/// the animator, the current clip and the timeline all reporting success,
+/// because none of them can see whether a curve found a bone.
+///
+/// `sanitize_id` is idempotent, so putting both sides through it collapses the
+/// two spellings onto one key and the rename stops mattering. Retargeting is
+/// unaffected: the key is still derived from the bone name and nothing else.
+///
+/// The one case this does not save is a rig whose bones collide *after*
+/// sanitizing — `Bone:L` and `Bone-L` both become `bone_l`, and
+/// `enforce_entity_ids` renames the second to `bone_l_1`, which no clip names.
+/// Mixamo rigs have no such collisions.
+pub fn bone_target(bone_name: &str) -> bevy::animation::AnimationTargetId {
+    bevy::animation::AnimationTargetId::from_name(&Name::new(renzora::sanitize_id(bone_name)))
+}
+
 #[derive(Default)]
 pub struct AnimationPlugin;
 
@@ -166,3 +209,31 @@ fn apply_asset_path_changes_to_animators(
 }
 
 renzora::add!(AnimationPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The property the whole binding rests on: an importer's spelling and the
+    /// spelling `enforce_entity_ids` leaves on the entity must reach the same
+    /// key. Without it, whether a clip animates depends on which of two
+    /// unordered systems ran first.
+    #[test]
+    fn both_spellings_of_a_bone_reach_one_key() {
+        assert_eq!(bone_target("mixamorig:Hips"), bone_target("mixamorig_hips"));
+        assert_eq!(
+            bone_target("mixamorig:LeftHandIndex1"),
+            bone_target("mixamorig_lefthandindex1")
+        );
+        // Blender and Maya rigs, which use the same characters differently.
+        assert_eq!(bone_target("Armature|Bone.001"), bone_target("armature_bone_001"));
+    }
+
+    /// Sanitizing must not merge bones that are genuinely different, or one
+    /// clip would drive two limbs.
+    #[test]
+    fn distinct_bones_keep_distinct_keys() {
+        assert_ne!(bone_target("mixamorig:LeftArm"), bone_target("mixamorig:RightArm"));
+        assert_ne!(bone_target("Spine"), bone_target("Spine1"));
+    }
+}

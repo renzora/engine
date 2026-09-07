@@ -208,6 +208,9 @@ pub(crate) fn folder_color(name: &str) -> (u8, u8, u8) {
         "textures" | "images" => (150, 230, 130),
         "models" | "meshes" => (255, 170, 100),
         "audio" | "sounds" | "music" => (200, 130, 230),
+        // Matches the `.anim` accent in `renzora_ember::file_kind`, so a folder
+        // of clips is the same teal as the clips inside it.
+        "animations" | "animation" | "anims" => (90, 215, 205),
         "prefabs" => (130, 180, 255),
         "src" => (255, 130, 80),
         "shaders" => (180, 130, 255),

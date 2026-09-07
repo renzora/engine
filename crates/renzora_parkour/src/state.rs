@@ -235,7 +235,19 @@ impl ParkourMotion {
 /// clears them when it consumes them, so a press that arrives after the drive
 /// system has already run this frame survives into the next one instead of
 /// being lost. Nothing here is authored or saved.
-#[derive(Component, Default, Debug)]
+///
+/// # Why it is reflected
+///
+/// It is transient, so nothing serializes it and `#[reflect(Component)]` buys
+/// no persistence. It is here to be *read*: this is the only place the
+/// character's intent exists, and the difference between "the script never
+/// asked" and "the script asked and the controller declined" is otherwise
+/// invisible — a character that will not move looks identical either way. With
+/// this registered, the inspector shows the live intent and a tool driving the
+/// editor can both watch it and write it, which is what makes the controller
+/// testable without a keyboard.
+#[derive(Component, Default, Debug, Reflect)]
+#[reflect(Component, Default)]
 pub struct ParkourInput {
     /// Desired movement in world space. The XZ part is a direction whose
     /// length scales speed (so an analogue stick works as-is); `y` is the

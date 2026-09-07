@@ -413,7 +413,26 @@ pub fn save_current_scene(world: &mut World) {
         warn!("No project open — cannot save scene");
         return;
     };
-    let path = project.main_scene_path();
+    // The scene the editor is *showing*, not the one a shipped game boots
+    // into. Those are different settings and they routinely disagree.
+    //
+    // This wrote to `main_scene` unconditionally, which is only correct while
+    // the two happen to match. Entering play mode saves first, so with
+    // `main_scene` pointing at some other file — a character prefab, say —
+    // pressing Play serialized the entire scene being edited over the top of
+    // it. Silently, once per press, and to a file the user was not even
+    // looking at.
+    //
+    // `editor_last_scene` is the active *scene tab's* path, kept in step by
+    // the tab-switch handler in `renzora_scene`, which is the same source
+    // Ctrl+S already uses. Falling back to `main_scene` keeps the old
+    // behaviour for a world with no scene tab at all.
+    let path = project
+        .config
+        .editor_last_scene
+        .as_deref()
+        .map(|scene| project.resolve_path(scene))
+        .unwrap_or_else(|| project.main_scene_path());
     if let Err(e) = save_scene(world, &path) {
         error!("Failed to save scene: {}", e);
     }

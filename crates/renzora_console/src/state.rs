@@ -8,8 +8,8 @@ use std::collections::{HashSet, VecDeque};
 
 // Re-export core logging types so existing `renzora_console::state::*` imports keep working.
 pub use renzora::core::console_log::{
-    console_log, get_global_log_buffer, init_global_log_buffer, max_log_entries, LogEntry, LogLevel,
-    SharedLogBuffer, DEFAULT_MAX_LOG_ENTRIES,
+    clear_log_history, console_log, get_global_log_buffer, init_global_log_buffer, max_log_entries,
+    record_history, LogEntry, LogLevel, SharedLogBuffer, DEFAULT_MAX_LOG_ENTRIES,
 };
 
 /// Resource for the console state.
@@ -98,6 +98,11 @@ impl ConsoleState {
     /// the row keeps its keyed-list key and only its badge re-renders (a
     /// per-frame repeat costs one row update, never an unbounded append).
     fn push_entry(&mut self, entry: LogEntry) {
+        // The one point every entry passes through, whichever way it arrived —
+        // the shared buffer, a direct `log()`, a command echo — which is why
+        // the mirror for out-of-process readers hangs here and not on the
+        // shared buffer that feeds only one of those three.
+        record_history(entry.clone());
         if let Some(last) = self.entries.back_mut() {
             if last.level == entry.level
                 && last.category == entry.category
@@ -142,6 +147,7 @@ impl ConsoleState {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.pushed = 0;
+        clear_log_history();
     }
 
     /// Get filtered entries.

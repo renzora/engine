@@ -912,7 +912,11 @@ fn visit_skeleton(
         // `AnimationTargetId` identifies which curves in the clip apply here,
         // and `AnimatedBy` points back at the AnimationPlayer that drives it.
         // Missing `AnimatedBy` means clips silently do nothing.
-        let target_id = AnimationTargetId::from_name(name);
+        //
+        // Through `bone_target` rather than `from_name` directly, so this agrees
+        // with the clip loader no matter whether `enforce_entity_ids` has
+        // renamed the bone yet. See [`crate::bone_target`].
+        let target_id = crate::bone_target(name.as_str());
         commands
             .entity(entity)
             .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
@@ -965,7 +969,7 @@ pub fn ensure_animation_targets(
         while let Some(current) = stack.pop() {
             if let Ok(name) = name_query.get(current) {
                 if target_query.get(current).is_err() {
-                    let target_id = AnimationTargetId::from_name(name);
+                    let target_id = crate::bone_target(name.as_str());
                     commands
                         .entity(current)
                         .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));

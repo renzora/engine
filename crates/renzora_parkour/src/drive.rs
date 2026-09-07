@@ -55,6 +55,10 @@ pub fn drive_parkour(
     world: ProbeWorld,
     anchors: Query<(Entity, &GlobalTransform, &ParkourSwingAnchor)>,
     ladder_cfg: Query<&ParkourLadder>,
+    // How tall a ladder is. Read from the collider rather than from a field on
+    // `ParkourLadder`, so a ladder is bounded by the shape the level already
+    // has and there is nothing extra to author or keep in sync.
+    collider_bounds: Query<&ColliderAabb>,
     mut characters: Query<(
         Entity,
         &mut Transform,
@@ -63,11 +67,20 @@ pub fn drive_parkour(
         &mut ParkourInput,
         &mut ParkourReadState,
         &ParkourSweep,
+        Option<&ChildOf>,
     )>,
+    // Every character's parent, for the local/world conversion below. A second
+    // read-only query rather than a `&GlobalTransform` on the one above,
+    // because the entity it needs is the *parent*, which that query cannot
+    // reach.
+    parents: Query<&GlobalTransform>,
     mut commands: Commands,
     // Scratch for the per-character exclusion list, reused rather than
     // reallocated every frame.
     mut excluded: Local<Vec<Entity>>,
+    // Same, for the ladder subtree walk. A separate list because it is filled
+    // while `excluded` is still holding this character's own subtree.
+    mut span_scratch: Local<Vec<Entity>>,
 ) {
     // A long frame (asset load, editor hitch) must not be integrated in one
     // step: at 200 ms a running character would move a metre and a half
@@ -77,9 +90,39 @@ pub fn drive_parkour(
         return;
     }
 
-    for (entity, mut transform, controller, mut motion, mut input, mut read, sweep) in
+    for (entity, mut local, controller, mut motion, mut input, mut read, sweep, child_of) in
         &mut characters
     {
+        // ── Local vs world ───────────────────────────────────────────────
+        //
+        // Everything below is world space: the sweeps, the ray casts, the
+        // ledge probes and the swing anchors are all spatial queries against a
+        // physics world that knows nothing about hierarchies. But `Transform`
+        // is *local* to the parent, and those two are only the same thing
+        // while the character is a scene root.
+        //
+        // They stopped being the same the moment a character came from a scene
+        // instance, which parents its contents under an instance root carrying
+        // the placement. The controller then probed at the character's offset
+        // from that root — for a prefab dropped at (18, 0, 6), a character
+        // standing at the origin probed 18 m away — so it read the wrong
+        // ground, found the wrong ledges, and drove a position that rendered
+        // somewhere else entirely.
+        //
+        // So the loop works on a world-space scratch copy and converts back on
+        // the way out. Nothing between here and the write-back needs to know.
+        let to_world = child_of
+            .and_then(|c| parents.get(c.parent()).ok())
+            .map(|parent| parent.affine());
+        let mut transform = match &to_world {
+            Some(parent) => {
+                let (scale, rotation, translation) =
+                    (*parent * local.compute_affine()).to_scale_rotation_translation();
+                Transform { translation, rotation, scale }
+            }
+            None => *local,
+        };
+
         // The character must not sweep against its own body — including any
         // collider hanging off a child, which is where an imported model
         // normally keeps it.
@@ -189,7 +232,7 @@ pub fn drive_parkour(
                     }
                 }
 
-                if motion.state == ParkourState::Grounded {
+                if motion.state == ParkourState::Grounded && motion.grab_cooldown <= 0.0 {
                     if let Some(ladder) = p.ladder {
                         let cfg = ladder_cfg.get(ladder).copied().unwrap_or_default();
                         let wants =
@@ -311,7 +354,7 @@ pub fn drive_parkour(
                     }
                 }
 
-                if motion.state == ParkourState::Airborne {
+                if motion.state == ParkourState::Airborne && motion.grab_cooldown <= 0.0 {
                     if let Some(ladder) = p.ladder {
                         let cfg = ladder_cfg.get(ladder).copied().unwrap_or_default();
                         if motion.action_buffer > 0.0 || cfg.auto_attach {
@@ -472,12 +515,43 @@ pub fn drive_parkour(
                 face = Some(-grip.wall_normal);
 
                 let up = move_dir.y.clamp(-1.0, 1.0);
-                let climbed = transform.translation
-                    + Vec3::Y * (up * controller.climb_speed * cfg.climb_speed_scale * dt);
+                let mut climbed_y = transform.translation.y
+                    + up * controller.climb_speed * cfg.climb_speed_scale * dt;
+
+                // A ladder is a finite object, so the climb is bounded by the
+                // ladder's own collider and by nothing else. The obvious
+                // alternative — ride the axis and let the ground probe catch
+                // the bottom — is what this used to do, and it dropped the
+                // character clean through the world: a warp does no collision
+                // at all (see the `match warp` below), the probe's grounded
+                // shape cast sets `ignore_origin_penetration`, and one 0.037 m
+                // climb step is enough to put the capsule from *above* a thin
+                // floor slab to *penetrating* it. From that frame on the probe
+                // reports no ground, the guard never fires again, and the
+                // descent is unbounded. Measured: 63 m below a 12 mm ground
+                // plane, still in `ClimbingLadder`, still holding the stick.
+                //
+                // Bounding by the ladder removes the dependency on finding a
+                // floor at all, which is also the right answer for a ladder
+                // over a gap, a hatch, or water.
+                let span = ladder_span(ladder, &world, &collider_bounds, &mut span_scratch);
+                let mut ran_out_below = false;
+                if let Some((bottom, top)) = span {
+                    // Bounds are on the *foot*, which is where the AABB's
+                    // bottom face and the character's soles have to meet.
+                    let lowest = bottom + controller.foot_offset;
+                    let highest = top + controller.foot_offset;
+                    if climbed_y <= lowest {
+                        climbed_y = lowest;
+                        ran_out_below = true;
+                    }
+                    climbed_y = climbed_y.min(highest);
+                }
+
                 // XZ is held at the grip: a ladder is a rail, and letting the
                 // stick push the character sideways off it mid-climb is the
                 // single most common way ladder controllers feel broken.
-                warp = Some(Vec3::new(grip.point.x, climbed.y, grip.point.z));
+                warp = Some(Vec3::new(grip.point.x, climbed_y, grip.point.z));
 
                 let leaving = released || motion.jump_buffer > 0.0;
                 let top_out = p.ledge.filter(|l| {
@@ -510,10 +584,20 @@ pub fn drive_parkour(
                     motion.grab_cooldown = 0.3;
                     motion.enter(ParkourState::Airborne);
                     events.push(ParkourEventKind::LadderDismount);
-                } else if p.grounded && up < -0.05 {
+                } else if (p.grounded || ran_out_below) && up < -0.05 {
                     motion.ladder = None;
                     motion.ladder_grip = None;
-                    motion.enter(ParkourState::Grounded);
+                    // Without this the step off the bottom rung is undone on
+                    // the very next frame: `auto_attach` re-grabs the ladder
+                    // the character is still standing against while the stick
+                    // is still pushed down. The cooldown was already written
+                    // by the jump-off branch above and simply never read.
+                    motion.grab_cooldown = 0.3;
+                    motion.enter(if p.grounded {
+                        ParkourState::Grounded
+                    } else {
+                        ParkourState::Airborne
+                    });
                     events.push(ParkourEventKind::LadderDismount);
                 }
             }
@@ -781,6 +865,20 @@ pub fn drive_parkour(
         for kind in events {
             commands.trigger(ParkourEvent { entity, kind });
         }
+
+        // Back into the parent's space. Written unconditionally rather than
+        // only when it changed: the controller settles a grounded character
+        // onto the surface every frame, so "unchanged" is rare enough that
+        // testing for it would cost more than it saves.
+        *local = match &to_world {
+            Some(parent) => {
+                let (scale, rotation, translation) = (parent.inverse()
+                    * transform.compute_affine())
+                .to_scale_rotation_translation();
+                Transform { translation, rotation, scale }
+            }
+            None => transform,
+        };
     }
 }
 
@@ -822,17 +920,68 @@ fn start_mantle(
     // surface rather than balanced on its edge.
     let inward = -ledge.face_normal.with_y(0.0).normalize_or_zero();
     let end = ledge.top + inward * (controller.radius + 0.15) + Vec3::Y * controller.foot_offset;
+
+    // Scale the move to how far there actually is to climb.
+    //
+    // Both the duration and the arc used to be constants, so stepping onto a
+    // kerb took exactly as long as hauling over a 2.3 m wall and lifted the
+    // character the same 0.35 m above the destination on the way. On a low lip
+    // that reads as a slow, floaty hop over something you should have simply
+    // stepped onto — the overshoot alone can be most of the height being
+    // climbed.
+    //
+    // Floored rather than proportional all the way down: a mantle that shrinks
+    // to nothing becomes a teleport, and the arc still has to clear the lip
+    // itself however shallow the climb.
+    let rise = (end.y - start.y).max(0.0);
+    let reach = (rise / controller.mantle_max_height.max(0.01)).clamp(0.3, 1.0);
+
     motion.traversal = Some(Traversal {
         start,
-        apex: arc_control(start, end, end.y + 0.35),
+        apex: arc_control(start, end, end.y + 0.35 * reach),
         end,
-        duration: controller.mantle_duration,
+        duration: controller.mantle_duration * reach,
         elapsed: 0.0,
         exit,
         exit_velocity: Vec3::ZERO,
     });
     motion.facing = yaw_of(inward);
     motion.enter(ParkourState::Mantling);
+}
+
+/// The vertical extent of a ladder, in world space, as `(bottom, top)`.
+///
+/// The whole subtree is unioned, not just the marked entity: an imported
+/// ladder model carries its collider on a child mesh, and reading only the
+/// entity that holds [`ParkourLadder`] would find nothing there and leave the
+/// climb unbounded — the exact failure this exists to prevent.
+///
+/// `None` when nothing in the subtree has a collider, which leaves the climb
+/// unbounded and falls back to the ground probe. That is a ladder with no
+/// physical presence at all, and there is nothing to measure.
+fn ladder_span(
+    ladder: Entity,
+    world: &ProbeWorld,
+    bounds: &Query<&ColliderAabb>,
+    scratch: &mut Vec<Entity>,
+) -> Option<(f32, f32)> {
+    world.subtree_into(ladder, scratch);
+    let mut span: Option<(f32, f32)> = None;
+    for entity in scratch.iter() {
+        let Ok(aabb) = bounds.get(*entity) else {
+            continue;
+        };
+        // `ColliderAabb::INVALID` is an empty box with min/max at the
+        // infinities, and merging it would swallow the whole span.
+        if !aabb.min.y.is_finite() || !aabb.max.y.is_finite() {
+            continue;
+        }
+        span = Some(match span {
+            Some((lo, hi)) => (lo.min(aabb.min.y), hi.max(aabb.max.y)),
+            None => (aabb.min.y, aabb.max.y),
+        });
+    }
+    span
 }
 
 /// Latch onto a ladder at the current height.

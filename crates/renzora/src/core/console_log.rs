@@ -107,6 +107,10 @@ impl SharedLogBuffer {
 }
 
 /// Global log buffer singleton.
+///
+/// A **handoff queue**, not the log. The Console panel drains it empty every
+/// frame (`ConsoleState::drain_shared_buffer`), so anything that reads it
+/// outside that drain sees nothing, always. Read [`log_history`] instead.
 static GLOBAL_LOG_BUFFER: OnceLock<SharedLogBuffer> = OnceLock::new();
 
 /// Initialize the global log buffer (called once at startup).
@@ -119,6 +123,41 @@ pub fn init_global_log_buffer() -> SharedLogBuffer {
 /// Get the global log buffer.
 pub fn get_global_log_buffer() -> Option<&'static SharedLogBuffer> {
     GLOBAL_LOG_BUFFER.get()
+}
+
+/// What the Console panel is actually showing, readable from anywhere.
+///
+/// [`GLOBAL_LOG_BUFFER`] cannot answer that question and never could: it is a
+/// queue the Console empties on every frame, so by the time any other reader
+/// looks it holds nothing. The MCP `read_console` tool read it and reported an
+/// empty console for the whole life of the editor, which turned a compile error
+/// that *was* being logged, loudly, into a silent one and cost an hour of
+/// looking in the wrong place for it.
+///
+/// So this is the mirror the Console keeps as it ingests: same coalescing and
+/// same cap as the panel, populated from the single point every entry passes
+/// through, and drained by nobody.
+static GLOBAL_LOG_HISTORY: OnceLock<SharedLogBuffer> = OnceLock::new();
+
+/// The console history, created on first use.
+///
+/// No init call, deliberately. An `init_*` that some builds forget to run is
+/// how the buffer above ended up ambiguous, and a reader has no way to tell
+/// "nothing was logged" from "nobody initialized me".
+pub fn log_history() -> &'static SharedLogBuffer {
+    GLOBAL_LOG_HISTORY.get_or_init(SharedLogBuffer::default)
+}
+
+/// Mirror an entry into the history. Called by the Console as it ingests.
+pub fn record_history(entry: LogEntry) {
+    log_history().push(entry);
+}
+
+/// Forget the history, when the Console panel is cleared.
+pub fn clear_log_history() {
+    if let Ok(mut buffer) = log_history().0.lock() {
+        buffer.clear();
+    }
 }
 
 /// Log a message to the global console (can be called from anywhere).

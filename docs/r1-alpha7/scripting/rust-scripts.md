@@ -61,7 +61,9 @@ Exactly when a Lua script does: in play mode, in Simulate, or when that script's
 
 ## Recompiling
 
-Saving a script rebuilds it. The compile runs off the main thread, so the editor does not freeze; only the load and pointer swap happen on the main thread. Compile errors, panics and a missing SDK all appear in the **Console** panel as well as the log — with diagnostics pointing at `scripts/foo.rs`, not at the staged copy the compiler actually saw.
+Saving a script rebuilds it, **wherever in the project it lives** — beside the model it drives, beside the scene that uses it, or in `scripts/`. The compile runs off the main thread, so the editor does not freeze; only the load and pointer swap happen on the main thread. Compile errors, panics and a missing SDK all appear in the **Console** panel as well as the log — with diagnostics pointing at your file, not at the staged copy the compiler actually saw.
+
+> Before `r1-alpha7-nightly-06sep26` the watcher polled `scripts/` alone while the project-open build and the exporter walked the whole tree. A script in any other folder compiled at startup and shipped in an export, but silently stopped rebuilding on save: the edit appeared to do nothing, the previous build stayed loaded, and nothing was logged. If you keep scripts outside `scripts/` and remember relaunching after every edit, that was why.
 
 A script that fails to compile is not retried until you edit it again, so one error does not become a scrolling wall.
 

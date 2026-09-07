@@ -442,7 +442,7 @@ fn compile_and_load(world: &mut World) {
         // rule: a script that does not compile stays quiet until it is edited
         // again rather than re-reporting the same error every poll.
         if let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) {
-            world.resource_mut::<watch::ScriptWatcher>().mark_seen(name.clone(), mtime);
+            world.resource_mut::<watch::ScriptWatcher>().mark_seen(src.clone(), mtime);
         }
         match build_to_path(&sdk, &project, &src).and_then(|p| load_library(&p)) {
             Ok((f, hook, lib)) => {

@@ -26,7 +26,7 @@ use renzora_editor_framework::EditorSelection;
 use renzora_gizmo::collider_gizmo::draw_capsule;
 use renzora_gizmo::OverlayGizmoGroup;
 use renzora_parkour::state::{ParkourMotion, ParkourState};
-use renzora_parkour::ParkourController;
+use renzora_parkour::{ParkourController, ParkourLadder, ParkourSwingAnchor};
 
 /// Standing on walkable ground.
 const COLOR_GROUNDED: Color = Color::srgb(0.30, 0.85, 0.40);
@@ -48,6 +48,38 @@ const COLOR_MANTLE: Color = Color::srgb(1.0, 0.70, 0.25);
 const COLOR_GRAB: Color = Color::srgb(0.40, 0.85, 1.0);
 /// A ledge the controller found but will not act on.
 const COLOR_INERT: Color = Color::srgb(0.55, 0.55, 0.60);
+/// A rope anchor close enough to catch.
+const COLOR_ROPE: Color = Color::srgb(1.0, 0.85, 0.35);
+
+/// How solid a highlighted face is drawn. Gizmos have no fill, so a "face" is a
+/// hatched outline; too dense and it hides the geometry it is marking.
+const HATCH_LINES: usize = 5;
+
+/// Outline a rectangle in space and hatch it, so a *surface* reads as a surface
+/// rather than as four lines that happen to meet.
+///
+/// `right` and `up` are half-extents along the face, so the patch is
+/// `2·right × 2·up` centred on `centre`. Both are already oriented to the face
+/// by the caller — the point of taking them rather than a normal is that the
+/// caller knows which way is "along the wall" and this cannot.
+fn draw_face(gizmos: &mut Gizmos<OverlayGizmoGroup>, centre: Vec3, right: Vec3, up: Vec3, color: Color) {
+    let corners = [
+        centre - right - up,
+        centre + right - up,
+        centre + right + up,
+        centre - right + up,
+    ];
+    for i in 0..4 {
+        gizmos.line(corners[i], corners[(i + 1) % 4], color);
+    }
+    // Hatching, at a lower alpha so the outline stays the dominant edge.
+    let faint = color.with_alpha(0.35);
+    for i in 1..HATCH_LINES {
+        let f = i as f32 / HATCH_LINES as f32;
+        let y = up * (f * 2.0 - 1.0);
+        gizmos.line(centre - right + y, centre + right + y, faint);
+    }
+}
 
 /// Draw the capsule and, once the simulation is running, the probes.
 ///
@@ -64,6 +96,11 @@ pub fn draw_parkour_gizmos(
         &GlobalTransform,
         Option<&ParkourMotion>,
     )>,
+    // Swing anchors are found by proximity rather than by the forward probe,
+    // so they never appear in `ParkourProbe` and have to be looked up here.
+    anchors: Query<(&GlobalTransform, &ParkourSwingAnchor)>,
+    // The ladder the probe found, resolved to something drawable.
+    ladders: Query<&GlobalTransform, With<ParkourLadder>>,
 ) {
     let visibility = settings
         .map(|s| s.collision_gizmo_visibility)
@@ -159,6 +196,41 @@ pub fn draw_parkour_gizmos(
                 COLOR_INERT
             };
             let lip = ledge.top;
+
+            // The surface the action would actually use, highlighted.
+            //
+            // A cross at the lip says *where* the controller found something;
+            // it does not say what you would be standing on or pulling up
+            // onto, which is the question when a mantle aims at the wrong
+            // shelf. `face_normal` points back at the character, so its
+            // horizontal part is the outward direction of the face and the
+            // cross product with up runs along it.
+            let outward = Vec3::new(ledge.face_normal.x, 0.0, ledge.face_normal.z);
+            if outward.length_squared() > 1e-4 {
+                let outward = outward.normalize();
+                let along = outward.cross(Vec3::Y).normalize() * (controller.radius * 2.0);
+                if ledge.thin {
+                    // A rail: mark the top edge you clear, a narrow strip.
+                    draw_face(
+                        &mut gizmos,
+                        lip + Vec3::Y * 0.01,
+                        along,
+                        -outward * 0.12,
+                        ledge_color,
+                    );
+                } else {
+                    // A platform: mark the top face you land on, running back
+                    // away from the character.
+                    draw_face(
+                        &mut gizmos,
+                        lip + Vec3::Y * 0.01 - outward * (controller.radius * 1.2),
+                        along,
+                        -outward * (controller.radius * 1.2),
+                        ledge_color,
+                    );
+                }
+            }
+
             gizmos.line(lip - Vec3::X * 0.15, lip + Vec3::X * 0.15, ledge_color);
             gizmos.line(lip - Vec3::Z * 0.15, lip + Vec3::Z * 0.15, ledge_color);
             // Its height above the feet, which is the number the whole
@@ -181,13 +253,94 @@ pub fn draw_parkour_gizmos(
             }
         }
 
-        // Walls in reach, drawn from chest height where they are sensed.
+        // Walls in reach, drawn from chest height where they are sensed, plus
+        // the patch of wall a run would actually use.
+        //
+        // The line alone answers "is a wall sensed"; it does not answer "which
+        // surface", which is what you need when a run refuses to start beside
+        // something that looks like a perfectly good wall. The patch is drawn
+        // at the sensed distance along the normal, spanning the capsule's
+        // height and about a stride of its length.
         let chest = foot + Vec3::Y * (controller.height * 0.6);
-        for wall in [probe.wall_left, probe.wall_right, probe.wall_front]
-            .into_iter()
-            .flatten()
-        {
+        for (wall, runnable) in [
+            (probe.wall_left, controller.wall_run),
+            (probe.wall_right, controller.wall_run),
+            // A wall ahead is never run along — it is what a wall *jump* comes
+            // off — so it is marked as contact rather than as an opportunity.
+            (probe.wall_front, false),
+        ] {
+            let Some(wall) = wall else { continue };
             gizmos.line(chest, chest - wall.normal * wall.distance, COLOR_WALL);
+
+            let contact = chest - wall.normal * wall.distance;
+            let along = wall.normal.cross(Vec3::Y);
+            if along.length_squared() < 1e-4 {
+                continue;
+            }
+            let color = if runnable { COLOR_WALL } else { COLOR_INERT };
+            draw_face(
+                &mut gizmos,
+                // Lifted a hair off the surface, or the coplanar lines fight
+                // the wall's own faces in the depth buffer.
+                contact + wall.normal * 0.02,
+                along.normalize() * (controller.height * 0.5),
+                Vec3::Y * (controller.height * 0.4),
+                color,
+            );
+        }
+
+        // The ladder in front, marked along its full climbable height. The
+        // probe only reports *that* one was found; without this there is no
+        // way to see which object it resolved to, and a `ParkourLadder` on the
+        // wrong ancestor looks identical to none at all.
+        if let Some(entity) = probe.ladder {
+            if let Ok(ladder) = ladders.get(entity) {
+                let base = ladder.translation();
+                let facing = (origin - base).with_y(0.0);
+                if facing.length_squared() > 1e-4 {
+                    let outward = facing.normalize();
+                    draw_face(
+                        &mut gizmos,
+                        base + outward * 0.05,
+                        outward.cross(Vec3::Y).normalize() * 0.4,
+                        Vec3::Y * (controller.height * 0.75),
+                        COLOR_HELD,
+                    );
+                }
+            }
+        }
+
+        // Rope anchors within grabbing range, with the arc the character would
+        // hang on. Drawn from the anchor's own `max_grab_distance` so a rope
+        // that will not catch looks different from one that will.
+        for (anchor_gt, anchor) in &anchors {
+            let point = anchor_gt.translation();
+            let reach = origin.distance(point);
+            if reach > anchor.max_grab_distance {
+                continue;
+            }
+            let color = if state == ParkourState::Swinging {
+                COLOR_HELD
+            } else {
+                COLOR_ROPE
+            };
+            // The anchor itself.
+            let tick = 0.2;
+            gizmos.line(point - Vec3::X * tick, point + Vec3::X * tick, color);
+            gizmos.line(point - Vec3::Y * tick, point + Vec3::Y * tick, color);
+            gizmos.line(point - Vec3::Z * tick, point + Vec3::Z * tick, color);
+            // The rope, and the circle it would swing through.
+            let rope = if anchor.rope_length > 0.0 {
+                anchor.rope_length
+            } else {
+                reach
+            };
+            gizmos.line(point, origin, color.with_alpha(0.5));
+            gizmos.circle(
+                Isometry3d::new(point, Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+                rope,
+                color.with_alpha(0.35),
+            );
         }
 
         // The arc a traversal is following, sampled along its curve. Seeing the
