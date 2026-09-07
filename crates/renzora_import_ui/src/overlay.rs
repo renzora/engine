@@ -384,8 +384,19 @@ pub(crate) fn close_overlay(world: &mut World) {
 /// window join the ones already converted instead of throwing them away, which
 /// is the whole point of the window staging every file and waiting. A caller
 /// that means to start over (a reconvert) clears `staged` itself first.
+///
+/// Every path into here is supposed to have checked for a project already, since
+/// the destination is `<project>/assets` and there is no import without one. It
+/// still declines rather than unwrapping: this used to be a `resource::<..>()`,
+/// and one caller that had not checked (the auto-import path, reached by
+/// dropping a file on the dashboard) turned a missing project into a panic that
+/// took the whole app down.
 pub(crate) fn run_import(world: &mut World) {
-    let project = world.resource::<CurrentProject>().clone();
+    let Some(project) = world.get_resource::<CurrentProject>().cloned() else {
+        warn!("[import] ignoring an import request: no project is open");
+        world.resource_mut::<ImportOverlayState>().pending_files.clear();
+        return;
+    };
     let state = world.resource::<ImportOverlayState>();
     let files = state.pending_files.clone();
     let settings = state.settings.clone();

@@ -1,6 +1,7 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(import): dropping a file on the dashboard no longer crashes the app.
 - fix(import): a spec-gloss glTF no longer imports as an untextured white model.
 - fix(import): importing a texture, sound, font or script no longer opens the
   model inspector.

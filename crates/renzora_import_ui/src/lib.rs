@@ -98,6 +98,15 @@ fn drain_import_in_place_queue(world: &mut World) {
 ///   `assets/models`.
 /// * **Queueing** — importable dropped files are appended to the pending list;
 ///   `MessageReader` makes each event process exactly once.
+///
+/// **Nothing happens without a project.** An import writes into
+/// `<project>/assets`, so with no [`CurrentProject`](renzora::core::CurrentProject)
+/// there is nowhere for a dropped file to go. That is the dashboard's whole
+/// life: dropping a file on the launcher used to queue it anyway, and the
+/// orchestrator then took the auto-import path straight into `run_import`, which
+/// unwrapped the resource and panicked the app. The events are consumed rather
+/// than left unread so a drop made on the dashboard cannot be delivered late,
+/// against a project the user opened afterwards and never meant it for.
 #[cfg(not(target_arch = "wasm32"))]
 fn collect_dropped_files(
     mut events: MessageReader<bevy::window::FileDragAndDrop>,
@@ -105,9 +114,20 @@ fn collect_dropped_files(
     mut hovering: Option<ResMut<renzora::core::FileDragHovering>>,
     mut scroll_req: Option<ResMut<renzora::core::AssetDropScrollRequest>>,
     cwd: Option<Res<renzora::core::AssetBrowserCwd>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     use bevy::window::FileDragAndDrop;
+
+    if project.is_none() {
+        events.clear();
+        if let Some(h) = hovering.as_mut() {
+            if h.0 {
+                h.0 = false;
+            }
+        }
+        return;
+    }
 
     let mut dropped: Vec<crate::kinds::QueuedAsset> = Vec::new();
     let mut hover_now: Option<bool> = None;
