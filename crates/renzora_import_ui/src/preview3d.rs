@@ -1033,6 +1033,7 @@ fn frame_model(
 /// Selecting *isolates*: everything outside the chosen subtree is hidden, so a
 /// single lamp post in a street scene is actually visible rather than being a
 /// speck the camera has flown to. Selecting nothing restores the whole model.
+#[allow(clippy::too_many_arguments)]
 fn isolate_selection(
     preview: Res<ImportPreview>,
     state: Option<Res<crate::overlay::ImportOverlayState>>,
@@ -1042,6 +1043,9 @@ fn isolate_selection(
     children_q: Query<&Children>,
     aabb_q: Query<(&Aabb, &GlobalTransform)>,
     mesh_q: Query<(), With<Mesh3d>>,
+    handles: Query<&Mesh3d>,
+    gltfs: Res<Assets<Gltf>>,
+    gltf_meshes: Res<Assets<bevy::gltf::GltfMesh>>,
     mut visibility: Query<&mut Visibility>,
     mut last: Local<Option<Option<crate::window::TreeItem>>>,
 ) {
@@ -1095,7 +1099,59 @@ fn isolate_selection(
         }
     }
 
-    // Nodes and meshes do have names, so those resolve by lookup.
+    // A *mesh* resolves by asset handle, not by name.
+    //
+    // Bevy's loader names an entity after the glTF **node**, and a node's name
+    // is routinely nothing like the name of the mesh hanging off it —
+    // `Cube_0` pointing at `Cube.002`. Matching the mesh name against entity
+    // names therefore found nothing for most selections, and the no-match
+    // branch below deliberately restores the whole model rather than blanking
+    // the view, so clicking a mesh looked like it did nothing at all.
+    //
+    // `GltfPrimitive::mesh` is the `Handle<Mesh>` the loader put on the entity,
+    // and `Gltf::meshes` is in document order — the same order `inspect_glb`
+    // walked to build `mesh_list` — so the index maps across exactly. A mesh
+    // used by several nodes matches all of them, which is what selecting *a
+    // mesh* means; they are framed together.
+    if let Some(crate::window::TreeItem::Mesh(mi)) = selection {
+        let ids: Vec<bevy::asset::AssetId<Mesh>> = preview
+            .gltf
+            .as_ref()
+            .and_then(|h| gltfs.get(h))
+            .and_then(|g| g.meshes.get(mi))
+            .and_then(|h| gltf_meshes.get(h))
+            .map(|m| m.primitives.iter().map(|p| p.mesh.id()).collect())
+            .unwrap_or_default();
+        if !ids.is_empty() {
+            let mut renderables = Vec::new();
+            collect_renderables(root, &children_q, &mesh_q, &mut renderables);
+            let targets: Vec<Entity> = renderables
+                .into_iter()
+                .filter(|e| handles.get(*e).is_ok_and(|h| ids.contains(&h.0.id())))
+                .collect();
+            if !targets.is_empty() {
+                set_subtree_visibility(root, false, &children_q, &mut visibility);
+                if let Ok(mut v) = visibility.get_mut(root) {
+                    *v = Visibility::Visible;
+                }
+                for &t in &targets {
+                    for e in ancestors_of(root, t, &children_q) {
+                        if let Ok(mut v) = visibility.get_mut(e) {
+                            *v = Visibility::Visible;
+                        }
+                    }
+                    set_subtree_visibility(t, true, &children_q, &mut visibility);
+                }
+                if let Some((centre, radius)) = union_bounds(&targets, &children_q, &aabb_q) {
+                    aim(&mut orbit, centre, radius);
+                }
+                return;
+            }
+        }
+    }
+
+    // Nodes still resolve by name — that is the one thing the loader does copy
+    // onto the entity it spawns.
     let wanted = selection.and_then(|item| {
         let stats = state.current().and_then(|s| s.stats.as_ref())?;
         match item {
@@ -1259,6 +1315,25 @@ fn set_subtree_visibility(
 }
 
 /// World-space bounding sphere of `root` and everything under it.
+/// Combined bounds of several subtrees, for a mesh that several nodes instance.
+fn union_bounds(
+    roots: &[Entity],
+    children_q: &Query<&Children>,
+    aabb_q: &Query<(&Aabb, &GlobalTransform)>,
+) -> Option<(Vec3, f32)> {
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+    let mut any = false;
+    for &r in roots {
+        if let Some((centre, radius)) = subtree_bounds(r, children_q, aabb_q) {
+            min = min.min(centre - Vec3::splat(radius));
+            max = max.max(centre + Vec3::splat(radius));
+            any = true;
+        }
+    }
+    any.then(|| ((min + max) * 0.5, ((max - min).length() * 0.5).max(1e-4)))
+}
+
 fn subtree_bounds(
     root: Entity,
     children_q: &Query<&Children>,

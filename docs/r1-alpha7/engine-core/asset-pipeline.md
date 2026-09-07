@@ -758,6 +758,26 @@ visible rather than a speck the camera has flown to. It works from the Meshes ta
 as well as the scene tree — the same mesh answering the same question — and
 clearing the selection restores the whole model.
 
+The three levels resolve differently, and the reason is worth knowing:
+
+- A **node** resolves by name. That is the one thing Bevy's loader copies onto
+  the entity it spawns.
+- A **surface** resolves by *ordinal*: glTF primitives carry no name, but Bevy
+  spawns one entity per primitive in order, so the k-th renderable under the
+  scene root is surface k.
+- A **mesh** resolves by **asset handle** — `GltfPrimitive::mesh` is the very
+  `Handle<Mesh>` the loader put on the entity, and `Gltf::meshes` is in document
+  order, the same order `inspect_glb` walked to build its mesh list, so the
+  index maps across exactly.
+
+That last one was a name lookup and it did not work. A node's name is routinely
+nothing like the name of the mesh hanging off it — `Cube_0` pointing at
+`Cube.002` — so most selections matched nothing, and the no-match branch
+deliberately restores the whole model rather than blanking the view. Clicking a
+mesh therefore looked like it did nothing. Matching by handle also picks up every
+node that *instances* the mesh, which is what selecting a mesh means; they are
+framed together.
+
 **Row labels are elided in the middle**, not clipped on the right. Imported names
 are long and differ at the *tail* — a scanned building gives forty meshes called
 `TexturesCom_WindowsBacklit0019_13_M_0`, where every distinguishing character is

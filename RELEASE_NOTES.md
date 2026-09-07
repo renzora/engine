@@ -21,7 +21,8 @@
   progress moves to the bottom of the preview.
 - feat(import): the material preview gets the same environment, lights, grid,
   axis gizmo and zoom buttons as the model preview.
-- feat(import): clicking a mesh in the Meshes tab isolates it in the preview.
+- feat(import): clicking a mesh in the Meshes tab shows that mesh alone, framed
+  close up.
 - fix(import): the Meshes and Materials tabs show names alone, so a long name
   has the row to itself.
 - fix(editor): clicking a folder in a folder picker opens and closes it, not
