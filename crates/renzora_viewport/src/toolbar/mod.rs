@@ -169,19 +169,26 @@ pub(crate) fn header_groups(
 
     // Inline snap pills (move / rotate / scale) — moved here from the per-viewport
     // strip. Translate doubles as the 2D grid snap; rotate / scale are 3D-only.
+    //
+    // The minimums are a hundredth of a unit, a tenth of a degree: a snap step
+    // is a number the user picks and half-unit and quarter-unit grids are the
+    // common ones, so the old floor of 1.0 for all three ruled out most of what
+    // anybody would type — including `SnapSettings`' own 0.25 default for scale.
+    // The last argument is the drag step, sized per axis so a scrub through the
+    // useful part of each range takes about the same travel.
     let snap_gap = gap(commands, 8.0);
     let translate = snap_pair(
-        commands, fonts, SnapToggle::Translate, "arrows-out-cardinal", 1.0, 100.0, 1.0,
+        commands, fonts, SnapToggle::Translate, "arrows-out-cardinal", 0.01, 100.0, 0.25,
         |w| snap_val(w, |s| s.translate_snap),
         |w, v| set_snap(w, |s| &mut s.translate_snap, v),
     );
     let rotate = snap_pair(
-        commands, fonts, SnapToggle::Rotate, "arrow-clockwise", 1.0, 180.0, 1.0,
+        commands, fonts, SnapToggle::Rotate, "arrow-clockwise", 0.1, 180.0, 1.0,
         |w| snap_val(w, |s| s.rotate_snap),
         |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
     );
     let scale = snap_pair(
-        commands, fonts, SnapToggle::Scale, "arrows-out", 1.0, 10.0, 1.0,
+        commands, fonts, SnapToggle::Scale, "arrows-out", 0.01, 10.0, 0.05,
         |w| snap_val(w, |s| s.scale_snap),
         |w, v| set_snap(w, |s| &mut s.scale_snap, v),
     );

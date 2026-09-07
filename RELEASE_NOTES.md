@@ -1,6 +1,8 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- fix(viewport): the toolbar's move / rotate / scale snap steps accept decimals
+  again, so a 0.25 grid is typeable.
 - fix(assets): New Folder in the toolbar opens the rename field, like the menu
   row already did.
 - feat(assets): `project.toml` is hidden in the Assets panel.

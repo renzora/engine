@@ -81,11 +81,18 @@ pub(super) fn snap_pair(
     let pill = renzora_ember::widgets::toolbar_pill(commands, fonts, icon, min, max, step);
     commands.entity(pill.toggle).insert(which);
     commands.entity(pill.root).insert(SnapPillOf(which));
-    // Whole-number steps: the model quantizes to 1, so the readout never shows
-    // decimals and every scrub/wheel/typed value lands on an integer.
-    commands
-        .entity(pill.value)
-        .insert(renzora_ember::widgets::DragSnap(1.0));
+    // **No `DragSnap`.** These carried `DragSnap(1.0)` on the claim that "the
+    // model quantizes to 1", which was never true — `set_snap` assigns the value
+    // straight through, and `SnapSettings`' own default scale snap is **0.25**.
+    // The field therefore could not represent its own default: typing 0.25
+    // rounded to 0 and then clamped up to the old minimum of 1, so touching the
+    // scale snap once lost the setting with no way to type it back.
+    //
+    // A finer snap (0.05, 0.01) only moves the problem: whatever the step, some
+    // legitimate value is not a multiple of it and gets silently rounded, which
+    // is the same bug with a smaller radius. A snap *step* is a number the user
+    // chooses, not one to quantize; the drag `step` per axis is what keeps
+    // scrubbing landing somewhere sensible.
     bind_2way(commands, pill.value, get, move |w, v: &f32| set(w, *v));
     pill.root
 }
