@@ -449,17 +449,34 @@ fn relocalize_on_language_change(
 
 // ── Systems ─────────────────────────────────────────────────────────────────
 
-/// Spawn the chrome + dock area (and trigger the ember dock to build into it).
+/// Spawn the chrome + dock area (and trigger the ember dock to build into it),
+/// but only once the splash is out of the way.
+///
+/// The chrome used to be spawned the moment fonts existed, which meant the whole
+/// editor (top bar, doc tabs, dock, and every panel in it) was laid out and
+/// rendering *underneath* the splash for as long as the splash was up. That is
+/// invisible right up until a panel hoists something out of the shell's stacking
+/// context: `ui_stack_system` treats any node with a `GlobalZIndex` as a stack
+/// root, so the asset browser's drop-to-import overlay (`GlobalZIndex(500)`)
+/// sorted level with the splash root's own 500 and, being pushed later, drew
+/// *over* it. Dragging a file onto the launcher lit up an import target for a
+/// project that isn't open yet.
+///
+/// Gating the spawn fixes that at the source rather than chasing z-indices: no
+/// editor UI exists at all until the editor is what's on screen. Games don't
+/// register `SplashState` and get the chrome immediately, which is the same
+/// `Option<Res<State<..>>>` test `spawn_dock_windows` uses.
 fn manage_shell_root(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
     theme_menu_open: Res<ThemeMenuOpen>,
     asset_server: Res<AssetServer>,
+    splash: Option<Res<State<renzora::SplashState>>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
-    let want = true;
+    let want = splash.is_none_or(|s| *s.get() == renzora::SplashState::Editor);
     let have = !roots.is_empty();
     if want && !have {
         // Wait for fonts so text/icons render from the first frame.
@@ -486,9 +503,14 @@ fn manage_shell_root(
         // from the persisted `Dock.tree`).
         dirty.0 = true;
     } else if !want && have {
+        // Leaving the editor for the splash (a project switch). Same teardown as
+        // `relocalize_on_language_change`, including cancelling a pending dock
+        // rebuild: the dock tree dies with the chrome, and a `rebuild_dock` that
+        // still thinks it has work to do would run against the dead entities.
         for e in &roots {
             commands.entity(e).try_despawn();
         }
+        dirty.0 = false;
     }
 }
 
