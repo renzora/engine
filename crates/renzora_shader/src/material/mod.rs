@@ -1,3 +1,4 @@
+pub mod alpha_override;
 pub mod codegen;
 pub mod graph;
 pub mod instance;

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+use renzora::core::{MaterialAlphaOverride, MaterialRef, MaterialResolved};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
@@ -29,8 +30,33 @@ pub struct PaintLayer {
     pub mask: Vec<f32>,
     pub coverage_threshold: f32,
     pub height_offset: f32,
+    /// Ground covered by one repeat of the material, in metres.
+    ///
+    /// The overlay's UVs are `world / tile_size`, not `0..1` across the
+    /// terrain, because a material is authored against a `0..1` mesh and a
+    /// terrain is 64 m or more of it: stretching one repeat over the whole
+    /// thing turned a paving material into four enormous slabs. Tiling in
+    /// world units also keeps a layer's scale fixed when the terrain is
+    /// resized, and keeps it continuous across chunk seams.
+    ///
+    /// Scenes painted before this field existed have no value for it, and both
+    /// attributes are needed to survive that: `serde` covers the config path,
+    /// and `reflect` covers the scene path, which is the one that matters here.
+    /// A scene reconstructs its components through `FromReflect`, which fails
+    /// *outright* on a field the data doesn't carry unless it is marked
+    /// `#[reflect(default)]` — so a field with only the serde attribute kills
+    /// every scene saved before it, at load, with "couldn't create an instance
+    /// of `Painter`". The same mistake is already recorded on
+    /// `FoliageDensityMap::height_scale`; this one repeated it.
+    ///
+    /// Defaulting to [`DEFAULT_TILE_SIZE`] rather than `0.0` matters twice
+    /// over: the UVs divide by this, so zero sends them to infinity.
+    #[serde(default = "default_tile_size")]
+    #[reflect(default = "default_tile_size")]
+    pub tile_size: f32,
     pub enabled: bool,
-    /// Flipped when `mask`, `height_offset`, or `coverage_threshold` changes.
+    /// Flipped when `mask`, `height_offset`, `coverage_threshold` or
+    /// `tile_size` changes.
     /// Not serialized: a scene-loaded layer has no child mesh yet, and the
     /// rebuild system regenerates any layer-mesh without a `Mesh3d` regardless
     /// of this flag — so `false` after load is correct.
@@ -43,6 +69,18 @@ pub struct PaintLayer {
     pub material_dirty: bool,
 }
 
+/// Metres of ground per material repeat on a new layer.
+///
+/// Two metres is the scale most tiling ground textures are authored at — a
+/// paving slab, a plank, a patch of gravel — so a dropped material lands
+/// looking roughly right and the field is a taste adjustment rather than a
+/// step you have to take before the layer is usable.
+pub const DEFAULT_TILE_SIZE: f32 = 2.0;
+
+fn default_tile_size() -> f32 {
+    DEFAULT_TILE_SIZE
+}
+
 impl PaintLayer {
     pub fn empty(name: impl Into<String>, grid_cells: u32) -> Self {
         let count = (grid_cells * grid_cells) as usize;
@@ -52,6 +90,7 @@ impl PaintLayer {
             mask: vec![0.0; count],
             coverage_threshold: 0.01,
             height_offset: 0.02,
+            tile_size: DEFAULT_TILE_SIZE,
             enabled: true,
             mesh_dirty: true,
             material_dirty: true,
@@ -242,6 +281,17 @@ pub fn sync_painter_layer_meshes_system(
                         Name::new(name),
                         Transform::default(),
                         layer_visibility(i),
+                        // An overlay is a decal on ground that is already
+                        // casting its own shadow, so it has nothing to add —
+                        // and casting was actively wrong. The shadow pass has
+                        // no alpha blending: it rasterizes the *whole* mesh,
+                        // including the outer band where the coverage feather
+                        // has taken the layer's alpha to zero. That drew a
+                        // hard-edged dark halo around every stroke, staircased
+                        // at mask-cell granularity — the paint faded out
+                        // smoothly and its shadow did not, which read as
+                        // pixelated edges on the brush.
+                        bevy::light::NotShadowCaster,
                         // Derived data: the mask lives on the serialized
                         // `Painter`; these meshes must not be saved into the
                         // scene (they'd load back as zombie children with no
@@ -341,6 +391,14 @@ fn build_layer_mesh_from_terrain(
     // resize system hasn't caught up with yet).
     let max_axis_w = terrain.chunks_x.max(terrain.chunks_z) as f32 * terrain.chunk_size;
     let cell = max_axis_w / (grid_size.saturating_sub(1)).max(1) as f32;
+    // Guarded because it divides the UVs: a layer deserialized from a scene
+    // that predates the field, or one a stray edit put at zero, would produce
+    // infinities and a mesh that renders as nothing.
+    let tile = if layer.tile_size > 1e-3 {
+        layer.tile_size
+    } else {
+        DEFAULT_TILE_SIZE
+    };
 
     let vertex_count = (grid_size * grid_size) as usize;
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(vertex_count);
@@ -428,8 +486,9 @@ fn build_layer_mesh_from_terrain(
             // than erroring. `generate_tangents()` would work but costs a
             // full mikktspace pass on a grid that rebuilds every frame of a
             // stroke, and it isn't needed: UVs here are a plain linear
-            // function of (x, z), so dP/du is exactly (1, dh/dx, 0) — and
-            // that is already perpendicular to (-dh/dx, 1, -dh/dz), so no
+            // function of (x, z), so dP/du is `tile * (1, dh/dx, 0)` — the
+            // tiling scale drops out of a normalized tangent, and the
+            // direction is already perpendicular to (-dh/dx, 1, -dh/dz), so no
             // Gram-Schmidt step either. `w = -1` because the bitangent
             // `cross(N, T) * w` has to point along +Z, the direction v grows.
             let t = Vec3::new(1.0, dx, 0.0).normalize_or_zero();
@@ -440,10 +499,11 @@ fn build_layer_mesh_from_terrain(
             let lift = (layer.height_offset + index_lift) / n.y.max(min_slope_cos);
             let wy = sample_height_f(vx_f, vz_f) + lift;
             positions.push([wx, wy, wz]);
-            uvs.push([
-                gx as f32 / (grid_size - 1).max(1) as f32,
-                gz as f32 / (grid_size - 1).max(1) as f32,
-            ]);
+            // World-space tiling, not `0..1` across the terrain — see
+            // `PaintLayer::tile_size`. `wx`/`wz` rather than the grid index so
+            // the repeat is the same size on a 1-chunk terrain and a 64-chunk
+            // one, and lines up across the seam between them.
+            uvs.push([wx / tile, wz / tile]);
             let m = layer.mask[(gz * grid_size + gx) as usize];
             colors.push([1.0, 1.0, 1.0, vertex_alpha(m)]);
         }
@@ -521,158 +581,91 @@ pub fn resolve_material_key(path: &str, project: Option<&renzora::core::CurrentP
         .to_string()
 }
 
-/// Loads each layer's `.material` file and (re)builds the
-/// `StandardMaterial` on its mesh-entity. Runs whenever a layer is marked
-/// `material_dirty` or has no material yet.
+/// Point each layer-mesh at its layer's `.material`, and give a layer that has
+/// none the placeholder green.
+///
+/// Compiling the material is `renzora_shader`'s job, and this hands it over by
+/// putting a [`MaterialRef`] on the mesh: a `.material` is a node graph, and a
+/// procedural one (waves, noise, anything animated) compiles to a WGSL
+/// fragment shader of its own that nothing here could produce. What this used
+/// to do instead was read the graph's JSON and scrape whatever texture paths
+/// it found onto a plain `StandardMaterial` — fine for an imported PBR
+/// material, and for a procedural graph it found no textures at all and left
+/// the material's `base_color` at white. Painting an ocean layer produced a
+/// white blob.
+///
+/// [`MaterialAlphaOverride::BLEND`] is the other half of that handover. The
+/// layer mesh feathers its coverage through per-vertex alpha (see
+/// [`build_layer_mesh_from_terrain`]) and needs the material blended to show
+/// it, but the transparency of a lake's material is the lake's business, not
+/// the overlay's — so the overlay asks for its own alpha mode rather than the
+/// file being edited to suit it.
 pub fn apply_painter_layer_materials_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>,
-    vfs: Res<renzora::core::VirtualFileReader>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    mut placeholder: Local<Option<Handle<StandardMaterial>>>,
     mut painter_query: Query<&mut Painter>,
     mesh_query: Query<(
         Entity,
         &PainterLayerMesh,
         Option<&MeshMaterial3d<StandardMaterial>>,
+        Option<&MaterialRef>,
     )>,
 ) {
-    for (mesh_entity, marker, existing_mat) in mesh_query.iter() {
+    for (mesh_entity, marker, existing_mat, existing_ref) in mesh_query.iter() {
         let Ok(mut painter) = painter_query.get_mut(marker.painter) else {
             continue;
         };
         // Deref-read first — see the matching note in the rebuild system.
-        let needs_rebuild = painter
-            .layers
-            .get(marker.layer_index)
-            .is_some_and(|l| l.material_dirty || existing_mat.is_none());
+        // "Has no material yet" now means neither of the two ways a layer can
+        // carry one; testing only for the `StandardMaterial` would re-run
+        // every frame for a layer whose graph compiled to a `GraphMaterial`.
+        let needs_rebuild = painter.layers.get(marker.layer_index).is_some_and(|l| {
+            l.material_dirty || (existing_mat.is_none() && existing_ref.is_none())
+        });
         if !needs_rebuild {
             continue;
         }
         let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
             continue;
         };
-        let mat = build_material(
-            &layer.material_path,
-            &asset_server,
-            &vfs,
-            project.as_deref(),
-        );
-        let handle = materials.add(mat);
-        commands.entity(mesh_entity).insert(MeshMaterial3d(handle));
+        match layer.material_path.as_deref() {
+            Some(path) => {
+                // Dropping `MaterialResolved` is how any crate asks for a
+                // re-resolve, and the path is exactly what may have changed.
+                commands
+                    .entity(mesh_entity)
+                    .insert((
+                        MaterialRef(path.to_string()),
+                        MaterialAlphaOverride::BLEND,
+                    ))
+                    .remove::<MaterialResolved>();
+            }
+            None => {
+                // Layers start empty — the user drops a `.material` on one to
+                // give it its real look. Until then, plain grass green so
+                // strokes are visible against the checkerboard. One asset
+                // shared by every such layer.
+                let handle = placeholder
+                    .get_or_insert_with(|| {
+                        materials.add(StandardMaterial {
+                            base_color: Color::srgb(0.36, 0.55, 0.30),
+                            perceptual_roughness: 0.85,
+                            alpha_mode: AlphaMode::Blend,
+                            ..Default::default()
+                        })
+                    })
+                    .clone();
+                commands
+                    .entity(mesh_entity)
+                    .insert(MeshMaterial3d(handle))
+                    .remove::<MaterialRef>()
+                    .remove::<MaterialResolved>()
+                    .remove::<MaterialAlphaOverride>();
+            }
+        }
         layer.material_dirty = false;
     }
-}
-
-fn build_material(
-    material_path: &Option<String>,
-    asset_server: &AssetServer,
-    vfs: &renzora::core::VirtualFileReader,
-    project: Option<&renzora::core::CurrentProject>,
-) -> StandardMaterial {
-    // Alpha-blended: the layer mesh carries per-vertex alpha that feathers
-    // coverage edges (see `build_layer_mesh_from_terrain`); an opaque
-    // material would put the hard staircase right back.
-    //
-    // Layers start empty — the user drops a `.material` on the layer to give
-    // it its real look. Until then, every layer defaults to plain grass green
-    // so strokes are visible against the checkerboard.
-    let Some(path) = material_path.as_deref() else {
-        return StandardMaterial {
-            base_color: Color::srgb(0.36, 0.55, 0.30),
-            perceptual_roughness: 0.85,
-            alpha_mode: AlphaMode::Blend,
-            ..Default::default()
-        };
-    };
-    let key = resolve_material_key(path, project);
-    let Some(json) = vfs.read_string(&key) else {
-        warn!("terrain paint layer: couldn't read material '{key}' (from '{path}')");
-        return StandardMaterial {
-            base_color: Color::srgb(0.9, 0.3, 0.6),
-            perceptual_roughness: 0.85,
-            alpha_mode: AlphaMode::Blend,
-            ..Default::default()
-        };
-    };
-    let (albedo, normal, arm) =
-        extract_layer_textures_from_json(&json).unwrap_or((None, None, None));
-    let mut mat = StandardMaterial {
-        base_color: Color::WHITE,
-        perceptual_roughness: 0.85,
-        metallic: 0.0,
-        alpha_mode: AlphaMode::Blend,
-        ..Default::default()
-    };
-    if let Some(ref p) = albedo {
-        mat.base_color_texture = Some(asset_server.load(p.clone()));
-    }
-    if let Some(ref p) = normal {
-        mat.normal_map_texture = Some(asset_server.load(p.clone()));
-    }
-    if let Some(ref p) = arm {
-        mat.metallic_roughness_texture = Some(asset_server.load(p.clone()));
-        mat.occlusion_texture = Some(asset_server.load(p.clone()));
-    }
-    mat
-}
-
-fn extract_layer_textures_from_json(
-    json: &str,
-) -> Result<(Option<String>, Option<String>, Option<String>), serde_json::Error> {
-    let v: serde_json::Value = serde_json::from_str(json)?;
-    let nodes = v["nodes"].as_array();
-    let connections = v["connections"].as_array();
-    let (Some(nodes), Some(connections)) = (nodes, connections) else {
-        return Ok((None, None, None));
-    };
-    let output = nodes.iter().find(|n| {
-        n["node_type"]
-            .as_str()
-            .is_some_and(|t| t.starts_with("output/"))
-    });
-    let Some(output) = output else {
-        return Ok((None, None, None));
-    };
-    let output_id = output["id"].as_u64().unwrap_or(0);
-    let trace = |pin: &str| -> Option<String> {
-        let conn = connections.iter().find(|c| {
-            c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin)
-        })?;
-        let from = conn["from_node"].as_u64()?;
-        let src = nodes.iter().find(|n| n["id"].as_u64() == Some(from))?;
-        let t = src["node_type"].as_str()?;
-        if !t.contains("texture") {
-            return None;
-        }
-        let vals = src.get("input_values")?.as_object()?;
-        for (_, v) in vals {
-            if let Some(s) = v.as_str() {
-                if !s.is_empty() {
-                    return Some(s.to_string());
-                }
-            }
-            // `PinValue` (the material-graph one in `renzora_shader`) is an
-            // externally-tagged enum, so a texture pin serializes as
-            // `{"TexturePath": "..."}`. There has never been a `Texture`
-            // variant — looking for one meant every textured material came
-            // back with no maps at all and the layer rendered flat white.
-            if let Some(obj) = v.as_object() {
-                if let Some(tex) = obj.get("TexturePath").and_then(|v| v.as_str()) {
-                    if !tex.is_empty() {
-                        return Some(tex.to_string());
-                    }
-                }
-            }
-        }
-        None
-    };
-    let albedo = trace("base_color");
-    let normal = trace("normal");
-    let arm = trace("metallic")
-        .or_else(|| trace("roughness"))
-        .or_else(|| trace("ao"));
-    Ok((albedo, normal, arm))
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -837,5 +830,42 @@ pub fn reorder_layers(
     // implicit via the Vec order (top-down alpha later if we add it).
     for layer in painter.layers.iter_mut() {
         layer.mesh_dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scene saved before a field existed has to keep loading.
+    ///
+    /// `#[serde(default)]` is not enough on its own: scenes reconstruct their
+    /// components through `FromReflect`, and that fails outright on an absent
+    /// field unless it also carries `#[reflect(default)]`. Shipping
+    /// `tile_size` with only the serde attribute panicked every existing
+    /// terrain at load with "couldn't create an instance of `Painter`", which
+    /// is the second time this crate has made that exact mistake — see
+    /// `foliage::data`'s matching test.
+    #[test]
+    fn a_layer_without_the_tile_size_field_reconstructs_by_reflection() {
+        use bevy::reflect::structs::DynamicStruct;
+        use bevy::reflect::FromReflect;
+
+        // What an old scene deserializes to: the fields `PaintLayer` had when
+        // it was saved, and nothing for the one added since.
+        let mut old = DynamicStruct::default();
+        old.insert("name", "Layer 1".to_string());
+        old.insert("material_path", Some("water.material".to_string()));
+        old.insert("mask", vec![0.0f32; 4]);
+        old.insert("coverage_threshold", 0.01f32);
+        old.insert("height_offset", 0.02f32);
+        old.insert("enabled", true);
+
+        let layer = PaintLayer::from_reflect(&old)
+            .expect("a missing tile size must default, not fail the load");
+        assert_eq!(layer.name, "Layer 1");
+        assert_eq!(layer.tile_size, DEFAULT_TILE_SIZE);
+        // Zero here would divide the overlay's UVs to infinity.
+        assert!(layer.tile_size > 0.0);
     }
 }

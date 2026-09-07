@@ -6,8 +6,8 @@ Generate, sculpt and paint heightmap terrain in the editor with live gizmos, the
 
 Terrain is two crates working together:
 
-- **`renzora_terrain`** — the runtime. `TerrainPlugin` registers the data types, builds chunk meshes, composes heightmaps, uploads splatmaps, and scatters foliage. It self-registers with `renzora::add!(TerrainPlugin)`, so terrain renders in **both the editor and your shipped game**. It also owns the shared [brush cursor](#the-brush-cursor) (`brush_gizmo`), which is not a tool but a drawing routine the three separate editor tools all need.
-- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the [Generate](#generating-a-landscape) region gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
+- **`renzora_terrain`** — the runtime. `TerrainPlugin` registers the data types, builds chunk meshes, composes heightmaps, uploads splatmaps, and scatters foliage. It self-registers with `renzora::add!(TerrainPlugin)`, so terrain renders in **both the editor and your shipped game**.
+- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the brush gizmo, the [Generate](#generating-a-landscape) region gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
 
 A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`TerrainChunkData`) per tile. Each chunk stores a square grid of heights normalized to `[0, 1]`; the chunk's `TerrainData` maps that range onto world `min_height..max_height`. Sculpting writes the chunk's `base_heights`; a composition pass adds any per-layer carve deltas to produce the final `heights` the mesh and collider read.
 
@@ -49,7 +49,7 @@ To see how much of that band you're actually using, read the **Height** and **Ra
 
 > The *structural* fields — grid size, chunk size and resolution — are deliberately **not** live inspector fields. A scrubbable field writes on every tick of the drag, and each write respawns every chunk with a fresh trimesh collider, so dragging the grid from 1 to 8 built every size in between. They live in the overlay instead, which stages the edit and applies it once. What's left in the inspector is the set that rebuilds in place, where a live drag is cheap.
 
-A **Layers** section sits below it, editing the *active* paint layer: a layer picker, **Name**, **Material** (`.material` drop), **Height Offset**, **Coverage Threshold**, an **Enabled** toggle (hides that layer's overlay), plus **Add Layer** / **Remove Layer** buttons. It's the same data the Terrain Tools panel's layer list edits.
+A **Layers** section sits below it, editing the *active* paint layer: a layer picker, **Name**, **Material** (`.material` drop), **Tile Size**, **Height Offset**, **Coverage Threshold**, an **Enabled** toggle (hides that layer's overlay), plus **Add Layer** / **Remove Layer** buttons. It's the same data the Terrain Tools panel's layer list edits.
 
 ## The Terrain Settings overlay
 
@@ -217,19 +217,16 @@ The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape onc
 
 ### The brush cursor
 
-All three brush tools (sculpt, surface paint and [Paint Foliage](#foliage)) draw the same cursor, and all three find it the same way: a **mesh raycast** against the chunk meshes, filtered to chunks only so paint-layer overlays and grass don't swallow the ray and leave the brush dead over ground you've already worked on.
+Both terrain brush tools draw the same cursor, and both find it the same way: a **mesh raycast** against the chunk meshes, filtered to chunks only so paint-layer overlays and grass don't swallow the ray and leave the brush dead over ground you've already worked on.
 
-The cursor is a **filled patch**, and all of it rides the surface: every point in it samples the heightmap, so the cursor lies on a hillside instead of hovering flat above it:
+The cursor is two rings, and both ride the surface — every point around them samples the heightmap, so the cursor lies on a hillside instead of hovering flat above it:
 
-- the **fill**, shaded by the weight the stroke will actually apply: solid through the full-strength core, fading out along the brush's own falloff curve. That is the part you aim, so that is the part you can see;
 - the **outer ring** at the brush radius, drawn in the shape you picked (circle, square or diamond);
-- the **inner ring** at the edge of the full-strength core, the boundary the fill starts fading at.
+- the **inner ring** at the edge of the full-strength core — the gap between the two is the falloff band, so you can see how soft the brush is rather than reading it off a slider.
 
 The colour says which brush is in hand.
 
-> Bevy gizmos can't fill a polygon, so the patch is concentric rings packed tightly enough to read as one surface. How many is chosen from the brush's size **on screen**, so it stays solid when you lean into it and doesn't waste rings when the brush is a few pixels across.
-
-> Paint and foliage used to draw a flat circle here that ignored the shape and falloff they let you set, which meant discovering the brush by painting and undoing. They draw the shared cursor now. The code is `renzora_terrain::brush_gizmo` (in the runtime crate, because all three editor tools depend on it); the **Stamp** brush adds its wireframe grid preview on top of the same outer ring.
+> Paint used to draw a flat circle here that ignored both the shape and the falloff it lets you set, which meant discovering the brush by painting and undoing. It draws the shared cursor now. The code is `renzora_terrain_editor::brush_gizmo`; the **Stamp** brush adds its wireframe grid preview on top of the same outer ring.
 
 ### Brush settings
 
@@ -248,7 +245,7 @@ Per-brush additions, shown only for the brush that uses them:
 - **Terrace** — **Steps** and **Sharpness**.
 - **Stamp** — **Blend**, **Rotation** and **Height Scale** on the toolbar; the preset picker and **Load PNG…** in the panel.
 
-The gizmo draws a falloff-shaded fill plus its outer and inner rings (and a vertex-density grid preview for the Stamp brush).
+The gizmo draws an outer ring plus an inner falloff ring (and a vertex-density grid preview for the Stamp brush).
 
 ### Undo / redo
 
@@ -282,7 +279,15 @@ Each layer is pure data: a coverage **mask** (one cell per terrain vertex), an o
 
 Layers render as **overlay meshes**: where a layer's mask exceeds its coverage threshold, matching terrain triangles are emitted slightly above the surface (`height_offset`, default `0.02`), following the sculpted heights as you edit. The overlay meshes are derived data — hidden from the hierarchy panel and never saved; the masks on the `Painter` are what persists.
 
-In the **Layers** section: click a row to select the active layer, use **Add Layer** (hidden once 8 layers exist), and drop a **`.material`** asset onto the active layer's drop zone to drive its appearance (albedo / normal / ARM texture paths are extracted from the material graph). The ✕ clears the assignment, reverting the layer to a neutral grey.
+Coverage feathers out through **per-vertex alpha** rather than a hard triangle cutoff, so a brush edge reads as falloff and not as a staircase of grid cells. An overlay is therefore `NotShadowCaster`: it is a decal on ground that already casts its own shadow, and the shadow pass has no alpha blending — it would rasterize the whole mesh, faded rim included, and ring every stroke with a hard-edged dark halo staircased at mask-cell granularity. Overlays still *receive* shadows, so a painted path darkens under a tree.
+
+In the **Layers** section: click a row to select the active layer, use **Add Layer** (hidden once 8 layers exist), and drop a **`.material`** asset onto the active layer's drop zone to drive its appearance. The ✕ clears the assignment, reverting the layer to the placeholder green.
+
+An overlay wears the **whole** material, not an approximation of it. The layer mesh gets a `MaterialRef` and the [material resolver](/docs/r1-alpha7/api/material) compiles it exactly as it would for any other mesh, so a procedural graph — waves, noise, panning UVs, anything animated — renders on the terrain the same as it does on a plane. The overlay does override one thing: it asks for **alpha blending** (`MaterialAlphaOverride`) regardless of what the `.material` declares, because its coverage feathers out through per-vertex alpha at the brush edge and an opaque material would draw that edge as a hard staircase. The material file itself is untouched, and every other mesh using it keeps the transparency it was authored with.
+
+> Overlays used to read the material's JSON and copy whatever albedo / normal / ARM texture paths they found onto a plain `StandardMaterial`. That worked for an imported PBR material and found nothing at all in a procedural one, so painting a water or ocean layer produced a flat white blob.
+
+**Tile Size** is how much ground one repeat of the material covers, in metres — default `2`. Overlay UVs are `world position / tile size`, not `0..1` across the terrain, for three reasons: a material is authored against a `0..1` mesh and a terrain is 64 m or more of it, so stretching one repeat over the whole thing turns a paving material into a handful of enormous slabs; tiling in world units keeps a layer's scale fixed when the terrain is resized; and it stays continuous across chunk seams. Set it to the real-world size of the thing the material depicts. The UVs are baked into the overlay mesh, so changing it rebuilds that mesh rather than the material — and a layer painted before the field existed loads at the default rather than at zero.
 
 Paint strokes, including a stroke that auto-created a layer, undo/redo as single steps alongside sculpt strokes.
 
@@ -291,7 +296,7 @@ Paint strokes, including a stroke that auto-created a layer, undo/redo as single
 - **Size** (`0.01`–`0.5`) — brush radius as a **fraction of a chunk side** (the scroll wheel resizes within that range), so the brush scales with the terrain rather than with a metre count.
 - **Strength** (`0.01`–`1.0`), **Falloff** (`0`–`1`), and **Shape** (Circle / Square / Diamond).
 
-All three show in the [brush cursor](#the-brush-cursor), which is the same surface-following, falloff-shaded one the sculpt brushes use.
+All three show in the [brush cursor](#the-brush-cursor), which is the same surface-following one the sculpt brushes use.
 
 ## Foliage
 
@@ -321,8 +326,6 @@ With **Paint Foliage** active, the same left-edge [tool shelf](#the-tool-shelf-a
 - **A numbered button per foliage type** — 1 to 8, matching the numbering in the panel's Foliage Types list. A button appears only once that type exists, and its tooltip shows the type's current name, so renaming a type in the panel renames it on the shelf.
 
 Eight is the ceiling: a density map carries eight weights per texel, so the panel's **Add** button disappears at eight types. Shelf and panel write the same `FoliagePaintSettings` — click either.
-
-Foliage draws the shared [brush cursor](#the-brush-cursor), so its Size, Shape and Falloff show in the viewport the same way the sculpt and paint ones do.
 
 ### Foliage type settings
 

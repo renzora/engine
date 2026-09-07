@@ -7,7 +7,6 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use renzora::core::EditorCamera;
 use renzora::viewport_types::ViewportState;
 use renzora_editor_framework::EditorSelection;
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
@@ -18,7 +17,7 @@ use renzora_terrain::painter::{
     painter_grid_size, push_layer, remove_layer, PaintLayer, Painter, PainterLayerMesh,
 };
 
-use renzora_terrain::brush_gizmo::{self, BrushCursor};
+use crate::brush_gizmo;
 
 /// Drain the panel's pending layer commands into the target terrain's
 /// `Painter`, and keep `Painter.active_layer` following the panel's row
@@ -102,7 +101,6 @@ pub fn painter_command_system(
 pub fn brush_layer_paint_system(
     paint_state: Res<SurfacePaintState>,
     paint_settings: Res<SurfacePaintSettings>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     chunk_query: Query<&TerrainChunkOf>,
     chunk_heights: Query<(&TerrainChunkData, &TerrainChunkOf)>,
     mut painter_query: Query<(&mut Painter, &TerrainData, &GlobalTransform)>,
@@ -129,23 +127,13 @@ pub fn brush_layer_paint_system(
                     // the mask it writes into is per-chunk and resolution
                     // independent, so the brush scales with the terrain.
                     let world_radius = paint_settings.brush_radius * terrain.chunk_size;
-                    let cursor = BrushCursor {
-                        center: hover_pos,
-                        radius: world_radius,
-                        shape: paint_settings.brush_shape,
-                        falloff: paint_settings.brush_falloff,
-                        falloff_type: paint_settings.falloff_type,
-                        color: paint_color(paint_settings.brush_type),
-                        pixels_per_unit: camera_query
-                            .iter()
-                            .next()
-                            .and_then(|(cam, cam_tf)| {
-                                brush_gizmo::pixels_per_unit(cam, cam_tf, hover_pos)
-                            }),
-                    };
                     brush_gizmo::draw_brush_cursor(
                         &mut gizmos,
-                        &cursor,
+                        hover_pos,
+                        world_radius,
+                        paint_settings.brush_shape,
+                        paint_settings.brush_falloff,
+                        paint_color(paint_settings.brush_type),
                         terrain,
                         terrain_gt.translation(),
                         &chunks,

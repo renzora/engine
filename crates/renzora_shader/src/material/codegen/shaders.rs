@@ -171,7 +171,14 @@ pub(crate) fn build_pbr_shader(
     if is_connected("base_color") {
         let e = resolved.get("base_color").unwrap();
         let e = scaled("base_color", e, 4);
-        mutations.push((feeder("base_color"), format!("    pbr_input.material.base_color = {e};")));
+        // Folded back in, because assigning over `base_color` throws away the
+        // vertex-color modulation `pbr_input_from_standard_material` already
+        // applied. The trivial (plain StandardMaterial) path keeps it — Bevy's
+        // own shader does the multiply — so a graph that crossed the
+        // trivial/procedural boundary silently stopped tinting. `mat_uv`'s
+        // sibling alias is `vec4(1.0)` on a mesh with no COLOR attribute, so
+        // this is a no-op for everything else.
+        mutations.push((feeder("base_color"), format!("    pbr_input.material.base_color = ({e}) * mat_vertex_color;")));
     }
     if is_connected("metallic") {
         let e = resolved.get("metallic").unwrap();
@@ -202,7 +209,10 @@ pub(crate) fn build_pbr_shader(
         // on this pin. A clear-coat authored at 0.243 that ignores its factor
         // renders solid and hides whatever it was meant to sit over.
         let e = scaled("alpha", e, 1);
-        mutations.push((feeder("alpha"), format!("    pbr_input.material.base_color.a = {e};")));
+        // Same reason as `base_color` above: this assignment lands after it,
+        // so the vertex alpha has to be re-applied here or a graph that wires
+        // both pins loses it again.
+        mutations.push((feeder("alpha"), format!("    pbr_input.material.base_color.a = ({e}) * mat_vertex_color.a;")));
     }
     if is_connected("reflectance") {
         let e = resolved.get("reflectance").unwrap();
@@ -394,13 +404,19 @@ pub(crate) fn build_unlit_shader(
     if color_connected {
         let e = resolved.get("color").unwrap();
         let start = shader.matches('\n').count() as u32 + 1;
-        shader.push_str(&format!("    pbr_input.material.base_color = {e};\n"));
+        // Vertex color folded back in for the same reason as the surface
+        // path — see the `base_color` mutation in `build_surface_shader`.
+        shader.push_str(&format!(
+            "    pbr_input.material.base_color = ({e}) * mat_vertex_color;\n"
+        ));
         extra.push((feeder("color"), start, start));
     }
     if alpha_connected {
         let e = resolved.get("alpha").unwrap();
         let start = shader.matches('\n').count() as u32 + 1;
-        shader.push_str(&format!("    pbr_input.material.base_color.a = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.base_color.a = ({e}) * mat_vertex_color.a;\n"
+        ));
         extra.push((feeder("alpha"), start, start));
     }
 

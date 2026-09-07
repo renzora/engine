@@ -57,6 +57,23 @@ ParamValue::Int(i32)
 ParamValue::Bool(bool)
 ```
 
+### Overriding the alpha mode per entity
+
+`MaterialAlphaOverride` (also `renzora::MaterialAlphaOverride`) makes one entity render a shared material at a different transparency than the `.material` file declares:
+
+```rust
+commands.entity(mesh).insert(MaterialAlphaOverride::BLEND);
+// or: MaterialAlphaOverride { mode: PbrAlphaMode::Mask, cutoff: 0.5 }
+```
+
+This is for **overlays** — a [terrain paint layer](/docs/r1-alpha7/editor/terrain#painting-layers) is the built-in case. An overlay wears the same rock or water material a cliff or a lake does, but fades out at its edges through per-vertex alpha, so it needs blending whether or not the material was authored transparent. Editing the material would change it everywhere; this changes it here.
+
+The resolver honours the override by **cloning** the compiled material and setting the alpha mode on the clone. Every handle inside is shared with the master (textures, the compiled shader, the parameter block), so a variant costs one asset entry and no recompile, and one variant is shared by every entity asking for the same material at the same mode. Editing and saving the material re-derives it.
+
+### Vertex colors
+
+A mesh with a `COLOR` attribute has its vertex color multiplied into `base_color`, the same as Bevy's `StandardMaterial` — including when the graph wires the `base_color` pin itself. This is what lets an overlay mesh carry its coverage in vertex alpha.
+
 ## The `.material` file format
 
 A master `.material` file is a JSON-serialized `MaterialGraph`:

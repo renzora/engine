@@ -16,7 +16,7 @@ use renzora_terrain::painter::{PaintLayer, Painter};
 use renzora_terrain::sculpt;
 use renzora_terrain::undo::TerrainUndoEntry;
 
-use renzora_terrain::brush_gizmo::{self, BrushCursor};
+use crate::brush_gizmo;
 
 // ── Viewport ray ─────────────────────────────────────────────────────────────
 
@@ -205,7 +205,6 @@ pub fn terrain_sculpt_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut gizmos: Gizmos,
@@ -238,9 +237,6 @@ pub fn terrain_sculpt_system(
                             &chunks,
                         );
                     } else {
-                        let ppu = camera_query.iter().next().and_then(|(cam, cam_tf)| {
-                            brush_gizmo::pixels_per_unit(cam, cam_tf, hover_pos)
-                        });
                         draw_brush_gizmo(
                             &mut gizmos,
                             hover_pos,
@@ -248,7 +244,6 @@ pub fn terrain_sculpt_system(
                             terrain_data,
                             terrain_transform.translation(),
                             &chunks,
-                            ppu,
                         );
                     }
                 }
@@ -333,8 +328,8 @@ pub fn terrain_brush_scroll_system(
 
 // ── Brush gizmo ──────────────────────────────────────────────────────────────
 
-/// The sculpt brush cursor. The filled patch itself is [`brush_gizmo`], shared
-/// with the paint and foliage tools: only the colour is this tool's own.
+/// The sculpt brush cursor. The ring itself is [`crate::brush_gizmo`], shared
+/// with the paint tool — only the colour is this tool's own.
 #[allow(clippy::too_many_arguments)]
 fn draw_brush_gizmo(
     gizmos: &mut Gizmos,
@@ -343,18 +338,18 @@ fn draw_brush_gizmo(
     terrain: &TerrainData,
     terrain_pos: Vec3,
     chunks: &[&TerrainChunkData],
-    pixels_per_unit: Option<f32>,
 ) {
-    let cursor = BrushCursor {
-        center: hover_pos,
-        radius: settings.brush_radius,
-        shape: settings.brush_shape,
-        falloff: settings.falloff,
-        falloff_type: settings.falloff_type,
-        color: brush_color(settings.brush_type),
-        pixels_per_unit,
-    };
-    brush_gizmo::draw_brush_cursor(gizmos, &cursor, terrain, terrain_pos, chunks);
+    brush_gizmo::draw_brush_cursor(
+        gizmos,
+        hover_pos,
+        settings.brush_radius,
+        settings.brush_shape,
+        settings.falloff,
+        brush_color(settings.brush_type),
+        terrain,
+        terrain_pos,
+        chunks,
+    );
 }
 
 /// Draw a stamp preview gizmo — shows the stamp shape as a raised wireframe grid

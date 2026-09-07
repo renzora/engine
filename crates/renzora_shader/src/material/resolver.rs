@@ -174,7 +174,20 @@ impl Plugin for MaterialResolverPlugin {
             .register_type::<super::material_ref::MaterialOverrides>()
             .register_type::<super::material_ref::ParamValue>()
             .init_resource::<renzora::diagnostics::MaterialCacheCounts>()
-            .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain());
+            .init_resource::<super::alpha_override::AlphaVariantCache>()
+            .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain())
+            // Overlays (terrain paint layers) wear a shared material at their
+            // own alpha mode; deriving the variant has to see the handle the
+            // resolver just attached, hence the explicit `after` (which is
+            // also what gets a command sync point inserted between the two).
+            .add_systems(
+                Update,
+                (
+                    super::alpha_override::apply_material_alpha_overrides
+                        .after(resolve_material_refs),
+                    super::alpha_override::clear_material_on_ref_removed,
+                ),
+            );
         // Problems-panel validation: re-composes every graph material's WGSL
         // against all of bevy_pbr's modules and naga-validates it on the main
         // thread. Editor-only — a shipped game has no Problems panel.

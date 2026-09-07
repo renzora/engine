@@ -113,6 +113,27 @@ pub fn terrain_layers_entry() -> InspectorEntry {
                 },
             },
             FieldDef {
+                name: "Tile Size",
+                // Metres per repeat, so the useful range is "a paving slab" to
+                // "a field". The floor is well above zero because the UVs
+                // divide by it.
+                field_type: FieldType::Float { speed: 0.05, min: 0.05, max: 64.0 },
+                get_fn: |w, e| active_layer(w, e).map(|l| FieldValue::Float(l.tile_size)),
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(t) = v {
+                        edit_active_layer(w, e, |l| {
+                            if l.tile_size != t {
+                                l.tile_size = t;
+                                // UVs are baked into the overlay mesh, so a
+                                // tiling change is a geometry rebuild, not a
+                                // material one.
+                                l.mesh_dirty = true;
+                            }
+                        });
+                    }
+                },
+            },
+            FieldDef {
                 name: "Height Offset",
                 field_type: FieldType::Float { speed: 0.002, min: 0.0, max: 2.0 },
                 get_fn: |w, e| active_layer(w, e).map(|l| FieldValue::Float(l.height_offset)),
