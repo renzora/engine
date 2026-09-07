@@ -717,18 +717,6 @@ fn visible_when_not_2d(w: &World) -> bool {
         .unwrap_or(true)
 }
 
-/// Hide in the 2D view only — for the view controls, which unlike the gizmos
-/// are as useful while editing a mesh as they are outside one. Both of them act
-/// on the 3D view specifically: `pending_camera_home` is consumed by the orbit
-/// controller, and `show_grid` is the floor grid, not the 2D editor's own
-/// `show_grid_2d`.
-fn visible_in_3d(w: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-    w.get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view != ViewportView::Two)
-        .unwrap_or(true)
-}
-
 /// Hide in the mesh Edit/Sculpt modes only — for Select, which unlike the
 /// gizmo tools stays useful in the 2D view.
 fn visible_outside_mesh_modes(w: &World) -> bool {
@@ -751,21 +739,6 @@ fn visible_outside_mesh_modes(w: &World) -> bool {
 /// the tools that are there whatever else is, so they are the block everything
 /// contextual appears underneath.
 const GIZMO_TOOLS: ToolSection = ToolSection::Shelf("builtin.a-transform");
-
-/// Where the view controls (home, grid) render: the foot of the same shelf.
-///
-/// The `zz-` prefix is the whole point of the id. Shelf groups sort
-/// alphabetically and *globally* across every crate that registers one, so this
-/// is what keeps these two under the contextual groups a mode brings with it
-/// (`terrain.*` and anything a plugin adds) instead of between them. They are
-/// not tools you hold — nothing here changes what a click in the viewport does —
-/// which is why they sit apart, below the rule, rather than among the gizmos.
-///
-/// They were a pair of circular buttons in the nav cluster on the right edge,
-/// with pan and zoom. Home and Grid are the two in that cluster that are plain
-/// clicks rather than press-and-drag, so they were the two that had no reason to
-/// be there rather than with every other click-once control in the editor.
-const VIEW_TOOLS: ToolSection = ToolSection::Shelf("zz-view");
 
 /// Called once at plugin build time.
 fn register_builtin_tools(registry: &mut ToolbarRegistry) {
@@ -846,39 +819,10 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     // registered by `renzora_terrain_editor::TerrainEditorPlugin` so their
     // activators can reach `TerrainData` and the inspector tab state directly.
 
-    // View controls, at the foot of the shelf — see `VIEW_TOOLS`.
-    registry.register(
-        ToolEntry::new("builtin.camera_home", "house", "Reset View", VIEW_TOOLS)
-            .order(0)
-            .visible_if(visible_in_3d)
-            // Raise the flag rather than move the camera: the orbit state lives
-            // in `renzora_camera`, and the controller consumes this next frame.
-            .on_activate(|w| {
-                use renzora::core::viewport_types::ViewportSettings;
-                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                    s.pending_camera_home = true;
-                }
-            }),
-    );
-    registry.register(
-        ToolEntry::new("builtin.show_grid", "grid-four", "Grid", VIEW_TOOLS)
-            .order(1)
-            .visible_if(visible_in_3d)
-            // A toggle, not a tool: the grid being on is a property of the view,
-            // not the thing your next click will do.
-            .active_style(ToolActiveStyle::Tint)
-            .active_if(|w| {
-                use renzora::core::viewport_types::ViewportSettings;
-                w.get_resource::<ViewportSettings>()
-                    .is_some_and(|s| s.show_grid)
-            })
-            .on_activate(|w| {
-                use renzora::core::viewport_types::ViewportSettings;
-                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                    s.show_grid = !s.show_grid;
-                }
-            }),
-    );
+    // Reset View and Grid are NOT here. They are view controls, not tools —
+    // neither changes what a click in the viewport does — and they live with
+    // pan and zoom in the nav cluster on the right edge, where the camera
+    // controls belong together. See `renzora_viewport::nav`.
 }
 
 /// Keep `GizmoMode` in sync with `ActiveTool` so gizmo systems that still read

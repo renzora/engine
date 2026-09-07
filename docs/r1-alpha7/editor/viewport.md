@@ -34,16 +34,17 @@ The camera moves slowly when you're close to something and faster when you're fa
 | `End` | Move the focus point to wherever your cursor is pointing |
 | `[` / `]` | Slow down / speed up the camera |
 
-There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. The cluster is **Pan** and **Zoom**: press and drag them, dragging **up** on Zoom to move closer.
+There's also a small button cluster on the right edge of each viewport — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing. Click one of the gizmo's balls to snap the camera to that axis, or drag the gizmo itself to orbit.
 
-Click one of the gizmo's balls to snap the camera to that axis, or drag the gizmo itself to orbit.
+The cluster is the four **view controls**, in one group with a translucent rounded background:
 
-**Reset View** and **Grid** used to be in that cluster. They now sit at the foot of the [tool shelf](#the-tool-shelf) on the left edge, under a rule:
+- **Reset View** — one click puts the camera back at its starting position, the same reset as the `Home` key. It **leads the group**: it's the way back out of wherever Pan and Zoom have taken you, so it sits at the top where you can hit it without looking.
+- **Pan** and **Zoom** — press and drag, dragging **up** on Zoom to move closer.
+- **Grid** — toggles the floor grid. While the grid is on the button **lights up**: an accent glyph over an accent wash, at about a third the strength of the solid fill Pan and Zoom take while you hold them. The glyph shifts *away* from whatever the panel is — brighter on a dark theme, darker on a light one — so it reads as lit in both. The two say different things — the fill is "you are dragging this right now", and a permanently filled button among four reads as the picked one of four — so the toggle says "on" more quietly, but with enough of both halves to be legible over whatever the scene is showing through the cluster. The same switch lives in the toolbar's Display dropdown and in *Settings → Viewport*; this one is here because the grid gets flipped often enough while modelling that a dropdown is two clicks too many.
 
-- **Reset View** — one click puts the camera back at its starting position, the same reset as the `Home` key.
-- **Grid** — toggles the floor grid. It **tints its icon** while the grid is on, rather than filling the button the way a picked tool does: the grid being on is a property of the view, not the thing your next click will do. The same switch lives in the toolbar's Display dropdown and in *Settings → Viewport*; this one is here because the grid gets flipped often enough while modelling that a dropdown is two clicks too many.
+The group carries the chrome and the buttons inside it are transparent until you touch one, so four controls cost one piece of furniture over the scene rather than four. All four are 3D-only, so the cluster doesn't show in the 2D view, and it hides entirely in play mode.
 
-Both are single clicks, and the cluster they left is a press-and-drag control — which is the whole reason they moved. Both are 3D-only, so neither shows in the 2D view.
+> Reset View and Grid spent a while at the foot of the tool shelf, on the argument that a click-once control belongs with every other click-once control rather than in a cluster built around a drag. What the four actually have in common is the camera, not the input gesture — and splitting them put the two you reach for most on the opposite edge of the screen from the camera you were aiming.
 
 While you're dragging Zoom, a **height ruler** slides in at the **bottom left**: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its left edge **fills upwards from the floor** as the camera climbs, so altitude registers at a glance without reading the number. It sits above the statistics readout when that's on, and fades out shortly after you let go. (The Scene Icons circle that used to sit down there is gone — that flag already has switches in the toolbar's Gizmos dropdown and in *Settings → Viewport*.)
 
@@ -67,9 +68,8 @@ Down the **left edge of the viewport** sits the **tool shelf**: a two-column pal
 | Terrain — sculpt | Sculpt Terrain is the active tool | all 17 sculpt brushes |
 | Terrain — paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
 | Foliage | Paint Foliage is active | Paint / Erase, then one button per foliage type |
-| View | any 3D view | Reset View, Grid |
 
-The **View** group is last whatever else is showing, so those two sit in the same place however the shelf above them changes.
+The shelf holds tools — things that change what your next click in the viewport does. Reset View and Grid are not that, which is why they sit with the camera controls in the cluster on the right instead (see [Moving the camera](#moving-the-camera)).
 
 Pick up the terrain sculpt tool in the toolbar and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes. Enter Edit mode and you get the two draw tools, the select modes, and the ops. In the 2D view, where none of it applies, the shelf collapses completely.
 
