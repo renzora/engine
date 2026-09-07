@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
 use renzora_ember::reactive::Rx;
-use renzora_ember::theme::text_primary;
+use renzora_ember::theme::{text_muted, text_primary};
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{run_export, ExportOverlayState, ExportProgress, ExportView};
@@ -179,18 +179,38 @@ fn spawn_save_prompt(world: &mut World) {
     {
         let mut c = Commands::new(&mut queue, world);
         let (overlay, content) =
-            renzora_ember::widgets::overlay_sized(&mut c, &fonts, "Export", 420.0, 190.0, true);
+            renzora_ember::widgets::overlay_sized(&mut c, &fonts, "Export", 440.0, 164.0, true);
         // Above the export dialog (9300) that opened it.
         c.entity(overlay).insert((GlobalZIndex(9800), SavePromptRoot));
 
+        // The same shape as the shell's "Unsaved Changes" prompt: padded
+        // content, the question at the top, the actions pinned to the bottom
+        // edge. Without the padding the message sat flush against the card
+        // border, and with the buttons following the text in flow the card
+        // carried a band of dead space under them.
+        c.entity(content).insert(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::SpaceBetween,
+            flex_grow: 1.0,
+            min_height: Val::Px(0.0),
+            padding: UiRect::all(Val::Px(16.0)),
+            ..default()
+        });
+
+        let head = txt(&mut c, &fonts, "Save the project before exporting?", 14.0, text_primary());
         let msg = txt(
             &mut c,
             &fonts,
-            "Save the project before exporting? The build uses what is on disk.",
+            "The build uses what is on disk, not what is open in the editor.",
             12.0,
-            text_primary(),
+            text_muted(),
         );
-        c.entity(msg).insert(Node { margin: UiRect::bottom(Val::Px(14.0)), ..default() });
+        c.entity(msg).insert(Node { margin: UiRect::top(Val::Px(6.0)), ..default() });
+        let body = c
+            .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+            .id();
+        c.entity(body).add_children(&[head, msg]);
 
         let row = c
             .spawn(Node {
@@ -198,16 +218,20 @@ fn spawn_save_prompt(world: &mut World) {
                 flex_direction: FlexDirection::Row,
                 justify_content: JustifyContent::FlexEnd,
                 column_gap: Val::Px(8.0),
-                margin: UiRect::top(Val::Px(8.0)),
                 ..default()
             })
             .id();
         let skip = renzora_ember::widgets::button(&mut c, &fonts.ui, "Export without saving");
         c.entity(skip).insert(SavePromptSkipBtn);
         let save = renzora_ember::widgets::button(&mut c, &fonts.ui, "Save and export");
-        c.entity(save).insert(SavePromptSaveBtn);
+        // The recommended action, painted the accent color by `apply_theme` so
+        // the two buttons stop reading as interchangeable.
+        c.entity(save).insert((
+            SavePromptSaveBtn,
+            renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
+        ));
         c.entity(row).add_children(&[skip, save]);
-        c.entity(content).add_children(&[msg, row]);
+        c.entity(content).add_children(&[body, row]);
     }
     queue.apply(world);
 }

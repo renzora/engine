@@ -31,6 +31,8 @@ Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-
 | **Plugins** | Which Runtime-scope distribution plugins to include, and whether they ship as files or are linked into the binary |
 | **Files** | Exactly which project files go into the `.rpak` — see [What goes in the archive](#what-goes-in-the-archive) |
 
+Pressing **Export** asks one question first: *Save the project before exporting?* The build reads what is on disk, not what is open in the editor, so the prompt offers **Save and export** (the recommended action) or **Export without saving**; Escape, the ×, or a click outside it abandons the export. It appears every time rather than only when a scene is dirty — the question is whether what is on disk is what you want built, and a prompt that only sometimes appears is one you learn to click through without reading.
+
 The actual packing runs on a background thread; the modal polls its progress while open.
 
 ## Supported platforms
