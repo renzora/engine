@@ -11,6 +11,20 @@ pub struct AuthBridge {
     pub window_open: bool,
     /// The signed-in username, if any.
     pub signed_in_username: Option<String>,
+    /// The signed-in user's profile picture, once it has downloaded.
+    ///
+    /// A loaded handle rather than the `avatar_url` it came from, because the
+    /// crates that draw it cannot fetch it: the shell has no HTTP client, no
+    /// image cache and no session to authorize a call with, and giving it any
+    /// of those to render a 34px circle is how the marketplace ends up linked
+    /// into the title bar. The plugin that owns the session downloads it
+    /// through its own cache and publishes the result here; a reader spawns an
+    /// `ImageNode` when this is `Some` and its own placeholder when it is not.
+    ///
+    /// `None` is the normal state for a signed-out user, an account with no
+    /// picture set, and the first second after launch — so it is never an
+    /// error, only "draw the fallback".
+    pub avatar: Option<Handle<Image>>,
 }
 
 /// Marker resource inserted for one frame when sign-in succeeds.

@@ -319,6 +319,10 @@ struct MenuContext<'a> {
     /// The signed-in username (`None` = signed out). The hamburger's first row
     /// *is* the name, so the fact of being signed in is not enough.
     account: Option<&'a str>,
+    /// The account's profile picture, already downloaded by whoever owns the
+    /// session. `None` for a signed-out user, an account with no picture, and
+    /// the moments before it arrives — all three draw the glyph.
+    avatar: Option<Handle<Image>>,
     /// Release tag of a pending engine update, when `renzora_update`'s
     /// background check found one, so Help names the version instead of making
     /// you open a dialog to find out.
@@ -360,6 +364,12 @@ fn account_name(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<Strin
     bridge.as_ref().and_then(|b| b.signed_in_username.clone())
 }
 
+/// The account's profile picture, read the same way and at the same moment as
+/// the name. The shell never fetches it — see [`renzora::core::AuthBridge`].
+fn account_avatar(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<Handle<Image>> {
+    bridge.as_ref().and_then(|b| b.avatar.clone())
+}
+
 /// Click a top-bar title → open its dropdown (anchored under the button), or
 /// re-click the open one to close it.
 fn top_menu_open(
@@ -387,6 +397,7 @@ fn top_menu_open(
     let update_tag = update.as_ref().map(|u| u.0.clone());
     let ctx = MenuContext {
         account: account.as_deref(),
+        avatar: account_avatar(&bridge),
         update_tag: update_tag.as_deref(),
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
     };
@@ -434,6 +445,7 @@ fn top_menu_hover(
     let update_tag = update.as_ref().map(|u| u.0.clone());
     let ctx = MenuContext {
         account: account.as_deref(),
+        avatar: account_avatar(&bridge),
         update_tag: update_tag.as_deref(),
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
     };
@@ -534,6 +546,7 @@ fn menu_account_header(
     commands: &mut Commands,
     fonts: &EmberFonts,
     account: Option<&str>,
+    avatar: Option<Handle<Image>>,
 ) -> Entity {
     let block = commands
         .spawn((
@@ -549,26 +562,46 @@ fn menu_account_header(
         ))
         .id();
 
-    // A circle with a glyph in it, not an image: the shell has no avatar cache
-    // — that lives with the marketplace plugin, which the shell must not depend
-    // on. A filled circle reads as an avatar slot either way.
-    let avatar = commands
+    // The account's real picture when there is one, and a glyph in a filled
+    // circle when there is not. The shell still fetches nothing: the handle is
+    // already loaded and arrives on `AuthBridge` from whoever owns the session
+    // (`renzora_marketplace`), which is what keeps the title bar from depending
+    // on a plugin. `overflow: clip` plus the matching radius is what makes a
+    // square image round.
+    const AV: f32 = 34.0;
+    let av_node = commands
         .spawn((
             Node {
-                width: Val::Px(34.0),
-                height: Val::Px(34.0),
+                width: Val::Px(AV),
+                height: Val::Px(AV),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(17.0)),
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(AV / 2.0)),
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
         ))
         .id();
-    let glyph_name = if account.is_some() { "user" } else { "user-circle-dashed" };
-    let av_ic = icon_text(commands, &fonts.phosphor, glyph_name, text_muted(), 17.0);
-    commands.entity(avatar).add_child(av_ic);
+    let inner = match avatar {
+        Some(image) => commands
+            .spawn((
+                ImageNode::new(image),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border_radius: BorderRadius::all(Val::Px(AV / 2.0)),
+                    ..default()
+                },
+            ))
+            .id(),
+        None => {
+            let glyph = if account.is_some() { "user" } else { "user-circle-dashed" };
+            icon_text(commands, &fonts.phosphor, glyph, text_muted(), 17.0)
+        }
+    };
+    commands.entity(av_node).add_child(inner);
 
     let text_col = commands
         .spawn(Node {
@@ -603,7 +636,7 @@ fn menu_account_header(
         ))
         .id();
     commands.entity(text_col).add_children(&[t, s]);
-    commands.entity(block).add_children(&[avatar, text_col]);
+    commands.entity(block).add_children(&[av_node, text_col]);
     block
 }
 
@@ -721,7 +754,7 @@ fn build_menu_items(
         TopMenuKind::Main => {
             let mut rows: Vec<Entity> = Vec::new();
 
-            rows.push(menu_account_header(commands, fonts, ctx.account));
+            rows.push(menu_account_header(commands, fonts, ctx.account, ctx.avatar.clone()));
             rows.push(menu_sep(commands));
 
             for (icon, label, sub) in [

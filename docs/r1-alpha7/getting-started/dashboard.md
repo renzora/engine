@@ -96,7 +96,7 @@ The list is fetched once per launch. If GitHub cannot be reached, the page says 
 The bottom of the rail is your renzora.com account.
 
 - Signed out, it is a **Sign in** button. It opens the same sign-in window the editor's title bar does, so signing in here signs you in for the session that follows — you do not do it twice.
-- Signed in, it shows your username, with a sign-out control beside it.
+- Signed in, it shows your renzora.com profile picture and username, with a sign-out control beside it. An account with no picture set keeps the initial of your username instead.
 
 You only need an account for paid marketplace listings — and for publishing, which happens in the editor. Free plugins install without one.
 

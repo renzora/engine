@@ -1,6 +1,9 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(editor): the menu's account row shows your renzora.com profile picture.
+- feat(splash): the dashboard's account row shows your renzora.com profile
+  picture.
 - fix(ember): a flat numeric field shows a selection highlight when you click
   it, so you can tell it is being edited.
 - feat(viewport): the Snap dropdown lights its magnet while snapping is on,

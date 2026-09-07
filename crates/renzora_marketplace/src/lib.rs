@@ -63,6 +63,8 @@ use bevy::prelude::*;
 pub mod auth;
 
 #[cfg(not(target_arch = "wasm32"))]
+mod account_avatar;
+#[cfg(not(target_arch = "wasm32"))]
 mod account_settings;
 #[cfg(not(target_arch = "wasm32"))]
 mod avatars;
@@ -129,6 +131,10 @@ impl Plugin for MarketplacePlugin {
         // Session, sign-in modal, and the `AuthBridge` the shell's title bar
         // reads. Everything else here needs a session, so this goes first.
         app.add_plugins(auth::AuthPlugin);
+        // The account's profile picture, onto the same bridge — this crate is
+        // the one with the session that can ask for it and the cache that can
+        // download it.
+        account_avatar::register(app);
 
         // Relative image and link paths in catalogue markdown (an item's
         // description) resolve against the same server the client talks to.
@@ -147,7 +153,6 @@ impl Plugin for MarketplacePlugin {
         app.add_systems(
             Update,
             (
-                avatars::poll_avatars,
                 avatars::request_avatars,
                 toasts::drain_toasts,
                 toasts::toast_clicks,
@@ -158,14 +163,19 @@ impl Plugin for MarketplacePlugin {
             )
                 .run_if(in_state(renzora::SplashState::Editor)),
         );
-        // The thumbnail cache is the one shared piece the splash's Plugins page
-        // also draws from, so it registers finished downloads in Splash too —
-        // gated on Editor alone, a card's artwork downloaded on the dashboard and
-        // was never turned into an `Image`, so every listing showed a placeholder
-        // until a project was open.
+        // Both image caches register their finished downloads on the dashboard
+        // as well as in the editor, because both have something to draw there:
+        // the Plugins page's card artwork, and the account row's profile
+        // picture. Gated on Editor alone, the bytes arrived on the dashboard and
+        // were never turned into an `Image`, so a card showed a placeholder and
+        // the account a monogram until a project was open.
+        //
+        // Only the *registration* half is shared. `request_avatars` above scans
+        // for `AvatarUrl` components, which exist only on editor panels, and
+        // stays where it is.
         app.add_systems(
             Update,
-            thumbs::poll_thumbs.run_if(
+            (thumbs::poll_thumbs, avatars::poll_avatars).run_if(
                 in_state(renzora::SplashState::Editor)
                     .or_else(in_state(renzora::SplashState::Splash)),
             ),

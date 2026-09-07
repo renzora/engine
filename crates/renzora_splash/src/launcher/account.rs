@@ -7,7 +7,8 @@
 //! `renzora_marketplace`, which this crate must not depend on (see
 //! [`super::sections`] for why). It does not need to: the contract crate carries
 //! the whole boundary already — [`renzora::core::AuthBridge`] to read who is
-//! signed in, and the two request markers to ask for the modal or a sign-out.
+//! signed in *and* their profile picture, already downloaded, and the two
+//! request markers to ask for the modal or a sign-out.
 //! The modal that answers is the *same* one the editor's title bar opens, and its
 //! systems are ungated, so it renders over the dashboard as readily as over the
 //! editor and a sign-in here is a sign-in there.
@@ -22,7 +23,7 @@ use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{menu_item, scroll_area_keyed, HoverTooltip, Popup};
 
@@ -82,6 +83,14 @@ fn username(w: &Rx) -> String {
     w.get_resource::<renzora::core::AuthBridge>()
         .and_then(|b| b.signed_in_username.clone())
         .unwrap_or_default()
+}
+
+/// The account's profile picture, once the plugin that owns the session has
+/// downloaded it. `None` for a signed-out user, an account with no picture, and
+/// the moments before it arrives.
+fn avatar(w: &Rx) -> Option<Handle<Image>> {
+    w.get_resource::<renzora::core::AuthBridge>()
+        .and_then(|b| b.avatar.clone())
 }
 
 fn sign_in_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -144,18 +153,27 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // A monogram, not an avatar: the avatar cache lives with the account plugin
-    // and this crate cannot reach it. The first letter of the username is enough
-    // to make the row read as an identity rather than as a line of text.
+    // The account's picture, over a monogram of the username's first letter.
+    // Both are built and the picture hides itself, because the row is built once
+    // and follows the session reactively — and because the monogram is the right
+    // answer for an account with no picture set, which is a lasting state and
+    // not a loading one.
+    //
+    // This crate still reaches for nothing: the avatar cache and the API client
+    // live with the account plugin, and what arrives here is a handle already
+    // loaded, on the same [`renzora::core::AuthBridge`] the username comes from.
+    // See the module doc.
+    const BADGE: f32 = 24.0;
     let badge = commands
         .spawn((
             Node {
-                width: Val::Px(24.0),
-                height: Val::Px(24.0),
+                width: Val::Px(BADGE),
+                height: Val::Px(BADGE),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(12.0)),
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(BADGE / 2.0)),
                 ..default()
             },
             BackgroundColor(ca(110, 150, 255, 44)),
@@ -173,7 +191,36 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, initial, |w| {
         username(w).chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()
     });
-    commands.entity(badge).add_child(initial);
+    let photo = commands
+        .spawn((
+            ImageNode::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                display: Display::None,
+                border_radius: BorderRadius::all(Val::Px(BADGE / 2.0)),
+                ..default()
+            },
+            FocusPolicy::Pass,
+        ))
+        .id();
+    bind_with(commands, photo, avatar, |w, e, handle: &Option<Handle<Image>>| {
+        if let Some(mut node) = w.get_mut::<Node>(e) {
+            let want = if handle.is_some() { Display::Flex } else { Display::None };
+            if node.display != want {
+                node.display = want;
+            }
+        }
+        if let Some(h) = handle {
+            if let Some(mut img) = w.get_mut::<ImageNode>(e) {
+                if img.image != *h {
+                    img.image = h.clone();
+                }
+            }
+        }
+    });
+    commands.entity(badge).add_children(&[initial, photo]);
 
     let col = commands
         .spawn((
