@@ -21,7 +21,8 @@ use super::rows::{
 };
 use super::snap::{set_snap, snap_val};
 use super::view::{ViewAngleTrigger, VIEW_ANGLE_OPTIONS};
-use super::{col, loc_opt};
+use super::{col, col_u8, loc_opt};
+use crate::lit_accent::{accent_glyph_on, accent_wash};
 
 /// A discrete one-shot click action inside a toolbar dropdown.
 #[derive(Component, Clone, Copy)]
@@ -289,15 +290,15 @@ pub(super) fn update_camera_snap_triggers(
         (With<CameraTrigger>, Without<SnapTrigger>),
     >,
     mut snap: Query<
-        (&Interaction, &Popup, &mut BackgroundColor),
+        (&Interaction, &Popup, &mut BackgroundColor, &Children),
         (With<SnapTrigger>, Without<CameraTrigger>),
     >,
+    mut glyphs: Query<&mut TextColor>,
 ) {
     let (Some(settings), Some(theme)) = (settings, theme) else {
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent);
     let inactive = col(t.widgets.inactive_bg);
     let hovered = col(t.widgets.hovered_bg);
 
@@ -316,16 +317,39 @@ pub(super) fn update_camera_snap_triggers(
         || s.floor_snap_enabled
         || s.translate_edge_snap
         || s.scale_bottom_anchor;
-    for (interaction, toggle, mut bg) in &mut snap {
-        let want = if any_snap {
-            accent
-        } else if toggle.open || *interaction == Interaction::Hovered {
+    // The magnet used to fill solid accent whenever any snap was on, which put
+    // one saturated blue block in the middle of a row of neutral dropdowns and
+    // read as "this menu is open" or "this is the selected one" rather than
+    // "snapping is on". It lights instead: the accent in the glyph over a wash
+    // of it, the same treatment the viewport's Grid toggle uses. Solid accent
+    // stays reserved for the things that mean picked-or-held.
+    let lit_glyph = accent_glyph_on(col_u8(t.semantic.accent), col_u8(t.widgets.inactive_bg));
+    let wash = accent_wash(col_u8(t.semantic.accent));
+    let muted = col(t.text.muted);
+    for (interaction, toggle, mut bg, children) in &mut snap {
+        // Hover and the open panel still outrank the lit wash, so the trigger
+        // keeps answering the cursor while snapping is on.
+        let want = if toggle.open || *interaction == Interaction::Hovered {
             hovered
+        } else if any_snap {
+            wash
         } else {
             inactive
         };
         if bg.0 != want {
             bg.0 = want;
+        }
+        // The glyph is the first child, the caret the second (see
+        // `icon_popup_trigger`); only the magnet lights, so the caret keeps
+        // reading as chrome rather than as part of the state.
+        let Some(glyph) = children.first().copied() else {
+            continue;
+        };
+        let want = if any_snap { lit_glyph } else { muted };
+        if let Ok(mut tc) = glyphs.get_mut(glyph) {
+            if tc.0 != want {
+                tc.0 = want;
+            }
         }
     }
 }

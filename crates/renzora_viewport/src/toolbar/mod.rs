@@ -53,6 +53,13 @@ pub(super) fn col(c: renzora_theme::ThemeColor) -> Color {
     Color::srgb_u8(r, g, b)
 }
 
+/// The same colour as a raw `(r, g, b)`, for the helpers in
+/// [`crate::lit_accent`] that have to do arithmetic on it.
+pub(super) fn col_u8(c: renzora_theme::ThemeColor) -> (u8, u8, u8) {
+    let [r, g, b, _a] = c.to_array();
+    (r, g, b)
+}
+
 /// Slugify an option label for the shared `opt.<slug>` translation namespace:
 /// lowercase, each run of non-alphanumerics → one `_`, trimmed.
 fn opt_slug(s: &str) -> String {

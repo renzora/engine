@@ -20,6 +20,7 @@ mod camera_preview_panel;
 mod drop_target;
 mod game_view;
 mod height_ruler;
+mod lit_accent;
 mod modal_hud;
 mod nav;
 mod shading;

@@ -22,7 +22,6 @@
 
 use std::sync::atomic::Ordering;
 
-use bevy::color::Hsla;
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -97,15 +96,6 @@ fn group_bg() -> Color {
     )
 }
 
-/// Whether the cluster's panel is a light surface.
-///
-/// Rec. 709 luma on `panel_bg()`. Everything below has to push *away* from this
-/// rather than in a fixed direction — see [`accent_glyph`].
-fn on_light_surface() -> bool {
-    let (r, g, b) = panel_bg();
-    0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32 > 140.0
-}
-
 /// The resting glyph colour: whatever the theme says text on a panel is.
 ///
 /// This was a hardcoded near-white, which is only the answer for half the
@@ -115,69 +105,15 @@ fn glyph() -> (u8, u8, u8) {
     text_primary()
 }
 
-/// The Grid glyph while the grid is on.
-///
-/// **Not the raw accent.** The accent is chosen to carry white text *on top of
-/// it*, which makes it dark by construction — the shipped blue is `l = 0.66`
-/// against white glyphs at `l ≈ 0.92` — so a glyph drawn *in* it reads dimmer
-/// than the plain ones beside it, the exact opposite of what an on-toggle
-/// should say. `tool_buttons` hits this on the shelf and lifts the accent by
-/// 0.1, capped at `l = 0.75`.
-///
-/// In **HSL**, not `Luminance::lighter`: that works in Lab, where raising
-/// lightness pulls the colour toward white and takes the chroma with it — a
-/// pale grey-blue that reads washed out rather than lit, brighter and less
-/// blue, when blue is the one thing this colour has to be. Nudging saturation
-/// alongside the lightness is what keeps a less-saturated theme accent reading
-/// as itself once it is this light.
-///
-/// **The direction is not fixed.** Lifting unconditionally is the mistake
-/// `theme::mix`'s doc warns about, and it inverts exactly where you would
-/// expect: on the Light theme the accent is `(38, 108, 200)` on a
-/// `(244, 245, 248)` panel, and lightening it took the contrast from 4.74
-/// *down* to 1.90 — measurably worse than leaving the accent alone. Darkening
-/// it there gives 10.09. So the shift is away from the surface, whichever way
-/// that is.
-///
-/// The cap is the real limit, and it is why this is only half the answer: a
-/// saturated blue cannot get much brighter without going pale, so past
-/// `l ≈ 0.8` every further step buys contrast by spending colour. Hence
-/// [`ACTIVE_WASH`] — the rest of the visibility comes from behind the glyph
-/// rather than from bleaching it.
+/// The Grid glyph while the grid is on, and the wash behind it. Both come from
+/// [`crate::lit_accent`], which explains why neither is the raw accent — it is
+/// the same treatment the toolbar's Snap trigger uses.
 fn accent_glyph() -> Color {
-    let mut hsl = Hsla::from(rgb(accent()));
-    hsl.lightness = if on_light_surface() {
-        (hsl.lightness - 0.24).max(0.24)
-    } else {
-        (hsl.lightness + 0.28).min(0.82)
-    };
-    hsl.saturation = (hsl.saturation + 0.12).min(1.0);
-    Color::from(hsl)
+    crate::lit_accent::accent_glyph_on(accent(), panel_bg())
 }
 
-/// How much accent sits behind a lit toggle.
-///
-/// Deliberately a *wash*, not the fill a latched drag gets: at full strength it
-/// would read as "the selected one of four", which is what a fill means
-/// everywhere else in this editor and not what a toggle is saying. At a third
-/// of that it reads as a lit key on a keyboard — unmistakably on, without
-/// claiming the other three are off in the same sense.
-///
-/// It carries the visibility the glyph colour cannot (see [`accent_glyph`]),
-/// and the two are balanced against each other: raising this darkens what the
-/// glyph sits on, so it cannot go much further without eating the contrast it
-/// is here to add. At `0.32` the tile reads clearly against the panel (1.6:1)
-/// while the glyph still clears 5.5:1 on it, in both shipped themes.
-const ACTIVE_WASH: f32 = 0.32;
-
 fn accent_wash() -> Color {
-    let (r, g, b) = accent();
-    Color::srgba(
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        ACTIVE_WASH,
-    )
+    crate::lit_accent::accent_wash(accent())
 }
 
 /// Build the nav cluster as an absolutely-positioned column on the right edge of
