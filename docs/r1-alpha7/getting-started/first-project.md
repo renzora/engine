@@ -41,21 +41,17 @@ A fresh project is just a few files on disk:
 ```text
 my-game/
 ├── project.toml      # your game's settings
-├── scenes/
-│   └── main.ron      # the scene that loads first (empty to start)
-└── plugins/          # optional drop-in plugins
+└── scenes/
+    └── main.bsn      # the scene that loads first (empty to start)
 ```
 
-You'll add more folders as you grow — `assets/` for models, textures, and sounds, and `scripts/` for your `.lua` files. Your starting scene, `scenes/main.ron`, is valid but empty:
+That's the lot. You'll add more folders as you grow — `assets/` for models, textures, and sounds, and `scripts/` for your `.lua` files — and the editor makes them as it needs them. (Plugins are **not** among them: they install beside the engine, not into your game, so a project has no `plugins/` folder.) Your starting scene, `scenes/main.bsn`, is valid but empty:
 
-```ron
-(
-  resources: {},
-  entities: {},
-)
+```text
+// renzora interim bsn v1
 ```
 
-You usually never touch `project.toml` by hand — the editor's Settings panel manages it for you. If you do peek inside, just three keys really matter:
+You usually never touch `project.toml` by hand — the editor's Settings panel manages it for you, and the Assets panel hides it for the same reason. If you do peek inside, just three keys really matter:
 
 ```toml
 name = "My Game"

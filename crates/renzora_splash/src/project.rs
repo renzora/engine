@@ -9,8 +9,13 @@ pub fn create_project(
     name: &str,
 ) -> Result<CurrentProject, Box<dyn std::error::Error>> {
     std::fs::create_dir_all(path)?;
+    // `scenes/` only. A new project used to get an empty `plugins/` beside it,
+    // from when a plugin was a thing a project carried — plugins install beside
+    // the *executable* now (see `renzora_marketplace`'s `engine_plugins_dir`,
+    // which says so in as many words), so nothing has read that folder for some
+    // time. An empty directory in a new project is a question the Assets panel
+    // asks the user and cannot answer.
     std::fs::create_dir_all(path.join("scenes"))?;
-    std::fs::create_dir_all(path.join("plugins"))?;
 
     let config = ProjectConfig {
         name: name.to_string(),

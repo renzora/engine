@@ -390,7 +390,9 @@ fn collect_web_project_pick(mut commands: Commands) {
                 // same cache. If a very early read ever beats the write, it
                 // shows as a missing main.bsn on first entry and is fixed by
                 // awaiting these before entering.
-                renzora_webfs::spawn_create_dir(root.join("plugins"));
+                // No `plugins/`: nothing reads a project's own plugins folder,
+                // and the web has no plugin loading at all. See the native
+                // `create_project`.
                 renzora_webfs::spawn_write_text(
                     root.join("scenes").join("main.bsn"),
                     "// renzora interim bsn v1\n".to_string(),
