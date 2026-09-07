@@ -268,6 +268,7 @@ impl Plugin for ViewportPlugin {
         // missed entirely — the runner unwinds the whole `World` instead and the
         // window sits there for seconds. See
         // `renzora_ui::window_chrome::WindowActionSet`.
+        #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Last,
             external_runtime::kill_on_app_exit

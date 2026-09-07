@@ -346,6 +346,11 @@ pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntim
 /// them with a project open from an AppImage build. See that function.
 /// Set `RENZORA_FULL_TEARDOWN=1` to get the old unwinding exit back when
 /// debugging teardown itself.
+///
+/// Native only, and not merely because `exit_now` is: on the web there is no
+/// process teardown to skip and no external runtime to kill. A tab's lifetime
+/// is the tab's, and `AppExit` just stops the loop.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn kill_on_app_exit(
     mut exits: MessageReader<bevy::app::AppExit>,
     mut runtime: ResMut<ExternalRuntime>,

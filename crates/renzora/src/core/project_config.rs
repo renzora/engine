@@ -172,9 +172,6 @@ impl RendererBackend {
     }
 }
 
-/// On-disk wrapper so the preference file stays forward-compatible
-/// (`backend = "dx12"`, with room to grow).
-#[derive(Serialize, Deserialize, Default)]
 /// Web no-ops for the whole `save_*` family.
 ///
 /// Every `load_*` in this module already handles wasm internally and returns a
@@ -190,42 +187,39 @@ impl RendererBackend {
 /// has no home directory. Preferences therefore last a session on the web.
 ///
 /// Keep this block in step with the native definitions below — a new `save_*`
-/// needs an arm here, or the web editor breaks at its first caller.
+/// needs an arm here, or the web editor breaks at its first caller. It drifts
+/// the *other* way too: when the one-settings-file move deleted the per-key
+/// setters (`save_ui_scale`, `save_dev_mode`, `save_doc_tabs_dropdown` and six
+/// more, now fields of the `editor` section), their no-ops stayed here defining
+/// functions no native target had. Harmless, but it is what makes this block
+/// look authoritative when it is only a mirror.
+///
+/// `save_ui_toolbar_order` and `save_inspector_component_order` are the
+/// exceptions: they carry their own `#[cfg(target_arch = "wasm32")]` stubs
+/// beside their native definitions, rather than an arm here.
 #[cfg(target_arch = "wasm32")]
 mod wasm_prefs {
-    use super::{AutoSaveSettings, RendererBackend, StatsRefreshSettings};
+    use super::{AutoSaveSettings, StatsRefreshSettings};
 
-    pub fn save_renderer_backend(_backend: RendererBackend) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_ui_scale(_ui_scale: f32) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_scroll_speed(_scroll_speed: f32) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_console_log_limit(_limit: usize) -> std::io::Result<()> {
-        Ok(())
-    }
     pub fn save_language(_code: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_update_channel(_channel: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_skipped_update(_tag: Option<&str>) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_tutorial_completed(_completed: bool) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_tutorial_chapters(_chapters: &[String]) -> std::io::Result<()> {
         Ok(())
     }
     pub fn save_stats_refresh(_settings: &StatsRefreshSettings) -> std::io::Result<()> {
         Ok(())
     }
-    pub fn save_dev_mode(_dev_mode: bool) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_play_vr(_play_vr: bool) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_play_runtime_window(_runtime_window: bool) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_doc_tabs_dropdown(_dropdown: bool) -> std::io::Result<()> {
-        Ok(())
-    }
-    pub fn save_hierarchy_toggle_on_click(_toggle: bool) -> std::io::Result<()> {
+    pub fn save_disabled_plugins(_disabled: &[String]) -> std::io::Result<()> {
         Ok(())
     }
     pub fn save_autosave(_settings: &AutoSaveSettings) -> std::io::Result<()> {
@@ -236,11 +230,6 @@ mod wasm_prefs {
 #[cfg(target_arch = "wasm32")]
 pub use wasm_prefs::*;
 
-/// Path to the persisted renderer preference: `~/.renzora/renderer.toml`.
-/// Mirrors the crash-report directory convention. Resolves the home dir via
-/// env vars (`HOME`, falling back to Windows' `USERPROFILE`) so `renzora`
-/// core keeps its dep list to bevy + serialization (no `dirs`).
-#[cfg(not(target_arch = "wasm32"))]
 /// Load the persisted renderer backend preference, defaulting to
 /// [`RendererBackend::Auto`] when the file is absent or unreadable.
 pub fn load_renderer_backend() -> RendererBackend {
@@ -406,18 +395,6 @@ impl Default for EditorPrefFile {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-/// The `[app]` section of `~/.renzora/settings.toml`, or its defaults.
-///
-/// These nineteen preferences are the ones that are neither `EditorSettings`
-/// (the Settings panel's own contents) nor anything a project owns: the
-/// language, the disabled plugins, the update channel, the tutorial's progress,
-/// the autosave interval, the stats refresh rates and the status-bar toggles.
-///
-/// They lived in `~/.renzora/editor.toml` behind thirty-eight hand-written
-/// read-modify-write helpers. Both halves of that are gone: the file is now one
-/// section of `settings.toml` beside every other preference, and the helpers
-/// below all funnel through this pair rather than each opening the file itself.
 /// One field of the `[editor]` section, read straight off disk.
 ///
 /// Three things need an editor setting *before* there is an `App` to hold
@@ -442,6 +419,17 @@ fn editor_field(_key: &str) -> Option<toml::Value> {
     None
 }
 
+/// The `[app]` section of `~/.renzora/settings.toml`, or its defaults.
+///
+/// These are the preferences that are neither `EditorSettings` (the Settings
+/// panel's own contents) nor anything a project owns: the language, the
+/// disabled plugins, the update channel, the tutorial's progress, the autosave
+/// interval, the stats refresh rates and the status-bar toggles.
+///
+/// They lived in `~/.renzora/editor.toml` behind thirty-eight hand-written
+/// read-modify-write helpers. Both halves of that are gone: the file is now one
+/// section of `settings.toml` beside every other preference, and the helpers
+/// below all funnel through this pair rather than each opening the file itself.
 fn app_prefs() -> EditorPrefFile {
     crate::core::settings_file::load_section("app").unwrap_or_default()
 }
@@ -452,15 +440,6 @@ fn save_app_prefs(prefs: &EditorPrefFile) -> std::io::Result<()> {
     crate::core::settings_file::save_section("app", prefs)
 }
 
-/// Load the persisted editor UI scale multiplier (1.0 = system DPI),
-/// defaulting to 1.0 when the file is absent or unreadable.
-/// Persist the editor UI scale multiplier.
-#[cfg(not(target_arch = "wasm32"))]
-/// Load the persisted panel scroll-speed multiplier, defaulting to 1.5 (the
-/// editor's default feel) when the file is absent or unreadable.
-/// Persist the panel scroll-speed multiplier (read-modify-write so other prefs
-/// in the file survive).
-#[cfg(not(target_arch = "wasm32"))]
 /// Load the persisted console log-entry limit, defaulting to
 /// [`console_log::DEFAULT_MAX_LOG_ENTRIES`] when the file is absent or
 /// unreadable. Floored at 10 so the console can never be capped to nothing.
@@ -471,9 +450,6 @@ pub fn load_console_log_limit() -> usize {
         .unwrap_or(super::console_log::DEFAULT_MAX_LOG_ENTRIES)
 }
 
-/// Persist the console log-entry limit (read-modify-write so other prefs in the
-/// file survive).
-#[cfg(not(target_arch = "wasm32"))]
 /// Load the persisted UI language code, defaulting to `"en"` when the file is
 /// absent or unreadable. Called by the localization runtime at startup.
 pub fn load_language() -> String {
@@ -675,8 +651,6 @@ pub fn load_dev_mode() -> bool {
     editor_field("dev_mode").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
-/// Persist the developer-mode flag (read-modify-write, so other fields survive).
-#[cfg(not(target_arch = "wasm32"))]
 /// Put the *settings* half of the `[app]` section back to its defaults, leaving
 /// the identity half alone.
 ///
@@ -827,26 +801,7 @@ pub fn save_disabled_plugins(disabled: &[String]) -> std::io::Result<()> {
     }
 }
 
-/// Load the persisted Play-button target (default `false` = in-viewport play).
-/// The editor seeds `EditorSettings.external_play_window` from this at startup
-/// so the Play dropdown's choice survives restarts.
-/// Load where the document tabs are shown (default `false` = the strip under
-/// the top bar; `true` = a dropdown in the top bar beside Play). The shell seeds
-/// `EditorSettings.doc_tabs_dropdown` from this at startup.
-/// Persist where the document tabs are shown (read-modify-write, so other
-/// fields survive).
-#[cfg(not(target_arch = "wasm32"))]
-/// Load whether a hierarchy row click also toggles its subtree (default `true`).
-/// `EditorSettings.hierarchy_toggle_on_click` is seeded from this at startup.
-/// Persist the hierarchy click-to-toggle preference (read-modify-write, so
-/// other fields survive).
-#[cfg(not(target_arch = "wasm32"))]
-/// Load the persisted VR play target (default `false`).
-/// Persist the VR play target (read-modify-write, so other fields survive).
-#[cfg(not(target_arch = "wasm32"))]
-/// Persist the Play-button target (read-modify-write, so other fields survive).
-#[cfg(not(target_arch = "wasm32"))]
-/// Auto-save preferences, persisted per-user in `~/.renzora/editor.toml`.
+/// Auto-save preferences, persisted per-user in `~/.renzora/settings.toml`.
 ///
 /// A contract resource (rather than living in `EditorSettings`) so the
 /// `renzora_autosave` plugin — which owns the countdown + save trigger — depends

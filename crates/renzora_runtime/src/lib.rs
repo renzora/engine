@@ -1117,6 +1117,13 @@ fn apply_window_icon(
 /// dynamic loader's destructors as well as the World — `std::process::exit` ran
 /// both, and they were seconds of their own.
 /// `RENZORA_FULL_TEARDOWN=1` restores the unwinding exit for debugging.
+///
+/// Native only, and not merely because `exit_now` is: on the web there is no
+/// process teardown to skip. A tab's lifetime is the tab's, `AppExit` just
+/// stops the loop, and there is no atexit chain, no dynamic loader and no
+/// plugin images to leave behind — so the whole system is answering a question
+/// the web build does not ask.
+#[cfg(not(target_arch = "wasm32"))]
 fn fast_exit_on_app_exit(mut exits: MessageReader<bevy::app::AppExit>) {
     let Some(exit) = exits.read().last().cloned() else {
         return;
@@ -1177,6 +1184,7 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         app.add_plugins(viewport_stretch::ViewportStretchPlugin);
         info!("[runtime] foundation: RenderScalePlugin");
         app.add_plugins(render_scale::RenderScalePlugin);
+        #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Last, fast_exit_on_app_exit);
     }
 
