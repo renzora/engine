@@ -1,26 +1,36 @@
-//! The terrain brush cursor — the ring that hugs the sculpted surface.
+//! The brush cursor: the filled patch that hugs the sculpted surface.
 //!
-//! Both terrain brush tools raycast the chunk meshes to find where the cursor
-//! is, so both know the point they are acting on to the millimetre. What used to
-//! differ was what they *drew* there. Sculpt sampled the heightmap all the way
-//! round its ring, so the cursor lay on the ground; paint drew a flat circle at
-//! the hit point's own Y, which is only correct on level ground and floats free
-//! of the terrain — or sinks into it — the moment you paint a slope. It also
-//! drew a circle regardless of the brush shape, and nothing at all for the
-//! falloff, even though the toolbar offers both for paint exactly as it does for
-//! sculpt.
+//! All three brush tools (sculpt, surface paint, foliage paint) raycast the
+//! chunk meshes to find where the cursor is, so all three know the point they
+//! are acting on to the millimetre. What used to differ was what they *drew*
+//! there. Sculpt sampled the heightmap all the way round its ring, so the
+//! cursor lay on the ground; paint and foliage drew a flat circle at the hit
+//! point's own Y, which is only correct on level ground and floats free of the
+//! terrain (or sinks into it) the moment you paint a slope. They also drew a
+//! circle regardless of the brush shape, and nothing at all for the falloff,
+//! even though the toolbar offers both for all three tools.
 //!
-//! So the cursor lives here, once, and both tools call it. A brush setting that
-//! the toolbar exposes but the cursor ignores is a setting you have to discover
-//! by painting and undoing.
+//! So the cursor lives here, once, in the crate all three tools already depend
+//! on, and they all call it. A brush setting that the toolbar exposes but the
+//! cursor ignores is a setting you have to discover by painting and undoing.
+//!
+//! **The interior is filled, not just outlined.** An outline says where the
+//! brush ends; it says nothing about how hard it bites in the middle, which is
+//! the part you are actually aiming. So the core is drawn solid and the fill
+//! fades out along the tool's own falloff curve, which makes the cursor a
+//! picture of the weight the stroke will apply rather than a picture of its
+//! radius. Bevy gizmos cannot fill a polygon, so the patch is concentric rings
+//! packed tightly enough to read as one surface (see [`FILL_SPACING_PX`]).
 //!
 //! The heights come from the chunk heightmaps rather than from more raycasts:
-//! the ring is 48 points and the falloff ring another 48, and the mesh is
-//! already in memory as the array these read.
+//! the rings are hundreds of points, and the mesh is already in memory as the
+//! array these read.
 
 use bevy::prelude::*;
 
-use renzora_terrain::data::{BrushShape, TerrainChunkData, TerrainData};
+use crate::data::{
+    compute_brush_falloff, BrushFalloffType, BrushShape, TerrainChunkData, TerrainData,
+};
 
 /// Points around each ring. Enough that a 200 m brush doesn't read as a
 /// polygon, cheap enough to sample the heightmap at every one of them twice a
@@ -31,6 +41,96 @@ pub const RING_SEGMENTS: usize = 48;
 /// an opaque mesh, so a ring exactly on it z-fights; this is the smallest lift
 /// that reads as "on the ground" and still clears it.
 const RING_LIFT: f32 = 0.15;
+
+/// The fill sits just under the outline's lift, so the two never fight where a
+/// fill ring lands on the outline's own radius.
+const FILL_LIFT: f32 = RING_LIFT * 0.6;
+
+/// Target gap between two fill rings, in render-target pixels. Gizmo lines are
+/// two pixels wide, so rings this close overlap and the patch reads as one
+/// surface instead of as a dartboard. It is a *pixel* spacing on purpose: the
+/// brush is a fixed size in metres and an arbitrary one on screen, so a ring
+/// count fixed in world units is either a wasteful thousand rings up close or a
+/// visible set of stripes from far away.
+const FILL_SPACING_PX: f32 = 2.0;
+
+/// Ring counts the pixel spacing is clamped between. The floor keeps a brush
+/// that is a few pixels across from collapsing to nothing; the ceiling caps the
+/// per-frame heightmap sampling when you fill the screen with one brush.
+const MIN_FILL_RINGS: usize = 4;
+const MAX_FILL_RINGS: usize = 96;
+
+/// Ring count used when the camera can't be asked (the cursor projected behind
+/// the camera, or the caller has no camera to hand). Dense enough to look like
+/// a fill at an ordinary working distance.
+const FALLBACK_FILL_RINGS: usize = 32;
+
+/// Alpha of the fill where the brush is at full strength. Short of 1.0 because
+/// the point of painting is watching the ground you are painting: the cursor
+/// has to say "all of this, at full weight" without hiding the texture you are
+/// deciding to cover.
+const FILL_ALPHA: f32 = 0.5;
+
+/// Everything the cursor draws from. Grouped into a struct because the tools
+/// pass seven brush settings plus a colour, and a free function taking ten
+/// positional arguments is one transposed pair away from a brush that silently
+/// draws someone else's falloff.
+#[derive(Clone, Copy, Debug)]
+pub struct BrushCursor {
+    /// World-space point under the mouse, on the terrain surface.
+    pub center: Vec3,
+    /// Brush radius in world units. Paint and foliage store theirs as a
+    /// fraction of a chunk, so they scale it before building this.
+    pub radius: f32,
+    pub shape: BrushShape,
+    pub falloff: f32,
+    pub falloff_type: BrushFalloffType,
+    /// Outline colour. The fill is this colour at [`FILL_ALPHA`] scaled by the
+    /// brush weight, so a tool only picks one colour.
+    pub color: Color,
+    /// Render-target pixels one world unit spans at the cursor, from
+    /// [`pixels_per_unit`]. `None` falls back to [`FALLBACK_FILL_RINGS`].
+    pub pixels_per_unit: Option<f32>,
+}
+
+/// How many render-target pixels one world unit spans at `at`.
+///
+/// Measured by projecting two points a metre apart across the camera's own
+/// right axis rather than derived from the projection, so it is correct for a
+/// perspective and an orthographic camera without either being a special case.
+pub fn pixels_per_unit(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    at: Vec3,
+) -> Option<f32> {
+    let a = camera.world_to_viewport(camera_transform, at).ok()?;
+    let b = camera
+        .world_to_viewport(camera_transform, at + camera_transform.right() * 1.0)
+        .ok()?;
+    let px = (b - a).length();
+    (px.is_finite() && px > 0.0).then_some(px)
+}
+
+/// Rings the fill needs to look continuous at the size it is on screen.
+pub fn fill_ring_count(radius: f32, pixels_per_unit: Option<f32>) -> usize {
+    let Some(ppu) = pixels_per_unit else {
+        return FALLBACK_FILL_RINGS;
+    };
+    let radius_px = radius * ppu;
+    ((radius_px / FILL_SPACING_PX).ceil() as usize).clamp(MIN_FILL_RINGS, MAX_FILL_RINGS)
+}
+
+/// Points to walk a fill ring at `ring` of `count` with.
+///
+/// Proportional to the ring's own radius: the innermost rings are a few pixels
+/// across and spending 48 heightmap samples on them buys nothing, while the
+/// outermost needs the full count or the fill's edge goes polygonal inside a
+/// round outline. Rounded to a multiple of four so a square or diamond still
+/// lands on its corners (see [`ring_offset`]).
+fn fill_ring_segments(ring: usize, count: usize) -> usize {
+    let scaled = RING_SEGMENTS * ring / count.max(1);
+    (scaled / 4).clamp(2, RING_SEGMENTS / 4) * 4
+}
 
 /// The terrain's composed surface height at a world XZ, or `None` when the
 /// point is off the chunk grid.
@@ -156,44 +256,91 @@ pub fn draw_ring(
     points
 }
 
-/// The full brush cursor: the outer ring at `radius`, plus the inner ring at the
-/// edge of the brush's full-strength core.
+/// Fill the brush's interior, shaded by the weight the stroke will apply there.
 ///
-/// The inner ring is where the falloff starts, so the two together say how much
-/// of the brush is soft. At `falloff >= 0.99` the core has shrunk to nothing and
-/// the second ring would sit on the centre point, so it is dropped.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_brush_cursor(
+/// Concentric rings from the centre out, each drawn at the falloff weight of its
+/// own radius, so the full-strength core comes out solid and the soft edge fades
+/// into the outline. The outermost ring is weight zero by definition and is not
+/// drawn: the outline is already there and a second line on top of it only
+/// z-fights.
+///
+/// Points that fall off the chunk grid keep the centre's height, the same
+/// fallback [`draw_ring`] makes, so the fill has no holes at the terrain's edge.
+fn draw_brush_fill(
     gizmos: &mut Gizmos,
-    center: Vec3,
-    radius: f32,
-    shape: BrushShape,
-    falloff: f32,
-    color: Color,
+    cursor: &BrushCursor,
     terrain: &TerrainData,
     terrain_pos: Vec3,
     chunks: &[&TerrainChunkData],
 ) {
+    if cursor.radius <= 0.0 {
+        return;
+    }
+    let base_alpha = cursor.color.alpha();
+    let rings = fill_ring_count(cursor.radius, cursor.pixels_per_unit);
+
+    for ring in 1..=rings {
+        let t = ring as f32 / rings as f32;
+        let weight = compute_brush_falloff(t, cursor.falloff, cursor.falloff_type);
+        if weight <= 0.001 {
+            continue;
+        }
+        let color = cursor.color.with_alpha(base_alpha * FILL_ALPHA * weight);
+        let radius = cursor.radius * t;
+        let segments = fill_ring_segments(ring, rings);
+
+        let point = |i: usize| {
+            let o = ring_offset(cursor.shape, i as f32 / segments as f32, radius);
+            let (wx, wz) = (cursor.center.x + o.x, cursor.center.z + o.y);
+            let y = surface_height(wx, wz, terrain, terrain_pos, chunks).unwrap_or(cursor.center.y);
+            Vec3::new(wx, y + FILL_LIFT, wz)
+        };
+
+        let first = point(0);
+        let mut prev = first;
+        for i in 1..segments {
+            let next = point(i);
+            gizmos.line(prev, next, color);
+            prev = next;
+        }
+        gizmos.line(prev, first, color);
+    }
+}
+
+/// The full brush cursor: the shaded interior, the outer ring at `radius`, and
+/// the inner ring at the edge of the brush's full-strength core.
+///
+/// The inner ring is where the falloff starts, so the two together say how much
+/// of the brush is soft. At `falloff >= 0.99` the core has shrunk to nothing and
+/// the second ring would sit on the centre point, so it is dropped.
+pub fn draw_brush_cursor(
+    gizmos: &mut Gizmos,
+    cursor: &BrushCursor,
+    terrain: &TerrainData,
+    terrain_pos: Vec3,
+    chunks: &[&TerrainChunkData],
+) {
+    draw_brush_fill(gizmos, cursor, terrain, terrain_pos, chunks);
     draw_ring(
         gizmos,
-        center,
-        radius,
-        shape,
+        cursor.center,
+        cursor.radius,
+        cursor.shape,
         terrain,
         terrain_pos,
         chunks,
-        color,
+        cursor.color,
     );
-    if falloff < 0.99 {
+    if cursor.falloff < 0.99 {
         draw_ring(
             gizmos,
-            center,
-            radius * (1.0 - falloff),
-            shape,
+            cursor.center,
+            cursor.radius * (1.0 - cursor.falloff),
+            cursor.shape,
             terrain,
             terrain_pos,
             chunks,
-            color.with_alpha(0.4),
+            cursor.color.with_alpha(0.4),
         );
     }
 }
@@ -272,6 +419,55 @@ mod tests {
                 assert_eq!(o, Vec2::ZERO, "{shape:?}");
             }
         }
+    }
+
+    /// The fill's ring count tracks the brush's size *on screen*, so the same
+    /// brush is neither striped when it is far away nor a thousand rings when
+    /// you lean into it.
+    #[test]
+    fn the_fill_packs_rings_by_screen_size() {
+        // 10 m at 10 px/m is 100 px of radius, one ring every 2 px.
+        assert_eq!(fill_ring_count(10.0, Some(10.0)), 50);
+        // The same brush seen from far enough away that it is 8 px across.
+        assert_eq!(fill_ring_count(10.0, Some(0.4)), 4);
+        // Clamped at both ends, and a camera that couldn't be asked still fills.
+        assert_eq!(fill_ring_count(500.0, Some(50.0)), MAX_FILL_RINGS);
+        assert_eq!(fill_ring_count(0.01, Some(1.0)), MIN_FILL_RINGS);
+        assert_eq!(fill_ring_count(10.0, None), FALLBACK_FILL_RINGS);
+    }
+
+    /// Inner rings are cheaper than outer ones, but never so cheap that a square
+    /// loses its corners: the count stays a multiple of four.
+    #[test]
+    fn fill_rings_scale_their_segments_and_keep_corners() {
+        let rings = 32;
+        let mut prev = 0;
+        for ring in 1..=rings {
+            let segs = fill_ring_segments(ring, rings);
+            assert_eq!(segs % 4, 0, "ring {ring} has {segs} segments");
+            assert!((8..=RING_SEGMENTS).contains(&segs), "ring {ring}: {segs}");
+            assert!(segs >= prev, "segment count went backwards at ring {ring}");
+            prev = segs;
+        }
+        assert_eq!(fill_ring_segments(rings, rings), RING_SEGMENTS);
+    }
+
+    /// The whole point of the fill: full weight in the middle, nothing at the
+    /// rim, so the patch reads as the brush's strength and not just its extent.
+    #[test]
+    fn the_fill_is_solid_in_the_core_and_gone_at_the_rim() {
+        let rings = 20;
+        let weight = |ring: usize| {
+            compute_brush_falloff(
+                ring as f32 / rings as f32,
+                0.5,
+                BrushFalloffType::Smooth,
+            )
+        };
+        assert_eq!(weight(1), 1.0);
+        assert_eq!(weight(rings / 2), 1.0);
+        assert!(weight(rings * 3 / 4) < 1.0);
+        assert_eq!(weight(rings), 0.0);
     }
 
     #[test]

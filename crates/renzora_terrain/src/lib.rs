@@ -1,3 +1,4 @@
+pub mod brush_gizmo;
 pub mod brush_layer;
 pub mod data;
 pub mod foliage;

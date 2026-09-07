@@ -6,8 +6,8 @@ Generate, sculpt and paint heightmap terrain in the editor with live gizmos, the
 
 Terrain is two crates working together:
 
-- **`renzora_terrain`** — the runtime. `TerrainPlugin` registers the data types, builds chunk meshes, composes heightmaps, uploads splatmaps, and scatters foliage. It self-registers with `renzora::add!(TerrainPlugin)`, so terrain renders in **both the editor and your shipped game**.
-- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the brush gizmo, the [Generate](#generating-a-landscape) region gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
+- **`renzora_terrain`** — the runtime. `TerrainPlugin` registers the data types, builds chunk meshes, composes heightmaps, uploads splatmaps, and scatters foliage. It self-registers with `renzora::add!(TerrainPlugin)`, so terrain renders in **both the editor and your shipped game**. It also owns the shared [brush cursor](#the-brush-cursor) (`brush_gizmo`), which is not a tool but a drawing routine the three separate editor tools all need.
+- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the [Generate](#generating-a-landscape) region gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
 
 A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`TerrainChunkData`) per tile. Each chunk stores a square grid of heights normalized to `[0, 1]`; the chunk's `TerrainData` maps that range onto world `min_height..max_height`. Sculpting writes the chunk's `base_heights`; a composition pass adds any per-layer carve deltas to produce the final `heights` the mesh and collider read.
 
@@ -217,16 +217,19 @@ The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape onc
 
 ### The brush cursor
 
-Both terrain brush tools draw the same cursor, and both find it the same way: a **mesh raycast** against the chunk meshes, filtered to chunks only so paint-layer overlays and grass don't swallow the ray and leave the brush dead over ground you've already worked on.
+All three brush tools (sculpt, surface paint and [Paint Foliage](#foliage)) draw the same cursor, and all three find it the same way: a **mesh raycast** against the chunk meshes, filtered to chunks only so paint-layer overlays and grass don't swallow the ray and leave the brush dead over ground you've already worked on.
 
-The cursor is two rings, and both ride the surface — every point around them samples the heightmap, so the cursor lies on a hillside instead of hovering flat above it:
+The cursor is a **filled patch**, and all of it rides the surface: every point in it samples the heightmap, so the cursor lies on a hillside instead of hovering flat above it:
 
+- the **fill**, shaded by the weight the stroke will actually apply: solid through the full-strength core, fading out along the brush's own falloff curve. That is the part you aim, so that is the part you can see;
 - the **outer ring** at the brush radius, drawn in the shape you picked (circle, square or diamond);
-- the **inner ring** at the edge of the full-strength core — the gap between the two is the falloff band, so you can see how soft the brush is rather than reading it off a slider.
+- the **inner ring** at the edge of the full-strength core, the boundary the fill starts fading at.
 
 The colour says which brush is in hand.
 
-> Paint used to draw a flat circle here that ignored both the shape and the falloff it lets you set, which meant discovering the brush by painting and undoing. It draws the shared cursor now. The code is `renzora_terrain_editor::brush_gizmo`; the **Stamp** brush adds its wireframe grid preview on top of the same outer ring.
+> Bevy gizmos can't fill a polygon, so the patch is concentric rings packed tightly enough to read as one surface. How many is chosen from the brush's size **on screen**, so it stays solid when you lean into it and doesn't waste rings when the brush is a few pixels across.
+
+> Paint and foliage used to draw a flat circle here that ignored the shape and falloff they let you set, which meant discovering the brush by painting and undoing. They draw the shared cursor now. The code is `renzora_terrain::brush_gizmo` (in the runtime crate, because all three editor tools depend on it); the **Stamp** brush adds its wireframe grid preview on top of the same outer ring.
 
 ### Brush settings
 
@@ -245,7 +248,7 @@ Per-brush additions, shown only for the brush that uses them:
 - **Terrace** — **Steps** and **Sharpness**.
 - **Stamp** — **Blend**, **Rotation** and **Height Scale** on the toolbar; the preset picker and **Load PNG…** in the panel.
 
-The gizmo draws an outer ring plus an inner falloff ring (and a vertex-density grid preview for the Stamp brush).
+The gizmo draws a falloff-shaded fill plus its outer and inner rings (and a vertex-density grid preview for the Stamp brush).
 
 ### Undo / redo
 
@@ -288,7 +291,7 @@ Paint strokes, including a stroke that auto-created a layer, undo/redo as single
 - **Size** (`0.01`–`0.5`) — brush radius as a **fraction of a chunk side** (the scroll wheel resizes within that range), so the brush scales with the terrain rather than with a metre count.
 - **Strength** (`0.01`–`1.0`), **Falloff** (`0`–`1`), and **Shape** (Circle / Square / Diamond).
 
-All three show in the [brush cursor](#the-brush-cursor), which is the same surface-following one the sculpt brushes use.
+All three show in the [brush cursor](#the-brush-cursor), which is the same surface-following, falloff-shaded one the sculpt brushes use.
 
 ## Foliage
 
@@ -318,6 +321,8 @@ With **Paint Foliage** active, the same left-edge [tool shelf](#the-tool-shelf-a
 - **A numbered button per foliage type** — 1 to 8, matching the numbering in the panel's Foliage Types list. A button appears only once that type exists, and its tooltip shows the type's current name, so renaming a type in the panel renames it on the shelf.
 
 Eight is the ceiling: a density map carries eight weights per texel, so the panel's **Add** button disappears at eight types. Shelf and panel write the same `FoliagePaintSettings` — click either.
+
+Foliage draws the shared [brush cursor](#the-brush-cursor), so its Size, Shape and Falloff show in the viewport the same way the sculpt and paint ones do.
 
 ### Foliage type settings
 

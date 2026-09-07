@@ -4,7 +4,10 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use renzora_terrain::data::{compute_brush_falloff, BrushShape, TerrainChunkData, TerrainData};
+use renzora_terrain::brush_gizmo::{self, BrushCursor};
+use renzora_terrain::data::{
+    compute_brush_falloff, BrushShape, TerrainChunkData, TerrainChunkOf, TerrainData,
+};
 use renzora_terrain::foliage::{
     FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, FoliageRebuildCost,
     MAX_FOLIAGE_TYPES,
@@ -266,23 +269,43 @@ pub fn foliage_paint_scroll_system(
     }
 }
 
-/// Draw brush circle gizmo at hover position.
+/// Draw the foliage brush cursor at the hover position.
+///
+/// The cursor is `renzora_terrain::brush_gizmo`, the same one the sculpt and
+/// surface-paint tools draw: surface-following, shaped, and filled with the
+/// weight the stroke will apply. This used to be a hand-rolled flat circle,
+/// which floated over any slope and ignored the shape and falloff the foliage
+/// toolbar offers: settings you could only discover by painting and undoing.
 pub fn foliage_brush_gizmo_system(
     paint_state: Res<FoliagePaintState>,
     settings: Res<FoliagePaintSettings>,
-    terrain_query: Query<&TerrainData>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<renzora_editor_framework::EditorCamera>>,
+    chunk_owner_query: Query<&TerrainChunkOf>,
+    chunk_heights: Query<(&TerrainChunkData, &TerrainChunkOf)>,
+    terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut gizmos: Gizmos,
 ) {
     let Some(pos) = paint_state.hover_position else {
         return;
     };
-
-    // Convert UV radius to world radius
-    let world_radius = if let Some(terrain) = terrain_query.iter().next() {
-        settings.brush_radius * terrain.chunk_size
-    } else {
-        settings.brush_radius * 64.0
+    // Walk chunk → terrain root: the heights the cursor rides come from that
+    // terrain's own chunks, and a scene can hold more than one terrain.
+    let terrain_entity = paint_state
+        .active_chunk
+        .and_then(|chunk| chunk_owner_query.get(chunk).ok())
+        .map(|of| of.0);
+    let Some((terrain, terrain_gt)) = terrain_entity.and_then(|e| terrain_query.get(e).ok()) else {
+        return;
     };
+    let chunks: Vec<&TerrainChunkData> = chunk_heights
+        .iter()
+        .filter(|(_, owner)| Some(owner.0) == terrain_entity)
+        .map(|(chunk, _)| chunk)
+        .collect();
+
+    // Foliage stores its radius as a fraction of a chunk, the way the density
+    // map is addressed, so the brush scales with the terrain.
+    let world_radius = settings.brush_radius * terrain.chunk_size;
 
     let color = match settings.brush_type {
         FoliageBrushType::Paint => Color::srgba(0.3, 0.9, 0.3, 0.8),
@@ -295,21 +318,25 @@ pub fn foliage_brush_gizmo_system(
         FoliageBrushType::Trim => Color::srgba(0.8, 0.6, 1.0, 0.8),
     };
 
-    // Draw circle on XZ plane at hover position
-    let segments = 48;
-    let mut prev = Vec3::ZERO;
-    for i in 0..=segments {
-        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
-        let point = Vec3::new(
-            pos.x + angle.cos() * world_radius,
-            pos.y + 0.05, // slight offset above terrain to avoid z-fighting
-            pos.z + angle.sin() * world_radius,
-        );
-        if i > 0 {
-            gizmos.line(prev, point, color);
-        }
-        prev = point;
-    }
+    let cursor = BrushCursor {
+        center: pos,
+        radius: world_radius,
+        shape: settings.brush_shape,
+        falloff: settings.brush_falloff,
+        falloff_type: settings.falloff_type,
+        color,
+        pixels_per_unit: camera_query
+            .iter()
+            .next()
+            .and_then(|(cam, cam_tf)| brush_gizmo::pixels_per_unit(cam, cam_tf, pos)),
+    };
+    brush_gizmo::draw_brush_cursor(
+        &mut gizmos,
+        &cursor,
+        terrain,
+        terrain_gt.translation(),
+        &chunks,
+    );
 }
 
 /// Hide cursor while painting, show it when stopped. Also triggers the final

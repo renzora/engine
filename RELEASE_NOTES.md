@@ -1,6 +1,10 @@
 <!-- r1-alpha7 -->
 
 ## Unreleased
+- feat(terrain): the sculpt, paint and foliage brush cursors are filled in, shaded
+  by the brush's falloff, so you can see the brush and not just its outline.
+- fix(terrain): the foliage brush cursor follows the ground and honours the shape
+  and falloff its toolbar sets.
 - fix(viewport): the toolbar's move / rotate / scale snap steps accept decimals
   again, so a 0.25 grid is typeable.
 - fix(assets): New Folder in the toolbar opens the rename field, like the menu

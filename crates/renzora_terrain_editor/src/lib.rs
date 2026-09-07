@@ -1,7 +1,6 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
 mod bar_widgets;
-mod brush_gizmo;
 mod brush_layer_paint;
 mod generate_bar;
 mod generate_tool;
