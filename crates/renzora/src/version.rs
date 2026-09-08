@@ -18,9 +18,9 @@
 //! compile time:
 //!
 //! * **Dev** — neither var set. Built from a checkout; has no release of its own.
-//! * **Nightly** — `RENZORA_RELEASE_TAG=r1-alpha7-nightly-16aug26`. One release per
+//! * **Nightly** — `RENZORA_RELEASE_TAG=r1-alpha8-nightly-16aug26`. One release per
 //!   night, tagged `<version>-nightly-<ddmonyy>`, published as a prerelease.
-//! * **Release** — `RENZORA_RELEASE_TAG=r1-alpha7`, i.e. the tag *is* the version.
+//! * **Release** — `RENZORA_RELEASE_TAG=r1-alpha8`, i.e. the tag *is* the version.
 //!
 //! `option_env!` bakes these in when the `renzora` crate compiles, so they are
 //! only picked up by a cold build. CI builds cold every run; a warm local tree
@@ -30,7 +30,7 @@
 /// The engine version, in the `r1-alphaN` scheme used for docs directories,
 /// release tags and everything shown to a user. **Bump this and `docs/` together**
 /// (see CLAUDE.md §4) — it is what the export downloader asks GitHub for.
-pub const ENGINE_VERSION: &str = "r1-alpha7";
+pub const ENGINE_VERSION: &str = "r1-alpha8";
 
 /// Which kind of build this is. See the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,10 +68,10 @@ pub fn channel() -> BuildChannel {
 }
 
 /// Tag prefix a dev build falls back to when no release exists for its exact
-/// version — i.e. `"r1-alpha7-nightly-"`. The newest release whose tag starts with
+/// version — i.e. `"r1-alpha8-nightly-"`. The newest release whose tag starts with
 /// this is the nightly that matches an in-development editor.
 ///
-/// Deliberately NOT "latest stable": an `r1-alpha7` editor paired with `r1-alpha6`
+/// Deliberately NOT "latest stable": an `r1-alpha8` editor paired with `r1-alpha7`
 /// runtime templates is an ABI mismatch waiting to surface as a scene that loads
 /// in the editor and not in the export.
 pub fn fallback_tag_prefix() -> String {
@@ -118,8 +118,8 @@ pub fn host_platform_key() -> Option<&'static str> {
     None
 }
 
-/// Version string for display — `r1-alpha7`, `r1-alpha7-nightly-16aug26`, or
-/// `r1-alpha7 (dev)`.
+/// Version string for display — `r1-alpha8`, `r1-alpha8-nightly-16aug26`, or
+/// `r1-alpha8 (dev)`.
 pub fn display() -> String {
     match release_tag() {
         Some(t) => t.to_string(),

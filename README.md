@@ -80,4 +80,4 @@ Dual-licensed under MIT or Apache 2.0.
 
 - <a href="LICENSE-MIT" target="_blank" rel="noopener noreferrer">MIT License</a>
 - <a href="LICENSE-APACHE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>
-- <a href="https://github.com/renzora/engine/blob/main/docs/r1-alpha7/contributing/ai-policy.md" target="_blank" rel="noopener noreferrer">AI Policy</a>
+- <a href="https://github.com/renzora/engine/blob/main/docs/r1-alpha8/contributing/ai-policy.md" target="_blank" rel="noopener noreferrer">AI Policy</a>

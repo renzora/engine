@@ -20,7 +20,7 @@ default = ["editor"]
 scripting = ["dep:renzora_scripting"]
 # Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
 # "Add Component" list. Off in lean exports — the dev/editor build keeps it
-# on by default (see docs/r1-alpha7/editor-dev/inspector-fields.md).
+# on by default (see docs/r1-alpha8/editor-dev/inspector-fields.md).
 editor = ["renzora/editor"]
 
 [dependencies]

@@ -336,11 +336,11 @@ profiling build that re-adds `trace_tracy`.
 
 ## 4. Versioning & documentation
 
-- **Current dev version: `r1-alpha7`.** From now on, **only edit
-  `docs/r1-alpha7/`.** `docs/r1-alpha6/` is released and **frozen** (its frozen
+- **Current dev version: `r1-alpha8`.** From now on, **only edit
+  `docs/r1-alpha8/`.** `docs/r1-alpha7/` is released and **frozen** (its frozen
   ABI hash + release commit are recorded in `releases.json` at the repo root) —
-  do not mirror changes into it, nor into the older frozen `docs/r1-alpha5/`.
-  Top-level non-versioned `docs/*.md` are still fair game.
+  do not mirror changes into it, nor into the older frozen `docs/r1-alpha6/` and
+  `docs/r1-alpha5/`. Top-level non-versioned `docs/*.md` are still fair game.
 - **The next version is opened after its predecessor's tag is pushed, not
   before.** `ENGINE_VERSION` is what the release workflow compares against the
   tag to decide whether it is building a release or a nightly, so the constant
@@ -350,12 +350,12 @@ profiling build that re-adds `trace_tracy`.
 - **Always update the docs after adding or changing a feature.** Stale docs are
   treated as a bug. If you ship a feature (new scripting function, new inspector
   field, new plugin capability, new editor panel), update the matching page under
-  `docs/r1-alpha7/` in the same change.
+  `docs/r1-alpha8/` in the same change.
 - Docs are also published at <https://renzora.com/docs>. Pushing `docs/r1-alpha*`
   changes to `main` auto-publishes via `.github/workflows/sync-docs.yml` (rsync
   into the website repo, which redeploys). You do not copy anything by hand.
 
-`docs/r1-alpha7/` sections include: `getting-started`, `setup`, `scripting`,
+`docs/r1-alpha8/` sections include: `getting-started`, `setup`, `scripting`,
 `api`, `editor`, `editor-dev`, `engine-core`, `rendering`, `extending`,
 `exporting`, `packaging`, `multiplayer`, `marketplace`, `platform-api`,
 `contributing`.
@@ -387,15 +387,15 @@ profiling build that re-adds `trace_tracy`.
   file is a history, newest first, of one section per published nightly:
 
 ```markdown
-# Renzora Engine `r1-alpha7`
+# Renzora Engine `r1-alpha8`
 
 ## Unreleased
 - feat(editor): what it does, in the commit-subject voice
 
-## r1-alpha7-nightly-06sep26
+## r1-alpha8-nightly-06sep26
 - fix(plugin): what broke, and what now happens instead
 
-## r1-alpha7-nightly-05sep26
+## r1-alpha8-nightly-05sep26
 - ...
 ```
 
@@ -474,7 +474,7 @@ profiling build that re-adds `trace_tracy`.
 ## 6. Writing plugins
 
 **Before creating or modifying a plugin, ALWAYS research the plugin API first.**
-Read `docs/r1-alpha7/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
+Read `docs/r1-alpha8/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
 and look at an existing distribution plugin (`renzora_lumen`, `renzora_cloth`)
 as a template. Use `renzora add <name>` to scaffold.
 
@@ -526,7 +526,7 @@ to write Rust is the `&mut World` no command vocabulary can stand in for. Gated
 on play mode exactly like Lua; recompiles on save, off the main thread.
 
 **When writing scripts, refer to the scripting API first**
-(`docs/r1-alpha7/scripting/` + `docs/r1-alpha7/api/scripting.md`). The
+(`docs/r1-alpha8/scripting/` + `docs/r1-alpha8/api/scripting.md`). The
 interpreter itself is not in this repository — see the note on plugins in §3.
 
 **If a script needs a function that doesn't exist yet:**
@@ -557,7 +557,7 @@ interpreter itself is not in this repository — see the note on plugins in §3.
 
    See `renzora_animation`, `renzora_physics`, `renzora_navmesh`,
    `renzora_ragdoll`, `renzora_lang` for real examples.
-4. **Update `docs/r1-alpha7/` for the new function** (see §4).
+4. **Update `docs/r1-alpha8/` for the new function** (see §4).
 
 Core/engine-wide primitives (`set_position`, `play_sound`, `spawn_entity`, the
 reflection `set`/`get`/`set_on`, …) live in the language plugin's
@@ -565,7 +565,7 @@ reflection `set`/`get`/`set_on`, …) live in the language plugin's
 
 **Adding a language** is a plugin: implement `renzora_plugin::script::Backend`,
 claim your extensions, and the engine routes to you by file extension. Two
-languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.md`.
+languages coexist in one project. See `docs/r1-alpha8/extending/script-backends.md`.
 
 ## 8. Code conventions
 
@@ -645,7 +645,7 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
   linked `rlib`s; third-party ones are C-ABI cdylibs that link no Bevy and
   negotiate via version + `INTERFACE_PREFIX_HASHES` (§3). There is no
   `bevy_dylib` gate and no hash to maintain.
-- **Docs are part of "done."** A feature without its `docs/r1-alpha7/` update is
+- **Docs are part of "done."** A feature without its `docs/r1-alpha8/` update is
   unfinished.
 - **Verify before contradicting the user** about working-tree state; check the
   actual files.
@@ -674,7 +674,7 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
 | `docker/build-all.sh` | In-container build orchestrator (run once per platform container) |
 | `.github/workflows/docker-image.yml` | Publishes base + each <platform> image to GHCR |
-| `docs/r1-alpha7/` | Current docs (edit here); `extending/plugins.md` for the plugin API |
+| `docs/r1-alpha8/` | Current docs (edit here); `extending/plugins.md` for the plugin API |
 | `docs/BEVY_0.19_MIGRATION.md` | Bevy 0.19 upgrade notes (plugin ABI will change) |
 | `.github/workflows/test.yml` | CI: container test + clippy gate |
 | `.github/workflows/sync-docs.yml` | Auto-publish docs to renzora.com |

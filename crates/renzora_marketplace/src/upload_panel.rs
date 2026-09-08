@@ -70,7 +70,7 @@ const GENRE_VALUES: &[&str] = &["", "ambient", "orchestral", "electronic", "retr
 const LICENCE_VALUES: &[&str] = &["standard", "extended", "mit", "apache2", "gpl3", "cc0"];
 /// Engine versions released before the one this build is, newest first.
 /// Nightlies are deliberately not offered as a support target.
-const PAST_ENGINE_VERSIONS: &[&str] = &["r1-alpha6", "r1-alpha5"];
+const PAST_ENGINE_VERSIONS: &[&str] = &["r1-alpha7", "r1-alpha6", "r1-alpha5"];
 
 /// Supported engine versions for the "Minimum Engine Version" dropdown, newest
 /// first: "Any version", then the version this editor *is*, then the ones before

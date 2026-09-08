@@ -61,8 +61,8 @@ insist on is that you own what you submit:
 
 The complete policy — what "audited" means in practice, the repo-specific traps
 AI-assisted patches hit most often, licensing, and AI in issues and reviews — is
-at [docs/r1-alpha7/contributing/ai-policy.md](docs/r1-alpha7/contributing/ai-policy.md)
-(published at <https://renzora.com/docs/r1-alpha7/contributing/ai-policy>).
+at [docs/r1-alpha8/contributing/ai-policy.md](docs/r1-alpha8/contributing/ai-policy.md)
+(published at <https://renzora.com/docs/r1-alpha8/contributing/ai-policy>).
 
 ## Reporting Issues
 
@@ -103,7 +103,7 @@ Include:
 1. **Branch from `main`** — Name your branch descriptively (e.g., `fix-spotlight-shadow`, `add-cylinder-collider`)
 2. **One concern per PR** — Don't mix bug fixes with new features or refactors
 3. **Write tests** for new functionality when the module has existing test coverage
-4. **Update the docs** under `docs/r1-alpha7/` if you change public APIs or add features — see [Documentation](#documentation)
+4. **Update the docs** under `docs/r1-alpha8/` if you change public APIs or add features — see [Documentation](#documentation)
 5. **Don't break existing tests** — run the suite before submitting (see [Testing](#testing))
 6. **Keep changes minimal** — Don't refactor unrelated code, add unnecessary comments, or reformat files you didn't change
 
@@ -112,7 +112,7 @@ Include:
 - [ ] `cargo clippy --profile dist` is clean (warnings are denied in CI)
 - [ ] Tests pass for the crates you touched
 - [ ] New tests added for new functionality (where applicable)
-- [ ] Docs updated under `docs/r1-alpha7/` (if you changed behavior or APIs)
+- [ ] Docs updated under `docs/r1-alpha8/` (if you changed behavior or APIs)
 - [ ] No unrelated formatting changes
 - [ ] Branch is up to date with `main`
 - [ ] AI-assisted work is audited and disclosed with an `Assisted-by:` trailer
@@ -258,8 +258,8 @@ mod tests {
 
 Docs live in **this** repo under `docs/`, and pushing them to `main` auto-publishes to <https://renzora.com/docs> — you never copy anything by hand.
 
-- **Edit `docs/r1-alpha7/` only.** It's the current development version. `docs/r1-alpha6/` and older are released and frozen; don't mirror changes into them.
-- Add a new page to `docs/r1-alpha7/_sidebar.json` or it won't appear in the navigation.
+- **Edit `docs/r1-alpha8/` only.** It's the current development version. `docs/r1-alpha7/` and older are released and frozen; don't mirror changes into them.
+- Add a new page to `docs/r1-alpha8/_sidebar.json` or it won't appear in the navigation.
 - **A feature without its docs update is unfinished.** If you ship a new scripting function, inspector field, plugin capability, or editor panel, update the matching page in the same PR.
 
 ## Commit Messages
@@ -276,7 +276,7 @@ Good examples (real commits from this repo):
 feat(scripting): camera field of view
 fix(import): harden the folder-import walk and unify the queue path
 refactor(audio): delete kira; renzora_audio becomes the API and nothing else
-docs(r1-alpha7): audio is a plugin, not a library the engine links
+docs(r1-alpha8): audio is a plugin, not a library the engine links
 ```
 
 Bad examples:
