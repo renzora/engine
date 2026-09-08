@@ -226,8 +226,52 @@ mod macos {
         let main_bin =
             if macos_dir.join("renzora-editor").is_file() { "renzora-editor" } else { "renzora" };
         std::fs::write(app.join("Contents").join("Info.plist"), plist(main_bin))?;
+        seal(&app);
         println!("[xtask] built {}", app.display());
         Ok(())
+    }
+
+    /// Ad-hoc sign the assembled bundle.
+    ///
+    /// `fixup_macos` already signed each file, but it did so while they were
+    /// still loose, and that is not the same signature. Once a Mach-O sits at
+    /// `Contents/MacOS/<CFBundleExecutable>` macOS evaluates it under *bundle*
+    /// rules, which want a sealed `Contents/_CodeSignature/CodeResources`
+    /// covering the rest of the tree. Without one the signature is not missing,
+    /// it is **invalid** — arm64 SIGKILLs the process at `exec` and Gatekeeper
+    /// reports a downloaded copy as *"Renzora Engine is damaged and can't be
+    /// opened"*, which is how this shipped from 2026-08-29 until it was found.
+    ///
+    /// So this has to run last: the seal covers `Info.plist`, so signing before
+    /// that file is written produces a signature that fails the moment it is.
+    ///
+    /// This is the `rcodesign sign "$APP"` the container's `wrap_macos_app` did.
+    /// The step was simply lost when the macOS editors moved off osxcross onto
+    /// native runners and the wrap was ported here.
+    ///
+    /// Best-effort, and it stays that way deliberately: `codesign` is Xcode's,
+    /// so a machine with only the Rust toolchain has none, and refusing to
+    /// produce a `.app` at all would be worse than producing one the person who
+    /// asked for it can still run locally. CI is the case that must not ship
+    /// unsigned, and it checks the result rather than trusting this.
+    ///
+    /// Ad-hoc gets a launchable bundle, not a silent one: unnotarized, the
+    /// first launch of a downloaded copy still needs Open Anyway. Only a
+    /// Developer ID identity plus notarization removes that, and neither exists
+    /// in this pipeline yet.
+    fn seal(app: &Path) {
+        let ok = std::process::Command::new("codesign")
+            .args(["--force", "--deep", "--sign", "-"])
+            .arg(app)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            println!(
+                "[xtask] WARN: codesign failed; macOS will refuse to launch {}",
+                app.display()
+            );
+        }
     }
 
     /// Build a single-image `.icns` from a PNG.

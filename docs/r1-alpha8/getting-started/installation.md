@@ -47,7 +47,7 @@ Download the Windows `.zip`, extract it anywhere, and double-click `renzora.exe`
 
 Download the macOS `.zip` and extract it, then move the Renzora app to your Applications folder.
 
-> On first launch macOS Gatekeeper may block an unsigned build. Right-click the app, choose **Open**, then confirm in the security dialog.
+> The app is signed, but not notarized by Apple, so Gatekeeper blocks the first launch. Open **System Settings ▸ Privacy & Security**, scroll to the message naming Renzora Engine, and click **Open Anyway**. Recent macOS versions no longer offer this through right-click ▸ Open. You only do it once.
 
 ### Linux
 

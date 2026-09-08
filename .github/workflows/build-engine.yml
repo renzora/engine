@@ -519,6 +519,29 @@ jobs:
           fi
           echo "every staged plugin resolves its dependencies through @rpath"
 
+      # The other check that needs a real macOS, and the one this release learnt
+      # the hard way. `xtask` seals the `.app` with an ad-hoc signature; without
+      # that seal its main executable is not unsigned but *invalidly* signed —
+      # arm64 SIGKILLs it at exec and a downloaded copy reads as "Renzora Engine
+      # is damaged and can't be opened". That is what every macOS build from
+      # 2026-08-29 shipped, because the signing step was lost when these lanes
+      # moved off osxcross and nothing downstream looks at a signature: the zip
+      # is cut on Linux, and the artifact is only ever opened by a user.
+      #
+      # `--deep --strict` is the assessment the kernel and Gatekeeper make,
+      # made here where it costs a second instead of after a release.
+      - name: Verify the macOS bundle signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="dist/${{ matrix.dist_dir }}/Renzora Engine.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::no .app staged at $app"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+          echo "$app carries a valid seal"
+
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
       # SDK's proc macros are artifacts of the machine that compiled them and a
