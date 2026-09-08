@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the notarized macOS editor, applied by the "Sign and notarize
+  the macOS bundle" step in `.github/workflows/build-engine.yml`.
+
+  Apple will only notarize a binary signed with the hardened runtime, and the
+  hardened runtime turns on protections this engine specifically cannot live
+  with. Each key below buys back exactly one of them; nothing here is
+  precautionary, and nothing should be added without the same kind of reason.
+
+  Not used by a local `cargo renzora dist`, which seals the bundle ad-hoc. The
+  hardened runtime is not in force there, so there is nothing to buy back.
+-->
+<plist version="1.0">
+<dict>
+    <!--
+      The load-bearing one. Library validation restricts a process to loading
+      code signed by its own team, and the whole native-plugin design is the
+      opposite of that: the editor stages an SDK, compiles a plugin or a `.rs`
+      script on the user's machine, and `dlopen`s the result. rustc's linker
+      signs that ad-hoc, under no team at all — so with validation on, a
+      perfectly notarized editor would build plugins all day and load none of
+      them. Marketplace plugins are the same story with someone else's team.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

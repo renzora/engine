@@ -367,6 +367,18 @@ jobs:
       CARGO_INCREMENTAL: 0
       RENZORA_RELEASE_TAG: ${{ needs.setup.outputs.tag }}
       RENZORA_BUILD_COMMIT: ${{ github.sha }}
+      # Apple Developer ID, at JOB level rather than on the step that uses it:
+      # the `secrets` context is not available to a step's `if`, but `env` is, so
+      # this is what lets the signing step ask whether it has an identity at all.
+      # Absent — a fork, a contributor's dispatch, anyone who has not added the
+      # secrets — the step skips and the build ships the ad-hoc seal `xtask`
+      # applied, which launches everywhere except a download.
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+      APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
       # Build the profile that ships, by NAME. These lanes run `cargo renzora`
       # (xtask), which defaults to the fast-link `dist` profile a contributor
       # iterates with; `RENZORA_PROFILE` is the same variable
@@ -519,6 +531,81 @@ jobs:
           fi
           echo "every staged plugin resolves its dependencies through @rpath"
 
+      # ── Developer ID + notarization ─────────────────────────────────────────
+      # The ad-hoc seal `xtask` applies is enough for the *kernel* — the bundle
+      # runs — but not for Gatekeeper, which refuses a downloaded copy it cannot
+      # trace to a notarized identity. That is the "Apple could not verify" wall,
+      # and the only thing that removes it is this: sign with a Developer ID,
+      # submit to Apple, staple the ticket the answer comes back as.
+      #
+      # Inert without the secrets, on purpose (see the job `env` block). The
+      # bundle is already signed and already launchable when this is skipped, so
+      # a fork or a contributor's dispatch loses the one-click download and
+      # nothing else.
+      #
+      # ── Why the entitlements ────────────────────────────────────────────────
+      # Notarization requires the hardened runtime, and the hardened runtime
+      # enforces *library validation*: a process may only load code signed by
+      # its own team. The editor compiles native plugins and Rust scripts on the
+      # user's machine and `dlopen`s the results, which rustc's linker signs
+      # ad-hoc under no team at all — so under plain `--options runtime` the
+      # editor would notarize cleanly and then load nothing it built. That is
+      # what `scripts/macos-entitlements.plist` turns back off.
+      - name: Sign and notarize the macOS bundle
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/${{ matrix.dist_dir }}/Renzora Engine.app"
+          ents=scripts/macos-entitlements.plist
+
+          # A throwaway keychain: the login keychain is not ours to write to, and
+          # this one dies with the VM. `set-key-partition-list` is the step that
+          # is invisible until it is missing — without it every codesign call
+          # blocks on a GUI prompt to unlock the key that nobody can answer, and
+          # the job hangs until the timeout rather than failing.
+          kc="$RUNNER_TEMP/renzora-signing.keychain-db"
+          kcpass=$(uuidgen)
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          printf '%s' "$APPLE_DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security import "$RUNNER_TEMP/id.p12" -k "$kc" \
+            -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$kcpass" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" \
+            $(security list-keychains -d user | tr -d '"')
+
+          # Inside-out, and it has to be: the bundle's seal covers its nested
+          # code, so signing the outside first and the inside after invalidates
+          # the thing just written. `--timestamp` because a signature without one
+          # expires with the certificate; notarization rejects it outright.
+          find "$app/Contents/MacOS" -type f \( -name '*.dylib' -o -perm +111 \) -print0 |
+            xargs -0 -n1 codesign --force --timestamp --options runtime \
+              --entitlements "$ents" --sign "$APPLE_SIGNING_IDENTITY"
+          codesign --force --timestamp --options runtime \
+            --entitlements "$ents" --sign "$APPLE_SIGNING_IDENTITY" "$app"
+
+          # notarytool takes an archive; stapler takes the bundle. `ditto`, not
+          # `zip`, because the archive has to preserve the bundle structure the
+          # signature was computed over.
+          printf '%s' "$APPLE_NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --wait --timeout 30m
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"
+
+          # Staple the ticket INTO the bundle. This is what lets a machine with
+          # no network clear Gatekeeper, and it is why the ticket survives the
+          # zip `package-release.sh` cuts on Linux hours later — it is a file
+          # inside the `.app`, not a property of the download.
+          xcrun stapler staple "$app"
+
       # The other check that needs a real macOS, and the one this release learnt
       # the hard way. `xtask` seals the `.app` with an ad-hoc signature; without
       # that seal its main executable is not unsigned but *invalidly* signed —
@@ -541,6 +628,13 @@ jobs:
           fi
           codesign --verify --deep --strict --verbose=2 "$app"
           echo "$app carries a valid seal"
+          # With an identity configured the bar is higher: Gatekeeper itself has
+          # to accept it. `spctl` is the only check that proves the notarization
+          # actually landed and stapled — `codesign` is happy either way, and the
+          # difference is invisible until a user downloads the zip.
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            spctl --assess --type exec --verbose=4 "$app"
+          fi
 
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
