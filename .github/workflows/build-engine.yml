@@ -19,7 +19,10 @@ name: Build Engine
 #                       One release per night; the 14 most recent are kept.
 #                       Skipped when nothing landed on `main` that day.
 #   push (tag r1-*)     a real release, tagged with the version itself.
-#   workflow_dispatch   build only, or build + publish as either kind.
+#   workflow_dispatch   build only, or build + publish as either kind. The
+#                       platform choice takes an OS (`windows`, both arches) or
+#                       a single slice (`windows-x64`), the latter for testing
+#                       one lane without spending hours on the other.
 #
 # Publishing also refreshes the playable web build at renzora.com/engine: the
 # `website` job at the bottom dispatches to renzora/website, which pulls
@@ -35,6 +38,10 @@ name: Build Engine
 #   macos    x86_64 + aarch64  native, one runner each  (`desktop` job)
 #   windows  x86_64 + aarch64  native, one runner each  (`desktop` job)
 #   wasm     wasm32            container                (`build` job)
+#
+# Each of those arches is also its own dispatch choice (`windows-x64`, and so
+# on). Automatic runs never use them: a schedule and a tag push both build
+# everything, so a nightly and a release are exactly what they were.
 #
 # ── Why every desktop slice is native ────────────────────────────────────────
 # Because an editor cannot be cross-built. It ships a plugin SDK so the machine
@@ -74,7 +81,7 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "Platform(s) to build"
+        description: "Platform(s) to build (an OS builds both arches; pick one to test a single slice)"
         type: choice
         default: all
         options:
@@ -83,6 +90,12 @@ on:
           - windows
           - macos
           - wasm
+          - linux-x64
+          - linux-arm64
+          - windows-x64
+          - windows-arm64
+          - macos-x64
+          - macos-arm64
       publish:
         description: "Publish the result as a release"
         type: choice
@@ -224,20 +237,36 @@ jobs:
           # `package-release.sh` matches on. `runner` pins an image rather than
           # a floating `-latest` where the label has recently moved: macos-latest
           # became macOS 26 (arm64) in mid-2026, so Intel has to be asked for by
-          # name — `macos-26-intel`, which is GA and supported to Aug 2027.
-          lx64='{"dist_dir":"linux-x64","runner":"ubuntu-latest"}'
-          larm='{"dist_dir":"linux-arm64","runner":"ubuntu-24.04-arm"}'
-          wx64='{"dist_dir":"windows-x64","runner":"windows-latest"}'
-          warm='{"dist_dir":"windows-arm64","runner":"windows-11-arm"}'
-          mx64='{"dist_dir":"macos-x64","runner":"macos-26-intel"}'
-          marm='{"dist_dir":"macos-arm64","runner":"macos-latest"}'
-          case "$platform" in
-            all)     dinc="$lx64,$larm,$wx64,$warm,$mx64,$marm" ;;
-            linux)   dinc="$lx64,$larm" ;;
-            windows) dinc="$wx64,$warm" ;;
-            macos)   dinc="$mx64,$marm" ;;
-            wasm)    dinc="" ;;
-          esac
+          # name (`macos-26-intel`, GA and supported to Aug 2027).
+          #
+          # A slice is selected by `all`, by its OS group, or by its own name.
+          # The groups are what every automatic run uses (a schedule and a tag
+          # push both default to `all`), so the shape of a nightly is unchanged;
+          # the per-arch names exist for a manual run that wants one lane, since
+          # asking for `windows` to check an x64 change also spends hours on the
+          # arm64 runner.
+          #
+          # The group is derived from the slice rather than listed beside it, so
+          # adding an arch is one `slice` line: every dist_dir is `<os>-<arch>`
+          # and `${dir%%-*}` is everything before the first hyphen. Matching
+          # happens inline rather than in a function that returns early, because
+          # `set -e` is on and a function whose last command is a non-zero
+          # `return` would end the run rather than skip a lane.
+          dinc=""
+          slice() {
+            local dir="$1" runner="$2"
+            case "$platform" in
+              all | "${dir%%-*}" | "$dir")
+                dinc="${dinc:+$dinc,}{\"dist_dir\":\"$dir\",\"runner\":\"$runner\"}"
+                ;;
+            esac
+          }
+          slice linux-x64     ubuntu-latest
+          slice linux-arm64   ubuntu-24.04-arm
+          slice windows-x64   windows-latest
+          slice windows-arm64 windows-11-arm
+          slice macos-x64     macos-26-intel
+          slice macos-arm64   macos-latest
           echo "desktop={\"include\":[$dinc]}" >> "$GITHUB_OUTPUT"
 
           echo "### Build Engine" >> "$GITHUB_STEP_SUMMARY"
