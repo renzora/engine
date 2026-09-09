@@ -182,6 +182,21 @@ rustflags = [
     # The MSVC runtime, linked in rather than shipped beside the binaries. See
     # the long note above for why Windows not having it is the whole point.
     "-C", "target-feature=+crt-static",
+    # crt-static covers everything rustc compiles, and nothing it does not.
+    # `intel_tex_2` (the BC/ASTC texture compressor behind `renzora_rmip`) ships
+    # its ISPC kernels PREBUILT as `.lib` files checked into the crate, built
+    # against the dynamic CRT, and their objects carry `/DEFAULTLIB:msvcprt`, so
+    # the linker loaded the import library for msvcp140.dll regardless. That is
+    # why renzora_editor.dll alone kept importing it while every other binary
+    # came out clean. Declining the directive leaves one symbol unresolved,
+    # `std::_Xlength_error`, which `renzora_rmip::bake` defines; the long comment
+    # there explains why that is the whole interaction and why linking the static
+    # C++ runtime instead is rejected by `/failifmismatch`.
+    #
+    # A crate that genuinely needed the C++ standard library would fail to link
+    # here with an unresolved symbol naming it, which is the failure mode worth
+    # having: loud at build time rather than a DLL a user does not have.
+    "-C", "link-arg=/NODEFAULTLIB:msvcprt.lib",
     # Statically linking Bevy AND the ~187k lines of editor into one executable
     # produces a debug PDB well past the 4 GiB that the default 4096-byte page
     # size can address (`rust-lld: Output data is larger than 4 GiB`). Raising
@@ -201,7 +216,11 @@ rustflags = [
 [target.aarch64-pc-windows-msvc]
 linker = "rust-lld"
 rustflags = [
+    # Both as on x86_64 above, and for the same reasons: `intel_tex_2` ships a
+    # prebuilt arm64 archive too (`ispc_texcomp_astcaarch64-pc-windows-msvc.lib`),
+    # so this triple has the same `/DEFAULTLIB:msvcprt` to decline.
     "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/NODEFAULTLIB:msvcprt.lib",
     "-C", "link-arg=/pdbpagesize:16384",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",

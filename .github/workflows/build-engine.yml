@@ -545,17 +545,25 @@ jobs:
         shell: bash
         run: |
           out=dist/${{ matrix.dist_dir }}
-          bad=""
+          bad=0
           while IFS= read -r f; do
-            if grep -qiE 'vcruntime140[a-z0-9_]*\.dll|msvcp140[a-z0-9_]*\.dll' "$f"; then
-              bad="$bad $f"
+            # Naming the DLLs, not just the file that wants them. The first run
+            # of this check reported `renzora_editor.dll` and nothing else, and
+            # which runtime it asked for was the entire diagnosis: `msvcp140`
+            # alone meant one C++ symbol from a prebuilt third-party archive,
+            # where `vcruntime140` would have meant the flag never arrived.
+            found=$(grep -aoiE 'vcruntime140[a-z0-9_]*\.dll|msvcp140[a-z0-9_]*\.dll' "$f" \
+                    | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
+            if [ -n "$found" ]; then
+              echo "::error::$f imports: $found"
+              bad=1
             fi
           done < <(find "$out" -path "$out/sdk" -prune -o \
                      \( -name '*.exe' -o -name '*.dll' \) -print)
-          if [ -n "$bad" ]; then
-            echo "::error::these still import the Visual C++ runtime:$bad"
-            echo "::error::They would not start on a machine that has never installed"
-            echo "::error::the VC++ Redistributable. Expected +crt-static to remove it."
+          if [ "$bad" = 1 ]; then
+            echo "::error::The above would not start on a machine that has never"
+            echo "::error::installed the VC++ Redistributable. Expected +crt-static"
+            echo "::error::to remove it; see the note in .cargo/config.toml."
             exit 1
           fi
           echo "no VC++ runtime imports, nothing to ship beside the binaries"

@@ -17,6 +17,37 @@ use intel_tex_2 as intel_tex;
 
 use crate::{mip_count, RmipFormat, HEADER_LEN, MAGIC, VERSION};
 
+/// `std::_Xlength_error`, supplied so a Windows build needs no C++ runtime DLL.
+///
+/// `intel_tex_2` does not compile its ISPC kernels: it ships them prebuilt as
+/// `.lib` files checked into the crate, and those were built by its author
+/// against the DYNAMIC CRT. Their objects carry `/DEFAULTLIB:msvcprt`, so the
+/// linker loads the import library for `msvcp140.dll` no matter what the rest of
+/// the build asked for. The engine static-links the CRT precisely so that
+/// nothing has to ship beside it (see `.cargo/config.toml`), and this one
+/// third-party archive was undoing that on its own: it is why `renzora_editor.dll`
+/// alone still imported `msvcp140.dll` after the switch, while every other
+/// binary came out clean.
+///
+/// `.cargo/config.toml` answers the directive with `/NODEFAULTLIB:msvcprt.lib`,
+/// which leaves exactly one symbol unresolved. This is it, and it is the whole
+/// of the C++ standard library those archives touch: MSVC's containers call it
+/// when a `reserve`/`resize` exceeds `max_size`, and it normally throws
+/// `std::length_error`. There is no C++ runtime here to throw with, and it is
+/// unreachable from anything this crate calls (only BC1/BC3/BC4/BC5/BC7, on
+/// buffers sized from an image that already fits in memory), so aborting is the
+/// honest translation rather than a silent lie about unwinding.
+///
+/// Mixing in the STATIC C++ runtime instead does not work, and the linker says
+/// so rather than miscompiling: `libcpmt.lib` declares `RuntimeLibrary` as
+/// `MT_StaticRelease` against the prebuilt object's `MD_DynamicRelease`, which
+/// `/failifmismatch` rejects outright.
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
+#[export_name = "?_Xlength_error@std@@YAXPEBD@Z"]
+pub extern "C" fn xlength_error(_what: *const core::ffi::c_char) -> ! {
+    std::process::abort()
+}
+
 /// Semantic role of a texture. Drives the sRGB-vs-linear choice and which
 /// GPU block format the data is compressed to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
