@@ -769,13 +769,25 @@ fn is_link_input(p: &Path) -> bool {
 /// same three `-L native=` paths work locally.
 ///
 /// This is a curated list rather than the whole `um/x64` directory, which is
-/// hundreds of megabytes against these thirteen at ~10 MB. Curation is a little
+/// hundreds of megabytes against these sixteen at ~62 MB. The static CRT is
+/// almost all of that: `libucrt.lib` alone is 43 MB against 285 KB for the
+/// `ucrt.lib` import library it replaces, which is what static linking costs at
+/// build time and does not cost in the binary. Curation is a little
 /// brittle — a plugin using an API nobody here has used yet needs another entry
 /// — but the failure is loud and names the missing file, so extending it is a
 /// one-line change with an obvious trigger.
+/// The CRT entries come in both flavours on purpose. `msvcrt`/`vcruntime`/`ucrt`
+/// are the import libraries for a dynamically linked CRT;
+/// `libcmt`/`libvcruntime`/`libucrt` are the static ones, and those are the set a
+/// plugin link actually asks for, because `renzora_native_build::rustc::args`
+/// passes `+crt-static` to match the engine (see the note in
+/// `.cargo/config.toml`). Both are kept because the cost is a couple of
+/// megabytes and the failure mode of guessing wrong is a plugin that will not
+/// link on precisely the machines this list exists for: the ones with no Visual
+/// Studio, where nothing else can supply the missing `.lib`.
 const MSVC_LIBS: &[&str] = &[
     "kernel32", "user32", "shell32", "gdi32", "advapi32", "opengl32", "ntdll", "userenv",
-    "ws2_32", "dbghelp", "msvcrt", "vcruntime", "ucrt",
+    "ws2_32", "dbghelp", "msvcrt", "vcruntime", "ucrt", "libcmt", "libvcruntime", "libucrt",
 ];
 
 /// Copy [`MSVC_LIBS`] into the SDK, from wherever this machine keeps them.

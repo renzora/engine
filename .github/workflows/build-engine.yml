@@ -489,6 +489,48 @@ jobs:
         shell: bash
         run: cargo renzora dist --bundle
 
+      # Windows does not ship the Visual C++ runtime. It ships the *Universal*
+      # CRT, which is why `api-ms-win-crt-*` resolves everywhere and this looked
+      # fine for years, but `VCRUNTIME140.dll` and `MSVCP140.dll` arrive with the
+      # Visual C++ Redistributable. Every machine that builds the engine has one
+      # (Visual Studio installs it) and a freshly installed Windows does not, so
+      # the failure could only ever appear downstream: the OS loader refuses the
+      # executable before `main`, with a dialog naming the DLL and nothing
+      # written to any log.
+      #
+      # `.cargo/config.toml` links the CRT in with `+crt-static` so there is
+      # nothing to ship, and this is what proves the flag actually reached every
+      # artifact. It has to be checked rather than assumed, because the ways to
+      # lose it are all silent: `CARGO_ENCODED_RUSTFLAGS` set anywhere REPLACES
+      # the config's rustflags wholesale, a plugin compiled through
+      # `renzora_native_build` repeats the flag by hand rather than inheriting
+      # it, and a prebuilt library dropped into the tree answers to neither. In
+      # every one of those cases the build succeeds here and fails on a user's
+      # machine.
+      #
+      # Grep, not dumpbin: an import name is a plain string in the file, this
+      # needs no toolchain lookup on the runner, and a false positive would have
+      # to be a binary that contains "vcruntime140.dll" without importing it.
+      - name: Audit the MSVC runtime linkage
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          out=dist/${{ matrix.dist_dir }}
+          bad=""
+          while IFS= read -r f; do
+            if grep -qiE 'vcruntime140[a-z0-9_]*\.dll|msvcp140[a-z0-9_]*\.dll' "$f"; then
+              bad="$bad $f"
+            fi
+          done < <(find "$out" -path "$out/sdk" -prune -o \
+                     \( -name '*.exe' -o -name '*.dll' \) -print)
+          if [ -n "$bad" ]; then
+            echo "::error::these still import the Visual C++ runtime:$bad"
+            echo "::error::They would not start on a machine that has never installed"
+            echo "::error::the VC++ Redistributable. Expected +crt-static to remove it."
+            exit 1
+          fi
+          echo "no VC++ runtime imports, nothing to ship beside the binaries"
+
       # The one check that needs a staged macOS tree, which is why it lives here
       # and not in test.yml: a native plugin is compiled against the SDK *after*
       # the engine is built, so nothing cheaper than a full build can produce one

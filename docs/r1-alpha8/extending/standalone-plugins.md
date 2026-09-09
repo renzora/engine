@@ -234,17 +234,24 @@ rustflags = ["-C", "prefer-dynamic=no"]
 
 Note the explicit `=no`. Cargo **merges** `rustflags` arrays across config files rather than replacing them, so omitting the flag achieves nothing — it has to be contradicted by a later entry.
 
-**Not `+crt-static`.** It used to be there, and the reasoning was that statically linking the MSVC runtime drops `VCRUNTIME140.dll` and the `api-ms-win-crt-*` set, leaving nothing in the import table but the OS. That works, and it is not worth it — measured on a minimal plugin, release, symbols stripped:
+**And `+crt-static`.** Add it, on Windows, to any plugin you intend other people to run:
+
+```toml
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+```
+
+Measured on a minimal plugin, release, symbols stripped:
 
 | Config | Size | Imports |
 |---|---|---|
-| inherits the engine's `prefer-dynamic` | 16 KB | `std-<hash>.dll` — **broken**, see above |
+| inherits the engine's `prefer-dynamic` | 16 KB | `std-<hash>.dll`, **broken**, see above |
 | `prefer-dynamic=no` | 113 KB | `VCRUNTIME140` + the crt set |
 | `prefer-dynamic=no` + `crt-static` | 219 KB | `KERNEL32` only |
 
-About half the binary to remove imports the host already has: `renzora.exe` is itself an MSVC build and names `VCRUNTIME140.dll` and the whole `api-ms-win-crt-*` set, so every one of them is loaded into the process before a plugin is ever mapped. The dependency a plugin "avoids" is one the thing loading it already took.
+This page used to argue the opposite: that the ~106 KB bought nothing, because `renzora.exe` names `VCRUNTIME140.dll` itself and would have loaded it before any plugin was mapped. That was true and is not any more. The engine static-links the CRT now, because `VCRUNTIME140` / `MSVCP140` ship with the Visual C++ Redistributable rather than with Windows, and requiring users to install it is not something a game can do. Nothing in the install directory imports it any longer, so a plugin that does is a plugin that fails to load on any machine which has never installed the redistributable, and it fails the quiet way: the loader skips a library it cannot map, so your plugin is simply absent.
 
-The heap is the only substantive consideration, and it points the same way: without `crt-static` a plugin allocates from the **host's** CRT heap rather than a private one. That is fine, and marginally safer — the boundary never transfers ownership of an allocation, since plugin components are refused outright if they declare a destructor and command payloads are copied by the host.
+The heap is the one thing that changes with it, and it is fine: a `crt-static` plugin allocates from a private CRT heap rather than the host's. The boundary never transfers ownership of an allocation, since plugin components are refused outright if they declare a destructor and command payloads are copied by the host. Rust's own allocations are unaffected either way, being process-heap rather than CRT.
 
 ### Drop std entirely (`no_std`)
 

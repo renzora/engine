@@ -61,7 +61,9 @@ rustflags = [
 ]
 ```
 
-> The repo pins the Windows linker to `rust-lld` (rustc's bundled `lld`) rather than MSVC `link.exe`, which hits `LNK1189` (the 65535-object limit) on `bevy_dylib` with `dynamic_linking` enabled. The MSVC build also links against `vcruntime140.dll` / `msvcp140.dll`, which Windows 10/11 ship by default.
+> The repo pins the Windows linker to `rust-lld` (rustc's bundled `lld`) rather than MSVC `link.exe`, which hits `LNK1189` (the 65535-object limit) on `bevy_dylib` with `dynamic_linking` enabled.
+
+> **The MSVC runtime is linked in, which is what makes a container build usable at all.** `vcruntime140.dll` / `msvcp140.dll` are not part of Windows, they come with the Visual C++ Redistributable, and xwin may only splat the import libraries and headers rather than the redistributable DLLs themselves. So a container could never supply them. It does not have to: `.cargo/config.toml` sets `+crt-static` for both Windows triples, and the CRT ends up inside each binary. `.github/workflows/build-engine.yml` audits the shipped tree for any binary that still imports it.
 
 ### macOS & iOS — osxcross
 
@@ -187,7 +189,7 @@ Because of that, `build-all.sh` copies, per target:
 - every distribution-plugin `cdylib` into `plugins/`;
 - the matching **Rust std** shared library (`std-*.dll` / `libstd-*.so` / `libstd-*.dylib`) — `prefer-dynamic` links std dynamically, so it must ship too.
 
-> `crt-static` is intentionally **disabled** for the Windows target: it changes crate disambiguators, which would break `TypeId` equality across the dylib boundary and the whole dynamic-plugin system.
+> `crt-static` is **enabled** for both Windows targets, so the MSVC runtime is not in that list and nothing has to be copied for it. It was disabled for years on the grounds that it perturbs crate disambiguators across the dylib ABI; what actually forced the change is that `vcruntime140.dll` / `msvcp140.dll` are not part of Windows, so leaving them dynamic meant shipping them or requiring the redistributable. Each module gets its own CRT copy, which is harmless here because Rust allocates from the process heap rather than the CRT's.
 
 ## `build.rs` and cross-compilation
 

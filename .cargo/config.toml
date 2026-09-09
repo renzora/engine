@@ -110,12 +110,52 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # `plugins/.cargo/config.toml` for why that filename is a trap, and
 # `docker/build-all.sh` for the staging helper that existed only to feed it.
 #
-# `crt-static` is likewise absent. It used to be disabled because it perturbs
-# crate disambiguators across a dylib ABI; that reason is gone with the dylibs,
-# but it is still not enabled here — the host already imports VCRUNTIME140 and
-# the api-ms-win-crt-* set, so static-linking the CRT would add size to remove a
-# dependency Windows always has. (The lean *export* does enable it, where the
-# binary is meant to stand alone — see `renzora_export::build`.)
+# `crt-static` IS set, on both Windows triples below, and the reason is that
+# Windows does not ship the runtime a dynamic one would need.
+#
+# The comment this replaces said VCRUNTIME140 and MSVCP140 were "a dependency
+# Windows always has". They are not. Windows ships the *Universal* CRT
+# (ucrtbase.dll and the api-ms-win-crt-* set) as an OS component, which is why
+# most of the import table resolves anywhere and the claim looked true;
+# VCRUNTIME140 (MSVC's exception unwinding, RTTI, stack cookies) and MSVCP140
+# (the C++ standard library) ship with the Visual C++ Redistributable instead.
+# Visual Studio installs that, and so do most games, so every machine that
+# builds the engine has had it for years and a freshly installed Windows has
+# not. The release therefore ran for everyone who built it and died before
+# `main` for a user with a clean machine, naming a DLL in an OS dialog with
+# nothing written to any log.
+#
+# There were only ever two fixes, because the CRT has to be either inside the
+# binary or in a file beside it: static-link it, or ship vcruntime140.dll,
+# vcruntime140_1.dll and msvcp140.dll in the folder. Static, because three more
+# files in the install directory is a worse deal than ~100 KB per binary.
+#
+# The historical objection was that a static CRT is per-module, and this build
+# is several modules: renzora.exe, bevy_dylib and the shared images each get
+# their own copy, with their own heap. That is a real hazard in general and it
+# does not reach us, because Rust's allocator on Windows is
+# HeapAlloc(GetProcessHeap()) rather than the CRT's malloc, so a Vec allocated
+# in one module and dropped in another is unaffected. Verified before turning
+# this on: a dylib + exe pair built this way imports KERNEL32 and std-<hash>.dll
+# and nothing else, and passes a Vec across the boundary correctly.
+#
+# The one place the hazard survives is real C++, which here is exactly one crate
+# (basis-universal-sys, Bevy's KTX2 transcoder). Its allocations are created and
+# freed behind a single FFI call inside whichever module linked it, so none of
+# them crosses a boundary.
+#
+# Anything else that loads into this process has to agree, or it reintroduces
+# the import the engine no longer satisfies. Two places do:
+#
+#   * `renzora_native_build::rustc::args` passes the same flag when it compiles
+#     a native plugin or a Rust script on the user's machine.
+#   * `renzora_export::build::encoded_rustflags` keeps passing it for a lean
+#     export, which sets CARGO_ENCODED_RUSTFLAGS and so replaces this file
+#     rather than merging with it.
+#
+# A third-party C-ABI plugin cdylib built without it still imports VCRUNTIME140
+# and will not load on a machine with no redistributable. That is the author's
+# to fix, and `docs/r1-alpha8/extending/standalone-plugins.md` now says so.
 
 # Path scrubbing: panic `Location`s (and debuginfo) embed the source paths of
 # the machine that BUILT the binary — without remapping, a shipped release
@@ -139,6 +179,9 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
 rustflags = [
+    # The MSVC runtime, linked in rather than shipped beside the binaries. See
+    # the long note above for why Windows not having it is the whole point.
+    "-C", "target-feature=+crt-static",
     # Statically linking Bevy AND the ~187k lines of editor into one executable
     # produces a debug PDB well past the 4 GiB that the default 4096-byte page
     # size can address (`rust-lld: Output data is larger than 4 GiB`). Raising
@@ -158,6 +201,7 @@ rustflags = [
 [target.aarch64-pc-windows-msvc]
 linker = "rust-lld"
 rustflags = [
+    "-C", "target-feature=+crt-static",
     "-C", "link-arg=/pdbpagesize:16384",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",

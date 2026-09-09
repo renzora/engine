@@ -101,7 +101,7 @@ Renzora's dynamic-plugin system requires that the host binary, the dlopened edit
 
 Because the binary links these by name, the `.dll`/`.so`/`.dylib` files must travel **beside** the binary (Linux/macOS use an rpath of `$ORIGIN` / `@loader_path`; on Windows they sit in the same folder).
 
-> Windows uses `rust-lld` as the linker (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`). `crt-static` is intentionally **disabled** because it changes crate disambiguators and would break `TypeId` equality across the dylib boundary. This is one more reason the build is container-only — the linker setup is fixed inside the image.
+> Windows uses `rust-lld` as the linker (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`). `crt-static` is **enabled**, because `vcruntime140.dll` / `msvcp140.dll` are not part of Windows: they come with the Visual C++ Redistributable, so a dynamically linked build runs on any machine that has ever installed Visual Studio or a game, and fails before `main` on a freshly installed one. Linking the CRT in removes the prerequisite.
 
 ### build.rs
 

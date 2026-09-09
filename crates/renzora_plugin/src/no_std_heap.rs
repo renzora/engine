@@ -2,17 +2,34 @@
 //! calls. Both are wired up by [`crate::no_std_runtime!`]; this module exists so
 //! that macro stays three lines and the `unsafe` lives somewhere it can be read.
 //!
-//! ## Why the host's `malloc` rather than a bundled allocator
+//! ## Why the C runtime's `malloc` rather than a bundled allocator
 //!
-//! A plugin is `dlopen`'d into a running engine, so the process already has an
-//! initialised C runtime mapped — using it means one heap for the whole process
-//! instead of a second one sitting beside it. That is not merely tidier: buffers
-//! move across the boundary in both directions, and a plugin freeing memory on a
-//! heap the host never allocated from is the classic way to corrupt one.
+//! Size. The reason to drop `std` is size (~112 KB to ~18 KB per plugin), and
+//! bundling something like `dlmalloc` puts a chunk of that straight back, so
+//! this uses the allocator the C runtime already provides.
 //!
-//! Bundling something like `dlmalloc` would also undo much of the point. The
-//! reason to drop `std` is size (~112 KB → ~18 KB per plugin), and an embedded
-//! allocator puts a chunk of that straight back.
+//! ## This is NOT the host's heap, and does not need to be
+//!
+//! An earlier version of this comment said it was: that a plugin is `dlopen`'d
+//! into a running process which already has a C runtime mapped, so calling its
+//! `malloc` gives one heap for the whole process rather than a second beside it,
+//! and that this mattered because buffers cross the boundary in both directions.
+//!
+//! Neither half held up. It was never one heap even when both sides linked the
+//! CRT dynamically, because the host is Rust and Rust on Windows allocates with
+//! `HeapAlloc(GetProcessHeap())` rather than `malloc`; and since the engine
+//! started static-linking the CRT (see `.cargo/config.toml`), each module has
+//! its own `malloc` heap outright.
+//!
+//! What makes that harmless is that no allocation crosses the boundary in
+//! either direction. The host reads plugin memory and copies it
+//! (`from_raw_parts(..).to_vec()` at every call site in `host/`), a panel's
+//! markup is "copied at registration; the plugin may free it after"
+//! (`sys::panel`), and a component that declares a destructor is refused outright
+//! rather than leaving the host holding a pointer it could not free
+//! (`sys::registration`). Ownership stopping at the boundary is the rule the ABI
+//! is built on, and it is what makes the heap a plugin allocates from its own
+//! business.
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;

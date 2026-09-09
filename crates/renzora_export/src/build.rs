@@ -36,10 +36,11 @@ use crate::toolchain::Toolchain;
 /// what we want for a static binary.
 fn encoded_rustflags(platform: Platform) -> String {
     match platform {
-        // Static-link the MSVC CRT too: with no dylib/TypeId boundary in a lean
-        // binary, the reason it's disabled globally (crt-static perturbs crate
-        // disambiguators across the dylib ABI) no longer applies — and it drops
-        // the VCRUNTIME140.dll runtime dependency.
+        // Static-link the MSVC CRT, exactly as the engine build does. Repeated
+        // here rather than inherited because setting CARGO_ENCODED_RUSTFLAGS
+        // REPLACES the config's rustflags instead of merging with them, so
+        // dropping this line would quietly give a lean Windows export the
+        // VCRUNTIME140.dll dependency the engine no longer has.
         Platform::WindowsX64 => ["-C", "target-feature=+crt-static"].join("\u{1f}"),
         // Drop prefer-dynamic (+ mold/rpath) by overriding with no flags.
         _ => String::new(),
@@ -68,11 +69,7 @@ fn encoded_rustflags(platform: Platform) -> String {
 ///
 /// Only the copy is touched — the dev tree is never edited (see
 /// [`sync_export_workspace`]).
-fn patch_cross_cargo_config(
-    ws: &Path,
-    platform: Platform,
-    progress: &mut dyn FnMut(String),
-) -> Result<(), String> {
+fn patch_cross_cargo_config(ws: &Path, progress: &mut dyn FnMut(String)) -> Result<(), String> {
     let path = ws.join(".cargo").join("config.toml");
     let Ok(text) = std::fs::read_to_string(&path) else {
         // No config in the copy is fine: the image's own config then applies
@@ -94,14 +91,12 @@ fn patch_cross_cargo_config(
         out.push('\n');
     }
 
-    // A lean Windows binary also static-links the MSVC CRT, which the host path
-    // gets from `encoded_rustflags`. Appended as its own target section so it
-    // merges with the image's rustflags rather than replacing them.
-    if matches!(platform, Platform::WindowsX64) {
-        out.push_str(
-            "\n[target.x86_64-pc-windows-msvc]\nrustflags = [\"-C\", \"target-feature=+crt-static\"]\n",
-        );
-    }
+    // No Windows section is appended here any more. It used to add one carrying
+    // `+crt-static`, from when that flag was a lean-export special case; the
+    // engine now sets it in `.cargo/config.toml` for both Windows triples, so
+    // the copy this function is editing already has it and appending a second
+    // `[target.x86_64-pc-windows-msvc]` would redefine a table TOML does not
+    // allow to be redefined.
 
     std::fs::write(&path, out)
         .map_err(|e| format!("Could not patch {} for a container build: {e}", path.display()))?;
@@ -363,7 +358,7 @@ pub fn build_lean(
     // across runs.
     let ws = sync_export_workspace(workspace_dir, progress)?;
     if in_container {
-        patch_cross_cargo_config(&ws, platform, progress)?;
+        patch_cross_cargo_config(&ws, progress)?;
     }
     stage_branding(workspace_dir, &ws, branding, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;

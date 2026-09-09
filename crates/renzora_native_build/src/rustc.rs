@@ -104,11 +104,25 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     // worse (122 KB). It also matches the engine's own `[profile.dist]`.
     push!("-C", "opt-level=2");
 
-    // rust-lld, matching `.cargo/config.toml`. That file configures *cargo*, so
-    // a bare rustc silently falls back to MSVC `link.exe`, which fails this link
-    // on the exported-symbol count.
+    // Both of these mirror `.cargo/config.toml`. That file configures *cargo*,
+    // and nothing here runs cargo, so a flag the engine build gets from it has
+    // to be repeated by hand or the plugin is built differently from the host it
+    // loads into.
     if t.triple.contains("windows-msvc") {
+        // Without this, rustc falls back to MSVC `link.exe`, which fails this
+        // link on the exported-symbol count.
         push!("-C", "linker=rust-lld");
+        // The engine static-links the MSVC runtime, because Windows does not
+        // ship it (see the note in `.cargo/config.toml`). A plugin built without
+        // this imports VCRUNTIME140.dll instead, and since nothing in the
+        // install directory provides that any more, it fails to load on a
+        // machine with no Visual C++ Redistributable: the plugin silently does
+        // not appear, on exactly the clean machines the engine was fixed for.
+        //
+        // Safe for the same reason it is safe in the engine: the CRT copies are
+        // per-module but Rust's allocator is the process heap, so a component a
+        // plugin builds and the World frees is not a CRT allocation.
+        push!("-C", "target-feature=+crt-static");
     }
 
     push!("--extern", format!("bevy={}", t.extern_bevy.display()));

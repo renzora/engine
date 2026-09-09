@@ -79,7 +79,7 @@ These details are fixed by the engine's build config; there is no per-export opt
 A few consequences worth knowing:
 
 - **MSVC `link.exe` is not used.** `rust-lld` (rustc's bundled LLD) avoids LNK1189 — MSVC `link.exe` overflows its 65535-object limit on `bevy_dylib` built with `dynamic_linking`.
-- **The CRT is linked dynamically.** `crt-static` is deliberately **off**, because static CRT linking changes crate disambiguators and breaks the `TypeId` matching the dynamic-plugin system relies on. The exe therefore depends on `vcruntime140.dll` / `msvcp140.dll`, which Windows 10/11 ship by default (or via the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist)).
+- **The MSVC runtime is linked in, not shipped beside the exe.** `crt-static` is **on** for both Windows triples, so the binaries import nothing but `KERNEL32` and the OS's own `api-ms-win-*` set, and a player needs nothing installed. This is not a size optimisation: `vcruntime140.dll` and `msvcp140.dll` are **not part of Windows**. Windows ships the *Universal* CRT (`ucrtbase.dll` and the `api-ms-win-crt-*` set), which is a different thing and does resolve everywhere; `vcruntime140` / `msvcp140` come with the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist), which Visual Studio and most games install, so every machine that builds the engine has one and a freshly installed Windows does not. Linking the CRT in is what removes that prerequisite instead of documenting it. It is safe across the shared libraries because Rust allocates from the process heap (`HeapAlloc(GetProcessHeap())`), not the CRT's, so a `Vec` built in one module and dropped in another is unaffected by each module having its own CRT.
 - **Shared libraries ship beside the exe.** `prefer-dynamic` plus `bevy/dynamic_linking` give one shared `bevy_dylib` and one `renzora.dll`, plus a `std-<hash>.dll`. All of them, and the `plugins/` folder, must travel with `renzora.exe`.
 
 ### Icon and version metadata
@@ -138,7 +138,7 @@ Zip the `dist/windows-x64/` folder (with `renzora_editor.dll` removed for a ship
 |---|---|
 | `bevy_dylib-*.dll` / `renzora.dll` / `std-*.dll` not found at launch | A shared library was separated from the exe. Keep the whole `dist/windows-x64/` contents (and `plugins/`) together. |
 | The game opens the editor instead | `renzora_editor.dll` is still present. Delete it, or launch with `--no-editor`. |
-| `VCRUNTIME140.dll` / `MSVCP140.dll` missing | Install the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) on the target machine. |
+| `VCRUNTIME140.dll` / `MSVCP140.dll` missing | The engine links the CRT in, so nothing it builds should ask for these. Something in the folder was built without `+crt-static`: most likely a third-party C-ABI plugin, or a binary from a build that set `CARGO_ENCODED_RUSTFLAGS` (which replaces `.cargo/config.toml`'s rustflags rather than merging with them). Rebuild it with `-C target-feature=+crt-static`, or install the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) on the target machine as a stopgap. |
 | Black screen on launch | No DX12/Vulkan-capable GPU or out-of-date drivers — Renzora renders through `wgpu`. Update GPU drivers. |
 | Antivirus blocks the exe | Most common with UPX-packed builds; code-sign the executable or distribute uncompressed. |
 | Slow first launch | Normal — shaders compile on first run and are cached for later launches. |
