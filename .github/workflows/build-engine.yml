@@ -552,7 +552,14 @@ jobs:
             # which runtime it asked for was the entire diagnosis: `msvcp140`
             # alone meant one C++ symbol from a prebuilt third-party archive,
             # where `vcruntime140` would have meant the flag never arrived.
-            found=$(grep -aoiE 'vcruntime140[a-z0-9_]*\.dll|msvcp140[a-z0-9_]*\.dll' "$f" \
+            # `|| [ $? = 1 ]` because a clean binary is the *expected* result and
+            # grep reports "no match" as exit 1. The runner's shell is `bash -e
+            # -o pipefail`, so without this the first clean file kills the whole
+            # step: the pipeline inherits grep's 1, the assignment fails, and the
+            # job exits 1 having printed nothing at all. Exit 2 is a real grep
+            # error (unreadable file, bad pattern) and still fails the step.
+            found=$( { grep -aoiE 'vcruntime140[a-z0-9_]*\.dll|msvcp140[a-z0-9_]*\.dll' "$f" \
+                       || [ $? = 1 ]; } \
                     | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
             if [ -n "$found" ]; then
               echo "::error::$f imports: $found"
