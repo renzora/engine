@@ -474,23 +474,59 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 #   clipboard_image  fails to compile without it. Browser clipboard access is an
 #                    async permissions-gated web API; it would be a separate
 #                    implementation, not this feature.
-#   pbr_transmission_textures        Together these add roughly eight
-#   pbr_multi_layer_material_textures  texture+sampler pairs to the PBR bind
-#   pbr_anisotropy_texture             group, which took the fragment stage to
-#   pbr_specular_textures              20 samplers against WebGPU's per-stage
-#                    limit of 16. The result was not a degraded material but no
-#                    3D at all: `pbr_opaque_mesh_pipeline` failed to create, so
-#                    `main_opaque_pass_3d` produced an invalid command buffer
-#                    every single frame. The web build therefore trades
-#                    transmission, clearcoat, anisotropy and specular MAPS for
-#                    being able to render. The underlying material properties
-#                    still work — it is the per-pixel textures that are gone.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { workspace = true, features = [
     "file_watcher",
     "basis-universal",
     "system_clipboard",
     "clipboard_image",
+] }
+
+# ── The PBR texture extensions, which two backends cannot afford ─────────────
+#
+#   pbr_transmission_textures        Together these add roughly eight
+#   pbr_multi_layer_material_textures  texture+sampler pairs to the PBR bind
+#   pbr_anisotropy_texture             group, which takes the fragment stage to
+#   pbr_specular_textures              20 samplers against a per-stage limit of
+#                    16. The result is not a degraded material but no 3D at all:
+#                    `pbr_opaque_mesh_pipeline` fails to create, so
+#                    `main_opaque_pass_3d` produces an invalid command buffer
+#                    every single frame. What ships instead trades transmission,
+#                    clearcoat, anisotropy and specular MAPS for being able to
+#                    render. The underlying material properties still work — it
+#                    is the per-pixel textures that are gone.
+#
+# ── Why macOS is here as well as the web ─────────────────────────────────────
+#
+# This was gated on wasm alone, because WebGPU is where the limit was found. It
+# is not a WebGPU limit. `wgpu-hal`'s Metal backend sets
+#
+#     max_samplers_per_stage: 16,
+#
+# as a flat constant — not conditional on GPU family or argument-buffer tier,
+# unlike `max_textures_per_stage` immediately above it. So every Mac reports 16:
+# Apple Silicon and Intel, both arches, every macOS version.
+#
+# Shipping them on macOS therefore produced an editor that could not draw a
+# frame. It crashed a moment after the window opened, before any UI was visible,
+# with `Too many bindings of type Samplers in Stage ShaderStages(FRAGMENT),
+# limit is 16, count was 20` — issue #107, against `r1-alpha8-nightly-08sep26`
+# on an M1 Pro.
+#
+# One thing about that report is NOT understood, and is worth knowing before
+# trusting this comment too far: the same artifact starts normally on an M4,
+# reaching the editor UI with no crash. The sampler limit is identical on both
+# (the constant above is not conditional), the features are identical, and the
+# default graphics tier is identical — so the difference is presumably in which
+# bind group layout bevy specialises, not in what the hardware permits. Nobody
+# has pinned it down. The features are removed for every Mac rather than for the
+# machines known to fail, because a per-device cargo feature is not a thing that
+# exists and 20 > 16 wherever it is evaluated.
+#
+# Vulkan and D3D12 allow far more samplers per stage, which is why Windows and
+# Linux keep the textures and are the only targets that ever had them.
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))'.dependencies]
+bevy = { workspace = true, features = [
     "pbr_transmission_textures",
     "pbr_multi_layer_material_textures",
     "pbr_anisotropy_texture",
