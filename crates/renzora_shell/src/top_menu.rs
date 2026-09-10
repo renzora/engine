@@ -11,6 +11,8 @@
 
 use bevy::prelude::*;
 
+use crate::menu_command::MenuCommand;
+
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::Rx;
@@ -19,7 +21,7 @@ use renzora_ember::theme::{accent, divider, rgb, text_muted, text_primary, windo
 use crate::bottom_dock::BottomDock;
 use crate::dock;
 use crate::panel_sets::{default_panel_set_name, BottomPanelSets};
-use crate::{open_url, ShellLayouts};
+use crate::ShellLayouts;
 
 /// Register the hamburger's systems.
 ///
@@ -821,23 +823,12 @@ fn build_menu_items(
             // a session rather than start a task.
             rows.push(menu_sep(commands));
             if ctx.account.is_some() {
-                let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
-                    if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-                        dock.tree.focus_or_add_panel("hub_library");
-                    }
-                    if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
-                        d.0 = true;
-                    }
-                });
+                let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| MenuCommand::MyLibrary.run(w));
                 rows.push(spacious(commands, library));
-                let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
-                    w.insert_resource(renzora::core::AuthSignOutRequest);
-                });
+                let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| MenuCommand::SignOut.run(w));
                 rows.push(spacious(commands, out));
             } else {
-                let sign_in = menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
-                    w.insert_resource(renzora::core::AuthToggleWindowRequest);
-                });
+                let sign_in = menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| MenuCommand::SignIn.run(w));
                 rows.push(spacious(commands, sign_in));
             }
             rows
@@ -848,107 +839,51 @@ fn build_menu_items(
             // doing it: it closes every open document, and doing that on one
             // click with unsaved edits in them is the loss the window's × has
             // always prompted about.
-            menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| {
-                w.insert_resource(crate::save_prompts::ProjectSwitchRequest(
-                    crate::save_prompts::ProjectSwitch::New,
-                ));
-            }),
-            menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| {
-                w.insert_resource(crate::save_prompts::ProjectSwitchRequest(
-                    crate::save_prompts::ProjectSwitch::Pick,
-                ));
-            }),
+            menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| MenuCommand::NewProject.run(w)),
+            menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| MenuCommand::OpenProject.run(w)),
             recent_projects_submenu(commands, fonts, ctx.recents),
             menu_sep(commands),
-            menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| {
-                w.insert_resource(renzora::core::NewSceneRequested);
-            }),
-            menu_item(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), |w| {
-                w.insert_resource(renzora::core::OpenSceneRequested);
-            }),
+            menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| MenuCommand::NewScene.run(w)),
+            menu_item(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), |w| MenuCommand::OpenScene.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), |w| {
-                w.insert_resource(renzora::core::SaveSceneRequested);
-            }),
-            menu_item(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), |w| {
-                w.insert_resource(renzora::core::SaveAsSceneRequested);
-            }),
+            menu_item(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), |w| MenuCommand::Save.run(w)),
+            menu_item(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), |w| MenuCommand::SaveAs.run(w)),
             menu_sep(commands),
             // Same request the asset panel's Import button fires; renzora_import_ui
             // picks it up and opens the matching picker, then the import overlay.
             // No ImportTargetDir here, so assets land in the importer's default
             // folder. Two rows because no OS dialog picks files and folders at
             // once — see `renzora::core::ImportPick`.
-            menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| {
-                w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
-            }),
-            menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| {
-                w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
-            }),
+            menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| MenuCommand::ImportFiles.run(w)),
+            menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| MenuCommand::ImportFolder.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| {
-                crate::plugin_install::open_install_dialog(w)
-            }),
+            menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| MenuCommand::InstallPlugin.run(w)),
         ],
         TopMenuKind::Edit => vec![
-            menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| {
-                let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.undo);
-                if let Some(f) = f {
-                    f(w);
-                }
-            }),
-            menu_item(commands, fonts, "arrow-u-up-right", &renzora::lang::t("common.redo"), |w| {
-                let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.redo);
-                if let Some(f) = f {
-                    f(w);
-                }
-            }),
+            menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| MenuCommand::Undo.run(w)),
+            menu_item(commands, fonts, "arrow-u-up-right", &renzora::lang::t("common.redo"), |w| MenuCommand::Redo.run(w)),
         ],
         TopMenuKind::View => vec![
-            menu_item(commands, fonts, "magnifying-glass-plus", &renzora::lang::t_or("menu.view.zoom_in", "Zoom In"), |w| {
-                w.insert_resource(renzora::core::CameraViewRequest::ZoomIn);
-            }),
-            menu_item(commands, fonts, "magnifying-glass-minus", &renzora::lang::t_or("menu.view.zoom_out", "Zoom Out"), |w| {
-                w.insert_resource(renzora::core::CameraViewRequest::ZoomOut);
-            }),
-            menu_item(commands, fonts, "magnifying-glass", &renzora::lang::t_or("menu.view.reset_zoom", "Reset Zoom"), |w| {
-                w.insert_resource(renzora::core::CameraViewRequest::ResetZoom);
-            }),
+            menu_item(commands, fonts, "magnifying-glass-plus", &renzora::lang::t_or("menu.view.zoom_in", "Zoom In"), |w| MenuCommand::ZoomIn.run(w)),
+            menu_item(commands, fonts, "magnifying-glass-minus", &renzora::lang::t_or("menu.view.zoom_out", "Zoom Out"), |w| MenuCommand::ZoomOut.run(w)),
+            menu_item(commands, fonts, "magnifying-glass", &renzora::lang::t_or("menu.view.reset_zoom", "Reset Zoom"), |w| MenuCommand::ResetZoom.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "corners-out", &renzora::lang::t_or("menu.view.fit_all", "Fit All"), |w| {
-                w.insert_resource(renzora::core::CameraViewRequest::FrameAll);
-            }),
-            menu_item(commands, fonts, "eye", &renzora::lang::t_or("menu.view.isolation_mode", "Isolation Mode"), |w| {
-                let mut iso = w
-                    .remove_resource::<renzora::core::IsolationMode>()
-                    .unwrap_or_default();
-                iso.active = !iso.active;
-                w.insert_resource(iso);
-            }),
+            menu_item(commands, fonts, "corners-out", &renzora::lang::t_or("menu.view.fit_all", "Fit All"), |w| MenuCommand::FitAll.run(w)),
+            menu_item(commands, fonts, "eye", &renzora::lang::t_or("menu.view.isolation_mode", "Isolation Mode"), |w| MenuCommand::IsolationMode.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), reset_layout_action),
-            menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), reset_workspace_action),
-            menu_item(commands, fonts, "rows", &renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks"), reset_global_docks_action),
+            menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), |w| MenuCommand::ResetLayout.run(w)),
+            menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), |w| MenuCommand::ResetWorkspace.run(w)),
+            menu_item(commands, fonts, "rows", &renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks"), |w| MenuCommand::ResetGlobalDocks.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"), reset_defaults_action),
+            menu_item(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"), |w| MenuCommand::ResetDefaults.run(w)),
         ],
         TopMenuKind::Help => vec![
-            menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| {
-                w.insert_resource(renzora::core::TutorialRequested);
-            }),
+            menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| MenuCommand::Tutorial.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "book-open", &renzora::lang::t("menu.help.documentation"), |_| {
-                open_url("https://renzora.com/docs")
-            }),
-            menu_item(commands, fonts, "youtube-logo", &renzora::lang::t("menu.help.youtube"), |_| {
-                open_url("https://youtube.com/@renzoragame")
-            }),
-            menu_item(commands, fonts, "discord-logo", &renzora::lang::t("menu.help.discord"), |_| {
-                open_url("https://discord.gg/9UHUGUyDJv")
-            }),
-            menu_item(commands, fonts, "github-logo", &renzora::lang::t_or("menu.help.github", "GitHub"), |_| {
-                open_url("https://github.com/renzora/engine")
-            }),
+            menu_item(commands, fonts, "book-open", &renzora::lang::t("menu.help.documentation"), |w| MenuCommand::Documentation.run(w)),
+            menu_item(commands, fonts, "youtube-logo", &renzora::lang::t("menu.help.youtube"), |w| MenuCommand::YouTube.run(w)),
+            menu_item(commands, fonts, "discord-logo", &renzora::lang::t("menu.help.discord"), |w| MenuCommand::Discord.run(w)),
+            menu_item(commands, fonts, "github-logo", &renzora::lang::t_or("menu.help.github", "GitHub"), |w| MenuCommand::GitHub.run(w)),
             menu_sep(commands),
             // Names the pending version when there is one, so "am I out of
             // date?" is answered by the menu rather than by opening a dialog to
@@ -961,13 +896,9 @@ fn build_menu_items(
                     Some(tag) => format!("{} {tag}", renzora::lang::t("menu.help.update_to")),
                     None => renzora::lang::t("menu.help.check_updates"),
                 },
-                |w| {
-                    w.insert_resource(renzora::core::UpdateRequested);
-                },
+                |w| MenuCommand::CheckUpdates.run(w),
             ),
-            menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| {
-                w.insert_resource(crate::about::ShowAboutRequested);
-            }),
+            menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| MenuCommand::About.run(w)),
         ],
     }
 }
@@ -983,7 +914,7 @@ fn build_menu_items(
 /// workspace ([`dock::scene_layout`]), so resetting a workspace has nothing to
 /// say about it — see [`reset_global_docks_action`], which is the only thing
 /// that does.
-fn reset_layout_action(w: &mut World) {
+pub(crate) fn reset_layout_action(w: &mut World) {
     let active_name = w
         .get_resource::<ShellLayouts>()
         .and_then(|l| l.layouts.get(l.active).map(|(name, _)| name.clone()));
@@ -1022,7 +953,7 @@ fn reset_layout_action(w: &mut World) {
 /// Scripting / Debug arrangement has not asked to lose the panel set they built
 /// alongside it. [`reset_global_docks_action`] is the separate, explicit way to
 /// reset that.
-fn reset_workspace_action(w: &mut World) {
+pub(crate) fn reset_workspace_action(w: &mut World) {
     let defaults = dock::workspace_layouts();
     let Some(active_tree) = defaults.first().map(|(_, t)| t.clone()) else {
         return;
@@ -1054,7 +985,7 @@ fn reset_workspace_action(w: &mut World) {
 /// matters: the panels the user is complaining about not seeing may be in any
 /// of them. It opens the panel too, so the reset is visible rather than
 /// something that has happened behind a closed strip.
-fn reset_global_docks_action(w: &mut World) {
+pub(crate) fn reset_global_docks_action(w: &mut World) {
     let tree = dock::default_bottom_tree();
     if let Some(mut fixed) = w.get_resource_mut::<renzora_ember::dock::FixedDock>() {
         fixed.tree = tree.clone();
@@ -1137,7 +1068,7 @@ pub(crate) struct ResetDefaultsOverlay(Entity);
 /// have made a mess of the editor" button, and it is the only one whose damage
 /// is not obvious from its name, so it gets a prompt that lists what goes and
 /// lets each part be left alone.
-fn reset_defaults_action(w: &mut World) {
+pub(crate) fn reset_defaults_action(w: &mut World) {
     let Some(fonts) = w.get_resource::<EmberFonts>().cloned() else {
         return;
     };

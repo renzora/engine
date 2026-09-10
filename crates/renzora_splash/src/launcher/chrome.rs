@@ -14,7 +14,11 @@ use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_bg, bind_text};
+use renzora_ember::reactive::tracked::bind_bg;
+// Only the trailing maximize button swaps its glyph between square and restore;
+// the macOS zoom dot keeps one appearance whatever the window state.
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
+use renzora_ember::reactive::tracked::bind_text;
 // The mark is a file beside the executable, which the browser build has no
 // notion of — there it falls back to the glyph, and the on-disk image cache is
 // never named. See `build_mark`.
@@ -126,9 +130,88 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
         .id();
     commands.entity(brand).add_children(&[mark, name, dot, version]);
 
-    let controls = build_window_controls(commands, fonts);
-    commands.entity(bar).add_children(&[brand, controls]);
+    // macOS leads with the window buttons; every other platform trails with
+    // them. The editor's top bar makes the same choice — see
+    // `renzora_shell::top_bar::build_traffic_lights`, which is the same three
+    // dots for the same reason, drawn there because the two bars share no code.
+    #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
+    {
+        let lights = build_traffic_lights(commands);
+        commands.entity(bar).add_children(&[lights, brand]);
+    }
+    #[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
+    {
+        let controls = build_window_controls(commands, fonts);
+        commands.entity(bar).add_children(&[brand, controls]);
+    }
     bar
+}
+
+/// The splash's traffic lights. See `renzora_shell::top_bar` for why they are
+/// drawn rather than asked of `NSWindow`.
+///
+/// A near-twin of the editor's, and deliberately not shared: the two title bars
+/// have no common crate, different button components (`SplashWinBtn` against
+/// `WindowBtn`) and different hover conventions, and a shared widget would have
+/// to be parameterised over all of it to save thirty lines.
+#[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
+fn build_traffic_lights(commands: &mut Commands) -> Entity {
+    const CLOSE: (u8, u8, u8) = (255, 95, 87);
+    const MINIMIZE: (u8, u8, u8) = (254, 188, 46);
+    const ZOOM: (u8, u8, u8) = (40, 200, 64);
+    const DOT: f32 = 12.0;
+
+    let group = commands
+        .spawn((
+            Node {
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(0.0)),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            Name::new("splash-traffic-lights"),
+        ))
+        .id();
+
+    let mut dots = Vec::new();
+    for (kind, color) in [
+        (WinBtn::Close, CLOSE),
+        (WinBtn::Min, MINIMIZE),
+        (WinBtn::Max, ZOOM),
+    ] {
+        let btn = commands
+            .spawn((
+                Node {
+                    width: Val::Px(DOT),
+                    height: Val::Px(DOT),
+                    border_radius: BorderRadius::all(Val::Px(DOT / 2.0)),
+                    ..default()
+                },
+                BackgroundColor(c(color.0, color.1, color.2)),
+                Interaction::default(),
+                FocusPolicy::Block,
+                SplashWinBtn(kind),
+                HoverCursor(SystemCursorIcon::Pointer),
+                Name::new("splash-traffic-light"),
+            ))
+            .id();
+        // Brightened on hover rather than glyph-revealed: the splash bar is
+        // short and these sit against a dark header where a lift in luminance
+        // reads more clearly than an 8px glyph would.
+        bind_bg(commands, btn, move |w| {
+            if is_hovered(w, btn) {
+                ca(color.0, color.1, color.2, 255)
+            } else {
+                c(color.0, color.1, color.2)
+            }
+        });
+        dots.push(btn);
+    }
+    commands.entity(group).add_children(&dots);
+    group
 }
 
 /// The Renzora mark in the title bar: the real icon, with a glyph standing in
@@ -212,6 +295,9 @@ fn brand_icon_path() -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
+// Trailing glyph buttons: every platform except native macOS, which uses the
+// leading dots instead. Still built on wasm, where it yields an empty row.
+#[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
 fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row = commands
         .spawn((
@@ -239,6 +325,7 @@ fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     row
 }
 
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
 fn win_button(
     commands: &mut Commands,
     fonts: &EmberFonts,

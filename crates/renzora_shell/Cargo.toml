@@ -44,3 +44,19 @@ rfd = "0.15"
 # window state a page is allowed to change.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Document", "Element"] }
+
+# The real macOS menu bar — an `NSMenu` installed as the application's global
+# menu, which is the one piece of UI a Mac app cannot draw for itself because it
+# lives outside the window entirely.
+#
+# `muda` rather than `objc2` directly: building an NSMenu by hand means a
+# subclassed target object to receive the action selectors, main-thread
+# discipline around every mutation, and the same work again the first time a
+# submenu or an accelerator is wanted. muda is Tauri's menu crate and does that
+# part; what is left here is naming the items and routing their events, which is
+# the part that is actually ours.
+#
+# macOS only, and deliberately not "desktop": Windows and Linux put their menu
+# inside the window, which the in-app hamburger already is.
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = "0.17"

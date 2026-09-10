@@ -30,6 +30,11 @@ use renzora_ember::EmberPlugin;
 
 pub mod dock;
 
+pub mod menu_command;
+// The macOS menu bar lives outside the window, so only AppKit can draw it. Every
+// other platform's menu is the in-app hamburger, which is on all of them.
+#[cfg(target_os = "macos")]
+mod native_menu;
 mod about;
 mod bottom_dock;
 mod contributors;
@@ -245,6 +250,11 @@ impl Plugin for ShellPlugin {
         // The hamburger owns its own resource + systems; none of the four needs
         // ordering against anything here.
         top_menu::register(app);
+        // Drains commands raised off-schedule — the native menu bar delivers its
+        // clicks on a channel, with no system running at the moment of the click.
+        menu_command::register(app);
+        #[cfg(target_os = "macos")]
+        native_menu::register(app);
         app.init_resource::<ThemeMenuOpen>();
         app.add_systems(
             Update,

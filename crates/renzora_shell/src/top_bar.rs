@@ -20,7 +20,11 @@ use crate::play_controls::build_play_group;
 use crate::ribbon::{ribbon_snapshot, WorkspaceAddBtn, WorkspaceDropZone, RIBBON_W};
 use crate::status_bar::ChromeBar;
 use crate::top_menu::{brand_mark, build_update_chip, hamburger_menu_item};
-use crate::window_chrome::{MaximizeIcon, WindowDragHandle};
+use crate::window_chrome::WindowDragHandle;
+// Only the trailing glyph buttons carry it — the macOS zoom dot keeps one glyph
+// whatever the window state, the way the real one does.
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
+use crate::window_chrome::MaximizeIcon;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::window_chrome::WindowBtn;
@@ -97,6 +101,19 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // on them — hidden unless Settings has them set to Dropdown, in which case
     // the strip under this bar is the one that's hidden instead.
     let docs = build_doc_tab_menu_group(commands, fonts, font);
+    // macOS puts the window buttons at the LEADING edge, so on that platform
+    // they come before the mark; everywhere else they stay in the trailing zone
+    // where Windows and most Linux desktops put them. One bar, two conventions,
+    // chosen by the platform rather than by a setting — nobody wants Mac buttons
+    // on Windows.
+    #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
+    {
+        let lights = build_traffic_lights(commands);
+        commands
+            .entity(left)
+            .add_children(&[lights, brand, hamburger, session, settings, play, docs]);
+    }
+    #[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
     commands
         .entity(left)
         .add_children(&[brand, hamburger, session, settings, play, docs]);
@@ -224,7 +241,10 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
         kids.push(btn);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    // Not on macOS: the same three actions are already in the leading zone as
+    // traffic lights, and a window with controls at both ends is nobody's
+    // convention.
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
     for (name, action, is_close) in [
         ("minus", WindowAction::Minimize, false),
         ("square", WindowAction::ToggleMaximize, false),
@@ -530,6 +550,112 @@ pub(crate) fn palette_btn_click(
 /// off anything a child hangs *outside* the bar — a dropdown panel, a tooltip.
 /// A zone holding a fixed, small set of buttons has nothing to contain and
 /// should not clip.
+/// The three round window buttons macOS puts at the LEADING edge of a window.
+///
+/// Custom-drawn rather than the real `NSWindow` ones. The editor runs
+/// `decorations: false` and owns its whole title bar — drag handling, eight
+/// resize zones, the lot — so asking macOS to draw genuine traffic lights would
+/// mean a transparent titlebar and a fullsize content view underneath chrome
+/// that already does that job, and a drag region negotiated between the two.
+/// These are ours: same colours, same order, same hover behaviour, and they work
+/// identically in the editor and the splash without a second code path.
+///
+/// Order is close, minimize, zoom — reading order, and the opposite end of the
+/// window from every other platform, which is the whole point.
+///
+/// # Why the glyphs only appear on hover
+///
+/// That is what macOS does, and it is not decoration: three unlabelled dots are
+/// unambiguous by position and colour, and the glyphs would otherwise be visual
+/// noise on a bar that already carries a mark, a menu and a row of actions. They
+/// appear together, on hover of the GROUP rather than of each button, because
+/// that is also what macOS does — reaching for one reveals all three, so you can
+/// see what you are about to hit before you commit to which.
+#[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
+fn build_traffic_lights(commands: &mut Commands) -> Entity {
+    use bevy::ui::FocusPolicy;
+
+    // Apple's own values, so the window reads as a Mac window rather than as an
+    // approximation of one.
+    const CLOSE: (u8, u8, u8) = (255, 95, 87);
+    const MINIMIZE: (u8, u8, u8) = (254, 188, 46);
+    const ZOOM: (u8, u8, u8) = (40, 200, 64);
+    /// 12pt is the system size; the glyph inside is deliberately smaller than the
+    /// dot so it reads as engraved rather than as an icon in a coloured box.
+    const DOT: f32 = 12.0;
+    const GLYPH: f32 = 8.0;
+
+    let group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::axes(Val::Px(6.0), Val::Px(0.0)),
+                ..default()
+            },
+            // The group is what hover is read from, so all three glyphs appear
+            // together. Without an `Interaction` here the children would each
+            // answer only for themselves.
+            Interaction::default(),
+            Name::new("traffic-lights"),
+        ))
+        .id();
+
+    let mut dots = Vec::new();
+    for (name, action, color) in [
+        ("x", WindowAction::Close, CLOSE),
+        ("minus", WindowAction::Minimize, MINIMIZE),
+        ("plus", WindowAction::ToggleMaximize, ZOOM),
+    ] {
+        let btn = commands
+            .spawn((
+                Node {
+                    width: Val::Px(DOT),
+                    height: Val::Px(DOT),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    // Half the box: bevy_ui has no `50%` shorthand that survives
+                    // a non-square node, and these are square by construction.
+                    border_radius: BorderRadius::all(Val::Px(DOT / 2.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(color)),
+                Interaction::default(),
+                WindowBtn(action),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ))
+            .id();
+
+        // Darkened rather than black: a black glyph on the red dot reads as a
+        // hole punched through it, where a dark tint of the dot's own hue looks
+        // engraved the way Apple's do.
+        let ink = (
+            (color.0 as f32 * 0.35) as u8,
+            (color.1 as f32 * 0.35) as u8,
+            (color.2 as f32 * 0.35) as u8,
+        );
+        let g = glyph(commands, name, ink, GLYPH);
+        // Pass, or the glyph would eat the hover the button needs to answer.
+        commands.entity(g).insert(FocusPolicy::Pass);
+        renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
+            let showing = matches!(
+                w.get::<Interaction>(group),
+                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            );
+            if showing {
+                rgb(ink)
+            } else {
+                Color::NONE
+            }
+        });
+        commands.entity(btn).add_child(g);
+        dots.push(btn);
+    }
+    commands.entity(group).add_children(&dots);
+    group
+}
+
 fn zone(
     commands: &mut Commands,
     name: &str,
