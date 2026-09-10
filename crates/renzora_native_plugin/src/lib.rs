@@ -207,6 +207,30 @@ pub struct InstalledNativePlugin {
 ///
 /// A directory with no built library is skipped: it is a plugin that has not
 /// been compiled yet, and there is nothing to read a scope from or copy.
+/// Every plugin installed for the engine at `root`, across all its plugin
+/// roots.
+///
+/// [`installed`] answers for one directory. This is the question callers
+/// actually have — "what does this install have" — and an install can keep
+/// plugins in two places: inside a macOS `.app` the bundled ones are sealed by
+/// the code signature, so anything the user installs lives in Application
+/// Support instead.
+///
+/// Deduplicated by id with the writable root winning, matching the precedence
+/// the loader applies, so an export ships the same plugin the editor is running.
+pub fn installed_for(root: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin> {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for dir in renzora_plugin_build::install::plugin_dirs(root) {
+        for plugin in installed(&dir, lib_ext) {
+            if seen.insert(plugin.id.clone()) {
+                out.push(plugin);
+            }
+        }
+    }
+    out
+}
+
 pub fn installed(plugins_dir: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin> {
     let Ok(entries) = std::fs::read_dir(plugins_dir) else {
         return Vec::new();
@@ -350,8 +374,10 @@ impl Plugin for NativePluginLoader {
         let Some(root) = self.root.clone().or_else(exe_dir) else {
             return;
         };
-        let dir = root.join("plugins");
-        if !dir.is_dir() {
+        // Both roots — the writable one and, inside a macOS bundle, the plugins
+        // that shipped with the editor. `plugin_entries` settles precedence.
+        let entries = plugin_entries(&root);
+        if entries.is_empty() {
             return;
         }
 
@@ -400,8 +426,19 @@ impl Plugin for NativePluginLoader {
             .map(|l| l.0.clone())
             .unwrap_or_default();
 
-        for (name, artefact) in renzora_plugin::host::loader::artefacts(&dir) {
-            let entry = dir.join(&name);
+        // Asked per DIRECTORY rather than per root, because `plugin_entries` has
+        // already settled which directory each plugin name resolves to — a
+        // bundled plugin is invisible here once the user has installed their own
+        // copy of it.
+        let built: Vec<(String, PathBuf, PathBuf)> = entries
+            .iter()
+            .filter_map(|entry| {
+                renzora_plugin::host::loader::artefact_in(entry)
+                    .map(|lib| (name_of(entry), entry.clone(), lib))
+            })
+            .collect();
+
+        for (name, entry, artefact) in built {
 
             // Which mechanism owns this, for the inventory the editor shows.
             // Read from the manifest first because that answer is available even
@@ -979,6 +1016,41 @@ pub fn is_native_source(dir: &Path) -> bool {
 /// Sorted because load order decides plugin-build order in the `App`, and a
 /// directory iteration order that varies between machines would make a
 /// misbehaving plugin reproduce for one person and not another.
+/// Every plugin directory visible to this install, deduplicated by name.
+///
+/// An install can have two plugin roots — see
+/// [`renzora_plugin_build::install::plugin_dirs`]. Inside a macOS `.app` the
+/// writable one under Application Support comes first and the bundled one
+/// second, so a plugin the user installed shadows a plugin of the same name
+/// that shipped with the editor.
+///
+/// One function rather than the same loop in the loader and in `prebuild`,
+/// because those two MUST agree on what exists. They already share `layout` for
+/// the same reason: if the pre-boot pass and the loader disagreed about which
+/// directories to look in, the loader would compile during `App` assembly —
+/// silently undoing the reason the pre-boot pass exists.
+pub(crate) fn plugin_entries(root: &Path) -> Vec<PathBuf> {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for dir in renzora_plugin_build::install::plugin_dirs(root) {
+        for entry in read_dir_sorted(&dir) {
+            if !entry.is_dir() {
+                continue;
+            }
+            let name = name_of(&entry);
+            // Dotfiles are not plugins, and `.DS_Store` is a file macOS drops in
+            // every directory a user has opened in the Finder.
+            if name.starts_with('.') {
+                continue;
+            }
+            if seen.insert(name) {
+                out.push(entry);
+            }
+        }
+    }
+    out
+}
+
 fn read_dir_sorted(dir: &Path) -> Vec<PathBuf> {
     let mut v: Vec<_> = std::fs::read_dir(dir)
         .into_iter()

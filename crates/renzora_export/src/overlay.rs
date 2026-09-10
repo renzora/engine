@@ -1327,10 +1327,12 @@ fn export_worker(
             // and the checkout has none. Passing the wrong root produced a
             // no_source line per plugin and a "lean" build that shipped every
             // one of them as a loose file.
-            let plugins_root = crate::build::plugin_source_root()
-                .unwrap_or_else(|| engine_dir.join("plugins"));
+            let mut plugins_roots = crate::build::plugin_source_roots();
+            if plugins_roots.is_empty() {
+                plugins_roots.push(engine_dir.join("plugins"));
+            }
             let plan = crate::build::resolve_static_plugins(
-                &plugins_root,
+                &plugins_roots,
                 &wanted,
                 crate::docker::rust_triple(platform),
             );

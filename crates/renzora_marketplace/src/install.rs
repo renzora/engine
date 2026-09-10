@@ -531,16 +531,23 @@ pub fn is_plugin_category(category: &str) -> bool {
     matches!(category, "plugins" | "plugin")
 }
 
-/// Where a plugin's source has to land: `<install root>/plugins/`.
+/// Where a plugin's source has to land: the install's **writable** plugin root.
 ///
 /// Not the project's `plugins/` folder. `renzora_native_plugin::prebuild` scans
-/// the directory beside the executable and compiles what it finds there, and
+/// the engine's plugin roots and compiles what it finds there, and
 /// `NativePluginLoader` loads from the same place — a plugin installed anywhere
 /// else is never seen by either.
+///
+/// Not `<root>/plugins` either, though that is what it resolves to on Windows
+/// and Linux. Inside a macOS `.app` that path is sealed by the bundle's code
+/// signature, and installing there would invalidate it — silently, because a
+/// signed bundle is still writable and the write succeeds. `plugins_write_dir`
+/// answers with Application Support in that case, and
+/// `install::plugin_dirs` is what makes the result visible to the loader.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn engine_plugins_dir() -> Result<PathBuf, String> {
     renzora_native_build::install::root()
-        .map(|r| r.join("plugins"))
+        .map(|r| renzora_native_build::install::plugins_write_dir(&r))
         .ok_or_else(|| "Could not locate the engine install directory".to_string())
 }
 

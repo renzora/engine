@@ -122,6 +122,49 @@ fn in_app_bundle(root: &Path) -> bool {
         .is_some_and(|n| n.ends_with(".app"))
 }
 
+/// Every directory plugins are read from, nearest first.
+///
+/// One entry everywhere except inside a macOS `.app`, which has two: the
+/// writable root from [`plugins_write_dir`] comes first, and the bundled
+/// `Contents/MacOS/plugins` — the plugins that shipped with the editor —
+/// second.
+///
+/// Order is precedence. A name found in the writable root shadows the bundled
+/// one of the same name, which is what makes "install a newer version of a
+/// plugin that ships with the engine" work without touching the bundle. Callers
+/// must deduplicate by plugin name and take the first.
+///
+/// # Why the split exists
+///
+/// A `.app`'s signature seals `Contents/`, so anything written in there — a
+/// marketplace install, a rebuilt artefact — invalidates it. The bundle is
+/// still *writable*, which is the trap: the write succeeds, nothing complains,
+/// and the damage only shows up when the app is next assessed by Gatekeeper.
+/// Splitting reads from writes is the same fix applied to [`sdk_dir`], for the
+/// same reason.
+pub fn plugin_dirs(root: &Path) -> Vec<PathBuf> {
+    let bundled = root.join("plugins");
+    let writable = plugins_write_dir(root);
+    if writable == bundled {
+        return vec![bundled];
+    }
+    vec![writable, bundled]
+}
+
+/// Where plugins are written — marketplace installs, and build output.
+///
+/// Always somewhere this process can write without breaking anything: inside a
+/// macOS bundle that means Application Support, everywhere else it is the same
+/// `<root>/plugins` that is read from.
+pub fn plugins_write_dir(root: &Path) -> PathBuf {
+    if cfg!(target_os = "macos") && in_app_bundle(root) {
+        if let Some(dir) = data_dir() {
+            return dir.join("plugins");
+        }
+    }
+    root.join("plugins")
+}
+
 /// `~/Library/Application Support/renzora`, the macOS home for engine data that
 /// is regenerable but too large to live in the bundle.
 ///
@@ -164,6 +207,33 @@ mod tests {
         // Right leaf names, no `.app` — a source tree that happens to match.
         assert!(!in_app_bundle(Path::new("/A/Renzora/Contents/MacOS")));
         assert!(!in_app_bundle(Path::new("/")));
+    }
+
+    /// A flat install reads and writes plugins in one place, so nothing
+    /// downstream has to special-case the single-root shape.
+    #[test]
+    fn a_flat_tree_has_one_plugin_root() {
+        let flat = Path::new("/A/dist/macos-arm64");
+        assert_eq!(plugin_dirs(flat), vec![flat.join("plugins")]);
+        assert_eq!(plugins_write_dir(flat), flat.join("plugins"));
+    }
+
+    /// Inside a bundle the write target must never be the bundle itself, and
+    /// the bundled plugins must still be readable — that is the whole point of
+    /// two roots rather than a move.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_bundle_reads_two_roots_and_writes_outside() {
+        let macos_dir = Path::new("/Applications/Renzora Engine.app/Contents/MacOS");
+        let dirs = plugin_dirs(macos_dir);
+        assert_eq!(dirs.len(), 2, "user root and bundled root");
+        // Writable first: an installed plugin shadows a bundled one.
+        assert_eq!(dirs[0], plugins_write_dir(macos_dir));
+        assert_eq!(dirs[1], macos_dir.join("plugins"));
+        assert!(
+            !plugins_write_dir(macos_dir).starts_with("/Applications/Renzora Engine.app"),
+            "writes must not land inside the signed bundle"
+        );
     }
 
     /// The rule that keeps dev builds, exported games and this crate's own

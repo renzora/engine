@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use renzora_plugin_build::unpack::{self, SdkState};
 use renzora_plugin_build::Sdk;
 
-use crate::{exe_dir, is_native_source, is_standalone_source, layout, name_of, read_dir_sorted, standalone};
+use crate::{exe_dir, is_native_source, is_standalone_source, layout, name_of, standalone};
 
 /// Where setup has got to, for a progress bar to draw.
 ///
@@ -159,11 +159,10 @@ pub fn needed() -> bool {
     if matches!(unpack::sdk_state(&root), SdkState::Packed { .. }) {
         return true;
     }
-    let dir = root.join("plugins");
     let disabled = renzora::load_disabled_plugins();
     let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
-    for p in read_dir_sorted(&dir) {
+    for p in crate::plugin_entries(&root) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
             continue;
         }
@@ -256,11 +255,48 @@ enum Kind {
 ///
 /// Deliberately does NOT load anything: loading is the `App`'s job, and doing it
 /// here would map images into a process that is about to be replaced.
-fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
-    let dir = root.join("plugins");
-    if !dir.is_dir() {
-        return 0;
+/// Where `plugin` should actually be compiled.
+///
+/// Itself, unless it sits somewhere that must not be written to — in which case
+/// its source is copied under `writable` and that copy is returned.
+///
+/// Only the source is copied. Any `build/` in the original is the artefact this
+/// call exists to replace, and carrying it over would make the copy look
+/// already-built to the very check that decided it was stale.
+fn mirror_for_build(plugin: &Path, writable: &Path) -> Result<PathBuf, String> {
+    // Already in the writable root — the common case, and every case off macOS.
+    if plugin.parent() == Some(writable) {
+        return Ok(plugin.to_path_buf());
     }
+    let dest = writable.join(name_of(plugin));
+    // A previous mirror of an older version would otherwise be merged with the
+    // new source, leaving files from both.
+    let _ = std::fs::remove_dir_all(&dest);
+    copy_source(plugin, &dest).map_err(|e| format!("could not stage for build: {e}"))?;
+    Ok(dest)
+}
+
+/// Recursive copy of a plugin's source, skipping `build/`.
+fn copy_source(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == "build" {
+            continue;
+        }
+        let src = entry.path();
+        let dst = to.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_source(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(())
+}
+
+fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     // No SDK is not a reason to stop: it blocks the NATIVE plugins and nothing
     // else. A standalone plugin links no Bevy and compiles against the plugin API
     // staged in `<install>/crates/`, so it builds on a machine that has never
@@ -271,7 +307,7 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     // off — compiling one of those would be work for something that will not run.
     let disabled = renzora::load_disabled_plugins();
     let mut pending: Vec<(PathBuf, Kind)> = Vec::new();
-    for p in read_dir_sorted(&dir) {
+    for p in crate::plugin_entries(root) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
             continue;
         }
@@ -300,9 +336,34 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
 
     let total = pending.len();
     let mut built = 0;
+    let writable = renzora_plugin_build::install::plugins_write_dir(root);
     for (i, (plugin, kind)) in pending.iter().enumerate() {
         let name = name_of(plugin);
         report(Progress::Building { name: name.clone(), index: i + 1, total });
+
+        // A plugin that shipped inside a macOS `.app` cannot be built where it
+        // sits: `build/` would land in `Contents/MacOS/plugins/<name>/` and
+        // invalidate the bundle's signature. The write SUCCEEDS — a signed
+        // bundle is not read-only — so nothing would report it, and the damage
+        // would only surface the next time Gatekeeper assessed the app.
+        //
+        // So the source is copied to the writable root and built there. On the
+        // next scan that copy shadows the bundled original (`plugin_entries`
+        // puts the writable root first), which is the same precedence a
+        // marketplace install gets, and everything downstream still sees one
+        // self-contained plugin directory.
+        //
+        // Normally dead code on a shipped install: plugins ship prebuilt with a
+        // stamp matching the SDK beside them, so nothing goes stale until the
+        // engine updates — and an update replaces the whole bundle, stamps
+        // included. This is the safety net for when that reasoning is wrong.
+        let plugin = &match mirror_for_build(plugin, &writable) {
+            Ok(p) => p,
+            Err(e) => {
+                report(Progress::Failed(format!("{name}: {e}")));
+                continue;
+            }
+        };
         let (expected, l) = match kind {
             Kind::Native => (
                 native_stamp.clone().unwrap_or_default(),
@@ -383,4 +444,72 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn restart() -> ! {
     renzora::restart_process()
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// A plugin already in the writable root builds where it is — no copy, no
+    /// second directory, and the same path back.
+    #[test]
+    fn a_writable_plugin_is_left_alone() {
+        let root = tmp("renzora_mirror_noop");
+        let writable = root.join("plugins");
+        let plugin = writable.join("clouds");
+        std::fs::create_dir_all(plugin.join("src")).unwrap();
+        assert_eq!(mirror_for_build(&plugin, &writable).unwrap(), plugin);
+    }
+
+    /// A bundled plugin is copied out, so the build never writes into the
+    /// directory it shipped in.
+    #[test]
+    fn a_bundled_plugin_is_mirrored_out() {
+        let root = tmp("renzora_mirror_out");
+        let bundled = root.join("Contents/MacOS/plugins/clouds");
+        std::fs::create_dir_all(bundled.join("src")).unwrap();
+        std::fs::write(bundled.join("Cargo.toml"), "[package]").unwrap();
+        std::fs::write(bundled.join("src/lib.rs"), "// source").unwrap();
+        // The stale artefact this rebuild exists to replace.
+        std::fs::create_dir_all(bundled.join("build")).unwrap();
+        std::fs::write(bundled.join("build/stamp.txt"), "old").unwrap();
+
+        let writable = root.join("data/plugins");
+        let out = mirror_for_build(&bundled, &writable).unwrap();
+
+        assert_eq!(out, writable.join("clouds"));
+        assert!(out.join("Cargo.toml").is_file(), "manifest copied");
+        assert!(out.join("src/lib.rs").is_file(), "sources copied recursively");
+        assert!(
+            !out.join("build").exists(),
+            "the stale build must NOT come along — it would look already-built"
+        );
+        // The original is untouched, which is the whole point.
+        assert!(bundled.join("build/stamp.txt").is_file());
+    }
+
+    /// Re-mirroring replaces rather than merges, or files from an older version
+    /// would survive alongside the new ones.
+    #[test]
+    fn re_mirroring_replaces_the_previous_copy() {
+        let root = tmp("renzora_mirror_replace");
+        let bundled = root.join("Contents/MacOS/plugins/clouds");
+        std::fs::create_dir_all(&bundled).unwrap();
+        std::fs::write(bundled.join("new.rs"), "new").unwrap();
+
+        let writable = root.join("data/plugins");
+        std::fs::create_dir_all(writable.join("clouds")).unwrap();
+        std::fs::write(writable.join("clouds/stale.rs"), "old").unwrap();
+
+        let out = mirror_for_build(&bundled, &writable).unwrap();
+        assert!(out.join("new.rs").is_file());
+        assert!(!out.join("stale.rs").exists(), "leftovers from the old copy must go");
+    }
 }

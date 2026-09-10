@@ -245,7 +245,10 @@ fn scan_plugins(world: &mut World) {
             Platform::MacOSX64 | Platform::MacOSArm64 => "dylib",
             _ => "so",
         };
-        for p in renzora_native_plugin::installed(&editor_dir.join("plugins"), lib_ext) {
+        // Every plugin root — on macOS the user's installs are outside the
+        // bundle, and a picker that could not see them would offer no way to
+        // ship them.
+        for p in renzora_native_plugin::installed_for(&editor_dir, lib_ext) {
             if p.scope != renzora::NativePluginScope::Runtime {
                 continue;
             }

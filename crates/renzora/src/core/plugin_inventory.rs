@@ -186,10 +186,38 @@ pub fn plugin_id_from_path(path: &std::path::Path) -> String {
 /// that does not exist and the caller draws its placeholder. That is the honest
 /// outcome, not a gap to paper over: the file genuinely has nowhere to live yet.
 ///
-/// `None` when the executable's own directory cannot be determined, which is the
-/// same condition under which no plugins would have loaded either.
+/// `None` when the install directory cannot be determined, which is the same
+/// condition under which no plugins would have loaded either.
+///
+/// Searches every plugin root rather than assuming one beside the executable.
+/// A macOS install has two — the plugins sealed inside the signed `.app` and
+/// the ones the user installed into Application Support — and looking only at
+/// the first would draw a placeholder for exactly the plugins someone chose to
+/// install, which reads as a broken image rather than a missing file.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn plugin_thumbnail_path(id: &str) -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    Some(dir.join("plugins").join(id).join("thumbnail.jpg"))
+    let root = renzora_native_build::install::root()?;
+    let dirs = renzora_native_build::install::plugin_dirs(&root);
+    // The first that exists. Falling back to the first root when none does keeps
+    // the old behaviour for the caller, which expects a path it can test rather
+    // than a `None` meaning "no plugins at all".
+    let candidates = dirs
+        .iter()
+        .map(|d| d.join(id).join("thumbnail.jpg"));
+    let mut first = None;
+    for path in candidates {
+        if first.is_none() {
+            first = Some(path.clone());
+        }
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    first
+}
+
+/// No install directory to search in a browser tab.
+#[cfg(target_arch = "wasm32")]
+pub fn plugin_thumbnail_path(_id: &str) -> Option<std::path::PathBuf> {
+    None
 }

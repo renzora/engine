@@ -170,9 +170,17 @@ fn runtime_feature(platform: Platform) -> &'static str {
 /// says so in one line among a hundred compiler lines, and ships every plugin as
 /// a loose file — producing a "lean" build that is not lean and a single binary
 /// that is not single.
-pub fn plugin_source_root() -> Option<PathBuf> {
-    let dir = editor_dir()?.join("plugins");
-    dir.is_dir().then_some(dir)
+pub fn plugin_source_roots() -> Vec<PathBuf> {
+    // Every root, nearest first. On macOS a marketplace plugin lives in
+    // Application Support because the bundled directory is sealed by the app's
+    // code signature — looking only beside the editor would find the plugins
+    // that shipped with it and none of the ones the user chose.
+    editor_dir()
+        .map(|d| renzora_plugin_build::install::plugin_dirs(&d))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|d| d.is_dir())
+        .collect()
 }
 
 /// The directory holding the editor's DATA: `plugins/`, `resources/`, the SDK,
@@ -369,8 +377,11 @@ pub fn build_lean(
     // since they moved to the marketplace. Empty is not an error here: the plan
     // this stages was resolved from the same root, so an empty root produced an
     // empty plan and there is nothing to stage.
-    let plugins_root = plugin_source_root().unwrap_or_else(|| workspace_dir.join("plugins"));
-    stage_static_plugins(&plugins_root, &ws, static_plugins, progress)?;
+    let mut plugins_roots = plugin_source_roots();
+    if plugins_roots.is_empty() {
+        plugins_roots.push(workspace_dir.join("plugins"));
+    }
+    stage_static_plugins(&plugins_roots, &ws, static_plugins, progress)?;
     let has_scripts = stage_static_scripts(project_dir, &ws, progress)?;
     let mut features = String::from(runtime_feature(platform));
     if !static_plugins.is_empty() {
@@ -1136,10 +1147,11 @@ pub struct StaticPluginPlan {
 /// both macOS arches. Absent means "builds anywhere", which is true of nearly
 /// every plugin and is why the default has to be the permissive one.
 pub fn resolve_static_plugins(
-    // Directory holding one source directory per plugin — see
-    // `plugin_source_root`. Named `plugins_root` rather than `engine_src`
-    // because it is no longer inside the checkout.
-    plugins_root: &Path,
+    // Directories holding one source directory per plugin — see
+    // `plugin_source_roots`. Plural, and in precedence order: a macOS install
+    // keeps the plugins that shipped with it inside the signed bundle and the
+    // ones the user installed outside it, so there is no single root to name.
+    plugins_roots: &[PathBuf],
     wanted: &[(String, bool)],
     // `None` for a host build with no `--target`, which is the host triple by
     // definition; a plugin cannot be unsupported on the platform whose editor is
@@ -1152,6 +1164,10 @@ pub fn resolve_static_plugins(
     // Underscored package name → (package name as written, directory, buildable).
     let mut by_package: std::collections::HashMap<String, (String, String, bool, StaticKind)> =
         Default::default();
+    // Nearest root first, and `or_insert` rather than `insert` so the first one
+    // holding a package keeps it — the same precedence the loader applies, so an
+    // export links what the editor is running.
+    for plugins_root in plugins_roots {
     if let Ok(entries) = std::fs::read_dir(plugins_root) {
         for entry in entries.flatten() {
             if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -1180,10 +1196,13 @@ pub fn resolve_static_plugins(
                     Some(StaticKind::CAbi)
                 };
                 if let Some(kind) = kind {
-                    by_package.insert(name.replace('-', "_"), (name, dir, buildable, kind));
+                    by_package
+                        .entry(name.replace('-', "_"))
+                        .or_insert((name, dir, buildable, kind));
                 }
             }
         }
+    }
     }
 
     let mut plan = StaticPluginPlan {
@@ -1269,13 +1288,20 @@ fn native_plugin_expr(dir: &Path) -> Option<String> {
 /// would otherwise let someone tick one that the build then leaves out. Reading
 /// the manifests is a few dozen small file reads, so call it when the selected
 /// platform changes — not per frame.
-pub fn unsupported_plugins_for(plugins_root: &Path, triple: &str) -> Vec<String> {
+pub fn unsupported_plugins_for(plugins_roots: &[PathBuf], triple: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(plugins_root) else {
-        return out;
-    };
-    for entry in entries.flatten() {
+    // Every root, and each plugin considered once: a user's copy shadowing a
+    // bundled one of the same name must not be listed twice, and the shadowing
+    // copy is the one whose manifest decides.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for entry in plugins_roots
+        .iter()
+        .flat_map(|r| std::fs::read_dir(r).into_iter().flatten().flatten())
+    {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        if !seen.insert(entry.file_name().to_string_lossy().into_owned()) {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(entry.path().join("Cargo.toml")) else {
@@ -1347,7 +1373,7 @@ fn package_name(manifest: &str) -> Option<String> {
 /// 3. **Drop `[profile.*]`.** Profiles outside a workspace root are ignored with
 ///    a warning, and sixty of those warnings buries the build log.
 fn stage_static_plugins(
-    plugins_root: &Path,
+    plugins_roots: &[PathBuf],
     copy_root: &Path,
     plugins: &[StaticPluginSrc],
     progress: &mut dyn FnMut(String),
@@ -1358,7 +1384,12 @@ fn stage_static_plugins(
 
     let mut copied = 0usize;
     for p in plugins {
-        let src = plugins_root.join(&p.dir);
+        // The root that actually holds it, searched in the same order
+        // `resolve_static_plugins` used — otherwise a plan built from the user's
+        // copy could stage the bundled one's source.
+        let Some(src) = plugins_roots.iter().map(|r| r.join(&p.dir)).find(|d| d.is_dir()) else {
+            return Err(format!("plugin source for {} is no longer on disk", p.dir));
+        };
         let dest = copy_root.join("plugins").join(&p.dir);
         std::fs::create_dir_all(&dest).map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
         // Everything but the manifest, which is written patched below. A plugin
@@ -1608,7 +1639,10 @@ pub fn stage_runtime_native_plugins(
     selected: Option<&std::collections::HashSet<String>>,
     progress: &mut dyn FnMut(String),
 ) -> Result<usize, String> {
-    let src_root = editor_dir.join("plugins");
+    // Every root, not just `<editor>/plugins`: a plugin the user installed on
+    // macOS lives in Application Support, because the bundled directory is
+    // sealed by the app's code signature. Missing it would silently drop that
+    // plugin from the export while the editor kept running it.
 
     // A plugin switched off in Settings → Editor → Plugins must not ship. It is
     // off because the user turned it off, and an export is the last moment that
@@ -1618,7 +1652,7 @@ pub fn stage_runtime_native_plugins(
 
     let mut shipped: Vec<String> = Vec::new();
     let mut skipped_editor: Vec<String> = Vec::new();
-    for plugin in renzora_native_plugin::installed(&src_root, lib_ext) {
+    for plugin in renzora_native_plugin::installed_for(editor_dir, lib_ext) {
         let name = plugin.id;
         if disabled.iter().any(|d| d == &name) {
             continue;
@@ -2330,7 +2364,7 @@ mod tests {
         let wanted: Vec<(String, bool)> =
             ["audio", "grayscale"].iter().map(|id| (id.to_string(), false)).collect();
 
-        let web = resolve_static_plugins(&repo.join("plugins"), &wanted, Some("wasm32-unknown-unknown"));
+        let web = resolve_static_plugins(&[repo.join("plugins")], &wanted, Some("wasm32-unknown-unknown"));
         assert!(
             web.linked.iter().all(|p| p.id == "grayscale"),
             "only the ungated one should cross: {:?}",
@@ -2341,7 +2375,7 @@ mod tests {
 
         // The same set on a desktop triple links both: the key is per-target,
         // not a blanket exclusion.
-        let desktop = resolve_static_plugins(&repo.join("plugins"), &wanted, Some("x86_64-pc-windows-msvc"));
+        let desktop = resolve_static_plugins(&[repo.join("plugins")], &wanted, Some("x86_64-pc-windows-msvc"));
         assert_eq!(desktop.linked.len(), 2, "{:?}", desktop.unsupported);
         assert!(desktop.unsupported.is_empty());
         let _ = std::fs::remove_dir_all(&repo);
@@ -2352,7 +2386,7 @@ mod tests {
     fn no_target_filters_nothing() {
         let gate = "[package.metadata.renzora]\nunsupported-targets = [\"wasm32\"]\n";
         let repo = plugin_tree("hosttriple", &[("audio", &cabi("audio", gate), "")]);
-        let plan = resolve_static_plugins(&repo.join("plugins"), &[("audio".to_string(), false)], None);
+        let plan = resolve_static_plugins(&[repo.join("plugins")], &[("audio".to_string(), false)], None);
         assert_eq!(plan.linked.len(), 1);
         assert!(plan.unsupported.is_empty());
         let _ = std::fs::remove_dir_all(&repo);
@@ -2378,7 +2412,7 @@ mod tests {
         );
         let wanted: Vec<(String, bool)> =
             ["spline", "grayscale"].iter().map(|id| (id.to_string(), false)).collect();
-        let plan = resolve_static_plugins(&repo.join("plugins"), &wanted, None);
+        let plan = resolve_static_plugins(&[repo.join("plugins")], &wanted, None);
 
         let spline = plan.linked.iter().find(|p| p.id == "spline").expect("spline linked");
         assert_eq!(spline.kind, StaticKind::Native { expr: "SplinePlugin".into() });

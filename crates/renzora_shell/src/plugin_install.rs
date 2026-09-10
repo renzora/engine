@@ -231,12 +231,19 @@ fn install(source: &Path) -> std::io::Result<PathBuf> {
     Ok(dest)
 }
 
-/// Same resolution the startup loader uses: `plugins/` beside the executable.
+/// Where an installed plugin is written.
+///
+/// Not simply `plugins/` beside the executable, which is what this was. Inside a
+/// macOS `.app` that directory is sealed by the bundle's code signature, and
+/// dropping a library into it invalidates the signature — silently, because a
+/// signed bundle is still writable and the copy succeeds. The failure only
+/// appears later, when Gatekeeper next assesses the app and refuses to open it.
+///
+/// `plugins_write_dir` answers with Application Support in that case, and
+/// `install::plugin_dirs` is what keeps the result visible to the loader.
 fn plugins_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()?
-        .parent()
-        .map(|d| d.join("plugins"))
+    renzora_native_build::install::root()
+        .map(|r| renzora_native_build::install::plugins_write_dir(&r))
 }
 
 /// First-bytes sanity check that this is a native library for the running

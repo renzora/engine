@@ -133,9 +133,8 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     // Resolved once here rather than in a binding: it depends only on the
     // selected platform, and the tab is rebuilt when that changes.
     let blocked = crate::docker::rust_triple(p)
-        .and_then(|triple| {
-            crate::build::plugin_source_root()
-                .map(|root| crate::build::unsupported_plugins_for(&root, triple))
+        .map(|triple| {
+            crate::build::unsupported_plugins_for(&crate::build::plugin_source_roots(), triple)
         })
         .unwrap_or_default();
     if !blocked.is_empty() {

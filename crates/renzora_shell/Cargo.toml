@@ -7,6 +7,11 @@ description = "bevy_ui-native editor shell (dock host + chrome). The egui → be
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Where an install keeps its plugins, which is not always beside the executable:
+# inside a macOS `.app` the bundled ones are sealed by the code signature and
+# anything installed has to go to Application Support instead. This crate carries
+# no dependencies of its own, so the answer is shared rather than copied.
+renzora_native_build = { path = "../renzora_native_build" }
 # The bevy_ui UI framework. The dock model lives here; the reconciler +
 # interactions migrate over next.
 renzora_ember = { path = "../renzora_ember" }

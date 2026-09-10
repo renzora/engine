@@ -189,7 +189,6 @@ pub enum LoadOutcome {
 /// this loader makes (mapping one would load every plugin twice) and `.cargo`
 /// holds build config.
 pub fn artefacts(root: &Path) -> Vec<(String, PathBuf)> {
-    let ext = std::env::consts::DLL_EXTENSION;
     let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
     };
@@ -202,16 +201,31 @@ pub fn artefacts(root: &Path) -> Vec<(String, PathBuf)> {
             if id.starts_with('.') {
                 return None;
             }
-            // Underscored to match what `rustc --crate-name` produced, which is
-            // the same rule `renzora_native_plugin::layout` follows — one layout,
-            // whichever builder wrote it.
-            let lib = dir.join("build").join(format!("{}.{ext}", id.replace('-', "_")));
-            lib.is_file().then_some((id, lib))
+            artefact_in(&dir).map(|lib| (id, lib))
         })
         .collect();
     // Stable order so a load failure is always reported in the same place.
     out.sort();
     out
+}
+
+/// The built library inside one plugin directory, if it has been built.
+///
+/// Split out of [`artefacts`] so a caller that already knows which directory it
+/// means does not have to re-scan the root to ask about it — which matters now
+/// that an install can have more than one plugin root and the loader walks
+/// directories rather than roots.
+///
+/// The naming rule lives here and only here: underscored to match what
+/// `rustc --crate-name` produced, which is the same rule
+/// `renzora_native_plugin::layout` follows. One layout, whichever builder wrote
+/// it, and one place that spells it.
+pub fn artefact_in(dir: &Path) -> Option<PathBuf> {
+    let id = dir.file_name()?.to_str()?;
+    let lib = dir
+        .join("build")
+        .join(format!("{}.{}", id.replace('-', "_"), std::env::consts::DLL_EXTENSION));
+    lib.is_file().then_some(lib)
 }
 
 /// True if the file is a Rust **proc-macro** dylib.
