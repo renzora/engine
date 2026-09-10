@@ -24,12 +24,43 @@
 //! make local iteration pay for `mksquashfs` and would move the binary out from
 //! under `cargo renzora`'s launch step. CI asks for it; a contributor doesn't.
 //!
-//! One thing deliberately stays OUTSIDE the bundle: `sdk/` (or `sdk.tar.zst`).
-//! `renzora_native_build::install::root()` resolves the install directory from
-//! `$APPIMAGE` when it is set, which points at the `.AppImage` *file*, so the
-//! editor looks for the SDK beside the bundle rather than within it. The
-//! container's wrapper moved binaries and shared libraries only, for exactly
-//! this reason, and this port keeps that.
+//! # What stays outside the bundle, and why it is a Linux rule only
+//!
+//! On Linux `sdk/` (or `sdk.tar.zst`) and `resources/` stay OUTSIDE the
+//! AppImage. `renzora_native_build::install::root()` resolves the install
+//! directory from `$APPIMAGE` when it is set, which points at the `.AppImage`
+//! *file*, so the editor looks beside the bundle rather than within it — and it
+//! has to, because an AppImage is a read-only squashfs that a 1.9 GB tree could
+//! not be unpacked into even if it fitted.
+//!
+//! **macOS is the opposite case and used to be handled as if it were the same
+//! one.** There is no `$APPIMAGE` equivalent, so `root()` is just
+//! `current_exe().parent()` — `Renzora Engine.app/Contents/MacOS/`. Anything
+//! left at the top of the platform directory is somewhere the editor never
+//! looks. That shipped: `sdk.tar.zst` sat beside the `.app`, `sdk_state()`
+//! returned `Absent`, and the first-launch setup that unpacks the SDK simply
+//! never ran, so Rust scripts and native plugins could not be built at all.
+//! `resources/icon.png` was invisible for the same reason.
+//!
+//! So on macOS `resources/` is moved in here, and `sdk.tar.zst` is placed in
+//! `Contents/MacOS/` by whoever packs it (the `Pack the plugin SDK` step in
+//! `.github/workflows/build-engine.yml`) — it cannot happen here, because at
+//! wrap time the SDK is still the extracted tree that packing consumes, and
+//! sealing a bundle with 1.9 GB of crate metadata inside it is both slow and
+//! pointless.
+//!
+//! The archive is only ever READ from there. `renzora_native_build::install`
+//! unpacks it to `~/Library/Application Support/renzora/sdk` and never deletes
+//! it, because writing 1.9 GB into `Contents/` and removing a sealed resource
+//! both invalidate the bundle's signature — which is the one thing a `.app` is
+//! supposed to be able to promise. That is what lets this step seal the bundle
+//! and expect the seal to survive being used.
+//!
+//! Not a total guarantee, and the remaining gap is worth knowing about: a
+//! marketplace install, or a bundled plugin whose stamp has gone stale, still
+//! writes into `Contents/MacOS/plugins/`. A shipped install whose stamps match
+//! does not, so an ordinary launch now leaves the bundle untouched — where the
+//! SDK unpack used to make that impossible for every user on every first run.
 
 use std::path::Path;
 
@@ -91,6 +122,41 @@ fn move_binaries(out: &Path, into: &Path) -> std::io::Result<()> {
         let src = out.join(name);
         if src.is_file() {
             move_file(&src, &into.join(name))?;
+        }
+    }
+    Ok(())
+}
+
+/// Move a whole directory into the bundle. A no-op when it was never staged —
+/// `resources/` only exists when the repository had an `icon.png` to stage.
+#[cfg(target_os = "macos")]
+fn move_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_dir_all(to);
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    // Staging and bundle are the same filesystem in every path that reaches
+    // here, so the rename is what runs. Copy is the fallback for a `dist/` that
+    // straddles a mount, matching `move_file`.
+    copy_tree(from, to)?;
+    std::fs::remove_dir_all(from)
+}
+
+/// Recursive copy, for `move_dir`'s cross-filesystem fallback.
+#[cfg(target_os = "macos")]
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let src = entry.path();
+        let dst = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
         }
     }
     Ok(())
@@ -210,6 +276,13 @@ mod macos {
         super::move_binaries(out, &macos_dir)?;
         super::move_matching(out, ".dylib", &macos_dir)?;
         super::move_plugins(out, &macos_dir, ".dylib")?;
+        // `resources/icon.png` is read as `current_exe().parent()/resources/`
+        // by the splash, the top menu and the exporter's fallback, so on macOS
+        // it belongs beside the executable inside the bundle. Left at the top
+        // of the platform directory it is simply never found, and the editor
+        // draws no brand mark. Before `seal()`, so the ad-hoc signature covers
+        // it.
+        super::move_dir(&out.join("resources"), &macos_dir.join("resources"))?;
 
         let icon = repo.join("icon.png");
         if icon.is_file() {

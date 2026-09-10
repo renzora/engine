@@ -35,7 +35,7 @@ use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity
 use renzora::core::console_log::{console_error, console_success};
 use renzora::CurrentProject;
 
-use crate::{load_library, sdk_root, LoadedScripts};
+use crate::{load_library, sdk_dir, LoadedScripts};
 
 /// How often the scripts directory is stat'd, in seconds.
 ///
@@ -98,7 +98,7 @@ pub fn watch(
         return;
     }
 
-    let Some(sdk_root) = sdk_root() else { return };
+    let Some(sdk_dir) = sdk_dir() else { return };
     let project_path = project.path.clone();
 
     for src in sources {
@@ -118,14 +118,14 @@ pub fn watch(
         // retried until it is edited again.
         watcher.seen.insert(src.clone(), mtime);
 
-        let sdk_root = sdk_root.clone();
+        let sdk_dir = sdk_dir.clone();
         let project_path = project_path.clone();
         let build_src = src.clone();
         let task = AsyncComputeTaskPool::get().spawn(async move {
             // The SDK is re-read in the task rather than shared: it is a small
             // JSON file, and this keeps anything with a lifetime out of the
             // closure.
-            let sdk = renzora_plugin_build::Sdk::load(sdk_root.join("sdk"))
+            let sdk = renzora_plugin_build::Sdk::load(sdk_dir)
                 .map_err(|e| e.to_string())?;
             crate::build_to_path(&sdk, &project_path, &build_src)
         });

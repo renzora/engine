@@ -417,8 +417,8 @@ fn compile_and_load(world: &mut World) {
         return;
     }
 
-    let Some(root) = exe_dir() else { return };
-    let sdk = match Sdk::load(root.join("sdk")) {
+    let Some(sdk_dir) = sdk_dir() else { return };
+    let sdk = match Sdk::load(sdk_dir) {
         Ok(sdk) => sdk,
         Err(e) => {
             // Said once rather than per script: without an SDK nothing can be
@@ -683,9 +683,15 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Libr
     Ok((f, hook, lib))
 }
 
-/// The directory holding the editor, which is where `sdk/` lives.
-pub fn sdk_root() -> Option<PathBuf> {
-    exe_dir()
+/// The SDK tree scripts are compiled against.
+///
+/// Returns the `sdk/` directory itself rather than the install root that used to
+/// hold it. The two stopped being the same thing on macOS, where the tree lives
+/// under Application Support because a signed `.app` cannot be written into —
+/// so a caller appending `"sdk"` to an install root is now wrong there, and
+/// resolving it in one place is what stops that reappearing.
+pub fn sdk_dir() -> Option<PathBuf> {
+    exe_dir().map(|root| renzora_plugin_build::install::sdk_dir(&root))
 }
 
 // Whether scripts should run this frame is `renzora_scripting`'s

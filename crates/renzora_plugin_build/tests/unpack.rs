@@ -17,13 +17,29 @@ use renzora_plugin_build::unpack::{extract, sdk_state, SdkState};
 
 /// A `<root>/sdk.tar.zst` holding a plausible SDK, made the way a release is.
 fn build_release_layout(root: &Path) -> bool {
-    let sdk = root.join("sdk");
+    build_release_layout_seeded(root, 1)
+}
+
+/// The same, with `seed` deciding the filler bytes.
+///
+/// Two seeds produce two archives that differ within their first block, which is
+/// what an engine update looks like to `sdk_state`: the tree already unpacked
+/// belongs to a different archive than the one now shipped beside the editor.
+///
+/// The fixture tree is built under `.fixture/` rather than at `<root>/sdk`, so
+/// building a second archive does not delete a tree an earlier `extract` put in
+/// the place under test.
+fn build_release_layout_seeded(root: &Path, seed: u64) -> bool {
+    let sdk = root.join(".fixture").join("sdk");
+    let _ = std::fs::remove_dir_all(root.join(".fixture"));
     std::fs::create_dir_all(sdk.join("deps")).unwrap();
-    std::fs::write(sdk.join("manifest.json"), r#"{"triple":"test"}"#).unwrap();
+    std::fs::write(sdk.join("manifest.json"), format!(r#"{{"triple":"test","seed":{seed}}}"#))
+        .unwrap();
     // Big enough that unpacking reports progress more than once. Incompressible
     // on purpose — a run of one byte would compress to almost nothing, and the
     // reader would then deliver it in a single chunk with no progress to show.
-    let filler: Vec<u8> = (0..512 * 1024).map(|i| (i * 2654435761u64 >> 13) as u8).collect();
+    let filler: Vec<u8> =
+        (0..512 * 1024).map(|i| ((i + seed) * 2654435761u64 >> 13) as u8).collect();
     std::fs::write(sdk.join("deps").join("libfake.rlib"), filler).unwrap();
 
     let archive = std::fs::File::create(root.join("sdk.tar.zst")).unwrap();
@@ -40,7 +56,7 @@ fn build_release_layout(root: &Path) -> bool {
     }
     encoder.finish().unwrap();
 
-    std::fs::remove_dir_all(&sdk).unwrap();
+    std::fs::remove_dir_all(root.join(".fixture")).unwrap();
     true
 }
 
@@ -170,7 +186,16 @@ fn a_truncated_archive_leaves_no_half_sdk() {
 
     assert!(!root.join("sdk").exists(), "no SDK directory may be left behind");
     assert!(matches!(sdk_state(&root), SdkState::Packed { .. }), "still just an archive");
-    assert!(!root.join("sdk.partial").exists(), "staging dir cleaned up on failure");
+    // Any `sdk.partial*`, not the bare name: staging is suffixed with the
+    // process id now that the destination can be shared between installs, and
+    // an exact-name check would pass without looking at anything.
+    let leftovers: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("sdk.partial"))
+        .collect();
+    assert!(leftovers.is_empty(), "staging dirs cleaned up on failure, found {leftovers:?}");
     assert!(
         !root.join("sdk.tar.partial").exists(),
         "a failed unpack must leave no intermediate tarball either"
@@ -198,4 +223,119 @@ fn a_build_with_no_sdk_at_all_reads_as_absent() {
     let root = tmp("renzora_unpack_absent");
     assert!(matches!(sdk_state(&root), SdkState::Absent));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An engine update must not be served the previous engine's SDK.
+///
+/// This is the case co-location used to make impossible: `sdk/` sat beside the
+/// executable and an update replaced the whole directory. A macOS install has
+/// the tree under Application Support and only the archive inside the `.app`, so
+/// updating the engine leaves a tree that looks perfectly valid and links
+/// nothing — every metadata filename in an SDK hashes the build configuration.
+#[test]
+fn an_updated_archive_supersedes_the_tree_it_replaces() {
+    let root = tmp("renzora_unpack_stale");
+    build_release_layout_seeded(&root, 1);
+    let archive = root.join("sdk.tar.zst");
+    let tree = extract(&archive, &root, |_| {}).expect("first unpack");
+    assert!(matches!(sdk_state(&root), SdkState::Ready), "freshly unpacked");
+
+    // The update: same path, different archive, tree untouched.
+    build_release_layout_seeded(&root, 2);
+    assert!(
+        matches!(sdk_state(&root), SdkState::Packed { .. }),
+        "a tree from the previous archive must not read as Ready"
+    );
+
+    let mut ticks = 0;
+    extract(&archive, &root, |_| ticks += 1).expect("second unpack");
+    assert!(ticks > 0, "the new archive is actually unpacked, not skipped");
+    assert!(matches!(sdk_state(&root), SdkState::Ready), "ready again afterwards");
+    let manifest = std::fs::read_to_string(tree.join("manifest.json")).unwrap();
+    assert!(manifest.contains("\"seed\":2"), "the tree is the new archive's, not the old one's");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A tree staged by `cargo renzora` has never been through `extract` and carries
+/// no stamp. Refusing to use it would break every contributor's build to catch a
+/// case that only exists in a shipped macOS install.
+#[test]
+fn an_unstamped_tree_is_trusted() {
+    let root = tmp("renzora_unpack_unstamped");
+    build_release_layout(&root);
+    let tree = extract(&root.join("sdk.tar.zst"), &root, |_| {}).expect("unpack");
+    std::fs::remove_file(tree.join(".archive-stamp")).expect("drop the stamp");
+    assert!(
+        matches!(sdk_state(&root), SdkState::Ready),
+        "a tree with no stamp is taken at face value"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The whole macOS path, against a real install rather than a fixture.
+///
+/// The unit tests above all run on flat temporary directories, which is the
+/// point — they must not touch the machine's Application Support — but that
+/// also means none of them exercise the branch a shipped `.app` actually takes.
+/// This does, end to end: resolve the destination, notice the archive, unpack
+/// it, and confirm the bundle came out unmodified.
+///
+/// Skipped unless `RENZORA_INSTALL_ROOT` points at a `Contents/MacOS`, because
+/// it needs a real download and writes ~1.9 GB. Run it as:
+///
+/// ```text
+/// RENZORA_INSTALL_ROOT="/path/to/Renzora Engine.app/Contents/MacOS" \
+///   cargo test -p renzora_plugin_build --test unpack -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "needs a real install via RENZORA_INSTALL_ROOT"]
+fn a_real_install_unpacks_without_touching_its_bundle() {
+    let Ok(root) = std::env::var("RENZORA_INSTALL_ROOT") else {
+        eprintln!("RENZORA_INSTALL_ROOT unset — skipping");
+        return;
+    };
+    let root = PathBuf::from(root);
+    let archive = root.join("sdk.tar.zst");
+    assert!(archive.is_file(), "no sdk.tar.zst in {} — the packaging put it somewhere the editor cannot see", root.display());
+
+    let tree = renzora_plugin_build::install::sdk_dir(&root);
+    eprintln!("root:  {}", root.display());
+    eprintln!("tree:  {}", tree.display());
+    assert!(!tree.starts_with(&root), "the tree must not land inside the bundle");
+
+    let before = std::fs::metadata(&archive).expect("archive").len();
+    let start = std::time::Instant::now();
+    let out = extract(&archive, &root, |_| {}).expect("extract");
+    eprintln!("unpacked in {:.1}s", start.elapsed().as_secs_f64());
+
+    assert_eq!(out, tree);
+    assert!(out.join("manifest.json").is_file(), "a usable SDK landed");
+    assert!(matches!(sdk_state(&root), SdkState::Ready), "and reads as Ready afterwards");
+    assert_eq!(
+        std::fs::metadata(&archive).expect("archive survived").len(),
+        before,
+        "the archive inside the bundle must not be touched"
+    );
+    assert!(!root.join("sdk").exists(), "nothing was written into Contents/MacOS/");
+}
+
+/// The tree must not land inside the `.app`, whatever else changes.
+///
+/// Unpacking into `Contents/` invalidates the bundle's signature, and deleting
+/// the archive afterwards does it again — which is why the destination moved to
+/// Application Support. Path-level, so it asserts the routing without writing
+/// 1.9 GB into the machine running the tests.
+#[test]
+#[cfg(target_os = "macos")]
+fn a_bundle_unpacks_outside_itself() {
+    let bundle = Path::new("/Applications/Renzora Engine.app");
+    let macos_dir = bundle.join("Contents").join("MacOS");
+    let sdk = renzora_plugin_build::install::sdk_dir(&macos_dir);
+    assert!(
+        !sdk.starts_with(bundle),
+        "the SDK tree must not be written inside a signed bundle, got {}",
+        sdk.display()
+    );
+    assert!(sdk.ends_with("sdk"), "still named sdk/, got {}", sdk.display());
 }

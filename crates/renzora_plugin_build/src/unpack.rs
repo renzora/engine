@@ -51,6 +51,8 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
+use renzora_native_build::install;
+
 /// What the SDK looks like on disk right now.
 #[derive(Debug, Clone)]
 pub enum SdkState {
@@ -62,22 +64,55 @@ pub enum SdkState {
     Absent,
 }
 
+/// The archive an extracted tree came from, written inside the tree itself.
+///
+/// See [`sdk_state`] for why it exists at all.
+const STAMP: &str = ".archive-stamp";
+
 /// Inspect `root` (the directory holding the executables) for an SDK.
 ///
 /// Prefers an extracted tree, so a re-run after unpacking is a cheap stat rather
 /// than a repeated extraction.
+///
+/// # Why the tree is checked against the archive rather than just found
+///
+/// On every platform but macOS the two are co-located: `sdk/` is unpacked beside
+/// the executable and an update replaces that whole directory, so a tree that is
+/// there at all is by construction the right one, and the archive is deleted
+/// once it has been used.
+///
+/// A macOS install breaks that. The tree lives under Application Support (see
+/// [`install::sdk_dir`]) while the archive stays inside the `.app`, so updating
+/// the engine replaces the archive and leaves the old tree exactly where it was
+/// — and every metadata filename in an SDK hashes the build configuration, so a
+/// tree from the previous engine does not merely produce a stale plugin, it
+/// fails to link one at all.
+///
+/// So an extracted tree records which archive produced it, and is believed only
+/// while that still matches. A mismatch reports `Packed`, which is already the
+/// "unpack before you can build" path the setup window knows how to run.
+///
+/// When there is no archive to compare against — a source checkout, or a
+/// platform that deleted it after unpacking — the tree is taken at face value,
+/// which is the pre-existing behaviour on all of them.
 pub fn sdk_state(root: &Path) -> SdkState {
-    if root.join("sdk").join("manifest.json").is_file() {
-        return SdkState::Ready;
-    }
+    let tree = install::sdk_dir(root);
     let archive = root.join("sdk.tar.zst");
-    match std::fs::metadata(&archive) {
-        Ok(m) if m.is_file() => SdkState::Packed { archive, bytes: m.len() },
-        _ => SdkState::Absent,
+    let packed = match std::fs::metadata(&archive) {
+        Ok(m) if m.is_file() => Some(SdkState::Packed { archive: archive.clone(), bytes: m.len() }),
+        _ => None,
+    };
+
+    if tree.join("manifest.json").is_file() {
+        let stale = packed.is_some() && !stamp_matches(&tree, &archive);
+        if !stale {
+            return SdkState::Ready;
+        }
     }
+    packed.unwrap_or(SdkState::Absent)
 }
 
-/// Unpack `archive` into `<root>/sdk/`.
+/// Unpack `archive` into the tree [`install::sdk_dir`] names for `root`.
 ///
 /// `progress` is called with compressed bytes consumed so far, for a UI that has
 /// a user waiting on it. Compressed rather than decompressed, because the
@@ -89,16 +124,32 @@ pub fn extract(
     root: &Path,
     progress: impl FnMut(u64),
 ) -> Result<PathBuf, String> {
-    let final_dir = root.join("sdk");
-    if final_dir.join("manifest.json").is_file() {
+    let final_dir = install::sdk_dir(root);
+    if final_dir.join("manifest.json").is_file() && stamp_matches(&final_dir, archive) {
         return Ok(final_dir);
     }
 
-    // Scratch sits beside the destination rather than in the system temp
+    // The destination is not always under `root` any more — on macOS it is in
+    // Application Support — so make sure the tree above it exists before
+    // anything tries to write there.
+    let parent = final_dir
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", final_dir.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+
+    // Scratch sits beside the DESTINATION rather than in the system temp
     // directory: this is gigabytes, and `/tmp` is a ramdisk on plenty of Linux
-    // installs. Next to the target is also guaranteed to be the same filesystem,
-    // which is what makes the final rename atomic rather than a copy.
-    let staging = root.join("sdk.partial");
+    // installs. Beside the target is also guaranteed to be the same filesystem,
+    // which is what makes the final rename atomic rather than a copy — and that
+    // is why it follows `final_dir` rather than staying under `root`.
+    //
+    // Suffixed with the process id because the destination is now shared: two
+    // editors launching together resolve the same Application Support path,
+    // where before they would each have been unpacking inside their own install
+    // directory. They still race for the final rename, which is atomic, so the
+    // loser simply does redundant work rather than corrupting the winner's tree.
+    let staging = parent.join(format!("sdk.partial.{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&staging);
 
     if let Err(e) = unpack_stream(archive, &staging, progress) {
@@ -107,9 +158,18 @@ pub fn extract(
     }
 
     // The archive holds a top-level `sdk/`, so the staged tree is
-    // `sdk.partial/sdk/…`. Rename that inner directory, not its wrapper.
+    // `sdk.partial.<pid>/sdk/…`. Rename that inner directory, not its wrapper.
     let inner = staging.join("sdk");
     let src = if inner.is_dir() { inner } else { staging.clone() };
+
+    // Stamped before the rename, so the tree that lands is already self-
+    // describing. Writing it afterwards would leave a window where a tree is
+    // complete but unattributed, which `sdk_state` would read as stale and
+    // unpack all over again.
+    if let Some(stamp) = fingerprint(archive) {
+        let _ = std::fs::write(src.join(STAMP), stamp);
+    }
+
     let _ = std::fs::remove_dir_all(&final_dir);
     std::fs::rename(&src, &final_dir).map_err(|e| {
         format!("could not move the unpacked SDK into place: {e}")
@@ -120,6 +180,58 @@ pub fn extract(
         return Err("the SDK archive unpacked without a manifest.json".to_string());
     }
     Ok(final_dir)
+}
+
+/// Was `tree` unpacked from `archive`?
+///
+/// True when the stamp is absent, deliberately: a tree staged by
+/// `cargo renzora` has never been through [`extract`] and has no stamp, and
+/// refusing to use it would break every contributor's build to catch a case
+/// that only exists in a shipped macOS install.
+fn stamp_matches(tree: &Path, archive: &Path) -> bool {
+    let Ok(recorded) = std::fs::read_to_string(tree.join(STAMP)) else {
+        return true;
+    };
+    fingerprint(archive).is_some_and(|current| current == recorded.trim())
+}
+
+/// Identify an archive cheaply enough to check on every launch.
+///
+/// Length plus an FNV-1a hash of the first mebibyte. Length alone is a weak
+/// discriminator — two engine builds differing in one crate compress to
+/// similar sizes and could collide — and hashing 457 MB on every startup to
+/// rule that out would cost more than the unpack it is trying to avoid. The
+/// head of a zstd frame diverges as soon as any input byte does, so the pair
+/// separates two builds for about a millisecond of I/O.
+///
+/// Hand-rolled rather than pulled from a crate for the same reason `xtask`'s
+/// `build_id` is: nothing here needs to resist an adversary, only two different
+/// SDKs accidentally agreeing.
+fn fingerprint(archive: &Path) -> Option<String> {
+    use std::io::Read;
+
+    let mut file = File::open(archive).ok()?;
+    let len = file.metadata().ok()?.len();
+
+    let mut head = vec![0u8; 1 << 20];
+    let mut filled = 0;
+    while filled < head.len() {
+        match file.read(&mut head[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return None,
+        }
+    }
+
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = OFFSET;
+    for b in len.to_le_bytes().iter().chain(&head[..filled]) {
+        h ^= *b as u64;
+        h = h.wrapping_mul(PRIME);
+    }
+    Some(format!("{len:x}-{h:016x}"))
 }
 
 /// Decompress and untar in one pass, writing each file as it arrives.

@@ -1533,7 +1533,13 @@ pub fn stage_modding_sdk(
         return Ok(true);
     }
 
-    let sdk = editor_dir.join("sdk");
+    // Not `editor_dir.join("sdk")`: a macOS editor keeps its extracted tree
+    // under Application Support, because unpacking into its own signed `.app`
+    // would break the bundle's seal. In practice the archive branch above
+    // catches nearly every macOS export — it is never deleted there, so it is
+    // always present and always the cheaper path — but an editor built from a
+    // checkout has a tree and no archive, and this is what finds it.
+    let sdk = renzora_plugin_build::install::sdk_dir(editor_dir);
     if !sdk.join("manifest.json").is_file() {
         progress(
             "WARN: modding is on but this editor has no plugin SDK — the game will ship \

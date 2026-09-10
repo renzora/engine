@@ -358,7 +358,7 @@ impl Plugin for NativePluginLoader {
         // Absent SDK is normal, not an error: only a machine that has installed
         // a plugin has one. Already-built plugins with a matching stamp still
         // load — what is lost is the ability to *rebuild* a stale one.
-        let sdk = Sdk::load(root.join("sdk")).ok();
+        let sdk = Sdk::load(sdk_dir(&root)).ok();
         let expected = sdk.as_ref().map(Sdk::stamp);
 
         // Read once, off disk, because this runs during `App` assembly — there
@@ -840,13 +840,22 @@ fn source_newer_than(dir: &Path, lib: &Path) -> bool {
     any_newer(&dir.join("src"), built)
 }
 
-/// The directory holding `sdk/` and `plugins/`.
+/// The directory holding `plugins/` and the shipped `sdk.tar.zst`.
 ///
 /// NOT simply the executable's parent: inside a Linux AppImage that is a
 /// read-only temporary mount with none of this beside it. See
 /// [`renzora_plugin_build::install`].
 fn exe_dir() -> Option<PathBuf> {
     renzora_plugin_build::install::root()
+}
+
+/// The unpacked SDK tree for an install rooted at `root`.
+///
+/// Not `root.join("sdk")` — on macOS the tree lives under Application Support,
+/// because unpacking it into a signed `.app` would break the bundle's seal. See
+/// [`renzora_plugin_build::install::sdk_dir`].
+fn sdk_dir(root: &Path) -> PathBuf {
+    renzora_plugin_build::install::sdk_dir(root)
 }
 
 /// Does this library export the native plugin constructor?

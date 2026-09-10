@@ -463,6 +463,20 @@ jobs:
             libudev-dev libvulkan-dev libssl-dev libfontconfig1-dev \
             clang mold zstd
 
+      # zstd packs the SDK, and on macOS that now happens on this runner rather
+      # than being deferrable to packaging — the archive has to be written into
+      # `Renzora Engine.app/Contents/MacOS/` and the bundle re-sealed, neither of
+      # which the Linux packaging job can do. The runner image ships zstd today;
+      # this is here so the lane fails on a missing tool at second zero instead
+      # of forty minutes in, and keeps working if the image drops it.
+      - name: macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          if ! command -v zstd >/dev/null 2>&1; then
+            brew install zstd
+          fi
+          zstd --version
+
       # appimagetool turns the AppDir that `--bundle` builds into a `.AppImage`.
       # Optional to the bundler — the AppDir alone already satisfies
       # `TemplateManager::scan` and `package-release.sh` — but the published
@@ -617,6 +631,94 @@ jobs:
           fi
           echo "every staged plugin resolves its dependencies through @rpath"
 
+      # Packed here because this is now the only kind of lane that has an SDK to
+      # pack: the container lanes stage no editor and therefore no SDK, since an
+      # SDK's proc macros are artifacts of the machine that compiled them and a
+      # Linux container can only produce Linux ones. The staged tree is ~1.9 GB
+      # of loose crate metadata, and uploading it extracted makes this artifact
+      # several times larger for no benefit. xtask needs the tree in place while
+      # it stages, so packing happens after rather than instead.
+      #
+      # ── Why the archive goes INSIDE the .app, and why this runs before signing
+      #
+      # The editor finds the SDK at `renzora_native_build::install::root()`,
+      # which on macOS is `current_exe().parent()` —
+      # `Renzora Engine.app/Contents/MacOS/`. There is no `$APPIMAGE` escape
+      # hatch the way there is on Linux, so an archive written to the top of the
+      # platform directory sits somewhere the editor never looks: `sdk_state()`
+      # returns `Absent`, the first-launch setup that unpacks the SDK never
+      # runs, and the shipped editor cannot build a Rust script or a native
+      # plugin at all. Every macOS release did exactly that, because this step
+      # wrote `$out/sdk.tar.zst` next to the bundle rather than into it.
+      #
+      # Placing it inside means this MUST run before the bundle is signed —
+      # adding a file to a sealed `.app` invalidates the seal, and both the
+      # ad-hoc seal `xtask` applied and the Developer ID signature below cover
+      # `Contents/`. It is the same ordering constraint the container lane
+      # already respects for UPX ("macOS is packed BEFORE it is signed").
+      #
+      # The archive is only ever READ from there: the editor unpacks it to
+      # `~/Library/Application Support/renzora/sdk` and never deletes it, so the
+      # signature written below survives the bundle being used. That is the
+      # whole reason it can ship sealed — unpacking 1.9 GB into `Contents/` and
+      # then removing the archive, which is what every other platform does in
+      # its install directory, would invalidate it on first launch.
+      #
+      # A 457 MB resource does ride into notarization as a result, and stays on
+      # disk for the life of the install rather than being reclaimed after the
+      # first run. Apple scans it and it costs upload time; it does not change
+      # the outcome, and it is what a user whose Application Support has been
+      # cleared rebuilds the SDK from.
+      - name: Pack the plugin SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=dist/${{ matrix.dist_dir }}
+          app="$out/Renzora Engine.app"
+          [ -d "$out/sdk" ] || exit 0
+
+          # On macOS the destination is inside the bundle, and there is no
+          # correct fallback: `package-release.sh` runs this compression on a
+          # Linux runner, which can neither place the result inside a `.app`
+          # that has already been signed nor re-seal it afterwards. So a missing
+          # zstd is an error here rather than something to defer.
+          if ! command -v zstd >/dev/null 2>&1; then
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              echo "::error::zstd is missing on this runner; the macOS SDK archive must be packed here (packaging cannot place it inside the .app)"
+              exit 1
+            fi
+            echo "zstd unavailable — shipping sdk/ extracted (packaging will compress it)"
+            exit 0
+          fi
+
+          dest="$out"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ ! -d "$app" ]; then
+              echo "::error::no .app staged at $app — nothing to pack the SDK into"
+              exit 1
+            fi
+            dest="$app/Contents/MacOS"
+          fi
+
+          ( cd "$out" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
+          rm -rf "$out/sdk"
+          if [ "$dest" != "$out" ]; then
+            mv "$out/sdk.tar.zst" "$dest/sdk.tar.zst"
+          fi
+          ls -lh "$dest/sdk.tar.zst"
+
+          # The archive just landed in a bundle `xtask` had already sealed, so
+          # that seal now describes a tree that no longer exists. Re-seal ad-hoc
+          # to restore it. When an identity is configured the next step re-signs
+          # everything over the top and this is redundant; without one it is the
+          # only thing standing between the download and "Renzora Engine is
+          # damaged and can't be opened".
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            codesign --force --deep --sign - "$app"
+            codesign --verify --deep --strict "$app"
+            echo "re-sealed $app with the SDK archive inside it"
+          fi
+
       # ── Developer ID + notarization ─────────────────────────────────────────
       # The ad-hoc seal `xtask` applies is enough for the *kernel* — the bundle
       # runs — but not for Gatekeeper, which refuses a downloaded copy it cannot
@@ -664,6 +766,28 @@ jobs:
           security list-keychains -d user -s "$kc" \
             $(security list-keychains -d user | tr -d '"')
 
+          # Apple's Developer ID G2 intermediate, which the exported `.p12`
+          # does not necessarily carry — Keychain Access exports the leaf and
+          # its private key, and whether the chain rides along depends on how
+          # the export was made.
+          #
+          # Without it `codesign` cannot build a chain from the signing
+          # certificate to Apple Root CA. It does not fail cleanly: it warns
+          # ("unable to build chain to self-signed root"), signs anyway, and
+          # produces a signature that notarization then rejects — an hour of
+          # build time to find out.
+          #
+          # Not hypothetical. A fresh Mac has no G2 intermediate at all; the
+          # certificate for this project showed up under Keychain Access's
+          # "Certificates" rather than "My Certificates" and reported
+          # `0 valid identities` until it was installed by hand. Runner images
+          # usually ship it, but "usually" is doing too much work when the
+          # alternative is two lines.
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$kc"
+          security find-identity -v -p codesigning "$kc"
+
           # Inside-out, and it has to be: the bundle's seal covers its nested
           # code, so signing the outside first and the inside after invalidates
           # the thing just written. `--timestamp` because a signature without one
@@ -683,7 +807,7 @@ jobs:
             --key "$RUNNER_TEMP/notary.p8" \
             --key-id "$APPLE_NOTARY_KEY_ID" \
             --issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --wait --timeout 30m
+            --wait --timeout 60m
           rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/notarize.zip"
 
           # Staple the ticket INTO the bundle. This is what lets a machine with
@@ -721,30 +845,6 @@ jobs:
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
             spctl --assess --type exec --verbose=4 "$app"
           fi
-
-      # Packed here because this is now the only kind of lane that has an SDK to
-      # pack: the container lanes stage no editor and therefore no SDK, since an
-      # SDK's proc macros are artifacts of the machine that compiled them and a
-      # Linux container can only produce Linux ones. The staged tree is ~1.9 GB
-      # of loose crate metadata, and uploading it extracted makes this artifact
-      # several times larger for no benefit. xtask needs the tree in place while
-      # it builds the native plugins, so packing happens after rather than
-      # instead.
-      #
-      # Skipped without zstd rather than failed — the artifact is then merely
-      # fat, and `package-release.sh` compresses it later.
-      - name: Pack the plugin SDK
-        shell: bash
-        run: |
-          out=dist/${{ matrix.dist_dir }}
-          [ -d "$out/sdk" ] || exit 0
-          if ! command -v zstd >/dev/null 2>&1; then
-            echo "zstd unavailable — shipping sdk/ extracted (packaging will compress it)"
-            exit 0
-          fi
-          ( cd "$out" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
-          rm -rf "$out/sdk"
-          ls -lh "$out/sdk.tar.zst"
 
       # Disk exhaustion is the likeliest failure on these runners, and cargo's
       # error for it is unhelpful; report free space either way so a failed run

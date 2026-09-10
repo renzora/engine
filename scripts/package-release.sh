@@ -261,6 +261,43 @@ package_desktop() {
 # not see the tree disappear underneath it.
 compress_sdk() {
     local dir="$1"
+
+    # ── macOS: the archive belongs INSIDE the bundle, and only the mac runner
+    # can put it there ───────────────────────────────────────────────────────
+    # `renzora_native_build::install::root()` is `current_exe().parent()` on
+    # macOS — `Renzora Engine.app/Contents/MacOS/` — with no `$APPIMAGE` escape
+    # hatch to redirect it the way Linux has. An archive beside the `.app` is
+    # somewhere the editor never looks, which is how every macOS release shipped
+    # an SDK the editor reported as `Absent` and never unpacked.
+    #
+    # This job cannot fix that here: it runs on Linux, and writing into a signed
+    # `.app` means re-sealing it, which needs `codesign`. So the mac lane packs
+    # its own SDK before signing (see `Pack the plugin SDK` in
+    # `.github/workflows/build-engine.yml`) and the only job left here is to
+    # notice when that did not happen, loudly. A silent fallback is exactly what
+    # produced the 127 MB Linux asset described above.
+    local app; app=$(find "$dir" -maxdepth 1 -name '*.app' -type d | head -1)
+    if [ -n "$app" ]; then
+        if [ -f "$app/Contents/MacOS/sdk.tar.zst" ]; then
+            echo "   sdk.tar.zst $(du -h "$app/Contents/MacOS/sdk.tar.zst" | cut -f1) (inside the bundle, packed by the build lane)"
+        elif [ -d "$app/Contents/MacOS/sdk" ]; then
+            echo "   sdk/ $(du -sh "$app/Contents/MacOS/sdk" | cut -f1) (extracted, inside the bundle)"
+        else
+            echo "ERROR: $app carries no SDK." >&2
+            echo "       The macOS build lane must write sdk.tar.zst into Contents/MacOS/ before signing;" >&2
+            echo "       it cannot be added here without invalidating the bundle signature." >&2
+            return 1
+        fi
+        # A leftover at the top of the platform directory is the old, broken
+        # layout. Shipping both would double a 457 MB asset to hide a bug.
+        if [ -e "$dir/sdk" ] || [ -e "$dir/sdk.tar.zst" ]; then
+            echo "ERROR: $dir has an SDK beside the bundle as well as inside it." >&2
+            echo "       The copy beside the .app is invisible to the editor; remove it in the build lane." >&2
+            return 1
+        fi
+        return 0
+    fi
+
     # Already packed by the build lane (`pack_sdk` in docker/build-all.sh), which
     # is where it should happen — the tree is ~1.9 GB and compressing it here
     # means every artifact was uploaded and downloaded extracted first. This stays

@@ -128,7 +128,7 @@ pub fn toolchain_gap() -> Option<ToolchainGap> {
         return Some(ToolchainGap::RustupMissing);
     }
     let root = exe_dir()?;
-    match Sdk::load(root.join("sdk")).ok()?.toolchain() {
+    match Sdk::load(crate::sdk_dir(&root)).ok()?.toolchain() {
         renzora_plugin_build::Toolchain::ToolchainMissing { version } => {
             Some(ToolchainGap::Installable { version })
         }
@@ -161,7 +161,7 @@ pub fn needed() -> bool {
     }
     let dir = root.join("plugins");
     let disabled = renzora::load_disabled_plugins();
-    let sdk = Sdk::load(root.join("sdk")).ok();
+    let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     for p in read_dir_sorted(&dir) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
@@ -199,7 +199,7 @@ pub fn run(report: &mut impl FnMut(Progress)) -> Prepared {
             report(Progress::Unpacking { done: read, total: bytes })
         });
         match result {
-            Ok(_) => {
+            Ok(tree) => {
                 // Delete the archive once the tree is in place. Keeping it would
                 // hold ~444 MB forever for no benefit: an update replaces the
                 // whole install directory, so it is never the source of a repair
@@ -208,11 +208,26 @@ pub fn run(report: &mut impl FnMut(Progress)) -> Prepared {
                 // Safe only because it happens AFTER `extract` returned Ok, and
                 // `extract` renames the finished tree into place atomically. A
                 // failure leaves the archive untouched and retryable.
-                if let Err(e) = std::fs::remove_file(&archive) {
-                    report(Progress::Failed(format!(
-                        "could not remove {}: {e}",
-                        archive.display()
-                    )));
+                //
+                // ── Except inside a macOS bundle, where it must NOT be deleted
+                // The archive is a sealed resource of a signed `.app` there, and
+                // removing it invalidates the signature the same way unpacking
+                // into `Contents/` used to. `extract` wrote the tree out to
+                // Application Support precisely so the bundle stays untouched,
+                // and deleting the archive here would give back everything that
+                // bought. It also stops being dead weight: the tree now lives
+                // outside the install, so a user who clears Application Support
+                // has nothing left to rebuild from except this file.
+                //
+                // The test is where the tree landed, not the platform — if it is
+                // not under `root`, `root` is not ours to write to.
+                if tree.starts_with(&root) {
+                    if let Err(e) = std::fs::remove_file(&archive) {
+                        report(Progress::Failed(format!(
+                            "could not remove {}: {e}",
+                            archive.display()
+                        )));
+                    }
                 }
                 done.unpacked_sdk = true;
             }
@@ -250,7 +265,7 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     // else. A standalone plugin links no Bevy and compiles against the plugin API
     // staged in `<install>/crates/`, so it builds on a machine that has never
     // unpacked one.
-    let sdk = Sdk::load(root.join("sdk")).ok();
+    let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.
