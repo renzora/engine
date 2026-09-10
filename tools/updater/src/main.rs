@@ -136,6 +136,29 @@ fn perform_update(args: &Args) -> Result<(), String> {
     // volume and is therefore cheap and atomic — `~/.renzora/updates` is very
     // often a different drive from the install, and a cross-volume "rename" would
     // silently become a slow copy at exactly the wrong moment.
+    // ── Do we own the place we are writing to? ──────────────────────────────
+    // An editor dragged into `/Applications` by an administrator can usually be
+    // replaced without asking for anything: the directory is group-writable by
+    // `admin`, and most Macs have exactly one user, who is an admin. That is the
+    // path taken here, silently, and it is the common one.
+    //
+    // A standard (non-admin) user is the exception. They needed an admin
+    // password to install the editor and they need one to replace it, so the
+    // swap is handed to `osascript`, which puts up the system authentication
+    // dialog and runs it as root.
+    //
+    // Checked BEFORE touching anything rather than as a retry: the first step of
+    // the swap is destructive (it renames the install aside), so discovering the
+    // permission problem halfway would mean unwinding rather than never having
+    // started. `access(2)` answers exactly the question — can *this* process
+    // write here — where inspecting mode bits and group membership is a
+    // reimplementation of the kernel's own check.
+    #[cfg(target_os = "macos")]
+    if !parent_is_writable(&args.target) {
+        note(log, "install directory is not writable; asking for authorization");
+        return elevated_swap(args, log);
+    }
+
     let backup = backup_path(&args.target);
     let _ = remove_any(&backup);
 
@@ -166,6 +189,131 @@ fn perform_update(args: &Args) -> Result<(), String> {
     relaunch(&args.relaunch)
 }
 
+/// Can this process create and remove entries in `path`'s directory?
+///
+/// The swap replaces the bundle as a whole, so what matters is the *parent* —
+/// `/Applications` — not the bundle's own mode.
+#[cfg(target_os = "macos")]
+fn parent_is_writable(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+
+    let Some(parent) = path.parent() else { return false };
+    let Ok(c) = std::ffi::CString::new(parent.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: `c` is a valid NUL-terminated string for the duration of the call.
+    unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
+}
+
+/// The whole swap, as one shell script, run as root behind the system
+/// authentication dialog.
+///
+/// One script rather than a series of elevated calls: each `do shell script …
+/// with administrator privileges` is its own prompt, and asking somebody for
+/// their password four times to install one update is how people learn to type
+/// it without reading. It also keeps the swap atomic in the same way the
+/// unprivileged path is — the rename happens inside the same root shell that
+/// puts the new bundle in place.
+///
+/// # Ownership
+///
+/// `ditto` run as root produces a `root`-owned bundle. Left that way, the *next*
+/// update would need a password too, even for an admin user who would otherwise
+/// never see one — so the new bundle is chowned back to whoever owned the old
+/// one. `$SUDO_USER` is not available here (this is not sudo), which is why the
+/// uid and gid are read off the existing install before it moves.
+#[cfg(target_os = "macos")]
+fn elevated_swap(args: &Args, log: Option<&Path>) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let backup = backup_path(&args.target);
+    // Whoever owns the current install owns the new one. Falling back to the
+    // real uid covers a first install, where there is nothing to read.
+    let (uid, gid) = fs::metadata(&args.target)
+        .map(|m| (m.uid(), m.gid()))
+        // SAFETY: getuid/getgid cannot fail and take no arguments.
+        .unwrap_or_else(|_| unsafe { (libc::getuid(), libc::getgid()) });
+
+    let script = swap_script(&args.staged, &args.target, &backup, uid, gid);
+
+    note(log, "requesting administrator authorization");
+    let out = std::process::Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(format!(
+            "do shell script {} with prompt \"Renzora Engine needs to update the app in your Applications folder.\" with administrator privileges",
+            as_quote(&script)
+        ))
+        .output()
+        .map_err(|e| format!("cannot run osascript: {e}"))?;
+
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        // -128 is AppleScript's "user cancelled". Worth naming, because it is
+        // not a failure of the update so much as an answer to it, and the
+        // message a user sees should say what to do next.
+        if err.contains("-128") || err.contains("User canceled") {
+            return Err(
+                "The update needs permission to replace the app in Applications. \
+                 Nothing was changed — run the update again and authorize it, or \
+                 drag the new version in yourself."
+                    .to_string(),
+            );
+        }
+        return Err(format!("Could not install the update: {}", err.trim()));
+    }
+
+    let _ = remove_any(&args.staged);
+    note(log, "elevated swap complete");
+    Ok(())
+}
+
+/// The shell script the elevated swap runs, as a string.
+///
+/// Split out so it can be checked without a password prompt — a syntax error in
+/// here would only ever surface on somebody else's machine, behind an
+/// authentication dialog, after their editor had already quit.
+///
+/// Absolute paths for every command: this runs as root, and inheriting a `PATH`
+/// from the user's environment is not something a root shell should do.
+#[cfg(target_os = "macos")]
+fn swap_script(staged: &Path, target: &Path, backup: &Path, uid: u32, gid: u32) -> String {
+    let target = sh_quote(target);
+    let staged = sh_quote(staged);
+    let backup = sh_quote(backup);
+    // `set -e` so a failed `mv` cannot be followed by a `ditto` into a path that
+    // still holds the old install. The `||` block is the unwind: put the old
+    // bundle back before giving up, so a failure leaves a working editor.
+    format!(
+        "set -e; \
+         /bin/rm -rf {backup}; \
+         if [ -e {target} ]; then /bin/mv {target} {backup}; fi; \
+         /usr/bin/ditto {staged} {target} || {{ /bin/rm -rf {target}; \
+         if [ -e {backup} ]; then /bin/mv {backup} {target}; fi; exit 1; }}; \
+         /usr/sbin/chown -R {uid}:{gid} {target}; \
+         /bin/rm -rf {backup}"
+    )
+}
+
+/// Wrap a path for a POSIX shell: single-quote it, and close/escape/reopen for
+/// any single quote inside.
+///
+/// The bundle is called `Renzora Engine.app`, so this is exercised on every
+/// elevated update rather than being a rare edge.
+#[cfg(target_os = "macos")]
+fn sh_quote(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
+}
+
+/// Wrap a string as an AppleScript literal.
+///
+/// The script goes through two parsers — AppleScript first, then the shell — so
+/// it is quoted twice. Backslashes before quotes, and in that order, or an
+/// escaped backslash would eat the escape of the quote after it.
+#[cfg(target_os = "macos")]
+fn as_quote(script: &str) -> String {
+    format!("\"{}\"", script.replace('\\', r"\\").replace('"', "\\\""))
+}
+
 /// `<name>.renzora-backup` beside the target.
 fn backup_path(target: &Path) -> PathBuf {
     let name = target
@@ -184,6 +332,17 @@ fn install(staged: &Path, target: &Path) -> Result<(), String> {
         return Ok(());
     }
     if staged.is_dir() {
+        // macOS takes `ditto` rather than the recursive copy below, and the
+        // difference is not cosmetic. Part of a code signature lives in extended
+        // attributes, and `fs::copy` does not carry them — so a bundle that
+        // reached this path (staging and install on different volumes, which is
+        // the normal case for `~/.renzora/updates` against `/Applications`)
+        // would arrive with a signature that no longer verifies. macOS then
+        // refuses to launch it as "damaged", after the old copy has already been
+        // deleted. `ditto` is the copy that preserves them.
+        #[cfg(target_os = "macos")]
+        return ditto(staged, target);
+        #[cfg(not(target_os = "macos"))]
         copy_dir(staged, target)
     } else {
         if let Some(parent) = target.parent() {
@@ -195,6 +354,32 @@ fn install(staged: &Path, target: &Path) -> Result<(), String> {
     }
 }
 
+/// Copy a bundle preserving everything macOS keeps outside the file contents —
+/// extended attributes, resource forks, ACLs.
+///
+/// `ditto` is in `/usr/bin` on every macOS install; it is part of the base
+/// system, not the developer tools, so this does not require Xcode.
+#[cfg(target_os = "macos")]
+fn ditto(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    let out = std::process::Command::new("/usr/bin/ditto")
+        .arg(src)
+        .arg(dst)
+        .output()
+        .map_err(|e| format!("cannot run ditto: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "ditto failed copying to {}: {}",
+            dst.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn copy_dir(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
     for entry in fs::read_dir(src).map_err(|e| format!("{}: {e}", src.display()))? {
@@ -399,5 +584,110 @@ fn report(log: Option<&Path>, message: &str) {
     #[cfg(not(windows))]
     {
         eprintln!("{message}");
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use super::*;
+
+    /// The bundle is called `Renzora Engine.app`, so an unquoted path splits
+    /// into two arguments and the swap moves something that does not exist.
+    #[test]
+    fn shell_quoting_survives_spaces() {
+        let q = sh_quote(Path::new("/Applications/Renzora Engine.app"));
+        assert_eq!(q, "'/Applications/Renzora Engine.app'");
+    }
+
+    /// A single quote cannot be escaped inside single quotes, so it has to close
+    /// them, escape itself, and reopen.
+    #[test]
+    fn shell_quoting_survives_a_quote() {
+        let q = sh_quote(Path::new("/Users/o'brien/App.app"));
+        assert_eq!(q, r"'/Users/o'\''brien/App.app'");
+    }
+
+    /// Backslash before quote, in that order — reversed, the escape added for a
+    /// quote would itself be escaped and the string would end early.
+    #[test]
+    fn applescript_quoting_escapes_both() {
+        assert_eq!(as_quote(r#"a"b"#), r#""a\"b""#);
+        assert_eq!(as_quote(r"a\b"), r#""a\\b""#);
+        assert_eq!(as_quote(r#"a\"b"#), r#""a\\\"b""#);
+    }
+
+    /// The generated script must be valid shell. A syntax error here would
+    /// only appear on a user's machine, behind a password dialog, after their
+    /// editor had quit — the worst possible place to find one.
+    #[test]
+    fn the_swap_script_is_valid_shell() {
+        let script = swap_script(
+            Path::new("/Users/a b/.renzora/updates/r1/staged/Renzora Engine.app"),
+            Path::new("/Applications/Renzora Engine.app"),
+            Path::new("/Applications/Renzora Engine.app.renzora-backup"),
+            501,
+            20,
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-n")
+            .arg("-c")
+            .arg(&script)
+            .output()
+            .expect("run bash -n");
+        assert!(
+            out.status.success(),
+            "generated script is not valid shell:\n{script}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// It must also survive AppleScript's parser on the way to that shell.
+    #[test]
+    fn the_swap_script_survives_applescript() {
+        let script = swap_script(
+            Path::new("/tmp/staged/Renzora Engine.app"),
+            Path::new("/Applications/Renzora Engine.app"),
+            Path::new("/Applications/Renzora Engine.app.renzora-backup"),
+            501,
+            20,
+        );
+        // Compile the AppleScript without running it: `-e` plus a syntax check
+        // via `osadecompile` is awkward, so instead wrap it in a false branch —
+        // AppleScript still parses the whole thing, but nothing executes.
+        let wrapped = format!("if false then\ndo shell script {}\nend if", as_quote(&script));
+        let out = std::process::Command::new("/usr/bin/osascript")
+            .arg("-e")
+            .arg(&wrapped)
+            .output()
+            .expect("run osascript");
+        assert!(
+            out.status.success(),
+            "AppleScript rejected the command: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// The real thing: build the same double-quoted command the elevated swap
+    /// builds, and run it through `osascript` — without `with administrator
+    /// privileges`, so it needs no password — to prove both parsers accept it
+    /// and the path arrives in one piece.
+    #[test]
+    fn a_spacey_path_survives_both_parsers() {
+        let path = Path::new("/tmp/Renzora Engine.app");
+        let script = format!("echo {}", sh_quote(path));
+        let out = std::process::Command::new("/usr/bin/osascript")
+            .arg("-e")
+            .arg(format!("do shell script {}", as_quote(&script)))
+            .output()
+            .expect("run osascript");
+        assert!(
+            out.status.success(),
+            "osascript rejected the command: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "/tmp/Renzora Engine.app"
+        );
     }
 }

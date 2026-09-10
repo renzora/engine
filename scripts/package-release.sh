@@ -214,6 +214,39 @@ package_desktop() {
     # Listing what to include is what made that silent. A whole-directory zip
     # cannot omit a file nobody remembered to name, so anything added to the
     # staged tree later ships without editing this line.
+    # ── macOS ships the disk image, and only the disk image ─────────────────
+    # `.dmg` is not an installer, it is a container — the `.app` plus a symlink
+    # to `/Applications`, so a person drags it where it belongs instead of
+    # running the editor out of `~/Downloads`. It is also what the updater
+    # consumes: `renzora_update` mounts it and copies the app out, exactly as it
+    # used to unzip one.
+    #
+    # Built, signed, notarized and stapled on the macOS runner (see `Build the
+    # macOS disk image` in `.github/workflows/build-engine.yml`) because none of
+    # those four things can happen on the Linux runner this script runs on.
+    # Here it is only carried across into the release assets.
+    #
+    # No `macos-*.zip` beside it. Shipping both would double a ~600 MB asset to
+    # serve nobody: the only consumer of the zip was the updater, and it reads
+    # the DMG now. r1-alpha7 shipped no macOS build at all and every nightly
+    # since failed Gatekeeper, so there is no installed base still asking for
+    # the old asset name — this is the one moment the swap is free.
+    local dmg=""
+    for f in "$dir"/*.dmg; do [ -f "$f" ] && dmg="$f"; done
+    if [ -d "$dir" ] && ls "$dir"/*.app >/dev/null 2>&1; then
+        if [ -z "$dmg" ]; then
+            echo "ERROR: $dir holds a .app but no .dmg." >&2
+            echo "       The macOS lane must build one — it cannot be created or signed here." >&2
+            return 1
+        fi
+        local asset="$OUT_DIR/$platform.dmg"
+        rm -f "$asset"
+        cp -p "$dmg" "$asset"
+        echo "   $(basename "$asset") $(du -h "$asset" | cut -f1)"
+        record "$asset" "$platform" engine
+        return 0
+    fi
+
     local asset="$OUT_DIR/$platform.zip"
     rm -f "$asset"
     local appimage=""

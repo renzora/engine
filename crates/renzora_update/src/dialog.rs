@@ -178,6 +178,13 @@ fn action_for(s: &UpdateState) -> Action {
         // line already says why.
         return Action::None;
     }
+    // Nothing can be written where this engine lives — a mounted disk image,
+    // most likely. Offering Install would put up an authentication dialog that
+    // cannot help, then fail after the editor had already quit. The status line
+    // says what to do instead.
+    if s.read_only_medium() {
+        return Action::None;
+    }
     if s.staged.is_some() {
         return if s.is_source_checkout() && !s.overwrite_armed {
             Action::ConfirmOverwrite
@@ -419,6 +426,10 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         };
         let installed = renzora::version::display();
         match s.layout.as_ref() {
+            Some(l) if l.read_only_medium => format!(
+                "{installed} — {}",
+                renzora::lang::t("update.read_only_medium")
+            ),
             Some(l) if l.is_source_checkout => format!(
                 "{installed} — {}",
                 renzora::lang::t("update.source_checkout")

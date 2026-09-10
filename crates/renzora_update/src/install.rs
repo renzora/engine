@@ -45,6 +45,18 @@ pub struct InstallLayout {
     /// recoverable with a rebuild, but never what anyone meant. The UI offers a
     /// check but no install when this is set.
     pub is_source_checkout: bool,
+    /// True when the install sits on a medium nothing can write to.
+    ///
+    /// The case this exists for is a macOS user who opened the `.dmg` and
+    /// launched the editor straight off the mounted image without dragging it
+    /// into `/Applications` — which people do, and which works fine until they
+    /// ask for an update. The swap happens *after* the editor quits, so without
+    /// this the failure arrives with no editor left to report it.
+    ///
+    /// Distinct from a permissions problem, which the sidecar solves by asking
+    /// for an administrator password. No password makes a disk image writable,
+    /// so this one has to be refused up front with different advice.
+    pub read_only_medium: bool,
 }
 
 impl InstallLayout {
@@ -71,6 +83,7 @@ impl InstallLayout {
         Self {
             kind: self.kind.clone(),
             is_source_checkout: is_source_checkout(&target),
+            read_only_medium: is_read_only_medium(&target),
             target,
             relaunch,
         }
@@ -96,6 +109,7 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
                 target: appimage.clone(),
                 relaunch: appimage,
                 is_source_checkout: false,
+                read_only_medium: false,
             });
         }
     }
@@ -114,6 +128,7 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
                     target: d.to_path_buf(),
                     relaunch: d.to_path_buf(),
                     is_source_checkout: is_source_checkout(d),
+                    read_only_medium: is_read_only_medium(d),
                 });
             }
             dir = d.parent();
@@ -126,6 +141,7 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
     let relaunch = exe_dir.join(engine_exe());
     Ok(InstallLayout {
         is_source_checkout: is_source_checkout(&exe_dir),
+        read_only_medium: is_read_only_medium(&exe_dir),
         kind: InstallKind::Directory,
         target: exe_dir,
         relaunch,
@@ -139,6 +155,36 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
 /// `src/main.rs`, all three so a sub-crate's manifest can't be mistaken for it.
 /// Duplicated rather than depended on: this crate has no other reason to link
 /// the exporter, and it is three lines.
+/// Is `path` on something that cannot be written to at all?
+///
+/// Probes rather than inspects: a write is the question being asked, and the
+/// kernel's answer is more reliable than reading mode bits, volume flags and
+/// group membership and reconstructing it.
+///
+/// The distinction that matters is which error comes back. `ReadOnlyFilesystem`
+/// is a mounted disk image or a locked volume — nothing fixes that but moving
+/// the app. `PermissionDenied` is `/Applications` seen by a standard user, which
+/// the sidecar handles by asking for an administrator password, so it must NOT
+/// be treated as read-only or that prompt would never be reached. Verified
+/// against a real mounted `.dmg`, which reports the former.
+///
+/// Any other error is treated as writable: a false negative costs a clear
+/// failure message later, where a false positive refuses an update that would
+/// have worked.
+fn is_read_only_medium(path: &Path) -> bool {
+    // The parent, because the swap replaces `path` itself and so needs to
+    // create and remove entries in the directory holding it.
+    let Some(parent) = path.parent() else { return false };
+    let probe = parent.join(".renzora-update-probe");
+    match fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            false
+        }
+        Err(e) => e.kind() == std::io::ErrorKind::ReadOnlyFilesystem,
+    }
+}
+
 fn is_source_checkout(start: &Path) -> bool {
     let mut dir = Some(start);
     while let Some(d) = dir {
@@ -226,9 +272,16 @@ fn download_and_stage(
     let _ = fs::remove_dir_all(root);
     fs::create_dir_all(root).map_err(|e| format!("Cannot create {}: {e}", root.display()))?;
 
-    let zip_path = root.join("engine.zip");
-    let mut file =
-        fs::File::create(&zip_path).map_err(|e| format!("Cannot write {}: {e}", zip_path.display()))?;
+    // Named for what it is on this platform. The DMG path shells out to
+    // `hdiutil`, which reports the extension it was handed in its errors, and
+    // "engine.zip is not a valid disk image" is a confusing thing to read.
+    let download_path = root.join(if cfg!(target_os = "macos") {
+        "engine.dmg"
+    } else {
+        "engine.zip"
+    });
+    let mut file = fs::File::create(&download_path)
+        .map_err(|e| format!("Cannot write {}: {e}", download_path.display()))?;
 
     // Streamed rather than buffered whole: an engine zip is well over 100 MB,
     // and this is also the only way to report progress — the transport reports
@@ -267,16 +320,156 @@ fn download_and_stage(
     }
 
     let staged = root.join("staged");
-    let reader = fs::File::open(&zip_path).map_err(|e| format!("Cannot reopen download: {e}"))?;
-    let mut archive =
-        zip::ZipArchive::new(reader).map_err(|e| format!("Downloaded file is not a zip: {e}"))?;
-    archive
-        .extract(&staged)
-        .map_err(|e| format!("Could not extract the update: {e}"))?;
-    let _ = fs::remove_file(&zip_path);
+    unwrap_download(&download_path, &staged)?;
+    let _ = fs::remove_file(&download_path);
     ensure_appimage_executable(&staged);
 
-    resolve_staged_source(&staged, kind)
+    let source = resolve_staged_source(&staged, kind)?;
+    verify_staged_signature(&source)?;
+    Ok(source)
+}
+
+/// Get the payload out of the downloaded container and into `staged`.
+///
+/// Two containers, one job. Everything downstream — `resolve_staged_source`,
+/// the sidecar, the swap — sees the same extracted tree either way and does not
+/// know which it came from.
+#[cfg(not(target_os = "macos"))]
+fn unwrap_download(archive: &Path, staged: &Path) -> Result<(), String> {
+    let reader = fs::File::open(archive).map_err(|e| format!("Cannot reopen download: {e}"))?;
+    let mut zip =
+        zip::ZipArchive::new(reader).map_err(|e| format!("Downloaded file is not a zip: {e}"))?;
+    zip.extract(staged).map_err(|e| format!("Could not extract the update: {e}"))
+}
+
+/// Mount the disk image, copy the bundle out, unmount.
+///
+/// # `ditto`, not a recursive copy
+///
+/// A code signature lives partly in extended attributes, and `fs::copy` — like
+/// `cp` without `-p` — does not carry them. A bundle copied that way can fail
+/// `codesign --verify` with nothing visibly wrong, which then fails at launch
+/// as "damaged". `ditto` is the one copy on macOS that preserves them, and it
+/// is why this shells out rather than reusing `copy_dir`.
+///
+/// # Unmounting
+///
+/// The detach is deliberately belt-and-braces. A volume left mounted after a
+/// failed update is not fatal, but it is confusing — a stale "Renzora Engine"
+/// in the Finder sidebar, and the next update tripping over the mount point it
+/// wanted — so the force fallback runs even when the copy failed.
+#[cfg(target_os = "macos")]
+fn unwrap_download(image: &Path, staged: &Path) -> Result<(), String> {
+    use std::process::Command;
+
+    fs::create_dir_all(staged).map_err(|e| format!("Cannot create {}: {e}", staged.display()))?;
+    // Beside the staging directory rather than under it: whatever is copied out
+    // lands in `staged`, and a mount point inside it would be one more entry
+    // for `resolve_staged_source` to reason about.
+    let mnt = staged.with_file_name("mnt");
+    let _ = fs::remove_dir_all(&mnt);
+    fs::create_dir_all(&mnt).map_err(|e| format!("Cannot create {}: {e}", mnt.display()))?;
+
+    // `-nobrowse` keeps the volume out of the Finder sidebar: an update running
+    // in the background must not make a disk appear on someone's desktop.
+    // `-readonly` because nothing here writes to it, and saying so lets the
+    // kernel skip the shadow file.
+    let out = Command::new("hdiutil")
+        .args(["attach"])
+        .arg(image)
+        .args(["-nobrowse", "-readonly", "-noverify", "-mountpoint"])
+        .arg(&mnt)
+        .output()
+        .map_err(|e| format!("Cannot run hdiutil: {e}"))?;
+    if !out.status.success() {
+        let _ = fs::remove_dir_all(&mnt);
+        return Err(format!(
+            "Could not open the downloaded disk image: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+
+    let result = copy_bundle_out(&mnt, staged);
+
+    let detached = Command::new("hdiutil").arg("detach").arg(&mnt).output();
+    if !matches!(&detached, Ok(o) if o.status.success()) {
+        let _ = Command::new("hdiutil").arg("detach").arg(&mnt).arg("-force").output();
+    }
+    let _ = fs::remove_dir_all(&mnt);
+
+    result
+}
+
+/// `ditto` the one `.app` on the mounted image into `staged`.
+#[cfg(target_os = "macos")]
+fn copy_bundle_out(mnt: &Path, staged: &Path) -> Result<(), String> {
+    use std::process::Command;
+
+    let app = fs::read_dir(mnt)
+        .map_err(|e| format!("Cannot read the mounted disk image: {e}"))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        // `is_dir()` alone would also match the `/Applications` symlink the
+        // image carries as a drag target, which resolves to a real directory.
+        .find(|p| {
+            p.extension().and_then(|e| e.to_str()) == Some("app")
+                && p.symlink_metadata().is_ok_and(|m| m.is_dir())
+        })
+        .ok_or("The downloaded disk image contains no application bundle.")?;
+
+    let name = app
+        .file_name()
+        .ok_or("The bundle on the disk image has no name.")?;
+    let out = Command::new("ditto")
+        .arg(&app)
+        .arg(staged.join(name))
+        .output()
+        .map_err(|e| format!("Cannot run ditto: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "Could not copy the update off the disk image: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Refuse to install a bundle macOS would refuse to run.
+///
+/// The SHA-256 check earlier proves the bytes are the ones GitHub served. This
+/// proves something else: that Apple signed them, and that the notarization
+/// ticket is stapled to what is about to replace the running editor. A download
+/// that is intact but unsigned — a build from before signing existed, a
+/// mirrored asset, a corrupted staple — installs cleanly and then refuses to
+/// launch, and by then the old copy is gone.
+///
+/// Cheap to do here and impossible to do later: once the swap has happened, the
+/// editor that would have reported the problem is the one that will not start.
+///
+/// `--deep` because the seal covers the nested dylibs and the plugins, which is
+/// most of what a Renzora bundle is.
+#[cfg(target_os = "macos")]
+fn verify_staged_signature(app: &Path) -> Result<(), String> {
+    use std::process::Command;
+
+    let out = Command::new("codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(app)
+        .output()
+        .map_err(|e| format!("Cannot run codesign: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "The downloaded update is not correctly signed and was not installed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Nothing to check off macOS — no other platform seals an install this way.
+#[cfg(not(target_os = "macos"))]
+fn verify_staged_signature(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// Find, inside the extracted tree, the thing that corresponds to what we are
@@ -514,6 +707,32 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// An ordinary writable directory must not be mistaken for a read-only one,
+    /// or every update would be refused with advice that makes no sense.
+    #[test]
+    fn a_writable_directory_is_not_read_only() {
+        let dir = std::env::temp_dir().join("renzora_ro_probe");
+        let _ = std::fs::create_dir_all(&dir);
+        assert!(!super::is_read_only_medium(&dir.join("Renzora Engine.app")));
+        // The probe must leave nothing behind — it runs on every layout detect.
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(leftovers.is_empty(), "probe left {leftovers:?} behind");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The real thing, using the one read-only filesystem every supported macOS
+    /// is guaranteed to have: the sealed system volume. A mounted `.dmg` reports
+    /// identically — that is the case this exists for, and it needs no fixture.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn the_sealed_system_volume_reads_as_read_only() {
+        assert!(super::is_read_only_medium(std::path::Path::new("/Renzora Engine.app")));
+    }
+
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -617,6 +836,7 @@ mod tests {
             target: target.clone(),
             relaunch: target.join(engine_exe()),
             is_source_checkout: false,
+            read_only_medium: false,
         };
         assert_eq!(
             relaunch_after(&staged, &layout),
@@ -706,6 +926,7 @@ mod tests {
             target: dir.clone(),
             relaunch: dir.join(engine_exe()),
             is_source_checkout: true,
+            read_only_medium: false,
         };
         assert!(checkout.retargeted(dir.clone()).is_source_checkout);
         let moved = checkout.retargeted(elsewhere.clone());
@@ -719,6 +940,7 @@ mod tests {
             target: dir.join("Renzora.AppImage"),
             relaunch: dir.join("Renzora.AppImage"),
             is_source_checkout: false,
+            read_only_medium: false,
         };
         let to = elsewhere.join("Renzora.AppImage");
         assert_eq!(appimage.retargeted(to.clone()).relaunch, to);
@@ -730,6 +952,7 @@ mod tests {
             target: dir.join("Renzora.app"),
             relaunch: dir.join("Renzora.app"),
             is_source_checkout: false,
+            read_only_medium: false,
         };
         let to = elsewhere.join("Renzora.app");
         assert_eq!(bundle.retargeted(to.clone()).relaunch, to);

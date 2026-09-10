@@ -194,6 +194,20 @@ impl UpdateState {
             .is_some_and(|l| l.is_source_checkout)
     }
 
+    /// Would installing write to somewhere nothing can be written?
+    ///
+    /// A veto, unlike [`Self::is_source_checkout`]: no amount of confirming
+    /// makes a mounted disk image writable. The macOS case is someone running
+    /// the editor straight off the `.dmg` without dragging it to
+    /// `/Applications` first.
+    ///
+    /// Asked of the *effective* layout, so pointing the install path somewhere
+    /// writable lifts it — which is exactly the fix, and means the UI does not
+    /// have to explain it twice.
+    pub fn read_only_medium(&self) -> bool {
+        self.effective_layout().is_some_and(|l| l.read_only_medium)
+    }
+
     /// Stop offering the version currently on the table.
     ///
     /// Persisted, and only ever one tag: skipping is "stop nagging me about
