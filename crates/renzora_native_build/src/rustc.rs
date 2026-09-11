@@ -283,7 +283,7 @@ pub fn fixup_install_names(out: &Path) {
     // — it is skipped so the loop does not spend a subprocess discovering that
     // and then re-sign over a rewrite that never happened.
     for line in listing.lines().skip(1) {
-        let dep = line.trim().split_whitespace().next().unwrap_or_default();
+        let dep = line.split_whitespace().next().unwrap_or_default();
         if !dep.starts_with('/')
             || dep.starts_with("/usr/lib")
             || dep.starts_with("/System")

@@ -478,11 +478,11 @@ struct HelpMenuCleanup {
 /// this runs in `Update` and must never wait.
 fn poll_menu_events(mut queue: ResMut<MenuCommandQueue>) {
     while let Ok(event) = MenuEvent::receiver().try_recv() {
-        match command_from_id(event.id().as_ref()) {
-            Some(cmd) => queue.push(cmd),
-            // A predefined item (Quit, Copy, Minimize…) — AppKit already
-            // performed it, and it has no command of ours to run.
-            None => {}
+        // An id that names no command is a predefined item — Quit, Copy,
+        // Minimize — which AppKit has already performed. There is nothing of
+        // ours to run for it, so it is dropped rather than reported.
+        if let Some(cmd) = command_from_id(event.id().as_ref()) {
+            queue.push(cmd);
         }
     }
 }

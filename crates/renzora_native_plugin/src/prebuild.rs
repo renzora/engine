@@ -301,7 +301,7 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     // else. A standalone plugin links no Bevy and compiles against the plugin API
     // staged in `<install>/crates/`, so it builds on a machine that has never
     // unpacked one.
-    let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
+    let sdk = Sdk::load(crate::sdk_dir(root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.

@@ -1428,7 +1428,7 @@ fn fixup_macos(out: &Path) {
         // Rewrite any dependency recorded as an absolute build path under target/.
         if let Ok(o) = Command::new("otool").arg("-L").arg(f).output() {
             for line in String::from_utf8_lossy(&o.stdout).lines().skip(1) {
-                let dep = line.trim().split_whitespace().next().unwrap_or("");
+                let dep = line.split_whitespace().next().unwrap_or("");
                 if dep.contains("/target/") && dep.starts_with('/') {
                     let base = dep.rsplit('/').next().unwrap_or(dep);
                     let _ = Command::new("install_name_tool")

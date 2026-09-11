@@ -209,7 +209,7 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
         "No engine builds are published for this platform, so there is nothing to update to."
             .to_string()
     })?;
-    let asset_name = engine_asset_name(&platform);
+    let asset_name = engine_asset_name(platform);
 
     let response = renzora_net::Request::get(RELEASES_API)
         .header("User-Agent", USER_AGENT)
