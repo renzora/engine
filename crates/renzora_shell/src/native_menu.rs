@@ -63,9 +63,16 @@ pub(crate) fn register(app: &mut App) {
 /// Exhaustive on purpose: a new [`MenuCommand`] will not compile until it has an
 /// id here, which is what keeps [`command_from_id`] able to name everything the
 /// menu can raise.
-fn command_id(cmd: MenuCommand) -> &'static str {
+fn command_id(cmd: &MenuCommand) -> String {
     use MenuCommand::*;
-    match cmd {
+    // `OpenRecent` is the one command whose id is not a constant: it carries the
+    // path it opens, so the path IS the id. That keeps a click correct even
+    // after the recents list has reordered underneath the menu.
+    if let OpenRecent(path) = cmd {
+        return format!("renzora.recent:{}", path.to_string_lossy());
+    }
+    let fixed = match cmd {
+        OpenRecent(_) => unreachable!("handled above"),
         NewProject => "renzora.new_project",
         OpenProject => "renzora.open_project",
         NewScene => "renzora.new_scene",
@@ -96,7 +103,10 @@ fn command_id(cmd: MenuCommand) -> &'static str {
         MyLibrary => "renzora.my_library",
         SignIn => "renzora.sign_in",
         SignOut => "renzora.sign_out",
-    }
+        CommandPalette => "renzora.command_palette",
+        Settings => "renzora.settings",
+    };
+    fixed.to_string()
 }
 
 /// Every command the bar can offer, in menu order.
@@ -136,21 +146,94 @@ const ALL: &[MenuCommand] = {
         MyLibrary,
         SignIn,
         SignOut,
+        CommandPalette,
+        Settings,
     ]
 };
 
 fn command_from_id(id: &str) -> Option<MenuCommand> {
-    ALL.iter().copied().find(|c| command_id(*c) == id)
+    // A recents row names its own path, so it is reconstructed rather than
+    // looked up — `ALL` cannot hold one per project.
+    if let Some(path) = id.strip_prefix("renzora.recent:") {
+        return Some(MenuCommand::OpenRecent(std::path::PathBuf::from(path)));
+    }
+    ALL.iter().find(|c| command_id(c) == id).cloned()
 }
 
 /// A clickable row for one command, labelled from the same translation key the
 /// hamburger uses so the two menus read identically.
 fn item(cmd: MenuCommand, label: String) -> MenuItem {
-    MenuItem::with_id(command_id(cmd), label, true, None)
+    MenuItem::with_id(command_id(&cmd), label, true, None)
+}
+
+/// The File ▸ Open Recent submenu.
+///
+/// Disabled rather than absent when there are no recents: an empty submenu that
+/// cannot be opened says "you have no recent projects", where a missing one
+/// says "this build has no recent projects feature".
+fn build_recents_submenu(recents: &[std::path::PathBuf]) -> Submenu {
+    let label = renzora::lang::t("splash.recent");
+    if recents.is_empty() {
+        return Submenu::new(label, false);
+    }
+    let items: Vec<MenuItem> = recents
+        .iter()
+        .map(|root| {
+            // The folder name, as the hamburger shows it — a column of absolute
+            // paths is unreadable, and the name is what anyone recognises.
+            let name = root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| root.to_string_lossy().to_string());
+            item(MenuCommand::OpenRecent(root.clone()), name)
+        })
+        .collect();
+    let refs: Vec<&dyn muda::IsMenuItem> = items.iter().map(|i| i as &dyn muda::IsMenuItem).collect();
+    Submenu::with_items(label, true, &refs).unwrap_or_else(|e| {
+        warn!("[menu] could not build the recents submenu: {e}");
+        Submenu::new(renzora::lang::t("splash.recent"), false)
+    })
+}
+
+/// Turn off the rows AppKit injects into any menu titled "Edit".
+///
+/// macOS adds Start Dictation and Emoji & Symbols to an app's Edit menu whether
+/// it wants them or not. Neither belongs in a 3D editor's Edit menu, and both
+/// have a documented off switch: two `NSUserDefaults` keys, read by AppKit when
+/// it builds the menu — which is why this runs before the menu is constructed
+/// rather than after.
+///
+/// # Writing Tools and AutoFill stay
+///
+/// They are injected the same way and there is **no supported way to remove
+/// them**. Apple's own developer forums have people trying the obvious
+/// `NSDisabledAutoFillMenuItem` by analogy and reporting that it does nothing;
+/// no equivalent key is documented for either. Walking the `NSMenu` and
+/// deleting them by title would not hold, because AppKit re-injects on open.
+///
+/// So the Edit menu ends up with two system rows we did not ask for. That is
+/// Apple's, not ours, and every native Mac app on macOS 15+ has the same two.
+fn quieten_edit_menu() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+
+    let defaults = NSUserDefaults::standardUserDefaults();
+    for key in ["NSDisabledDictationMenuItem", "NSDisabledCharacterPaletteMenuItem"] {
+        defaults.setBool_forKey(true, &NSString::from_str(key));
+    }
 }
 
 fn build_menu(world: &mut World) {
+    quieten_edit_menu();
     let menu = Menu::new();
+
+    // Read once, here, because the bar is built once. See `register` for why
+    // this list going stale is a known limit rather than an oversight.
+    let recents: Vec<std::path::PathBuf> = world
+        .get_resource::<renzora::RecentProjects>()
+        .map(|r| r.0.clone())
+        .unwrap_or_default();
+    let recent = build_recents_submenu(&recents);
 
     // ── The application menu ────────────────────────────────────────────────
     // macOS titles the first submenu with the app name whatever it is called
@@ -163,8 +246,13 @@ fn build_menu(world: &mut World) {
         &[
             &item(MenuCommand::About, renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine")),
             &PredefinedMenuItem::separator(),
-            &PredefinedMenuItem::services(None),
+            // Where macOS keeps preferences, and where a Mac user looks for
+            // them. The hamburger has the same row at its top level.
+            &item(MenuCommand::Settings, renzora::lang::t("common.settings")),
             &PredefinedMenuItem::separator(),
+            // No Services submenu. Renzora vends no services and accepts none,
+            // so it is always empty — a permanently disabled row teaching the
+            // user nothing.
             &PredefinedMenuItem::hide(None),
             &PredefinedMenuItem::hide_others(None),
             &PredefinedMenuItem::separator(),
@@ -181,6 +269,7 @@ fn build_menu(world: &mut World) {
         &[
             &item(MenuCommand::NewProject, renzora::lang::t("menu.file.new_project")),
             &item(MenuCommand::OpenProject, renzora::lang::t("menu.file.open_project")),
+            &recent,
             &PredefinedMenuItem::separator(),
             &item(MenuCommand::NewScene, renzora::lang::t("menu.file.new_scene")),
             &item(MenuCommand::OpenScene, renzora::lang::t("menu.file.open_scene")),
@@ -204,6 +293,11 @@ fn build_menu(world: &mut World) {
         &[
             &item(MenuCommand::Undo, renzora::lang::t("common.undo")),
             &item(MenuCommand::Redo, renzora::lang::t("common.redo")),
+            &PredefinedMenuItem::separator(),
+            // The editor's own search — the same command palette the top bar's
+            // magnifier toggles, rather than a second search that would have to
+            // be kept in step with it.
+            &item(MenuCommand::CommandPalette, renzora::lang::t_or("menu.edit.find", "Search…")),
             &PredefinedMenuItem::separator(),
             &PredefinedMenuItem::cut(None),
             &PredefinedMenuItem::copy(None),
@@ -318,9 +412,27 @@ mod tests {
     fn every_command_round_trips_through_its_id() {
         for cmd in ALL {
             assert_eq!(
-                command_from_id(command_id(*cmd)),
-                Some(*cmd),
+                command_from_id(&command_id(cmd)).as_ref(),
+                Some(cmd),
                 "{cmd:?} does not survive its own id"
+            );
+        }
+    }
+
+    /// A recents row's id carries its path, so it round-trips through a
+    /// different route than every other command — and a path with a colon or a
+    /// space in it must survive, since project directories have both.
+    #[test]
+    fn a_recent_project_survives_its_own_id() {
+        for raw in [
+            "/Users/someone/Projects/My Game",
+            "/Volumes/Big Disk/renzora: drafts/Untitled",
+        ] {
+            let cmd = MenuCommand::OpenRecent(std::path::PathBuf::from(raw));
+            assert_eq!(
+                command_from_id(&command_id(&cmd)),
+                Some(cmd.clone()),
+                "{raw} does not survive its own id"
             );
         }
     }
@@ -331,7 +443,7 @@ mod tests {
     fn ids_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for cmd in ALL {
-            assert!(seen.insert(command_id(*cmd)), "duplicate id for {cmd:?}");
+            assert!(seen.insert(command_id(cmd)), "duplicate id for {cmd:?}");
         }
     }
 }

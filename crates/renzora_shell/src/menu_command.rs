@@ -31,7 +31,12 @@ use crate::open_url;
 ///
 /// Ordered as the menus present them — File, Edit, View, Help, Account — so the
 /// enum reads as the menu does and a missing command is easy to spot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// `Clone` rather than `Copy`: [`MenuCommand::OpenRecent`] carries the path it
+/// opens. Encoding an *index* into the recents list instead would keep this
+/// `Copy` and be wrong — the list reorders as projects are opened, so an index
+/// captured when the menu was built can name a different project by the time it
+/// is clicked.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MenuCommand {
     // ── File ────────────────────────────────────────────────────────────────
     /// Both of these leave the project, so they ask
@@ -41,6 +46,8 @@ pub enum MenuCommand {
     /// about.
     NewProject,
     OpenProject,
+    /// One specific project from the recents list.
+    OpenRecent(std::path::PathBuf),
     NewScene,
     OpenScene,
     Save,
@@ -54,6 +61,10 @@ pub enum MenuCommand {
     // ── Edit ────────────────────────────────────────────────────────────────
     Undo,
     Redo,
+    /// The same palette the top bar's magnifier toggles — see
+    /// `top_bar::CommandPaletteBtn`. It is the editor's search, so a menu row
+    /// for it opens that rather than trying to be a second one.
+    CommandPalette,
 
     // ── View ────────────────────────────────────────────────────────────────
     ZoomIn,
@@ -79,6 +90,9 @@ pub enum MenuCommand {
     MyLibrary,
     SignIn,
     SignOut,
+
+    // ── Application ─────────────────────────────────────────────────────────
+    Settings,
 }
 
 impl MenuCommand {
@@ -98,6 +112,9 @@ impl MenuCommand {
             }
             Self::OpenProject => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Pick));
+            }
+            Self::OpenRecent(path) => {
+                world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Recent(path)));
             }
             Self::NewScene => world.insert_resource(NewSceneRequested),
             Self::OpenScene => world.insert_resource(OpenSceneRequested),
@@ -127,6 +144,8 @@ impl MenuCommand {
                     f(world);
                 }
             }
+
+            Self::CommandPalette => world.insert_resource(ToggleCommandPaletteRequested),
 
             // ── View ────────────────────────────────────────────────────────
             Self::ZoomIn => world.insert_resource(CameraViewRequest::ZoomIn),
@@ -163,6 +182,17 @@ impl MenuCommand {
             }
             Self::SignIn => world.insert_resource(AuthToggleWindowRequest),
             Self::SignOut => world.insert_resource(AuthSignOutRequest),
+
+            // ── Application ─────────────────────────────────────────────────
+            // A toggle rather than an open, matching the gear button this row
+            // replaced: clicking Settings with the panel already up closes it.
+            Self::Settings => {
+                if let Some(mut s) =
+                    world.get_resource_mut::<renzora_editor_framework::EditorSettings>()
+                {
+                    s.show_settings = !s.show_settings;
+                }
+            }
         }
     }
 }

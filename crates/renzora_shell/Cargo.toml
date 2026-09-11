@@ -60,3 +60,7 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element"] }
 # inside the window, which the in-app hamburger already is.
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = "0.17"
+# For two `NSUserDefaults` keys and nothing else — see `native_menu`'s
+# `quieten_edit_menu`. Already in the tree as muda's own dependency, so this
+# costs nothing to compile; naming it directly is what makes it usable here.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString"] }
