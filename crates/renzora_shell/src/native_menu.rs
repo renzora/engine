@@ -55,7 +55,7 @@ pub(crate) fn register(app: &mut App) {
     // `NSApplication` before there is an app menu to install into, and that
     // happens while the window is being opened.
     app.add_systems(Startup, build_menu);
-    app.add_systems(Update, poll_menu_events);
+    app.add_systems(Update, (poll_menu_events, drop_help_book_item_when_it_appears));
 }
 
 /// One stable string per command, used as the muda item id.
@@ -382,8 +382,93 @@ fn build_menu(world: &mut World) {
     }
 
     menu.init_for_nsapp();
+
+    // Name the Help menu explicitly rather than letting AppKit find it by the
+    // localized word "Help". Same outcome today, but it stops depending on the
+    // title matching — and it is what puts the search field there, which is the
+    // one injected row worth keeping: it searches this app's own menu items.
+    if let Ok(help) = &submenus[6] {
+        help.set_as_help_menu_for_nsapp();
+    }
+
     world.insert_non_send(NativeMenu { menu });
     info!("[menu] native macOS menu bar installed");
+}
+
+/// Take AppKit's "Renzora Help" row out of the Help menu.
+///
+/// macOS puts two things in an app's Help menu: a search field, and a row that
+/// opens the app's Apple Help book. The search field is worth having — it
+/// searches this app's own menu items, which is exactly the Renzora-scoped
+/// search it looks like. The help-book row is not: Renzora ships no `.help`
+/// bundle, so choosing it produces "Help isn't available for Renzora".
+///
+/// # Matched on the selector, not the title
+///
+/// The row is called "Renzora Help" in English and something else in every
+/// other language, so matching the title would work on one machine and quietly
+/// fail on the rest. Every such row targets `showHelp:` whatever it is called,
+/// which is both locale-proof and specific — the search field is an item with a
+/// view and no action, so it cannot be caught by mistake.
+///
+/// Returns whether it removed anything, so the caller knows to stop looking.
+fn drop_help_book_item() -> bool {
+    use objc2::sel;
+    use objc2_app_kit::NSApplication;
+    use objc2_foundation::MainThreadMarker;
+
+    // `None` when this is somehow not the main thread, which the scheduler
+    // guarantees it is — see the module docs on non-send access.
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    let Some(menu) = app.helpMenu() else {
+        return false;
+    };
+
+    let wanted = sel!(showHelp:);
+    let items: Vec<_> = menu.itemArray().iter().collect();
+    let mut removed = false;
+    for item in items {
+        if item.action() == Some(wanted) {
+            menu.removeItem(&item);
+            removed = true;
+        }
+    }
+    removed
+}
+
+/// Keep asking until AppKit has actually decorated the Help menu.
+///
+/// The help-book row is not added when the menu is built — AppKit adds it while
+/// the application finishes launching, and on some paths not until the menu is
+/// first opened. Removing it once at startup therefore removes nothing, and the
+/// row appears anyway.
+///
+/// So this runs every frame until it succeeds, and gives up after a budget. The
+/// budget matters more than the success: without it a build where AppKit never
+/// adds the row at all — because a future macOS stopped, or because a help book
+/// was registered — would walk the menu forever for nothing.
+fn drop_help_book_item_when_it_appears(mut state: Local<HelpMenuCleanup>) {
+    if state.done {
+        return;
+    }
+    state.frames += 1;
+    if drop_help_book_item() {
+        state.done = true;
+        debug!("[menu] removed the Apple Help row from the Help menu");
+    } else if state.frames > 600 {
+        // ~10s at 60fps. Silent: a Help menu that never grew the row is a
+        // perfectly good Help menu, and warning about it would be noise.
+        state.done = true;
+    }
+}
+
+#[derive(Default)]
+struct HelpMenuCleanup {
+    done: bool,
+    frames: u32,
 }
 
 /// Move menu clicks onto the command queue.

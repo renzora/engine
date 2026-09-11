@@ -64,3 +64,8 @@ muda = "0.17"
 # `quieten_edit_menu`. Already in the tree as muda's own dependency, so this
 # costs nothing to compile; naming it directly is what makes it usable here.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString"] }
+# Reaching into the Help menu AppKit has decorated, to take one row back out —
+# see `native_menu`'s `drop_help_book_item`. Same story as the line above: muda
+# already builds this, so naming it costs nothing.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder"] }
