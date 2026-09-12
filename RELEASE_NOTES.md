@@ -4,6 +4,7 @@
 - fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
 - fix(editor): the VR on/off line at startup is printed again, having been written before the logger existed and silently dropped
 - feat(editor): every editor launch logs whether VR is on or off, and whether pipelined rendering is on
+- feat(editor): the console names each viewport camera as it switches on or off, and says why
 - fix(editor): the editor no longer loses a third of its frame rate just because an OpenXR runtime is installed; VR editing is opt-in with `--xr`
 - feat(plugin): a plugin can use the engine's physics types, so physics plugins no longer carry their own copy
 - feat(plugin): a plugin can declare script functions, which only engine crates could do before

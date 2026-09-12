@@ -797,13 +797,21 @@ fn sync_viewport_camera_activation(
         .as_ref()
         .is_some_and(|r| r.phase() != external_runtime::RuntimePhase::Idle);
     if runtime_active {
-        for (mut camera, _) in cameras_3d.iter_mut() {
+        for (mut camera, vc) in cameras_3d.iter_mut() {
             if camera.is_active {
+                info!(
+                    "[viewport] 3D camera slot {} -> inactive (an external runtime owns the screen)",
+                    vc.0
+                );
                 camera.is_active = false;
             }
         }
-        for (mut camera, _) in cameras_2d.iter_mut() {
+        for (mut camera, vc) in cameras_2d.iter_mut() {
             if camera.is_active {
+                info!(
+                    "[viewport] 2D camera slot {} -> inactive (an external runtime owns the screen)",
+                    vc.0
+                );
                 camera.is_active = false;
             }
         }
@@ -826,11 +834,25 @@ fn sync_viewport_camera_activation(
         for (mut camera, vc) in cameras_3d.iter_mut() {
             let want = vc.0 == 0;
             if camera.is_active != want {
+                info!(
+                    "[viewport] 3D camera slot {} -> {} (VR play: the headset owns the GPU{})",
+                    vc.0,
+                    if want { "ACTIVE" } else { "inactive" },
+                    if want {
+                        ", the primary stays up as the atmosphere/IBL source"
+                    } else {
+                        ""
+                    }
+                );
                 camera.is_active = want;
             }
         }
-        for (mut camera, _) in cameras_2d.iter_mut() {
+        for (mut camera, vc) in cameras_2d.iter_mut() {
             if camera.is_active {
+                info!(
+                    "[viewport] 2D camera slot {} -> inactive (VR play: the headset owns the GPU)",
+                    vc.0
+                );
                 camera.is_active = false;
             }
         }
@@ -885,6 +907,25 @@ fn sync_viewport_camera_activation(
             docked && !two_d_active
         };
         if camera.is_active != want {
+            // Logged on the TRANSITION, never per frame: a line every frame
+            // here would itself cost frames, which is the bug this is meant to
+            // help find. The reason is spelled out because "4 cameras were
+            // spawned" is what the boot log says, and that is not the same
+            // question as which ones are rendering.
+            info!(
+                "[viewport] 3D camera slot {} -> {} ({})",
+                vc.0,
+                if want { "ACTIVE" } else { "inactive" },
+                if vc.0 == 0 {
+                    "primary: always on, it hosts the atmosphere/IBL probe"
+                } else if !docked {
+                    "its panel is not docked"
+                } else if two_d_active {
+                    "2D view owns the slot image"
+                } else {
+                    "its panel is docked"
+                }
+            );
             camera.is_active = want;
         }
     }
@@ -896,6 +937,18 @@ fn sync_viewport_camera_activation(
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
         let want = docked && two_d_active;
         if camera.is_active != want {
+            info!(
+                "[viewport] 2D camera slot {} -> {} ({})",
+                vc.0,
+                if want { "ACTIVE" } else { "inactive" },
+                if !docked {
+                    "its panel is not docked"
+                } else if !two_d_active {
+                    "3D view owns the slot image"
+                } else {
+                    "its panel is docked and 2D owns the slot image"
+                }
+            );
             camera.is_active = want;
         }
     }
@@ -908,6 +961,17 @@ fn sync_viewport_camera_activation(
     let want_ui = ui_canvas_visible && !playing_2d_game;
     for mut camera in cameras_ui.iter_mut() {
         if camera.is_active != want_ui {
+            info!(
+                "[viewport] UI canvas camera -> {} ({})",
+                if want_ui { "ACTIVE" } else { "inactive" },
+                if !ui_canvas_visible {
+                    "the ui_canvas panel is not showing"
+                } else if playing_2d_game {
+                    "a 2D game is playing in-panel"
+                } else {
+                    "the ui_canvas panel is showing"
+                }
+            );
             camera.is_active = want_ui;
         }
     }
