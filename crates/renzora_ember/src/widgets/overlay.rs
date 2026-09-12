@@ -229,6 +229,81 @@ pub(crate) fn overlay_dismiss(
     }
 }
 
+/// A confirmation dialog: a titled overlay holding a message above a
+/// right-aligned row of buttons.
+///
+/// Returns the overlay root and one entity per label, in the order given. The
+/// caller tags those with its own marker components and reads their
+/// `Interaction` — this owns the shape, not the behaviour, because what the
+/// buttons mean differs every time and only their arrangement does not.
+///
+/// **The last label is the accented one.** Reading order puts the action being
+/// offered at the end of the row, which for a confirmation is usually also the
+/// destructive one: Escape, a backdrop click and the title bar's × all dismiss,
+/// so the safe answer is already reachable without aiming and the one that
+/// changes something should have to be clicked.
+///
+/// This composition existed twice before it existed once: `renzora_shell`'s
+/// save prompts had it as a private helper, and the scene-conflict prompt wrote
+/// it out again rather than reaching for a widget. Sizing, padding and the
+/// button row are exactly the things that should not drift between two dialogs
+/// in the same editor.
+pub fn confirm_dialog(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    body: impl Into<String>,
+    width: f32,
+    height: f32,
+    labels: &[&str],
+) -> (Entity, Vec<Entity>) {
+    let (root, content) = overlay_sized(commands, fonts, title, width, height, true);
+
+    // The message takes the space and the row sits under it, so a longer body
+    // pushes the buttons down rather than overlapping them.
+    commands.entity(content).insert(Node {
+        width: Val::Percent(100.0),
+        flex_grow: 1.0,
+        min_height: Val::Px(0.0),
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::SpaceBetween,
+        padding: UiRect::all(Val::Px(16.0)),
+        ..default()
+    });
+
+    let message = commands
+        .spawn((
+            Text::new(body.into()),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::FlexEnd,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+
+    let buttons: Vec<Entity> = labels
+        .iter()
+        .map(|label| super::button::button(commands, &fonts.ui, label))
+        .collect();
+    if let Some(last) = buttons.last() {
+        commands
+            .entity(*last)
+            .insert(crate::style::Styled::new(crate::style::Role::ButtonAccent));
+    }
+
+    commands.entity(row).add_children(&buttons);
+    commands.entity(content).add_children(&[message, row]);
+    (root, buttons)
+}
+
 #[cfg(test)]
 mod dismiss_tests {
     use super::*;
