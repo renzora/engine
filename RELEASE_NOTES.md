@@ -1,6 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(engine): the editor watches the whole project, so a file edited outside it is picked up as soon as it is saved
+- fix(engine): a file being saved is no longer reported while it is still half-written under a temporary name
+- fix(assets): a texture, model or sound edited outside the editor reloads on save, which it never did before
 - fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
 - fix(editor): the VR on/off line at startup is printed again, having been written before the logger existed and silently dropped
 - feat(editor): every editor launch logs whether VR is on or off, and whether pipelined rendering is on

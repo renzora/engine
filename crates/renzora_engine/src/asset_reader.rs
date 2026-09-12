@@ -339,6 +339,16 @@ impl AssetReader for EmbeddedAssetReader {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Stands in for the watcher Bevy expects the asset source to own.
+///
+/// It watches nothing. `AssetWatcher` is a marker trait with no methods, and a
+/// source only keeps its event receiver when its watcher factory returns one of
+/// these, so this exists purely to stop Bevy dropping the channel that
+/// `renzora_project_watch` pushes through. See the `with_watcher` call below.
+struct SenderKeepalive;
+
+impl bevy::asset::io::AssetWatcher for SenderKeepalive {}
+
 /// Register the custom asset reader on the Bevy `App`.
 ///
 /// Must be called **before** `DefaultPlugins` are added so that `AssetPlugin`
@@ -355,6 +365,26 @@ pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
 
     app.insert_resource(project_asset_path.clone());
     app.insert_resource(shared_archive);
+
+    // Hand `AssetServer` a way to be told a file changed, without giving it a
+    // watcher.
+    //
+    // Registering a custom default source replaced Bevy's file source, and this
+    // never supplied a `.with_watcher`, so `file_watcher` has been compiled into
+    // every desktop build and has never run: asset hot-reload simply did not
+    // work. The obvious fix is to return a `FileWatcher` here, and it does not
+    // work either, because this callback fires once while `AssetPlugin` builds
+    // and at that moment no project is open. A watcher built here would watch
+    // nothing, and there is no way to re-point it afterwards.
+    //
+    // So the callback is used for the one thing only it can do: it captures
+    // Bevy's sender. `renzora_project_watch` owns the watcher, rebuilds it
+    // whenever the project changes, and pushes through this sink. Returning
+    // `None` leaves the source watcher-less, which is silent because no
+    // `watch_warning` is configured.
+    let sink = renzora::core::project_files::AssetReloadSink::default();
+    app.insert_resource(sink.clone());
+    let capture = sink.clone();
     app.register_asset_source(
         AssetSourceId::Default,
         AssetSourceBuilder::new(move || {
@@ -363,6 +393,28 @@ pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
                 archive: reader_archive.clone(),
                 exe_dir: exe_dir.clone(),
             })
+        })
+        .with_watcher(move |sender| {
+            // `try_send` rather than `send`: the channel is unbounded, so the
+            // only way this fails is a closed receiver, which means the asset
+            // server is gone and there is nothing useful to do about it.
+            capture.set(move |event| {
+                let _ = sender.try_send(event);
+            });
+            // Returning `Some` matters, and returning what does not.
+            //
+            // `AssetSourceBuilder::build` keeps the receiving half of the
+            // channel ONLY when this callback returns a watcher: on `None` it
+            // drops the receiver, and `handle_internal_asset_events` then has
+            // nothing to drain. Everything pushed into the sender above would go
+            // into a channel nobody reads, and asset hot-reload would fail
+            // exactly as silently as it did when there was no watcher at all.
+            //
+            // `AssetWatcher` is a marker trait with no methods, so what Bevy
+            // holds here need not watch anything. It is a token that keeps the
+            // channel open; the watching is done by `renzora_project_watch`,
+            // which is the only party that knows the project root.
+            Some(Box::new(SenderKeepalive))
         }),
     );
     project_asset_path

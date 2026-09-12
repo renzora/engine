@@ -7862,6 +7862,7 @@ dependencies = [
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
+ "renzora_project_watch",
  "renzora_scene",
  "renzora_scripting",
  "renzora_scripting_editor",
@@ -8592,6 +8593,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "renzora_project_watch"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bevy",
+ "renzora",
 ]
 
 [[package]]

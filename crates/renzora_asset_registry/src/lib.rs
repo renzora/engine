@@ -19,61 +19,16 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_splash::SplashState;
 
-/// Coarse classification of an asset by file extension. Used by the
-/// asset browser's icon picker, the drag-and-drop preview's loader
-/// dispatch, and the warm-cache prioritization logic. Variants are kept
-/// deliberately broad — "Texture" covers every image format Bevy can
-/// decode, not one variant per extension.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum AssetKind {
-    /// 3D model: `glb`, `gltf`, `obj`, `fbx`, `usd*`, `dae`, `abc`,
-    /// `blend`. Drag-drop spawns these via `AssetServer::load::<Gltf>`.
-    Model,
-    /// Image format Bevy can decode at runtime. Includes HDR/EXR.
-    Texture,
-    /// Renzora `.material` file consumed by `renzora_shader`.
-    Material,
-    /// Renzora scene file (the format `scene_io::save_scene` writes).
-    Scene,
-    /// Audio sample.
-    Audio,
-    /// Video clip.
-    Video,
-    /// Source-level script (Rhai/Lua/JS/TS).
-    Script,
-    /// Hand-authored shader source (WGSL/GLSL/HLSL).
-    Shader,
-    /// Anything else — config, docs, unrecognised extensions.
-    Other,
-}
-
-impl AssetKind {
-    /// Classify a path by its lower-cased extension. Matches the same
-    /// extension table the asset browser uses for icon picking, so a
-    /// file that shows up as "Image" in the browser also shows up as
-    /// `Texture` here.
-    pub fn from_path(path: &Path) -> Self {
-        let Some(ext) = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|s| s.to_ascii_lowercase())
-        else {
-            return AssetKind::Other;
-        };
-        match ext.as_str() {
-            "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
-            | "blend" => AssetKind::Model,
-            "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "exr" => AssetKind::Texture,
-            "material" | "material_bp" => AssetKind::Material,
-            "scene" => AssetKind::Scene,
-            "wav" | "ogg" | "mp3" | "flac" | "opus" => AssetKind::Audio,
-            "mp4" | "avi" | "mov" | "webm" => AssetKind::Video,
-            "lua" | "js" | "ts" => AssetKind::Script,
-            "wgsl" | "glsl" | "vert" | "frag" | "hlsl" => AssetKind::Shader,
-            _ => AssetKind::Other,
-        }
-    }
-}
+/// Coarse classification of an asset by file extension.
+///
+/// Defined in the contract crate and re-exported here, because the project
+/// watcher classifies a changed file with the same table and cannot depend on
+/// this crate to do it. Re-exported rather than moved outright so every
+/// `renzora_asset_registry::AssetKind` a caller already wrote still resolves.
+///
+/// Moving it also fixed a classification nobody had queried in a long time:
+/// the table here said `"scene"`, while the scene format is `.bsn`.
+pub use renzora::core::project_files::AssetKind;
 
 /// One row in the registry. The `path` is asset-relative — i.e. what
 /// you'd pass to `AssetServer::load`.

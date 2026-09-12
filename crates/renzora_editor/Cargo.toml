@@ -230,6 +230,7 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # it. If you hit that, delete the offending line below.
 renzora_http = { path = "../renzora_http" }
 renzora_parkour_editor = { path = "../renzora_parkour/editor" }
+renzora_project_watch = { path = "../renzora_project_watch" }
 renzora_update = { path = "../renzora_update" }
 # ── end generated ──
 
