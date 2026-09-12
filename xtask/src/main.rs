@@ -130,37 +130,29 @@ fn main() -> ExitCode {
     match cmd.as_str() {
         // Build + stage + launch — the default `cargo renzora`.
         //
-        // **Flat, pipelined boot.** This used to launch without `RENZORA_NO_XR`,
-        // which meant a dev with an OpenXR runtime *installed and set as the
-        // system default* — not connected, not in use, merely present — got the
-        // XR-capable editor boot. That disables `PipelinedRenderingPlugin`, so the
-        // render sub-app runs inline on the main thread instead of in parallel
-        // with the sim: measured at ~11.6 ms of a 27 ms frame. The symptom that
-        // found it was `cargo renzora profile` being *faster* than `cargo renzora`,
-        // because only the profiling lane was passing the opt-out.
-        //
-        // Editing in VR is `cargo renzora xr`; shipping a VR game is unaffected
-        // (the runtime binary's `--vr` path is separate).
+        // **Flat, pipelined boot**, because the runtime only takes the XR path
+        // when asked with `--xr`. Editing in VR is `cargo renzora xr`; shipping a
+        // VR game is unaffected (the runtime binary's `--vr` path is separate).
         "run" => {
             let out = match build_and_stage(&repo, &plat, &[]) {
                 Ok(out) => out,
                 Err(code) => return code,
             };
-            launch(&repo, &out, &plat, true)
+            launch(&repo, &out, &plat, false)
         }
         // Build + stage + launch the XR-capable editor.
         //
-        // The explicit opt-in half of the change described on `run`. Boots with
-        // the XR plugins and *without* pipelined rendering, which is what the
-        // headset compositor needs (it wants synchronous submission). Expect a
-        // lower flat-screen frame rate — that is inherent to the boot, not a
-        // regression.
+        // Passes `--xr`, which is the only thing that turns the XR path on.
+        // Boots with the XR plugins and *without* pipelined rendering, which is
+        // what the headset compositor needs (it wants synchronous submission).
+        // Expect a lower flat-screen frame rate — that is inherent to the boot,
+        // not a regression.
         "xr" => {
             let out = match build_and_stage(&repo, &plat, &[]) {
                 Ok(out) => out,
                 Err(code) => return code,
             };
-            launch(&repo, &out, &plat, false)
+            launch(&repo, &out, &plat, true)
         }
         // Build + stage only — produce the dist/ folder, don't launch.
         //
@@ -231,7 +223,7 @@ fn main() -> ExitCode {
                 Ok(out) => out,
                 Err(code) => return code,
             };
-            launch(&repo, &out, &plat, true)
+            launch(&repo, &out, &plat, false)
         }
         // Delete a plugin crate and every reference to it, in one process — the
         // only safe way to do it. See `sync::remove`.
@@ -678,14 +670,15 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// assets the same way a plain `cargo run` does; plugins resolve via the loader's
 /// `<exe-dir>/plugins/` scan, independent of cwd.
 ///
-/// `default_no_xr` makes the launch pass `RENZORA_NO_XR=1` (the profiling lane —
-/// see the `profile` arm). `--xr` anywhere in the passthrough args cancels it, and
-/// is consumed here rather than forwarded: the runtime doesn't know that flag, and
-/// XR-capable boot is its default whenever a runtime is reachable, so simply *not*
-/// setting the variable is what asks for it. An `RENZORA_NO_XR` already in the
-/// environment wins either way — the runtime only tests for the variable's
-/// presence, so an explicit one from the caller must not be second-guessed here.
-fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> ExitCode {
+/// `force_xr` appends `--xr` (the `xr` command). Otherwise the flag is simply
+/// forwarded like any other passthrough argument, because the runtime reads it
+/// itself: XR-capable boot is opt-in there, so a launch that says nothing gets
+/// the flat, pipelined editor.
+///
+/// This used to work the other way round — the runtime booted XR whenever a
+/// runtime was reachable, and every lane here had to inject `RENZORA_NO_XR=1` to
+/// get a normal editor. Inverting it in the runtime deleted the workaround.
+fn launch(repo: &Path, out: &Path, plat: &Platform, force_xr: bool) -> ExitCode {
     let mut extra: Vec<String> = std::env::args().skip(2).collect();
 
     // One binary. `renzora` is the editor when `renzora_editor.<dll|so|dylib>`
@@ -704,19 +697,11 @@ fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> Exit
         return ExitCode::FAILURE;
     }
     println!("[xtask] launching {}", bin.display());
-    let want_xr = extra.iter().any(|a| a == "--xr");
-    extra.retain(|a| a != "--xr");
+    if force_xr && !extra.iter().any(|a| a == "--xr") {
+        extra.push("--xr".to_string());
+    }
     let mut cmd = Command::new(&bin);
     cmd.current_dir(repo).args(&extra);
-    if default_no_xr && !want_xr && std::env::var_os("RENZORA_NO_XR").is_none() {
-        println!(
-            "[xtask] RENZORA_NO_XR=1 (flat, pipelined boot — an installed OpenXR \
-             runtime would otherwise disable pipelined rendering and serialize the \
-             render sub-app onto the main thread. Use `cargo renzora xr` to edit in \
-             a headset.)"
-        );
-        cmd.env("RENZORA_NO_XR", "1");
-    }
     match cmd.status() {
         Ok(s) => s.code().map(|c| ExitCode::from(c as u8)).unwrap_or(ExitCode::SUCCESS),
         Err(e) => {

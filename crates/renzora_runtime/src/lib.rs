@@ -568,43 +568,51 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         ..default()
     });
 
-    // XR-capable editor boot: when an OpenXR runtime is reachable, the editor
-    // renders on the OpenXR-created device with the headset SESSION dormant —
-    // flat editing is unchanged (same windows, same RTT viewports; the XR
-    // Vulkan init requests full adapter features, so wireframe etc. survive),
-    // and the "VR Headset" play target can light the headset up in-process,
-    // on demand, with the live scene. Without a runtime this is a no-op and
-    // the editor boots exactly as before (the VR play target then reports
-    // itself unavailable). Games opt into VR with `--vr` instead
+    // XR-capable editor boot, **opt-in**: `--xr` (or `RENZORA_XR=1`) renders on
+    // the OpenXR-created device with the headset SESSION dormant, so flat
+    // editing is unchanged (same windows, same RTT viewports; the XR Vulkan init
+    // requests full adapter features, so wireframe etc. survive) and the "VR
+    // Headset" play target can light the headset up in-process, on demand, with
+    // the live scene. Games opt into VR with `--vr` instead
     // (`add_xr_rendering`), which auto-starts the session.
     #[cfg(feature = "xr")]
     let (plugins, xr_capable) = {
-        // Booting XR-capable disables `PipelinedRenderingPlugin` (the headset
-        // compositor wants synchronous submission), which serializes the main-world
-        // sim and the render sub-app onto one thread — a real editor-FPS cost. That
-        // trade is only worth it when a headset is actually in play. A dev who has an
-        // OpenXR runtime installed AND set as the system default (e.g. Oculus/Meta,
-        // SteamVR) but isn't using VR would otherwise pay it on every flat editor
-        // launch. `RENZORA_NO_XR=1` (or `--no-xr`) opts out: skip the XR plugins
-        // entirely and keep pipelined rendering on.
-        let no_xr = std::env::var_os("RENZORA_NO_XR").is_some()
-            || std::env::args().any(|a| a == "--no-xr");
-        if is_editor && !no_xr && renzora_xr::runtime_available() {
-            info!(
-                "[runtime] OpenXR runtime detected — booting XR-capable editor \
-                 (pipelined rendering disabled; set RENZORA_NO_XR=1 for a flat, \
-                 pipelined boot if you're not using a headset)"
-            );
-            let base = plugins
-                .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
-            (renzora_xr::xr_plugins(base, false), true)
-        } else {
-            if is_editor && no_xr && renzora_xr::runtime_available() {
+        // Asked for, never inferred. Booting XR-capable disables
+        // `PipelinedRenderingPlugin` (the headset compositor wants synchronous
+        // submission), which serializes the main-world sim and the render
+        // sub-app onto one thread — measured at ~11.6 ms of a 27 ms frame.
+        //
+        // This used to key on `renzora_xr::runtime_available()` and opt *out*
+        // with `RENZORA_NO_XR`. Merely having a runtime installed and set as the
+        // system default — Meta Horizon, SteamVR — is not evidence anyone wants
+        // to edit in a headset, so the common case paid a third of its frame
+        // budget for a session that stays dormant. Worse, it depended on machine
+        // state rather than on the command, so the same build ran at different
+        // speeds on two desks with no flag to explain why.
+        //
+        // A missing runtime is now an error rather than a silent flat boot: if
+        // you typed `--xr` you meant it, and saying nothing would look like the
+        // flag did nothing.
+        let want_xr = std::env::var_os("RENZORA_XR").is_some()
+            || std::env::args().any(|a| a == "--xr");
+        if is_editor && want_xr {
+            if renzora_xr::runtime_available() {
                 info!(
-                    "[runtime] RENZORA_NO_XR set — skipping XR-capable boot; \
-                     pipelined rendering stays enabled"
+                    "[runtime] --xr — booting XR-capable editor (pipelined \
+                     rendering disabled; drop the flag for a flat, pipelined boot)"
                 );
+                let base = plugins
+                    .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+                (renzora_xr::xr_plugins(base, false), true)
+            } else {
+                warn!(
+                    "[runtime] --xr was given but no OpenXR runtime is reachable — \
+                     booting the flat editor. Check that a runtime is installed and \
+                     set as the system default."
+                );
+                (plugins, false)
             }
+        } else {
             (plugins, false)
         }
     };
