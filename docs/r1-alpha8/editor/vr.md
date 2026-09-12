@@ -20,8 +20,13 @@ the headset session and returns to editing.
 
 1. Connect the headset (Quest: enable Quest Link so you're in the Link home
    environment), then start the editor **with `--xr`** — `cargo renzora xr`, or
-   `renzora --xr` on a staged build. The console logs
-   `--xr — booting XR-capable editor` when it worked.
+   `renzora --xr` on a staged build. **Every editor launch says which boot it
+   took**, so you never have to infer it from a missing line: `XR: ON` when the
+   flag was given and a runtime answered, `XR: OFF` otherwise, with the reason
+   and whether a runtime is even reachable. The line after it reports
+   `pipelined rendering: ON` or `OFF`, read back from the running app rather
+   than from the flag, which is the one thing the XR boot changes that costs a
+   flat editor frames.
 
    The flag is required, and deliberately so: the XR boot turns off pipelined
    rendering, which costs roughly a third of the frame budget. Having a runtime

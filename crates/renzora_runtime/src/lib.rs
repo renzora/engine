@@ -575,8 +575,20 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // Headset" play target can light the headset up in-process, on demand, with
     // the live scene. Games opt into VR with `--vr` instead
     // (`add_xr_rendering`), which auto-starts the session.
+    // The decision is made here but ANNOUNCED after `app.add_plugins(plugins)`,
+    // and that split is the whole point of carrying a string out of this block.
+    //
+    // `LogPlugin` is only *configured* into the group above; the tracing
+    // subscriber it installs does not exist until the group is built. Every
+    // `info!` / `warn!` before that line is therefore formatted, handed to a
+    // global subscriber that is still the no-op default, and dropped. That is
+    // what happened to this very message: the XR state was logged from inside
+    // the block, nothing was ever printed in either direction, and the silence
+    // read as "XR is secretly on" rather than "the line never reached a
+    // subscriber". Two separate sessions were spent chasing a frame-rate ghost
+    // on the strength of a missing line. Decide early, log late.
     #[cfg(feature = "xr")]
-    let (plugins, xr_capable) = {
+    let (plugins, xr_capable, xr_boot_note) = {
         // Asked for, never inferred. Booting XR-capable disables
         // `PipelinedRenderingPlugin` (the headset compositor wants synchronous
         // submission), which serializes the main-world sim and the render
@@ -597,27 +609,81 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
             || std::env::args().any(|a| a == "--xr");
         if is_editor && want_xr {
             if renzora_xr::runtime_available() {
-                info!(
-                    "[runtime] --xr — booting XR-capable editor (pipelined \
-                     rendering disabled; drop the flag for a flat, pipelined boot)"
-                );
                 let base = plugins
                     .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
-                (renzora_xr::xr_plugins(base, false), true)
+                (
+                    renzora_xr::xr_plugins(base, false),
+                    true,
+                    "XR: ON. --xr was given and an OpenXR runtime is reachable, so \
+                     this is the XR-capable boot and pipelined rendering is DISABLED. \
+                     Drop the flag for a flat, pipelined boot."
+                        .to_string(),
+                )
             } else {
-                warn!(
-                    "[runtime] --xr was given but no OpenXR runtime is reachable — \
-                     booting the flat editor. Check that a runtime is installed and \
-                     set as the system default."
-                );
-                (plugins, false)
+                (
+                    plugins,
+                    false,
+                    "XR: OFF. --xr was given but no OpenXR runtime is reachable, so \
+                     this is the flat editor with pipelined rendering ON. Check that \
+                     a runtime is installed and set as the system default."
+                        .to_string(),
+                )
             }
         } else {
-            (plugins, false)
+            // Said out loud on EVERY editor boot, reachable runtime or not.
+            // This used to be gated on `runtime_available()`, so a machine with
+            // no runtime got no line at all and "is XR on?" could only be
+            // answered by the absence of something. An absent line is not an
+            // answer: it reads exactly like a line that was never written, which
+            // is the other half of the bug described above. Reachability is now
+            // reported as part of the message rather than as the condition for
+            // printing it.
+            let note = if is_editor {
+                format!(
+                    "XR: OFF. --xr was not given, so this is the flat editor with \
+                     pipelined rendering ON (an OpenXR runtime is {}). Pass --xr to \
+                     edit in a headset.",
+                    if renzora_xr::runtime_available() {
+                        "installed and reachable, and is being left alone"
+                    } else {
+                        "not reachable"
+                    }
+                )
+            } else {
+                String::new()
+            };
+            (plugins, false, note)
         }
     };
 
     app.add_plugins(plugins);
+
+    // From here the subscriber exists, so these lines actually appear.
+    #[cfg(feature = "xr")]
+    if !xr_boot_note.is_empty() {
+        info!("[runtime] {xr_boot_note}");
+    }
+
+    // The direct measurement, not the inference. Disabling this plugin is the
+    // ONLY thing the XR boot does that costs a flat editor frames: it serializes
+    // the main-world sim and the render sub-app onto one thread, measured at
+    // ~11.6 ms of a 27 ms frame. Reading it back out of the built `App` answers
+    // "is the slow path on?" from the app itself rather than from whichever
+    // branch we believe we took, so a stutter hunt can rule it in or out in one
+    // line instead of arguing about a flag.
+    if is_editor {
+        let pipelined = app
+            .is_plugin_added::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+        info!(
+            "[runtime] pipelined rendering: {} ({})",
+            if pipelined { "ON" } else { "OFF" },
+            if pipelined {
+                "the render sub-app runs on its own thread, which is the fast path"
+            } else {
+                "the render sub-app is serialized onto the main thread, which costs roughly a third of the frame budget"
+            }
+        );
+    }
 
     // Profiling build only: record per-render-pass GPU timings. Bevy's render
     // diagnostics recorder is what allocates the Tracy GPU context and emits the
