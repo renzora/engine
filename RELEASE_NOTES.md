@@ -12,6 +12,7 @@
 - perf(editor): the editor no longer stats the active theme's shader files every frame to notice a theme edit
 - perf(editor): project fonts and language packs are picked up when they change rather than by re-reading their folders on a timer
 - perf(editor): a folder tile in the Assets panel walks its contents once instead of every five seconds for as long as it is on screen
+- feat(scene): a scene edited outside the editor reloads in the viewport, and says so instead of reloading when you have unsaved changes
 - fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
 - fix(editor): the VR on/off line at startup is printed again, having been written before the logger existed and silently dropped
 - feat(editor): every editor launch logs whether VR is on or off, and whether pipelined rendering is on

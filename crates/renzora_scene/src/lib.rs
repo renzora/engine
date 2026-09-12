@@ -32,6 +32,7 @@ mod thumbnail;
 use thumbnail::PendingSceneThumbnail;
 
 mod diagnostics;
+mod hot_reload;
 mod scenes;
 use diagnostics::SceneDiagnostics;
 use scenes::ScenesPanel;
@@ -1541,6 +1542,20 @@ impl Plugin for ScenePlugin {
                     .run_if(bevy::time::common_conditions::on_timer(
                         std::time::Duration::from_millis(250),
                     )),
+            )
+            // Reload the open scene when its file changes outside the editor.
+            // Chained because the collector hands the exclusive system its work
+            // through a resource, and an intervening frame would mean a save
+            // landing a frame later than it needs to.
+            .init_resource::<hot_reload::PendingSceneReloads>()
+            .add_systems(
+                Update,
+                (
+                    hot_reload::collect_scene_changes,
+                    hot_reload::apply_scene_reloads,
+                )
+                    .chain()
+                    .run_if(in_state(SplashState::Editor)),
             )
             .add_plugins(SceneDiagnostics)
             .add_plugins(ScenesPanel)
