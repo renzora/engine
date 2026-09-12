@@ -841,12 +841,34 @@ jobs:
           fi
           codesign --verify --deep --strict --verbose=2 "$app"
           echo "$app carries a valid seal"
-          # With an identity configured the bar is higher: Gatekeeper itself has
-          # to accept it. `spctl` is the only check that proves the notarization
-          # actually landed and stapled — `codesign` is happy either way, and the
-          # difference is invisible until a user downloads the zip.
+
+          # With an identity configured the bar is higher: the notarization has
+          # to have landed AND been stapled, which `codesign` is happy without.
+          #
+          # ── Why `stapler validate` is the gate and `spctl` is not ───────────
+          # `spctl --assess` used to be the check here, and it fails on macOS 26
+          # against a bundle that every other tool agrees is correct: notarytool
+          # returns Accepted, `stapler staple` reports "the staple and validate
+          # action worked", `codesign --verify --deep --strict` passes — and
+          # `spctl` prints "rejected" with no reason, at `--verbose=4`. That is a
+          # known regression rather than a verdict about this app; Apple's own
+          # forums carry the same report for notarized pkgs and apps on 15 and 26.
+          #
+          # `stapler validate` asks the question that actually matters: is a
+          # notarization ticket attached to this bundle. That is what lets a
+          # machine with no network clear Gatekeeper on first launch, and it is
+          # the thing that silently was not true for every build before signing
+          # existed. So it is the hard gate.
+          #
+          # `spctl` still runs, because when it DOES reject for a real reason
+          # that is worth seeing — but as a warning, not a failure. A release
+          # must not be blocked by a tool that disagrees with Apple's own
+          # notary service about Apple's own notarization.
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            spctl --assess --type exec --verbose=4 "$app"
+            xcrun stapler validate "$app"
+            echo "$app carries a stapled notarization ticket"
+            spctl --assess --type exec --verbose=4 "$app" \
+              || echo "::warning::spctl rejected $app despite a valid stapled ticket — known macOS 26 behaviour, see the comment in this step"
           fi
 
       # ── The DMG, which is what a person actually downloads ──────────────────
@@ -973,12 +995,14 @@ jobs:
           trap 'hdiutil detach "$mnt" -force >/dev/null 2>&1 || true' EXIT
           codesign --verify --deep --strict --verbose=2 "$mnt/Renzora Engine.app"
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            spctl --assess --type exec --verbose=4 "$mnt/Renzora Engine.app"
-            # `stapler validate` is the direct question — is the ticket attached
-            # — where `spctl` can be satisfied by an online check and hide a
-            # missing staple until a user opens it on a plane.
+            # `stapler validate` is the direct question — is the ticket
+            # attached — and it is the gate for the same reason it is one in
+            # "Verify the macOS bundle signature": `spctl` reports a rejection
+            # on macOS 26 that no other tool agrees with.
             xcrun stapler validate "$dmg"
             xcrun stapler validate "$mnt/Renzora Engine.app"
+            spctl --assess --type exec --verbose=4 "$mnt/Renzora Engine.app" \
+              || echo "::warning::spctl rejected the app inside $dmg despite a valid stapled ticket — known macOS 26 behaviour"
             echo "$dmg is signed, stapled, and carries a stapled app"
           else
             # Say which of the two things was actually checked. Claiming
