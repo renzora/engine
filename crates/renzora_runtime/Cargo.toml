@@ -131,8 +131,12 @@ physics = [
 # two are separate crates with their own parry (parry3d ≈ 4.5 MiB, parry2d less),
 # and no game needs both — a 3D title carries no 2D solver and vice versa. The
 # editor keeps both, since a project can hold scenes of either kind.
-physics_3d = ["physics", "renzora_physics/avian3d"]
-physics_2d = ["physics", "renzora_physics/avian2d"]
+# `renzora/physics_*` is what puts avian's compiled code into `renzora_dylib`,
+# so a plugin reaching `renzora::avian3d` links none of its own. Cargo unifies
+# this with `renzora_physics`'s own dep into ONE avian compilation — which is
+# what makes the engine's `RigidBody` and a plugin's the same type.
+physics_3d = ["physics", "renzora_physics/avian3d", "renzora/physics_3d"]
+physics_2d = ["physics", "renzora_physics/avian2d", "renzora/physics_2d"]
 # Scripting backends/capabilities, forwarded to `renzora_scripting` (which every
 # lean-closure crate now deps `default-features = false`, so these are the sole
 # switches). `lua` is NOT in `default` — it rides the binary's `runtime` feature

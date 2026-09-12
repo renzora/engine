@@ -38,6 +38,19 @@ grid = []
 # plugin can play a sound. The backend behind it is `renzora_audio_backend` and
 # the mixer/timeline/emitters are `renzora_audio`; only the link is here.
 audio = []
+# Re-export the physics backends so a plugin can name `RigidBody` and `Collider`
+# and mean the SAME types the engine's physics steps.
+#
+# The alternative was handing plugins `--extern avian3d` pointed at the rlib,
+# which works but links avian's object code into every plugin that touches it:
+# measured at 13.3 MB against 0.54 MB for the same plugin without it. Five
+# physics plugins is five copies on disk and five in memory. Through the shared
+# image there is one.
+#
+# Feature-gated for the same reason `grid` and `audio` are: a 2D game, a
+# headless server or a lean export that strips physics compiles none of it.
+physics_3d = ["dep:avian3d"]
+physics_2d = ["dep:avian2d"]
 # What the debug panels read: the material and script perf tables, plus the two
 # count resources their owners publish. Here so those panels can be a native
 # plugin, which reaches only `bevy`, `renzora` and `renzora_ember`.
@@ -123,6 +136,23 @@ naga = { version = "29", features = ["termcolor", "wgsl-in"] }
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).
 renzora_macros = { path = "../renzora_macros", optional = true }
+
+# The physics backends, re-exported for plugins. Version and features must match
+# `renzora_physics` EXACTLY: cargo unifies them into one compilation, which is
+# what makes the engine's `RigidBody` and a plugin's the same type. Two specs
+# that resolved differently would be two distinct types sharing a name, which is
+# the failure this re-export exists to prevent.
+[dependencies.avian3d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+[dependencies.avian2d]
+version = "0.7"
+optional = true
+default-features = false
+features = ["2d", "f32", "default-collider", "parry-f32"]
 
 [lints]
 workspace = true

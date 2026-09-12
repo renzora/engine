@@ -271,6 +271,34 @@ pub use serde;
 /// the build stays offline and about a second long.
 pub use serde_json;
 
+/// The 3D physics backend, re-exported for the same reason as [`serde`].
+///
+/// A plugin that wants to build a rigid body has to name the SAME `RigidBody`
+/// the engine's physics steps. Reaching it through here is what guarantees that:
+/// the type resolves through `renzora_dylib`, which holds avian's compiled code,
+/// so the plugin links none of its own.
+///
+/// The alternative was an `--extern avian3d` pointed at the rlib. That compiles
+/// and the types match, but it links avian's object code into every plugin that
+/// touches it: measured at 13.3 MB against 0.54 MB for the same plugin without
+/// it. Through the shared image there is one copy for the whole process.
+///
+/// ```ignore
+/// use renzora::avian3d::prelude::*;
+///
+/// commands.spawn((RigidBody::Dynamic, Collider::capsule(0.3, 1.0)));
+/// ```
+#[cfg(feature = "physics_3d")]
+pub use avian3d;
+
+/// The 2D physics backend. See [`avian3d`] for why this is re-exported.
+///
+/// A separate crate rather than a feature of avian3d, so both simulations can
+/// coexist in one app — their `RigidBody` and `Collider` are distinct types, and
+/// entities are routed to one backend or the other.
+#[cfg(feature = "physics_2d")]
+pub use avian2d;
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor
