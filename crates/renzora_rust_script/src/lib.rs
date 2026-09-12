@@ -208,11 +208,33 @@ impl Plugin for RustScriptPlugin {
         }
         app.init_resource::<LoadedScripts>()
             .init_resource::<watch::ScriptWatcher>()
+            // Registered here as well as by `renzora_project_watch`, and
+            // `add_message` is idempotent so the second call is free.
+            //
+            // Without it an exported game panics on its first frame: this plugin
+            // is added unconditionally by the generated list, the watcher plugin
+            // is Editor-scope and absent, and a `MessageReader` for a message
+            // nobody registered has no resource to read. Same shape as the
+            // `ScriptsActive` problem `finish` handles below, and the same worst
+            // place to discover it: a shipped game rather than the editor.
+            .add_message::<renzora::core::project_files::ProjectFileChanged>()
             // Recompile on save. Unlike `dispatch` these are NOT gated on play
             // mode: a script should build when you save it, so the error is in
             // front of you while you are still looking at the code — not the next
             // time you press play.
-            .add_systems(Update, (watch::watch, watch::finish))
+            .add_systems(
+                Update,
+                (
+                    // Gated on `Editor` so it cannot fire during `Loading`,
+                    // which is before `compile_and_load` has run and claimed the
+                    // walk. It still covers the case that build does not: a
+                    // project switched while the editor is already up, where
+                    // `OnEnter(Editor)` never fires again.
+                    watch::scan_on_project_open.run_if(in_state(SplashState::Editor)),
+                    watch::watch,
+                    watch::finish,
+                ),
+            )
             // Claims `.rs` with the engine. Not done in `build` because the
             // engine is a resource another plugin creates, and plugin build
             // order is not something to depend on.
@@ -417,6 +439,14 @@ fn compile_and_load(world: &mut World) {
     if sources.is_empty() {
         return;
     }
+
+    // This walk IS the opening scan, so claim it: `scan_on_project_open` would
+    // otherwise do the same walk for the same project and race these builds.
+    // Claimed before the SDK check below, because a project with no SDK still
+    // does not want a second walk finding scripts it cannot build either.
+    world
+        .resource_mut::<watch::ScriptWatcher>()
+        .mark_scanned(project.clone());
 
     let Some(sdk_dir) = sdk_dir() else { return };
     let sdk = match Sdk::load(sdk_dir) {
