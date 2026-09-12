@@ -26,10 +26,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy::time::common_conditions::on_timer;
 
 #[cfg(feature = "scripting")]
 mod script_extension;
@@ -62,10 +60,6 @@ const EMBEDDED_PACKS: &[(&str, &str)] = &[
     ("vi", include_str!("../../../languages/vi.toml")),
     ("th", include_str!("../../../languages/th.toml")),
 ];
-
-/// How often the external `languages/` folder is re-scanned for new or edited
-/// packs. Cheap (a stat per file); long enough not to matter on a frame budget.
-const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Tracks external pack files and their last-seen modified time, so a rescan
 /// only re-parses a file that actually changed.
@@ -107,15 +101,31 @@ impl Plugin for LangPlugin {
             renzora::lang::active_code(),
         );
 
+        // The `languages/` folders sit beside the executable and in the working
+        // directory, NOT under the project, so the project watcher does not see
+        // them unless it is told to. This is the case `ExtraWatchRoots` exists
+        // for: registering a directory that belongs to the engine install rather
+        // than to the user's project.
+        //
+        // Registered even when the watcher plugin is absent (a shipped game
+        // links this crate and not the watcher). The resource is then a list
+        // nobody reads, which costs a `Vec` of two paths.
+        {
+            let mut roots = app
+                .world_mut()
+                .get_resource_or_insert_with(renzora::core::project_files::ExtraWatchRoots::default);
+            for dir in external_dirs() {
+                roots.add(dir);
+            }
+        }
+
         app.insert_resource(external)
             .add_message::<renzora::lang::LanguageChanged>()
-            .add_systems(
-                Update,
-                (
-                    rescan_external_packs.run_if(on_timer(RESCAN_INTERVAL)),
-                    emit_language_changed,
-                ),
-            );
+            // Same idempotent registration as the other consumers: this crate is
+            // in every build and the watcher is editor-only, so the message has
+            // to exist whether or not anything writes to it.
+            .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            .add_systems(Update, (rescan_external_packs, emit_language_changed));
 
         // Expose `tr("key")` to Lua/Rhai scripts via the scripting extension
         // registry. Unconditional now that a binding is a declaration rather
@@ -201,9 +211,36 @@ fn scan_dirs(state: &mut ExternalPacks, dirs: &[PathBuf]) {
     }
 }
 
-/// Periodic rescan so dropping in or editing a pack updates the engine live.
-fn rescan_external_packs(mut state: ResMut<ExternalPacks>) {
-    scan_external_packs(&mut state);
+/// Re-read the external packs when one of them changes on disk.
+///
+/// This ran on a two-second timer and re-`read_dir`'d both `languages/` folders
+/// whether or not anything had happened. The watcher now says when one did, and
+/// [`ExtraWatchRoots`] is how it came to be watching a directory outside the
+/// project at all.
+///
+/// Still a directory scan rather than loading the one file named by the event:
+/// [`scan_dirs`] already skips a pack whose mtime has not moved, so the rescan
+/// re-parses exactly the file that changed, and a pack landing as a rename or a
+/// batch of writes needs no special case.
+///
+/// [`ExtraWatchRoots`]: renzora::core::project_files::ExtraWatchRoots
+fn rescan_external_packs(
+    mut state: ResMut<ExternalPacks>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+) {
+    if changes.is_empty() {
+        return;
+    }
+    let dirs = external_dirs();
+    // `root` rather than the path prefix: these events come from a watcher that
+    // was pointed at one of these directories, so the root IS the answer, and
+    // matching on it needs no path arithmetic.
+    let touched = changes.read().any(|change| {
+        change.has_extension("toml") && dirs.iter().any(|dir| *dir == change.root)
+    });
+    if touched {
+        scan_dirs(&mut state, &dirs);
+    }
 }
 
 /// Bridge the lock-free global revision counter to a Bevy event: when anything

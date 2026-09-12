@@ -15,7 +15,7 @@ pub(crate) const IMAGE_EXTENSIONS: &[&str] = &[
 /// levels covers `models/<asset>/materials/` plus a couple of hand-organized
 /// subfolders on top of `assets/materials/`. Models with deeper nesting are
 /// rare and the user can drop directly to bind those.
-const MATERIAL_SCAN_MAX_DEPTH: usize = 6;
+pub(crate) const MATERIAL_SCAN_MAX_DEPTH: usize = 6;
 
 pub fn material_entry() -> InspectorEntry {
     InspectorEntry {

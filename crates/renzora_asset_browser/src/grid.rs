@@ -85,17 +85,44 @@ pub(crate) fn list_entries(w: &Rx) -> std::sync::Arc<Vec<Entry>> {
         .unwrap_or_default()
 }
 
-/// How often (seconds) to rescan the folder even when nothing the editor did
-/// changed — the safety net for files added/removed by other tools.
-const LISTING_THROTTLE: f32 = 0.5;
+/// Mark the listing stale when a file changes in the folder being shown.
+///
+/// This replaced a half-second throttle that re-listed the open folder whether
+/// or not anything had happened, described in its own comment as "the safety
+/// net for files added/removed by other tools". That net is now the project
+/// watcher, which says which file changed instead of being asked twice a second
+/// whether any had. A folder nobody is touching costs nothing to display.
+///
+/// Only the folder on screen matters: a change three directories away does not
+/// alter what the panel is rendering, and re-listing on it would put the cost
+/// back with extra steps.
+pub(crate) fn mark_listing_stale(
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut state: ResMut<NativeAssets>,
+) {
+    let Some(current) = state.current.clone() else {
+        changes.clear();
+        return;
+    };
+    // `bypass_change_detection` so a burst that touches nothing on screen does
+    // not mark `NativeAssets` changed and wake every reactive panel bound to it.
+    let mut stale = false;
+    for change in changes.read() {
+        if change.path.parent() == Some(current.as_path()) {
+            stale = true;
+        }
+    }
+    if stale {
+        state.listing_dirty = true;
+    }
+}
 
 /// Rescan the current folder into [`NativeAssets::listing`], but only when the
-/// folder/search/sort changed, an edit marked it dirty, or the slow throttle
-/// elapsed. This replaces a per-frame `read_dir` + a `metadata()` syscall per
-/// file — which, on a folder of hundreds of split meshes, was the dominant cost
-/// pinning the visible Assets panel's frame rate.
+/// folder/search/sort changed or something marked it dirty. This replaces a
+/// per-frame `read_dir` + a `metadata()` syscall per file — which, on a folder
+/// of hundreds of split meshes, was the dominant cost pinning the visible
+/// Assets panel's frame rate.
 pub(crate) fn refresh_listing(
-    time: Res<Time>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
 ) {
@@ -117,10 +144,7 @@ pub(crate) fn refresh_listing(
     state.sort_desc.hash(&mut h);
     let sig = h.finish();
 
-    state.listing_timer += time.delta_secs();
-    let stale =
-        sig != state.listing_sig || state.listing_dirty || state.listing_timer >= LISTING_THROTTLE;
-    if !stale {
+    if sig == state.listing_sig && !state.listing_dirty {
         return;
     }
 
@@ -128,7 +152,6 @@ pub(crate) fn refresh_listing(
     let entries = read_sorted_entries(&folder, &search, state.sort, state.sort_desc);
     state.listing = std::sync::Arc::new(entries);
     state.listing_sig = sig;
-    state.listing_timer = 0.0;
     state.listing_dirty = false;
 }
 

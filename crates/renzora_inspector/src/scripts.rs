@@ -41,15 +41,22 @@ pub fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
+            // Ungated on purpose, unlike the walk below. A `MessageReader`
+            // inside a gated system advances no cursor while it is gated off,
+            // and the messages it skipped are dropped after two frames, so the
+            // inspector would open knowing nothing about files that changed
+            // while it was closed. Maintaining the list costs a buffer read and
+            // a binary search; it is the walk that is expensive.
+            track_script_files.before(refresh_script_index),
             // Ordered before `rebuild_scripts` so a project walk that lands this
             // frame is seen by the signature check immediately rather than a
             // frame late. Only ticks while a script drawer is actually built,
             // which since the Scripts section became inherent to every entity
             // means "the inspector is open on some entity" rather than the
-            // narrower "a scripted entity is selected" it used to mean. That is
-            // still cheap: the walk is throttled to `SCAN_THROTTLE` and runs on
-            // the IO pool, so the drawer being universal costs one background
-            // directory scan every few seconds while the panel is open.
+            // narrower "a scripted entity is selected" it used to mean. It used
+            // to re-walk the project every three seconds for as long as the
+            // panel was open; now it walks once per project and the list is
+            // maintained from file events after that.
             refresh_script_index
                 .run_if(any_with_component::<ScriptsRoot>)
                 .before(rebuild_scripts),
@@ -271,37 +278,122 @@ struct ScriptIndex {
     /// and a rebuild despawns every child — which would destroy focus and
     /// in-progress typing in a script-variable text field.
     hash: u64,
-    /// Project root the cached scan came from. A different root rescans at once
-    /// instead of waiting out the throttle.
+    /// Project root the cached scan came from. A different root rescans at once.
     root: Option<PathBuf>,
-    /// `Time::elapsed_secs()` when the in-flight walk *started* — not when it
-    /// finished, since timing from completion would let a slow walk immediately
-    /// trigger the next one. Wall-clock rather than an accumulated delta because
-    /// this system is gated on a drawer existing; an accumulator would stop
-    /// ageing while gated off and hand back a stale list on the next selection.
-    last_scan: Option<f32>,
     /// The walk in flight, if any. Never dropped to "cancel" it — dropping a
     /// bevy `Task` cancels the work — it is held until `poll_once` yields.
     task: Option<Task<Vec<(String, PathBuf)>>>,
 }
 
-/// How often to re-walk the project for scripts created by something other than
-/// the editor — an external code editor, a `git pull`, files pasted into the
-/// folder. The editor sees its own script creation (asset-browser new-script,
-/// code-editor save, drag-drop import), but nothing notifies it about those, and
-/// there is no file-watch signal to hook: scripts are read with raw `std::fs` by
-/// the backends and never go through the `AssetServer`, so bevy's `file_watcher`
-/// never fires for a `.lua`/`.rhai`. Deliberately slower than the asset browser's
-/// listing throttle — the script set changes far less often than a folder listing.
-const SCAN_THROTTLE: f32 = 3.0;
+impl ScriptIndex {
+    /// Apply one file change to the sorted list. Returns whether it changed.
+    ///
+    /// `display` must be derived the same way `scan_scripts_inner` derives it,
+    /// or the binary search looks in the wrong place and the same script ends up
+    /// in the list twice.
+    fn apply(&mut self, display: &str, path: &std::path::Path, exists: bool) -> bool {
+        let list = Arc::make_mut(&mut self.scripts);
+        match (
+            list.binary_search_by(|(d, _)| d.as_str().cmp(display)),
+            exists,
+        ) {
+            (Err(at), true) => {
+                list.insert(at, (display.to_string(), path.to_path_buf()));
+                true
+            }
+            (Ok(at), false) => {
+                list.remove(at);
+                true
+            }
+            // Already listed and still there, or already absent and still gone.
+            // A `Modified` on an existing script lands here, which is right:
+            // editing a script does not change which ones exist.
+            _ => false,
+        }
+    }
+}
 
-/// Land a finished project walk and start a new one when the project changed or
-/// the throttle elapsed. Publishes only when the file set actually differs, so a
-/// periodic rescan that finds nothing new costs no rebuilds.
+/// Keep the index current as script files come and go.
+///
+/// Incremental, not a re-walk. The event names exactly which file arrived or
+/// left and the list is sorted, so applying one is a binary search and a splice.
+/// Re-walking the project on every change would do work proportional to the size
+/// of the project to learn something the event already said, which for a
+/// `git pull` that adds twenty scripts is twenty whole-project walks.
+///
+/// Ungated, unlike the walk below, and that is required rather than tidy: a
+/// `MessageReader` inside a `run_if` advances no cursor while the condition is
+/// false and the messages it skipped are dropped after two frames, so the
+/// inspector would open knowing nothing about files that changed while it was
+/// closed.
+fn track_script_files(
+    mut index: ResMut<ScriptIndex>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
+) {
+    use renzora::core::project_files::FileChange;
+
+    if changes.is_empty() {
+        return;
+    }
+    // Nothing to be relative to, or the opening walk has not run for this root
+    // yet: it will cover whatever is in the buffer.
+    let Some(project) = project else {
+        changes.clear();
+        return;
+    };
+    if index.root.as_deref() != Some(project.path.as_path()) {
+        changes.clear();
+        return;
+    }
+
+    // Asked of the engine rather than hardcoded, so a new language backend shows
+    // up in the picker without this file being edited.
+    let exts = script_extensions(engine.as_deref());
+    let is_script = |p: &std::path::Path| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| exts.iter().any(|want| want == e))
+    };
+    // Native separators, no `replace`. This must produce the byte-for-byte same
+    // string as `scan_scripts_inner`, which does not forward-slash its display
+    // (the material index does, and the two disagreeing is exactly the kind of
+    // thing that makes an entry appear twice).
+    let display = |p: &std::path::Path| {
+        p.strip_prefix(&project.path)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let mut changed = false;
+    for change in changes.read() {
+        // A rename moves an entry. Either end may be a script without the other
+        // being one: renaming `a.lua` to `a.txt` is a removal.
+        if let FileChange::Renamed { from } = &change.change {
+            if is_script(from) {
+                changed |= index.apply(&display(from), from, false);
+            }
+        }
+        if !is_script(&change.path) {
+            continue;
+        }
+        // `still_missing` rather than trusting the event: an editor that saves
+        // by writing a temp file and renaming over the original produces a
+        // removal for a file that is still there.
+        let exists = change.is_live() || !change.still_missing();
+        changed |= index.apply(&display(&change.path), &change.path, exists);
+    }
+
+    if changed {
+        index.hash = hash_scripts(&index.scripts);
+    }
+}
+
 fn refresh_script_index(
     mut index: ResMut<ScriptIndex>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    time: Res<Time>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     // Bind the poll result in its own statement before touching `index.task`
@@ -323,31 +415,27 @@ fn refresh_script_index(
         return;
     }
 
-    let now = time.elapsed_secs();
-    let root_changed = index.root.as_deref() != Some(project.path.as_path());
-    let stale = index.last_scan.is_none_or(|t| now - t >= SCAN_THROTTLE);
-    if !root_changed && !stale {
+    // Only on a project change now. Steady state is `track_script_files`, which
+    // needs no walk at all.
+    if index.root.as_deref() == Some(project.path.as_path()) {
         return;
     }
 
+    // Asked of the engine rather than hardcoded, so a new language backend shows
+    // up in the picker without this file being edited. Owned because it crosses
+    // into the task.
+    let exts = script_extensions(engine.as_deref());
+
     // Switching projects invalidates the old list outright: clear it now rather
     // than offering the previous project's scripts until the new walk lands.
-    if root_changed {
-        index.root = Some(project.path.clone());
-        index.scripts = Arc::new(Vec::new());
-        index.hash = 0;
-    }
-    index.last_scan = Some(now);
-
+    index.root = Some(project.path.clone());
+    index.scripts = Arc::new(Vec::new());
+    index.hash = 0;
     // The IO pool is the right home for this: it is syscall-bound, and its
     // workers are the ones given a 32 MiB stack by
     // `renzora_runtime::init_io_task_pool_with_large_stack` — the headroom a
     // deep recursive directory walk wants.
     let root = project.path.clone();
-    // Asked of the engine rather than hardcoded, so a new language backend shows
-    // up in the picker without this file being edited. Owned because it crosses
-    // into the task.
-    let exts = script_extensions(engine.as_deref());
     index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root, &exts) }));
 }
 

@@ -6,6 +6,12 @@
 - fix(assets): a texture, model or sound edited outside the editor reloads on save, which it never did before
 - perf(scripting): a Rust script rebuilds when you save it rather than up to half a second later, and an idle project costs nothing to watch
 - fix(scripting): opening a project no longer compiles every Rust script twice
+- perf(editor): the Assets panel, the script picker and the material picker no longer re-read the project on a timer to notice files changed outside the editor
+- perf(editor): the script and material pickers update from the file that changed instead of re-reading the project, so their cost no longer grows with project size
+- perf(editor): the Scenes panel no longer reads the scenes folder off disk on every frame it is open
+- perf(editor): the editor no longer stats the active theme's shader files every frame to notice a theme edit
+- perf(editor): project fonts and language packs are picked up when they change rather than by re-reading their folders on a timer
+- perf(editor): a folder tile in the Assets panel walks its contents once instead of every five seconds for as long as it is on screen
 - fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
 - fix(editor): the VR on/off line at startup is printed again, having been written before the logger existed and silently dropped
 - feat(editor): every editor launch logs whether VR is on or off, and whether pipelined rendering is on

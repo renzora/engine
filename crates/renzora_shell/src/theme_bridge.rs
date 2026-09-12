@@ -22,7 +22,41 @@ use crate::ShellRoot;
 /// the chrome when the active theme *changes* (a switch) so widgets re-spawn with
 /// the new colors. Individual color edits update the palette but don't rebuild
 /// (that would close the Theme tab's color picker every frame).
+/// Counts writes inside the active theme's folder.
+///
+/// A counter rather than an mtime because nothing compares it to a clock: it
+/// only has to be *different* after an edit, and a counter is that without a
+/// syscall. See the note in [`theme_bridge`] on what this replaced.
+#[derive(Resource, Default)]
+pub(crate) struct ThemeFilesRevision(pub u64);
+
+/// Move [`ThemeFilesRevision`] when a file in the active theme's folder changes.
+///
+/// Themes live at `<project>/themes/<Name>/`, inside the project, so the project
+/// watcher already reports them and this needs no watcher of its own.
+pub(crate) fn bump_theme_revision(
+    tm: Option<Res<renzora_theme::ThemeManager>>,
+    mut rev: ResMut<ThemeFilesRevision>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+) {
+    if changes.is_empty() {
+        return;
+    }
+    // Only the active theme's own folder. A flat `.toml` theme and the built-in
+    // Dark/Light have no folder and no shaders to reload, and an edit to some
+    // other theme's files changes nothing on screen.
+    let Some(dir) = tm.as_ref().and_then(|tm| tm.active_theme_dir()) else {
+        changes.clear();
+        return;
+    };
+    let dir = dir.to_path_buf();
+    if changes.read().any(|change| change.path.starts_with(&dir)) {
+        rev.0 = rev.0.wrapping_add(1);
+    }
+}
+
 pub(crate) fn theme_bridge(
+    theme_rev: Res<ThemeFilesRevision>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
     project: Option<Res<renzora::CurrentProject>>,
     asset_server: Res<AssetServer>,
@@ -45,31 +79,20 @@ pub(crate) fn theme_bridge(
     // Chrome shader effects (matrix rain, …). Gated on a real change — the apply
     // reads the theme folder's `.wgsl` off disk, so re-running it every frame
     // would hammer the filesystem. The fingerprint folds in the theme name (so a
-    // switch re-applies) and the effect fields (so a live edit does too).
-    // Fold every referenced shader file's mtime in too, so editing a theme's
-    // `.wgsl` and saving hot-reloads the effect without reselecting the theme.
+    // switch re-applies) and the effect fields (so a live edit does too), plus a
+    // revision that moves whenever a file in the theme folder is written, so
+    // editing a theme's `.wgsl` and saving hot-reloads the effect without
+    // reselecting the theme.
+    //
+    // That last part used to be the max mtime of the ten referenced files,
+    // stat'd here. This system has no run condition, so that was ten
+    // `metadata()` syscalls on the main thread EVERY FRAME: about six hundred a
+    // second, spent almost entirely to learn that a theme nobody was editing had
+    // not changed. `bump_theme_revision` now watches the folder through the
+    // project watcher and moves a counter, which is a `u64` read here.
     let eff = &tm.active_theme.effects;
     let imgs = &tm.active_theme.images;
-    let files = [
-        &eff.top_bar, &eff.doc_tabs, &eff.status_bar, &eff.panel, &eff.panel_header,
-        &imgs.top_bar, &imgs.doc_tabs, &imgs.status_bar, &imgs.panel, &imgs.panel_header,
-    ];
-    let mut shader_mtime: u64 = 0;
-    if let Some(dir) = tm.active_theme_dir() {
-        for f in files {
-            if f.is_empty() {
-                continue;
-            }
-            if let Some(secs) = std::fs::metadata(dir.join(f))
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-            {
-                shader_mtime = shader_mtime.max(secs);
-            }
-        }
-    }
+    let shader_mtime = theme_rev.0;
     let eff_fp = format!(
         "{}\u{1}{}|{}|{}|{}|{}\u{1}{}|{}|{}|{}|{}\u{1}{}\u{1}{}",
         tm.active_theme_name,

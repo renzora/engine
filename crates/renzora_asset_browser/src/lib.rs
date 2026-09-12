@@ -189,6 +189,19 @@ impl Plugin for AssetBrowserPlugin {
             )
                 .run_if(in_state(SplashState::Editor)),
         );
+        // panel-systems-ungated: both of these read `ProjectFileChanged`, and a
+        // `MessageReader` in a gated system advances no cursor while it is gated
+        // off — the messages it skipped are then dropped after two frames. Gated
+        // with the rest, the Assets panel would come back from being a hidden tab
+        // still showing the listing and folder mosaics it had when it went away,
+        // with nothing left to tell it otherwise. They do no filesystem work: one
+        // sets a bool, the other drops map entries. The scans they gate are in
+        // the panel-gated block above and stay there.
+        app.add_systems(
+            Update,
+            (grid::mark_listing_stale, thumbnails::invalidate_folder_previews)
+                .run_if(in_state(SplashState::Editor)),
+        );
         app.add_systems(
             Update,
             (

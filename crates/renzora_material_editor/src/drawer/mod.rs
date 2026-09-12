@@ -68,6 +68,10 @@ impl Plugin for MaterialDrawer {
                 // Only ticks while a picker popup exists. The rows themselves are
                 // a keyed list driven by `MaterialIndex.generation`, so a walk
                 // that lands here is picked up by the next snapshot.
+                // The list is maintained whether or not the picker is open, and
+                // costs a message-buffer read to do it. Only the opening walk is
+                // gated, and that runs once per project.
+                index::track_material_files.before(index::refresh_material_index),
                 index::refresh_material_index.run_if(any_with_component::<picker::MatPickerPanel>),
                 overrides::flush_overrides,
                 drop::mat_slot_drop,
