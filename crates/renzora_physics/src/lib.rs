@@ -248,7 +248,12 @@ fn clear_avian_forces_2d(
 /// kinematic_slide) from scripts and blueprints.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,
-    mut commands: Commands,
+    // Every use of `commands` below sits behind `#[cfg(feature = "avian2d")]` or
+    // `"avian3d"`, so with neither backend compiled in the body touches it not at
+    // all and the `mut` reads as redundant. Dropping the `mut` would then break
+    // the build the moment a backend IS enabled, which is the configuration that
+    // ships, so the allow is the fix rather than the warning.
+    #[allow(unused_mut)] mut commands: Commands,
     mut pending_slides: Option<ResMut<PendingKinematicSlides>>,
     bodies_2d: Query<(), With<RuntimePhysics2d>>,
 ) {
