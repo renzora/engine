@@ -37,12 +37,14 @@ use renzora::CurrentProject;
 
 use crate::{load_library, sdk_dir, LoadedScripts};
 
-/// How often the scripts directory is stat'd, in seconds.
+/// How often the project is scanned for changed scripts, in seconds.
 ///
-/// Polling rather than a filesystem watcher because the directory is small and
-/// this avoids a second notify backend in the process — the asset server already
-/// runs one, and two watchers on overlapping trees is a source of double-fires
-/// nobody wants to debug.
+/// Polling rather than a filesystem watcher because this avoids a second notify
+/// backend in the process: the asset server already runs one, and two watchers
+/// on overlapping trees is a source of double-fires nobody wants to debug.
+///
+/// The scan itself runs on the task pool, not here, so this interval controls
+/// how soon a save is noticed and nothing else. See [`ScriptWatcher::scan`].
 const POLL_SECONDS: f32 = 0.5;
 
 #[derive(Resource, Default)]
@@ -58,6 +60,27 @@ pub struct ScriptWatcher {
     /// Builds in flight, so one script recompiling does not stop another from
     /// being noticed.
     building: HashMap<PathBuf, Task<Result<PathBuf, String>>>,
+    /// The directory scan in flight, if any.
+    ///
+    /// This used to be done inline in [`watch`], on the main thread, and it is
+    /// not a cheap thing to do there: the scan walks the WHOLE project (see
+    /// `collect_project_scripts`, and the comment below on why it must), stats
+    /// every entry, and reads every `.rs` file to the end looking for the
+    /// `script!` macro. On a project with a few thousand assets that measured
+    /// **110 ms**, twice a second, on the thread that draws frames: about seven
+    /// frames' worth of budget dropped into one frame, which reads as a regular
+    /// stutter and takes the average frame rate down with it. An empty project
+    /// walks instantly, which is why this hid for so long and looked like an
+    /// engine regression rather than a project-size one.
+    ///
+    /// One scan at a time: if a walk somehow outlasts the poll interval, the
+    /// timer finding a scan already in flight simply skips, rather than piling
+    /// up walks of the same tree.
+    ///
+    /// `renzora_inspector`'s `ScriptIndex` is the same walk, of the same tree,
+    /// measured at 130 ms, and it was moved to a task pool for exactly this
+    /// reason. This one was missed at the time.
+    scan: Option<Task<Vec<(PathBuf, SystemTime)>>>,
     timer: f32,
 }
 
@@ -75,25 +98,60 @@ impl ScriptWatcher {
 }
 
 /// Notice changed or new `.rs` files and start building them.
+///
+/// Two phases, because the expensive half must not run here. The timer spawns a
+/// scan onto the task pool; a later frame collects its result and starts builds
+/// for anything whose modification time moved. All this system ever does on the
+/// main thread is compare `SystemTime`s against a map.
 pub fn watch(
     mut watcher: ResMut<ScriptWatcher>,
     project: Option<Res<CurrentProject>>,
     time: Res<Time>,
 ) {
-    watcher.timer += time.delta_secs();
-    if watcher.timer < POLL_SECONDS {
+    let Some(project) = project else { return };
+
+    // Phase 1: start a scan, at most one at a time.
+    if watcher.scan.is_none() {
+        watcher.timer += time.delta_secs();
+        if watcher.timer >= POLL_SECONDS {
+            watcher.timer = 0.0;
+            // The whole project, through the same walk the project-open build
+            // and the exporter use. Watching `scripts/` alone was a third reader
+            // of "which files are scripts" that disagreed with the other two: a
+            // script kept beside the scene that uses it compiled at startup,
+            // shipped in an export, and then silently stopped rebuilding on save
+            // (the edit appeared to do nothing, with the previous build still
+            // loaded and nothing logged). So the breadth is deliberate, and the
+            // cost of it is paid off the main thread rather than reduced.
+            let root = project.path.clone();
+            watcher.scan = Some(AsyncComputeTaskPool::get().spawn(async move {
+                // Stat here too, in the same task: a `metadata` call per script
+                // on the main thread is small next to the walk, but it is the
+                // same kind of blocking work and there is no reason to split it
+                // off from the walk that just found the file.
+                crate::collect_project_scripts(&root)
+                    .into_iter()
+                    .filter_map(|src| {
+                        let mtime = std::fs::metadata(&src).and_then(|m| m.modified()).ok()?;
+                        Some((src, mtime))
+                    })
+                    .collect()
+            }));
+        }
         return;
     }
-    watcher.timer = 0.0;
 
-    let Some(project) = project else { return };
-    // The whole project, through the same walk the project-open build and the
-    // exporter use. Watching `scripts/` alone was a third reader of "which
-    // files are scripts" that disagreed with the other two: a script kept
-    // beside the scene that uses it compiled at startup, shipped in an export,
-    // and then silently stopped rebuilding on save — the edit appeared to do
-    // nothing, with the previous build still loaded and nothing logged.
-    let sources = crate::collect_project_scripts(&project.path);
+    // Phase 2: collect a finished scan. `poll_once` takes the result, so the
+    // task is dropped by the `take` either way and never polled twice.
+    let Some(sources) = watcher
+        .scan
+        .as_mut()
+        .and_then(|task| block_on(poll_once(task)))
+    else {
+        return;
+    };
+    watcher.scan = None;
+
     if sources.is_empty() {
         return;
     }
@@ -101,15 +159,12 @@ pub fn watch(
     let Some(sdk_dir) = sdk_dir() else { return };
     let project_path = project.path.clone();
 
-    for src in sources {
-        // Already building — let it finish rather than starting a second rustc
+    for (src, mtime) in sources {
+        // Already building: let it finish rather than starting a second rustc
         // for the same file.
         if watcher.building.contains_key(&src) {
             continue;
         }
-        let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) else {
-            continue;
-        };
         if watcher.seen.get(&src) == Some(&mtime) {
             continue;
         }

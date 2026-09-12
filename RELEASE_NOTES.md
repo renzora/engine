@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
 - fix(editor): the editor no longer loses a third of its frame rate just because an OpenXR runtime is installed; VR editing is opt-in with `--xr`
 - feat(plugin): a plugin can use the engine's physics types, so physics plugins no longer carry their own copy
 - feat(plugin): a plugin can declare script functions, which only engine crates could do before
