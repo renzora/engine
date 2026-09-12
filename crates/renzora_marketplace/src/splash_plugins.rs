@@ -1048,7 +1048,9 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary) -> Result<St
         // several files, so there is no zip-of-everything case to handle here.
         mk::download_file_progress(&dl.download_url, &mut ignore)?
     } else if asset.price_credits == 0 {
-        mk::download_file_progress(&mk::preview_file_url(&asset.id), &mut ignore)?
+        // The counted endpoint: a signed-out install of a free plugin is the most
+        // common install there is, and it used to be recorded nowhere.
+        mk::download_install_file(&asset.id, &mut ignore)?
     } else {
         return Err("Sign in to install this plugin".into());
     };

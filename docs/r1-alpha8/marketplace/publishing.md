@@ -156,7 +156,20 @@ Your [Dashboard](/dashboard) is where you manage published content. The header s
 - Browse your **Assets** and **Games**, each row showing its **downloads**, **views**, and a **Published / Draft** status dot.
 - Open the **Earnings** tab for your credit transaction history.
 
-> The dashboard reports per-asset downloads and views plus your earnings and balance. It does **not** include time-series charts or geographic breakdowns.
+### Performance over time
+
+Above the tabs, a **Performance** card charts views and downloads across everything you have published, switchable between the last 30 days, 12 weeks and 12 months. Each asset's own page carries the same chart for that asset alone, visible to anyone who opens it.
+
+Views and downloads are drawn as two panels rather than two lines on one axis. Views outnumber downloads many times over, so a shared scale would flatten the downloads line onto the floor, and a second axis would let the two be made to cross wherever the scales happened to land. Hovering either panel puts a crosshair through both and reads out the day's two numbers together, which is the comparison worth making.
+
+A day nothing happened is drawn as a zero rather than skipped, so a quiet week looks quiet instead of looking like a straight line between the days either side of it.
+
+> Still not included: geographic or referrer breakdowns, and any split between the website and the editor. A view is a view wherever it came from.
+
+### What counts
+
+- A **view** is one opening of the asset's listing, whether that is its page on the website or its card in the editor's marketplace. Repeat looks from the same place inside 24 hours count once, so reopening a card while you work does not inflate anything. Your own unpublished drafts count nothing.
+- A **download** is one install, counted once whether the asset arrived as a single file or as a zip of many, and whether or not the person installing it was signed in. Previewing an asset does not count: spinning a model in the viewer, auditioning a theme and opening the embed all fetch the file without touching the number.
 
 ## Best practices
 

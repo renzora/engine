@@ -107,6 +107,12 @@ fn open(world: &mut World, asset: AssetSummary) {
     fetch_comments(&mut state, &asset.id);
     fetch_rating(&mut state, &asset.id);
     fetch_media(&mut state, &asset.id);
+    // Opening the listing is the view. The website counts one when its asset page
+    // loads; nothing counted one here, so every view number on the marketplace
+    // described web traffic and none of the editor's. The server applies the same
+    // per-IP cooldown to both, so reopening a card in a session counts once.
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::auth::marketplace::record_view(state.session.as_ref(), &asset.id);
     world.insert_resource(state);
 
     // Kick the 3D turntable for model/animation assets (a no-op that resets the

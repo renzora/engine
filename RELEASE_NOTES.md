@@ -2,6 +2,9 @@
 
 ## Unreleased
 - feat(inspector): a component the graphics quality tier has switched off now shows an amber warning in its header saying so, instead of looking broken
+- fix(marketplace): installing a free asset without signing in now counts towards the creator's downloads, which it never did
+- fix(marketplace): installing a multi-file asset counts one download instead of two
+- feat(marketplace): opening an asset in the editor's store now counts a view, as opening its page on the website already did
 - fix(particles): removing a particle effect, or pointing it at a different file, now works instead of leaving the old effect drawing or frozen
 - fix(particles): clearing the effect file leaves the emitter empty rather than swapping in a default effect that keeps emitting
 - fix(particles): editing a `.particle`'s spawn rate, burst count or timing now takes effect, which only its colours did before

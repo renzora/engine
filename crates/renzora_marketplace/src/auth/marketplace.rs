@@ -168,8 +168,15 @@ pub fn get_asset(slug: &str) -> Result<AssetDetail, String> {
 /// packs the lot.
 ///
 /// Authenticated, like `/download` — it enforces the same ownership rules.
+/// `count=false` because the caller has already been counted.
+///
+/// An install of a multi-file asset is two requests: `/download` to resolve the
+/// file list and the size, then this to fetch them as one archive. Both used to
+/// increment, so every multi-file install showed up in the creator's statistics
+/// as two. The resolve is the request that means "somebody installed this", so
+/// it keeps the count and the transfer opts out.
 pub fn download_zip_url(asset_id: &str) -> String {
-    format!("{API_BASE}/api/marketplace/{asset_id}/download-zip")
+    format!("{API_BASE}/api/marketplace/{asset_id}/download-zip?count=false")
 }
 
 pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadResponse, String> {
@@ -188,6 +195,61 @@ pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadR
 /// preview a theme live or to grab a free asset when the user isn't signed in.
 pub fn preview_file_url(asset_id: &str) -> String {
     format!("{API_BASE}/api/marketplace/{asset_id}/preview-file")
+}
+
+/// The same bytes as [`preview_file_url`], for a free asset the user is actually
+/// **installing** rather than previewing, and counted as a download.
+///
+/// The two are one endpoint apart on purpose. Installing a free plugin without
+/// signing in used to go through the preview proxy, which counts nothing, so
+/// most installs from the splash screen never reached the creator's numbers.
+/// Auditioning a theme and spinning a model in the viewer still use the preview
+/// URL, because neither is a download and counting them would be worse than
+/// counting none.
+pub fn install_file_url(asset_id: &str) -> String {
+    format!("{API_BASE}/api/marketplace/{asset_id}/install-file")
+}
+
+/// Fetch a free asset for installation, counted, falling back to the preview
+/// proxy if the server is too old to have the counted endpoint.
+///
+/// The editor and the marketplace deploy separately, and an editor that only
+/// knew the new route would fail every free install against a server that has
+/// not shipped it yet. Losing the count on an old server is a worse statistic;
+/// losing the install is a broken feature, so a 404 falls back rather than
+/// failing. The fallback can be deleted once no supported release predates the
+/// endpoint.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn download_install_file(
+    asset_id: &str,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, String> {
+    match download_file_progress(&install_file_url(asset_id), on_bytes) {
+        Err(e) if e.contains("HTTP 404") => {
+            download_file_progress(&preview_file_url(asset_id), on_bytes)
+        }
+        other => other,
+    }
+}
+
+/// Tell the marketplace this asset's listing was opened.
+///
+/// Best-effort and fire-and-forget: the server deduplicates by hashed IP on a
+/// 24 hour cooldown, exactly as it does for the website, and a view that fails
+/// to record is not worth interrupting anyone over.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn record_view(session: Option<&AuthSession>, asset_id: &str) {
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/view");
+    // The token is optional: it only decides whether the view is attributed to a
+    // user, and a signed-out browse still counts.
+    let token = session.and_then(|s| s.access_token.clone());
+    std::thread::spawn(move || {
+        let mut req = renzora::net::Request::post(&url).body("application/json", "{}");
+        if let Some(t) = token {
+            req = req.header("Authorization", &format!("Bearer {t}"));
+        }
+        let _ = req.send();
+    });
 }
 
 /// 256 MB. Enforced by the backend as the bytes arrive rather than after — this
