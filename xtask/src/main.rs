@@ -211,13 +211,11 @@ fn main() -> ExitCode {
         // community plugins won't load against it — everything built here from
         // source still matches (CLAUDE.md §3).
         //
-        // Launches with `RENZORA_NO_XR=1` unless you pass `--xr`. A dev with an
-        // OpenXR runtime installed and set as the system default gets the
-        // XR-capable editor boot, which disables `PipelinedRenderingPlugin` and so
-        // runs the render sub-app inline on the main thread — measured at ~11.6 ms
-        // of a 27 ms frame, i.e. the profile is dominated by a serialization you
-        // almost certainly didn't mean to measure. Pass `--xr` when the headset
-        // path is the thing under the microscope.
+        // Boots flat and pipelined, like every other lane — the XR path is
+        // opt-in. Pass `--xr` when the headset is the thing under the
+        // microscope, and expect the profile to be dominated by the render
+        // sub-app running inline on the main thread (~11.6 ms of a 27 ms frame),
+        // which is inherent to that boot rather than something to optimise.
         "profile" => {
             let out = match build_and_stage(&repo, &plat, &["profiling"]) {
                 Ok(out) => out,

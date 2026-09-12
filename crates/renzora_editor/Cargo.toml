@@ -109,7 +109,6 @@ editor = [
     "dep:renzora_skybox_editor",
     "dep:renzora_forward_decal_editor",
     "renzora_network/editor",
-    "dep:renzora_water_editor",
     "dep:renzora_ember_editor",
     "dep:renzora_navmesh_editor",
 ]
@@ -213,8 +212,6 @@ renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
 renzora_forward_decal_editor = { path = "../renzora_forward_decal/editor", optional = true }
 renzora_network         = { path = "../renzora_network" }
 renzora_animation       = { path = "../renzora_animation" }
-renzora_water           = { path = "../renzora_water" }
-renzora_water_editor    = { path = "../renzora_water/editor", optional = true }
 renzora_terrain         = { path = "../renzora_terrain" }
 renzora_ember_editor    = { path = "../renzora_ember/editor", optional = true }
 renzora_navmesh         = { path = "../renzora_navmesh" }

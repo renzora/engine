@@ -1,6 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- fix(editor): the editor no longer loses a third of its frame rate just because an OpenXR runtime is installed; VR editing is opt-in with `--xr`
+- feat(plugin): a plugin can use the engine's physics types, so physics plugins no longer carry their own copy
+- feat(plugin): a plugin can declare script functions, which only engine crates could do before
+- refactor(plugin): Solari, lens distortion, wind and water ship as installed plugins rather than in the binary
 - refactor(plugin): there is one kind of installable plugin, and it is an ordinary Bevy plugin shipped as source
 - refactor(scripting): a language backend is a plain Rust trait a plugin registers, rather than a C-ABI boundary
 - feat(settings): Reset to Defaults no longer offers to clear plugin settings, which plugins now keep as ordinary resources

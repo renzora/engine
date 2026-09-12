@@ -7890,8 +7890,6 @@ dependencies = [
  "renzora_viewport",
  "renzora_volumetric_fog",
  "renzora_volumetric_fog_editor",
- "renzora_water",
- "renzora_water_editor",
 ]
 
 [[package]]
@@ -8692,7 +8690,6 @@ dependencies = [
  "renzora_tilemap",
  "renzora_tonemapping",
  "renzora_volumetric_fog",
- "renzora_water",
  "renzora_xr",
  "toml 0.8.23",
  "wgpu",
@@ -9144,25 +9141,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_volumetric_fog",
-]
-
-[[package]]
-name = "renzora_water"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_water_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_water",
 ]
 
 [[package]]

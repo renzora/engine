@@ -19,8 +19,15 @@ the headset session and returns to editing.
 ## Playing in VR
 
 1. Connect the headset (Quest: enable Quest Link so you're in the Link home
-   environment), then start the editor. The console logs
-   `OpenXR runtime detected — booting XR-capable editor` when it worked.
+   environment), then start the editor **with `--xr`** — `cargo renzora xr`, or
+   `renzora --xr` on a staged build. The console logs
+   `--xr — booting XR-capable editor` when it worked.
+
+   The flag is required, and deliberately so: the XR boot turns off pipelined
+   rendering, which costs roughly a third of the frame budget. Having a runtime
+   installed is not evidence you want to edit in a headset, so the editor never
+   assumes it. If you pass `--xr` and no runtime is reachable, it says so and
+   boots flat rather than silently doing nothing.
 2. Open the Play button's dropdown (the caret next to Play) and choose
    **VR Headset**. The choice persists per-user, like the other targets.
 3. Press **Play**. The headset session starts with the live scene; put it on.

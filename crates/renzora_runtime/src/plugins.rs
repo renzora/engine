@@ -92,6 +92,4 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_tonemapping::TonemappingPlugin::default());
     #[cfg(feature = "volumetric_fog")]
     app.add_plugins(renzora_volumetric_fog::VolumetricFogPlugin::default());
-    #[cfg(feature = "water")]
-    app.add_plugins(renzora_water::WaterPlugin::default());
 }

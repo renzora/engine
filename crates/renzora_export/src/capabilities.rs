@@ -462,16 +462,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
-        id: "water",
-        section: "simulation",
-        label: "Water",
-        help: "FFT ocean water: wave cascades, foam and buoyancy.",
-        bevy_features: &[],
-        runtime_features: &["water"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "terrain",
         section: "simulation",
         label: "Terrain",
@@ -948,7 +938,6 @@ fn detection_types(id: &str) -> &'static [&'static str] {
 
         // ── 3D subsystems ────────────────────────────────────────────────────
         "terrain" => &["renzora_terrain::"],
-        "water" => &["renzora_water::"],
         "lumen" => &["renzora_lumen::", "LumenLighting"],
         "gaussian_splatting" => &[
             "bevy_gaussian_splatting::",
@@ -1453,7 +1442,6 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
 /// like that. Leaving it here silently dropped a 2D game's particle effects.
 pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "terrain",
-    "water",
     // the sky set
     "atmosphere",
     "environment_map",
@@ -1685,7 +1673,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_2d"], "the scene is plainly 2D");
         assert!(!s["render_3d"]);
-        for id in ["terrain", "water", "skybox", "atmosphere", "lumen", "gltf"] {
+        for id in ["terrain", "skybox", "atmosphere", "lumen", "gltf"] {
             assert!(!s[id], "`{id}` has nothing in this project");
         }
     }
@@ -1708,7 +1696,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_3d"]);
         assert!(s["terrain"]);
-        assert!(!s["water"], "one 3D subsystem must not imply the rest");
+        assert!(!s["lumen"], "one 3D subsystem must not imply the rest");
     }
 
     /// A subsystem reached only from a script survives, because the scan reads

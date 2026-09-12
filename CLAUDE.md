@@ -142,11 +142,12 @@ If `target/` has already grown a `debug/` directory, delete it —
   normal way to work. Uses `--profile dist`. Stops before launching, which is
   what you want: see the note above.
 - ✅ **`cargo renzora`** — the same build, then runs it. The user's command, not
-  yours. **Launches with `RENZORA_NO_XR=1`**:
-  merely having an OpenXR runtime installed and set as the system default
-  otherwise takes the XR-capable boot, which disables `PipelinedRenderingPlugin`
-  and serializes the render sub-app onto the main thread (~11.6 ms of a 27 ms
-  frame). Use `cargo renzora xr` to edit in a headset.
+  yours. **Boots flat and pipelined**: the XR-capable boot is opt-in via `--xr`
+  (or `RENZORA_XR=1`), because it disables `PipelinedRenderingPlugin` and
+  serializes the render sub-app onto the main thread (~11.6 ms of a 27 ms
+  frame). Use `cargo renzora xr` to edit in a headset. This used to key on
+  whether an OpenXR runtime was merely *installed*, which made the same build
+  run at different speeds on two machines with nothing in the command to say why.
 - ✅ `cargo check --profile dist` natively / via the editor — the fast gate while
   editing (doesn't link).
 - ✅ `cargo clippy --profile dist` natively — links nothing, so it reproduces the
