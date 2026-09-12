@@ -215,10 +215,22 @@ Open **Settings > Viewport > Performance > Graphics Quality** and drop it a notc
 | Tier | What it does |
 |---|---|
 | High | Everything on |
-| Medium | Turns off screen-space global illumination, the single most expensive effect, keeping bloom, anti-aliasing and auto-exposure |
-| Low | Turns those off too |
+| Medium | Turns off screen-space global illumination (the single most expensive effect) and SSAO, and drops the sky to its cheaper lookup path. Bloom, anti-aliasing, auto-exposure and clouds are kept |
+| Low | Turns those off too: bloom, TAA, auto-exposure and clouds all go |
 
-Medium is the default. The choice is saved per project.
+Shadow maps and the sky's reflection probe also shrink a step at each tier, which is the rest of where the frame time goes.
+
+Medium is the default. The choice is per user, not per project: it is saved to `~/.renzora/settings.toml` and applies to every project you open on this machine.
+
+It is a different setting from the one under **Settings > Project > Rendering**, which is the tier the *exported game* runs at. A project set to High there still draws its editor viewport at whatever this one says.
+
+### When a tier has switched an effect off
+
+A gated effect keeps its component, its enable toggle and its settings, and simply stops appearing. To make that legible rather than mysterious, the Inspector puts an amber warning triangle in the header of any component the current tier has switched off or reduced. Hover it and the tooltip names the tier, says what it did, and points at the setting.
+
+<!-- screenshot: inspector_quality_gate.png - a Clouds component header showing the amber gate warning and its tooltip -->
+
+The components that can carry it are Clouds, Bloom, TAA, Auto Exposure, SSAO, the two GI sections (Lumen and RT), and Atmosphere. So if clouds are not drawing and the Clouds header has the triangle, nothing is broken: raise the tier.
 
 ## Related pages
 

@@ -601,6 +601,55 @@ impl GraphicsQuality {
             Self::Low => 512,
         }
     }
+
+    /// What this tier does to the effect behind the inspector section registered
+    /// under `type_id`, if anything. Drives the amber warning the inspector puts
+    /// in a gated component's header.
+    ///
+    /// It exists because every gate above is *silent* at the point the user looks
+    /// for it. A tier that switches clouds off leaves `CloudsData` on the entity,
+    /// enabled, with every slider live, and an empty sky: nothing in the panel
+    /// says the tier took the dome away, so the effect reads as broken. The
+    /// atmosphere is worse, because the tier writes back — set the sky to
+    /// Raymarched below `High` and the dropdown snaps to LookupTexture on the
+    /// next frame, which reads as the editor refusing the setting.
+    ///
+    /// The mapping is a table here rather than a field on `InspectorEntry`
+    /// because a component does not get to decide this: the gates are already one
+    /// central list on this enum (`gi`, `bloom`, `taa`, `ssao`, `clouds`,
+    /// `auto_exposure`, `atmosphere_raymarched`), and a second copy spread across
+    /// 180-odd registration sites would drift from it the first time a tier moved.
+    /// Anything not listed is ungated and returns `None`.
+    pub fn inspector_gate(&self, type_id: &str) -> Option<QualityGate> {
+        // Not in the list below, and deliberately: Solari reads no tier at all,
+        // so its section must not claim to be gated.
+        let on = match type_id {
+            "clouds" => self.clouds(),
+            "bloom" => self.bloom(),
+            "taa" => self.taa(),
+            "auto_exposure" => self.auto_exposure(),
+            "world_env_ssao" => self.ssao(),
+            "lumen_lighting" | "rt_lighting" => self.gi(),
+            // The one that survives in reduced form rather than going away.
+            "atmosphere" => {
+                return (!self.atmosphere_raymarched()).then_some(QualityGate::Downgraded)
+            }
+            _ => return None,
+        };
+        (!on).then_some(QualityGate::Disabled)
+    }
+}
+
+/// What a [`GraphicsQuality`] tier does to an effect whose inspector section is
+/// gated by it. See [`GraphicsQuality::inspector_gate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QualityGate {
+    /// The tier switches the effect off. Its component stays on the entity and
+    /// its settings still edit; nothing it draws reaches the viewport.
+    Disabled,
+    /// The tier keeps the effect but forces it onto a cheaper path, overwriting
+    /// the setting that asked for the expensive one.
+    Downgraded,
 }
 
 /// The render resolution the editor viewport is currently rendering at, derived

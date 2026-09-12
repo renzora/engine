@@ -22,6 +22,23 @@ use super::spec::{comp_name_loc, tracked_read, FieldSpec, SectionSpec};
 use super::undo::EnableToggleCmd;
 use super::{empty_label, phosphor_glyph, GetFn, InspectorSectionHeader, Mutate, SetFn};
 
+/// The tooltip behind a header's amber gate glyph: which tier is in force, what
+/// it did to this effect, and where to change it. It names the *viewport* tier
+/// specifically, because the project's `[rendering] graphics_quality` is a
+/// separate setting for the shipped game and a user who finds that one set to
+/// High has every reason to read an empty viewport as a bug.
+fn quality_gate_tooltip(
+    tier: renzora::core::viewport_types::GraphicsQuality,
+    gate: renzora::core::viewport_types::QualityGate,
+) -> String {
+    use renzora::core::viewport_types::QualityGate;
+    let key = match gate {
+        QualityGate::Disabled => "inspector.quality_gate.disabled",
+        QualityGate::Downgraded => "inspector.quality_gate.downgraded",
+    };
+    renzora::lang::t_args(key, &[("tier", tier.label())])
+}
+
 #[derive(Component)]
 pub(super) struct RemoveBtn {
     pub(super) remove_fn: Mutate,
@@ -306,6 +323,24 @@ pub(super) fn build_section(
     // to the entity rather than to any one component, so it moved to the entity
     // header with the rest of the identity controls — see `build_lock_button`.)
     let mut extra = vec![spacer];
+    // The graphics-quality warning, ahead of the enable toggle: an effect the
+    // tier switched off still shows an "on" toggle and live settings, so without
+    // this the header positively asserts the opposite of what the viewport does.
+    if let Some((tier, gate)) = sec.gate {
+        let warn = phosphor_glyph(commands, fonts, "warning", renzora_ember::theme::warn_amber(), 13.0);
+        commands.entity(warn).insert((
+            // `HoverTooltip` is driven off the entity's own `Interaction`, so the
+            // glyph has to track one to be hoverable at all.
+            Interaction::default(),
+            renzora_ember::widgets::HoverTooltip::new(quality_gate_tooltip(tier, gate)),
+            // Pass, not Block: the glyph sits on the header's click target, and a
+            // press on it should still collapse the section like a press anywhere
+            // else on the bar. (Block is right for the toggle and trash below,
+            // which do something of their own with the click.)
+            FocusPolicy::Pass,
+        ));
+        extra.push(warn);
+    }
     if let Some((_, set_enabled)) = sec.enable.clone() {
         let sw = toggle_switch(commands, sec.enabled_now);
         // Block the press from bubbling to the section header behind it, so
