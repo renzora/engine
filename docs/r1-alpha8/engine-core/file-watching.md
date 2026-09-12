@@ -126,6 +126,19 @@ This did not happen before. Renzora registers a custom default asset source, and
 it never supplied a watcher, so Bevy's `file_watcher` feature was compiled into
 every desktop build and never ran.
 
+Events are **normalised**, not forwarded verbatim, and the reason is worth
+knowing if you ever touch that code. `handle_internal_asset_events` reloads on
+`AddedAsset` and `ModifiedAsset` and drops everything else through a `_ => {}`
+arm — and **`RenamedAsset` is in that arm**. Since almost everything saves by
+writing a scratch file and renaming it over the target, Bevy would be handed a
+reload for a temp file that is about to vanish, a removal, and then a rename it
+ignores. The file that actually changed would never reload.
+
+So a rename onto a real file is reported as `ModifiedAsset`, which is what it is
+from the asset server's point of view, and scratch events are dropped instead of
+forwarded. Forwarding verbatim looks like the conservative choice and is the one
+that silently breaks hot-reload for every atomically-saved asset.
+
 ## Why not just use Bevy's watcher?
 
 Bevy has the plumbing but not the product. `FileWatcher` and `AssetSourceEvent`

@@ -228,13 +228,11 @@ fn drain(
         // `try_recv` in a loop rather than draining with a timeout: this runs on
         // the main thread and must never wait on the disk.
         while let Ok(raw) = receiver.try_recv() {
-            // Forwarded verbatim, before our own filtering. The asset server has
-            // its own idea of what it cares about (it reloads only paths it
-            // already holds a handle for), and second-guessing that here would
-            // be how an asset quietly stops hot-reloading.
             if is_project {
                 if let Some(sink) = sink.as_ref() {
-                    sink.send(raw.clone());
+                    if let Some(event) = for_asset_server(&raw) {
+                        sink.send(event);
+                    }
                 }
             }
             for event in translate(raw, &watched.root) {
@@ -289,6 +287,51 @@ fn log_event(event: &ProjectFileChanged) {
         event.kind,
         if event.is_dir { ", dir" } else { "" }
     );
+}
+
+/// What to hand `AssetServer` for one raw watcher event, if anything.
+///
+/// This used to forward verbatim, on the reasoning that the asset server knows
+/// its own business better than we do and second-guessing it would be how an
+/// asset quietly stops hot-reloading. That was exactly backwards, and it made
+/// asset hot-reload not work at all for the common case.
+///
+/// `handle_internal_asset_events` reloads on `AddedAsset` and `ModifiedAsset`,
+/// reloads parent folders for removals, and drops everything else through a
+/// `_ => {}` arm. **`RenamedAsset` is in that arm.** So for the way almost
+/// everything saves a file, which is write a scratch file and rename it over
+/// the target, Bevy is handed:
+///
+/// ```text
+/// AddedAsset(x.html.tmp.1234)     reloads a file that is about to vanish
+/// ModifiedAsset(x.html.tmp.1234)  the same
+/// RemovedAsset(x.html)            parent folders only
+/// RenamedAsset{tmp -> x.html}     ignored
+/// ```
+///
+/// and the file that actually changed is never reloaded. A texture edited in
+/// anything that saves atomically would sit there stale.
+///
+/// So a rename onto a real file is reported as what it is from the asset
+/// server's point of view: that file now has different contents. The scratch
+/// events are dropped rather than forwarded, since reloading a path that exists
+/// for ten milliseconds achieves nothing.
+fn for_asset_server(raw: &AssetSourceEvent) -> Option<AssetSourceEvent> {
+    let transient = |p: &Path| is_transient(&p.to_string_lossy().replace('\\', "/"));
+    match raw {
+        AssetSourceEvent::RenamedAsset { old, new } => {
+            if transient(new) {
+                // A real file renamed out to a scratch name: a removal.
+                (!transient(old)).then(|| AssetSourceEvent::RemovedAsset(old.clone()))
+            } else {
+                Some(AssetSourceEvent::ModifiedAsset(new.clone()))
+            }
+        }
+        AssetSourceEvent::AddedAsset(p)
+        | AssetSourceEvent::ModifiedAsset(p)
+        | AssetSourceEvent::RemovedAsset(p) => (!transient(p)).then(|| raw.clone()),
+        other => Some(other.clone()),
+    }
 }
 
 /// Convert one [`AssetSourceEvent`] into the events worth publishing.
@@ -478,6 +521,49 @@ mod tests {
         assert_eq!(out[0].change, FileChange::Added);
         assert_eq!(out[0].relative, "p/x.particle");
         assert!(out[0].is_live());
+    }
+
+    #[test]
+    fn a_save_by_rename_reaches_the_asset_server_as_a_modification() {
+        // The step Bevy drops on the floor. Without this the file that actually
+        // changed is never reloaded, and every atomically-saved asset goes
+        // stale.
+        let out = for_asset_server(&AssetSourceEvent::RenamedAsset {
+            old: PathBuf::from("t/x.html.tmp.1234"),
+            new: PathBuf::from("t/x.html"),
+        });
+        assert_eq!(
+            out,
+            Some(AssetSourceEvent::ModifiedAsset(PathBuf::from("t/x.html")))
+        );
+    }
+
+    #[test]
+    fn scratch_files_are_not_sent_to_the_asset_server() {
+        for raw in [
+            AssetSourceEvent::AddedAsset(PathBuf::from("t/x.html.tmp.1234")),
+            AssetSourceEvent::ModifiedAsset(PathBuf::from("t/x.html.tmp.1234")),
+        ] {
+            assert_eq!(for_asset_server(&raw), None);
+        }
+    }
+
+    #[test]
+    fn renaming_a_real_file_to_a_scratch_name_is_a_removal() {
+        let out = for_asset_server(&AssetSourceEvent::RenamedAsset {
+            old: PathBuf::from("t/x.html"),
+            new: PathBuf::from("t/x.html.tmp.1234"),
+        });
+        assert_eq!(
+            out,
+            Some(AssetSourceEvent::RemovedAsset(PathBuf::from("t/x.html")))
+        );
+    }
+
+    #[test]
+    fn an_ordinary_modification_passes_through() {
+        let raw = AssetSourceEvent::ModifiedAsset(PathBuf::from("t/x.png"));
+        assert_eq!(for_asset_server(&raw), Some(raw));
     }
 
     #[test]

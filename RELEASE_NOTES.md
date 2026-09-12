@@ -4,6 +4,7 @@
 - feat(scene): deleting a file the open scene still uses now warns and names the entities using it, instead of the mesh quietly vanishing
 - feat(particles): a `.particle` edited outside the editor updates every entity using it
 - feat(ui): a `.html` template edited outside the editor rebuilds the canvases using it
+- fix(assets): a file saved by an editor that writes to a temporary name and renames it now hot-reloads, which covers most editors and previously reloaded nothing
 - feat(engine): the editor watches the whole project, so a file edited outside it is picked up as soon as it is saved
 - fix(engine): a file being saved is no longer reported while it is still half-written under a temporary name
 - fix(assets): a texture, model or sound edited outside the editor reloads on save, which it never did before
