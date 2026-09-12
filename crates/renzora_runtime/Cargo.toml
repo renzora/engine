@@ -97,7 +97,6 @@ render_3d = [
     "renzora_postprocess/render_3d",
     "renzora_ember?/render_3d",
     "renzora_ember_dylib?/render_3d",
-    "dep:renzora_wind",
 ]
 # The node-graph material system. Its own capability: ~1 MiB that a game using
 # only StandardMaterial never touches. Auto-detected from `.material` assets.
@@ -270,7 +269,6 @@ renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
 # extension, so it is bevy_pbr all the way down and cannot compile at all in a 2D
 # export. Being optional under `render_3d` is also what makes the generator emit
 # the matching `#[cfg(feature = "render_3d")]` in `plugins.rs`.
-renzora_wind = { path = "../renzora_wind", optional = true }
 
 bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from

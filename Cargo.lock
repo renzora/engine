@@ -7890,7 +7890,6 @@ dependencies = [
  "renzora_volumetric_fog_editor",
  "renzora_water",
  "renzora_water_editor",
- "renzora_wind_editor",
 ]
 
 [[package]]
@@ -8692,7 +8691,6 @@ dependencies = [
  "renzora_tonemapping",
  "renzora_volumetric_fog",
  "renzora_water",
- "renzora_wind",
  "renzora_xr",
  "toml 0.8.23",
  "wgpu",
@@ -9173,26 +9171,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "renzora_wind"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_bsn",
- "renzora_scripting",
- "ron 0.8.1",
-]
-
-[[package]]
-name = "renzora_wind_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_wind",
 ]
 
 [[package]]

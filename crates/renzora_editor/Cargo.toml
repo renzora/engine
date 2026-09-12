@@ -234,7 +234,6 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 renzora_http = { path = "../renzora_http" }
 renzora_parkour_editor = { path = "../renzora_parkour/editor" }
 renzora_update = { path = "../renzora_update" }
-renzora_wind_editor = { path = "../renzora_wind/editor" }
 # ── end generated ──
 
 # ── The shared images, for their side effect only ────────────────────────────

@@ -81,6 +81,18 @@ pub mod text_mesh;
 #[cfg(feature = "grid")]
 pub mod grid;
 
+// The declarative script-binding vocabulary: `ScriptExtension`, `Binding`, and
+// the `Bind` builder. Here rather than in `renzora_scripting` so an installed
+// plugin can declare script functions at all — a plugin reaches `bevy`,
+// `renzora` and `renzora_ember` and nothing else, so while this lived in the
+// scripting crate the one mechanism for extending the script API was open only
+// to crates compiled into the engine. `renzora_scripting::extension`
+// re-exports it, so nothing that already used it had to change.
+//
+// NOT glob re-exported: `Param`, `Binding` and `Bind` are too generic for the
+// crate root.
+pub mod script_extension;
+
 // `AudioLink` — the engine side of the audio boundary, and the handle types it
 // allocates. The mixer/timeline/emitters are still `renzora_audio`; only the
 // link is here, so any plugin can play a sound. NOT glob re-exported —
