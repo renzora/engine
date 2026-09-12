@@ -16,7 +16,7 @@
 //!    re-scanned periodically, so editing a pack updates the UI live.
 //! 3. **Plugin contributions.** Any `renzora_*` plugin can register its own
 //!    strings from its `build()` — see [`renzora::lang`] for the API.
-//!    Those merge into the same table, so a distribution plugin localizes its
+//!    Those merge into the same table, so an installed plugin localizes its
 //!    own panels without this crate knowing about it.
 //!
 //! Scope is **Runtime**: localization is needed in the editor viewport *and* the

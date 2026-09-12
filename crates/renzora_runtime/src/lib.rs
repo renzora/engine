@@ -10,8 +10,9 @@
 //!   lean exporter should be able to strip it), and add a line to `plugins.rs`
 //!   under the matching feature gate. Editor-only crates go in `renzora_editor`
 //!   instead.
-//! - Third-party: ship a C-ABI plugin (`renzora_plugin`), `dlopen`'d from
-//!   `plugins/` by the loader, no engine source edits required.
+//! - Third-party: ship a plugin as source in `plugins/<name>/`, compiled against
+//!   the staged SDK and loaded by `renzora_native_plugin`. No engine source
+//!   edits required.
 
 use bevy::prelude::*;
 
@@ -1109,8 +1110,9 @@ fn apply_window_icon(
 /// at process exit, and none of which the engine needs, because nothing saves
 /// state from a `Drop` (saves are user actions).
 ///
-/// Belt to the `ManuallyDrop` braces in `renzora_plugin`'s loader: that fixes
-/// the plugin images specifically, this keeps the whole teardown off the table.
+/// Belt to the `ManuallyDrop` braces in `renzora_native_plugin`'s loader: that
+/// fixes the plugin images specifically, this keeps the whole teardown off the
+/// table.
 /// `Last`, so it runs after every other system in the final frame.
 ///
 /// Leaves through [`renzora::exit_now`], which skips libc's atexit chain and the
@@ -1151,8 +1153,8 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     info!("[runtime] foundation: InputPlugin");
     app.add_plugins(renzora_input::InputPlugin);
     // The scripting host: hooks, the command vocabulary and the queue that applies
-    // them. Which LANGUAGE a game can be scripted in is a separate question — the
-    // interpreters are C-ABI plugins, chosen in the Plugins tab — so a game that
+    // them. Which LANGUAGE a game can be scripted in is a separate question — a
+    // backend is an installed plugin, chosen in the Plugins tab — so a game that
     // ships no scripts at all strips this whole layer.
     #[cfg(feature = "scripting")]
     {
@@ -1318,6 +1320,6 @@ pub fn build_runtime_app() -> App {
 }
 
 // Editor plugins are NOT installed here. They live in the separate
-// `renzora_editor` bundle dll (loaded at startup beside the exe) and are
-// installed via its `plugin_install_scope` FFI entry with `host_scope = Editor`.
+// `renzora_editor` image (loaded at startup from beside the exe) and are
+// installed by its `renzora_editor_install` entry point.
 // `renzora_runtime` is purely the runtime foundation.

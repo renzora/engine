@@ -1,4 +1,4 @@
-//! Cloth physics distribution plugin.
+//! Cloth physics.
 //!
 //! Wraps the vendored `bevy_silk` verlet cloth engine and registers it with the
 //! Renzora runtime via `renzora::add!`. Built as a `cdylib` and dlopen'd from

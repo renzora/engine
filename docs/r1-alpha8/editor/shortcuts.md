@@ -1,234 +1,154 @@
 # Keyboard Shortcuts
 
-Every default editor shortcut, the command palette, and how to rebind keys to your liking.
+Every shortcut below is the shipped default. Change any of them under **Settings > Shortcuts**.
 
-Shortcuts are an **editor-only** feature. They live in the `renzora_keybindings` crate (`KeybindingsPlugin`), and the action/binding types are defined in `renzora::core::keybindings` (`EditorAction`, `KeyBinding`, `KeyBindings`) so other editor plugins can dispatch them. Because the whole editor ships as the removable `renzora_editor` bundle, none of these bindings exist in an exported game.
-
-> The fastest way to find any command is the **command palette** — press `Ctrl+P` and start typing. It lists every tool, action, panel, and layout with its current keybinding, so you rarely need to memorize the tables below.
-
-## Command palette
-
-Press `Ctrl+P` to open the command palette (`renzora_command_palette`). It is a fuzzy-searchable modal that aggregates, with zero per-plugin wiring:
-
-- Registered **tools** from the toolbar (only those visible in the current context).
-- **Plugin shortcuts** registered via `register_shortcut`, each showing its current binding.
-- Every built-in **editor action** (the `EditorAction` enum), shown with its key and dispatched exactly as a real key press.
-- **Layouts** — `Switch to <Workspace>`.
-- **Panels** — `Open <Panel>` (focuses it if already docked).
-- **Settings** tabs, **File** menu commands, and **Documentation** links.
-
-**Scope tabs.** A tab strip under the search box narrows what you're searching:
-
-| Tab | Searches | Picking a result |
-|---|---|---|
-| Commands | Everything above (the default) | Runs it |
-| Entities | Named entities in the open scene | Selects the entity |
-| Settings | Settings tabs | Opens Settings on that tab |
-| Docs | renzora.com documentation (live search) | Opens the page in your browser |
-| Forum | Forum threads | Opens the thread in the Forum panel |
-| Users | Community members | Opens their profile |
-| Feed | Recent community-feed posts | Opens the post, comments expanded |
-| Courses | Learning courses | Opens the Docs panel |
-| Marketplace | Store assets (server-side search) | Opens the marketplace overlay |
-
-The remote tabs (Docs → Marketplace) query renzora.com as you type, debounced; Docs/Forum/Users want at least two characters, while Feed/Courses/Marketplace list their latest content even with an empty query.
-
-| Key | Action |
-|---|---|
-| `Ctrl+P` | Open / close the palette |
-| Type | Filter by label or category |
-| `Up` / `Down` | Move selection |
-| `Enter` | Run the selected command |
-| `Esc` | Dismiss |
+On macOS, `Ctrl` means `Cmd`.
 
 ## Camera
 
-Movement keys are active **only while you hold the right mouse button** to fly. The same `W` `E` `Q` letters switch gizmo tools when you are not flying (see below) — they never conflict because flying gates them.
-
-| Key | Action |
+| Action | Key |
 |---|---|
-| `W` `A` `S` `D` | Fly forward / left / back / right (hold right-click) |
-| `E` / `Q` | Fly up / down (hold right-click) |
-| `Left Shift` | Fly faster (hold) |
-| `F` | Frame selected — centres on the selection's bounds, fits it to the viewport, and looks from near its own horizon |
-| `Home` | Reset camera |
-| `A` | Frame all |
-| `End` | Move camera to cursor |
-| `]` / `[` | Camera speed up / down |
-| `L` | Toggle pivot lock |
+| Move Forward | `W` |
+| Move Backward | `S` |
+| Move Left | `A` |
+| Move Right | `D` |
+| Move Up | `E` |
+| Move Down | `Q` |
+| Move Faster | Hold `Shift` |
+| Camera Speed + | `]` |
+| Camera Speed - | `[` |
+| Focus Selected | `F` |
+| Frame All | `A` |
+| Reset Camera | `Home` |
+| Camera to Cursor | `End` |
+| Toggle Pivot Lock | `L` |
 
-### View angles
-
-Blender-style numpad views; the `Ctrl` modifier gives the opposite view.
-
-| Key | Action |
-|---|---|
-| `Numpad 1` / `Ctrl+Numpad 1` | Front / Back |
-| `Numpad 3` / `Ctrl+Numpad 3` | Right / Left |
-| `Numpad 7` / `Ctrl+Numpad 7` | Top / Bottom |
-| `Numpad 5` | Toggle perspective / orthographic |
+The `W` `A` `S` `D` `Q` `E` keys move the camera only while you are holding the right mouse button to fly. Released, `Q` `W` `E` `R` switch tools instead.
 
 ## Tools
 
-These set the persistent gizmo handle (`ActiveTool`). They fire only when the right mouse button is not held and no modal transform is in progress.
-
-| Key | Action |
+| Action | Key |
 |---|---|
-| `Q` | Select |
-| `W` | Translate (move) |
-| `E` | Rotate |
-| `R` | Scale |
+| Select Mode | `Q` |
+| Translate Mode | `W` |
+| Rotate Mode | `E` |
+| Scale Mode | `R` |
 
-### Modal transforms (Blender-style)
+## Modal transform
 
-With at least one entity selected (and the viewport in Scene mode), these start a real-time modal transform driven by mouse movement.
+Press the key, move the mouse, click to confirm or `Esc` to cancel.
 
-| Key | Action |
+| Action | Key |
 |---|---|
-| `G` | Grab (move) |
-| `R` | Rotate |
-| `S` | Scale |
-
-While a modal transform is active:
-
-| Key | Action |
-|---|---|
-| `X` / `Y` / `Z` | Constrain to that axis |
-| `Shift+X` / `Shift+Y` / `Shift+Z` | Constrain to the opposite plane |
-| Type digits / `.` / `-` | Enter a precise value |
-| `Enter` or left-click | Confirm |
-| `Esc` or right-click | Cancel |
+| Grab (move) | `G` |
+| Rotate | `R` |
+| Scale | `S` |
 
 ## Selection
 
-Mouse picking happens in the viewport; the keyboard handles the rest.
-
-| Input | Action |
+| Action | Key |
 |---|---|
-| Left-click | Select (replace) |
-| `Ctrl+Click` | Toggle selection |
-| `Shift+Click` | Add to selection |
-| Left-drag | Box (marquee) select |
-| `Esc` | Deselect all |
-| `Ctrl+A` | Select all |
-| `X` | Select under cursor |
-| `V` | Move selection to cursor |
-| `Ctrl+D` | Duplicate |
-| `Alt+D` | Duplicate and move (starts a modal grab) |
-| `Delete` | Delete |
-| `F2` | Rename |
-| `H` / `Shift+H` | Hide selected / isolate selected |
-
-## Hierarchy
-
-These act on the selected row, and only while the Hierarchy is the panel you last clicked in — so the same keys stay free for the 2D nudge in the viewport, frame-stepping in the Timeline, and arrow-key panel scrolling everywhere else.
-
-| Key | Action |
-|---|---|
-| `↑` / `↓` | Move the selection to the previous / next visible row |
-| `→` | Expand the selected branch; step into its first child if it's already open |
-| `←` | Collapse the selected branch; step out to the parent if it's already closed |
-| `F2` | Rename in place (double-clicking the row's **name** does the same) |
-
-`↑`/`↓` walk what you can see: a collapsed branch is stepped *past*, not through, and the list scrolls to follow the selection when it reaches an edge. `Shift`+`↑`/`↓` doesn't extend the selection — use `Shift`+click for a range.
-
-Only the name itself starts a rename. A double-click in the empty space beside it is two ordinary row clicks, so it folds the branch open and shut again rather than opening a text field you didn't ask for.
-
-> Clicking a row also folds it open (and shut again when the click deselects it). Turn that off at **Settings → Interface → Hierarchy → Toggle on Click** to leave folding entirely to the caret and these two keys.
+| Select Under Cursor | `X` |
+| Select All | `Ctrl+A` |
+| Deselect | `Esc` |
+| Delete | `Delete` |
+| Duplicate | `Ctrl+D` |
+| Duplicate and Move | `Alt+D` |
+| Rename | `F2` |
+| Hide Selected | `H` |
+| Isolate Selected | `Shift+H` |
+| Move Selection to Cursor | `V` |
 
 ## Edit
 
-| Key | Action |
+| Action | Key |
 |---|---|
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `Ctrl+C` / `Ctrl+V` | Copy / Paste |
-| `Ctrl+A` | Create node |
-
-> Undo/redo are command-based (`renzora_undo`). Redo defaults to `Ctrl+Y` — there is no `Ctrl+Shift+Z` binding out of the box. History is per-context (scene, material graph, blueprint, …), depth-capped at 500, and exposed in the History panel.
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Y` |
+| Copy | `Ctrl+C` |
+| Paste | `Ctrl+V` |
+| Create Node | `Ctrl+A` |
 
 ## File
 
-| Key | Action |
+| Action | Key |
 |---|---|
-| `Ctrl+N` | New scene |
-| `Ctrl+O` | Open scene |
-| `Ctrl+S` | Save scene; also saves the open material graph when the Material Graph panel is a visible tab (`material_graph.save`, rebindable) |
-| `Ctrl+Shift+S` | Save scene as |
-| `Ctrl+,` | Open Settings |
+| New Scene | `Ctrl+N` |
+| Open Scene | `Ctrl+O` |
+| Save Scene | `Ctrl+S` |
+| Save Scene As | `Ctrl+Shift+S` |
+| Settings | `Ctrl+,` |
 
 ## View
 
-| Key | Action |
+| Action | Key |
 |---|---|
-| `Alt+Z` | Toggle wireframe |
-| `Alt+Shift+Z` | Toggle lighting |
-| `Ctrl+G` | Toggle grid |
-| `Ctrl+Space` | Toggle bottom panel — slides open to 40% of the editor's height |
-| `T` | Toggle snap |
-| `Shift+T` | Toggle edge snap |
-| `Alt+T` | Toggle scale-from-bottom |
-| `Ctrl+0` | Reset UI scale to 100% |
+| Toggle Bottom Panel | `Ctrl+Space` |
+| Toggle Grid | `Ctrl+G` |
+| Toggle Wireframe | `Alt+Z` |
+| Toggle Lighting | `Alt+Shift+Z` |
+| Toggle Snap | `T` |
+| Toggle Edge Snap | `Shift+T` |
+| Toggle Scale From Bottom | `Alt+T` |
+| Reset UI Scale | `Ctrl+0` |
 
-> Wireframe is `Alt+Z` (not bare `Z`) and lighting is `Alt+Shift+Z`. Plain `Z` was dropped because it clashed with `Ctrl+Z` and the gizmo tool keys.
+### View angles
+
+| Action | Key |
+|---|---|
+| View Front | `Numpad 1` |
+| View Back | `Ctrl+Numpad 1` |
+| View Right | `Numpad 3` |
+| View Left | `Ctrl+Numpad 3` |
+| View Top | `Numpad 7` |
+| View Bottom | `Ctrl+Numpad 7` |
+| Toggle Orthographic / Perspective | `Numpad 5` |
 
 ## Play
 
-| Key | Action |
+| Action | Key |
 |---|---|
-| `F5` | Play / Stop |
+| Play / Stop | `F5` |
 
 ## Code editor
 
-These apply when the **Code** panel has keyboard focus (category "Code Editor"). Several reuse chords that mean something else in the viewport (`Ctrl+S`, `Ctrl+G`, `Ctrl+D`, `Ctrl+Space`) — focus decides which action fires.
-
-| Key | Action |
+| Action | Key |
 |---|---|
-| `Ctrl+S` / `Ctrl+Shift+S` | Save file / save all |
-| `Ctrl+W` | Close tab |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
-| `Ctrl+F` / `Ctrl+H` | Find / replace |
-| `Ctrl+G` | Go to line |
-| `Ctrl+/` / `Ctrl+Shift+/` | Toggle line / block comment |
-| `Ctrl+Space` | Trigger autocomplete |
-| `Ctrl+D` | Select next occurrence |
-| `Ctrl+Shift+D` | Duplicate line |
-| `Ctrl+Shift+K` | Delete line |
-| `Alt+Up` / `Alt+Down` | Move line up / down |
-| `Ctrl+Alt+Up` / `Ctrl+Alt+Down` | Add cursor above / below |
-| `Shift+Esc` | Clear extra cursors |
-| `F12` | Go to definition |
-| `Ctrl+Shift+F` | Format document |
-| `Ctrl+Alt+D` | Show diff vs saved |
-| `Ctrl+Shift+[` | Toggle fold |
-| `Ctrl+\` | Split editor right |
+| Save File | `Ctrl+S` |
+| Save All Files | `Ctrl+Shift+S` |
+| Close Tab | `Ctrl+W` |
+| Next Tab | `Ctrl+Tab` |
+| Previous Tab | `Ctrl+Shift+Tab` |
+| Split Editor Right | `Ctrl+\` |
+| Find | `Ctrl+F` |
+| Replace | `Ctrl+H` |
+| Go to Line | `Ctrl+G` |
+| Go to Definition | `F12` |
+| Autocomplete | `Ctrl+Space` |
+| Toggle Line Comment | `Ctrl+/` |
+| Toggle Block Comment | `Ctrl+Shift+/` |
+| Select Next Occurrence | `Ctrl+D` |
+| Duplicate Line | `Ctrl+Shift+D` |
+| Delete Line | `Ctrl+Shift+K` |
+| Move Line Up | `Alt+Up` |
+| Move Line Down | `Alt+Down` |
+| Add Cursor Above | `Ctrl+Alt+Up` |
+| Add Cursor Below | `Ctrl+Alt+Down` |
+| Clear Extra Cursors | `Shift+Esc` |
+| Format Document | `Ctrl+Shift+F` |
+| Show Diff vs Saved | `Ctrl+Alt+D` |
+| Toggle Fold | `Ctrl+Shift+[` |
 
-## Customizing shortcuts
+## Elsewhere
 
-Open **Settings → Shortcuts** (or `Ctrl+,` then the *Shortcuts* tab) to rebind any action. Each binding is a key plus the `Ctrl` / `Shift` / `Alt` modifiers, and modifier matching is exact — `Ctrl+S` will not fire if `Shift` is also held. Rebound keys are respected everywhere, including the command palette and programmatic dispatches.
+| Action | Key |
+|---|---|
+| Command palette | `Ctrl+P` |
 
-> Some defaults intentionally overlap: `A` is both *Frame All* and the fly-left key, and `Ctrl+A` is both *Select All* and *Create Node*. Context (whether you are flying, what panel is focused, what is selected) decides which one runs. If a chord feels ambiguous, rebind it here.
+## Rebinding
 
-## Plugin shortcuts
+**Settings > Shortcuts** lists every action, grouped the same way as the tables above. Click a binding and press the keys you want.
 
-Plugins add their own commands through the editor SDK, and they appear in the command palette and the Shortcuts settings automatically. Register a `ShortcutEntry` with a default `KeyBinding`:
+Only the shortcuts you actually change are saved. If a later release moves a default you have not touched, it moves for you too.
 
-```rust
-use bevy::prelude::*;
-use renzora::core::keybindings::KeyBinding;
-use renzora_editor_framework::{AppEditorExt, ShortcutEntry};
-
-fn build(app: &mut App) {
-    app.register_shortcut(ShortcutEntry::new(
-        "my_plugin.do_thing",          // stable id
-        "Do The Thing",                // display name
-        "My Plugin",                   // category
-        KeyBinding::new(KeyCode::KeyP).ctrl().shift(),
-        |world: &mut World| {
-            // handler runs with full &mut World access
-        },
-    ));
-}
-```
-
-The id is stable so user-customized bindings survive plugin reloads. This is exactly how the command palette itself registers `Ctrl+P` (`command_palette.toggle`).
+Plugins can add their own actions, which appear in the same list under their own category.

@@ -2,11 +2,10 @@
 name = "renzora_ragdoll"
 version = "0.1.0"
 edition = "2021"
-description = "Skeletal ragdoll physics distribution plugin. Auto-builds Avian rigid bodies + joints from a GLTF skeleton and toggles bones between animated and physically-simulated."
+description = "Skeletal ragdoll physics. Auto-builds Avian rigid bodies + joints from a GLTF skeleton and toggles bones between animated and physically-simulated."
 
-# Distribution plugin: ships as a standalone .dll/.so/.dylib that
-# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
-# startup, same model as `renzora_cloth`.
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, same model as
+# `renzora_cloth`.
 [lib]
 crate-type = ["rlib"]
 

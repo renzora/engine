@@ -3,8 +3,8 @@
 # Run
 # `cargo renzora` is the native (no-Docker) build+stage+run. It routes through
 # the `xtask` helper instead of a bare `cargo run`, because a bare run leaves the
-# distribution plugin cdylibs flat in target/dist/ where the loader (which scans
-# <exe-dir>/plugins/) never finds them. `xtask` compiles the workspace, stages a
+# shared images flat in target/dist/ rather than beside the executable where the
+# binary looks for them. `xtask` compiles the workspace, stages a
 # clean dist/<platform>/ exactly like the Docker build-all.sh (bevy_dylib +
 # renzora + the editor bundle beside the exe; plugins in plugins/), then launches
 # it. `cargo renzora dist` stages without launching. With rust-toolchain.toml
@@ -96,19 +96,20 @@ build-ios-sim = "build --profile dist --target aarch64-apple-ios-sim -p renzora-
 build-tvos = "build --profile dist --target aarch64-apple-tvos -p renzora-ios"
 build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzora-ios"
 
-# ── Linking model: everything is static ─────────────────────────────────────
-# Workspace plugin crates are rlib-only and link statically into the host
-# binary; third-party plugins are standalone C-ABI cdylibs that link no Bevy and
-# share nothing with it. There is no `bevy_dylib`, no `renzora.dll`, and no
-# `TypeId` crossing a dylib boundary any more.
+# ── Linking model ───────────────────────────────────────────────────────────
+# In-workspace plugin crates are rlib-only and link statically into the host
+# binary. An INSTALLED plugin is a `dylib` that links the real Bevy and the real
+# contract crate, so it must share them with the host: `dynamic_linking` is in
+# the root manifest's default feature set and pulls `bevy_dylib`,
+# `renzora_dylib` and `renzora_ember_dylib`, which stage beside the executable.
+# That is what makes one `World` type, one translation table and one theme
+# palette per process.
 #
-# So there is no `prefer-dynamic` here, and there must not be. The comment this
-# replaces described one at length; the flag itself had already gone from this
-# file, but it survived in the Docker images until 2026-08 — where its only
-# remaining effect was to make every shipped binary import a toolchain-hashed
-# `std-<hash>.dll` that then had to be shipped beside it. See
-# `plugins/.cargo/config.toml` for why that filename is a trap, and
-# `docker/build-all.sh` for the staging helper that existed only to feed it.
+# `prefer-dynamic` is NOT set here, and must not be: it arrives with
+# `bevy/dynamic_linking` where it belongs. Setting it in this file applies it to
+# every target including the ones that must stay static, and its only extra
+# effect is to make a binary import a toolchain-hashed `std-<hash>.dll` that
+# then has to ship beside it.
 #
 # `crt-static` IS set, on both Windows triples below, and the reason is that
 # Windows does not ship the runtime a dynamic one would need.
@@ -153,9 +154,10 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 #     export, which sets CARGO_ENCODED_RUSTFLAGS and so replaces this file
 #     rather than merging with it.
 #
-# A third-party C-ABI plugin cdylib built without it still imports VCRUNTIME140
-# and will not load on a machine with no redistributable. That is the author's
-# to fix, and `docs/r1-alpha8/extending/standalone-plugins.md` now says so.
+# A plugin built without it still imports VCRUNTIME140 and will not load on a
+# machine with no redistributable. An installed plugin is compiled by the
+# editor's own driver, which passes `+crt-static`, so this only bites a library
+# somebody built by hand and dropped in.
 
 # Path scrubbing: panic `Location`s (and debuginfo) embed the source paths of
 # the machine that BUILT the binary — without remapping, a shipped release
@@ -227,7 +229,7 @@ rustflags = [
 ]
 
 # macOS: embed @loader_path so the binary finds bevy_dylib, renzora.dylib,
-# and any dlopen'd distribution plugin next to itself.
+# and any installed plugin next to itself.
 [target.aarch64-apple-darwin]
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path",
@@ -243,7 +245,7 @@ rustflags = [
 ]
 
 # Linux: mold linker + $ORIGIN rpath so the binary finds bevy_dylib,
-# renzora.so, and any dlopen'd distribution plugin next to itself.
+# renzora.so, and any installed plugin next to itself.
 #
 # `-fuse-ld=mold`, never the absolute `/usr/bin/mold`: clang has rejected a path
 # in -fuse-ld since 12 ("invalid linker name in argument"), and on a NixOS host

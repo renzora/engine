@@ -75,8 +75,7 @@ struct Credit {
 
 /// The vendored community crates that live under `crates/` (everything not
 /// prefixed `renzora_`), plus Bevy itself as the foundation. In-house helpers
-/// (`dynamic_plugin_loader`, `mcp_server_plugin`, `websocket_plugin`) are
-/// omitted — they're ours, not third-party attributions. Authors/URLs were
+/// are omitted — they're ours, not third-party attributions. Authors/URLs were
 /// taken from each crate's `Cargo.toml`/`LICENSE`; keep this in sync when a
 /// vendored crate is added or removed.
 const CREDITS: &[Credit] = &[

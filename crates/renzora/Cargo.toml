@@ -4,11 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora — types, events, and contracts shared across the engine."
 
-# rlib. `renzora` was a dylib so the host and every dlopen'd distribution
-# plugin linked one compiled copy of these contracts — one global plugin
-# registry, one `TypeId` per boundary-crossing type. Nothing is dlopen'd against
-# Bevy any more (the editor is a binary, third-party extensions are C-ABI
-# plugins that link no Bevy), so there is no second consumer to share with.
+# rlib. The one compiled copy every consumer shares is `renzora_dylib`, which
+# depends on this crate for that side effect alone; a dylib here as well would
+# be a second image with a second set of the process-global statics.
 [lib]
 crate-type = ["rlib"]
 
@@ -37,9 +35,8 @@ text_mesh = []
 # Gated like `text_mesh` so a lean build that draws no grid compiles none of it.
 grid = []
 # `AudioLink` (`renzora::audio`) — the engine side of the audio boundary, so any
-# plugin can play a sound. The backend is still reached across the C ABI (today
-# `renzora_audio_backend`, linked in) and the mixer/timeline/emitters are still
-# `renzora_audio`; only the link is here.
+# plugin can play a sound. The backend behind it is `renzora_audio_backend` and
+# the mixer/timeline/emitters are `renzora_audio`; only the link is here.
 audio = []
 # What the debug panels read: the material and script perf tables, plus the two
 # count resources their owners publish. Here so those panels can be a native
@@ -95,31 +92,14 @@ render_3d = []
 # Losing the anchors only loosens ordering — the phases still run, and ordering
 # against a system that isn't in the schedule is a no-op anyway.
 antialiasing = ["render_3d"]
-# Note on the `dlopen` mechanism: distribution plugins (cdylib + dlopen)
-# need the FFI exports `plugin_create`, `plugin_scope`, `plugin_bevy_hash`
-# from `renzora::add!`. The macro gates those exports behind
-# `cfg(feature = "dlopen")`. Crucially, `cfg(feature = ...)` in a macro
-# body resolves against the *calling* crate's features at expansion site,
-# not against this crate's. So each distribution plugin must declare its
-# own `dlopen = []` feature (and turn it on by default) — adding `features
-# = ["dlopen"]` to the renzora dep does nothing on its own.
-
 [dependencies]
 # `renzora` is the king of the engine — every other crate depends on it,
 # nothing depends back. The dep list stays at bevy + serialization only so
 # adding a new feature crate can never introduce a cycle, and bumping any
-# feature crate never forces a renzora rebuild (or an ABI break for
-# plugins that don't use that crate).
+# feature crate never forces a renzora rebuild (which would restamp every
+# installed plugin and rebuild the lot).
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-# The HTTP request/event vocabulary for `net`. The `net` feature is `["std"]` and
-# nothing else — no bevy, no libloading — and `renzora_plugin` does not depend on
-# this crate, so there is no cycle. The actual client stays behind the C-ABI
-# boundary in `plugins/http`; see `src/net.rs` for why the queue has to be here.
-# `audio` is the same arrangement one subsystem over: the play/stop request
-# vocabulary for `src/audio.rs`, with the actual mixer behind the C-ABI boundary
-# in `renzora_audio_backend`. Both features are `["std"]` and nothing else.
-renzora_plugin = { path = "../renzora_plugin", default-features = false, features = ["net", "audio"] }
 # `Request::json` / `Response::json`. Came across with `net`; every caller was
 # already hand-rolling the same encode/decode a line later.
 serde_json = "1"

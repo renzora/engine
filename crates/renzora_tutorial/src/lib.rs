@@ -1,7 +1,7 @@
 //! `renzora_tutorial` — the interactive first-run onboarding plugin.
 //!
-//! An **editor-only** distribution plugin (`renzora::add!(_, Editor)`, shipped as
-//! an rlib member of the `renzora_editor` bundle) that teaches the engine as a
+//! An **editor-only** plugin (`renzora::add!(_, Editor)`, linked into the
+//! `renzora_editor` image) that teaches the engine as a
 //! set of short, independent **chapters** — Getting Started, Building a Scene,
 //! Scripting, Materials, Your Workspace, The Marketplace, Play Mode — each a
 //! run of *hands-on tasks*. A task is satisfied by the user **actually

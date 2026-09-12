@@ -2,12 +2,11 @@
 name = "renzora_cloth"
 version = "0.1.0"
 edition = "2021"
-description = "Cloth physics (verlet) distribution plugin. Wraps the vendored bevy_silk engine and ships as a dlopen plugin in plugins/, like the postprocess effects."
+description = "Cloth physics (verlet). Wraps the vendored bevy_silk engine."
 
-# Distribution plugin: ships as a standalone .dll/.so/.dylib that
-# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
-# startup. cdylib keeps the export surface to the unmangled `extern "C"`
-# symbols emitted by `renzora::add!` under the `dlopen` feature.
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list and the linker pulls straight
+# into the binary.
 [lib]
 crate-type = ["rlib"]
 

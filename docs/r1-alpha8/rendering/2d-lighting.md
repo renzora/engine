@@ -2,7 +2,7 @@
 
 Renzora ships dynamic **2D lighting** — point lights, shadow-casting occluders,
 soft shadows, occlusion z-sorting, light banding, and normal maps — as the
-optional **`renzora_light2d`** distribution plugin. It wraps the vendored
+optional **`renzora_light2d`** plugin. It wraps the vendored
 [bevy_firefly](https://github.com/PVDoriginal/firefly) crate and integrates it
 with the editor: everything is authored as ordinary scene data and saved in the
 scene file like any other component.

@@ -3,45 +3,27 @@
 //!
 //! "Native" as in *native API*: one of these links the real Bevy and the real
 //! contract crate, so it takes `&mut World`, calls `app.add_systems`, and sees
-//! the same `Transform` the engine does. The C-ABI plugins in `renzora_plugin`
-//! are equally native *code* — the distinction is that they share no types and
-//! reach the engine through a fixed function table instead.
-//!
-//! # Both kinds live in `plugins/`, and neither loader needs to know
-//!
-//! To a user they are all just plugins, and the directory reflects that. The two
-//! loaders never collide because both are symbol-dispatched and they do not even
-//! look at the same shape of thing: the C-ABI loader does a non-recursive
-//! `read_dir` filtered to the library extension, so a plugin *directory* is
-//! invisible to it, while this one only considers directories containing
-//! `src/lib.rs`. A built library sits under `<name>/build/`, one level below
-//! anything the C-ABI scan reaches.
+//! the same `Transform` the engine does.
 //!
 //! ```text
 //! <exe dir>/
 //!   bevy_dylib-<hash>.dll   renzora_dylib.dll     the shared images
-//!   sdk/                                          blueprints, optional
+//!   sdk/                                          what plugins compile against
 //!   plugins/
-//!     grayscale.dll                               C-ABI: prebuilt, 52 KB
-//!     lua.dll                                     C-ABI
-//!     spin-thing/                                 native: shipped as source
+//!     spin-thing/                                 shipped as source
 //!       src/lib.rs                                  what the marketplace sent
 //!       build/spin_thing.dll                        what rustc produced
 //!       build/stamp.txt                             what it was built against
 //! ```
 //!
-//! # Why the C-ABI mechanism is still needed
+//! # A plugin needs the shared images, so a lean export loads none
 //!
-//! Not a missing feature — a structural difference. A native plugin links the
-//! shared `bevy_dylib` and `renzora_dylib`; a lean export drops
-//! `dynamic_linking` and has neither, so a shipped game cannot load one, and nor
-//! can wasm or mobile where dylibs do not exist at all. A C-ABI plugin links no
-//! Bevy, is tens of KB, loads into any build, and can be linked *into* a static
-//! binary via `static_plugins` — which is how `plugins/lua` reaches a shipped
-//! game.
-//!
-//! So a native plugin extends the editor with full ECS access; a C-ABI plugin
-//! ships inside the game. Two mechanisms because there are two deployments.
+//! Linking the real Bevy is only sound because the engine and the plugin share
+//! one `bevy_dylib` and one `renzora_dylib`. A lean export drops
+//! `dynamic_linking` and has neither, and wasm and mobile have no dylibs at all,
+//! so there is nothing there for a plugin to bind to. The loader still walks the
+//! directory in those builds and records why each plugin was declined, rather
+//! than finding nothing and saying nothing.
 //!
 //! # Why a stamp instead of trusting the file
 //!
@@ -63,12 +45,11 @@
 //!
 //! Every system a plugin registered is a function pointer into its image, and a
 //! Bevy schedule holds those for the life of the `App`. Unmapping the image
-//! turns them into dangling pointers. `renzora_plugin`'s loader learned this the
-//! hard way twice — once as a `FreeLibrary` deadlock, once as a 0xC0000005 at
-//! process teardown when a plain `Vec<Library>` was dropped with the World — so
-//! the handles here are `ManuallyDrop` for the same reason: "never dropped" has
-//! to include the last moment of the process, which is exactly the moment a
-//! plain field does not give you.
+//! turns them into dangling pointers. This engine learned it the hard way twice
+//! — once as a `FreeLibrary` deadlock, once as a 0xC0000005 at process teardown
+//! when a plain `Vec<Library>` was dropped with the World — so the handles here
+//! are `ManuallyDrop`: "never dropped" has to include the last moment of the
+//! process, which is exactly the moment a plain field does not give you.
 
 use std::path::{Path, PathBuf};
 
@@ -81,14 +62,13 @@ use std::path::{Path, PathBuf};
 /// `renzora_editor_app`'s) are gated to match.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod prebuild;
-pub mod standalone;
 
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use libloading::{Library, Symbol};
 #[cfg(target_arch = "wasm32")]
 use wasm_dl::{Library, Symbol};
-use renzora::{PluginKind, PluginState};
+use renzora::PluginState;
 use renzora_plugin_build::{Error as BuildError, Sdk};
 
 /// `libloading`'s shape, for a platform that has no dynamic loading at all.
@@ -101,8 +81,7 @@ use renzora_plugin_build::{Error as BuildError, Sdk};
 ///
 /// The alternative was `#[cfg]`-ing the loading half of a 700-line file out,
 /// which would have meant gating every caller for a platform where they all
-/// correctly find nothing anyway. This is the same shim, and the same reasoning,
-/// as `renzora_plugin::host::loader`'s.
+/// correctly find nothing anyway.
 ///
 /// Opening always fails, so no plugin is ever found, and `Symbol` can never be
 /// constructed — which is what makes its `Deref` unreachable rather than wrong.
@@ -150,9 +129,9 @@ mod wasm_dl {
 
 /// The one symbol a Rust plugin must export.
 ///
-/// Symbol-dispatched like the C-ABI loader: a library without it is not a
-/// plugin, and is skipped rather than treated as an error. Includes the trailing
-/// NUL so it can go straight to `Library::get`.
+/// Symbol-dispatched: a library without it is not a plugin, and is skipped
+/// rather than treated as an error. Includes the trailing NUL so it can go
+/// straight to `Library::get`.
 pub const CTOR_SYMBOL: &[u8] = b"renzora_native_plugin_ctor\0";
 
 /// Where a plugin says it may load, written by `renzora::plugin!`.
@@ -184,6 +163,7 @@ type ScopeFn = extern "C" fn() -> u8;
 /// loader lock. In the editor this is usually a second handle on an image
 /// already mapped, so the cost is a refcount.
 /// One native plugin that has been built and can be loaded or shipped.
+#[derive(Clone, Debug)]
 pub struct InstalledNativePlugin {
     /// The directory name, which is the id everything else keys on — the
     /// Settings disable list, the export selection, the thumbnail path.
@@ -284,18 +264,12 @@ pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
 /// guarantee that precondition still holds at the moment of the call.
 type Ctor = fn() -> Box<dyn Plugin>;
 
-// NOT `renzora::add!`. The generated list is added by `add_engine_plugins`, and
-// this has to run AFTER `RenzoraPluginHostPlugin` — a standalone plugin resolves
-// its host-component mirrors during that plugin's `build`, so a scan that loaded
-// one earlier would find nothing exposed and refuse every mirror it declares.
-//
-// So the two binaries add this by hand, immediately after the host. That also
-// makes the order visible where the rest of the boot sequence is, rather than at
+// NOT `renzora::add!`. The two binaries add this by hand, late in assembly, so
+// the order is visible where the rest of the boot sequence is rather than at
 // whatever position a generated alphabetical list happened to put it.
 
 /// Scans `<exe dir>/plugins/` for plugin directories, rebuilds what is stale,
-/// and installs the rest. Loose `.dll` files there belong to the C-ABI loader
-/// and are not looked at.
+/// and installs the rest.
 ///
 /// All of it happens in `build`, because a Bevy plugin can only be added while
 /// the `App` is being assembled. A rebuild is therefore synchronous and holds
@@ -358,17 +332,11 @@ impl Plugin for NativePluginLoader {
         // with no handshake, and by the time anything could be inspected the
         // damage is done. So the gate is the same compile-time switch that puts
         // the shared images in the build.
-        // NOT an early return. This gate belongs to the NATIVE half alone, and
-        // moving the C-ABI scan in here put every plugin behind it — so a
-        // statically linked runtime, which is every exported game, silently
-        // loaded none of them. Shipping the files and loading nothing is the
-        // worst shape that failure can take: the picker listed them, the export
-        // copied them, and the game has no effects and says nothing.
         //
-        // A standalone plugin links no Bevy and reaches the engine through a
-        // function table passed in at load. Whether the host shares its images
-        // with anyone is not a question it can even ask, which is the entire
-        // point of the mechanism.
+        // NOT an early return: a build without them still walks the directory,
+        // so every plugin it declines gets a card in Settings saying why. The
+        // worst shape this failure can take is silence — the picker listed them,
+        // the export copied them, and the game has no effects and says nothing.
         let shared_images = cfg!(feature = "dynamic_linking");
 
         let Some(root) = self.root.clone().or_else(exe_dir) else {
@@ -403,56 +371,29 @@ impl Plugin for NativePluginLoader {
 
         let mut libraries = Vec::new();
 
-        // ONE pass over `plugins/`, for both kinds. The directory holds native
-        // plugins and standalone C-ABI ones in the same layout — `<id>/` with a
-        // `build/<id>.<ext>` inside — so "which loader owns this" is a question
-        // about the artefact, not about where it sits.
-        //
-        // It was two passes, and the invariant that kept them apart was
-        // structural: one scanned loose files, the other directories. That
-        // structure is gone, and a shared layout with two independent scans is
-        // the arrangement where a plugin converted from one kind to the other
-        // gets loaded twice or not at all.
-        //
-        // The dispatch is a byte search over the export table, done before
-        // anything is mapped. An exported name appears verbatim in a PE, an ELF
-        // and a Mach-O alike, so it settles ownership with no format parsing —
-        // and mapping first would mean either leaking every declined image or
-        // unmapping one whose static initializers have already run, which is the
-        // `FreeLibrary` deadlock both loaders are written around.
-        let linked = app
-            .world()
-            .get_resource::<renzora_plugin::host::loader::LinkedPluginIds>()
-            .map(|l| l.0.clone())
-            .unwrap_or_default();
-
         // Asked per DIRECTORY rather than per root, because `plugin_entries` has
         // already settled which directory each plugin name resolves to — a
         // bundled plugin is invisible here once the user has installed their own
         // copy of it.
-        let built: Vec<(String, PathBuf, PathBuf)> = entries
-            .iter()
-            .filter_map(|entry| {
-                renzora_plugin::host::loader::artefact_in(entry)
-                    .map(|lib| (name_of(entry), entry.clone(), lib))
-            })
-            .collect();
+        //
+        // Every entry, NOT only the ones with a compiled artefact. This loop used
+        // to be built from a `filter_map` over `artefact_in`, which dropped any
+        // plugin that had never been built before the disabled check below could
+        // record it — and `prebuild` deliberately does not build a disabled one.
+        // The two together made a disabled, never-built plugin unreachable: no
+        // artefact, so no inventory entry, so no card in Settings, so no way to
+        // turn it back on short of hand-editing `settings.toml`.
+        for entry in &entries {
+            let name = name_of(entry);
+            let artefact = artefact_in(entry);
 
-        for (name, entry, artefact) in built {
-
-            // Which mechanism owns this, for the inventory the editor shows.
-            // Read from the manifest first because that answer is available even
-            // for a plugin that is disabled or has never been built; the symbol
-            // sniff covers a prebuilt plugin shipped inside a game, which has no
-            // source to read.
-            let kind = if is_standalone_source(&entry)
-                || (!is_native_source(&entry)
-                    && renzora_plugin::host::loader::exports_plugin_init(&artefact))
-            {
-                PluginKind::Standalone
-            } else {
-                PluginKind::Native
-            };
+            // A directory is only a plugin if it says so in source or has
+            // something built in it. `plugin_entries` returns every non-dot
+            // directory, so without this an unrelated folder someone dropped in
+            // `plugins/` would get a card of its own.
+            if !is_native_source(entry) && artefact.is_none() {
+                continue;
+            }
 
             // Checked before anything else touches the directory, so a disabled
             // plugin costs nothing at all: no rebuild when its stamp is stale,
@@ -461,18 +402,26 @@ impl Plugin for NativePluginLoader {
             // leave it half-running.
             if disabled.iter().any(|d| d == &name) {
                 info!("[plugin] {name} is disabled — Settings → Editor → Plugins");
-                record(app, &name, kind, PluginState::Disabled);
-                continue;
-            }
-            if linked.iter().any(|l| l == &name) {
-                info!("[plugin] ignoring {name} in plugins/ — this build links it in");
+                record(app, &name, PluginState::Disabled);
                 continue;
             }
 
-            if renzora_plugin::host::loader::exports_plugin_init(&artefact) {
-                load_standalone(app, &name, &artefact, in_editor);
+            // Enabled, with source, and nothing built. `prebuild` runs before the
+            // `App` exists precisely so this does not happen, so reaching it means
+            // it could not: no SDK yet, or the build failed and left its
+            // `failed.txt`. Recorded rather than skipped silently, so the card
+            // says why instead of the plugin simply not being there.
+            let Some(artefact) = artefact else {
+                let why = if sdk.is_none() {
+                    "has not been built — no SDK is installed (Settings → Plugins)".to_string()
+                } else {
+                    "has not been built yet — restart to build it".to_string()
+                };
+                info!("[plugin] {name} {why}");
+                record(app, &name, PluginState::Skipped(why));
                 continue;
-            }
+            };
+            let _ = &artefact;
 
             // A native plugin links the real Bevy and can only load into a host
             // that shares the same image. A static build has its own, so the two
@@ -483,20 +432,20 @@ impl Plugin for NativePluginLoader {
             if !shared_images {
                 let why = "is a native plugin and this build links no shared engine image";
                 debug!("[plugin] skipping {name} — {why}");
-                record(app, &name, kind, PluginState::Skipped(why.to_string()));
+                record(app, &name, PluginState::Skipped(why.to_string()));
                 continue;
             }
 
-            match load_one(&entry, sdk.as_ref(), expected.as_deref(), in_editor) {
+            match load_one(entry, sdk.as_ref(), expected.as_deref(), in_editor) {
                 Ok(Outcome::Skipped(why)) => {
                     info!("[plugin] {name} {why}");
-                    record(app, &name, kind, PluginState::Skipped(why));
+                    record(app, &name,PluginState::Skipped(why));
                 }
                 Ok(Outcome::Loaded((plugin, lib))) => {
                     // Held for the life of the process. See the module doc.
                     libraries.push(std::mem::ManuallyDrop::new(lib));
                     app.add_plugins(Boxed(plugin));
-                    record(app, &name, kind, PluginState::Loaded);
+                    record(app, &name,PluginState::Loaded);
                 }
                 Ok(Outcome::NotAPlugin) => {}
                 Err(e) => {
@@ -509,7 +458,7 @@ impl Plugin for NativePluginLoader {
                         "Plugin",
                         format!("{name}\n{e}"),
                     );
-                    record(app, &name, kind, PluginState::Failed(e));
+                    record(app, &name,PluginState::Failed(e));
                 }
             }
         }
@@ -534,8 +483,8 @@ pub struct LoadedNativePlugins {
 /// directory a plugin, and did it load?" is this loader's question — a second
 /// implementation in the UI would list a different set the first time either
 /// side's rules changed.
-fn record(app: &mut App, name: &str, kind: PluginKind, state: PluginState) {
-    renzora::record_plugin(app.world_mut(), name, kind, state);
+fn record(app: &mut App, name: &str, state: PluginState) {
+    renzora::record_plugin(app.world_mut(), name, state);
 }
 
 /// A constructed plugin and the image it came from, which must outlive it.
@@ -583,17 +532,8 @@ struct Layout {
 ///
 /// Rebuild when the stamp is absent, stale, or the artifact is missing.
 ///
-/// `expected` is None in two cases, and they mean the same thing here: no SDK is
-/// installed, so there is nothing to compare against and an existing artifact is
-/// the best available — or the plugin is **standalone**, for which no such
-/// comparison exists at all.
-///
-/// That second case is the C ABI's whole premise rather than an omission. A
-/// standalone artefact is bound to no engine build and no compiler: one built by
-/// rustc 1.90 loads into an editor built by 1.95, and keeps loading into every
-/// later release whose ABI MAJOR matches. Stamping it against the local compiler
-/// would make it behave as though it were bound to one — every plugin rebuilding
-/// because the user updated Rust, to produce a file that does the same thing.
+/// `expected` is None when no SDK is installed: there is nothing to compare
+/// against, so an existing artifact is the best available.
 ///
 /// The stamp catches "the engine moved" — a native plugin's case, where the
 /// source has not changed at all but the artifacts it was built against have.
@@ -648,9 +588,8 @@ fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
             // Same SDK, and nothing edited since the attempt: it would fail
             // identically, so don't spend the compile finding that out.
             (Some(want), Some(have)) => want == have && !source_newer_than(dir, &fail_path),
-            // A build with nothing to be stale against — a standalone plugin,
-            // see the note above. There is no engine version that could change
-            // the outcome, so the record stands until the source is edited.
+            // No SDK, so nothing about the engine can change the outcome: the
+            // record stands until the source is edited.
             //
             // This arm is load-bearing rather than tidy. Without it a plugin that
             // does not compile is retried on every launch, and since a pending
@@ -765,24 +704,15 @@ fn load_one(
 
     // Decline a library that is not ours BEFORE mapping it, not after.
     //
-    // `plugins/` holds both kinds and, since they share one layout, both put
-    // their artefact at `<dir>/build/<dir>.<ext>` — so this loader now walks
-    // right past a standalone plugin's library on the way to a native one. The
-    // old guarantee that "the two loaders cannot collide" was structural (one
-    // scanned loose files, the other directories) and that structure is gone;
-    // this is its replacement, and it is a better one, because it asks what the
-    // file *is* rather than where it sits.
-    //
     // Doing it after `Library::new` would not do. Opening an image runs its
     // static initializers, and the `Err` arm below can then only leak it —
-    // unmapping a half-warmed image is the `FreeLibrary` deadlock. Sixty-five
-    // standalone plugins declined that way is sixty-five images initialised and
-    // held for the life of the process, every launch.
+    // unmapping a half-warmed image is the `FreeLibrary` deadlock. Every library
+    // declined that way is an image initialised and held for the life of the
+    // process, every launch.
     //
-    // A byte search over the file rather than a symbol lookup, matching
-    // `renzora_plugin`'s loader: an exported name appears verbatim in the export
-    // table of a PE, an ELF and a Mach-O alike, so this settles it with no
-    // format parsing and nothing mapped.
+    // A byte search over the file rather than a symbol lookup: an exported name
+    // appears verbatim in the export table of a PE, an ELF and a Mach-O alike,
+    // so this settles it with no format parsing and nothing mapped.
     if !exports_ctor(&lib_path) {
         return Ok(Outcome::NotAPlugin);
     }
@@ -793,17 +723,17 @@ fn load_one(
     let lib = unsafe { Library::new(&lib_path) }.map_err(|e| e.to_string())?;
     let ctor: Symbol<Ctor> = match unsafe { lib.get(CTOR_SYMBOL) } {
         Ok(f) => f,
-        // Not a plugin. Skipped silently, matching the C-ABI loader: a library
-        // that does not export the entry point is simply not ours.
+        // Not a plugin. Skipped silently: a library that does not export the
+        // entry point is simply not ours.
         //
         // Leaked rather than dropped, even here. `Library::new` has already run
         // the image's static initializers — a Rust dylib registers a panic hook
         // and touches std's lazily-initialised globals on the way in — and
         // unmapping it puts a `FreeLibrary` inside the loader lock on a
-        // half-warmed image. That is the exact shape of the deadlock
-        // `renzora_plugin`'s loader hit, and the "nothing registered anything
-        // yet, so it must be safe" reasoning is what made it look fine there
-        // too. One skipped library is a few hundred KB held until exit.
+        // half-warmed image, which has deadlocked here before. The "nothing
+        // registered anything yet, so it must be safe" reasoning is exactly what
+        // made it look fine then. One skipped library is a few hundred KB held
+        // until exit.
         Err(_) => {
             std::mem::forget(lib);
             return Ok(Outcome::NotAPlugin);
@@ -910,91 +840,31 @@ fn exports_ctor(path: &Path) -> bool {
     bytes.windows(needle.len()).any(|w| w == needle)
 }
 
-/// Hand one standalone artefact to the C-ABI loader and record what it said.
+/// The library a built plugin leaves in its directory: `<dir>/build/<id>.<ext>`.
 ///
-/// The translation layer between two vocabularies that cannot be merged: the
-/// C-ABI loader lives in a crate published to crates.io, so it cannot name
-/// `renzora::PluginState` — a path dependency on the contract crate is exactly
-/// what would stop a third-party author running `cargo add renzora_plugin`. It
-/// speaks `LoadOutcome`; this turns that into the inventory the editor reads.
-fn load_standalone(app: &mut App, name: &str, artefact: &Path, in_editor: bool) {
-    const KIND: PluginKind = PluginKind::Standalone;
-    use renzora_plugin::host::loader::{self, LoadOutcome};
-    use renzora_plugin::sys;
-
-    match loader::load_one(app.world_mut(), artefact, in_editor) {
-        LoadOutcome::Loaded => {
-            info!("[plugin] loaded {name}");
-            record(app, name, KIND, PluginState::Loaded);
-        }
-        // Not ours and not anyone's: the file exports the init symbol the sniff
-        // found but would not open, or declined itself.
-        LoadOutcome::NotAPlugin => {}
-        // Unreachable here — the disable check happens above, before the sniff.
-        LoadOutcome::Disabled => {}
-        LoadOutcome::VersionTooOld => {
-            let why = format!(
-                "was built against a newer plugin ABI than this engine (host is {}.{})",
-                sys::VERSION_MAJOR,
-                sys::VERSION_MINOR
-            );
-            warn!("[plugin] {name} {why}");
-            record(app, name, KIND, PluginState::Skipped(why));
-        }
-        // Debug, not warn: a game staged alongside the editor sees every editor
-        // plugin in its `plugins/` directory, and saying so at warn level once
-        // per plugin per launch is noise about something working correctly.
-        LoadOutcome::WrongScope(scope) => {
-            debug!("[plugin] skipping {name} — {scope:?} scope");
-            record(
-                app,
-                name,
-                KIND,
-                PluginState::Skipped(format!("{scope:?}-scope, so it does not load here")),
-            );
-        }
-        LoadOutcome::Failed(why) => {
-            error!("[plugin] {name} failed: {why}");
-            renzora::core::console_log::console_error("Plugin", format!("{name}\n{why}"));
-            record(app, name, KIND, PluginState::Failed(why));
-        }
-    }
+/// `None` when the plugin has never been built, or its build failed.
+pub fn artefact_in(dir: &Path) -> Option<PathBuf> {
+    let id = dir.file_name()?.to_str()?;
+    let lib = dir.join("build").join(format!(
+        "{}.{}",
+        id.replace('-', "_"),
+        std::env::consts::DLL_EXTENSION
+    ));
+    lib.is_file().then_some(lib)
 }
 
-/// Is this directory a STANDALONE (C-ABI) plugin's source?
+/// Is this directory a plugin's source — one this crate can compile?
 ///
-/// The other half of [`is_native_source`], and deliberately the same test read
-/// the other way: `crate-type` is what separates the two mechanisms, so it is
-/// what separates the two builders. A `cdylib` links no Bevy, needs no SDK and
-/// is compiled with plain `cargo` — see [`standalone`].
+/// Source alone is not enough, because `plugins/` holds more than source: a
+/// prebuilt plugin shipped inside a game arrives as a directory with nothing in
+/// it but its `build/`.
 ///
-/// A directory that is neither has nothing to build: it is a prebuilt plugin
-/// shipped inside a game, or not a plugin at all.
-pub fn is_standalone_source(dir: &Path) -> bool {
-    if !dir.join("src").join("lib.rs").is_file() {
-        return false;
-    }
-    let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
-        return false;
-    };
-    text.lines()
-        .filter(|l| l.trim_start().starts_with("crate-type"))
-        .any(|l| l.contains("\"cdylib\""))
-}
-
-/// Is this directory a NATIVE plugin's source — one this crate can compile?
-///
-/// Source alone is not enough, because `plugins/` holds more than one kind of
-/// thing. A C-ABI plugin also ships as a directory with a `src/lib.rs`, and it
-/// is a `cdylib` that links no Bevy and needs no SDK: handed to `Sdk::compile`
-/// it gets `--crate-type dylib`, `--extern bevy` and `-C prefer-dynamic`, and
-/// fails on a `renzora_plugin` it was never given. Which is not merely a wasted
-/// compile — a failing build is what makes `prebuild::needed()` true, so the
-/// editor would show the setup window, build nothing, and restart.
-///
-/// `crate-type` is the test because it already IS the distinction rather than a
-/// convention layered on top. The quoted `"dylib"` matters: `"cdylib"` also ends
-/// in `dylib`, and matching loosely would claim every C-ABI plugin.
+/// `crate-type = ["dylib"]` is the test because it already IS what makes a
+/// directory compilable here, rather than a convention layered on top: the
+/// driver hands it `--crate-type dylib`, `--extern bevy` and
+/// `-C prefer-dynamic`, and anything shaped differently fails. A failing build
+/// is what makes `prebuild::needed()` true, so getting this wrong means the
+/// editor shows the setup window, builds nothing, and restarts.
 ///
 /// A directory with no `Cargo.toml` answers false and is handled a step later:
 /// if it holds a built library it is a shipped-game plugin, and if it holds
@@ -1172,30 +1042,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// `plugins/` holds both kinds of plugin, and only one of them is ours to
-    /// compile. A C-ABI plugin's source is a `cdylib` that links no Bevy: handed
-    /// to the SDK it gets `--extern bevy` and `-C prefer-dynamic` and fails on a
-    /// `renzora_plugin` it was never given — and a failing build is what makes
-    /// `prebuild::needed()` true, so the editor shows the setup window, builds
-    /// nothing, and restarts.
-    ///
     /// Guarding on `crate-type` rather than on the marketplace sidecar because
     /// the manifest is the only thing that knows, and a plugin dropped in by hand
     /// has no sidecar.
-    #[test]
-    fn a_c_abi_plugin_is_not_native_source() {
-        let dir = plugin("cabi");
-        std::fs::write(
-            dir.join("Cargo.toml"),
-            "[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\nrenzora_plugin = \"1\"\n",
-        )
-        .expect("write manifest");
-        assert!(!is_native_source(&dir), "a cdylib must not be built as a native plugin");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// The quoted `"dylib"` is the whole test: `"cdylib"` also ends in `dylib`,
-    /// and a looser match would claim every C-ABI plugin.
     #[test]
     fn a_dylib_plugin_is_native_source() {
         let dir = plugin("native");
@@ -1218,60 +1067,54 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The mirror of the cdylib case, and the reason both tests exist: these two
-    /// predicates route a directory to two different compilers, so one answering
-    /// wrong is not a missed build — it is `cargo` pointed at a Bevy-linking
-    /// plugin, or the SDK pointed at one that links nothing.
+    /// `"cdylib"` also ends in `dylib`, so a loose match would claim a directory
+    /// the driver cannot compile. A failing build is what makes
+    /// `prebuild::needed()` true, so that is the endless setup window.
     #[test]
-    fn crate_type_routes_each_kind_to_one_builder() {
+    fn only_a_dylib_crate_type_is_claimed() {
         let native = plugin("route_native");
         std::fs::write(native.join("Cargo.toml"), "[lib]\ncrate-type = [\"dylib\"]\n").unwrap();
         assert!(is_native_source(&native));
-        assert!(!is_standalone_source(&native));
 
-        let standalone = plugin("route_standalone");
-        std::fs::write(standalone.join("Cargo.toml"), "[lib]\ncrate-type = [\"cdylib\"]\n")
-            .unwrap();
-        assert!(is_standalone_source(&standalone));
-        assert!(!is_native_source(&standalone));
+        let other = plugin("route_cdylib");
+        std::fs::write(other.join("Cargo.toml"), "[lib]\ncrate-type = [\"cdylib\"]\n").unwrap();
+        assert!(!is_native_source(&other));
 
         let _ = std::fs::remove_dir_all(&native);
-        let _ = std::fs::remove_dir_all(&standalone);
+        let _ = std::fs::remove_dir_all(&other);
     }
 
     /// A plugin built somewhere else and dropped in: no source, no manifest,
-    /// just the library. Neither builder claims it, and the loader loads it.
+    /// just the library. Nothing to build, and the loader loads it.
     #[test]
     fn a_prebuilt_plugin_needs_no_builder() {
         let dir = plugin("prebuilt");
         std::fs::remove_file(dir.join("src").join("lib.rs")).unwrap();
         assert!(!is_native_source(&dir));
-        assert!(!is_standalone_source(&dir));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The invariant that used to be structural. Both kinds now put their
-    /// library at the same path, so "is this one of ours" is a question about
-    /// the file's exports — and it has to be answerable without mapping it.
+    /// "Is this one of ours" is a question about the file's exports, and it has
+    /// to be answerable without mapping it: see the note at the call site on why
+    /// declining after `Library::new` leaks an initialised image.
     #[test]
     fn a_library_without_the_ctor_symbol_is_declined() {
         let dir = plugin("symbols");
         let ours = dir.join("native.bin");
-        let theirs = dir.join("standalone.bin");
+        let theirs = dir.join("other.bin");
         // The name as it appears in an export table: no trailing NUL.
         std::fs::write(&ours, b"\x7fELF...renzora_native_plugin_ctor...").unwrap();
-        std::fs::write(&theirs, b"\x7fELF...renzora_plugin_init...").unwrap();
+        std::fs::write(&theirs, b"\x7fELF...some_other_entry_point...").unwrap();
 
         assert!(exports_ctor(&ours));
-        assert!(!exports_ctor(&theirs), "a standalone plugin must not be claimed here");
+        assert!(!exports_ctor(&theirs), "a library that is not ours must not be claimed");
         assert!(!exports_ctor(&dir.join("absent.bin")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A standalone plugin has no stamp to be stale against, so `layout` is asked
-    /// with `expected: None` — and the failure record still has to hold, or a
-    /// plugin that will not compile reopens the setup window on every launch
-    /// forever.
+    /// With no SDK installed `layout` is asked with `expected: None` — and the
+    /// failure record still has to hold, or a plugin that will not compile
+    /// reopens the setup window on every launch forever.
     #[test]
     fn an_unstamped_failure_is_not_retried_until_the_source_moves() {
         let dir = plugin("unstamped");
@@ -1289,9 +1132,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The reason the rule was relaxed: a standalone artefact is bound to no
-    /// compiler and no engine build, so neither moving may cost a rebuild. Only a
-    /// missing artefact or an edited source may.
+    /// With nothing to compare against, only a missing artefact or an edited
+    /// source may cost a rebuild. Whatever a previous build wrote beside the
+    /// library is provenance, not a key.
     #[test]
     fn an_unstamped_artefact_survives_a_changed_toolchain() {
         let dir = plugin("toolchain_moved");

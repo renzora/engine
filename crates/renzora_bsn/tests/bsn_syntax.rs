@@ -21,8 +21,8 @@ struct Health {
 #[reflect(Component)]
 struct Marker;
 
-/// Stands in for a C-ABI plugin component: registered by layout, so it has no
-/// `TypeId` and reflection cannot see it at all.
+/// Registered by layout, so it has no `TypeId` and reflection cannot see it at
+/// all.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Spinner {

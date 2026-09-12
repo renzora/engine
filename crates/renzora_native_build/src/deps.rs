@@ -2,9 +2,8 @@
 //!
 //! A native plugin is otherwise ONE crate compiled by a bare `rustc` against the
 //! SDK — no dependency graph, which is what makes it build in about a second.
-//! That leaves an obvious hole: a plugin cannot use anything from crates.io,
-//! while a C-ABI plugin (built by cargo, linking no Bevy) can use whatever it
-//! likes. This module closes it.
+//! That leaves an obvious hole: a plugin could use nothing from crates.io at
+//! all. This module closes it.
 //!
 //! # Why cargo can be trusted here, when it cannot be trusted with the plugin
 //!
@@ -97,6 +96,21 @@ fn is_engine_crate(name: &str) -> bool {
 /// Compile `plugin_dir`'s third-party dependencies into `build_dir/deps`.
 ///
 /// Returns empty — having run nothing — when the plugin declares none.
+/// Whether this plugin's manifest names a dependency that is not the SDK's.
+///
+/// Cheap — it reads the manifest and parses nothing else — and it answers a
+/// question worth asking before scheduling: a plugin with third-party
+/// dependencies runs [`build`], which invokes **cargo** over a whole dependency
+/// tree. That is a different order of cost from the single `rustc` every other
+/// plugin needs, and the four that have any take long enough that one left to
+/// the end of a parallel build reads as a hang.
+pub fn has_third_party(plugin_dir: &Path) -> bool {
+    std::fs::read_to_string(plugin_dir.join("Cargo.toml"))
+        .ok()
+        .and_then(|text| third_party_lines(&text).ok())
+        .is_some_and(|deps| !deps.is_empty())
+}
+
 pub fn build(plugin_dir: &Path, build_dir: &Path) -> Result<Deps, String> {
     let manifest = plugin_dir.join("Cargo.toml");
     let Ok(text) = std::fs::read_to_string(&manifest) else {
@@ -247,9 +261,8 @@ fn reject_engine_crates(dir: &Path) -> Result<(), String> {
              SDK as shared images. A second compilation of them would have \
              different `TypeId`s, so the plugin would build, load, and then read \
              the engine's `World` through the wrong layouts.\n\
-             Fix it by dropping that dependency, reaching the same types through \
-             `bevy::` (which the SDK provides), or writing a C-ABI plugin — those \
-             share no types with the engine and may depend on anything.",
+             Fix it by dropping that dependency, or by reaching the same types \
+             through `bevy::` and `renzora::`, which the SDK provides.",
             found.join(", ")
         ));
     }

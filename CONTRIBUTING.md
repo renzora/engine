@@ -96,7 +96,7 @@ Include:
 
 - **Open an issue first** for non-trivial changes. This lets us discuss the approach before you invest time writing code.
 - **Small PRs are preferred.** A focused PR that does one thing well is easier to review than a large PR that touches many systems.
-- **Check [`docs/roadmap.md`](docs/roadmap.md)** and the issue tracker to see what areas need work.
+- **Check the issue tracker** to see what areas need work.
 
 ### PR Guidelines
 
@@ -147,7 +147,6 @@ git clone https://github.com/renzora/engine.git
 cd engine
 cargo renzora                 # build, stage dist/<platform>/, and launch the editor
 cargo renzora dist            # build and stage without launching
-cargo renzora plugin <name>   # rebuild one standalone plugin and stage it (hot reload)
 cargo renzora sync            # regenerate the plugin wiring from the renzora::add! declarations
 ```
 
@@ -228,7 +227,7 @@ CI runs `cargo test` and `cargo clippy -D warnings` inside the shared base image
 ### Writing Tests
 
 - Place unit tests in a `#[cfg(test)] mod tests` block within the source file
-- Cross-crate tests go in `crates/<crate>/tests/*.rs` (see `renzora_ember`, `renzora_inspector`, `renzora_net`, `renzora_physics`, `renzora_plugin` for real examples)
+- Cross-crate tests go in `crates/<crate>/tests/*.rs` (see `renzora_ember`, `renzora_inspector`, `renzora_net`, `renzora_physics`, `renzora_native_plugin` for real examples)
 - Build a `MinimalPlugins` app and call `app.update()` to test systems headlessly — nothing in the suite needs a GPU or a window
 - Focus on logic, serialization round-trips, and edge cases
 

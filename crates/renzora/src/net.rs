@@ -6,8 +6,8 @@
 //! Not for the reason most things here do. The engine deliberately contains no
 //! HTTP client — `ureq`, `rustls`, `ring`, `webpki` and the platform certificate
 //! verifiers are twenty packages that a 2D mobile game making no requests should
-//! never compile — so the socket is opened behind the C-ABI plugin boundary by
-//! `plugins/http`, and that stays true. Only the *vocabulary* is here.
+//! never compile — so the socket is opened by a backend a build opts into
+//! (`renzora_http`), and that stays true. Only the *vocabulary* is here.
 //!
 //! What forces it into this crate specifically is [`shared`]: a `OnceLock`
 //! holding the submission queue, the waiter table and the "is a backend loaded"
@@ -48,7 +48,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use renzora_plugin::net::{Event, EventKind};
+use crate::net_backend::{Event, EventKind};
 
 /// How long a wait goes with the pump making no progress at all before it
 /// concludes that it never will.
@@ -408,7 +408,7 @@ impl Drop for Stream {
 
 /// A request waiting to be handed to the backend.
 pub struct Submission {
-    pub request: renzora_plugin::net::Request,
+    pub request: crate::net_backend::Request,
     pub body: Vec<u8>,
 }
 
@@ -459,7 +459,7 @@ impl Shared {
         }
         if let Ok(mut queue) = self.queue.lock() {
             queue.push(Submission {
-                request: renzora_plugin::net::Request {
+                request: crate::net_backend::Request {
                     tag,
                     method: request.method,
                     url: request.url,

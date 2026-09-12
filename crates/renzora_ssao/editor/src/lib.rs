@@ -7,7 +7,7 @@
 //! editor bundle.
 //!
 //! Like Fog, SSAO is not a separately-addable component — it's a section of the
-//! one `WorldEnvironment` (see `docs/world-environment-spec.md`): the entry
+//! one `WorldEnvironment`: the entry
 //! shows whenever the selected entity has a `WorldEnvironment`, its enable
 //! toggle drives `WorldEnvironment::ssao.enabled`, and the native drawer edits
 //! the sub-section.

@@ -1,10 +1,15 @@
 //! What this crate knows about types it has no Rust definition for.
 //!
-//! [`RawComponentRegistry`] is deliberately plain data. `renzora_bsn` does not
-//! depend on `renzora_plugin`, and should not — the scene format has no business
-//! knowing that the C-ABI plugin system exists, and the dependency would run the
-//! wrong way besides. Something upstream mirrors the plugin host's schemas into
-//! this resource; everything here works off that copy.
+//! [`RawComponentRegistry`] is deliberately plain data, with no dependency on
+//! whatever registered the types it describes: the scene format's job is to
+//! write and read bytes it has been given a layout for, not to know where the
+//! layout came from. Something upstream fills this resource in; everything here
+//! works off that copy.
+//!
+//! Nothing in the engine fills it today. It is the channel a component
+//! registered by `ComponentDescriptor::new_with_layout` travels through, which
+//! is the one shape reflection genuinely cannot carry, and it stays because that
+//! gap is a property of Bevy's API rather than of any one caller.
 //!
 //! Keeping it a resource rather than a parameter is what makes this land without
 //! touching a single existing call site: `DynamicSceneBuilder::from_world` and

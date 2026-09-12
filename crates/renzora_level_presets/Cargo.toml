@@ -29,10 +29,9 @@ renzora_ssr = { path = "../renzora_ssr" }
 renzora_antialiasing = { path = "../renzora_antialiasing" }
 renzora_motion_blur = { path = "../renzora_motion_blur" }
 renzora_dof = { path = "../renzora_dof" }
-# renzora_vignette intentionally NOT depended on -- it's a cdylib
-# distribution plugin and linking it as an rlib triggers a duplicate
-# `App::add_plugins` panic (registered twice: once from the rlib link,
-# once when `dynamic_plugin_loader` dlopens the cdylib). Users add
+# renzora_vignette intentionally NOT depended on: it declares itself with
+# `add!`, so the generator already puts it in the plugin list, and depending on
+# it here would add nothing except a second path to the same crate. Users add
 # Vignette via the inspector's "Add Component" overlay.
 renzora_terrain = { path = "../renzora_terrain" }
 

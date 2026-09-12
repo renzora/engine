@@ -18,9 +18,6 @@ avian3d = ["dep:avian3d"]
 avian2d = ["dep:avian2d"]
 
 [dependencies]
-# Engine side of the C ABI's physics surface (`plugin_bridge`). `physics` is the
-# Bevy-free vocabulary the same definitions compile into every plugin from.
-renzora_plugin = { path = "../renzora_plugin", features = ["host", "physics"] }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }

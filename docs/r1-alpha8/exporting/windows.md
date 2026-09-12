@@ -36,7 +36,7 @@ dist/windows-x64/
 ├── bevy_dylib-<hash>.dll    # shared Bevy (dynamic_linking)
 ├── std-<hash>.dll           # Rust standard library (prefer-dynamic)
 └── plugins/
-    └── *.dll                # distribution plugins (rendering, GI, etc.)
+    └── <name>/              # one directory per installed plugin
 ```
 
 The build only emits executables and libraries — it does not pack your assets (see [Packaging assets](#packaging-assets)).
@@ -138,7 +138,7 @@ Zip the `dist/windows-x64/` folder (with `renzora_editor.dll` removed for a ship
 |---|---|
 | `bevy_dylib-*.dll` / `renzora.dll` / `std-*.dll` not found at launch | A shared library was separated from the exe. Keep the whole `dist/windows-x64/` contents (and `plugins/`) together. |
 | The game opens the editor instead | `renzora_editor.dll` is still present. Delete it, or launch with `--no-editor`. |
-| `VCRUNTIME140.dll` / `MSVCP140.dll` missing | The engine links the CRT in, so nothing it builds should ask for these. Something in the folder was built without `+crt-static`: most likely a third-party C-ABI plugin, or a binary from a build that set `CARGO_ENCODED_RUSTFLAGS` (which replaces `.cargo/config.toml`'s rustflags rather than merging with them). Rebuild it with `-C target-feature=+crt-static`, or install the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) on the target machine as a stopgap. |
+| `VCRUNTIME140.dll` / `MSVCP140.dll` missing | The engine links the CRT in, so nothing it builds should ask for these. Something in the folder was built without `+crt-static`: most likely a third-party plugin, or a binary from a build that set `CARGO_ENCODED_RUSTFLAGS` (which replaces `.cargo/config.toml`'s rustflags rather than merging with them). Rebuild it with `-C target-feature=+crt-static`, or install the [Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) on the target machine as a stopgap. |
 | Black screen on launch | No DX12/Vulkan-capable GPU or out-of-date drivers — Renzora renders through `wgpu`. Update GPU drivers. |
 | Antivirus blocks the exe | Most common with UPX-packed builds; code-sign the executable or distribute uncompressed. |
 | Slow first launch | Normal — shaders compile on first run and are cached for later launches. |

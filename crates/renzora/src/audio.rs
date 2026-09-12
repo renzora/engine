@@ -1,11 +1,11 @@
 //! The engine side of the audio boundary.
 //!
-//! [`AudioLink`] is the one place that knows a backend is reached across the
-//! C ABI. Everything else in this crate (the mixer state, the emitters, the
-//! timeline) talks to it in ordinary Rust and never sees a function pointer.
-//! Whether the backend was linked into the binary (`renzora_audio_backend`,
-//! which is the ordinary case) or `dlopen`'d from `plugins/` makes no
-//! difference here: both register a descriptor and are called the same way.
+//! [`AudioLink`] is the one place that holds the backend. Everything else in
+//! this crate (the mixer state, the emitters, the timeline) talks to it in
+//! ordinary Rust.
+//! The backend is linked into the binary (`renzora_audio_backend` is the one
+//! that ships) and registers itself with one call; a platform with a different
+//! mixer implements the same trait.
 //!
 //! ## What stays on this side
 //!
@@ -29,40 +29,26 @@
 //! backend that may not exist, would make audio mandatory in a build system
 //! whose entire point is that it is not.
 
-use std::ffi::c_void;
+use std::panic::AssertUnwindSafe;
 
 use bevy::prelude::*;
 
-use renzora_plugin::audio::{
-    write_buses, write_samples, BackendInfo, BusState, Caps, CaptureInfo, ClipInfo, DeviceList,
-    LoadClip, OpenCapture, PlayRequest, StopRequest, UpdateReply, UpdateRequest,
+use crate::audio_backend::{
+    Backend, BackendInfo, BusState, Caps, CaptureInfo, ClipInfo, DeviceList, PlayRequest,
+    StopRequest, UpdateReply, UpdateRequest,
 };
-use renzora_plugin::sys::{self, AudioOp, AudioStatus};
-use renzora_plugin::wire::{Reader, Writer};
 
-/// A backend that has registered and been adopted.
-struct Loaded {
-    name: String,
-    /// The plugin's opaque state, held as a `usize` so this resource stays
-    /// `Send + Sync` without an unsafe impl. The engine never dereferences it —
-    /// it is handed straight back on every call, so the only requirement is that
-    /// it round-trips unchanged.
-    state: usize,
-    entry: sys::AudioEntry,
-}
-
-/// The loaded audio backend, or nothing.
+/// The adopted audio backend, or nothing.
 #[derive(Resource, Default)]
 pub struct AudioLink {
-    backend: Option<Loaded>,
+    backend: Option<std::sync::Mutex<Box<dyn Backend>>>,
     /// What the backend said it can do. `None` until [`Self::init`] succeeds.
     info: Option<BackendInfo>,
     next_sound: u64,
     next_voice: u64,
     next_capture: u64,
-    /// Set once when a call fails in a way that means the backend is gone —
-    /// a panic it could not recover from. Stops the engine calling into a
-    /// backend that has already proven it will abort.
+    /// Set once a call panics. Stops the engine calling into a backend that has
+    /// already proven it will take the frame down.
     poisoned: bool,
 }
 
@@ -91,8 +77,16 @@ impl AudioLink {
     }
 
     /// The backend's name, for logs and the editor.
-    pub fn name(&self) -> Option<&str> {
-        self.backend.as_ref().map(|b| b.name.as_str())
+    ///
+    /// Cloned rather than borrowed: reaching through the `Mutex` without `&mut`
+    /// means locking, and a guard cannot outlive this call to hand back a `&str`.
+    pub fn name(&self) -> Option<String> {
+        self.backend.as_ref().map(|m| {
+            m.lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .name()
+                .to_string()
+        })
     }
 
     /// What the backend reported at init.
@@ -109,15 +103,18 @@ impl AudioLink {
         self.info.as_ref().is_some_and(|i| i.caps.contains(caps))
     }
 
-    /// Adopt a backend the plugin host registered.
-    pub fn adopt(&mut self, name: String, state: usize, entry: sys::AudioEntry) {
-        self.backend = Some(Loaded { name, state, entry });
+    /// Adopt a registered backend.
+    pub fn adopt(&mut self, backend: std::sync::Mutex<Box<dyn Backend>>) {
+        self.backend = Some(backend);
         self.info = None;
         self.poisoned = false;
     }
 
-    /// Forget the backend. Called when its plugin is unloaded — both `entry` and
-    /// `state` point into an image about to be unmapped.
+    /// Forget the backend.
+    ///
+    /// Nothing calls this in a normal build any more — a linked-in mixer cannot
+    /// be unloaded — but it stays as the way to put the link back to "no audio"
+    /// for a test, and for a future backend that genuinely can be swapped.
     pub fn release(&mut self) {
         self.backend = None;
         self.info = None;
@@ -141,96 +138,59 @@ impl AudioLink {
         CaptureId(self.next_capture)
     }
 
-    /// Make one call. `Ok(None)` means the backend does not implement this op.
+    /// Call the backend, catching a panic rather than letting it reach the
+    /// schedule.
     ///
-    /// Returns the reply bytes, which most callers then decode. A backend that
-    /// panics is poisoned rather than retried: it has already shown it will take
-    /// the frame down, and calling it sixty times a second is how one bad clip
-    /// becomes an unusable editor.
-    fn call(&mut self, op: AudioOp, payload: &[u8], blob: &[u8]) -> Result<Option<Vec<u8>>, String> {
-        let Some(backend) = self.backend.as_ref() else {
-            return Ok(None);
-        };
+    /// A backend that panics is poisoned rather than retried: it has already
+    /// shown it will take the frame down, and calling it sixty times a second is
+    /// how one bad clip becomes an unusable editor.
+    ///
+    /// `None` means there is no backend, or it has been poisoned — the two cases
+    /// every caller already handled, because an op a backend did not implement
+    /// used to answer the same way.
+    fn with<T>(&mut self, what: &str, f: impl FnOnce(&mut dyn Backend) -> T) -> Option<T> {
         if self.poisoned {
-            return Ok(None);
+            return None;
         }
-
-        let mut out: Vec<u8> = Vec::new();
-        // SAFETY: `ctx` is the address of `out`, which outlives this call, and
-        // the backend only ever passes it back to this function.
-        unsafe extern "C" fn collect(ctx: *mut c_void, bytes: *const u8, len: usize) {
-            if ctx.is_null() || bytes.is_null() {
-                return;
-            }
-            let v = &mut *(ctx as *mut Vec<u8>);
-            v.extend_from_slice(std::slice::from_raw_parts(bytes, len));
-        }
-        let sink = sys::ByteSink {
-            ctx: &mut out as *mut Vec<u8> as *mut c_void,
-            write: collect,
-        };
-        let call = sys::AudioCall {
-            op,
-            _pad: 0,
-            state: backend.state as *mut c_void,
-            payload: sys::BlobRef::new(payload),
-            blob: sys::BlobRef::new(blob),
-            out: &sink,
-        };
-
-        // SAFETY: every blob above outlives the call, and the sink writes into
-        // `out`, which does too.
-        let status = unsafe { (backend.entry)(&call) };
-
-        if !status.is_known() {
-            let name = backend.name.clone();
-            self.poisoned = true;
-            return Err(format!(
-                "audio backend `{name}` returned status {} — it was built against a newer engine",
-                status.0
-            ));
-        }
-        match status {
-            AudioStatus::Ok => Ok(Some(out)),
-            // Not an error, and the host must not log it: it is how a backend
-            // says "I was built before this op existed" or "I never claimed this
-            // capability", which are both ordinary.
-            AudioStatus::UnknownOp => Ok(None),
-            AudioStatus::Error => Err(decode_error(&out)),
-            AudioStatus::Panicked => {
+        // `get_mut` rather than `lock`: we hold `&mut self`, so there is no
+        // contention to resolve and no lock is taken.
+        let backend = self
+            .backend
+            .as_mut()?
+            .get_mut()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_mut();
+        match std::panic::catch_unwind(AssertUnwindSafe(|| f(backend))) {
+            Ok(v) => Some(v),
+            Err(_) => {
+                error!("[audio] backend panicked in {what} and has been disabled");
                 self.poisoned = true;
-                Err(format!(
-                    "audio backend `{}` panicked and has been disabled: {}",
-                    backend.name,
-                    decode_error(&out)
-                ))
+                self.info = None;
+                None
             }
-            _ => Ok(Some(out)),
         }
     }
 
     /// Open the device. Must be called before anything else does anything.
     pub fn init(&mut self) -> Result<Option<BackendInfo>, String> {
-        let Some(bytes) = self.call(AudioOp::Init, &[], &[])? else {
+        let Some(result) = self.with("init", |b| b.init()) else {
             return Ok(None);
         };
-        let info = BackendInfo::decode(&mut Reader::new(&bytes))
-            .map_err(|e| format!("backend's init reply would not decode: {e}"))?;
+        let info = result?;
         self.info = Some(info.clone());
         Ok(Some(info))
     }
 
     /// Release the device.
     pub fn shutdown(&mut self) {
-        let _ = self.call(AudioOp::Shutdown, &[], &[]);
+        self.with("shutdown", |b| b.shutdown());
         self.info = None;
     }
 
     /// Send the whole bus graph.
     pub fn set_buses(&mut self, buses: &[BusState]) -> Result<(), String> {
-        let mut w = Writer::new();
-        write_buses(&mut w, buses);
-        self.call(AudioOp::SetBuses, w.bytes(), &[]).map(|_| ())
+        self.with("set_buses", |b| b.set_buses(buses));
+        Ok(())
     }
 
     /// Hand over an encoded audio file to decode.
@@ -242,19 +202,10 @@ impl AudioLink {
         extension: &str,
         bytes: &[u8],
     ) -> Result<Option<ClipInfo>, String> {
-        let mut w = Writer::new();
-        LoadClip {
-            clip: sound.0,
-            extension: extension.to_string(),
+        match self.with("load_clip", |b| b.load_clip(sound.0, extension, bytes)) {
+            Some(result) => result.map(Some),
+            None => Ok(None),
         }
-        .encode(&mut w);
-        let payload = w.into_bytes();
-        let Some(reply) = self.call(AudioOp::LoadClip, &payload, bytes)? else {
-            return Ok(None);
-        };
-        ClipInfo::decode(&mut Reader::new(&reply))
-            .map(Some)
-            .map_err(|e| format!("backend's clip reply would not decode: {e}"))
     }
 
     /// Decode bytes that did not come from an asset path.
@@ -292,35 +243,27 @@ impl AudioLink {
 
     /// Drop a decoded clip. Voices already playing it finish rather than cut.
     pub fn unload_clip(&mut self, sound: SoundId) {
-        let mut w = Writer::new();
-        w.u64(sound.0);
-        let payload = w.into_bytes();
-        let _ = self.call(AudioOp::UnloadClip, &payload, &[]);
+        self.with("unload_clip", |b| b.unload_clip(sound.0));
     }
 
     /// Start a voice.
     pub fn play(&mut self, request: &PlayRequest) -> Result<(), String> {
-        let mut w = Writer::new();
-        request.encode(&mut w);
-        self.call(AudioOp::Play, w.bytes(), &[]).map(|_| ())
+        match self.with("play", |b| b.play(request)) {
+            Some(result) => result,
+            None => Ok(()),
+        }
     }
 
     /// Stop a voice, a bus's voices, or everything.
     pub fn stop(&mut self, request: &StopRequest) {
-        let mut w = Writer::new();
-        request.encode(&mut w);
-        let _ = self.call(AudioOp::Stop, w.bytes(), &[]);
+        self.with("stop", |b| b.stop(request));
     }
 
     /// The per-frame call. Returns the meters and the voices that finished.
     pub fn update(&mut self, request: &UpdateRequest) -> Result<UpdateReply, String> {
-        let mut w = Writer::new();
-        request.encode(&mut w);
-        let Some(reply) = self.call(AudioOp::Update, w.bytes(), &[])? else {
-            return Ok(UpdateReply::default());
-        };
-        UpdateReply::decode(&mut Reader::new(&reply))
-            .map_err(|e| format!("backend's update reply would not decode: {e}"))
+        Ok(self
+            .with("update", |b| b.update(request))
+            .unwrap_or_default())
     }
 
     /// Open a capture device.
@@ -332,56 +275,29 @@ impl AudioLink {
         if !self.supports(Caps::CAPTURE) {
             return Ok(None);
         }
-        let mut w = Writer::new();
-        OpenCapture {
-            capture: capture.0,
-            device: device.map(str::to_string),
+        match self.with("open_capture", |b| b.open_capture(capture.0, device)) {
+            Some(result) => result.map(Some),
+            None => Ok(None),
         }
-        .encode(&mut w);
-        let payload = w.into_bytes();
-        let Some(reply) = self.call(AudioOp::OpenCapture, &payload, &[])? else {
-            return Ok(None);
-        };
-        CaptureInfo::decode(&mut Reader::new(&reply))
-            .map(Some)
-            .map_err(|e| format!("backend's capture reply would not decode: {e}"))
     }
 
     pub fn close_capture(&mut self, capture: CaptureId) {
-        let mut w = Writer::new();
-        w.u64(capture.0);
-        let payload = w.into_bytes();
-        let _ = self.call(AudioOp::CloseCapture, &payload, &[]);
+        self.with("close_capture", |b| b.close_capture(capture.0));
     }
 
     /// Take everything captured since the last call, as interleaved stereo.
     pub fn read_capture(&mut self, capture: CaptureId) -> Vec<f32> {
-        let mut w = Writer::new();
-        w.u64(capture.0);
-        let payload = w.into_bytes();
-        match self.call(AudioOp::ReadCapture, &payload, &[]) {
-            Ok(Some(reply)) => renzora_plugin::audio::read_samples(&mut Reader::new(&reply))
-                .unwrap_or_default(),
-            _ => Vec::new(),
-        }
+        self.with("read_capture", |b| b.read_capture(capture.0))
+            .unwrap_or_default()
     }
 
     /// Mix samples into a bus. The generic "audio from somewhere that isn't a
-    /// file" path — see [`renzora_plugin::audio`].
+    /// file" path.
     pub fn push_frames(&mut self, bus: &str, samples: &[f32]) {
         if !self.supports(Caps::FEEDS) {
             return;
         }
-        let mut w = Writer::new();
-        w.str(bus);
-        let payload = w.into_bytes();
-        // The samples ride in the blob rather than the payload: a block of audio
-        // is thousands of floats, and copying them through the codec alongside a
-        // bus key would be the expensive half of the call.
-        let mut b = Writer::new();
-        write_samples(&mut b, samples);
-        let blob = b.into_bytes();
-        let _ = self.call(AudioOp::PushFrames, &payload, &blob);
+        self.with("push_frames", |b| b.push_frames(bus, samples));
     }
 
     /// Enumerate devices for the mixer's menus.
@@ -389,12 +305,8 @@ impl AudioLink {
         if !self.supports(Caps::DEVICE_LIST) {
             return DeviceList::default();
         }
-        match self.call(AudioOp::ListDevices, &[], &[]) {
-            Ok(Some(reply)) => {
-                DeviceList::decode(&mut Reader::new(&reply)).unwrap_or_default()
-            }
-            _ => DeviceList::default(),
-        }
+        self.with("list_devices", |b| b.list_devices())
+            .unwrap_or_default()
     }
 }
 
@@ -402,86 +314,88 @@ fn alloc_pair(voice: VoiceId, paused: bool) -> Vec<(u64, bool)> {
     vec![(voice.0, paused)]
 }
 
-/// Read an error reply, or say so when even that would not decode.
-fn decode_error(bytes: &[u8]) -> String {
-    Reader::new(bytes)
-        .string()
-        .unwrap_or_else(|_| String::from("(the backend's error message would not decode)"))
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    /// How the fake should answer.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Answer {
+        Ok,
+        /// Return an `Err` from every fallible call.
+        Error,
+        /// Panic, so the link's `catch_unwind` has something to catch.
+        Panic,
+    }
+
     /// A backend that answers however the test wants — enough to exercise the
     /// link without a sound card.
     ///
-    /// Its state lives behind the call's own `state` pointer rather than in a
-    /// `static`, and that is not incidental: an earlier version kept the desired
-    /// status in a global, and since cargo runs tests in parallel one test would
-    /// set `Panicked` while another was mid-`init`. It passed or failed
-    /// depending on scheduling. Per-instance state is also what the `state`
-    /// field on the descriptor exists for, so this is the boundary being used as
-    /// intended rather than a test-only trick.
-    mod fake {
-        use super::*;
+    /// Each test builds its own, rather than sharing one through a `static`. An
+    /// earlier version kept the desired answer in a global, and since cargo runs
+    /// tests in parallel one test would set "panic" while another was mid-`init`:
+    /// it passed or failed depending on scheduling.
+    struct Fake {
+        answer: Answer,
+        /// Set when `list_devices` is reached, so a test can assert that an
+        /// unclaimed capability never gets that far.
+        listed: Arc<AtomicBool>,
+    }
 
-        pub struct State {
-            pub status: AudioStatus,
-            pub last_op: u32,
+    impl Backend for Fake {
+        fn name(&self) -> &str {
+            "fake"
         }
 
-        impl State {
-            pub fn new(status: AudioStatus) -> Box<Self> {
-                Box::new(Self {
-                    status,
-                    last_op: u32::MAX,
-                })
-            }
-        }
-
-        pub unsafe extern "C" fn entry(call: *const sys::AudioCall) -> AudioStatus {
-            let call = &*call;
-            let state = &mut *(call.state as *mut State);
-            state.last_op = call.op.0;
-            let status = state.status;
-
-            let mut w = Writer::new();
-            match (status, call.op) {
-                (AudioStatus::Ok, AudioOp::Init) => BackendInfo {
+        fn init(&mut self) -> Result<BackendInfo, String> {
+            match self.answer {
+                Answer::Panic => panic!("something broke"),
+                Answer::Error => Err("something broke".to_string()),
+                Answer::Ok => Ok(BackendInfo {
                     sample_rate: 48_000,
                     caps: Caps::CAPTURE.union(Caps::FEEDS),
                     device: String::from("fake"),
-                }
-                .encode(&mut w),
-                (AudioStatus::Ok, AudioOp::Update) => UpdateReply {
-                    peaks: vec![0.5],
-                    finished: vec![3],
-                }
-                .encode(&mut w),
-                (AudioStatus::Ok, AudioOp::LoadClip) => ClipInfo {
-                    duration: 2.0,
-                    sample_rate: 44_100,
-                }
-                .encode(&mut w),
-                (AudioStatus::Error, _) | (AudioStatus::Panicked, _) => w.str("something broke"),
-                _ => {}
+                }),
             }
-            if let Some(sink) = call.out.as_ref() {
-                let bytes = w.bytes();
-                (sink.write)(sink.ctx, bytes.as_ptr(), bytes.len());
-            }
-            status
         }
 
-        /// A link wired to a fresh fake. The returned `State` must outlive the
-        /// link — the link holds its address.
-        pub fn link(status: AudioStatus) -> (AudioLink, Box<State>) {
-            let mut state = State::new(status);
-            let mut link = AudioLink::default();
-            link.adopt(String::from("fake"), state.as_mut() as *mut State as usize, entry);
-            (link, state)
+        fn load_clip(&mut self, _clip: u64, _ext: &str, _bytes: &[u8]) -> Result<ClipInfo, String> {
+            Ok(ClipInfo {
+                duration: 2.0,
+                sample_rate: 44_100,
+            })
         }
+
+        fn play(&mut self, _request: &PlayRequest) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn update(&mut self, _request: &UpdateRequest) -> UpdateReply {
+            UpdateReply {
+                peaks: vec![0.5],
+                finished: vec![3],
+            }
+        }
+
+        fn list_devices(&mut self) -> DeviceList {
+            self.listed.store(true, Ordering::Relaxed);
+            DeviceList::default()
+        }
+    }
+
+    /// A link wired to a fresh fake, and the flag its `list_devices` sets.
+    fn fake_link(answer: Answer) -> (AudioLink, Arc<AtomicBool>) {
+        let listed = Arc::new(AtomicBool::new(false));
+        let mut link = AudioLink::default();
+        link.adopt(Mutex::new(Box::new(Fake {
+            answer,
+            listed: Arc::clone(&listed),
+        })));
+        (link, listed)
     }
 
     /// The property that makes the plugin removable: with nothing loaded,
@@ -530,7 +444,7 @@ mod tests {
 
     #[test]
     fn init_records_what_the_backend_reported() {
-        let (mut link, _state) = fake::link(AudioStatus::Ok);
+        let (mut link, _) = fake_link(Answer::Ok);
         let info = link.init().unwrap().expect("should report");
         assert_eq!(info.sample_rate, 48_000);
         assert!(link.supports(Caps::CAPTURE));
@@ -542,21 +456,19 @@ mod tests {
     /// claimed must not even reach it.
     #[test]
     fn an_unclaimed_capability_is_not_called() {
-        let (mut link, mut state) = fake::link(AudioStatus::Ok);
+        let (mut link, listed) = fake_link(Answer::Ok);
         link.init().unwrap();
 
-        state.last_op = u32::MAX;
         assert_eq!(link.list_devices(), DeviceList::default());
-        assert_eq!(
-            state.last_op,
-            u32::MAX,
+        assert!(
+            !listed.load(Ordering::Relaxed),
             "DEVICE_LIST was never claimed, so the backend must not be called"
         );
     }
 
     #[test]
-    fn an_update_decodes_its_reply() {
-        let (mut link, _state) = fake::link(AudioStatus::Ok);
+    fn an_update_returns_what_the_backend_reported() {
+        let (mut link, _) = fake_link(Answer::Ok);
         link.init().unwrap();
         let reply = link.update(&UpdateRequest::default()).unwrap();
         assert_eq!(reply.peaks, vec![0.5]);
@@ -565,7 +477,7 @@ mod tests {
 
     #[test]
     fn an_error_reply_reaches_the_caller_as_a_message() {
-        let (mut link, _state) = fake::link(AudioStatus::Error);
+        let (mut link, _) = fake_link(Answer::Error);
         let err = link.init().unwrap_err();
         assert!(err.contains("something broke"), "{err}");
         // An error is not fatal — the backend is still there to try again.
@@ -576,27 +488,19 @@ mod tests {
     /// sixty times a second is how one bad clip becomes an unusable editor.
     #[test]
     fn a_panicking_backend_is_disabled_rather_than_retried() {
-        let (mut link, _state) = fake::link(AudioStatus::Panicked);
-        let err = link.init().unwrap_err();
-        assert!(err.contains("panicked"), "{err}");
+        let (mut link, _) = fake_link(Answer::Panic);
+        // Caught, so `init` reports "no backend answered" rather than unwinding
+        // into the caller — and the link is poisoned on the way out.
+        assert_eq!(link.init().unwrap(), None);
         assert!(!link.is_active());
         // And every later call is a silent no-op rather than another panic.
         assert!(link.play(&play_request()).is_ok());
-    }
-
-    /// A status this build has no variant for means the plugin is newer than the
-    /// engine — the one case where continuing is guessing.
-    #[test]
-    fn an_unknown_status_disables_the_backend() {
-        let (mut link, _state) = fake::link(AudioStatus(99));
-        let err = link.init().unwrap_err();
-        assert!(err.contains("newer engine"), "{err}");
-        assert!(!link.is_active());
+        assert_eq!(link.update(&UpdateRequest::default()).unwrap(), UpdateReply::default());
     }
 
     #[test]
     fn releasing_a_backend_leaves_the_link_inert() {
-        let (mut link, _state) = fake::link(AudioStatus::Ok);
+        let (mut link, _) = fake_link(Answer::Ok);
         link.init().unwrap();
         assert!(link.is_active());
         link.release();

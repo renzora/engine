@@ -5,7 +5,7 @@
 //! command queue, the timeline, and no audio. This crate is the audio. It
 //! decodes, mixes, spatialises, and hands blocks to the sound card.
 //!
-//! # Why this is not a distribution plugin
+//! # Why this is not an installed plugin
 //!
 //! It was one, and the argument was the ordinary one for plugins: cpal,
 //! symphonia and the decoders are real weight, and a 2D puzzle game that never
@@ -23,14 +23,12 @@
 //!
 //! # What has not changed
 //!
-//! The contract. This registers through `renzora_plugin::audio::Backend` and is
-//! installed with [`load_static`](renzora_plugin::host::loader::load_static),
-//! the same call the lean exporter uses for a plugin it compiled in, so it takes
-//! an ordinary registration slot and is reported like any other backend. Nothing
-//! in the host knows this one arrived by a different route, which is what still
-//! lets a second backend (WebAudio on wasm, where the browser supplies the graph
-//! and the decoders) implement the same contract without sharing a line of code
-//! with this one.
+//! The contract. This implements `renzora::audio_backend::Backend` and installs
+//! itself with one `add_audio_backend` call, taking the ordinary registration
+//! slot and being reported like any other backend. Nothing in the engine knows
+//! this one is compiled in, which is what lets a second backend (WebAudio on
+//! wasm, where the browser supplies the graph and the decoders) implement the
+//! same contract without sharing a line of code with this one.
 //!
 //! Below the plugin at the bottom of this file, the mixer links neither Bevy nor
 //! the engine. It speaks in `f32` samples, bus keys and positions, which is all
@@ -105,44 +103,18 @@ impl bevy::app::Plugin for RenzoraAudioPlugin {
     // that carries no audio" and reports the same way. cpal's wasm hosts return
     // an error from `build_input_stream_raw`, so capture there needs
     // `getUserMedia`; when the WebAudio backend lands it registers here, by the
-    // same `load_static` call.
+    // same one call.
     #[cfg(target_arch = "wasm32")]
     fn build(&self, _app: &mut bevy::app::App) {}
 
     #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut bevy::app::App) {
-        // Installed through `load_static`, the path the lean exporter uses for a
-        // plugin it compiled in. Deliberate rather than incidental: the mixer
-        // implements `renzora_plugin::audio::Backend`, and the host adopts a
-        // backend by descriptor. Going through the ordinary contract means the
-        // built-in mixer and one loaded from `plugins/` arrive by the same
-        // route, take the same registration slot and are reported the same way,
-        // rather than the built-in one being a special case every other part of
-        // the system has to know about.
-        //
-        // Three arguments, none of them obvious:
-        //
-        // * `init` is named directly rather than looked up by string, because
-        //   `static_link` makes the entry point an ordinary function instead of
-        //   an exported symbol.
-        // * `id: "audio"` is what the plugin scanner matches a loose
-        //   `plugins/audio` against. An old copy left in an install directory is
-        //   then skipped rather than registering a second backend. See
-        //   `LinkedPluginIds`.
-        // * `true` for `is_editor` gates Editor-scope plugins; it describes the
-        //   host, not this plugin, which is Runtime and belongs in both.
-        let outcome = renzora_plugin::host::loader::load_static(
-            app.world_mut(),
-            &renzora_plugin::static_link::StaticPlugin {
-                id: "audio",
-                scope: renzora_plugin::sys::PluginScope::Runtime,
-                init: plugin::renzora_plugin_init,
-            },
-            true,
+        // One call. `RenzoraAudio` implements `renzora::audio_backend::Backend`
+        // and this hands it over; the audio link adopts it and runs `init`.
+        renzora::audio_backend::AppAudioBackendExt::add_audio_backend(
+            app,
+            crate::backend::RenzoraAudio::default(),
         );
-        if !matches!(outcome, renzora_plugin::host::loader::LoadOutcome::Loaded) {
-            bevy::log::error!("[audio] the built-in audio backend did not install: {outcome:?}");
-        }
     }
 }
 
@@ -152,31 +124,6 @@ impl bevy::app::Plugin for RenzoraAudioPlugin {
 // which is the property the plugin form was supposed to provide and could not
 // guarantee.
 renzora::add!(RenzoraAudioPlugin);
-
-// ── The backend itself ────────────────────────────────────────────────
-
-#[cfg(not(target_arch = "wasm32"))]
-mod plugin {
-    use renzora_plugin::prelude::*;
-
-    // Emits the descriptor and the state it needs. A macro rather than a generic
-    // because the entry point must be a bare function pointer with nowhere to
-    // carry state, so it needs a `static`, and a `static` cannot be generic over
-    // the backend type.
-    renzora_plugin::audio_backend!(crate::backend::RenzoraAudio);
-
-    /// The C-ABI plugin `load_static` installs: one call, registering the
-    /// descriptor above.
-    pub struct Inner;
-
-    impl Plugin for Inner {
-        fn build(&self, app: &mut App) {
-            app.add_audio_backend(audio_backend::desc());
-        }
-    }
-
-    renzora_plugin::add!(Inner);
-}
 
 #[cfg(test)]
 mod tests;

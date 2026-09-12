@@ -202,3 +202,27 @@ pub trait ScriptBackend: Send + Sync {
         let _ = (path, entity);
     }
 }
+
+/// Install a scripting language.
+pub trait AppScriptBackendExt {
+    /// Register `backend` as the handler for the extensions it claims.
+    ///
+    /// Several may be registered — unlike the net and audio backends, which are
+    /// singular. A script names its language by file extension, so two languages
+    /// coexist in one project with nothing to choose between them.
+    fn add_script_backend(&mut self, backend: impl ScriptBackend + 'static) -> &mut Self;
+}
+
+impl AppScriptBackendExt for bevy::app::App {
+    fn add_script_backend(&mut self, backend: impl ScriptBackend + 'static) -> &mut Self {
+        // `get_resource_or_insert_with` rather than expecting the engine to be
+        // there: a language plugin has no ordering relationship with
+        // `ScriptingPlugin`, and requiring one would make registration depend on
+        // which happened to be added first.
+        let mut engine = self
+            .world_mut()
+            .get_resource_or_insert_with(crate::engine::ScriptEngine::default);
+        engine.add_backend(Box::new(backend));
+        self
+    }
+}

@@ -22,9 +22,6 @@ script_http = ["dep:renzora_net"]
 # moved to the nested renzora_scripting_editor crate (crates/renzora_scripting/editor).
 
 [dependencies]
-# Engine side of the C ABI's HTTP surface (`plugin_bridge`). The client already
-# lives here, so a plugin request takes the same path a script's does.
-renzora_plugin = { path = "../renzora_plugin", features = ["host", "http", "script"] }
 bevy = { workspace = true }
 # `diagnostics` for the script perf tables, which live in the contract crate so the
 # debug panels reading them can be a native plugin. This crate populates

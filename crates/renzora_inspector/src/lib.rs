@@ -39,34 +39,18 @@ impl Plugin for InspectorPanelPlugin {
         scripts::register(app);
         camera_presets::register(app);
         textfont::register(app);
-        plugin_resources::register(app);
         resources::register(app);
         richtext::register(app);
-        // Plugin components only exist after `load_global_plugins` has run, so
-        // their sections cannot be registered at plugin-build time. A startup
-        // system picks them up once everything is loaded.
-        app.add_systems(
-            Startup,
-            |world: &mut World| plugin_fields::register_plugin_component_sections(world),
-        );
     }
 
-    /// Panels need `&mut App` — `register_panel_content` is an `App` extension —
-    /// so they cannot wait for a startup system the way component sections do.
-    /// `finish` runs after every plugin's `build`, including the loader's, which
+    /// `register_settings_section` needs `&mut App`, and the plugin list it
+    /// renders is only complete once every loader's `build` has run. `finish`
     /// is the one hook that satisfies both constraints.
     fn finish(&self, app: &mut App) {
-        plugin_panels::register_plugin_panels(app);
-        // Same hook, same reason: `register_settings_section` needs `&mut App`,
-        // and the list it renders is only complete once every loader's `build`
-        // has run.
         plugin_manager::register(app);
     }
 }
 
 renzora::add!(InspectorPanelPlugin, Editor);
 
-pub mod plugin_fields;
 pub mod plugin_manager;
-pub mod plugin_panels;
-pub mod plugin_resources;

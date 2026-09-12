@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::string::String;
 use std::vec::Vec;
 
-use renzora_plugin::audio::{
+use renzora::audio_backend::{
     Backend, BackendInfo, BusState, Caps, CaptureInfo, ClipInfo, DeviceList, PlayRequest,
     StopRequest, StopTarget, UpdateReply, UpdateRequest,
 };
@@ -55,7 +55,7 @@ pub struct RenzoraAudio {
 /// The mixer's emitter for a boundary one. Anything this build does not
 /// recognise as a rolloff is logarithmic — the default, and the one that sounds
 /// like distance.
-fn emitter_from(e: &renzora_plugin::audio::EmitterState) -> Emitter {
+fn emitter_from(e: &renzora::audio_backend::EmitterState) -> Emitter {
     Emitter {
         position: e.position,
         min_distance: e.min_distance,
@@ -97,7 +97,9 @@ fn alloc_master() -> Vec<String> {
 }
 
 impl Backend for RenzoraAudio {
-    const NAME: &'static str = "renzora_audio";
+    fn name(&self) -> &str {
+        "renzora_audio"
+    }
 
     fn init(&mut self) -> Result<BackendInfo, String> {
         let device = AudioDevice::open().map_err(|e| e.0)?;

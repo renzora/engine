@@ -10,7 +10,7 @@ use crate::overlay::{
     ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch,
     ExportOverlayState, ExportProgress, PackagingMode,
 };
-use crate::templates::{Platform, TemplateManager};
+use crate::templates::Platform;
 
 use super::{ExportRoot, FilesAction, FilesBulk, FilesPanel, LogScroll};
 
@@ -223,18 +223,12 @@ fn scan_plugins(world: &mut World) {
             return;
         }
     }
-    let dir = world.resource::<TemplateManager>().plugins_dir_for(platform);
-    let mut plugins = renzora_plugin::host::loader::scan_plugins(world, &dir);
+    let mut plugins = Vec::new();
 
-    // Native plugins too, which the C-ABI scan above cannot see: it looks for
-    // library FILES exporting `renzora_plugin_init`, and a native plugin is a
-    // directory holding a `build/` — so the picker listed only half of what an
-    // export ships, and the half it hid was the half users actually install.
-    //
-    // They come from the EDITOR's `plugins/`, not the platform template's. A
-    // native plugin links the real Bevy and is compiled against this editor's
-    // shared images; the library that ships is the one the editor built, which
-    // is also why only a host, copy-based export can take them.
+    // From the EDITOR's `plugins/`, not the platform template's. A plugin links
+    // the real Bevy and is compiled against this editor's shared images; the
+    // library that ships is the one the editor built, which is also why only a
+    // host, copy-based export can take them.
     //
     // Editor-scope ones are left out entirely rather than shown and refused.
     // They can never ship, so offering a switch for one would be a control whose
@@ -248,16 +242,10 @@ fn scan_plugins(world: &mut World) {
         // Every plugin root — on macOS the user's installs are outside the
         // bundle, and a picker that could not see them would offer no way to
         // ship them.
-        for p in renzora_native_plugin::installed_for(&editor_dir, lib_ext) {
-            if p.scope != renzora::NativePluginScope::Runtime {
-                continue;
-            }
-            plugins.push(renzora_plugin::host::loader::PluginInfo {
-                id: p.id,
-                path: p.lib,
-                scope: renzora_plugin::sys::PluginScope::Runtime,
-            });
-        }
+        plugins = renzora_native_plugin::installed_for(&editor_dir, lib_ext)
+            .into_iter()
+            .filter(|p| p.scope == renzora::NativePluginScope::Runtime)
+            .collect();
         plugins.sort_by(|a, b| a.id.cmp(&b.id));
     }
 

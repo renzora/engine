@@ -7466,7 +7466,6 @@ dependencies = [
  "naga",
  "renzora_macros",
  "renzora_native_build",
- "renzora_plugin",
  "ron 0.8.1",
  "serde",
  "serde_json",
@@ -7495,7 +7494,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
  "renzora_scripting",
  "ron 0.8.1",
  "serde",
@@ -7544,7 +7542,6 @@ dependencies = [
  "getrandom 0.4.3",
  "log",
  "renzora",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
  "renzora_static_plugins",
@@ -7605,7 +7602,6 @@ dependencies = [
  "bevy",
  "cfg-if",
  "renzora",
- "renzora_plugin",
  "serde",
  "symphonia",
 ]
@@ -7617,7 +7613,6 @@ dependencies = [
  "bevy",
  "cpal",
  "renzora",
- "renzora_plugin",
  "rtrb",
  "symphonia",
 ]
@@ -7912,7 +7907,6 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_native_plugin",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
  "toml 0.8.23",
@@ -7926,7 +7920,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_macros",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_theme",
  "renzora_ui",
@@ -7990,7 +7983,6 @@ dependencies = [
  "renzora_macros",
  "renzora_network",
  "renzora_physics",
- "renzora_plugin",
  "renzora_rmip",
  "renzora_rpak",
  "renzora_scripting",
@@ -8051,7 +8043,6 @@ dependencies = [
  "renzora_import",
  "renzora_native_plugin",
  "renzora_net",
- "renzora_plugin",
  "renzora_plugin_build",
  "renzora_rpak",
  "renzora_rust_script",
@@ -8175,7 +8166,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
+ "renzora_net",
  "ureq",
 ]
 
@@ -8237,7 +8228,6 @@ dependencies = [
  "renzora_camera",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_plugin",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
@@ -8437,7 +8427,6 @@ dependencies = [
  "libloading 0.8.9",
  "renzora",
  "renzora_native_build",
- "renzora_plugin",
  "renzora_plugin_build",
 ]
 
@@ -8475,7 +8464,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
  "serde",
  "serde_json",
 ]
@@ -8569,7 +8557,6 @@ dependencies = [
  "avian3d",
  "bevy",
  "renzora",
- "renzora_plugin",
  "renzora_scripting",
  "serde",
 ]
@@ -8585,17 +8572,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_plugin"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "libloading 0.8.9",
- "libm",
- "notify-debouncer-full",
- "renzora_plugin_derive",
-]
-
-[[package]]
 name = "renzora_plugin_build"
 version = "0.1.0"
 dependencies = [
@@ -8607,22 +8583,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_plugin_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
 name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "naga",
  "renzora",
- "renzora_plugin",
 ]
 
 [[package]]
@@ -8796,7 +8762,6 @@ dependencies = [
  "renzora",
  "renzora_blueprint",
  "renzora_net",
- "renzora_plugin",
  "serde",
  "serde_json",
 ]
@@ -8997,7 +8962,6 @@ name = "renzora_static_plugins"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora_plugin",
 ]
 
 [[package]]

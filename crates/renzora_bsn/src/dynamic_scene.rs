@@ -51,8 +51,7 @@ pub struct DynamicEntity {
 
 /// A component stored as raw bytes and keyed by name rather than by `TypeId`.
 ///
-/// The reflected path cannot carry these. A component registered by layout —
-/// which is how every C-ABI plugin component arrives — gets
+/// The reflected path cannot carry these. A component registered by layout gets
 /// `ComponentDescriptor::new_with_layout`, and that constructor hard-codes
 /// `type_id: None`. The whole extraction path keys on `TypeId`, so the component
 /// is invisible to it and vanishes on save. There is no reflection workaround:

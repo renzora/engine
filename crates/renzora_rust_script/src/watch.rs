@@ -10,9 +10,9 @@
 //!
 //! A reload maps a NEW image and repoints [`LoadedScripts`]; the old one stays
 //! mapped for the life of the process. It has to: a schedule, a `Local`, or a
-//! captured closure may still hold pointers into it, and `renzora_plugin`'s
-//! loader deadlocked in `FreeLibrary` and later crashed the runtime with an
-//! access violation learning that lesson twice.
+//! captured closure may still hold pointers into it, and the plugin loader
+//! deadlocked in `FreeLibrary` and later crashed the runtime with an access
+//! violation learning that lesson twice.
 //!
 //! So an afternoon of saves leaks a few hundred KB each — a script is ~200 KB —
 //! and a restart reclaims all of it. That is the price of editing native code in
@@ -40,9 +40,9 @@ use crate::{load_library, sdk_dir, LoadedScripts};
 /// How often the scripts directory is stat'd, in seconds.
 ///
 /// Polling rather than a filesystem watcher because the directory is small and
-/// this avoids a second notify backend in the process — `renzora_plugin`'s
-/// hot-reload already runs one, and two watchers on overlapping trees is a
-/// source of double-fires nobody wants to debug.
+/// this avoids a second notify backend in the process — the asset server already
+/// runs one, and two watchers on overlapping trees is a source of double-fires
+/// nobody wants to debug.
 const POLL_SECONDS: f32 = 0.5;
 
 #[derive(Resource, Default)]

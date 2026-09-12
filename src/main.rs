@@ -62,74 +62,22 @@ pub fn build_runtime_app() -> App {
 /// the editor under any circumstance.** It is always a game, a dedicated server
 /// or a listen server, which is exactly what makes it safe to ship.
 fn load_global_plugins(app: &mut App, is_editor: bool) {
-    // C-ABI plugins from `<exe-dir>/plugins/`. The only plugin mechanism left:
-    // the Bevy-linking `dlopen` path (and its `dynamic_plugin_loader`) is gone,
-    // because a cdylib linking a statically-linked Bevy carries its own copy of
-    // Bevy and therefore its own `World` type. The former distribution plugins
-    // are now ordinary rlib dependencies of `renzora_runtime`.
-    //
-    // `is_editor` is the scope gate: a C-ABI plugin declares Runtime or Editor via
-    // `renzora_plugin_scope`, read BEFORE its init is called, so an editor-only
-    // panel plugin never activates in a shipped game and vice versa.
-    //
-    // `statics` are plugins the lean exporter compiled INTO this binary rather
-    // than shipping as files (the `static_plugins` feature). Empty otherwise, and
-    // empty even with the feature on unless an export generated the list — the
-    // checked-in `renzora_static_plugins` returns nothing. The `plugins/` scan
-    // still happens either way, so a game can link its own in and still load
-    // whatever a player drops beside the exe.
-    #[cfg(feature = "static_plugins")]
-    let statics = renzora_static_plugins::plugins();
-    #[cfg(not(feature = "static_plugins"))]
-    let statics = Vec::new();
-    // Where a C-ABI plugin's settings go. A late-bound hook because
-    // `renzora_plugin` is the bottom of the stack — it cannot name the settings
-    // file, which belongs to `renzora`, which depends on it. Installed here
-    // because this is the one place that has both.
-    app.insert_resource(renzora_plugin::host::PluginSettingsStore {
-        load: renzora::core::settings_file::load_plugin_settings,
-        save: |key, blob| {
-            renzora::core::settings_file::save_plugin_settings(key, blob)
-                .map_err(|e| e.to_string())
-        },
-        clear: |key| {
-            renzora::core::settings_file::clear_plugin_settings(key).map_err(|e| e.to_string())
-        },
-    });
-    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
-        is_editor,
-        statics,
-        // Read here rather than inside the loader: that crate is published to
-        // crates.io and cannot take a path dependency on the contract crate.
-        disabled: renzora_runtime::renzora::load_disabled_plugins(),
-    });
-    // The native half of the same idea. Separate call because a native plugin is
-    // an ordinary Bevy plugin — installed by `add_plugins`, not by a table the
-    // host reads — and because it must land AFTER the engine crates, exactly as
-    // a loaded one does. Compiled to nothing in every build but a lean export.
+    let _ = is_editor;
+    // Plugins a lean export linked INTO this binary rather than leaving on disk.
+    // Installed by `add_plugins` like any other Bevy plugin, and it must land
+    // AFTER the engine crates, exactly as a loaded one does. Compiled to nothing
+    // in every build but a lean export.
     #[cfg(feature = "static_plugins")]
     renzora_static_plugins::native_plugins(app);
 
-    // The ONE pass over `plugins/`, immediately after the host it depends on:
-    // a standalone plugin resolves its host-component mirrors during
-    // `RenzoraPluginHostPlugin::build`, so the scan has to follow it. Both kinds
-    // load here — the scanner dispatches on which entry symbol an artefact
-    // exports, which is the only thing that can tell them apart now that they
-    // share one on-disk layout.
+    // The pass over `plugins/`, after the engine crates so a plugin's systems
+    // land in the same place a statically linked one's would.
     //
     // Desktop-only, matching the re-export it reaches through: wasm has no
     // dynamic linking at all, so there is nothing on disk for this to scan and
     // `renzora_runtime` does not compile the crate there.
     #[cfg(not(target_arch = "wasm32"))]
     app.add_plugins(renzora_runtime::renzora_native_plugin::NativePluginLoader::default());
-    // Installs any render passes those plugins registered. Separate plugin
-    // because the work happens in `finish`, after every `build` has run and the
-    // render sub-app exists.
-    app.add_plugins(renzora_postprocess::plugin_bridge::PluginRenderBridgePlugin);
-    // Custom shaded materials registered by those plugins. Separate plugin: it
-    // owns an asset type and a `MaterialPlugin`, and builds its assets in
-    // `finish` for the same reason the render bridge does.
-    renzora_postprocess::add_plugin_material(app);
 }
 
 // ── WASM runtime ─────────────────────────────────────────────────────────
@@ -304,7 +252,7 @@ fn main() {
         renzora_runtime::editor_image::install(&mut app);
     }
 
-    // C-ABI plugins from `<exe-dir>/plugins/`, after both.
+    // Plugins from `<exe-dir>/plugins/`, after both.
     load_global_plugins(&mut app, is_editor);
 
     app.run();

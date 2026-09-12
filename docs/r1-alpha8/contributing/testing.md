@@ -155,8 +155,8 @@ Cross-crate tests go in a crate's `tests/` directory (`crates/<crate>/tests/*.rs
 
 | Test file | What it proves |
 |---|---|
-| `crates/renzora_plugin/tests/abi_order.rs` | The C-ABI interface table's field order and prefix hashes match what plugins negotiate against — the check that catches a "minor append" that actually inserted into the middle. |
-| `crates/renzora_net/tests/round_trip.rs` | The whole HTTP chain end to end — `fetch` on a background thread → queue → frame pump → an `extern "C"` call into a backend → events → back to the parked thread — against a table-driven fake backend, so there are no sockets to flake. |
+| `crates/renzora_native_plugin/tests/load_plugin.rs` | A plugin compiles against the staged SDK and loads into a real `App`. The one test that proves the whole install path, end to end. |
+| `crates/renzora_net/tests/round_trip.rs` | The whole HTTP chain end to end — `fetch` on a background thread → queue → frame pump → the backend → events → back to the parked thread — against a table-driven fake backend, so there are no sockets to flake. |
 | `crates/renzora_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity — the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
 | `crates/renzora_bsn/tests/raw_roundtrip.rs` | The scene format survives a serialize → deserialize round-trip. |
 | `crates/renzora_ember/tests/parse_templates.rs` | Every shipped `.html` UI template parses through bevy_hui's parser — markup syntax errors are caught in CI without a GPU. |
@@ -305,7 +305,6 @@ rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov --locked
 
 cargo renzora coverage                 # measure the workspace, print the table
-cargo renzora coverage --plugins       # the standalone C-ABI plugins too
 cargo renzora coverage --check         # fail if any crate fell below its floor
 cargo renzora coverage --bless         # record the current numbers as the new floors
 cargo renzora coverage --report-only   # re-read the last run's lcov, no rebuild
@@ -347,10 +346,11 @@ Vendored crates, dependency checkouts, and the generated `plugins.rs` lists are 
 
 ## What CI runs on top of the above
 
-Beyond `test` and `clippy`, two jobs exist specifically to close coverage holes:
+Beyond `test` and `clippy`, one job exists specifically to close a coverage hole:
 
-- **`plugins`** — loops over `plugins/*/Cargo.toml` and runs each plugin's suite. They are excluded from the workspace on purpose (as members they would inherit the engine's feature unification and link Bevy), and the unintended consequence was that ~14k lines of C-ABI boundary code had never been compiled or tested by CI at all.
 - **`gpu`** — installs lavapipe and re-runs the render-touching crates with `RENZORA_GPU_TESTS=1`.
+
+Installed plugins are not covered by CI at all, and cannot be: they live outside this repository. `renzora_native_plugin/tests/load_plugin.rs` is what stands in for them — it compiles a real plugin against the staged SDK and loads it, which is the path every installed plugin takes.
 
 `coverage.yml` is separate and runs on pushes to `main` plus weekly, not on pull requests. That is a disk decision, not a policy one: a runner gives ~20 GB usable, `test` already flirts with filling it, and a coverage run adds a second full artifact tree. It uploads the lcov and HTML report as artifacts and enforces the floors.
 

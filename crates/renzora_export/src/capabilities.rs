@@ -280,7 +280,7 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "The post-process stack as a whole. Off takes every effect below with it AND \
                bevy own built-in post-process pipeline (~420 KiB), which survived having each \
                effect individually unticked because nothing named it. The framework itself \
-               stays: C-ABI plugins register their render passes through it, so a \
+               stays: plugins register their render passes through it, so a \
                plugin-provided effect still works. Tonemapping is separate — it lives in \
                bevy_core_pipeline, not here.",
         bevy_features: &["bevy_post_process"],
@@ -689,10 +689,10 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "Keeps Rust's unwinding panic strategy. Turning it OFF builds with `panic = \"abort\"`, \
                which measured ~24% smaller (60.9 MB → 46.7 MB on a cube-and-light project) because \
                the unwind tables, landing pads and panic message/location strings all go. THE COST: \
-               the engine guards every call into a C-ABI plugin with `catch_unwind`, including each \
-               script call — with abort, a panicking plugin or script takes the whole game down \
-               instead of being caught and logged. Crash reports still work (the panic hook runs \
-               before the abort). Leave it on unless you've tested your game's scripts.",
+               the engine guards each script call and each network request with `catch_unwind` — \
+               with abort, one panicking script or request takes the whole game down instead of \
+               being caught and logged. Crash reports still work (the panic hook runs before the \
+               abort). Leave it on unless you've tested your game's scripts.",
         bevy_features: &[],
         runtime_features: &[],
         default_on: true,

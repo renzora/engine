@@ -2,12 +2,11 @@
 name = "renzora_gaussian_splatting"
 version = "0.1.0"
 edition = "2021"
-description = "3D Gaussian-splatting distribution plugin. Wraps the vendored bevy_gaussian_splatting renderer (.ply / .gcloud clouds) and resolves the serializable renzora::GaussianSplat contract component into live cloud handles; ships as a dlopen plugin in plugins/."
+description = "3D Gaussian splatting. Wraps the vendored bevy_gaussian_splatting renderer (.ply / .gcloud clouds) and resolves the serializable renzora::GaussianSplat contract component into live cloud handles."
 
-# Distribution plugin: ships as a standalone .dll/.so/.dylib that
-# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
-# startup. cdylib keeps the export surface to the unmangled `extern "C"`
-# symbols emitted by `renzora::add!` under the `dlopen` feature.
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list and the linker pulls straight
+# into the binary.
 [lib]
 crate-type = ["rlib"]
 

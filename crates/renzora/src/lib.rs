@@ -28,7 +28,7 @@ pub use core::*;
 
 // ── Global illumination contract ─────────────────────────────────────────
 // GI settings components (`RtLighting`, `LumenLighting`) + the Lumen
-// diagnostics snapshot. Shared here so the GI distribution plugin
+// diagnostics snapshot. Shared here so the GI plugin
 // (`renzora_lumen`), the editor inspectors, `renzora_level_presets`, and the
 // debugger's Lumen panel all resolve one `TypeId` across the dlopen boundary —
 // the plugin can't be statically linked by those consumers (it's a cdylib), so
@@ -37,7 +37,7 @@ pub mod gi;
 pub use gi::*;
 
 // `WorldEnvironment` — the unified environment contract type (see its module
-// doc + docs/world-environment-spec.md). Shared dylib, same boundary reason.
+// doc). Shared dylib, same boundary reason.
 pub mod world_environment;
 pub use world_environment::*;
 
@@ -82,11 +82,9 @@ pub mod text_mesh;
 pub mod grid;
 
 // `AudioLink` — the engine side of the audio boundary, and the handle types it
-// allocates. The backend is still a plugin and the mixer/timeline/emitters are
-// still `renzora_audio`; only the link is here, so any plugin can play a sound.
-// The request vocabulary it speaks lives in `renzora_plugin::audio`, which this
-// crate already depended on for `net`. NOT glob re-exported — `SoundId` and
-// `VoiceId` are too generic for the crate root.
+// allocates. The mixer/timeline/emitters are still `renzora_audio`; only the
+// link is here, so any plugin can play a sound. NOT glob re-exported —
+// `SoundId` and `VoiceId` are too generic for the crate root.
 #[cfg(feature = "audio")]
 pub mod audio;
 
@@ -101,9 +99,18 @@ pub mod diagnostics;
 // HTTP request vocabulary + the submission queue. NOT glob re-exported: `Request`
 // and `Response` are names generic enough to collide, so callers say
 // `renzora::net::Request`. The engine ships no HTTP client — the socket is opened
-// by `plugins/http` behind the C-ABI boundary — but the queue is process-global
-// state and therefore has to be singular. See the module doc.
+// by whichever crate implements `net_backend::Backend` — but the queue is
+// process-global state and therefore has to be singular. See the module doc.
 pub mod net;
+
+// The client contract itself: the `Backend` trait, what it answers with, and the
+// events it sends back. Here rather than in `renzora_net` because `net`'s
+// process-global queue holds these types, and a boundary type has exactly one
+// definition — the rule the whole contract crate exists for.
+pub mod net_backend;
+
+// The mixer contract, for the same reason: `audio`'s link holds these types.
+pub mod audio_backend;
 
 // Undo/redo core. NOT glob re-exported: `execute` and `record` are names far too
 // generic for the crate root, so callers say `renzora::undo::execute`. An
@@ -120,7 +127,7 @@ pub use wind::*;
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus
 // the plugin-facing registration API. Lives here in the shared dylib so the
-// runtime binary, the editor bundle, and dlopen'd distribution plugins all read
+// runtime binary, the editor image, and every installed plugin all read
 // and write ONE table across the boundary. The `renzora_lang` plugin populates
 // it (embedded built-ins + external `languages/*.toml` packs); any plugin can
 // contribute its own keys. Not glob-re-exported: callers write the explicit

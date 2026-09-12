@@ -1,139 +1,113 @@
 # Your First Project
 
-Let's make something move on screen. In this guide you'll create a project, drop an object into your scene, give it a quick script, and press Play — all inside the editor, no setup gymnastics required.
+Make something move on screen. You will create a project, drop an object into the scene, give it a script, and press Play.
 
-## Open the editor
+## Create the project
 
-You can get Renzora two ways: grab a prebuilt build from [renzora.com/download](/download), or install the command-line tool with `cargo install renzora`. Either way, the next step is the same — open the editor. (The [Installation guide](/docs/r1-alpha8/getting-started/installation) has the exact commands for your platform.)
+Open the editor. You land on the [dashboard](/docs/r1-alpha8/getting-started/dashboard), on its Projects page.
 
-When the editor starts you'll land on the [dashboard](/docs/r1-alpha8/getting-started/dashboard), open on its **Projects** page. Click **New Project** and choose a folder on your computer — the folder's name becomes the project's. (**New from Template** beside it starts you from a finished project instead; see the [dashboard](/docs/r1-alpha8/getting-started/dashboard#templates).) That's it — the editor builds the project and opens its starting scene, ready to go.
+Click **New Project** and choose a folder. The folder's name becomes the project's name. The editor creates the project and opens its starting scene.
 
-There is more on the dashboard than projects: a **Plugins** page for fitting the engine out before you open anything, a **Changelog**, and your renzora.com account. None of it is needed for a first project, so walk past it for now — it's all in [The Dashboard](/docs/r1-alpha8/getting-started/dashboard) when you want it.
+<!-- screenshot: dashboard_new_project.png - the New Project flow, folder picker -->
 
-### The first-run walkthrough
-
-The very first time you open the editor after installing it, a small card appears in the corner and walks you through the basics — orbit, zoom and fly the camera, find your way home with `Home`, select the glowing cube, move it with the gizmo, then a tour of the workspace tabs, panels, Settings and themes.
-
-Steps aren't a slideshow: each one asks you to **actually do the thing**, and the editor notices when you have. The ones that point at editor chrome glow the target and float a green arrow at it, so you can't miss which button they mean. Once you've done it, a green **Continue** button appears — you move on when you're ready, not the instant you finish the gesture. Drag the card by its header if it's ever sitting on top of what you need.
-
-There's more than one chapter. Finish the first and **Help → Getting Started Tutorial** reopens at the chapter list:
-
-| Chapter | What it covers |
-|---|---|
-| **Getting Started** | Camera, selection, gizmos, panels, Settings, themes |
-| **Building a Scene** | The shape library, lights, duplicating and deleting, editing components |
-| **Scripting** | Writing Lua, attaching it to an entity, running it in Simulate |
-| **Materials** | The node graph, previewing, saving a material |
-| **Your Workspace** | Workspaces, docking panels, rearranging the toolbar, rebinding keys |
-| **The Marketplace** | Finding, installing and re-using assets from renzora.com |
-| **Play Mode** | Play vs Simulate, play targets, and what Export does |
-
-Chapters unlock in order: finishing one opens the next, so you're never staring at seven titles wondering which to open. Finished ones get a green tick.
-
-Progress is tracked **per user**, not per project — it lives in `~/.renzora/settings.toml` alongside your other editor preferences. The walkthrough teaches the editor, so once you've done it (or skipped it) every project you make afterwards opens straight into the editor. To run it again, use **Help → Getting Started Tutorial**.
-
-**Skip** moves past a single step you can't do right now — no model to import, no marketplace account — without losing the chapter. The **X** in the header closes the tutorial entirely, and counts as "seen" so it won't auto-open again.
-
-## What's inside a new project
-
-A fresh project is just a few files on disk:
+A fresh project is two things on disk:
 
 ```text
 my-game/
-├── project.toml      # your game's settings
+├── project.toml
 └── scenes/
-    └── main.bsn      # the scene that loads first (empty to start)
+    └── main.bsn
 ```
 
-That's the lot. You'll add more folders as you grow — `assets/` for models, textures, and sounds, and `scripts/` for your `.lua` files — and the editor makes them as it needs them. (Plugins are **not** among them: they install beside the engine, not into your game, so a project has no `plugins/` folder.) Your starting scene, `scenes/main.bsn`, is valid but empty:
+`project.toml` is your game's settings, managed by **Settings > Project**. `main.bsn` is the scene that loads first, empty to start with.
 
-```text
-// renzora interim bsn v1
-```
+You will add more folders as you go. The editor makes them when it needs them.
 
-You usually never touch `project.toml` by hand — the editor's Settings panel manages it for you, and the Assets panel hides it for the same reason. If you do peek inside, just three keys really matter:
+### The walkthrough
 
-```toml
-name = "My Game"
-version = "0.1.0"
-main_scene = "scenes/main.ron"   # the scene that loads at startup
-created_with = "r1-alpha8"       # the engine version that made this project
-```
+The first time you open the editor a small card appears in the corner and walks you through the basics: moving the camera, selecting, using the gizmo, then panels, Settings and themes.
 
-`created_with` is stamped once, when the folder is made, and never rewritten — so it keeps saying which version you started on however many times a newer editor saves the project. It is your own version key, not the engine's: `version` is your game's, and it is yours to bump.
+Each step asks you to actually do the thing, and the editor notices when you have. Steps that point at a button glow the target and float an arrow at it. Drag the card by its header if it is in the way.
 
-There's a `[window]` section for size and an optional autoload list and more. You can leave all of that alone for now and let the editor's Settings panel manage it.
+<!-- screenshot: tutorial_card.png - the tutorial card with a glowing target and green arrow pointing at a button -->
 
-## Add your first object
+There is more than one chapter. Finish the first and **Help > Getting Started Tutorial** reopens at the chapter list. Chapters unlock in order.
 
-Your new scene is empty, so let's put something in it.
+**Skip** moves past one step. The **✕** closes the tutorial and counts as seen, so it will not open itself again.
 
-In the **Hierarchy** panel, click **+ Add Entity** at the top. A search overlay pops up with everything you can drop into a scene — basic shapes like Cube and Sphere, lights, cameras, and more — sorted into categories down the left.
+## Add an object
 
-![The Add Entity overlay: search or browse categories like Lighting and Camera to drop shapes, lights, and cameras into your scene.](/assets/previews/add_entity.png)
+In the **Hierarchy** panel, click **+ Add Entity**. A search overlay opens with everything you can put in a scene: shapes, lights, cameras and more, sorted into categories.
 
-Pick **Cube**. It appears in the middle of your scene and is selected automatically. Then click **+ Add Entity** again and add a **Directional Light** so your cube isn't sitting in the dark.
+![The Add Entity overlay: search or browse categories such as Lighting and Camera to drop shapes, lights and cameras into your scene.](/assets/previews/add_entity.png)
 
-## See it in the viewport
+Pick **Cube**. It appears in the middle of the scene, already selected. Click **+ Add Entity** again and add a **Directional Light** so the cube is not sitting in the dark.
 
-The big window in the center is the **viewport** — your live 3D view of the scene. Your new cube is sitting at the center.
+## Move it around
 
-With the cube selected, a colored handle (a "gizmo") appears on it. Drag the arrows to move it, and use the toolbar to switch between the Move, Rotate, and Scale tools. Made a mistake? `Ctrl+Z` undoes it.
+The big window in the middle is the viewport. Your cube is at the centre, with a coloured gizmo on it.
 
-![An object selected in the viewport, with the colored gizmo you drag to move it around the scene.](/assets/previews/viewport.png)
+![An object selected in the viewport with the coloured gizmo you drag to move it.](/assets/previews/viewport.png)
 
-## Find it in the Hierarchy
+Drag the arrows to move it. Use the toolbar along the viewport's top edge to switch between Move, Rotate and Scale. `Ctrl+Z` undoes.
 
-Every object you add shows up in the **Hierarchy** panel as a list. This is your scene's table of contents — click any entry to select that object, and objects can be nested inside others to keep things tidy.
+To look around: right-drag to look, `W` `A` `S` `D` to fly while holding right mouse, scroll to zoom, and `F` to focus whatever is selected.
 
-![The Hierarchy panel lists everything in the scene, with the + Add Entity button at the top.](/assets/previews/hierarchy.png)
+## Change its properties
 
-## Tweak it in the Inspector
+With the cube selected, look at the **Inspector**. At the top is the entity header: its icon, its ID, its label colour and an eye to hide it. Below that is **Transform** with Position, Rotation and Scale, plus one section per component.
 
-Select your cube and look at the **Inspector** panel. This is where you change an object's properties.
+![The Inspector showing a selected object's name, transform and component settings.](/assets/previews/inspector.png)
 
-At the top you'll see the **entity header** — the cube's icon, its ID, its label colour and an eye to hide it — and below that a **Transform** section with Position, Rotation and Scale, plus a section for each component the object has. Type new numbers into the Transform fields and watch the cube update in the viewport instantly.
+Type new numbers into the Transform fields and watch the cube move.
 
-![The Inspector showing a selected object's properties: name, transform (position, rotation, scale), and component settings.](/assets/previews/inspector.png)
+## Make it spin
 
-## Make it move
+Scripts give an entity behaviour. Renzora compiles Rust scripts on save.
 
-A little script will make the cube spin. Scripts are plain text files, and Renzora picks the language by the file extension — `.lua` runs Lua, `.rs` compiles a Rust script.
+In the **Assets** panel, click **Add** and pick **Rust Script**. You get `new_script.rs`, and the file opens in the code editor with a working starter in it:
 
-Create a file at `scripts/spin.lua`:
+```rust
+use bevy::prelude::*;
+use renzora::ScriptCtx;
 
-```lua
--- Spins the entity continuously.
-function props()
-    return {
-        speed = { value = 45.0, hint = "degrees per second" },
+fn update(ctx: &mut ScriptCtx) {
+    let dt = ctx.delta();
+    if let Some(mut transform) = ctx.get_mut::<Transform>() {
+        transform.rotate_y(dt);
     }
-end
+}
 
-function on_update()
-    rotate(0, speed * delta, 0)   -- spin around the Y axis
-end
+renzora::script!(update);
 ```
 
-Two friendly things to know:
+`update` runs once per frame, for each entity the script is attached to. `ctx` is that entity plus the whole world. This one spins whatever it is on around its Y axis.
 
-- Anything you return from `props()` shows up in the Inspector, so you can tweak it without editing code. Here, `speed` becomes a slider-friendly value you can change live.
-- `on_update()` runs every frame. `delta` is the time since the last frame, which keeps the spin smooth at any frame rate.
+Press `Ctrl+S` to save. The script compiles in the background, which takes about a second the first time. Watch the **Console** for the result.
 
-To attach the script: select the cube, find the **Scripts** section in the Inspector, and point it at `scripts/spin.lua`. The full list of functions you can call (moving, input, audio, and more) lives in the [Scripting API](/docs/r1-alpha8/api/scripting).
+### Attach it
+
+Drag `new_script.rs` from the Assets panel onto your cube in the Hierarchy. Or select the cube, find the **Scripts** component in the Inspector, and click **Add Script**.
+
+<!-- screenshot: script_component.png - the Scripts component in the Inspector with a .rs script attached -->
 
 ## Press Play
 
-Hit **`F5`** to play. The viewport switches to your game and the cube starts spinning. Press `F5` again to stop and go back to editing.
+Hit **Play** in the top bar, or `F5`.
 
-While it's running, change `speed` in the Inspector — the spinning cube picks up the new value right away.
+The editor swaps to your game camera, hides its own gizmos and grid, and runs. Your cube spins. **Stop** puts everything back exactly as it was, so nothing you do while playing changes your scene.
 
-## Save your work
+Try **Simulate** instead. That runs the script while leaving the editor live, so you can keep your camera, select the cube mid-spin, and watch its rotation change in the Inspector.
 
-Press **`Ctrl+S`** to save. Your scene is written to a `.ron` file in the `scenes/` folder. Renzora only saves what you actually authored (not temporary runtime data), so scene files stay small and easy to read.
+## Save
 
-## What's next?
+`Ctrl+S` saves the scene.
 
-- [Editor Overview](/docs/r1-alpha8/getting-started/editor-overview) — a tour of every panel.
-- [Core Concepts](/docs/r1-alpha8/getting-started/concepts) — how scenes, entities, and scripts fit together.
-- [Scripting Overview](/docs/r1-alpha8/scripting/overview) — Lua, Rust scripts, and visual Blueprints.
+One thing to know: only named entities are saved. Everything you add from **+ Add Entity** gets a name automatically, so this rarely comes up, but if something vanishes after a reload, check it has a name.
+
+## What's next
+
+- [Scenes and Hierarchy](/docs/r1-alpha8/editor/scenes) for building a real level
+- [Rust Scripts](/docs/r1-alpha8/scripting/rust-scripts) for what a script can do
+- [Materials](/docs/r1-alpha8/editor/materials) for making surfaces look right
+- [Export Overview](/docs/r1-alpha8/exporting/overview) for shipping it

@@ -112,7 +112,7 @@ Fields named `enabled` or starting with `_p` are skipped automatically (a conven
 
 The `TestComponentPlugin` above is **editor-scope** (`add!(_, Editor)`), so its whole crate is always built with the `editor` feature and the `register_inspectable` call needs no guard.
 
-A plugin that must run in **both** the editor and the shipped game (any runtime component that also wants an inspector) is different: its `register_inspectable` call must be compiled out when the `editor` feature is off. The crate declares its own `editor` feature that forwards to `renzora/editor`, and gates the call. This is what a dual-mode distribution plugin like `renzora_vignette` or `renzora_lumen` does:
+A plugin that must run in **both** the editor and the shipped game (any runtime component that also wants an inspector) is different: its `register_inspectable` call must be compiled out when the `editor` feature is off. The crate declares its own `editor` feature that forwards to `renzora/editor`, and gates the call. This is what a dual-mode plugin like `renzora_vignette` or `renzora_lumen` does:
 
 ```toml
 [features]

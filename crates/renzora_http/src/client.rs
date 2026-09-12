@@ -18,7 +18,7 @@ use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use renzora_plugin::net::{Backend, BackendInfo, Caps, Event, EventKind, Request};
+use renzora::net_backend::{Backend, BackendInfo, Caps, Event, EventKind, Request};
 
 /// Bytes read per streaming chunk.
 ///
@@ -75,7 +75,9 @@ fn build_agent() -> ureq::Agent {
 const USER_AGENT: &str = concat!("renzora-http/", env!("CARGO_PKG_VERSION"));
 
 impl Backend for Ureq {
-    const NAME: &'static str = "ureq";
+    fn name(&self) -> &str {
+        "ureq"
+    }
 
     fn init(&mut self) -> Result<BackendInfo, String> {
         Ok(BackendInfo {

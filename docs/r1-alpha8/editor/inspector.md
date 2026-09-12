@@ -1,170 +1,141 @@
 # Inspector
 
-The Inspector is where you read and tweak everything about the object you have selected — its position, its colors, its lights, its scripts, and more. Click something in your scene and all of its settings show up here, ready to edit.
+The Inspector is where you read and change everything about the object you have selected: its position, its colours, its lights, its scripts.
 
-This page covers the everyday basics. When you want the deep technical reference, the [Scripting API](/docs/r1-alpha8/api/scripting) and the [Inspector Fields](/docs/r1-alpha8/editor-dev/inspector-fields) guides have the full story.
+![The Inspector panel showing a selected object with collapsible sections for Name, Transform, Visibility, Directional Light, Volumetric Light and TAA.](/assets/previews/inspector.png)
 
-![The Inspector panel showing the selected World Environment object, with collapsible sections for Name, Transform, Visibility, Directional Light, Volumetric Light, and TAA.](/assets/previews/inspector.png)
+It always follows your selection. Click an object in the viewport or in the Hierarchy and the panel rebuilds to show it.
 
-## Pick something to inspect
+Nothing to inspect yet? Open **Add Entity** and drop something into the scene.
 
-The Inspector always follows your **selection**. Click an object in the viewport, or click its name in the Hierarchy, and the Inspector instantly rebuilds to show that object.
-
-Don't have anything to inspect yet? Open the **Add Entity** menu to drop a new object into your scene — a light, a camera, some terrain, an empty object, and so on. Once it's in the scene, select it and it appears in the Inspector.
-
-![The Add Entity menu, with a search box and categories like General, Lighting, and Camera listing objects you can add to your scene.](/assets/previews/add_entity.png)
-
-> Want the Inspector to stay on one object while you click around elsewhere? Use the **lock** toggle at the right of the entity header. It pins the Inspector to the current object until you unlock it.
+![The Add Entity menu with a search box and categories such as General, Lighting and Camera.](/assets/previews/add_entity.png)
 
 ## The entity header
 
-Directly above the component list is a single fixed row describing the object itself, rather than any component on it. From left to right:
+The fixed row above the component list describes the object itself rather than any component on it.
 
-- **Icon** — the glyph this object shows in the Hierarchy. Click it to open a grid of icons and pick one; **Auto (from components)** at the top clears your choice and goes back to letting the object's components decide (a mesh gets a cube, a light gets a bulb). Useful when a scene is full of empty objects that all look alike but mean quite different things — a spawn point, a patrol waypoint, a trigger volume.
-- **ID** — the object's unique identifier, and the name scripts use to find it. Typing here sanitizes what you enter (spaces and punctuation become `_`, everything lowercases) and de-duplicates it against every other object, so two things can never end up sharing an ID.
-- **Label colour** — the colour of this object's row in the Hierarchy. Click the swatch for a colour picker.
-- **Eye** — show or hide the object. A hidden object's eye is crossed out and tinted.
-- **Lock** — pin the Inspector to this object, as above.
+| Control | What it does |
+|---|---|
+| Icon | The glyph this object shows in the Hierarchy. Click to pick one, or **Auto** to let its components decide. |
+| ID | The object's unique identifier, and the name scripts use to find it. Spaces and punctuation become `_`, and duplicates are resolved for you. |
+| Label colour | The colour of this object's row in the Hierarchy. |
+| Eye | Show or hide the object. |
+| Lock | Pin the Inspector to this object while you click around elsewhere. |
 
-Both the icon and the label colour are saved with the scene, so they survive a reload and travel with the file to anyone else opening the project.
+The icon and the label colour are saved with the scene, so they travel with the file.
 
-Some state isn't attached to any object — the time, the editor's own settings, a plugin's configuration. That is a **resource**, and because there is nothing to select, it never shows up here. Open the **Resources** panel instead (Add-Panel picker → *Debug*): it lists every resource in the running world and edits it the same way this panel edits a component. See [Resources & State](/docs/r1-alpha8/engine-core/resources).
+Setting the icon by hand is useful when a scene is full of empty objects that all look alike but mean different things: a spawn point, a patrol waypoint, a trigger volume.
 
 ## Reading the panel
 
-Each object is made of **components** — small bundles of settings like *Transform* (position/rotation/scale), *Directional Light*, or *Visibility*. The Inspector shows one collapsible section per component.
+Each object is made of **components**, and the Inspector shows one collapsible section per component.
 
-In a section header you'll find:
+A section header carries a **grip** for dragging it up or down, a **caret** to fold it, an **icon** and name, an **on/off toggle** on components that support one, and a **trash** button to remove it.
 
-- A **grip** (⠿) on the far left — drag it to move the component up or down the list.
-- A **caret** to fold the section open or closed.
-- An **icon** and the component's name.
-- An **on/off toggle** (on components that support it) so you can switch a feature off without deleting it.
-- A **trash** button to remove the component entirely. (**Scripts** and **Material** don't have one — they manage their own contents, with a per-script remove and the material binding controls instead.)
+Scripts and Material have no trash button. They manage their own contents instead.
 
-Inside each section are the editable fields. The most-used components start pinned to the top in a fixed order — **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below, and you can rearrange any of it.
+Transform comes first, then Scripts and Material when present, so the things you reach for most are where you expect them. Everything else follows below.
 
-> The object's ID, icon, label colour and visibility are *not* in this list — they aren't components you can add or remove, so they live in the [entity header](#the-entity-header) above it instead.
+The top bar holds **Add Component**, a **filter box** that hides everything not matching what you type, and an **expand or collapse all** button.
 
-The top bar holds three things: the **Add Component** button, a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click that once to open every section, again to collapse them all; it resets when you select a different object.
+<!-- screenshot: inspector_add_component.png - the Add Component menu open, grouped by category -->
 
-### Rearranging the list
+### Rearranging
 
-Grab the **grip** on the left of any component header and drag it up or down. A blue line shows where the section will land; let go to drop it there. The sections don't shuffle around under the cursor while you drag — only the line moves — and dragging near the top or bottom edge scrolls the list, so you can move a component past what fits on screen.
+Drag the grip on any header. A line shows where the section will land. The sections do not shuffle under your cursor while you drag, and dragging near an edge scrolls the list.
 
-The order is remembered **per component type, for you**, not per object: put *Material* above *Transform* once and it stays above it on every object that has both, in every project, after a restart. It's saved in `~/.renzora/editor.toml` alongside your other editor preferences, and it survives a settings reset — like the rest of the arrangements you've dragged into place, it's yours rather than a setting.
-
-Components you've never dragged keep the neighbour they already had, so rearranging a couple of things doesn't scramble everything else. To put a component back, drag it back.
+The order is remembered per component type, for you, not per object. Put Material above Transform once and it stays there on every object that has both, in every project. Components you have never dragged keep the neighbour they had.
 
 ### Which sections start open
 
-By default every section starts expanded. Hit the collapse-all button to fold them, or change the starting state in **Settings → Interface → Inspector → Default Expand**:
+By default, all of them. Change it under **Settings > Interface > Inspector > Default Expand**.
 
-- **All Open** *(default)* — every section starts expanded.
-- **Essentials Only** — Transform and Scripts open; the rest closed.
-- **All Closed** — every section starts collapsed.
+| Option | Starts with |
+|---|---|
+| All Open | Every section expanded. The default. |
+| Essentials Only | Transform and Scripts open, the rest closed. |
+| All Closed | Everything collapsed. |
 
-**What All Open costs.** A collapsed section is not merely hidden — its rows are despawned and the space reserved with a placeholder, so it genuinely costs nothing to have. Expanding is the expensive direction: on a scene with a world environment, terrain and camera, selecting an entity with everything open added ~1,082 bevy_ui nodes, and bevy_ui walks every node in the tree every frame whether or not anything changed. That measured ~3 ms/frame — about 72 fps down to 59. If a long component list starts costing you frames, **Essentials Only** is the setting to reach for.
+A collapsed section costs nothing, because its rows are not built at all. If a long component list starts costing you frames, **Essentials Only** is the setting to reach for.
 
-This sets the *starting* state each time the Inspector rebuilds for a new selection — you can still fold any section by hand, and the expand/collapse-all button overrides it for the current object.
-
-> Your edits apply live. Drag a value or flip a toggle and the change takes effect immediately — no Apply button, no waiting.
+This sets the starting state each time the Inspector rebuilds. You can still fold anything by hand.
 
 ## Editing fields
 
-Different settings get different controls, picked automatically to match the value:
+Each setting gets the control that fits it.
 
-- **Numbers** — drag left/right to scrub the value, or click to type an exact number. Hold **Shift** while dragging to scrub ten times finer.
-  - A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum: a column of them reads at a glance without stopping to compare digits. Dragging one moves the fill with your cursor — the width of the field is the whole range, so dragging from one edge to the other covers it exactly once.
-- **X / Y / Z** — three colored drag boxes for things like position and rotation.
-- **Toggles** — a simple on/off switch.
-- **Colors** — a color picker (with an alpha option where it makes sense).
-- **Text** — a single-line text box.
-- **Dropdowns** — pick from a fixed list of choices.
-- **Asset slots** — drag a file from the Asset Browser onto the slot (it only accepts the right file types).
+| Kind | How to edit it |
+|---|---|
+| Numbers | Drag to scrub, or click to type. Hold `Shift` while dragging to scrub ten times finer. |
+| X / Y / Z | Three coloured drag boxes, for position and rotation. |
+| Toggles | An on/off switch. |
+| Colours | A colour picker. |
+| Text | A single-line box. |
+| Dropdowns | A fixed list of choices. |
+| Asset slots | Drag a file from the Assets panel onto the slot. It only accepts the right types. |
 
-> Every editable field has a small **reset** button (the circular ↺ arrow) just to its right. Click it to snap that field back to its default value — `0` for numbers, off for toggles, empty for text, white for colors, and so on. Action buttons and read-only fields don't show one, since there's nothing to reset.
+A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum. A column of them reads at a glance without comparing digits.
 
-> **Keyframe button.** When an animation clip is open in the Timeline for the selected entity, every animatable field gains an amber **◆** button just left of its reset button. Clicking it keys that field's current value at the playhead — and if the field isn't animated yet, it creates the track first, so you can start animating a property straight from the inspector. See [Animation → Authoring workflow](animation.md#authoring-workflow).
+Every editable field has a small **reset** button to its right, which snaps it back to its default.
+
+Edits apply live. There is no Apply button.
+
+### Keyframing from the Inspector
+
+When an animation clip is open in the Timeline for the selected entity, every animatable field gains an amber **◆** button beside its reset. Clicking it keys that field's current value at the playhead, creating the track first if there is not one.
+
+See [Animation](/docs/r1-alpha8/editor/animation).
 
 ## Adding and removing components
 
-- **Add** — click **Add Component** in the panel's top bar to open a list of everything you can add, grouped by category. Type to filter. A few sections are *inherent* rather than addable and so never show up in this list — **Scripts** on every entity, **2D Lighting** on a 2D camera — because they're always present already.
-- **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead. Removing the last script also drops the underlying component, so an entity you never scripted carries nothing.
-- **Turn off** — flip the header toggle to disable a component without removing it.
+**Add Component** opens a list of everything you can add, grouped by category. Type to filter.
+
+A few sections are inherent rather than addable and never appear in that list, because they are always present: Scripts on every entity, 2D Lighting on a 2D camera.
+
+The **trash** button in a header removes a component. The header toggle turns one off without removing it.
+
+Removing the last script also drops the underlying component, so an entity you never scripted carries nothing.
 
 ## Material
 
-The **Material** section is the fastest way to dress a mesh. Its top row is the
-material reference — thumbnail, name picker, and buttons to create a new
-material (**+**), browse, open the Material Editor, or clear it. Below that is one drop slot per PBR channel (Base
-Color, Normal, Roughness, Metallic, Ambient Occlusion, Emissive): drag an image
-onto a slot and it's wired into the material graph and applied straight away.
-Drag a whole texture set onto the material row and each file is routed to the
-channel its name suggests. Full details in
-[Materials](/docs/r1-alpha8/editor/materials#putting-a-material-on-an-object).
+The **Material** section is the fastest way to dress a mesh.
 
-## Text & fonts
+Its top row is the material reference: a thumbnail, a name picker, and buttons to create a new material, browse, open the Material Editor, or clear it.
 
-Any entity with text exposes two text sections:
+Below that is one drop slot per channel: Base Color, Normal, Roughness, Metallic, Ambient Occlusion and Emissive. Drag an image onto a slot and it is wired in and applied straight away. Drag a whole texture set onto the material row and each file is routed to the channel its name suggests.
 
-- **Text Font** — pick the **Font** from a dropdown that auto-populates from your
-  project's `fonts/` folder (drop a `.ttf`/`.otf` there and it appears) plus the
-  built-in faces. Set the **Size**, and — for variable fonts — the **Weight**
-  (100–900), **Width** (condensed ↔ expanded), **Spacing** (letter spacing, in
-  px), and **Line** height (× font size).
-- **Rich Text** — build *styled spans*: multiple runs of text on one line, each
-  with its own text and color. Click **Add span** to append a run, edit its text
-  and R/G/B inline, and use the **trash** button to remove it. Spans render in
-  order after the base text, so you can mix colors and weights in a single label.
+See [Materials](/docs/r1-alpha8/editor/materials).
 
-Fonts you use are saved into the scene and packed into the exported game (only
-the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha8/exporting/overview)).
+## Text and fonts
 
-## Script properties
+Any entity with text gets two sections.
 
-Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rs` file from the Asset Browser onto the **Drop to add script** target, or click the **+** button on the target's right edge to pick one from a scrolling list of your project's scripts.
+**Text Font** picks the font from a dropdown that fills itself from your project's `fonts/` folder plus the built-in faces. Drop a `.ttf` or `.otf` there and it appears. Set the size, and for variable fonts the weight, width, letter spacing and line height.
 
-Each attached script gets its own **collapsible section** — a header with a caret, a **file icon**, the script's file name, an **enable toggle**, and a per-script **trash** button — so an entity carrying several scripts stays tidy. Click a header to fold that script's variables away; the fold state is remembered while you work.
+**Rich Text** builds styled spans: several runs of text on one line, each with its own text and colour. **Add span** appends one. Spans render in order after the base text.
 
-The header's **file icon is a button**: click it to open that script straight in the **Code Editor** (the panel is added to your layout if it isn't already open), so you can jump from tuning a variable to editing the code behind it in one click.
+Only the fonts you actually use are packed into an exported game.
 
-Any variable your script declares in its `props()` function shows up as an editable field — so you can tune gameplay values (speed, jump height, color, a team name) right in the Inspector, with no code changes.
+## Scripts
 
-```lua
--- player.lua
-function props()
-    return {
-        speed     = { value = 5.0, hint = "Walk speed (units/s)" },
-        can_jump  = { value = true },
-        team      = { value = "red" },
-    }
-end
-```
+Drag a script from the Assets panel onto the **Drop to add script** target, or click the **+** on its right edge to pick from a list of your project's scripts.
 
-Each entry just needs a `value` (which sets both the default and the field type) and, optionally, a `hint` for a helpful tooltip. Numbers become draggable fields, `true`/`false` becomes a toggle, text becomes a text box, and so on.
+<!-- screenshot: script_component.png - the Scripts component with a script attached, showing its header controls -->
 
-Whatever you set in the Inspector is saved per-object and feeds straight back into the running script.
+Each attached script gets its own collapsible section with a file icon, its name, an enable toggle and a trash button, so an entity carrying several stays tidy.
 
-See [Scripting Overview](/docs/r1-alpha8/scripting/overview) to get started writing scripts, and the [Scripting API](/docs/r1-alpha8/api/scripting) for the full list of functions you can call.
+The file icon is a button. Click it to open that script in the **Code Editor**, adding the panel to your layout if it is not already there.
 
-## For programmers: custom components
+There is also a per-script **play button**, which runs just that script while you stay in edit mode. It is how you test one behaviour without running the game.
 
-Made your own Bevy component and want it to show up here automatically? Add `#[derive(Inspectable)]` and register it — Renzora generates the field rows for you.
+See [Rust Scripts](/docs/r1-alpha8/scripting/rust-scripts).
 
-```rust
-use bevy::prelude::*;
-use renzora::{AppEditorExt, Inspectable};
+## Resources
 
-#[derive(Component, Default, Reflect, Inspectable)]
-#[inspectable(name = "Health", icon = "HEART", category = "gameplay")]
-pub struct Health {
-    #[field(speed = 1.0, min = 0.0, max = 10000.0)]
-    pub current: f32,
-    pub max: f32,
-}
-```
+Some state is not attached to any object: the time, the editor's own settings, a plugin's configuration. That is a **resource**, and because there is nothing to select it never appears here.
 
-Then call `app.register_inspectable::<Health>();` from your plugin. The contract types live in the `renzora` crate behind its `editor` feature (engine built on **Bevy 0.19**).
+Open the **Resources** panel instead, from the Add Panel picker. It lists every resource in the running world and edits them the same way this panel edits a component.
 
-That's the short version. For per-field attributes, custom widgets, and fully native drawers, see [Inspector Fields](/docs/r1-alpha8/editor-dev/inspector-fields).
+## Custom components
+
+Components you write yourself can appear here automatically. See [Custom Inspector Fields](/docs/r1-alpha8/editor-dev/inspector-fields).

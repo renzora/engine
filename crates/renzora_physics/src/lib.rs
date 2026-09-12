@@ -7,7 +7,6 @@ pub mod auto_fit;
 pub mod backend;
 pub mod data;
 pub mod properties;
-pub mod plugin_bridge;
 pub mod read_state;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
@@ -109,9 +108,6 @@ impl Plugin for PhysicsPlugin {
 
         // Listen for script actions (apply_force, apply_impulse, set_velocity, kinematic_slide)
         app.add_observer(handle_physics_script_actions);
-
-        // The C-ABI surface: standalone plugins driving and reading bodies.
-        plugin_bridge::install(app);
 
         // Per-entity read-state mirror + script extension.
         app.add_systems(Update, read_state::auto_init_physics_read_state);

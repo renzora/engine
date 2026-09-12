@@ -18,7 +18,6 @@ renzora = { path = "../renzora", default-features = false, features = ["audio"] 
 serde = { version = "1", features = ["derive"] }
 # The audio boundary. `host` for the resource the plugin loader fills in when a
 # backend registers; `audio` for the request/reply vocabulary both sides compile.
-renzora_plugin = { path = "../renzora_plugin", features = ["host", "audio"] }
 cfg-if = "1"
 symphonia = { version = "0.5", default-features = false, features = ["ogg", "vorbis", "wav", "pcm", "mp3", "flac"], optional = true }
 

@@ -3,8 +3,8 @@
 //! Every widget in this module is an ordinary builder function — `dropdown`,
 //! `table`, `timeline` — which is fine when you have a `Commands` and a
 //! `&EmberFonts` in hand. It is not fine anywhere that describes UI as *data*: a
-//! `.bsn` file, a scene, or a plugin on the far side of the C ABI. Those can
-//! name a component; they cannot call a function.
+//! `.bsn` file or a scene. Those can name a component; they cannot call a
+//! function.
 //!
 //! So each widget gets a component whose insert hook builds it. `EmberDropdown
 //! { options: [..], selected: 1 }` in BSN produces exactly what

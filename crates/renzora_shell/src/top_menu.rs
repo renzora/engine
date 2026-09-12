@@ -1016,7 +1016,6 @@ pub(crate) struct ResetDefaultsChoice {
     editor_settings: bool,
     viewport: bool,
     keybindings: bool,
-    plugin_settings: bool,
     tutorial: bool,
 }
 
@@ -1027,12 +1026,6 @@ impl Default for ResetDefaultsChoice {
             editor_settings: true,
             viewport: true,
             keybindings: true,
-            // Off by default, like the tutorial and for a related reason: a
-            // plugin's settings are not the editor's configuration, they are
-            // whatever that plugin was told, and some of it (an endpoint, a
-            // chosen device, a path) is work the user did once and would have to
-            // do again. "Put the editor back" should not silently include it.
-            plugin_settings: false,
             // Off by default, unlike the other four. Redoing the tutorial is a
             // thing you ask for, not a thing you want thrown in with "put my
             // panels back" -- and having it re-offer itself unasked after an
@@ -1048,7 +1041,6 @@ impl ResetDefaultsChoice {
             || self.editor_settings
             || self.viewport
             || self.keybindings
-            || self.plugin_settings
             || self.tutorial
     }
 }
@@ -1209,22 +1201,6 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             |w: &mut World, v: bool| {
                 if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
                     c.keybindings = v;
-                }
-            },
-        ),
-        reset_option_row(
-            &mut commands,
-            &fonts,
-            "puzzle-piece",
-            &renzora::lang::t_or("menu.view.reset_opt_plugins", "Plugin settings"),
-            &renzora::lang::t_or(
-                "menu.view.reset_opt_plugins_sub",
-                "Everything installed plugins have saved. Which plugins are on stays as it is",
-            ),
-            |w: &Rx| w.get_resource::<ResetDefaultsChoice>().is_some_and(|c| c.plugin_settings),
-            |w: &mut World, v: bool| {
-                if let Some(mut c) = w.get_resource_mut::<ResetDefaultsChoice>() {
-                    c.plugin_settings = v;
                 }
             },
         ),
@@ -1484,21 +1460,6 @@ pub(crate) fn reset_defaults_buttons(
             if choice.keybindings {
                 w.insert_resource(renzora::core::keybindings::KeyBindings::default());
                 done.push("shortcuts");
-            }
-            // Only the saved blobs. A plugin holds its settings in its own
-            // memory and writes them back when it next changes them, so one
-            // that is loaded right now keeps working with what it has until it
-            // is next started — there is no host-side handle to reach into it,
-            // which is the whole point of the C-ABI boundary.
-            #[cfg(not(target_arch = "wasm32"))]
-            if choice.plugin_settings {
-                match renzora::core::settings_file::clear_all_plugin_settings() {
-                    // Nothing had been saved: say nothing rather than report a
-                    // reset of something that was never there.
-                    Ok(false) => {}
-                    Ok(true) => done.push("plugin settings"),
-                    Err(e) => warn!("[editor] could not clear plugin settings: {e}"),
-                }
             }
             if choice.tutorial {
                 #[cfg(not(target_arch = "wasm32"))]

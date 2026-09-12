@@ -29,10 +29,10 @@
 //!
 //! A name is resolvable by both of the engine's registries, and a `TypeId` is
 //! resolvable by only one. Engine components go through `AppTypeRegistry` and
-//! `bevy_reflect`; components owned by a C-ABI plugin have no Rust type at all
-//! and go through [`RawComponentRegistry`], which knows their fields by name and
-//! byte offset. Keying on the name means one syntax covers both, and a plugin
-//! author never has to know which side of the boundary a component lives on.
+//! `bevy_reflect`; a component registered by LAYOUT has no Rust type at all and
+//! goes through [`RawComponentRegistry`], which knows its fields by name and
+//! byte offset. Keying on the name means one syntax covers both, and nothing
+//! writing a scene has to know which registry a component came from.
 //!
 //! ## Values
 //!

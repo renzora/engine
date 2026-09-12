@@ -31,9 +31,9 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             // `dlopen`, so a `plugins/` folder beside the bundle is never read —
             // the export links them in regardless, and showing a two-way control
             // whose first option silently does nothing would be worse than
-            // showing none. (`renzora_plugin::host::loader`'s wasm shim is the
-            // other end of the same fact: a wasm build gets its plugins linked
-            // in or not at all.)
+            // showing none. (`renzora_native_plugin`'s wasm shim is the other
+            // end of the same fact: a wasm build gets its plugins linked in or
+            // not at all.)
             let note = txt(commands, fonts, &renzora::lang::t("export.plugin_link.web_forced"), 11.0, text_muted());
             commands.entity(lbody).add_child(note);
             // …and linking in still needs the mode that compiles. On the web that

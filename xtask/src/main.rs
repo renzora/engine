@@ -323,14 +323,6 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
             // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
             sdk::build(repo, plat, &out)?;
-            // Inside `sdk/`, and after it, because the two ship as one archive:
-            // `sdk.tar.zst` is unpacked by REPLACING `sdk/`, so a plugin API
-            // staged beside it would be deleted by the first update. It is not
-            // part of the SDK in any other sense — see `standalone.rs`.
-            if let Err(e) = stage_plugin_api(repo, &out) {
-                eprintln!("[xtask] staging the plugin API failed: {e}");
-                return Err(ExitCode::FAILURE);
-            }
             Ok(out)
         }
         Err(e) => {
@@ -418,93 +410,6 @@ fn build_updater(repo: &Path) -> bool {
         eprintln!("[xtask] WARN: update sidecar failed to build — in-place updates disabled");
     }
     true
-}
-
-/// Stage the two crates a standalone plugin compiles against, as SOURCE.
-///
-/// This is the standalone counterpart of the SDK, and the comparison is the
-/// point: the SDK is ~444 MB of crate metadata pinned to one exact rustc,
-/// because a native plugin links the engine's own Bevy. A standalone plugin
-/// links nothing, so all it needs is `renzora_plugin` and the derive crate
-/// behind it — about 2 MB of `.rs`, compiled by whatever rustc the user has.
-///
-/// It lands in `sdk/plugin-api/` because the SDK is unpacked by replacing `sdk/`
-/// wholesale, so that is the only place beside the editor an update cannot
-/// delete. What a plugin's manifest says — `path = "../../crates/renzora_plugin"`,
-/// the source-checkout location — does not resolve there, and is repointed by
-/// `renzora_native_plugin::standalone::repoint_contract` before the build. That
-/// is the more robust arrangement anyway: a plugin authored outside this
-/// repository can declare anything, and no layout makes every such path resolve.
-///
-/// A prebuilt `.rlib` would be smaller and is the wrong answer: rlib metadata is
-/// pinned to one rustc, so shipping one would reintroduce `error[E0514]` — the
-/// SDK's toolchain lock — in the one mechanism that exists to avoid it.
-fn stage_plugin_api(repo: &Path, out: &Path) -> std::io::Result<()> {
-    for name in ["renzora_plugin", "renzora_plugin_derive"] {
-        let src = repo.join("crates").join(name);
-        let dst = out.join("sdk").join("plugin-api").join(name);
-        std::fs::create_dir_all(&dst)?;
-        copy_tree(&src.join("src"), &dst.join("src"))?;
-        let manifest = std::fs::read_to_string(src.join("Cargo.toml"))?;
-        std::fs::write(dst.join("Cargo.toml"), deworkspace(&manifest))?;
-    }
-    Ok(())
-}
-
-/// Rewrite a workspace member's manifest so it stands alone.
-///
-/// Cargo resolves `workspace = true` when it PARSES a manifest, before it looks
-/// at features — so `bevy = { workspace = true, optional = true }` fails outside
-/// the workspace even though nothing a plugin builds ever enables it. Two
-/// inheritances to undo, and both are fatal rather than cosmetic:
-///
-///   * `bevy` takes the version the workspace pins.
-///   * `[lints] workspace = true` is dropped; a lint table is not part of what a
-///     plugin compiles against.
-fn deworkspace(manifest: &str) -> String {
-    let mut out = String::with_capacity(manifest.len());
-    let mut in_lints = false;
-    for line in manifest.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('[') {
-            in_lints = trimmed.starts_with("[lints]");
-            if in_lints {
-                continue;
-            }
-        }
-        if in_lints {
-            continue;
-        }
-        if trimmed.starts_with("bevy = { workspace = true") {
-            out.push_str(&line.replace("workspace = true", "version = \"0.19\""));
-        } else {
-            out.push_str(line);
-        }
-        out.push('\n');
-    }
-    out
-}
-
-/// Copy a source tree, recursively.
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for e in std::fs::read_dir(from)?.flatten() {
-        let p = e.path();
-        let dst = to.join(e.file_name());
-        if p.is_dir() {
-            copy_tree(&p, &dst)?;
-        } else if p.is_file() {
-            // Byte-compared rather than copied unconditionally: `fs::copy` does
-            // not preserve mtime, and the editor decides whether a plugin needs
-            // rebuilding by comparing source mtimes against the artefact. An
-            // unconditional copy would make every plugin look edited after every
-            // `cargo renzora`, and rebuild the lot on the next launch.
-            if std::fs::read(&p).ok() != std::fs::read(&dst).ok() {
-                copy(&p, &dst)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Port of `build-all.sh`'s `copy_shared_libs`: arrange `target/dist/` into a
@@ -616,9 +521,9 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     }
 
     // No plugin pass. In-workspace plugins are rlibs linked straight into the
-    // binaries staged above, and third-party ones — C-ABI or native — arrive
-    // through the marketplace into `plugins/`, which the editor owns. A build
-    // tool that also wrote there could only fight it.
+    // binaries staged above, and third-party ones arrive through the marketplace
+    // into `plugins/`, which the editor owns. A build tool that also wrote there
+    // could only fight it.
 
     // Native macOS dylibs record their absolute build path as the install name;
     // rewrite to @rpath so the relocated dist/ folder actually resolves at run.
@@ -1450,34 +1355,3 @@ fn fixup_macos(out: &Path) {
     }
 }
 
-#[cfg(test)]
-mod plugin_api_tests {
-    use super::deworkspace;
-
-    /// Cargo resolves `workspace = true` when it PARSES a manifest, before it
-    /// looks at features — so an unresolved inheritance is a hard error even for
-    /// a dependency nothing enables. Both of these are fatal in the staged copy,
-    /// and their failure mode is every standalone plugin refusing to build with
-    /// an error about the API crate rather than about itself.
-    #[test]
-    fn workspace_inheritance_is_resolved_away() {
-        let out = deworkspace(
-            "[package]\nname = \"renzora_plugin\"\n\n             [dependencies]\n             bevy = { workspace = true, optional = true }\n             libm = { version = \"0.2\", optional = true }\n\n             [lints]\nworkspace = true\n",
-        );
-        assert!(!out.contains("workspace = true"), "{out}");
-        assert!(out.contains("bevy = { version = \"0.19\", optional = true }"), "{out}");
-        assert!(!out.contains("[lints]"), "{out}");
-        // Everything else survives untouched — this is a repair, not a rewrite.
-        assert!(out.contains("libm = { version = \"0.2\", optional = true }"), "{out}");
-        assert!(out.contains("name = \"renzora_plugin\""), "{out}");
-    }
-
-    /// `[lints]` is dropped by skipping to the next table header, so whatever
-    /// follows it must survive.
-    #[test]
-    fn a_table_after_lints_is_kept() {
-        let out = deworkspace("[lints]\nworkspace = true\n\n[features]\ndefault = []\n");
-        assert!(out.contains("[features]"), "{out}");
-        assert!(out.contains("default = []"), "{out}");
-    }
-}

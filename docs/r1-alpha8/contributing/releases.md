@@ -73,18 +73,15 @@ Only things that are *launched*. The editor image and everything under `plugins/
 
 **The first-party plugins are no longer in this repository.** The marketplace
 ships them, and everything here that existed only to build them went with them:
-`xtask/src/native_plugin.rs`, the C-ABI cargo loop, `cargo renzora plugin
-<name>`, both plugin-staging passes, the `--plugins` coverage scope, CI's two
-plugin jobs, and `build_plugins` in the container script.
+`xtask/src/native_plugin.rs`, `cargo renzora plugin <name>`, both plugin-staging
+passes, the `--plugins` coverage scope, CI's plugin jobs, and `build_plugins` in
+the container script.
 
-What still lands in `dist/<platform>/plugins/` is the workspace's own **cdylib
-distribution plugins** — crates that declare themselves with `renzora::add!` and
-build as part of `--workspace`. `stage_dist` in `docker/build-all.sh` sweeps
-every cdylib the build produced into that directory, minus an explicit skip list:
-the SDK dylibs (`renzora_dylib`, `renzora_ember_dylib`) and the two shared engine
-images ship *beside* the executable, never in `plugins/`, because swept in they
-would be tens of MB of duplicate weight that the C-ABI loader would then `dlopen`
-looking for an entry point they do not export.
+`stage_dist` in `docker/build-all.sh` sweeps every cdylib the build produced into
+`dist/<platform>/plugins/`, minus an explicit skip list: the shared engine images
+(`renzora_dylib`, `renzora_ember_dylib`) ship *beside* the executable, never in
+`plugins/`, because swept in there they would be tens of MB of duplicate weight
+that the loader would then sniff for an entry point they do not export.
 
 `stage()` no longer writes to that directory at all. It used to sweep every `.so`
 in `dist/<platform>/plugins/` on the assumption that xtask had put them there —
@@ -130,7 +127,7 @@ This trades frame time for size in shipped builds, deliberately, in the editor a
 Two knobs are deliberately *not* set:
 
 - **`codegen-units = 1`** — measured to help only fat LTO, and to cost a lot of build time for little size under thin.
-- **`panic = "abort"`** — `renzora_plugin` guards every call across the C-ABI boundary with `catch_unwind` (audio/net/script backends, `ecs.rs`, `host/mod.rs`). Under `abort` those become no-ops and a panicking third-party plugin takes the editor down instead of being contained. It would save the ~6 MB of `.pdata` unwind tables; it is not worth it.
+- **`panic = "abort"`** — the network pump guards every call into a backend with `catch_unwind`, and each script call is caught the same way. Under `abort` those become no-ops and one malformed header or one bad script takes the editor down instead of being contained. It would save the ~6 MB of `.pdata` unwind tables; it is not worth it.
 
 The `tools/updater` build is unaffected — it is its own workspace with its own `[profile.dist]`.
 

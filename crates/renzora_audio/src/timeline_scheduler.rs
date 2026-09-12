@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use renzora_plugin::audio::{PlayRequest, StopRequest, StopTarget};
+use renzora::audio_backend::{PlayRequest, StopRequest, StopTarget};
 
 use crate::link::{AudioLink, VoiceId};
 use crate::runtime::SoundCache;

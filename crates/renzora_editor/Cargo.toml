@@ -3,11 +3,10 @@ name = "renzora_editor"
 version = "0.1.0"
 edition = "2021"
 
-# The editor bundle: ONE loadable cdylib that statically links every
-# editor-only plugin crate (as rlibs) and exposes them through a single
-# `extern "C"` entry point (`plugin_install_scope`) emitted by
-# `renzora::export_plugin_bundle!` under the `dlopen` feature. The
-# `dynamic_plugin_loader` dlopens it and installs its Editor-scope plugins.
+# The editor image: ONE loadable dylib that statically links every editor-only
+# plugin crate (as rlibs) and exposes them through a single `renzora_editor_install`
+# entry point. `renzora_runtime::editor_image` dlopens it at startup and calls
+# that, which installs the generated Editor-scope plugin list.
 #
 # Present beside the host → the binary is the editor. Remove the dll → the
 # same binary is the exported game.
@@ -16,11 +15,9 @@ edition = "2021"
 # `renzora_runtime`'s `editor` feature exactly — the same editor-only `dep:`
 # crates plus the same dual-mode `/editor` cascade — so the inspector/editor
 # code inside the dual-mode crates compiles into this cdylib. The dual-mode
-# crates re-link as rlibs here too (accepted bloat); they install nothing
-# extra at runtime because `plugin_install_scope` is driven with host_scope =
-# Editor and `PluginScope::matches` filters the fan-out to Editor-scope only —
-# the dual-mode crates' Runtime/EditorAndRuntime plugins are installed by the
-# host, never by the bundle.
+# crates re-link as rlibs here too (accepted bloat); the generated plugin list
+# installs each crate's Editor-scope plugins only, so their Runtime ones are
+# installed by the binary and never by the bundle.
 [lib]
 # `dylib` as well as `rlib`, and the dylib is what ships.
 #
@@ -87,11 +84,9 @@ editor = [
     "dep:renzora_test_component",
     "dep:renzora_theme_status",
     "dep:renzora_tutorial",
-    # NOTE: no `renzora_tracy`. The Tracy bridge is `plugins/tracy`, a standalone
-    # C-ABI cdylib — it reads the diagnostic store across the boundary
-    # (`SystemCall::diagnostics`, ABI MINOR 4.8) rather than linking Bevy, so the
+    # NOTE: no `renzora_tracy`. The Tracy bridge is an installed plugin, so the
     # editor no longer compiles `tracy-client`'s C sources to ship a profiler
-    # most builds never arm. Delete the dll and the feature is gone.
+    # most builds never arm. Uninstall the plugin and the feature is gone.
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.

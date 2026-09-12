@@ -1,7 +1,7 @@
 //! Drag-and-drop gaussian-splat spawning — detects `.ply` / `.gcloud` asset
 //! drops on the 3D viewport and spawns an entity carrying a
 //! `renzora::GaussianSplat` (resolved into a live cloud by the
-//! `renzora_gaussian_splatting` distribution plugin's sync system).
+//! `renzora_gaussian_splatting` plugin's sync system).
 
 use std::path::PathBuf;
 

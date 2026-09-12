@@ -202,7 +202,6 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
         );
     }
 
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     // Globals, not per-entity data — so this is a whole-scene load only. The
     // undo-restore path deliberately does not call it: restoring a deleted
@@ -423,7 +422,6 @@ pub fn load_scene(world: &mut World, path: &Path) {
         );
     }
 
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     scene.write_raw_resources(world);
     match scene.write_to_world(world, &mut entity_map) {

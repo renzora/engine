@@ -24,10 +24,8 @@
 //! crate, which is a large price for one registration.
 //!
 //! So this crate holds the request and `renzora_shell` drains it into the dock
-//! it draws. That is the same shape `PluginPanels` and `PluginAudioBackend`
-//! already use for the C-ABI boundary: the guest describes what it wants in
-//! vocabulary it can reach, and the crate that owns the real structure performs
-//! it.
+//! it draws: the plugin describes what it wants in vocabulary it can reach, and
+//! the crate that owns the real structure performs it.
 //!
 //! It also means registration order stops mattering. A plugin's `build` runs
 //! whenever the loader gets to it, which may be before or after the shell has

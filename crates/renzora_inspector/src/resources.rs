@@ -2,15 +2,9 @@
 //! editable.
 //!
 //! The inspector answers "what is on the thing I selected". A resource has no
-//! entity to select in the scene (see [`crate::plugin_resources`] for the same
-//! argument made about plugin globals), so the state that is *not* attached to
+//! entity to select in the scene, so the state that is *not* attached to
 //! anything — `Time`, `EditorSettings`, every plugin's config, every one of the
 //! engine's own globals — had nowhere to be looked at. This panel is that place.
-//!
-//! Its neighbour [`crate::plugin_resources`] deliberately stays: that one draws
-//! the resources a C-ABI plugin declared through its field schema, which are not
-//! Rust types this build knows and so cannot be reflected at all. This one draws
-//! what `bevy_reflect` can see. The two cover disjoint sets.
 //!
 //! ## Master/detail, because a world has hundreds of resources
 //!

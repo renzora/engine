@@ -102,6 +102,12 @@ pub fn infer_field_type(ty: &Type) -> &'static str {
             let name = seg.ident.to_string();
             return match name.as_str() {
                 "f32" | "f64" => "Float",
+                // Whole-number uniforms (`kernel_size`, `num_samples`,
+                // `num_colors`). Still 4 bytes, so the uniform padding maths is
+                // unaffected — but without this arm they fall through to
+                // `ReadOnly` and the effect ships with a field you can see and
+                // cannot change.
+                "u32" | "i32" | "u16" | "i16" | "usize" => "Int",
                 "bool" => "Bool",
                 "Vec3" => "Vec3",
                 "String" => "String",

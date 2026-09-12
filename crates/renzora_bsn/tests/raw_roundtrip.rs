@@ -1,6 +1,6 @@
 //! Round-trip of components the engine has no Rust type for.
 //!
-//! These stand in for C-ABI plugin components: registered by layout, so
+//! These are registered by layout, so
 //! `ComponentDescriptor::new_with_layout` gives them `type_id: None` and the
 //! reflected extraction path cannot see them at all. Before the raw channel
 //! existed they were silently dropped on save — the scene wrote, the file

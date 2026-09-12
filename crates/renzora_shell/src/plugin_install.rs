@@ -9,9 +9,10 @@
 //!
 //! Validation here is deliberately shallow: extension + native-library magic
 //! bytes, *without* dlopen-ing the file — loading it would already execute
-//! its static initializers, which defeats the point of asking first. The
-//! deep check (`plugin_bevy_hash` ABI match, `plugin_scope`) happens in
-//! `dynamic_plugin_loader` on next startup, which rejects incompatible files.
+//! its static initializers, which defeats the point of asking first. The real
+//! check happens in `renzora_native_plugin` on the next startup: a byte search
+//! for the ctor symbol decides whether the file is a plugin at all, and its
+//! recorded stamp decides whether it matches this engine.
 
 use std::path::{Path, PathBuf};
 
@@ -48,9 +49,9 @@ pub(crate) struct DismissOverlayBtn(pub(crate) Entity);
 
 /// `File → Install Plugin…` menu action — web arm.
 ///
-/// A distribution plugin is a native `.dll`/`.so`/`.dylib` that the host
+/// A plugin is source the editor compiles into a `.dll`/`.so`/`.dylib` and
 /// `dlopen`s at startup. The web has no dynamic loading (see
-/// `renzora_plugin::host::loader`'s `wasm_dl` shim), no `plugins/` directory
+/// `renzora_native_plugin`'s `wasm_dl` shim), no `plugins/` directory
 /// beside an executable, and no synchronous file picker. So the menu entry
 /// stays — removing it would mean `#[cfg]` on an element inside the `vec![]`
 /// that builds the File menu, which isn't stable — and says why instead.

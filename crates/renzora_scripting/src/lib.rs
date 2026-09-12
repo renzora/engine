@@ -6,8 +6,6 @@ mod engine;
 pub mod extension;
 pub mod get_handler;
 pub mod http;
-pub mod plugin_backend;
-pub mod plugin_bridge;
 mod input;
 mod plugin;
 

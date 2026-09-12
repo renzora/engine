@@ -2,13 +2,12 @@
 name = "renzora_lumen"
 version = "0.1.0"
 edition = "2021"
-description = "Lumen-inspired global illumination — the GI distribution plugin. Ships as a cdylib dlopen plugin and bundles its renzora_rt ScreenSpace backend."
+description = "Lumen-inspired global illumination. Bundles its renzora_rt ScreenSpace backend."
 
-# Distribution plugin: ships as a standalone .dll/.so/.dylib that
-# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
-# startup. The GI settings types live in the shared `renzora` contract, so this
-# crate must NOT be statically linked by any host/editor crate (that would
-# double-register via `add!`); consumers read the contract types instead.
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list. The GI settings types live in
+# the shared `renzora` contract, so no host or editor crate should depend on
+# this one directly; consumers read the contract types instead.
 [lib]
 crate-type = ["rlib"]
 

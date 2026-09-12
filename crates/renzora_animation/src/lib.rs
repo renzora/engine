@@ -19,7 +19,6 @@ pub mod extract;
 pub mod graph_builder;
 pub mod layers;
 pub mod loader;
-pub mod plugin_bridge;
 pub mod property_playback;
 pub mod read_state;
 #[cfg(feature = "scripting")]
@@ -155,9 +154,6 @@ impl Plugin for AnimationPlugin {
             )
                 .chain(),
         );
-
-        // The C-ABI surface: standalone plugins driving and reading animators.
-        plugin_bridge::install(app);
 
         app.add_observer(apply_asset_path_changes_to_animators);
     }

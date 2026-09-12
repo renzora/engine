@@ -30,13 +30,85 @@
 
 use bevy::prelude::*;
 
-pub use renzora_plugin::script::{Binding, BindingKind, Param, ParamKind};
+/// The type of one parameter of a declared binding.
+///
+/// [`ParamKind::Vec3`] consumes **three** numbers from the script call and
+/// produces one [`renzora::ScriptActionValue::Vec3`] argument. That is not a
+/// convenience: both shapes exist in the engine today — `apply_force(x, y, z)`
+/// sends three separate float args named `x`, `y`, `z`, while
+/// `nav_set_destination(x, y, z)` sends one Vec3 named `target` — and a binding
+/// system that could only express one of them would not replace the
+/// hand-written functions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamKind {
+    Float,
+    Int,
+    Bool,
+    Str,
+    Vec3,
+}
+
+impl ParamKind {
+    /// How many script-level arguments this parameter consumes.
+    pub fn arity(self) -> usize {
+        match self {
+            Self::Vec3 => 3,
+            _ => 1,
+        }
+    }
+}
+
+/// One parameter of a declared binding.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    /// The key this becomes in the action's argument list.
+    pub name: String,
+    pub kind: ParamKind,
+}
+
+/// What a declared binding does when called.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BindingKind {
+    /// Pack the arguments and emit [`ScriptCommand::Action`]. Returns nothing.
+    ///
+    /// [`ScriptCommand::Action`]: crate::command::ScriptCommand::Action
+    Action { action: String },
+    /// Read a reflected field and return it.
+    ///
+    /// `component` and `field` may contain `{0}`, `{1}` … placeholders, which
+    /// the backend substitutes with the call's arguments. That is what lets
+    /// `get_animation_length(name)` be declared rather than written: it is
+    /// `Read { component: "AnimatorReadState", field: "clip_lengths.{0}" }`.
+    Read { component: String, field: String },
+    /// Look the argument up in the localization table and return the result.
+    Translate,
+}
+
+/// A script function a domain crate declares rather than writes.
+///
+/// This is what replaced `ScriptExtension::register_lua_functions`. Every one
+/// of the engine's five extensions turned out to be sugar of exactly this
+/// shape — pack the arguments, fire an action — so declaring it means the
+/// domain crate stops linking a Lua interpreter and *every* language backend
+/// gets the function for free. A Wren backend picks these up without
+/// `renzora_physics` knowing Wren exists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Binding {
+    /// The name scripts call, e.g. `"apply_force"`.
+    pub name: String,
+    pub kind: BindingKind,
+    /// Parameters in call order.
+    pub params: Vec<Param>,
+    /// One-line description, for editor autocomplete. May be empty.
+    pub doc: String,
+}
 
 /// Builds a [`Binding`].
 ///
-/// A local type because `Binding` is defined at the plugin boundary and the
-/// orphan rule puts inherent methods out of reach. It reads the way the
-/// hand-written functions did, which is the point:
+/// A builder rather than inherent methods on `Binding` itself, so the struct
+/// stays a plain description of the function and the fluent form stays
+/// optional. It reads the way the hand-written functions did, which is the
+/// point:
 ///
 /// ```ignore
 /// Bind::action("apply_force", "apply_force")
@@ -186,11 +258,28 @@ impl ScriptExtensions {
     }
 }
 
-/// Resolve `{0}`-style placeholders in a [`BindingKind::Read`] path.
+/// Resolve `{0}`-style placeholders in a [`BindingKind::Read`] path with the
+/// call's arguments.
 ///
-/// Re-exported from the boundary rather than defined here, so the engine and
-/// every language plugin cannot drift on what a path means.
-pub use renzora_plugin::script::substitute;
+/// Lives here rather than in any one backend so every language resolves a path
+/// the same way: a Lua backend and a Wren backend disagreeing about what
+/// `clip_lengths.{0}` means would be a genuinely miserable bug to find.
+///
+/// A placeholder with no matching argument is left as written, deliberately:
+/// a path that visibly fails to resolve beats one that silently reads a
+/// different field.
+pub fn substitute(template: &str, args: &[String]) -> String {
+    // Almost every template has no placeholder at all, so do not build a new
+    // string for the common case.
+    if !template.contains('{') {
+        return template.to_string();
+    }
+    let mut out = template.to_string();
+    for (i, a) in args.iter().enumerate() {
+        out = out.replace(&format!("{{{i}}}"), a);
+    }
+    out
+}
 
 #[cfg(test)]
 mod tests {

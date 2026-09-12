@@ -11,7 +11,7 @@ Renzora is one binary. The editor is **not** a compile-time build — it ships a
 
 So an "export" is really: take the already-built game binary for a target platform, leave out `renzora_editor.*`, and ship it next to your project's assets. There is no separate "game build" of the engine to compile.
 
-> The export scanner only bundles **Runtime-scope** distribution plugins (single-plugin cdylibs from the editor's `plugins/` folder). It skips the editor bundle itself, so the editor can never be accidentally shipped inside a game.
+> The export scanner only offers **Runtime-scope** plugins from the editor's `plugins/` folder. An Editor-scope plugin is left out entirely, and so is the editor image itself, so the editor can never be accidentally shipped inside a game.
 
 ## Exporting from the editor
 
@@ -28,7 +28,7 @@ Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-
 | **Console logging** | Whether the shipped build keeps a console/log |
 | **Include server** | Also emit a dedicated-server bundle (desktop only) |
 | **Mesh optimization** | Optional simplify / quantize / LOD generation while packing |
-| **Plugins** | Which Runtime-scope distribution plugins to include, and whether they ship as files or are linked into the binary |
+| **Plugins** | Which Runtime-scope plugins to include, and whether they ship as files or are linked into the binary |
 | **Files** | Exactly which project files go into the `.rpak` — see [What goes in the archive](#what-goes-in-the-archive) |
 
 Pressing **Export** asks one question first: *Save the project before exporting?* The build reads what is on disk, not what is open in the editor, so the prompt offers **Save and export** (the recommended action) or **Export without saving**; Escape, the ×, or a click outside it abandons the export. It appears every time rather than only when a scene is dirty — the question is whether what is on disk is what you want built, and a prompt that only sometimes appears is one you learn to click through without reading.
@@ -208,8 +208,8 @@ Engine plugins — the post-process effects, GI, cloth and the rest — are ordi
 crates linked into the binary, so a lean build simply doesn't compile the ones
 you switch off in the Features tab. Nothing special happens at export time.
 
-**C-ABI plugins** (`plugins/`, e.g. the Lua interpreter) are a different
-mechanism, and a lean export gives you a choice about them — see
+**Installed plugins** (`plugins/`) are a different mechanism, and a lean export
+gives you a choice about them — see
 [Plugin linking](#plugin-linking-the-plugins-tab) below.
 
 The whole lean build runs in an **isolated copy** of the engine source (synced
@@ -221,12 +221,12 @@ incremental.
 
 A lean build recompiles the **engine source** the editor was built from — your
 project is just assets that ride along in the rpak — so it's available whenever
-you run the editor from a source checkout. **Marketplace plugins** are C-ABI
-cdylibs and need no source: they're copied beside the binary like any other.
+you run the editor from a source checkout. **Marketplace plugins** ship as source
+too, which is what lets a lean export compile them into the binary.
 
 ## Plugin linking (the Plugins tab)
 
-C-ABI plugins can reach the exported game two ways. The **Plugins** tab picks
+Installed plugins can reach the exported game two ways. The **Plugins** tab picks
 which, and the plugin checkboxes below it pick *what* either way.
 
 Those checkboxes are pre-ticked from the same project scan the Features tab uses,
@@ -242,11 +242,10 @@ scan can't see.
 | **Link into the binary** | Nothing — the plugins are compiled into the executable | **Lean single binary** only; forced on the web |
 
 Neither is more capable than the other: a linked-in plugin registers exactly the
-same components, systems, panels and render passes as a loaded one, because the
-C ABI never depended on there being a shared library. A plugin exports one
-function and imports nothing — the interface is handed *in* as a table — so
-whether the host got that function pointer from the OS loader or from its own
-link table changes nothing downstream.
+same components, systems, panels and render passes as a loaded one. A plugin is
+an ordinary Bevy plugin either way, and the only difference is whether the
+binary calls `add_plugins` on a type it linked or on one it read out of a library
+at startup.
 
 **Link them in when** you want one file to ship. A lean export is already a
 single binary with its assets appended; a `plugins/` folder next to it puts you
@@ -264,15 +263,21 @@ read — shipping files there means shipping nothing. A lean web export therefor
 links the ticked plugins in whatever this tab says, and the prebuilt-template
 mode reports how many it had to leave out rather than dropping them silently.
 
-Four cannot cross at all, and no packaging mode changes that: `audio` (cpal, and
-its entry point is native-only until a WebAudio backend exists), `lua` and
-`tracy` (both compile C, and `wasm32-unknown-unknown` has no libc sysroot for
-it), and `http` (a blocking socket client). Each says so in its own manifest —
-see [Declaring a platform you can't build
-for](../extending/standalone-plugins.md#declaring-a-platform-you-cant-build-for)
+Some plugins cannot cross at all, and no packaging mode changes that: anything
+built on a native audio device, anything that compiles C (`wasm32-unknown-unknown`
+has no libc sysroot for it), and anything built on a blocking socket client. Each
+says so in its own manifest —
+
+```toml
+[package.metadata.renzora]
+unsupported-targets = ["wasm32"]
+```
+
 — so the Plugins tab names them for the selected platform and the export leaves
-them out with a note, rather than failing minutes into the compile. Everything
-else in `plugins/` is pure Rust and links in fine.
+them out with a note, rather than failing minutes into the compile. Each entry is
+matched as a substring of the Rust target triple, so `"wasm32"` covers
+`wasm32-unknown-unknown`. Absent means "builds anywhere", which is true of nearly
+every plugin.
 
 Note what `audio` being on that list means in practice: **a web export has no
 sound today**, plugin or not — the engine's own audio runtime is compiled out on
@@ -309,13 +314,12 @@ and never how the editor itself runs — the editor always loads from files.
 ### Under the hood
 
 The exporter writes a `renzora_static_plugins` crate into its disposable source
-copy: one path dependency per plugin and a list pairing each plugin's `init`
-function with the scope its library would have reported. The plugins are compiled
-with `renzora_plugin`'s `static_link` feature, which drops the `#[no_mangle]`
-from what `add!` emits — without that, two plugins each defining
-`renzora_plugin_init` would fail to link. The host initialises them before it
-scans `plugins/`, and Editor-scope plugins are skipped in a game exactly as they
-are when loaded from disk.
+copy: one path dependency per plugin, and one `app.add_plugins(...)` call per
+plugin naming the type its `renzora::plugin!` declared. Each plugin's manifest is
+patched to build as an `rlib` rather than a `dylib` — a `dylib` cannot be a Rust
+dependency — and its engine path dependencies are repointed at the copied
+workspace. Editor-scope plugins are not emitted at all: a lean binary is a game,
+and an editor plugin compiled into one would run its editor systems there.
 
 ## Engine features (the Features tab)
 
@@ -498,12 +502,12 @@ landing pads and cleanup glue from the code section and the panic message and
 source-location strings from the data section (`.text` −6.9 MB, `.rdata` −6.9 MB,
 `.pdata` −1.1 MB).
 
-**It has a real cost.** The engine wraps every call into a C-ABI plugin in
-`catch_unwind`, including each script call, so that a panicking plugin or script
-is caught and logged instead of killing the process. With `abort` nothing is
-caught — one bad script takes the whole game down. Crash reporting still works,
-because the panic hook runs before the abort. Ship it only once you've tested
-your game's scripts and plugins.
+**It has a real cost.** The engine wraps each script call and each network
+request in `catch_unwind`, so that a panicking script or a malformed response is
+caught and logged instead of killing the process. With `abort` nothing is caught
+— one bad script takes the whole game down. Crash reporting still works, because
+the panic hook runs before the abort. Ship it only once you've tested your game's
+scripts and plugins.
 
 (This is available to a lean export and not to the dev build for a concrete
 reason: the dev build's `renzora` crate is a `dylib`, which links the precompiled
@@ -681,8 +685,8 @@ starts from what the project says today.
 
 The web build is **game-runtime only** — there is no WebAssembly editor. It runs on **WebGPU**, and several native-only subsystems compile to no-ops in the browser:
 
-- **Lua does not run** on `wasm32`, so neither do blueprints (they compile to Lua and share its VM). The obstacle is no longer `dlopen`: a lean web export links its C-ABI plugins into the module and the host adopts a linked-in language backend exactly as it would a loaded one. It is `plugins/lua` itself — mlua builds Lua from **C**, and `wasm32-unknown-unknown` has no libc sysroot for that C to compile against. A language backend written in pure Rust would work on the web today. Until one exists, web-targeted logic has to live in Rust. (The `.rhai` backend that used to fill this gap has been removed.)
-- The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio: the bundled `renzora_audio_backend` is native, because cpal cannot capture on the web, and it compiles to a plugin that registers nothing on `wasm32`. See [Audio backends](../extending/audio-backends.md).
+- **An interpreted language backend that compiles C does not run** on `wasm32`: `wasm32-unknown-unknown` has no libc sysroot for that C to compile against. The obstacle is not `dlopen` — a lean web export links its plugins into the module, and a linked-in language backend registers exactly as a loaded one would. A backend written in pure Rust works on the web today. **Rust scripts work everywhere**, because a lean export compiles them into the binary rather than loading them.
+- The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio: the bundled `renzora_audio_backend` is native, because cpal cannot capture on the web, and it registers nothing on `wasm32`. See [Audio backends](../extending/audio-backends.md).
 - Networking is a no-op stub (no native UDP), so multiplayer is unavailable on web.
 
 ### Android / iOS

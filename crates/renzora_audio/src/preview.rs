@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use renzora_plugin::audio::{PlayRequest, StopRequest, StopTarget};
+use renzora::audio_backend::{PlayRequest, StopRequest, StopTarget};
 
 use crate::link::{AudioLink, VoiceId};
 use crate::runtime::{ActiveVoices, SoundCache};

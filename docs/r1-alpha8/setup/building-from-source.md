@@ -4,9 +4,9 @@ Clone the Renzora engine workspace and build the editor, the game runtime, or ev
 
 **Build for your own machine with `cargo renzora`.** It's an ordinary Cargo build — no Docker, no images, no container. **Use Docker when you need to cross-compile**: producing export templates for platforms you don't own is the job those toolchain images exist to do.
 
-> **Why the split.** Renzora's *dynamic-plugin* system needs the host binary, the editor bundle, and every distribution plugin to share **one** compiled copy of Bevy and the `renzora` SDK. Building everything from source in a single environment gives you that by construction, which is exactly what `cargo renzora` does — and `rust-toolchain.toml` pins the same rustc the images use. Docker guarantees the same thing across *different* machines, which is what makes it the right tool for release artefacts and for the marketplace, and the wrong one for a local build.
+> **Why the split.** The host binary, the editor bundle and every installed plugin must share **one** compiled copy of Bevy and the `renzora` contract crate. Building everything from source in a single environment gives you that by construction, which is exactly what `cargo renzora` does — and `rust-toolchain.toml` pins the same rustc the images use. Docker guarantees the same thing across *different* machines, which is what makes it the right tool for release artefacts, and the wrong one for a local build.
 >
-> [Standalone plugins](/docs/r1-alpha8/extending/standalone-plugins) sidestep the question completely: they never link Bevy, so their compatibility does not depend on your build environment at all.
+> [Plugins](/docs/r1-alpha8/extending/native-plugins) sidestep the question: they ship as source and are compiled on the machine that installs them, against an SDK cut from the engine sitting right there. There is no build environment to match because the plugin is always built in the one it will run in.
 
 ## What you're building
 
@@ -57,7 +57,7 @@ The first build takes several minutes (Bevy is large); subsequent builds are inc
 | `cargo renzora dist` | Same build + stage, but **don't** launch — just produce the folder |
 | `cargo renzora -- --no-editor` | Build + stage + launch in shipped-game mode (args after the binary are forwarded) |
 
-**Why not just `cargo run`?** A bare `cargo run` compiles everything but leaves the distribution plugin cdylibs (`renzora_lumen`, `renzora_cloth`, …) flat in `target/dist/`, while the dynamic loader looks for them in `<exe-dir>/plugins/`. So those plugins build but never load. `cargo renzora` adds the one missing step — staging the artifacts into the runnable `dist/` layout (`bevy_dylib`, `renzora`, and the editor bundle beside the exe; every other plugin cdylib in `plugins/`), exactly like the container's `build-all.sh`. The staging lives in the `xtask/` crate and runs on plain `cargo` (the `renzora` cargo alias points at it).
+**Why not just `cargo run`?** A bare `cargo run` compiles everything but leaves the shared images (`bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib`) and the editor image flat in `target/dist/`, while the binary looks for them beside itself. `cargo renzora` adds the one missing step — staging the artifacts into the runnable `dist/` layout, exactly like the container's `build-all.sh` — and cuts the plugin SDK at the same time. The staging lives in the `xtask/` crate and runs on plain `cargo` (the `renzora` cargo alias points at it).
 
 **What native does *not* do:** cross-compile. `cargo renzora` only ever produces artifacts for the machine it runs on. For Windows/macOS/Linux/wasm/mobile builds from one host, use Docker (`renzora build`, below).
 
@@ -71,12 +71,12 @@ The CLI is the canonical way to build and run a checkout. Each command runs `car
 | `renzora run runtime` | Run the **shipped-game** shape (same binary, `--no-editor`) |
 | `renzora run -- --server` | Run a headless **dedicated server** |
 | `renzora build [platforms...]` | Cross-build the binary + editor bundle + shared `bevy_dylib` (no args = all platforms) |
-| `renzora add <name> [--editor\|--dylib]` | Scaffold a plugin crate |
+| `renzora add <name> [--editor]` | Scaffold an in-workspace plugin crate |
 | `renzora remove <name>` | Delete a plugin crate and unregister it |
 | `renzora test` / `renzora check` | Reproduce the CI test + clippy jobs |
 | `renzora shell` | Open a shell inside the build container |
 
-> Under the hood the CLI maps to `cargo` invocations on the `dist` profile inside the container — e.g. the editor is `run --profile dist --workspace --bin renzora`, the lean runtime is `build --profile dist --bin renzora` (deliberately **not** `--workspace`, so editor-only crates and distribution plugins never enter the build graph). You never run these natively; the CLI runs them in the image for you.
+> Under the hood the CLI maps to `cargo` invocations on the `dist` profile inside the container — e.g. the editor is `run --profile dist --workspace --bin renzora`, the lean runtime is `build --profile dist --bin renzora` (deliberately **not** `--workspace`, so editor-only crates never enter the build graph). You never run these natively; the CLI runs them in the image for you.
 
 ### Runtime modes
 
@@ -93,11 +93,11 @@ A `--server`/`--host` launch is never an editor session even if the bundle dll i
 
 ## How the shared-library build works
 
-Renzora's dynamic-plugin system requires that the host binary, the dlopened editor bundle, and any distribution plugins all share **one compiled copy** of Bevy and of the `renzora` SDK so their `TypeId`s match across the dlopen boundary. `.cargo/config.toml` arranges this with `-C prefer-dynamic` plus `bevy/dynamic_linking`:
+The host binary, the dlopened editor image, and every installed plugin must share **one compiled copy** of Bevy and of the `renzora` contract crate so their `TypeId`s match across the dlopen boundary. The root manifest's default `dynamic_linking` feature arranges this:
 
 - `bevy` ships as a single `bevy_dylib-<hash>` shared library.
-- `renzora` ships as a single `renzora.dll` / `librenzora.so` / `librenzora.dylib` (it folds in the post-process framework and the editor contract).
-- Workspace plugins are plain **rlibs** statically linked into the binary; **distribution plugins** are cdylibs loaded at runtime from `plugins/`.
+- `renzora` and `renzora_ember` ship through `renzora_dylib` and `renzora_ember_dylib`, so their process-global state (the translation table, the Console buffers, the theme palette) is singular.
+- In-workspace plugins are plain **rlibs** statically linked into the binary; installed plugins are `dylib`s compiled from source against the staged SDK and loaded from `plugins/`.
 
 Because the binary links these by name, the `.dll`/`.so`/`.dylib` files must travel **beside** the binary (Linux/macOS use an rpath of `$ORIGIN` / `@loader_path`; on Windows they sit in the same folder).
 
@@ -157,11 +157,10 @@ The CLI creates and removes plugin crates with the right `Cargo.toml` wiring:
 ```bash
 renzora add cool_fx              # statically-linked engine plugin (Runtime scope)
 renzora add cool_fx --editor     # editor-only plugin (Editor scope, optional dep)
-renzora add cool_fx --dylib      # distribution plugin (standalone cdylib, dlopen)
 renzora remove cool_fx           # delete the crate and unregister it
 ```
 
-`--editor` and `--dylib` are mutually exclusive. A default (no-flag) plugin builds as an rlib baked into the host binary and self-registers via its inventory constructor; `--dylib` adds the `dlopen` feature so the plugin emits the FFI exports the dynamic loader needs.
+Both scaffold an **in-workspace** plugin: an rlib baked into the host binary, wired in by the generator that reads its `add!` line. To build an *installable* plugin instead, see [Native Plugins](/docs/r1-alpha8/extending/native-plugins) — those need no engine checkout and live outside this repository.
 
 ### Compressing binaries with UPX
 
@@ -181,7 +180,7 @@ A few things that live outside this workspace, or that older docs got wrong:
 | Often referenced | Reality |
 |---|---|
 | The `renzora` CLI source | The CLI (`cargo install renzora`) is real, but its **source is a separate published crate**, not this workspace. Its commands drive the `docker/` toolchain: `build`/`add`/`remove`/`upx` wrap the `docker/*.sh` scripts here; `new`/`init`/`run`/`test`/`check`/`shell`/`clean`/`destroy` are CLI-level (container lifecycle + cargo wrappers that run *inside* the image). |
-| A native `cargo run` / `cargo build` build | A bare `cargo run` works but silently skips the dlopen distribution plugins (they're built but not staged into `plugins/`). For a complete native build use **`cargo renzora`** (see [Building natively](#building-natively-without-docker)); for cross-platform use `renzora build`. |
+| A native `cargo run` / `cargo build` build | A bare `cargo run` compiles but does not stage, so the shared images and the editor image are not beside the binary and the plugin SDK is never cut. For a complete native build use **`cargo renzora`** (see [Building natively](#building-natively-without-docker)); for cross-platform use `renzora build`. |
 | `rust-toolchain.toml` | **Exists** — it pins the Rust version for native builds. The container's version lives in `docker/base/Dockerfile`; the two are kept in lockstep. |
 | `Makefile.toml` / `cargo-make` (`makers ...`) | No `Makefile.toml` / `cargo-make` — the old `makers` staging was replaced by the `xtask` crate behind `cargo renzora` (no extra install). Cross-platform/release still go through the `renzora` CLI + `docker/` scripts. |
 | A separate dedicated-server binary | Gone — the server is the same `renzora` binary launched with `--server`. |

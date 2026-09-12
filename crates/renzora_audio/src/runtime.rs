@@ -9,8 +9,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use renzora_plugin::audio::{BusState, ListenerState, UpdateRequest};
-use renzora_plugin::host::PluginAudioBackend;
+use renzora::audio_backend::{AudioBackend, BusState, ListenerState, UpdateRequest};
 
 use crate::link::{AudioLink, SoundId, VoiceId};
 use crate::mixer::MixerState;
@@ -245,41 +244,36 @@ pub fn mark_emitting_entities(
 /// moments: the host records the descriptor during plugin init, when there is no
 /// good place to open a sound card and nothing to report a failure to.
 pub fn adopt_backend(
-    registered: Option<Res<PluginAudioBackend>>,
+    registered: Option<ResMut<AudioBackend>>,
     mut link: ResMut<AudioLink>,
     mut mixer: ResMut<MixerState>,
 ) {
-    let Some(registered) = registered else { return };
+    if link.is_active() {
+        return;
+    }
+    // Moved out of the resource rather than borrowed from it. Nothing hands it
+    // back: a linked-in mixer is part of the binary and cannot be unloaded,
+    // which is the one case the plugin version had to keep watching for.
+    let Some(mut registered) = registered else { return };
+    let Some(backend) = registered.0.take() else { return };
 
-    match (&registered.0, link.is_active()) {
-        // A backend appeared.
-        (Some(entry), false) => {
-            link.adopt(entry.name.clone(), entry.state, entry.entry);
-            match link.init() {
-                Ok(Some(info)) => {
-                    info!(
-                        "[audio] backend `{}` on `{}` at {} Hz",
-                        entry.name, info.device, info.sample_rate
-                    );
-                    // Touch the mixer so the board is pushed to the fresh
-                    // backend on the same frame, rather than whenever someone
-                    // next moves a fader.
-                    mixer.set_changed();
-                }
-                Ok(None) => warn!("[audio] backend `{}` did not answer init", entry.name),
-                Err(e) => {
-                    error!("[audio] {e}");
-                    link.release();
-                }
-            }
+    link.adopt(backend);
+    let name = link.name().unwrap_or_else(|| "?".to_string());
+    match link.init() {
+        Ok(Some(info)) => {
+            info!(
+                "[audio] backend `{name}` on `{}` at {} Hz",
+                info.device, info.sample_rate
+            );
+            // Touch the mixer so the board is pushed to the fresh backend on the
+            // same frame, rather than whenever someone next moves a fader.
+            mixer.set_changed();
         }
-        // Its plugin was unloaded — `entry` and `state` point into an image that
-        // is about to be unmapped, so this is not merely tidy.
-        (None, true) => {
-            info!("[audio] backend released");
+        Ok(None) => warn!("[audio] backend `{name}` did not answer init"),
+        Err(e) => {
+            error!("[audio] {e}");
             link.release();
         }
-        _ => {}
     }
 }
 

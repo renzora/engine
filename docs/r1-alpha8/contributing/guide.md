@@ -52,7 +52,7 @@ renzora test                     # the full suite, exactly as CI runs it (contai
 
 > **Always pass `--profile dist`.** A bare cargo command defaults to the `dev` profile and creates a *second* full set of artefacts under `target/debug/`; this workspace is far too large for two of them, and a full disk surfaces as bogus compile errors in crates you never touched rather than as a disk error.
 
-> You do not need Docker to develop on Renzora. Docker is a **cross-compiler** — it builds export templates for platforms you don't own — and a way to reproduce CI exactly. It is not the install path. Nothing is `dlopen`'d against Bevy any more: in-workspace plugins are statically linked `rlib`s wired in by a build-time generator, and [standalone plugins](/docs/r1-alpha8/extending/standalone-plugins) are C-ABI cdylibs that link no Bevy at all, so neither needs a canonical build environment. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
+> You do not need Docker to develop on Renzora. Docker is a **cross-compiler** — it builds export templates for platforms you don't own — and a way to reproduce CI exactly. It is not the install path. Neither plugin mechanism needs a canonical build environment: in-workspace plugins are statically linked `rlib`s wired in by a build-time generator, and [installed plugins](/docs/r1-alpha8/extending/native-plugins) ship as source and are compiled on the machine that runs them. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
 
 ### Toolchain
 
@@ -126,7 +126,7 @@ mod tests {
 }
 ```
 
-What's worth a test: new data structures (serialize/deserialize round-trips), new algorithms (correctness + edge cases), and new components (registration and defaults). Cross-crate tests go in `crates/<crate>/tests/*.rs` — `renzora_plugin/tests/abi_order.rs` pins the C-ABI interface layout, `renzora_bsn/tests/raw_roundtrip.rs` round-trips the scene format, `renzora_ember/tests/parse_templates.rs` proves every shipped UI template parses without a GPU, and `renzora_net/tests/round_trip.rs` covers the wire codec.
+What's worth a test: new data structures (serialize/deserialize round-trips), new algorithms (correctness + edge cases), and new components (registration and defaults). Cross-crate tests go in `crates/<crate>/tests/*.rs` — `renzora_native_plugin/tests/load_plugin.rs` compiles and loads a real plugin, `renzora_bsn/tests/raw_roundtrip.rs` round-trips the scene format, `renzora_ember/tests/parse_templates.rs` proves every shipped UI template parses without a GPU, and `renzora_net/tests/round_trip.rs` covers the request pump.
 
 ## Continuous integration
 

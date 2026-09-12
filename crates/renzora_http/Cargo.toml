@@ -19,13 +19,12 @@ edition = "2021"
 description = "The engine's HTTP backend, statically linked into the editor."
 
 [dependencies]
-# `static_link` strips the `#[no_mangle]` from `add!`'s entry point, so this can
-# be linked in alongside anything else without two definitions of
-# `renzora_plugin_init`. `net` brings the backend contract itself.
-renzora_plugin = { path = "../renzora_plugin", features = ["net", "static_link", "host"] }
 # For `add!`, which declares this an Editor-scope plugin and lets the generator
-# wire it into the editor's list — the same way every other crate here is added.
+# wire it into the editor's list — the same way every other crate here is added,
+# and for `net_backend::Backend`, the contract `Ureq` implements.
 renzora = { path = "../renzora", default-features = false }
+# For `add_net_backend`, the one call that hands the client over.
+renzora_net = { path = "../renzora_net" }
 bevy = { workspace = true }
 
 # `ureq` pulls the rustls/ring stack, which does not build for

@@ -1,4 +1,4 @@
-//! Skeletal ragdoll physics distribution plugin.
+//! Skeletal ragdoll physics.
 //!
 //! Walks a GLTF skeleton (the `SkinnedMesh` joint list reachable from the
 //! `Ragdoll` entity) and auto-builds one Avian rigid body + collider per bone

@@ -38,7 +38,7 @@ crash_dialog = ["dep:rfd", "dep:arboard"]
 # denies (scene_io.rs) and the render-mode/contact-shadow setup (lib.rs). NOTE: a
 # full 2D build also needs the bevy `3d` meta-feature dropped at the root manifest
 # + bevy_light handling — see plan (2D MODE).
-render_3d = ["renzora/render_3d", "renzora_plugin/render_3d"]
+render_3d = ["renzora/render_3d"]
 # The node-graph material system (`renzora_shader`). Split out of `render_3d`
 # because it's a large slice of it (~1 MiB of code) that a game using only
 # StandardMaterial never touches. Gates the `GraphMaterial`/`MaterialResolved`
@@ -85,12 +85,6 @@ renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_network = { path = "../renzora_network", optional = true }
 renzora_bsn = { path = "../renzora_bsn" }
-# For `plugin_scene_bridge`: mirrors the C-ABI plugin host's component schemas
-# into `renzora_bsn`'s plain-data registry, so the scene format can serialize
-# types it has no Rust definition for without depending on the plugin system
-# itself. Same direction `renzora_inspector` and `renzora_postprocess` already
-# take; no cycle, since `renzora_plugin[host]` depends only on bevy + libloading.
-renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_audio = { path = "../renzora_audio", optional = true }
 # `default-features = false`: engine uses only core scripting types; backends/

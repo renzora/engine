@@ -1,4 +1,4 @@
-//! 2D lighting distribution plugin.
+//! 2D lighting.
 //!
 //! Wraps the vendored [`bevy_firefly`] crate — 2D point lights, polygonal /
 //! round occluders, soft shadows, occlusion z-sorting, light banding, and

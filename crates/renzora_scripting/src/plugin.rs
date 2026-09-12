@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use std::path::PathBuf;
 
 use crate::command::CharacterCommandQueue;
-use crate::plugin_bridge::PluginHttpBridge;
 use crate::component::ScriptComponent;
 use crate::engine::ScriptEngine;
 use crate::input::{update_script_input, ScriptInput};
@@ -64,10 +63,9 @@ impl Default for ScriptingPlugin {
 impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] ScriptingPlugin");
-        // The engine starts with no backends at all. A language arrives as a
-        // plugin — `adopt_plugin_backends` below picks up whatever registered —
-        // so a build with no language plugin present simply runs no scripts,
-        // rather than carrying an interpreter it may never use.
+        // The engine starts with no backends at all. A language registers itself
+        // with `add_script_backend`, so a build with no language present simply
+        // runs no scripts rather than carrying an interpreter it may never use.
         let mut engine = ScriptEngine::new();
 
         if let Some(ref folder) = self.scripts_folder {
@@ -96,8 +94,6 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<renzora::diagnostics::ScriptInventory>()
             .add_systems(bevy::prelude::Update, publish_script_inventory)
             .init_resource::<crate::http::HttpInbox>()
-            // The C-ABI surface: standalone plugins issuing HTTP requests.
-            .add_plugins(PluginHttpBridge)
             .register_type::<ScriptComponent>()
             // Configure system set ordering
             .configure_sets(
@@ -141,12 +137,6 @@ impl Plugin for ScriptingPlugin {
                 crate::systems::apply_reflection_sets
                     .after(ScriptingSet::CommandProcessing)
                     .run_if(scripts_should_run),
-            )
-            // Adopt any language a plugin registered. Runs in PreScript so a
-            // backend is live before the first hook of the same frame.
-            .add_systems(
-                Update,
-                crate::plugin_backend::adopt_plugin_backends.in_set(ScriptingSet::PreScript),
             )
             // Sync scripts folder from CurrentProject
             .add_systems(Update, sync_scripts_folder.in_set(ScriptingSet::PreScript))

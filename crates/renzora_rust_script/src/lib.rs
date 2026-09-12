@@ -36,10 +36,11 @@
 //!   `SceneLoaded`, `Ui`, `Rpc` and the rest — to the optional second entry
 //!   point a script exports via `renzora::script!(update, hooks = …)`.
 //!
-//! That third piece is why the split above is not a compromise. Lua receives
-//! those events through `ScriptBackend`, whose context has no `World` because it
-//! has to serve a C-ABI plugin; a Rust script receives the same events with the
-//! real world in hand. Before it existed, `on_scene_loaded` and everything like
+//! That third piece is why the split above is not a compromise. An interpreted
+//! language receives those events through `ScriptBackend`, whose context has no
+//! `World` because a command vocabulary is all it can be given; a Rust script
+//! receives the same events with the real world in hand. Before it existed,
+//! `on_scene_loaded` and everything like
 //! it were Lua-only, which made a loading screen — a global-scene script that
 //! must be told when the incoming scene arrived — impossible to write in Rust.
 //!
@@ -91,7 +92,7 @@ use renzora_scripting::{scripts_should_run, ScriptComponent};
 /// never on there and [`RustScriptPlugin::build`] returns before any of this is
 /// reached. Compiling is a separate question, and `libloading` has no wasm
 /// backend — hence the shim, which is the same one (and the same reasoning) as
-/// `renzora_plugin::host::loader`'s.
+/// `renzora_native_plugin`'s.
 ///
 /// Note this leaves `static_scripts` untouched: a lean *desktop* export runs its
 /// Rust scripts from a linked-in table with no library involved, and that path
@@ -355,7 +356,7 @@ fn load_static_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>)
 ///
 /// `ManuallyDrop` because a resource is dropped with the World on every clean
 /// shutdown, and unmapping code something may still call has crashed the runtime
-/// here before. See `renzora_plugin`'s loader.
+/// here before. See `renzora_native_plugin`'s loader.
 #[derive(Resource, Default)]
 pub struct LoadedScripts {
     entries: HashMap<String, ScriptFn>,
@@ -664,8 +665,8 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Libr
         Err(_) => {
             // Leaked rather than returned to be dropped. `Library::new` already
             // ran the image's static initializers, and unmapping a warmed Rust
-            // dylib runs `FreeLibrary` inside the loader lock — the deadlock
-            // `renzora_plugin`'s loader hit. A script missing its entry point is
+            // dylib runs `FreeLibrary` inside the loader lock — the deadlock the
+            // plugin loader hit. A script missing its entry point is
             // an author typo, so this happens while someone iterates: exactly
             // the situation where it would be hit repeatedly.
             std::mem::forget(lib);

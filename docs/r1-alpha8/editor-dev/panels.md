@@ -392,7 +392,7 @@ Registering a panel does **not** force it into a layout. The metadata makes it a
 
 If you want a panel docked by default, add it to a workspace layout rather than relying on the picker; otherwise the **+** picker is how users bring it in (this is exactly what the tutorial's throwaway "Demo Panel" does — registered but deliberately not pre-docked).
 
-> Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
+> Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` image, or in an installed plugin that declares itself `Editor`. When that image is absent — the shipped game — none of this code runs, because Editor-scope plugins are never installed into a runtime-only binary.
 
 ## Splash dashboard pages
 

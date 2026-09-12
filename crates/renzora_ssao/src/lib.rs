@@ -1,6 +1,6 @@
 //! SSAO — the slice-2 piece of the `WorldEnvironment` reconcile. SSAO is now a
 //! section of [`renzora::WorldEnvironment`] (`ssao`); [`reconcile_ssao`] drives
-//! `ScreenSpaceAmbientOcclusion` from it. See `docs/world-environment-spec.md`.
+//! `ScreenSpaceAmbientOcclusion` from it.
 
 use bevy::pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel};
 use bevy::prelude::*;
@@ -50,7 +50,7 @@ fn quality_level(s: &renzora::SsaoSection) -> ScreenSpaceAmbientOcclusionQuality
 /// "off" is therefore zero-cost (no SSAO compute). SSAO's pipeline key reads the
 /// component directly (in sync with the bind group), so this toggle should not
 /// hit the contact-shadows specialization race; if GPU testing shows otherwise,
-/// it escalates to the resident white-AO gate. See `docs/world-environment-spec.md`.
+/// it escalates to the resident white-AO gate.
 fn reconcile_ssao(
     mut commands: Commands,
     sources: Query<Ref<renzora::WorldEnvironment>>,

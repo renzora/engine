@@ -26,9 +26,9 @@
 //! ## What replaced what
 //!
 //! `add!` used to submit an `inventory` entry that the host discovered at
-//! startup. That indirection was for `dlopen`'d plugins, which no longer exist
-//! in this form (the editor is a binary; third-party extensions are C-ABI
-//! plugins that link no Bevy). Its removal also removed three separate
+//! startup. That indirection was for `dlopen`'d plugins; the crates this macro
+//! declares are compiled straight into the binary, so the linker can already see
+//! them. Its removal also removed three separate
 //! dead-strip workarounds whose only job was keeping the registry's
 //! constructors alive: a keepalive `build.rs` in each host, and the
 //! `renzora_static_plugins` aggregator for lean exports. A named type in a
@@ -352,7 +352,7 @@ fn item_mentions(item: &str, name: &str) -> bool {
 
 /// Find every `renzora::add!` declaration under `crates/`.
 ///
-/// Only `crates/` is scanned: `plugins/` holds C-ABI plugins, which are
+/// Only `crates/` is scanned: `plugins/` holds installed plugins, which are
 /// `dlopen`'d and never linked, and the vendored `bevy_*` trees contain no
 /// declarations. A crate is any directory holding a `Cargo.toml`, which picks up
 /// the nested `crates/renzora_*/editor` subcrates for free.

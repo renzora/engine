@@ -27,12 +27,12 @@
 //!
 //! # Why the image is never unloaded
 //!
-//! Same rule the plugin loaders follow, for the same reason. `Library::new` runs
+//! Same rule the plugin loader follows, for the same reason. `Library::new` runs
 //! the image's static initializers and the editor registers systems, resources
 //! and function pointers into the `App`; unmapping it would leave every one of
 //! those dangling, and `FreeLibrary` on a warmed Rust dylib inside the loader
-//! lock is the deadlock `renzora_plugin`'s loader hit twice. The image is held
-//! for the life of the process.
+//! lock is the deadlock the plugin loader hit twice. The image is held for the
+//! life of the process.
 
 use std::path::PathBuf;
 

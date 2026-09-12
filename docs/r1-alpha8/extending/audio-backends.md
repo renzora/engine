@@ -1,14 +1,14 @@
 # Audio backends
 
-The engine ships an audio **API** and no audio. What makes sound is a separate
-backend behind a C ABI, exactly the way a scripting language is. See
+The engine ships an audio **API** and no audio. What makes sound is a backend
+behind a Rust trait, exactly the way a scripting language is. See
 [Script backends](./script-backends.md), whose shape this mirrors deliberately.
 
 The bundled backend, `renzora_audio_backend`, is **linked into the binary**. You
 do not install it and you cannot delete it: it is present whenever the engine was
 built with its `audio` feature, and absent from the build entirely when it was
-not. The contract it registers through is still the C ABI one, so a backend for a
-platform we have not written one for can be loaded from `plugins/` instead.
+not. The trait it registers through is public, so a backend for a platform we
+have not written one for can be installed as a plugin instead.
 
 ## Why the backend is a separate crate
 
@@ -26,9 +26,9 @@ blob. Those two share a contract, not a line of code.
 `renzora_runtime`'s `audio` feature off and the binary contains no device layer,
 no decoders and no DSP.
 
-### It used to be a plugin you dropped in `plugins/`
+### Why the bundled one is linked in rather than installed
 
-It shipped as `audio.dll` (`.so`, `.dylib`) through r1-alpha8, and the size
+It shipped as a loose `audio.dll` (`.so`, `.dylib`) for a while, and the size
 argument above was the reason. What that form could not do is be reliably
 *present*: every moving part of the API is inert without a backend, so a game
 exported without the library beside it, or a player who deleted one file, got a
@@ -68,55 +68,47 @@ missing feature.
 ## Writing one
 
 ```rust
-use renzora_plugin::audio::*;
-use renzora_plugin::prelude::*;
+use bevy::prelude::*;
+use renzora::audio_backend::*;
 
 #[derive(Default)]
 struct MyMixer { /* … */ }
 
 impl Backend for MyMixer {
-    const NAME: &'static str = "my_mixer";
+    fn name(&self) -> &str { "my_mixer" }
 
     fn init(&mut self) -> Result<BackendInfo, String> { /* open a device */ }
-    fn load_clip(&mut self, clip: u64, ext: &str, bytes: &[u8]) -> Result<ClipInfo, String> { … }
+    fn load_clip(&mut self, clip: u64, extension: &str, bytes: &[u8]) -> Result<ClipInfo, String> { … }
     fn play(&mut self, request: &PlayRequest) -> Result<(), String> { … }
     fn update(&mut self, request: &UpdateRequest) -> UpdateReply { … }
     // everything else has a default
 }
 
-renzora_plugin::audio_backend!(MyMixer);
-
 pub struct MyAudioPlugin;
+
 impl Plugin for MyAudioPlugin {
     fn build(&self, app: &mut App) {
-        app.add_audio_backend(audio_backend::desc());
+        app.add_audio_backend(MyMixer::default());
     }
 }
-renzora_plugin::add!(MyAudioPlugin);
+
+renzora::plugin!(MyAudioPlugin, Runtime);
 ```
 
-Four required methods. Capture, feeds, device enumeration and clip unloading all
-have defaults, so a backend that only plays clips implements the four above and
-reports the capabilities it actually has.
+Five required methods. Capture, feeds, device enumeration, bus updates and clip
+unloading all have defaults, so a backend that only plays clips implements the
+above and reports the capabilities it actually has.
+
+`Backend` is `Send` but not `Sync`: a mixer usually holds a lock-free producer
+that is not shareable across threads, and nothing needs it to be. The engine
+reaches it through `&mut`, so there is no lock on the path.
 
 **One backend loads.** Two scripting languages coexist because a script picks one
 by its file extension; there is no equivalent for audio, and a second backend
-would open the same output device and mix over the first. The host keeps the
-first registration and logs the second. Since the bundled backend is linked in,
-it is the one already holding that slot on any build with `audio` on: replacing
-it means building with the feature off, not adding a file.
-
-## Ops, not one function pointer per operation
-
-A backend registers a single `extern "C"` entry point, and the operation is
-selected by an `AudioOp` code. A struct of thirteen named function pointers would
-make adding a fourteenth an ABI break — every prebuilt backend would need
-rebuilding to add, say, a new send.
-
-With an op code, a backend that does not recognise one returns
-`AudioStatus::UnknownOp`, and the engine treats that exactly as it treats a
-capability that backend never claimed. Appending an op is a `VERSION_MINOR` bump
-and nothing stops working.
+would open the same output device and mix over the first. The engine keeps the
+first registration and logs an error on the second. Since the bundled backend is
+linked in, it is the one already holding that slot on any build with `audio` on:
+replacing it means building with the feature off, not adding a file.
 
 ## The bundled backend
 
