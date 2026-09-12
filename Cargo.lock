@@ -7842,8 +7842,6 @@ dependencies = [
  "renzora_import_ui",
  "renzora_inspector",
  "renzora_keybindings",
- "renzora_lens_distortion",
- "renzora_lens_distortion_editor",
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lighting_editor",
@@ -8250,24 +8248,6 @@ dependencies = [
  "renzora",
  "renzora_scripting",
  "tempfile",
-]
-
-[[package]]
-name = "renzora_lens_distortion"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_lens_distortion_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_lens_distortion",
 ]
 
 [[package]]
@@ -8687,7 +8667,6 @@ dependencies = [
  "renzora_hanabi",
  "renzora_input",
  "renzora_lang",
- "renzora_lens_distortion",
  "renzora_light2d",
  "renzora_lighting",
  "renzora_lumen",
@@ -8705,7 +8684,6 @@ dependencies = [
  "renzora_scripting",
  "renzora_shader",
  "renzora_skybox",
- "renzora_solari",
  "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
@@ -8871,14 +8849,6 @@ dependencies = [
  "renzora_inspector",
  "renzora_skybox",
  "rfd",
-]
-
-[[package]]
-name = "renzora_solari"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
 ]
 
 [[package]]

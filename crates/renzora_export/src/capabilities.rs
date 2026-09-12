@@ -359,16 +359,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: Some("postfx"),
     },
     Capability {
-        id: "lens_distortion",
-        section: "postfx",
-        label: "Lens distortion",
-        help: "Barrel / chromatic lens warp.",
-        bevy_features: &[],
-        runtime_features: &["lens_distortion"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
         id: "oit",
         section: "postfx",
         label: "Order-independent transparency",
@@ -984,7 +974,6 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "motion_blur" => &["renzora_motion_blur::"],
         "distance_fog" => &["renzora_distance_fog::", "set_fog"],
         "volumetric_fog" => &["renzora_volumetric_fog::"],
-        "lens_distortion" => &["renzora_lens_distortion::"],
         "oit" => &["renzora_oit::"],
         "antialiasing" => &["renzora_antialiasing::"],
 
@@ -1306,7 +1295,7 @@ pub fn defaults_from_scan(
             .iter()
             .map(|c| {
                 let on = match c.id {
-                    "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                    "solari" => selected_plugins.iter().any(|p| p == "solari"),
                     _ => c.default_on,
                 };
                 (c.id.to_string(), on)
@@ -1349,7 +1338,7 @@ pub fn defaults_from_scan(
                 // Follows its plugin, not the content: Solari is hardware
                 // ray-tracing, and a scene that would use it looks like any
                 // other lit scene.
-                "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                "solari" => selected_plugins.iter().any(|p| p == "solari"),
                 "render_3d" => three_d,
                 "render_2d" => two_d,
                 "postfx" => any_postfx,
@@ -1479,7 +1468,6 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "motion_blur",
     "distance_fog",
     "volumetric_fog",
-    "lens_distortion",
     "oit",
     "antialiasing",
     // 3D-only extras that build on bevy_pbr

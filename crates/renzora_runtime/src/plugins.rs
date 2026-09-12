@@ -52,8 +52,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_gaussian_splatting::GaussianSplatPlugin::default());
     #[cfg(feature = "particles")]
     app.add_plugins(renzora_hanabi::HanabiParticlePlugin::default());
-    #[cfg(feature = "lens_distortion")]
-    app.add_plugins(renzora_lens_distortion::LensDistortionPlugin::default());
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());
@@ -79,8 +77,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_shader::material::MaterialPlugin::default());
     #[cfg(feature = "skybox")]
     app.add_plugins(renzora_skybox::SkyboxPlugin::default());
-    #[cfg(feature = "solari")]
-    app.add_plugins(renzora_solari::SolariPlugin::default());
     #[cfg(feature = "sprite_anim")]
     app.add_plugins(renzora_sprite_anim::SpriteImagesPlugin::default());
     #[cfg(feature = "ssao")]
