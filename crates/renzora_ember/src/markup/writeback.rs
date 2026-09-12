@@ -788,7 +788,21 @@ fn write_and_rebuild(world: &mut World, disk: &Path, asset_path: &str, bytes: &[
         warn!("markup undo: failed to write {} — {err}", disk.display());
         return;
     }
+    claim_write(world, disk, bytes);
     request_rebuild(world, asset_path);
+}
+
+/// Tell the project watcher these bytes came from us.
+///
+/// Every write here is followed by a watcher event for the same file, and
+/// `hot_reload_templates_from_disk` turns an event into a full rebuild. Without
+/// this claim, an attribute edit in the inspector would write the `.html`, see
+/// its own write come back, and despawn the node the user is mid-edit on — the
+/// exact thing `TemplateReloadRequests` was introduced to gate against.
+fn claim_write(world: &mut World, disk: &Path, bytes: &[u8]) {
+    world
+        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .record(disk, bytes);
 }
 
 /// Apply a structural edit: write it, rebuild, and make it undoable.
@@ -832,6 +846,7 @@ fn commit_with(
         warn!("markup edit: failed to write {} — {err}", disk_path.display());
         return false;
     }
+    claim_write(world, &disk_path, &after);
     if rebuild {
         info!("{label}: {asset_path}");
         request_rebuild(world, asset_path);

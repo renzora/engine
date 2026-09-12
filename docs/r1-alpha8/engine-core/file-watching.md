@@ -38,6 +38,21 @@ renamed and false for removed, which is the condition nearly every hot-reload
 wants; writing it out by hand is how one of them ends up silently not handling
 `Added`. `has_extension("rs")` is a case-insensitive extension test.
 
+## What reacts today
+
+| File | What happens |
+|---|---|
+| `.rs` script | recompiles and swaps the live image |
+| `.bsn` scene | the open scene reloads, unless you have unsaved changes |
+| `.particle` | every entity using the effect rebuilds |
+| `.html` template | every canvas using it rebuilds |
+| anything deleted | a warning naming the entities that still reference it |
+| textures, models, audio | `AssetServer` reloads them |
+
+The particle and template reloads existed already, wired to editor-initiated
+saves. Both were fed from the watcher rather than reimplemented, so an external
+edit takes the identical path a save does.
+
 ## Recognising your own writes
 
 The watcher cannot tell "someone edited this in another program" from "we just

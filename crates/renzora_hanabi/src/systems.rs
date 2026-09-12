@@ -500,6 +500,48 @@ pub fn process_particle_commands(
     }
 }
 
+/// Queue a rebuild when a `.particle` file is edited outside the editor.
+///
+/// [`hot_reload_saved_effects`] below already rebuilds every entity using an
+/// effect, but only for paths the particle editor put in
+/// `recently_saved_paths` — that is, only when the editor itself did the
+/// saving. A `.particle` edited in a text editor, or arriving through a
+/// `git pull`, went unnoticed until the scene was reopened.
+///
+/// Feeding the same queue rather than rebuilding here directly: the rebuild is
+/// not trivial (resolve the definition, build the asset, patch it into the live
+/// handle) and a second copy of it would be a second thing to keep correct.
+pub fn queue_externally_edited_effects(
+    mut editor_state: ResMut<ParticleEditorState>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    self_writes: Option<Res<renzora::core::project_files::SelfWrites>>,
+) {
+    use renzora::core::project_files::AssetKind;
+
+    if changes.is_empty() {
+        return;
+    }
+    for change in changes.read() {
+        if change.kind != AssetKind::Particle || !change.is_live() {
+            continue;
+        }
+        // Skip the editor's own save. Without this the particle editor's save
+        // would queue the path twice: once through `recently_saved_paths` and
+        // again through the watcher event that save caused.
+        if let Some(sw) = self_writes.as_ref() {
+            if std::fs::read(&change.path).is_ok_and(|b| sw.matches(&change.path, &b)) {
+                continue;
+            }
+        }
+        // Project-relative, which is the form `EffectSource::Asset { path }`
+        // holds and what the matcher below compares against.
+        let path = change.relative.clone();
+        if !editor_state.recently_saved_paths.contains(&path) {
+            editor_state.recently_saved_paths.push(path);
+        }
+    }
+}
+
 /// Hot reload: when .particle files are saved, update all entities referencing them.
 pub fn hot_reload_saved_effects(
     mut editor_state: ResMut<ParticleEditorState>,

@@ -187,6 +187,43 @@ impl TemplateReloadRequests {
     }
 }
 
+/// Ask for a rebuild when a `.html` is edited outside the editor.
+///
+/// [`TemplateReloadRequests`] gates rebuilds to templates the editor saved,
+/// because the inspector's attribute writeback also dirties the asset and a
+/// blanket reaction would despawn the node the user is mid-edit on. That gate
+/// is right, and it also meant an edit in a text editor did nothing at all.
+///
+/// This registers external edits with the same gate, so they take the identical
+/// path a save does. The two are told apart by content: the writeback claims its
+/// bytes through `SelfWrites`, so its own write is recognised and skipped here
+/// while a genuine outside edit is not.
+fn request_reload_for_external_edits(
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut requests: ResMut<TemplateReloadRequests>,
+    self_writes: Option<Res<renzora::core::project_files::SelfWrites>>,
+    server: Res<AssetServer>,
+) {
+    use renzora::core::project_files::AssetKind;
+
+    if changes.is_empty() {
+        return;
+    }
+    for change in changes.read() {
+        if change.kind != AssetKind::UiTemplate || !change.is_live() {
+            continue;
+        }
+        if let Some(sw) = self_writes.as_ref() {
+            if std::fs::read(&change.path).is_ok_and(|b| sw.matches(&change.path, &b)) {
+                continue;
+            }
+        }
+        // Project-relative: that is the form a template is loaded by, so the
+        // handle resolved here is the one the asset server already holds.
+        requests.request(&server, &change.relative);
+    }
+}
+
 /// Hot-reload (Phase C): when a template the editor saved has finished
 /// re-reading from disk, rebuild every canvas that uses it.
 ///
@@ -242,5 +279,15 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<TemplateHandles>()
         .init_resource::<TemplateReloadRequests>()
         .add_observer(on_template_path_inserted)
-        .add_systems(Update, (hot_reload_templates, finalize_pending_templates));
+        .add_systems(
+            Update,
+            (
+                // Before the reload it feeds, so an external edit is picked up
+                // on the same frame an editor save would be.
+                request_reload_for_external_edits,
+                hot_reload_templates,
+                finalize_pending_templates,
+            )
+                .chain(),
+        );
 }
