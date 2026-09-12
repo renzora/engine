@@ -38,6 +38,7 @@ use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity
 use renzora::core::console_log::{console_info, console_warn};
 use renzora::core::project_files::{AssetKind, ProjectFileChanged, SelfWrites};
 use renzora::core::CurrentProject;
+use renzora_editor_framework::ExternalSceneEdits;
 
 /// Scene files that changed on disk this frame, collected for the exclusive
 /// system that acts on them.
@@ -45,8 +46,42 @@ use renzora::core::CurrentProject;
 /// A two-step because reloading needs `&mut World` and reading messages does
 /// not: an exclusive system that also took a `MessageReader` would serialise the
 /// whole schedule behind a queue that is empty almost every frame.
+/// `(path, the user already approved losing unsaved changes)`.
+///
+/// The flag is what stops a resolved conflict from asking again: without it a
+/// reload approved at the prompt would be re-queued, find the tab still dirty,
+/// and raise the same prompt forever.
 #[derive(Resource, Default)]
-pub(crate) struct PendingSceneReloads(Vec<std::path::PathBuf>);
+pub(crate) struct PendingSceneReloads(Vec<(std::path::PathBuf, bool)>);
+
+/// Scenes whose file changed while the editor had unsaved changes, awaiting an
+/// answer from the user.
+///
+/// Only populated under [`ExternalSceneEdits::Prompt`]. A conflict sits here
+/// until it is resolved, and while it does **neither side is touched** — that is
+/// the only state that cannot lose anything. A path already waiting is not
+/// queued twice, so a file saved repeatedly asks once rather than stacking
+/// prompts.
+#[derive(Resource, Default)]
+pub struct SceneConflicts {
+    pub pending: Vec<std::path::PathBuf>,
+}
+
+impl SceneConflicts {
+    /// Take the file for `path`, discarding unsaved editor changes.
+    pub fn resolve_with_disk(&mut self, path: &std::path::Path, reloads: &mut PendingSceneReloads) {
+        self.pending.retain(|p| p != path);
+        // Queued as approved. The tab is still dirty when this runs, so without
+        // the flag it would conflict again and re-raise the prompt it came from.
+        reloads.0.push((path.to_path_buf(), true));
+    }
+
+    /// Keep the editor's version. The file is left alone, so saving overwrites
+    /// it and reopening the scene still takes the disk version.
+    pub fn dismiss(&mut self, path: &std::path::Path) {
+        self.pending.retain(|p| p != path);
+    }
+}
 
 /// Collect `.bsn` changes. Cheap, runs every frame, refuses almost everything.
 pub(crate) fn collect_scene_changes(
@@ -76,8 +111,9 @@ pub(crate) fn collect_scene_changes(
             continue;
         }
         debug!("[scene] {} changed, queued for reload check", change.relative);
-        if !pending.0.contains(&change.path) {
-            pending.0.push(change.path.clone());
+        if !pending.0.iter().any(|(p, _)| p == &change.path) {
+            // Not approved: this is a change the user has not been asked about.
+            pending.0.push((change.path.clone(), false));
         }
     }
 }
@@ -94,7 +130,7 @@ pub(crate) fn apply_scene_reloads(world: &mut World) {
         std::mem::take(&mut pending.0)
     };
 
-    for path in paths {
+    for (path, approved) in paths {
         // Every refusal below says so. A reload that does not happen is
         // indistinguishable from a watcher that never fired, and the whole
         // point of these guards is that most of the time refusing IS correct:
@@ -141,21 +177,58 @@ pub(crate) fn apply_scene_reloads(world: &mut World) {
             .and_then(|p| p.make_relative(&path))
             .unwrap_or_else(|| path.to_string_lossy().to_string());
 
-        if is_modified {
-            // Refused, and said loudly in both places: the Console scrolls, and
-            // the Problems panel is where someone looks to ask whether the
-            // project is healthy. Silence here would mean the editor quietly
-            // showing one scene while the file held another.
-            console_warn(
-                "Scene",
-                format!(
-                    "{rel} changed on disk, but this scene has unsaved changes — not reloading. \
-                     Save to keep your version, or reopen the scene to take the one on disk."
-                ),
-            );
-            warn!("[scene] {rel} changed on disk but has unsaved changes; not reloading");
-            set_conflict(world, &rel, true);
-            continue;
+        // Only a conflict when BOTH sides moved. With a clean scene there is
+        // nothing to lose and the file is plainly the newer truth, so the
+        // setting below does not apply and the reload just happens.
+        if is_modified && !approved {
+            let policy = world
+                .get_resource::<renzora_editor_framework::EditorSettings>()
+                .map(|s| s.external_scene_edits)
+                .unwrap_or_default();
+
+            match policy {
+                ExternalSceneEdits::KeepEditorChanges => {
+                    // Said in both places: the Console scrolls, and the Problems
+                    // panel is where someone looks to ask whether the project is
+                    // healthy. Silence would mean the editor quietly showing one
+                    // scene while the file held another.
+                    console_warn(
+                        "Scene",
+                        format!(
+                            "{rel} changed on disk, but this scene has unsaved changes and \
+                             external edits are set to be ignored. Save to keep your version, \
+                             or reopen the scene to take the one on disk."
+                        ),
+                    );
+                    warn!("[scene] {rel} changed on disk; keeping editor changes (by setting)");
+                    set_conflict(world, &rel, true);
+                    continue;
+                }
+                ExternalSceneEdits::Prompt => {
+                    // Recorded rather than reloaded. The prompt is raised from
+                    // this and answered by the user; until then neither side is
+                    // touched, which is the only state that loses nothing.
+                    console_warn(
+                        "Scene",
+                        format!("{rel} changed on disk and you have unsaved changes."),
+                    );
+                    warn!("[scene] {rel} changed on disk with unsaved changes; asking");
+                    set_conflict(world, &rel, true);
+                    world
+                        .resource_mut::<SceneConflicts>()
+                        .pending
+                        .retain(|p| p != &path);
+                    world.resource_mut::<SceneConflicts>().pending.push(path);
+                    continue;
+                }
+                // Fall through to the reload, discarding what is in the editor.
+                // That is what the setting asks for: a project whose scenes are
+                // generated or authored elsewhere treats the file as the source
+                // of truth, and prompting every time would be noise.
+                ExternalSceneEdits::ReloadFromDisk => {
+                    warn!("[scene] {rel} changed on disk; discarding unsaved editor changes (by setting)");
+                }
+            }
         }
 
         console_info("Scene", format!("{rel} changed on disk, reloading"));

@@ -805,3 +805,51 @@ pub fn load_effect_from_file(path: &std::path::Path) -> Option<HanabiEffectDefin
         }
     }
 }
+
+#[cfg(test)]
+mod source_syntax_tests {
+    use super::*;
+    use bevy::reflect::serde::TypedReflectDeserializer;
+    use bevy::reflect::TypeRegistry;
+    use serde::de::DeserializeSeed;
+
+    /// The exact text a `.bsn` must contain for an asset-backed effect.
+    ///
+    /// `EffectSource::Asset` is a STRUCT variant, so its RON body is
+    /// `Asset(path: "...")` — one set of parentheses, fields inside. Writing
+    /// `Asset((path: "..."))` is the newtype-variant spelling and silently
+    /// fails to deserialize: the scene loads, the entity appears with its
+    /// `Name` and `Transform`, and the component is simply absent. An emitter
+    /// that renders nothing looks like a broken particle system rather than a
+    /// malformed line, which is why this is pinned by a test.
+    fn round_trip(text: &str) -> bool {
+        let mut registry = TypeRegistry::default();
+        registry.register::<EffectSource>();
+        registry.register::<HanabiEffectDefinition>();
+        let Some(reg) = registry.get(std::any::TypeId::of::<EffectSource>()) else {
+            return false;
+        };
+        let Ok(mut de) = ron::Deserializer::from_str(text) else {
+            return false;
+        };
+        TypedReflectDeserializer::new(reg, &registry)
+            .deserialize(&mut de)
+            .is_ok()
+    }
+
+    #[test]
+    fn a_struct_variant_body_is_the_one_that_parses() {
+        assert!(
+            round_trip(r#"Asset(path:"particles/fountain.particle")"#),
+            "the struct-variant spelling must deserialize"
+        );
+    }
+
+    #[test]
+    fn the_extra_parentheses_spelling_does_not_parse() {
+        assert!(
+            !round_trip(r#"Asset((path:"particles/fountain.particle"))"#),
+            "if this ever parses, the note above is stale"
+        );
+    }
+}

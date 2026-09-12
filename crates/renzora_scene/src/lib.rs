@@ -32,6 +32,7 @@ mod thumbnail;
 use thumbnail::PendingSceneThumbnail;
 
 mod diagnostics;
+mod conflict_prompt;
 mod hot_reload;
 mod missing_assets;
 mod scenes;
@@ -1549,11 +1550,16 @@ impl Plugin for ScenePlugin {
             // through a resource, and an intervening frame would mean a save
             // landing a frame later than it needs to.
             .init_resource::<hot_reload::PendingSceneReloads>()
+            .init_resource::<hot_reload::SceneConflicts>()
             .add_systems(
                 Update,
                 (
                     hot_reload::collect_scene_changes,
                     hot_reload::apply_scene_reloads,
+                    // After the reload, so a conflict raised this frame gets its
+                    // prompt on the same frame rather than the next.
+                    conflict_prompt::conflict_prompt_buttons,
+                    conflict_prompt::spawn_conflict_prompt,
                 )
                     .chain()
                     .run_if(in_state(SplashState::Editor)),

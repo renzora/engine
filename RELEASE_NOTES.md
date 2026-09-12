@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(scene): choose what happens when a scene is edited outside the editor while you have unsaved changes: ask, reload, or keep yours (Settings → Editor → Scenes)
 - feat(scene): deleting a file the open scene still uses now warns and names the entities using it, instead of the mesh quietly vanishing
 - feat(particles): a `.particle` edited outside the editor updates every entity using it
 - feat(ui): a `.html` template edited outside the editor rebuilds the canvases using it

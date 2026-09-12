@@ -61,8 +61,8 @@ pub struct OpenAddComponentMenuRequest {
     pub screen_pos: bevy::prelude::Vec2,
 }
 pub use settings::{
-    CustomFonts, EditorSettings, InspectorExpandDefault, MonoFont, SelectionGranularity,
-    SettingsTab, UiFont,
+    CustomFonts, EditorSettings, ExternalSceneEdits, InspectorExpandDefault, MonoFont,
+    SelectionGranularity, SettingsTab, UiFont,
 };
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.

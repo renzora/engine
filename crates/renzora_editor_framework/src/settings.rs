@@ -18,6 +18,56 @@ pub enum SettingsTab {
     Plugins,
 }
 
+/// What to do when the open scene's file changes on disk and the editor has
+/// unsaved changes to that same scene.
+///
+/// Only this case. With nothing unsaved the scene always reloads, because there
+/// is nothing to lose and the file is plainly the newer truth.
+///
+/// There is no correct default here, which is why it is a setting. Both sides
+/// are deliberate: someone meant to save that file, and someone meant to drag
+/// that cube. What separates them is that the version on disk survives being
+/// ignored and the version in memory does not, so the shipped default protects
+/// the one that cannot be recovered — but a project where the scene file is
+/// generated, or edited in another tool as a matter of course, wants the
+/// opposite and should be able to say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ExternalSceneEdits {
+    /// Ask, once per conflict, and do nothing until answered.
+    #[default]
+    Prompt,
+    /// Take the file. Unsaved editor changes to that scene are discarded.
+    ///
+    /// For a workflow where the `.bsn` is authored or generated elsewhere and
+    /// the editor is a viewer: prompting every time would be noise.
+    ReloadFromDisk,
+    /// Keep what is in the editor and report the conflict without reloading.
+    ///
+    /// The file is untouched, so saving overwrites it with the editor's version
+    /// and reopening the scene takes the one on disk.
+    KeepEditorChanges,
+}
+
+impl ExternalSceneEdits {
+    pub const ALL: [Self; 3] = [Self::Prompt, Self::ReloadFromDisk, Self::KeepEditorChanges];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Prompt => "Ask me",
+            Self::ReloadFromDisk => "Reload from disk",
+            Self::KeepEditorChanges => "Keep my changes",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Prompt => "Show a prompt and wait for an answer.",
+            Self::ReloadFromDisk => "Always take the file, discarding unsaved editor changes.",
+            Self::KeepEditorChanges => "Never reload while there are unsaved changes.",
+        }
+    }
+}
+
 /// What a viewport click resolves to when the raycast hits a mesh inside a
 /// larger imported hierarchy. The picker walks up from the hit mesh toward the
 /// scene root; this decides where it stops.
@@ -199,6 +249,10 @@ pub struct EditorSettings {
     pub settings_tab: SettingsTab,
     /// What a viewport click selects within an imported model hierarchy
     pub selection_granularity: SelectionGranularity,
+    /// How to resolve the open scene's file changing on disk while the editor
+    /// has unsaved changes to it. Irrelevant with a clean scene, which always
+    /// reloads.
+    pub external_scene_edits: ExternalSceneEdits,
     /// Render the selection boundary on top of all geometry
     pub selection_boundary_on_top: bool,
     /// Base font size in points
@@ -362,6 +416,7 @@ impl Default for EditorSettings {
         Self {
             settings_tab: SettingsTab::default(),
             selection_granularity: SelectionGranularity::default(),
+            external_scene_edits: ExternalSceneEdits::default(),
             selection_boundary_on_top: false,
             font_size: 17.0,
             ui_scale: 1.0,
