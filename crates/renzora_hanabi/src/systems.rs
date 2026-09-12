@@ -145,6 +145,31 @@ fn resolve_effect_definition(
     project: Option<&CurrentProject>,
 ) -> HanabiEffectDefinition {
     match source {
+        // No file chosen. Clearing the asset slot in the inspector leaves the
+        // path empty rather than removing the component, which is a reasonable
+        // thing for an emitter to be: selected, present, pointing at nothing
+        // yet. Joining an empty path onto the project root yields the project
+        // DIRECTORY, and the loader below then tried to read a folder as a
+        // `.particle` and logged "cannot find the path specified" on every
+        // sync. Answered here rather than at the read, because an empty path is
+        // not a failure to report — it is a question nobody has answered.
+        EffectSource::Asset { path } if path.trim().is_empty() => {
+            // Nothing chosen means nothing emits.
+            //
+            // NOT `Default::default()`, which is a working effect that spawns 50
+            // particles a second — clearing the asset slot then replaced the
+            // chosen effect with a generic one rather than with silence, which
+            // is what "I removed the file and some particles are still there"
+            // was. The entity keeps its components so the inspector still has
+            // something to show; it simply produces no particles until a file
+            // is picked.
+            HanabiEffectDefinition {
+                spawn_rate: 0.0,
+                spawn_count: 0,
+                capacity: 1,
+                ..Default::default()
+            }
+        }
         EffectSource::Asset { path } => {
             // Prefer the VFS-aware byte loader so `.particle` files bundled in
             // an exported `.rpak` load correctly (the editor's disk read can't
@@ -169,7 +194,105 @@ fn resolve_effect_definition(
 /// Marker component to track that we've created the hanabi effect for this entity.
 #[derive(Component)]
 pub struct HanabiEffectSynced {
+    /// The child entity carrying `ParticleEffect`.
+    ///
+    /// The effect deliberately does NOT live on the emitter. Tearing one down
+    /// means undoing everything bevy_hanabi set up, and the part that cannot be
+    /// undone is `SyncToRenderWorld`: it is a required component of
+    /// `ParticleEffect`, required components are not removed with their
+    /// requirer, and Bevy's own docs say it "should persist throughout the
+    /// entity's entire lifecycle" — removing it panics `entity_sync_system` the
+    /// moment it comes back. So the render-world mirror, and the `CachedEffect`
+    /// holding the GPU buffers, outlive any attempt to strip the effect off an
+    /// entity component by component.
+    ///
+    /// Despawning, on the other hand, cleans up completely — that was the one
+    /// thing that reliably worked. So the effect gets an entity of its own that
+    /// can be despawned, and the emitter keeps only `HanabiEffect` and this.
+    pub effect_entity: Entity,
     pub effect_handle: Handle<EffectAsset>,
+    /// Which effect this was built from: the asset path, or `None` for inline.
+    ///
+    /// Patching an `EffectAsset` in place is right for a scalar tweak — dragging
+    /// a rate slider should not restart the emitter — and wrong when the effect
+    /// changes *shape*. A different `.particle` can have a different particle
+    /// layout, different texture slots, a ribbon where there was none, and the
+    /// live GPU buffers were sized for the old one. Pointing an emitter at
+    /// another file and watching it misbehave is what this exists to stop.
+    ///
+    /// The path rather than the whole `EffectSource`, so that an inline
+    /// definition being edited in the particle editor keeps patching in place
+    /// (`None == None`) while swapping the file, or switching between inline and
+    /// a file, rebuilds. Comparing the definitions themselves would mean
+    /// `PartialEq` down the entire tree to answer a question about identity.
+    pub source_key: Option<String>,
+}
+
+/// Print a particle-sync line when `RENZORA_PARTICLE_LOG` is set.
+///
+/// Off by default, and taking a closure so the message is not formatted when it
+/// is off. Swapping an effect's source touches five components across two
+/// crates, and which of them survive a swap is not visible from the outside: the
+/// emitter simply renders wrong, and every wrong state looks much like the
+/// others. This says which branch ran and what was on the entity when it did.
+fn particle_log(msg: impl FnOnce() -> String) {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ENABLED.get_or_init(|| {
+        std::env::var_os("RENZORA_PARTICLE_LOG").is_some()
+            || std::env::args().any(|a| a == "--particle-log")
+    }) {
+        bevy::log::info!("{}", msg());
+    }
+}
+
+/// Report what an emitter looks like once the sync's commands have landed.
+///
+/// The other half of [`particle_log`]. `sync_hanabi_effects` queues its work
+/// through `Commands`, so it cannot see the result of its own inserts and
+/// removals — and the failures here are all about a component that did not come
+/// back. Run after the sync, this says what the entity actually ended up with.
+pub fn log_particle_state(
+    emitters: Query<(Entity, &HanabiEffect, Option<&HanabiEffectSynced>)>,
+    effect_entities: Query<(
+        Option<&ParticleEffect>,
+        Option<&CompiledParticleEffect>,
+        Option<&EffectSpawner>,
+        Option<&EffectMaterial>,
+    )>,
+    mut last: Local<std::collections::HashMap<Entity, (bool, bool, bool, bool, bool)>>,
+) {
+    for (entity, _hanabi, synced) in emitters.iter() {
+        // Reported for the EMITTER but read from its effect entity, because that
+        // is where the components live now. `alive` is the one that matters on a
+        // swap: the old effect entity must be gone before a new one appears, or
+        // bevy_hanabi's render-world cache is shared between them.
+        let child = synced.map(|s| s.effect_entity);
+        let (effect, compiled, spawner, material) = child
+            .and_then(|c| effect_entities.get(c).ok())
+            .map(|(a, b, c, d)| (a.is_some(), b.is_some(), c.is_some(), d.is_some()))
+            .unwrap_or_default();
+        let now = (child.is_some(), effect, compiled, spawner, material);
+        // Only on change: this runs every frame over every emitter, and a line
+        // per frame would bury the transition that matters.
+        if last.get(&entity) == Some(&now) {
+            continue;
+        }
+        last.insert(entity, now);
+        particle_log(|| {
+            format!(
+                "[particles] {entity:?} state: effect_entity={:?} alive={} effect={} compiled={} spawner={} material={}",
+                child, now.0, now.1, now.2, now.3, now.4
+            )
+        });
+    }
+}
+
+/// The identity of an effect source, for [`HanabiEffectSynced::source_key`].
+fn source_key(source: &EffectSource) -> Option<String> {
+    match source {
+        EffectSource::Asset { path } => Some(path.clone()),
+        EffectSource::Inline { .. } => None,
+    }
 }
 
 /// Drives the flicker of an effect's emitted `PointLight` (added when the effect
@@ -319,6 +442,9 @@ pub fn sync_hanabi_effects(
     mut commands: Commands,
     mut effects: ResMut<Assets<EffectAsset>>,
     query: Query<(Entity, &HanabiEffect, Option<&HanabiEffectSynced>), Changed<HanabiEffect>>,
+    // The spawner lives on the effect's own entity now, so it is reached through
+    // `HanabiEffectSynced::effect_entity` rather than found beside the emitter.
+    mut spawners: Query<&mut EffectSpawner>,
     removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffect>>,
     project: Option<Res<CurrentProject>>,
     soft: Res<ParticleSoftTexture>,
@@ -333,37 +459,185 @@ pub fn sync_hanabi_effects(
             .entity(entity)
             .try_insert(emitter_pick_bounds(&definition));
 
-        if let Some(synced) = maybe_synced {
+        // Patch in place only while the effect is the same one. See
+        // `HanabiEffectSynced::source`.
+        let key = source_key(&effect_data.source);
+        let patch_in_place = maybe_synced.filter(|s| s.source_key == key);
+
+        particle_log(|| {
+            format!(
+                "[particles] {entity:?} sync: {} | source {:?} -> {:?} | effect_entity={:?} | def spawn_rate={} capacity={}",
+                if patch_in_place.is_some() {
+                    "PATCH"
+                } else if maybe_synced.is_some() {
+                    "TEARDOWN (rebuild next frame)"
+                } else {
+                    "CREATE"
+                },
+                maybe_synced.and_then(|s| s.source_key.clone()),
+                key,
+                maybe_synced.map(|s| s.effect_entity),
+                definition.spawn_rate,
+                definition.capacity,
+            )
+        });
+
+        if let Some(synced) = patch_in_place {
+            // The spawner's settings come from the asset, but `tick_spawners`
+            // only builds an `EffectSpawner` when one is ABSENT — so patching
+            // the asset left the live spawner on the settings it was created
+            // with. Spawn rate, burst count, period and duration all live there,
+            // which is why editing those in a `.particle` and saving appeared to
+            // do nothing while a colour change came through immediately: colour
+            // is read per particle from the asset, spawning is not.
+            //
+            // Settings only, not the whole component: `cycle_time` and
+            // `completed_cycle_count` are where the emitter is *up to*, and
+            // resetting those on every tweak would restart the effect each time
+            // a slider moved.
+            if let Ok(mut spawner) = spawners.get_mut(synced.effect_entity) {
+                spawner.settings = effect_asset.spawner;
+            }
             if let Some(mut existing) = effects.get_mut(&synced.effect_handle) {
                 *existing = effect_asset;
             }
+            // The material goes back on with the asset, and leaving it off was a
+            // real bug. `build_complete_effect` declares the effect's texture
+            // slots, and `EffectMaterial` is what binds actual images to them —
+            // slot 0 being the soft sprite every effect samples. Replacing the
+            // asset without re-binding left the new slots empty, so particles
+            // stopped sampling the sprite and rendered as small hard dots
+            // instead of soft blobs. It showed as "the editor viewport is
+            // broken and the runtime is fine": the runtime is a separate
+            // process that built its effect through the create path below, with
+            // a material, while the editor had rebuilt in place without one.
+            commands
+                .entity(synced.effect_entity)
+                .try_insert(EffectMaterial {
+                    images: effect_images(&definition, &soft, &noise),
+                });
+        } else if let Some(synced) = maybe_synced {
+            // The source changed: despawn the old effect entity and let
+            // `rehydrate_hanabi_effects` build a new one next frame.
+            //
+            // Despawn rather than rebuild in place, and a frame apart rather
+            // than both at once. bevy_hanabi keeps a render-world mirror holding
+            // a `CachedEffect` with the GPU buffers, torn down by an observer on
+            // `Remove, CachedEffect` when that mirror despawns. Swapping the
+            // asset on a living entity leaves the new effect sharing the old
+            // one's cache, which is what "the particles appear but never move"
+            // was.
+            //
+            // Leaving the emitter with `HanabiEffect` and no
+            // `HanabiEffectSynced` is exactly what `rehydrate_hanabi_effects`
+            // looks for, so this needs no extra state.
+            particle_log(|| {
+                format!(
+                    "[particles] {entity:?} despawning effect entity {:?} for rebuild",
+                    synced.effect_entity
+                )
+            });
+            teardown_effect(&mut commands, entity, Some(synced.effect_entity));
         } else {
+            // A brand-new emitter: nothing to tear down.
             let effect_handle = effects.add(effect_asset);
-            commands.entity(entity).try_insert((
-                ParticleEffect::new(effect_handle.clone()),
-                EffectMaterial { images: effect_images(&definition, &soft, &noise) },
-                HanabiEffectSynced { effect_handle },
-            ));
-            if let Some(l) = &definition.light {
-                let phase = ((entity.to_bits() % 997) as f32) * 0.618_034;
-                commands.entity(entity).try_insert(light_bundle(l, phase));
+            let effect_entity = spawn_effect_entity(
+                &mut commands,
+                entity,
+                effect_handle.clone(),
+                effect_images(&definition, &soft, &noise),
+            );
+            commands.entity(entity).try_insert(HanabiEffectSynced {
+                effect_entity,
+                effect_handle,
+                source_key: key,
+            });
+            // The light follows the definition in BOTH directions. Only adding
+            // it left a `PointLight` burning on an emitter whose new effect has
+            // no light at all, which reads as a stray light in the scene with
+            // nothing selected to explain it.
+            match &definition.light {
+                Some(l) => {
+                    let phase = ((entity.to_bits() % 997) as f32) * 0.618_034;
+                    commands.entity(entity).try_insert(light_bundle(l, phase));
+                }
+                None => {
+                    commands
+                        .entity(entity)
+                        .remove::<(PointLight, ParticleLightFlicker)>();
+                }
             }
         }
     }
 
-    for (entity, _synced) in removed_query.iter() {
-        commands
-            .entity(entity)
-            .remove::<(ParticleEffect, CompiledParticleEffect, HanabiEffectSynced)>();
+    for (entity, synced) in removed_query.iter() {
+        // If deleting the component in the inspector produces no line here, the
+        // component was not actually removed from the entity and the problem is
+        // upstream of this system entirely.
+        particle_log(|| {
+            format!(
+                "[particles] {entity:?} teardown: HanabiEffect is gone, despawning {:?}",
+                synced.effect_entity
+            )
+        });
+        teardown_effect(&mut commands, entity, Some(synced.effect_entity));
     }
+}
+
+/// Spawn the child entity that carries the effect, and wire the emitter to it.
+///
+/// The child is `HideInHierarchy` so it stays out of the hierarchy panel and out
+/// of scene saves — it is rebuilt from `HanabiEffect` on load, and a copy baked
+/// into the file would come back as a second, dead emitter. It is `Name`d
+/// because an unnamed entity carrying a `Transform` is despawned on sight by the
+/// engine's own guard.
+///
+/// No `Transform` offset: as a child at identity it sits exactly where the
+/// emitter does, so a `World`-space effect emits from the emitter's position and
+/// follows it when moved.
+fn spawn_effect_entity(
+    commands: &mut Commands,
+    emitter: Entity,
+    handle: Handle<EffectAsset>,
+    images: Vec<Handle<Image>>,
+) -> Entity {
+    commands
+        .spawn((
+            Name::new("particle effect"),
+            renzora::HideInHierarchy,
+            ChildOf(emitter),
+            Transform::default(),
+            ParticleEffect::new(handle),
+            EffectMaterial { images },
+        ))
+        .id()
+}
+
+/// Despawn the effect entity and forget it.
+///
+/// Despawning rather than stripping components: see
+/// [`HanabiEffectSynced::effect_entity`] for why that distinction is the whole
+/// reason this indirection exists.
+fn teardown_effect(commands: &mut Commands, emitter: Entity, effect_entity: Option<Entity>) {
+    if let Some(child) = effect_entity {
+        commands.entity(child).try_despawn();
+    }
+    commands
+        .entity(emitter)
+        .remove::<(HanabiEffectSynced, PointLight, ParticleLightFlicker)>();
 }
 
 /// Apply runtime overrides (play/pause) to particle effects.
 pub fn apply_runtime_overrides(
-    mut effects_query: Query<(&HanabiEffect, &mut EffectSpawner), Changed<HanabiEffect>>,
+    emitters: Query<(&HanabiEffect, &HanabiEffectSynced), Changed<HanabiEffect>>,
+    mut spawners: Query<&mut EffectSpawner>,
 ) {
-    for (effect_data, mut spawner) in effects_query.iter_mut() {
-        spawner.active = effect_data.playing;
+    // Two queries because the spawner lives on the effect's own child entity,
+    // not beside `HanabiEffect`. See `HanabiEffectSynced::effect_entity`.
+    for (effect_data, synced) in emitters.iter() {
+        if let Ok(mut spawner) = spawners.get_mut(synced.effect_entity) {
+            spawner.active = effect_data.playing;
+        }
     }
 }
 
@@ -380,10 +654,18 @@ pub fn rehydrate_hanabi_effects(
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
         let effect_asset = build_complete_effect(&definition);
         let effect_handle = effects.add(effect_asset);
+        let effect_entity = spawn_effect_entity(
+            &mut commands,
+            entity,
+            effect_handle.clone(),
+            effect_images(&definition, &soft, &noise),
+        );
         commands.entity(entity).try_insert((
-            ParticleEffect::new(effect_handle.clone()),
-            EffectMaterial { images: effect_images(&definition, &soft, &noise) },
-            HanabiEffectSynced { effect_handle },
+            HanabiEffectSynced {
+                effect_entity,
+                effect_handle,
+                source_key: source_key(&effect_data.source),
+            },
             emitter_pick_bounds(&definition),
         ));
         if let Some(l) = &definition.light {
@@ -433,57 +715,75 @@ pub enum ParticleCommand {
 /// Process particle commands from scripts.
 pub fn process_particle_commands(
     mut commands: ResMut<ParticleCommandQueue>,
-    mut effect_query: Query<(&mut HanabiEffect, Option<&mut EffectSpawner>)>,
+    mut emitters: Query<(&mut HanabiEffect, Option<&HanabiEffectSynced>)>,
+    mut spawners: Query<&mut EffectSpawner>,
 ) {
+    // The spawner is on the effect's child entity, so every arm below reaches
+    // it through `HanabiEffectSynced` rather than beside `HanabiEffect`. Written
+    // as a closure over the two queries because the alternative — leaving the
+    // old single query in place — still compiles and silently stops every script
+    // `play`/`pause`/`stop` from doing anything.
+    macro_rules! spawner_of {
+        ($synced:expr) => {
+            $synced
+                .map(|s: &HanabiEffectSynced| s.effect_entity)
+                .and_then(|e| spawners.get_mut(e).ok())
+        };
+    }
+
     for cmd in commands.commands.drain(..) {
         match cmd {
             ParticleCommand::Play(entity) => {
-                if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, synced)) = emitters.get_mut(entity) {
                     data.playing = true;
-                    if let Some(mut s) = spawner {
+                    if let Some(mut s) = spawner_of!(synced) {
                         s.active = true;
                     }
                 }
             }
             ParticleCommand::Pause(entity) => {
-                if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, synced)) = emitters.get_mut(entity) {
                     data.playing = false;
-                    if let Some(mut s) = spawner {
+                    if let Some(mut s) = spawner_of!(synced) {
                         s.active = false;
                     }
                 }
             }
             ParticleCommand::Stop(entity) => {
-                if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, synced)) = emitters.get_mut(entity) {
                     data.playing = false;
-                    if let Some(mut s) = spawner {
+                    if let Some(mut s) = spawner_of!(synced) {
                         s.active = false;
                         s.reset();
                     }
                 }
             }
             ParticleCommand::Reset(entity) => {
-                if let Ok((_, Some(mut s))) = effect_query.get_mut(entity) {
-                    s.reset();
+                if let Ok((_, synced)) = emitters.get_mut(entity) {
+                    if let Some(mut s) = spawner_of!(synced) {
+                        s.reset();
+                    }
                 }
             }
             ParticleCommand::Burst { entity, count: _ } => {
-                if let Ok((_, Some(mut s))) = effect_query.get_mut(entity) {
-                    s.reset();
+                if let Ok((_, synced)) = emitters.get_mut(entity) {
+                    if let Some(mut s) = spawner_of!(synced) {
+                        s.reset();
+                    }
                 }
             }
             ParticleCommand::SetRate { entity, multiplier } => {
-                if let Ok((mut data, _)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, _)) = emitters.get_mut(entity) {
                     data.rate_multiplier = multiplier;
                 }
             }
             ParticleCommand::SetScale { entity, multiplier } => {
-                if let Ok((mut data, _)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, _)) = emitters.get_mut(entity) {
                     data.scale_multiplier = multiplier;
                 }
             }
             ParticleCommand::SetTint { entity, r, g, b, a } => {
-                if let Ok((mut data, _)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, _)) = emitters.get_mut(entity) {
                     data.color_tint = [r, g, b, a];
                 }
             }
@@ -492,7 +792,7 @@ pub fn process_particle_commands(
                 name,
                 value,
             } => {
-                if let Ok((mut data, _)) = effect_query.get_mut(entity) {
+                if let Ok((mut data, _)) = emitters.get_mut(entity) {
                     data.variable_overrides.insert(name, value);
                 }
             }
@@ -545,9 +845,7 @@ pub fn queue_externally_edited_effects(
 /// Hot reload: when .particle files are saved, update all entities referencing them.
 pub fn hot_reload_saved_effects(
     mut editor_state: ResMut<ParticleEditorState>,
-    mut effects: ResMut<Assets<EffectAsset>>,
-    mut query: Query<(&mut HanabiEffect, Option<&HanabiEffectSynced>)>,
-    project: Option<Res<CurrentProject>>,
+    mut query: Query<&mut HanabiEffect>,
 ) {
     if editor_state.recently_saved_paths.is_empty() {
         return;
@@ -555,28 +853,30 @@ pub fn hot_reload_saved_effects(
 
     let saved_paths: Vec<String> = editor_state.recently_saved_paths.drain(..).collect();
 
-    for (mut effect_data, maybe_synced) in query.iter_mut() {
-        if let EffectSource::Asset { path } = &effect_data.source {
-            let matches = saved_paths.iter().any(|saved| {
-                let saved_normalized = saved.replace('\\', "/");
-                let path_normalized = path.replace('\\', "/");
-                saved_normalized.ends_with(&path_normalized)
-                    || path_normalized.ends_with(&saved_normalized)
-                    || saved_normalized == path_normalized
-            });
+    for mut effect_data in query.iter_mut() {
+        let EffectSource::Asset { path } = &effect_data.source else {
+            continue;
+        };
+        // Suffix either way, because one side is project-relative and the other
+        // may be absolute depending on who reported the save.
+        let matches = saved_paths.iter().any(|saved| {
+            let saved = saved.replace('\\', "/");
+            let path = path.replace('\\', "/");
+            saved.ends_with(&path) || path.ends_with(&saved) || saved == path
+        });
 
-            if matches {
-                let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
-                let effect_asset = build_complete_effect(&definition);
-
-                if let Some(synced) = maybe_synced {
-                    if let Some(mut existing) = effects.get_mut(&synced.effect_handle) {
-                        *existing = effect_asset;
-                    }
-                }
-
-                effect_data.set_changed();
-            }
+        // Marking it changed is the whole job. `sync_hanabi_effects` runs after
+        // this in the same frame, sees `Changed<HanabiEffect>`, and does the
+        // rebuild — re-reading the file, patching the asset, updating the
+        // spawner's settings and re-binding the material on the effect entity.
+        //
+        // This used to do all of that itself, and after the effect moved onto
+        // its own child entity the copy here was both redundant and wrong: it
+        // inserted `EffectMaterial` on the EMITTER, where nothing reads it.
+        // Duplicating the rebuild is how the two drift apart, which is most of
+        // what went wrong in this file.
+        if matches {
+            effect_data.set_changed();
         }
     }
 }

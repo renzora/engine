@@ -852,4 +852,48 @@ mod source_syntax_tests {
             "if this ever parses, the note above is stale"
         );
     }
+
+    /// The whole component, exactly as the editor writes it to a `.bsn`.
+    ///
+    /// A component that fails to deserialize does NOT fail the scene load: the
+    /// entity arrives with its `Name` and `Transform` and the component is
+    /// simply absent, which reads as a broken feature rather than a malformed
+    /// line. Nothing in the editor tells you, which is why this is pinned.
+    ///
+    /// `variable_overrides` is required despite being `#[reflect(ignore)]`, and
+    /// that is the part worth remembering. The ignore keeps it out of
+    /// *reflection*; the type also carries `#[reflect(Serialize, Deserialize)]`,
+    /// so BSN goes through serde, and serde's derive wants every field that is
+    /// not `#[serde(default)]` or `skip`. Leaving it off is a silently absent
+    /// component.
+    #[test]
+    fn the_component_body_a_hand_written_scene_uses_deserializes() {
+        const BODY: &str = r#"(source:Asset(path:"particles/fountain.particle"),playing:true,rate_multiplier:1.0,scale_multiplier:1.0,color_tint:(1.0,1.0,1.0,1.0),time_scale:1.0,variable_overrides:{})"#;
+
+        let mut registry = TypeRegistry::default();
+        registry.register::<HanabiEffect>();
+        registry.register::<HanabiEffectDefinition>();
+        registry.register::<EffectSource>();
+        registry.register::<HanabiEmitShape>();
+        registry.register::<ShapeDimension>();
+        registry.register::<SpawnMode>();
+        registry.register::<VelocityMode>();
+        registry.register::<BlendMode>();
+        registry.register::<BillboardMode>();
+        registry.register::<SimulationSpace>();
+        registry.register::<SimulationCondition>();
+        registry.register::<GradientStop>();
+        registry.register::<CurvePoint>();
+        registry.register::<EffectVariable>();
+
+        let reg = registry
+            .get(std::any::TypeId::of::<HanabiEffect>())
+            .expect("HanabiEffect must be registered");
+        let mut de = ron::Deserializer::from_str(BODY).expect("the body must be valid RON");
+        let result = TypedReflectDeserializer::new(reg, &registry).deserialize(&mut de);
+
+        // `expect` rather than `is_ok`, so a failure names the offending field
+        // instead of just saying false.
+        result.expect("the component body must deserialize");
+    }
 }

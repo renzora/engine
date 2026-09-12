@@ -1,6 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- fix(particles): removing a particle effect, or pointing it at a different file, now works instead of leaving the old effect drawing or frozen
+- fix(particles): clearing the effect file leaves the emitter empty rather than swapping in a default effect that keeps emitting
+- fix(particles): editing a `.particle`'s spawn rate, burst count or timing now takes effect, which only its colours did before
+- fix(particles): an effect's light is removed when its effect no longer has one
+- fix(scene): a particle emitter no longer saves its live spawner timing into the scene file
 - feat(scene): choose what happens when a scene is edited outside the editor while you have unsaved changes: ask, reload, or keep yours (Settings → Editor → Scenes)
 - feat(scene): deleting a file the open scene still uses now warns and names the entities using it, instead of the mesh quietly vanishing
 - feat(particles): a `.particle` edited outside the editor updates every entity using it
