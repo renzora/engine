@@ -33,6 +33,7 @@ use thumbnail::PendingSceneThumbnail;
 
 mod diagnostics;
 mod hot_reload;
+mod missing_assets;
 mod scenes;
 use diagnostics::SceneDiagnostics;
 use scenes::ScenesPanel;
@@ -1556,6 +1557,13 @@ impl Plugin for ScenePlugin {
                 )
                     .chain()
                     .run_if(in_state(SplashState::Editor)),
+            )
+            // Warn when the scene points at a file that has just been deleted.
+            // Not chained with the reload above: it reads the same messages but
+            // acts on the removals that one deliberately ignores.
+            .add_systems(
+                Update,
+                missing_assets::report_missing_assets.run_if(in_state(SplashState::Editor)),
             )
             .add_plugins(SceneDiagnostics)
             .add_plugins(ScenesPanel)
