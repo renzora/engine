@@ -253,13 +253,24 @@ fn unpack_stream(
     // Progress is counted on the COMPRESSED side, before the decoder, because
     // that is the only place a byte count corresponds to a known total.
     let counted = Counting { inner: BufReader::with_capacity(1 << 20, file), read: 0, progress };
-    // `Decoder::new` parses the frame header eagerly, so a truncated archive
-    // fails here rather than partway through the untar.
+    // `Decoder::new` parses the frame header eagerly, so an archive damaged at
+    // the very front fails here — a wrong magic number, a header that is not a
+    // zstd frame at all.
     let decoder = zstd::stream::Decoder::new(counted)
         .map_err(|e| format!("the SDK archive is corrupt or truncated: {e}"))?;
+    // A TRUNCATED archive does not fail there, which the comment above used to
+    // claim it did: the frame header is the first thing in the file and is
+    // therefore the part still intact, so the decoder builds fine and the stream
+    // ends early during the untar instead. tar reports that as "failed to
+    // iterate over archive", which names its own loop rather than the archive,
+    // and a user reading it has no reason to suspect a bad download.
+    //
+    // Hedged rather than asserted, because this is also where a genuine io
+    // failure lands — a full disk, a read-only destination. The underlying error
+    // follows and distinguishes them; the hint is for the common case.
     tar::Archive::new(decoder)
         .unpack(dest)
-        .map_err(|e| format!("could not unpack the SDK: {e}"))
+        .map_err(|e| format!("could not unpack the SDK — it may be corrupt or truncated: {e}"))
 }
 
 /// A reader that reports how much has gone through it.
