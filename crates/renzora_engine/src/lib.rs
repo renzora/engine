@@ -20,7 +20,6 @@ pub mod material_binding;
 #[cfg(feature = "render_3d")]
 pub mod mesh_lod;
 pub mod named_entities;
-pub mod plugin_scene_bridge;
 pub mod procedural_meshes;
 pub mod scene_io;
 pub mod scene_stream;
@@ -401,9 +400,6 @@ impl Plugin for RuntimePlugin {
         }
 
         app.add_plugins(debug_log::DebugLogPlugin);
-        // Mirrors the C-ABI plugin host's schemas into `renzora_bsn`, so scenes
-        // can carry components the engine has no Rust type for.
-        app.add_plugins(plugin_scene_bridge::PluginScenePlugin);
 
         // Web: back the shared text reader with the browser's directory handle.
         // Its default reads through `std::fs`, which on wasm fails for every

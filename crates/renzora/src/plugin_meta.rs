@@ -28,10 +28,9 @@
 //!
 //! It used to be. `add!` submitted an `inventory` entry and the host iterated
 //! the registry at startup, because plugins were `dlopen`'d and a plugin the
-//! host had never heard of had to be able to announce itself. Nothing is
-//! `dlopen`'d against Bevy now — the editor is a binary and third-party
-//! extensions are C-ABI plugins (`renzora_plugin`) that link no Bevy at all —
-//! so there was no longer anyone to announce *to*. Deleting the registry also
+//! host had never heard of had to be able to announce itself. The crates this
+//! macro declares are compiled straight into the binary, so there is nobody to
+//! announce *to* — the linker can already see them. Deleting the registry also
 //! deleted the three dead-strip workarounds that existed only to keep its
 //! constructors alive: the keepalive `build.rs` in `renzora_runtime` and
 //! `renzora_editor`, and the `renzora_static_plugins` aggregator that forced
@@ -87,9 +86,8 @@ macro_rules! add {
 /// The counterpart to [`add!`]. `add!` declares a crate compiled INTO the
 /// engine; this declares one installed into `<exe dir>/plugins/` and rebuilt
 /// whenever the engine moves under it. Both are ordinary Bevy plugins with full
-/// `&mut World` access — unlike a C-ABI plugin, which links no Bevy and reaches
-/// the engine through a fixed function table. All three are "plugins" to a user;
-/// the difference is only in how they are built and where they can run.
+/// `&mut World` access, and both are "plugins" to a user; the difference is only
+/// in how they are built and where they can run.
 ///
 /// ```ignore
 /// use bevy::prelude::*;
@@ -202,9 +200,9 @@ macro_rules! __native_plugin_entry {
 
 /// Where a native plugin is allowed to load.
 ///
-/// The native counterpart to the C-ABI `renzora_plugin::sys::PluginScope`, kept
-/// separate because the two cross different boundaries and neither should be
-/// able to drift into the other's ABI.
+/// `#[repr(u8)]` because it crosses a boundary: the loader reads it from the
+/// byte a built library's `renzora_native_plugin_scope` symbol returns, so the
+/// discriminants are part of what a compiled plugin agrees with the engine on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum NativePluginScope {
@@ -298,8 +296,8 @@ macro_rules! script {
 /// The entry point [`script!`] emits, with the export attribute the current link
 /// mode needs.
 ///
-/// Split out for the same reason `renzora_plugin`'s `__plugin_scope_entry!` is:
-/// a `#[cfg(feature = ...)]` written inside `script!`'s expansion would be
+/// Split out because a `#[cfg(feature = ...)]` written inside `script!`'s
+/// expansion would be
 /// evaluated when the **script** is compiled, against the script's own manifest,
 /// where `static_scripts` does not exist and never will. Defining the two
 /// variants here evaluates the cfg where the feature actually lives — on

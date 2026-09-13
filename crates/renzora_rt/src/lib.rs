@@ -8,8 +8,7 @@
 //! `RtLighting` / `RtDebugMode` / `RtLightingExternallyManaged` live in the
 //! shared `renzora` contract (so the GI plugin, presets and inspectors share
 //! one `TypeId`). This crate is a *library* linked into the `renzora_lumen` GI
-//! distribution plugin, which installs `RtPlugin`; it is not a plugin on its
-//! own and is never statically linked into the host.
+//! plugin, which installs `RtPlugin`; it is not a plugin on its own.
 
 use bevy::core_pipeline::Core3d;
 use bevy::prelude::*;

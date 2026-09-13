@@ -20,30 +20,25 @@ renzora::plugin!(MyPlugin);
 
 That last line is the only Renzora-specific thing about it. Everything above it is a Bevy plugin you could have written for any Bevy app.
 
-## Which kind of plugin do I want?
+## Native, or in the engine?
 
-Renzora has two plugin mechanisms and they are not competing — they serve different deployments.
+This is the plugin you write unless you are working on the engine itself. The
+other kind is an **in-workspace plugin**: a crate under `crates/` with a
+`renzora::add!` line, compiled straight into the binary. That one is for engine
+features and needs an engine checkout; see [Building Plugins](plugins.md).
 
-| | **Native plugin** | **[Standalone C-ABI plugin](standalone-plugins.md)** |
-|---|---|---|
-| Crate type | `dylib` | `cdylib` |
-| Links Bevy | yes, the engine's own | no |
-| Access | full `&mut World`, any Bevy API | a fixed function table |
-| Typical size | 100–500 KB | 20–100 KB |
-| Ships as | source, compiled on install | a prebuilt binary |
-| Runs in a shipped game | yes, at `Runtime` scope — copy-based exports only | yes, every export mode |
-| Runs on wasm / mobile | **no** | yes |
-| Needs the plugin SDK | yes | no |
+**A native plugin is not editor-only.** Declare it `Runtime` (see
+[Scope](#scope-editor-or-the-game-too)) and the export ships it with the game.
 
-**A native plugin is not editor-only.** Declare it `Runtime` (see [Scope](#scope-editor-or-the-game-too)) and the export copies the built library beside the game, which works because a copy-based export carries the very `bevy_dylib` and `renzora_dylib` the plugin was compiled against.
+Where a native plugin cannot go:
 
-Where a native plugin genuinely cannot go is narrower than "a game":
-
-- **A lean single-binary export.** It links Bevy statically and shares no image, so there is nothing for a plugin library to bind to; native plugins are skipped there entirely.
-- **wasm and mobile**, which have no dylibs to load at all.
-- **Another platform.** Staged libraries are host-shaped, so an export for a platform you are not sitting on ships no native plugins.
-
-Rule of thumb, then: **a native plugin is the right shape for anything that wants the real `World`** — a panel, a tool, a validator, an importer, a viewport gizmo, and equally a gameplay system in a copy-based game. Reach for C-ABI when the thing must survive every export mode: a post-process effect, a script language, an audio or network backend, or anything a lean, wasm or cross-compiled build still needs.
+- **wasm and mobile**, which have no dylibs to load at all. A
+  [lean single-binary export](../exporting/overview.md) compiles your plugin
+  *into* the binary instead, which covers the web; there is nothing to do but
+  pick that packaging mode.
+- **Another platform.** Staged libraries are host-shaped, so a copy-based export
+  for a platform you are not sitting on ships no plugin libraries. Cross-compile
+  a lean export for that platform instead.
 
 ## Scope: editor, or the game too
 
@@ -60,7 +55,7 @@ Only the library ships, not `src/`. The loader treats a directory holding a buil
 
 The scope is read from the **built library**, not from the source. A `plugin!(.., Runtime)` in `src/lib.rs` describes what the source would build to; what ships is the library, and the two disagree whenever one was edited without rebuilding. An editor-only plugin is named in the export log rather than quietly left out, since "my plugin is missing from the build" is otherwise indistinguishable from a bug.
 
-The exception is a **lean single-binary** export. That links Bevy statically and shares no image, so there is nothing for a plugin library to bind to. A `Runtime` native plugin is skipped there, exactly as a Rust script is — which is why scripts are compiled *into* a lean binary rather than loaded (see [Rust Scripts](../scripting/rust-scripts.md)).
+A **lean single-binary** export takes a different route. It links Bevy statically and shares no image, so there is nothing for a plugin library to bind to — so the export compiles your plugin *into* the binary instead of copying it beside one. That is the same thing it does with Rust scripts (see [Rust Scripts](../scripting/rust-scripts.md)), and it needs nothing from you but the source the plugin already ships with.
 
 `Editor` is the default deliberately. It is what every native plugin written before scopes existed was, so those keep behaving as they did; and it is the safe way to guess, because an editor plugin missing from a game is an absence, while a runtime plugin that should not have shipped is in the player's hands. A plugin built before this existed exports no scope symbol at all, and the loader reads that as `Editor` for the same reason.
 
@@ -68,15 +63,14 @@ A plugin is exclusively one or the other. A feature that needs editor tooling on
 
 ## Layout
 
-Both kinds live in `plugins/`. A native plugin is a **directory**; a C-ABI plugin is a loose library file. The two loaders never collide.
+Every plugin is a **directory** under `plugins/`, named by its id.
 
 ```
 <editor dir>/
   bevy_dylib-<hash>.dll     renzora_dylib.dll     renzora_ember_dylib.dll
-  sdk/                                            the plugin SDK, optional
+  sdk/                                            the plugin SDK
   plugins/
-    grayscale.dll                                 C-ABI: prebuilt, 52 KB
-    my-plugin/                                    native: shipped as source
+    my-plugin/                                    shipped as source
       Cargo.toml
       src/lib.rs
       build/my_plugin.dll                         what rustc produced
@@ -125,7 +119,7 @@ error[E0463]: can't find crate for `bevy_derive` which `bevy_app` depends on
 
 `bevy_derive` is a proc macro, so it is missing; `bevy_app` therefore will not load; `bevy` will not load either — and everything behind `bevy::prelude` disappears at once. `cannot find macro info`, `cannot find derive macro Component`, `cannot find type Transform`, and so on for every name the script used.
 
-You cannot repair such an SDK by dropping in proc macros from a real Windows build. Each `.rmeta` records the exact hash of the dependencies it was compiled against, so `rustc` rejects a proc macro that did not come out of the same compilation. Two of them are the engine's own — `renzora_macros` and `renzora_plugin_derive` — so a fork's macros differ from anyone else's and no shared or downloaded set could stand in. The metadata and the proc macros have to come from one build, on one machine, whose own platform is the platform being built for.
+You cannot repair such an SDK by dropping in proc macros from a real Windows build. Each `.rmeta` records the exact hash of the dependencies it was compiled against, so `rustc` rejects a proc macro that did not come out of the same compilation. One of them is the engine's own, `renzora_macros`, so a fork's macros differ from anyone else's and no shared or downloaded set could stand in. The metadata and the proc macros have to come from one build, on one machine, whose own platform is the platform being built for.
 
 Rather than ship an editor that fails this way, the build system does not produce one. Each of the three ways to build has a job it can actually do:
 
@@ -137,7 +131,7 @@ Rather than ship an editor that fails this way, the build system does not produc
 
 So a container's desktop lane now stages the game runtime and stops. The editor binary is still compiled — it comes along with `--workspace` — and then deliberately left behind. macOS from Linux was always affected exactly as Windows was; there is nothing Windows-specific here beyond it being the case people hit first.
 
-**This costs the export path nothing**, which matters if you maintain a fork. A game needs no SDK — it ships plugins that were already compiled — so cross-built runtimes are correct, and those runtimes *are* the export templates `renzora_export` looks for. Building your own templates for platforms you do not own is exactly what Docker is for, and it works. Of the three plugin mechanisms only this one is affected at all: C-ABI plugins link no Bevy and need no SDK, and Lua is interpreted.
+**This costs the export path nothing**, which matters if you maintain a fork. A game needs no SDK — it ships plugins that were already compiled — so cross-built runtimes are correct, and those runtimes *are* the export templates `renzora_export` looks for. Building your own templates for platforms you do not own is exactly what Docker is for, and it works.
 
 **What you cannot do is hand someone an editor for an operating system you do not have.** For that, use a hosted runner — free on a public repository, and no container involved: the lane runs `cargo renzora dist` natively, exactly as you would locally. `windows-arm64` in `.github/workflows/build-engine.yml` is the working template, and a fork inherits it with the repository.
 
@@ -161,7 +155,7 @@ The list is built from what the loaders reported, not from a directory scan, so 
 
 A disabled plugin costs nothing at all: it is skipped before the directory is touched, so there is no rebuild if its stamp is stale, no `dlopen`, and none of its static initializers run. That matters when you are disabling one to find out whether it is the plugin breaking your editor — half-running it would tell you nothing.
 
-The list lives in `~/.renzora/editor.toml` under `disabled_plugins`, keyed by a native plugin's directory name or a standalone plugin's library stem (with any `lib` prefix stripped, so the same file is named the same thing on every platform). It is hand-editable if you have managed to disable the plugin that draws the settings panel.
+The list lives in `~/.renzora/editor.toml` under `disabled_plugins`, keyed by the plugin's directory name. It is hand-editable if you have managed to disable the plugin that draws the settings panel.
 
 ## What you can reach
 
@@ -199,8 +193,8 @@ before proposing a move.
 
 `renzora::net` is the model. The `Request`/`Response` types and the submission
 queue are in the contract crate, so anything can *ask* for an HTTP call — but no
-socket is opened there. The client lives behind the C-ABI boundary in
-`plugins/http`. Same shape, one subsystem over: `renzora::audio` holds `AudioLink`
+socket is opened there. The client lives behind a
+[network backend](network-backends.md). Same shape, one subsystem over: `renzora::audio` holds `AudioLink`
 and the play/stop request types, while Kira stays in an audio backend plugin and
 the mixer, emitters and timeline stay in `renzora_audio`. `renzora::grid` holds
 the two grid components; the render pipeline stays in `renzora_grid`.
@@ -208,12 +202,11 @@ the two grid components; the render pipeline stays in `renzora_grid`.
 So the test for a candidate is:
 
 - **Does a second consumer exist, or does a plugin genuinely need it?** A contract
-  is a public API you cannot cheaply change — the C-ABI major version is already
-  at 4 because two releases got an append wrong. Do not design one speculatively.
+  is a public API you cannot cheaply change. Do not design one speculatively.
 - **Can it move without bringing dependencies?** The contract crate's dep list is
-  `bevy` + serialization + the plugin ABI crate, deliberately, so that adding a
-  feature crate can never introduce a cycle. If the move would drag Kira or a
-  shader compiler in, you are moving an implementation and should stop.
+  `bevy` + serialization, deliberately, so that adding a feature crate can never
+  introduce a cycle. If the move would drag Kira or a shader compiler in, you are
+  moving an implementation and should stop.
 - **Is it feature-gated?** Domain modules here (`text_mesh`, `grid`, `audio`) sit
   behind a cargo feature so a lean export compiles only what it uses.
 
@@ -258,7 +251,7 @@ That is all.
 
 **How it can be that simple, given `cargo build` here would corrupt the World.** It would — and nothing here runs cargo on your manifest. The build reads your `[dependencies]`, strips `bevy` and every `renzora*`, and writes what is left into a **separate manifest that mentions no Bevy**. Cargo builds *that*, and the resulting rlibs are handed to your plugin's `rustc` as extra `--extern`s, alongside Bevy and the contract crate which still come from the SDK. Cargo resolves `noise`; cargo never resolves Bevy. The hazard isn't avoided by discipline, it is unreachable.
 
-**A dependency that itself depends on Bevy is refused**, with a message naming it. The graph is resolved before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. If you need such a crate, use a [C-ABI plugin](standalone-plugins.md) — it shares no types with the engine and may depend on anything.
+**A dependency that itself depends on Bevy is refused**, with a message naming it. The graph is resolved before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. A second Bevy is not a size problem: its types have different `TypeId`s from the engine's, so the plugin would build, load, and then read the `World` through the wrong layouts. Reach the same types through `bevy::` and `renzora::`, which the SDK already gives you.
 
 **A duplicate crate is usually harmless.** Depend on something the engine also links and you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and `renzora_ember` are shared images and not ordinary dependencies. And if such a type tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
 
@@ -326,7 +319,7 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 ## Where to look for examples
 
-**No native plugin ships in the repository.** The ones that used to sit in `plugins/` were scaffolding for bringing the mechanism up and were removed once it worked; `plugins/` now holds only [C-ABI plugins](standalone-plugins.md), which are a different mechanism with a different loader.
+**No plugin ships in the repository.** The ones that used to sit in `plugins/` were scaffolding for bringing the mechanism up and were removed once it worked. Plugins are distributed through the marketplace and built where they are installed, so `plugins/` in a checkout is empty.
 
 That leaves the engine's own crates as the reference, and they are a good one: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it — the systems, the resources, the `&mut World` access, the contract-crate calls — is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
 

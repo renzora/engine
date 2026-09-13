@@ -87,7 +87,10 @@ use save_prompts::{
     process_project_switch_request, process_tab_close_request, switch_prompt_buttons,
 };
 use status_bar::{apply_chrome_style, build_status_bar, ThemeMenuOpen};
-use theme_bridge::{apply_theme_effects, palette_from_theme, sync_theme_menu_open, theme_bridge};
+use theme_bridge::{
+    apply_theme_effects, bump_theme_revision, palette_from_theme, sync_theme_menu_open,
+    theme_bridge, ThemeFilesRevision,
+};
 use top_bar::{build_top_bar, palette_btn_click, settings_btn_click, shell_action_press};
 use window_chrome::{
     build_resize_zones, update_maximize_icon, window_btn_click, window_drag, window_resize_start,
@@ -256,6 +259,7 @@ impl Plugin for ShellPlugin {
         #[cfg(target_os = "macos")]
         native_menu::register(app);
         app.init_resource::<ThemeMenuOpen>();
+        app.init_resource::<ThemeFilesRevision>();
         app.add_systems(
             Update,
             (
@@ -270,7 +274,9 @@ impl Plugin for ShellPlugin {
                 plugin_install::install_buttons,
                 top_menu::reset_defaults_buttons,
                 palette_btn_click,
-                (theme_bridge, sync_theme_menu_open),
+                // `bump_theme_revision` first: an edit to a theme shader this
+                // frame should re-apply this frame, not next.
+                (bump_theme_revision, theme_bridge, sync_theme_menu_open).chain(),
                 apply_chrome_style,
                 doc_add_click,
                 (doc_tab_click, doc_tab_menu_row_click),

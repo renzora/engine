@@ -60,46 +60,18 @@ pub struct RenzoraHttpPlugin;
 
 impl bevy::app::Plugin for RenzoraHttpPlugin {
     // On wasm there is no `ureq` to register, so this installs nothing and the
-    // host is left with no backend — which the contract already models as "a
+    // engine is left with no backend — which the contract already models as "a
     // game that carries no network stack", and reports the same way. The web
     // editor is a compile target rather than a usable product today; when the
-    // `fetch` backend lands it registers here, by the same `load_static` call.
+    // `fetch` backend lands it registers here, by the same one call.
     #[cfg(target_arch = "wasm32")]
     fn build(&self, _app: &mut bevy::app::App) {}
 
     #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut bevy::app::App) {
-        // Installed through `load_static`, the path the lean exporter uses for
-        // a plugin it compiled in. Deliberate rather than incidental: the client
-        // implements `renzora_plugin::net::Backend`, and the host adopts a
-        // backend by descriptor. Going through the ordinary contract means the
-        // editor's built-in client and one loaded from `plugins/` arrive by the
-        // same route, take the same registration slot and are reported the same
-        // way — rather than the built-in one being a special case every other
-        // part of the system has to know about.
-        //
-        // Three arguments, none of them obvious:
-        //
-        // * `init` is named directly rather than looked up by string, because
-        //   `static_link` makes the entry point an ordinary function instead of
-        //   an exported symbol.
-        // * `Runtime` scope, not `Editor`. Scope says where a backend may RUN,
-        //   and this client works perfectly well in a game. Where it actually
-        //   ends up is decided by the `add!` below, which is `Editor`.
-        // * `true` for `is_editor` gates Editor-scope plugins; it describes the
-        //   host, not this plugin.
-        let outcome = renzora_plugin::host::loader::load_static(
-            app.world_mut(),
-            &renzora_plugin::static_link::StaticPlugin {
-                id: "http",
-                scope: renzora_plugin::sys::PluginScope::Runtime,
-                init: backend::renzora_plugin_init,
-            },
-            true,
-        );
-        if !matches!(outcome, renzora_plugin::host::loader::LoadOutcome::Loaded) {
-            bevy::log::error!("[net] the built-in HTTP backend did not install: {outcome:?}");
-        }
+        // One call. `Ureq` implements `renzora::net_backend::Backend` and this
+        // hands it over; the pump adopts it on the next frame and runs `init`.
+        renzora_net::AppNetBackendExt::add_net_backend(app, crate::client::Ureq::default());
     }
 }
 
@@ -108,28 +80,3 @@ impl bevy::app::Plugin for RenzoraHttpPlugin {
 // — and `Editor` is what keeps the client out of a shipped game, which is the
 // property the plugin form was protecting.
 renzora::add!(RenzoraHttpPlugin, Editor);
-
-// ── The backend itself ───────────────────────────────────────────────────────
-
-#[cfg(not(target_arch = "wasm32"))]
-mod backend {
-    use renzora_plugin::prelude::*;
-
-    // Emits the descriptor and the state it needs. A macro rather than a generic
-    // because the entry point must be a bare function pointer with nowhere to
-    // carry state, so it needs a `static` — and a `static` cannot be generic
-    // over the backend type.
-    renzora_plugin::net_backend!(crate::client::Ureq);
-
-    /// The C-ABI plugin `load_static` installs: one call, registering the
-    /// descriptor above.
-    pub struct Inner;
-
-    impl Plugin for Inner {
-        fn build(&self, app: &mut App) {
-            app.add_net_backend(net_backend::desc());
-        }
-    }
-
-    renzora_plugin::add!(Inner);
-}

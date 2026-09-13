@@ -54,7 +54,15 @@ pub struct DockPlugin;
 
 impl Plugin for DockPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Dock>()
+        // Registered here as well as by `renzora_project_watch`, and
+        // `add_message` is idempotent so the second call is free.
+        //
+        // `scan_project_fonts` below reads it, and this crate links into the
+        // runtime as well as the editor. The watcher is Editor-scope, so without
+        // this a build that took the dock but not the watcher would read a
+        // message nobody registered and panic on its first frame.
+        app.add_message::<renzora::core::project_files::ProjectFileChanged>()
+            .init_resource::<Dock>()
             .init_resource::<DockDirty>()
             .init_resource::<FixedDock>()
             .init_resource::<DockWindows>()

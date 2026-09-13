@@ -265,8 +265,8 @@ pub struct HideInHierarchy;
 pub struct AudioEmitting;
 
 /// Canonical render-pass ordering phases for the Bevy 0.19 `Core3d` schedule —
-/// the centralized "render composition" pipeline (see `docs/render-composition.md`
-/// and `renzora::postprocess`). Bevy deleted the render graph in 0.19 and moved
+/// the centralized "render composition" pipeline (see `renzora::postprocess`).
+/// Bevy deleted the render graph in 0.19 and moved
 /// to system ordering; this enum is the single shared vocabulary so renzora's
 /// many view-target passes (GI, reflections, post-process, …) slot into a known
 /// order instead of each hardcoding `.before(some_other_system)`.
@@ -429,7 +429,7 @@ impl Default for SceneInstance {
 /// Stores the project-relative *path* to the cloud file rather than an asset
 /// `Handle` — the same path-in-component / handle-at-runtime split models,
 /// audio, and particles use — so the component survives the reflection-driven
-/// scene serializer. The `renzora_gaussian_splatting` distribution plugin
+/// scene serializer. The `renzora_gaussian_splatting` plugin
 /// watches for added/changed components and resolves `source` into the live
 /// `bevy_gaussian_splatting` cloud handle + `CloudSettings`; without that
 /// plugin in `plugins/` the component is inert data.

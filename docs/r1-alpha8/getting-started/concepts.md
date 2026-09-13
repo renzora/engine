@@ -1,93 +1,57 @@
 # Core Concepts
 
-Renzora builds your whole game out of a few simple ideas. Once you know what an *entity*, a *component*, and a *scene* are, the rest of the editor clicks into place — no coding required to follow along.
+Renzora builds a whole game out of three ideas: entities, components and scenes. Once those click, the rest of the editor follows.
 
-Under the hood Renzora runs on the **Bevy 0.19** engine, but you don't need to know Bevy to make a game. You'll mostly work visually, and these three words cover almost everything you see on screen.
+## Entities
 
-## Entities: the "things" in your world
-
-An **entity** is just a *thing* in your game — a character, a light, a camera, a tree, a sound. Every object you place in a scene is an entity.
+An entity is a thing in your game. A character, a light, a camera, a tree, a sound. Everything you place in a scene is an entity.
 
 The **Hierarchy** panel lists every entity in the scene you have open.
 
-![The Hierarchy panel listing entities such as Terrain, World Environment, Camera, and an imported Bistro_Godot.glb model expanded to show its child pieces.](/assets/previews/hierarchy.png)
+![The Hierarchy panel listing entities such as Terrain, World Environment, Camera and an imported model expanded to show its child pieces.](/assets/previews/hierarchy.png)
 
-In the editor you can:
+Click **+ Add Entity** to make one, click a row to select it, and drag one row onto another to nest it. A nested entity follows its parent when the parent moves, which is how an imported model keeps its pieces together.
 
-- Click **+ Add Entity** to create a new thing.
-- Click any row to select it, then edit it in the Inspector (next section).
-- Click the **eye** icon to hide or show an entity.
-- Click the **lock** icon so you can't move it by accident.
-- Drag one row onto another to **nest** it — child entities follow their parent when it moves. In the screenshot the imported `Bistro_Godot.glb` model holds many child pieces.
-- Type in the **Search** box to find an entity by name fast.
+On its own an entity is empty. Components are what make it something.
 
-On its own an entity is empty. It's the *components* you attach that give it a shape, a position, and behaviour.
+## Components
 
-## Components: the parts that make an entity what it is
+A component is one piece attached to an entity. Each adds one capability, and stacking a few builds something real.
 
-A **component** is a single piece you attach to an entity. Each one adds one capability, and stacking a few together builds something real:
+| Component | Gives the entity |
+|---|---|
+| Transform | A position, rotation and scale |
+| Mesh and Material | A shape and how its surface looks |
+| Light | The ability to light the scene |
+| Rigid Body and Collider | Physics |
+| Scripts | Behaviour of your own |
 
-- A **Transform** gives it a position, rotation, and scale.
-- A **Mesh** + **Material** give it a 3D model and how it looks.
-- A **Light** makes it shine.
-- A **rigid body / collider** lets the physics engine push it around.
-- A **script** gives it custom behaviour.
+Select an entity and its components fill the **Inspector**, each in its own collapsible section.
 
-Select an entity in the Hierarchy and its components show up in the **Inspector** panel, each in its own collapsible section.
+![The Inspector for a selected entity showing its Name, Transform, Visibility and Directional Light components.](/assets/previews/inspector.png)
 
-![The Inspector panel for the selected "World Environment" entity, showing its Name, Transform, Visibility, Directional Light, Volumetric Light, and TAA components.](/assets/previews/inspector.png)
+Edit values directly by typing, dragging or picking a colour. **Add** attaches a new component. The trash icon on a section removes one.
 
-In the Inspector you can:
+## Scenes
 
-- Edit values directly — type a number, drag it, flip a switch, or pick a color.
-- Click **Add** to attach a new component.
-- Use the **Filter...** box to jump to one quickly.
-- Click the trash icon on a section to remove that component.
+A scene is a saved collection of entities and their components. Think of it as one level, room or screen. Saving writes a `.bsn` file that records everything in the Hierarchy.
 
-In the shot above, the selected "World Environment" entity carries a Transform (its rotation), a Directional Light (the sun — here an Illuminance of 40000 with shadows on), and a few rendering options. They're all just components layered onto one entity.
+Your project picks which scene loads first, under **Settings > Project**. You can split a game across many scenes and load them as the player moves between areas. The editor reopens whatever scene you last had open, while an exported game always starts from the boot scene.
 
-> **For programmers:** components are plain Rust data structs, and *systems* are functions that read and change them each frame. You can write your own and make their fields editable right here in the Inspector. See [Creating Components](/docs/r1-alpha8/engine-core/components) for the full guide.
+## Behaviour
 
-## Scenes: a saved world
+To make something happen you attach a script to an entity. Renzora compiles Rust scripts, and language backends from the [Marketplace](/docs/r1-alpha8/marketplace/browsing) add others.
 
-A **scene** is a saved collection of entities and their components — think of it as one level, room, or screen of your game. Saving a scene writes a `.ron` file that records everything you built in the Hierarchy.
-
-You choose which scene loads first in your project's `project.toml`:
-
-```toml
-name = "MyProject"
-version = "1.0.0"
-main_scene = "scenes/main.ron"
-```
-
-You can split a big game across many scenes and load them as the player moves between areas. The editor remembers the last scene you had open, while the exported game always starts from `main_scene`.
-
-## Giving entities behaviour with scripts
-
-To make things *do* something — move, take damage, open a door — you attach a **script** to an entity. Renzora gives you three ways, and you can mix them in one project:
-
-- **Blueprints** (`.blueprint`) — visual node graphs you wire together. Great if you'd rather not write code.
-- **Lua** (`.lua`) — a friendly text scripting language with the full Renzora API (native desktop and mobile).
-- **Rust** (`.rs`) — compiled per script and handed the whole world, for logic the scripting API cannot express.
-
-Just give an entity a **Name** in the editor and it's ready to hold scripts. See the [Scripting Overview](/docs/r1-alpha8/scripting/overview) to get started.
+See [Scripting Overview](/docs/r1-alpha8/scripting/overview).
 
 ## How a frame works
 
-You never have to drive the game loop yourself. Every frame, the engine does roughly this for you:
+You never drive the game loop yourself. Every frame the engine reads input, runs your scripts, steps physics, updates animation and transforms, then draws.
 
-1. Read input (keyboard, mouse, gamepad).
-2. Run your scripts and game logic.
-3. Step the physics (Renzora uses the **Avian** physics engine).
-4. Update positions and animations.
-5. Draw the frame.
+You describe entities, components and scripts. The engine runs them in the right order, on every platform you export to.
 
-You just describe your entities, components, and scripts — the engine runs everything in the right order, on every platform you export to (Windows, Linux, macOS, Android, iOS, and Web).
+## What's next
 
-## What's next?
-
-- [Your First Project](/docs/r1-alpha8/getting-started/first-project) — create a project and open the editor
-- [Scenes & Hierarchy](/docs/r1-alpha8/editor/scenes) — build a world in the editor
-- [Scripting Overview](/docs/r1-alpha8/scripting/overview) — add gameplay logic
-- [Creating Components](/docs/r1-alpha8/engine-core/components) — write your own components in Rust
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — extend the engine itself
+- [Your First Project](/docs/r1-alpha8/getting-started/first-project)
+- [Scenes and Hierarchy](/docs/r1-alpha8/editor/scenes)
+- [Scripting Overview](/docs/r1-alpha8/scripting/overview)

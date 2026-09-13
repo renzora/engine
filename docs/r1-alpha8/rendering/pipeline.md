@@ -33,11 +33,11 @@ Not everything called a "camera effect" is the same kind of thing. There are thr
 
 | Family | Example crates | How it renders |
 |---|---|---|
-| **Unified post-process** | 53 [standalone plugins](../extending/standalone-plugins.md) under `plugins/` (`ascii`, `crt`, `sepia`, …) | A fullscreen fragment pass, registered through the C ABI with `add_post_process`. These link no Bevy and hot-reload, shader included. |
+| **Unified post-process** | [installed plugins](../extending/post-processing.md) under `plugins/` (`ascii`, `crt`, `sepia`, …) | A fullscreen fragment pass, declared with `#[post_process]` and installed by `PostProcessPlugin<T>`. These hot-reload, shader included. |
 | **Bevy built-in wrappers** | `renzora_bloom_effect`, `renzora_dof`, `renzora_ssao`, `renzora_ssr`, `renzora_vignette`, `renzora_motion_blur`, `renzora_auto_exposure`, `renzora_atmosphere`, `renzora_skybox`, `renzora_environment_map`, `renzora_forward_decal`, `renzora_distance_fog`, `renzora_volumetric_fog`, `renzora_antialiasing` | Author user-facing settings, then route a **stock Bevy component** onto the camera (`Bloom`, `DepthOfField`, `ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflections`, `Atmosphere`, `Skybox`, `EnvironmentMapLight`, `ForwardDecal`, FXAA/SMAA/TAA/CAS, …). No custom WGSL pass of their own. |
 | **Custom multi-pass render-graph crates** | `renzora_lumen` + `renzora_rt` (GI), `renzora_oit` (transparency); plus material/mesh sky & water (`renzora_clouds`, `renzora_night_stars`, [`renzora_water`](water.md), `renzora_pool_water`, `renzora_lighting`) | Their own render-graph nodes/passes, outside the unified node. `renzora_water` is the one that runs *before* the camera driver — its FFT wave simulation is view-independent, so it would be pure waste per view. |
 
-The **wrappers** get their settings onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes. Plugin effects need neither: their settings component sits on any entity and the bridge uploads its bytes each frame.
+The **wrappers** get their settings onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes. Unified effects need neither: their settings component sits on any entity and the pass uploads its bytes each frame.
 
 For authoring a unified effect (the three files, the WGSL contract, and where the line falls between a plugin effect and an in-tree one), see **[Post-Processing Effects](../extending/post-processing.md)**. This page covers the pipeline-level picture.
 
@@ -66,7 +66,7 @@ This file is the **only** place that imports `tonemapping`, `temporal_anti_alias
 
 A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and the `add!` priority does not affect render order.
 
-The framework lives inside `renzora.dll` (`renzora::postprocess`, re-exported through the `renzora_postprocess` shim) so every in-tree effect shares one registry and matching `TypeId`s across the dlopen boundary. Standalone plugin effects reach the same registry through `renzora_postprocess::plugin_bridge`, which turns an `add_post_process` call from the C ABI into a `RenderPassEntry` — so a plugin effect and an engine pass sort against each other in one list.
+The framework lives inside `renzora.dll` (`renzora::postprocess`, re-exported through the `renzora_postprocess` shim) so every effect shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's effect registers through the same `PostProcessPlugin<T>` an in-tree one does, so a plugin effect and an engine pass sort against each other in one list.
 
 ## EffectRouting — getting settings onto the camera
 
@@ -85,7 +85,7 @@ The table is rebuilt every frame (by the viewport crate in the editor, by `renzo
 
 ## Global illumination — `renzora_lumen`
 
-GI is delivered by **`renzora_lumen`**, a dlopen distribution plugin (`renzora::add!(LumenPlugin)`). It also statically links **`renzora_rt`** and installs `RtPlugin`, so the `RtLighting` type has a single definition shared across the main and render worlds.
+GI is delivered by **`renzora_lumen`**, an in-workspace plugin (`renzora::add!(LumenPlugin)`) that the lean exporter can strip per game. It also statically links **`renzora_rt`** and installs `RtPlugin`, so the `RtLighting` type has a single definition shared across the main and render worlds.
 
 The GI settings types — `RtLighting`, `LumenLighting`, `LumenQuality`, `LumenDebug`, `LumenDiagState` — live in the shared contract (`crates/renzora/src/gi.rs`) so editor inspectors, `renzora_level_presets`, and the debugger's Lumen panel all share one `TypeId` across the dlopen boundary. `LumenLighting` is authored on a non-camera entity (typically the **World Environment**) and is mutually exclusive with a hand-attached `RtLighting`:
 
@@ -125,7 +125,7 @@ Beyond the `ScreenSpace` SSGI backend (`RtPlugin`), the voxel/trace/reflection t
 - `LumenTracePlugin` — voxel-cone diffuse GI with **inlined** temporal accumulation and a sky-cubemap fallback when a cone misses.
 - `ScreenReflectionPlugin` + `ScreenReflectionBlurPlugin` + `ScreenReflectionResolvePlugin` — a three-stage half-res screen-space reflection pyramid (trace → blur → bilateral upsample).
 
-`renzora_rt` itself is the cheap tier: a **single-pass**, depth+normal-aware SSGI node. (Despite the crate name, it is *not* the historical "9-pass ray-tracing beast" — that design is gone. It is a library linked into `renzora_lumen`, never registered as a standalone plugin.)
+`renzora_rt` itself is the cheap tier: a **single-pass**, depth+normal-aware SSGI node. (Despite the crate name, it is *not* the historical "9-pass ray-tracing beast" — that design is gone. It is a library linked into `renzora_lumen`, never registered as a plugin of its own.)
 
 > The originally planned mesh-SDF architecture (`.msdf` bakes, a global SDF clipmap, emissive injection) was **abandoned** and replaced by the CPU geometry-voxelization path above. If you find references to `MeshSdfLoader`, `sdf/`, `bake.rs`, or `voxel_emissive_inject.wgsl`, they describe code that was never built.
 
@@ -370,7 +370,7 @@ Wireframe visualization relies on the `POLYGON_MODE_LINE` feature noted above (s
 ## What's next
 
 - **[Post-Processing Effects](../extending/post-processing.md)** — author an effect end to end: the three files, the WGSL contract, and what stays in-tree.
-- **[Standalone Plugins](../extending/standalone-plugins.md)** — the C ABI the effect plugins are built on.
+- **[Native Plugins](../extending/native-plugins.md)** — how an effect plugin is built and installed.
 - **[WGSL Shaders](./shaders.md)** — writing shaders and materials for Renzora.
 - **[Camera System](./camera.md)** — cameras, viewports, and prepasses.
 - **[Architecture](../setup/architecture.md)** — where the render crates sit in the one-binary / plugin model.

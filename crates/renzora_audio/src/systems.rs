@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use renzora_plugin::audio::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
+use renzora::audio_backend::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::{AudioPlayer, RolloffType};

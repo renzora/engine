@@ -15,6 +15,30 @@
 //! A feature would be unified across a `cargo build --workspace` (the editor
 //! build lane), so the runtime binary staged beside the editor would compile
 //! this module as dead code and carry its dependencies for nothing.
+//!
+//! # Why this keeps its own watcher
+//!
+//! `renzora_project_watch` now watches the whole project and publishes
+//! `ProjectFileChanged`, and every other poller in the editor was migrated onto
+//! it. This one was deliberately left alone, and it is not an oversight to tidy
+//! up later.
+//!
+//! That watcher is Bevy's `FileWatcher`, whose handler maps
+//! `Modify(ModifyKind::Metadata(_))` to `ModifiedAsset` along with every other
+//! `Modify`. [`is_content_change`] exists because that specific kind must be
+//! dropped here: the resolver reads every `.wgsl` it re-resolves, so an event
+//! raised by merely touching a file makes this module feed itself. Measured at
+//! 80 self-inflicted reloads in 20 seconds on a project nobody was editing.
+//!
+//! Migrating would mean either losing that filter or reproducing it, and the
+//! event kind is gone by the time `AssetSourceEvent` reaches a subscriber. The
+//! cost of staying put is one extra `notify` backend; the cost of moving is a
+//! measured feedback loop coming back. When it does move, the fix is to make
+//! `invalidate_for_wgsl` compare a content hash and skip a file whose bytes did
+//! not change, which breaks the loop at the consumer and would make every other
+//! subscriber safe too.
+//!
+//! Note that this is event-driven either way. Nothing here polls.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

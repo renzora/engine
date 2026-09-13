@@ -272,7 +272,7 @@ Two limits worth knowing:
 - **A resource without `#[reflect(Resource)]` is counted, not listed.** The panel's count reads e.g. `412  (+38 unreflected)`. There is nothing to list them under: naming a component outside the type registry means `ComponentInfo::name()`, which returns a placeholder string unless Bevy's `debug` feature is compiled in, and this workspace does not enable it. Derive `Reflect` and the resource appears.
 - **Edits here are not undoable.** Undo stacks are per-document and the active one is almost always the scene's; a global poked from a debug panel does not belong in the scene's edit history.
 
-Resources declared by a C-ABI plugin are a separate case — they are not Rust types this build knows, so reflection cannot see them at all. Those have their own **Plugin Resources** panel, driven by the plugin's field schema.
+A plugin's resources need no special case: a plugin links the real Bevy and the real contract crate, so its types are registered like any other and the panel lists them beside the engine's.
 
 ### The runtime-warnings buffer (the exception)
 

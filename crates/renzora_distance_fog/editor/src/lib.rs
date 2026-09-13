@@ -2,7 +2,7 @@
 //! `WorldEnvironment` inspector.
 //!
 //! Fog is no longer a separately-addable component. It's a section of the one
-//! `WorldEnvironment` (see `docs/world-environment-spec.md`): the entry shows
+//! `WorldEnvironment`: the entry shows
 //! whenever the selected entity has a `WorldEnvironment`, its enable toggle
 //! drives `WorldEnvironment::fog.enabled`, and the native drawer edits the fog
 //! sub-section. No add/remove — it's intrinsic to the environment.

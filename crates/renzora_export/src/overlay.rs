@@ -28,7 +28,7 @@ pub enum PackagingMode {
     LeanSingleBinary,
 }
 
-/// How the game's C-ABI plugins reach the exported build.
+/// How the game's plugins reach the exported build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum PluginLinkMode {
     /// Copy each plugin's library into a `plugins/` folder beside the binary,
@@ -150,7 +150,7 @@ pub struct ExportOverlayState {
     /// Background export task (if running).
     pub(crate) active_task: Option<ExportTask>,
     /// Available runtime-compatible plugins (scanned once).
-    pub available_plugins: Vec<renzora_plugin::host::loader::PluginInfo>,
+    pub available_plugins: Vec<renzora_native_plugin::InstalledNativePlugin>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
     /// Files beside the binary, or compiled into it. See [`PluginLinkMode`].
@@ -768,9 +768,9 @@ struct LeanBuild {
 /// is the whole point. The template path ships the entire engine to every game
 /// because the template was compiled once, for nobody in particular; this one
 /// was compiled minutes ago with the capabilities this project actually uses
-/// stripped out, and with the selected C-ABI plugins linked in — which on the
-/// web is the *only* way a plugin can reach a game at all, since a browser has
-/// no `dlopen` for the loader to scan with.
+/// stripped out, and with the selected plugins linked in — which on the web is
+/// the *only* way a plugin can reach a game at all, since a browser has no
+/// `dlopen` for the loader to scan with.
 ///
 /// Staged through a scratch directory rather than zipped from memory because
 /// `wasm-bindgen` and `wasm-opt` are both file-to-file tools: bindgen splits one
@@ -887,10 +887,10 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let mesh_quantize = export_state.mesh_quantize;
     let mesh_generate_lods = export_state.mesh_generate_lods;
     let mesh_lod_levels = export_state.mesh_lod_levels;
-    // Kept as full `PluginInfo`s rather than bare paths: linking a plugin in
-    // needs its id (to find the source that builds it) and its scope (so the
-    // generated list declares the same one the library would have reported).
-    let selected_plugins: Vec<renzora_plugin::host::loader::PluginInfo> = export_state
+    // Kept whole rather than as bare paths: linking a plugin in needs its id (to
+    // find the source that builds it) and its scope (so the generated list
+    // declares the same one the library would have reported).
+    let selected_plugins: Vec<renzora_native_plugin::InstalledNativePlugin> = export_state
         .available_plugins
         .iter()
         .filter(|p| export_state.selected_plugins.contains(&p.id))
@@ -1041,7 +1041,7 @@ fn export_worker(
     mesh_generate_lods: bool,
     mesh_lod_levels: u32,
     template_path: std::path::PathBuf,
-    selected_plugins: Vec<renzora_plugin::host::loader::PluginInfo>,
+    selected_plugins: Vec<renzora_native_plugin::InstalledNativePlugin>,
     link_plugins_in: bool,
     runtime_dir: std::path::PathBuf,
     disabled_bevy_features: Vec<String>,
@@ -1317,10 +1317,7 @@ fn export_worker(
             let wanted: Vec<(String, bool)> = selected_plugins
                 .iter()
                 .map(|p| {
-                    (
-                        p.id.clone(),
-                        p.scope == renzora_plugin::sys::PluginScope::Editor,
-                    )
+                    (p.id.clone(), p.scope == renzora::NativePluginScope::Editor)
                 })
                 .collect();
             // Not `engine_dir`: a plugin's source lives beside the editor now,
@@ -1476,16 +1473,11 @@ fn export_worker(
             {
                 let _ = tx.send(ExportMsg::Progress(format!("WARN: {e}")));
             }
-            // Same trade for native plugins: a `Runtime`-scope one belongs in
-            // the game, and the library the editor built is the thing that
-            // ships. Read from the editor's own `plugins/`, not the project's —
-            // a native plugin extends the engine, not one game.
+            // Same trade for plugins: a `Runtime`-scope one belongs in the game,
+            // and the library the editor built is the thing that ships. Read
+            // from the editor's own `plugins/`, not the project's — a plugin
+            // extends the engine, not one game.
             if let Some(editor_dir) = crate::build::editor_dir() {
-                // The picker lists native plugins alongside C-ABI ones now, so
-                // the same tick-list decides both. Ids are unique across the two
-                // kinds — they all come from one `plugins/` namespace — so a set
-                // of every selected id filters the native staging correctly
-                // without having to know which kind each id was.
                 let native_selection: std::collections::HashSet<String> =
                     selected_plugins.iter().map(|p| p.id.clone()).collect();
                 if let Err(e) = crate::build::stage_runtime_native_plugins(
@@ -1636,15 +1628,11 @@ fn export_worker(
 
             // Plugins ship with EVERY packaging mode, lean included.
             //
-            // They used to be skipped for a lean export on the reasoning that a
-            // static binary cannot dlopen. That is not true, and it is the wrong
-            // mechanism besides: these are C-ABI plugins (`renzora_plugin`),
-            // which link no Bevy at all — the interface is passed in as a
-            // function table — so there is nothing for them to share with the
-            // host and nothing about static linking that stops the OS loading
-            // them. The result was a lean game shipping zero plugins, silently:
-            // no Lua, no post-process effects, and no error, because the host
-            // simply found an empty `plugins/` directory.
+            // A lean export links the ones it can into the binary, and the rest
+            // still have to reach the game somehow. Skipping this step entirely
+            // was tried and shipped a lean game with zero plugins, silently: no
+            // effects and no error, because the host simply found an empty
+            // `plugins/` directory.
             //
             // Anything the lean build compiled in is skipped here. Copying it as
             // well would not merely waste space: the host would initialise the
@@ -1663,7 +1651,7 @@ fn export_worker(
                     let bare = p.id.strip_prefix("lib").unwrap_or(&p.id);
                     !dropped_ids.iter().any(|d| d == &p.id || d == bare)
                 })
-                .map(|p| (p.id.as_str(), p.path.as_path()))
+                .map(|p| (p.id.as_str(), p.lib.as_path()))
                 .collect();
             if !is_wasm && !to_copy.is_empty() {
                 let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));

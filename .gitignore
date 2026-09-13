@@ -1,8 +1,8 @@
 # Rust
 /target/
 /target-runtime/
-# Shared build cache for the standalone plugin projects (plugins/.cargo/config.toml
-# points every one of them here so the common deps compile once).
+# Shared build cache for installed plugins (plugins/.cargo/config.toml points
+# every one of them here so the common deps compile once).
 /plugins/target/
 # Native plugins compile into `<plugin>/build/` beside their source, and the
 # editor's loader will do exactly that in-place if someone runs it against a

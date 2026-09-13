@@ -19,7 +19,8 @@ engine/
 │   ├── renzora_engine/     # Editor-free game core (VFS, scene IO, autoload)
 │   ├── renzora_editor/     # The editor BUNDLE cdylib (links ~50 editor crates)
 │   ├── renzora_editor_framework/  # Editor SDK implementation (rlib-only)
-│   ├── dynamic_plugin_loader/     # dlopen + hot-reload of plugins/
+│   ├── renzora_native_plugin/     # scans, rebuilds and loads plugins/
+│   ├── renzora_plugin_build/      # the rustc driver a plugin is compiled with
 │   ├── renzora_<feature>/  # one crate per feature (physics, scripting, ember, …)
 │   │   └── editor/         # optional editor-only half (= renzora_<feature>_editor)
 │   ├── renzora_<effect>/   # one crate per post-process effect (bloom, crt, …)
@@ -49,7 +50,6 @@ members = [
     "crates/renzora",             # the SDK / contracts crate
     "crates/renzora_*",           # every renzora_* feature/effect crate
     "crates/renzora_*/editor",    # nested editor halves of dual-mode crates
-    "crates/dynamic_plugin_loader",
     # Vendored Bevy ecosystem crates, listed explicitly (NOT via a bevy_* glob)
     # so bevy_oxr — its own nested workspace — is not accidentally pulled in.
     "crates/bevy_hanabi",
@@ -74,14 +74,15 @@ A handful of crates form the engine's spine. Everything else is a plugin that pl
 
 | Crate | Crate type | Role |
 |-------|-----------|------|
-| `renzora` | `dylib` + `rlib` (`renzora.dll`) | The SDK / "contracts" crate. Houses the `add!` / `export_plugin_bundle!` macros, `PluginScope`/`StaticPlugin`, the post-process framework, GI contract types, and (under the `editor` feature) the editor contract registries. |
+| `renzora` | `rlib` (shared through `renzora_dylib`) | The contract crate. Houses the `add!` / `plugin!` macros, `PluginScope`, the post-process framework, GI contract types, the audio/net/script boundary types, and (under the `editor` feature) the editor contract registries. |
 | `renzora_runtime` | rlib | Shared engine library every binary links (`init_app`, `add_default_rendering`, `add_headless_rendering`, `add_engine_plugins`). |
 | `renzora_engine` | rlib | The editor-free game core — VFS, custom asset reader, scene IO, autoload, crash reporting. |
-| `renzora_editor` | `cdylib` | The editor **bundle** — statically links ~50 editor-only crates and the dual-mode `/editor` subcrates, and exports a single `plugin_install_scope` entry point. |
-| `renzora_editor_framework` | rlib | The editor SDK **implementation** (the boundary-crossing contract types were folded into `renzora.dll`, so this emits no dll). |
-| `dynamic_plugin_loader` | rlib | dlopens plugins at startup and hot-reloads new ones dropped into `<exe>/plugins/`. |
+| `renzora_editor` | `dylib` + `rlib` | The editor **image** — statically links ~50 editor-only crates and the dual-mode `/editor` subcrates, and exports a single `renzora_editor_install` entry point. Present beside the binary → the binary is the editor; absent → the same binary is the game. |
+| `renzora_editor_framework` | rlib | The editor SDK **implementation** (the boundary-crossing contract types were folded into the contract crate, so this emits no dll). |
+| `renzora_native_plugin` | rlib | Scans `plugins/`, rebuilds what is stale, loads the rest. |
+| `renzora_plugin_build` | rlib | The compiler driver — reads the SDK manifest and invokes `rustc` directly. |
 
-> `renzora` is the **shared SDK library**. Shipping it as `renzora.dll` (`.so` / `.dylib`) means the host binary, the dlopen'd editor bundle, and every dynamic plugin share one compiled copy and matching `TypeId`s across the dynamic-linking boundary. `bevy` itself is shared the same way via `bevy_dylib` (`dynamic_linking` + `prefer-dynamic`).
+> `renzora_dylib` and `renzora_ember_dylib` hold no code of their own. They exist so the host binary, the dlopen'd editor image and every installed plugin share one compiled copy of `renzora` and `renzora_ember` — one translation table, one Console buffer, one theme palette — and matching `TypeId`s across the dynamic-linking boundary. `bevy` is shared the same way via `bevy_dylib` (`dynamic_linking` + `prefer-dynamic`).
 
 ### One binary, not three
 
@@ -108,31 +109,31 @@ The runtime crate is statically linked / registered everywhere; the nested `edit
 
 Some editor-only features (e.g. `renzora_hierarchy`, `renzora_inspector`, `renzora_blueprint_editor`) are standalone top-level crates rather than `/editor` subcrates — they have no runtime half at all.
 
-## Three kinds of plugin
+## Two kinds of plugin
 
-| Kind | Lives in | Crate type | Links Bevy | Ships in |
-|------|----------|-----------|------------|----------|
-| **Workspace** | `crates/renzora_<name>/` | `rlib` + `renzora::add!` | statically, at build time | the engine binary |
-| **Native** | `plugins/<name>/` | `dylib` + `renzora::plugin!` | against the shared images | the editor, **as source** |
-| **C-ABI** | `plugins/<name>/` | `cdylib`, exports `renzora_plugin_init` | not at all | a shipped game |
+| Kind | Lives in | Crate type | Compiled | Ships in |
+|------|----------|-----------|----------|----------|
+| **Workspace** | `crates/renzora_<name>/` | `rlib` + `renzora::add!` | with the engine, statically | the engine binary |
+| **Native** | `plugins/<name>/` | `dylib` + `renzora::plugin!` | on the installing machine, against the staged SDK | the editor, **as source** |
+
+Both are ordinary Bevy plugins with the real `&mut World` and the real
+`Transform`. There is no FFI in either.
 
 A workspace plugin's `add!` line is read *as text* at build time by a generator
 that writes the committed `crates/renzora_{runtime,editor}/src/plugins.rs` lists
-— there is no runtime registry and no FFI, just a linker symbol in a generated
+— there is no runtime registry, just a linker symbol in a generated
 `add_plugins` call.
 
-The two kinds under `plugins/` are told apart by their manifest, not their
-location: the native loader scans for directories whose crate type is `dylib`,
-the C-ABI loader for compiled libraries exporting `renzora_plugin_init`. A native
-plugin gets the real `&mut World` and the real `Transform`, because it is
-compiled on the installing machine against a **staged SDK** cut from the engine
-sitting beside it; a C-ABI plugin takes a function table instead, links nothing,
-and therefore loads into any build from any toolchain.
+A native plugin ships as **source** and is compiled where it is installed, which
+is what removes the environment-matching problem entirely: the plugin is always
+built against the engine sitting right beside it, and when that engine moves, its
+content-hash stamp stops matching and it quietly rebuilds.
 
 The older `dlopen` feature and its `plugin_create` / `plugin_scope` /
 `plugin_bevy_hash` exports are **gone**, along with the `dynamic_plugin_loader`
-crate that checked them. See [Building Plugins](/docs/r1-alpha8/extending/plugins)
-and [Native Plugins](/docs/r1-alpha8/extending/native-plugins).
+crate that checked them, and so is the C ABI that briefly replaced them. See
+[Building Plugins](/docs/r1-alpha8/extending/plugins) and
+[Native Plugins](/docs/r1-alpha8/extending/native-plugins).
 
 ## Where the code actually lives
 
@@ -141,7 +142,7 @@ Two directories hold nearly all of it, and the split is the plugin table above:
 | Directory | Contents |
 |-----------|----------|
 | `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_mod_outline`, `bevy_silk`, `bevy_oxr`, `vleue_navigator`). Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
-| `plugins/` | **66** C-ABI cdylibs — most of them post-process effects, plus `lua`, `http` and `tracy` — and **11** native plugins (`ai_chat`, `auto_exposure`, `clouds`, `gamepad`, `mesh_draw`, `night_stars`, `pool_water`, `procedural_tree`, `spline`, `text3d`, `vignette`). |
+| `plugins/` | Installed plugins, most of them post-process effects. Empty in a fresh checkout: plugins are distributed through the marketplace and built where they land. |
 
 Those counts move every release; treat them as a sense of scale, not an
 inventory. The direction of travel is out of `crates/` and into `plugins/`: an
@@ -190,8 +191,8 @@ renzora::add!(MyFeaturePlugin);
 
 Wiring it in:
 
-- A **runtime** crate that should be statically linked is added as a dependency of `renzora_runtime`; an **editor-only** crate is added to the `renzora_editor` bundle.
-- A **distribution** (cdylib) plugin needs no dependency wiring — it is dlopen'd from `<exe>/plugins/`. The `renzora add <name> [--editor|--dylib]` helper scaffolds one for you (`--editor` = an editor-scope optional dependency; `--dylib` = a cdylib distribution plugin with `default = ["dlopen"]`; the flags are mutually exclusive).
+- A **runtime** crate is added as a dependency of `renzora_runtime`; an **editor-only** crate is added to `renzora_editor`. The `renzora add <name> [--editor]` helper does that wiring for you, and the build generator writes the `add_plugins` call from your `add!` line.
+- An **installed** plugin needs no wiring here at all: it lives outside this repository, ships as source, and the loader compiles it against the staged SDK. See [Native Plugins](/docs/r1-alpha8/extending/native-plugins).
 
 > Use `use renzora::*;` (or `use renzora::Inspectable;`). There is **no** `renzora::prelude` module. `Inspectable`, `AppEditorExt`, and the `#[field(...)]` / `#[inspectable(...)]` attributes are behind `renzora`'s `editor` feature, so an inspector-aware crate must depend on `renzora = { ..., features = ["editor"] }`.
 
@@ -199,4 +200,4 @@ Wiring it in:
 
 - [Building from Source](/docs/r1-alpha8/setup/building-from-source) — `cargo renzora`, the cargo aliases, and the output layout
 - [Core Concepts](/docs/r1-alpha8/getting-started/concepts) — ECS, plugins, and the one-binary model
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — write a workspace or distribution plugin
+- [Building Plugins](/docs/r1-alpha8/extending/plugins) — write an in-workspace plugin

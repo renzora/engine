@@ -51,6 +51,15 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
         policy_open(expand_policy, type_id)
     };
 
+    // The tier in force for the viewport right now, so a section whose effect it
+    // switches off can say so in its header. Absent (a world built before the
+    // seeder ran) means "gate nothing" rather than a guessed tier: a warning on
+    // an effect that is actually rendering would be worse than none.
+    let tier = world
+        .get_resource::<renzora::ResolvedGraphicsQuality>()
+        .map(|q| q.0);
+    let gate_for = |type_id: &str| tier.and_then(|t| t.inspector_gate(type_id).map(|g| (t, g)));
+
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world.untracked(), entity) {
@@ -85,6 +94,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
                 header_bg,
                 accent,
                 open: section_open(entry.type_id),
+                gate: gate_for(entry.type_id),
                 fields: Vec::new(),
             });
             continue;
@@ -103,6 +113,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
                 header_bg,
                 accent,
                 open: section_open(entry.type_id),
+                gate: gate_for(entry.type_id),
                 fields: Vec::new(),
             });
             continue;
@@ -201,6 +212,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
             header_bg,
             accent,
             open: section_open(entry.type_id),
+            gate: gate_for(entry.type_id),
             fields,
         });
     }
@@ -364,6 +376,10 @@ fn append_reflected_sections(
             // Closed by default: in `All` mode every component gains a second
             // section, and opening them all would bury the hand-written ones.
             open: false,
+            // A reflected section is keyed by type path, not by a registered
+            // `type_id`, so it never matches the gate table. The hand-written
+            // section for the same component carries the warning.
+            gate: None,
             fields,
         });
     }

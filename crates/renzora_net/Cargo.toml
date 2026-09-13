@@ -14,7 +14,6 @@ renzora = { path = "../renzora", default-features = false }
 # registers; `net` for the request/event vocabulary both sides compile. Note what
 # is NOT here: no `ureq`, no `rustls`, no `ring`. That is the entire point of the
 # crate — the engine describes requests, and something else makes them.
-renzora_plugin = { path = "../renzora_plugin", features = ["host", "net"] }
 
 # For `Response::json`. Every caller that fetches an API endpoint was already
 # doing this by hand a line after the request; folding it in removes the same

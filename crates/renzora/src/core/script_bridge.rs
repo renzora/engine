@@ -28,7 +28,7 @@ pub struct ScriptAction {
 }
 
 /// Value types for script action arguments.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ScriptActionValue {
     Float(f32),
     Int(i64),
@@ -38,7 +38,7 @@ pub enum ScriptActionValue {
 }
 
 /// Value types for property writes and reflection-based get/set.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PropertyValue {
     Float(f32),
     Int(i64),

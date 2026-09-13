@@ -336,11 +336,10 @@ impl<'w> DynamicSceneBuilder<'w> {
                     {
                         Some(id) => id,
                         // No `TypeId` means the component was registered by
-                        // layout rather than from a Rust type — the only way a
-                        // C-ABI plugin component can be registered, since
+                        // layout rather than from a Rust type, since
                         // `ComponentDescriptor::new_with_layout` hard-codes
-                        // `type_id: None`. This early return is where every
-                        // plugin component used to disappear on save.
+                        // `type_id: None`. This early return is where such a
+                        // component used to disappear on save.
                         None => {
                             self.extract_raw(&mut entry, original_entity, component_id);
                             return None;

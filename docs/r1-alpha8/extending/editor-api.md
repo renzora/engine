@@ -334,7 +334,7 @@ Every pass whose name starts with `my_effect_` is then attributed to the live en
 app.add_post_process::<MyEffect>();
 ```
 
-That is the native-plugin route. A post-process effect that must run in a **shipped game** wants a [C-ABI plugin](standalone-plugins.md) instead — a native plugin cannot load into a lean export — and that is what almost every effect in `plugins/` is. `plugins/grayscale` is the smallest of them, a 52-line `#![no_std]` template. See [Post-Processing Effects](post-processing.md).
+See [Post-Processing Effects](post-processing.md) for the whole of that path, including what a `#[post_process]` struct gets for free.
 
 ## What a plugin still cannot do
 

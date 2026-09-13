@@ -36,10 +36,11 @@
 //!   `SceneLoaded`, `Ui`, `Rpc` and the rest — to the optional second entry
 //!   point a script exports via `renzora::script!(update, hooks = …)`.
 //!
-//! That third piece is why the split above is not a compromise. Lua receives
-//! those events through `ScriptBackend`, whose context has no `World` because it
-//! has to serve a C-ABI plugin; a Rust script receives the same events with the
-//! real world in hand. Before it existed, `on_scene_loaded` and everything like
+//! That third piece is why the split above is not a compromise. An interpreted
+//! language receives those events through `ScriptBackend`, whose context has no
+//! `World` because a command vocabulary is all it can be given; a Rust script
+//! receives the same events with the real world in hand. Before it existed,
+//! `on_scene_loaded` and everything like
 //! it were Lua-only, which made a loading screen — a global-scene script that
 //! must be told when the incoming scene arrived — impossible to write in Rust.
 //!
@@ -91,7 +92,7 @@ use renzora_scripting::{scripts_should_run, ScriptComponent};
 /// never on there and [`RustScriptPlugin::build`] returns before any of this is
 /// reached. Compiling is a separate question, and `libloading` has no wasm
 /// backend — hence the shim, which is the same one (and the same reasoning) as
-/// `renzora_plugin::host::loader`'s.
+/// `renzora_native_plugin`'s.
 ///
 /// Note this leaves `static_scripts` untouched: a lean *desktop* export runs its
 /// Rust scripts from a linked-in table with no library involved, and that path
@@ -207,11 +208,33 @@ impl Plugin for RustScriptPlugin {
         }
         app.init_resource::<LoadedScripts>()
             .init_resource::<watch::ScriptWatcher>()
+            // Registered here as well as by `renzora_project_watch`, and
+            // `add_message` is idempotent so the second call is free.
+            //
+            // Without it an exported game panics on its first frame: this plugin
+            // is added unconditionally by the generated list, the watcher plugin
+            // is Editor-scope and absent, and a `MessageReader` for a message
+            // nobody registered has no resource to read. Same shape as the
+            // `ScriptsActive` problem `finish` handles below, and the same worst
+            // place to discover it: a shipped game rather than the editor.
+            .add_message::<renzora::core::project_files::ProjectFileChanged>()
             // Recompile on save. Unlike `dispatch` these are NOT gated on play
             // mode: a script should build when you save it, so the error is in
             // front of you while you are still looking at the code — not the next
             // time you press play.
-            .add_systems(Update, (watch::watch, watch::finish))
+            .add_systems(
+                Update,
+                (
+                    // Gated on `Editor` so it cannot fire during `Loading`,
+                    // which is before `compile_and_load` has run and claimed the
+                    // walk. It still covers the case that build does not: a
+                    // project switched while the editor is already up, where
+                    // `OnEnter(Editor)` never fires again.
+                    watch::scan_on_project_open.run_if(in_state(SplashState::Editor)),
+                    watch::watch,
+                    watch::finish,
+                ),
+            )
             // Claims `.rs` with the engine. Not done in `build` because the
             // engine is a resource another plugin creates, and plugin build
             // order is not something to depend on.
@@ -355,7 +378,7 @@ fn load_static_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>)
 ///
 /// `ManuallyDrop` because a resource is dropped with the World on every clean
 /// shutdown, and unmapping code something may still call has crashed the runtime
-/// here before. See `renzora_plugin`'s loader.
+/// here before. See `renzora_native_plugin`'s loader.
 #[derive(Resource, Default)]
 pub struct LoadedScripts {
     entries: HashMap<String, ScriptFn>,
@@ -416,6 +439,14 @@ fn compile_and_load(world: &mut World) {
     if sources.is_empty() {
         return;
     }
+
+    // This walk IS the opening scan, so claim it: `scan_on_project_open` would
+    // otherwise do the same walk for the same project and race these builds.
+    // Claimed before the SDK check below, because a project with no SDK still
+    // does not want a second walk finding scripts it cannot build either.
+    world
+        .resource_mut::<watch::ScriptWatcher>()
+        .mark_scanned(project.clone());
 
     let Some(sdk_dir) = sdk_dir() else { return };
     let sdk = match Sdk::load(sdk_dir) {
@@ -664,8 +695,8 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Libr
         Err(_) => {
             // Leaked rather than returned to be dropped. `Library::new` already
             // ran the image's static initializers, and unmapping a warmed Rust
-            // dylib runs `FreeLibrary` inside the loader lock — the deadlock
-            // `renzora_plugin`'s loader hit. A script missing its entry point is
+            // dylib runs `FreeLibrary` inside the loader lock — the deadlock the
+            // plugin loader hit. A script missing its entry point is
             // an author typo, so this happens while someone iterates: exactly
             // the situation where it would be hit repeatedly.
             std::mem::forget(lib);

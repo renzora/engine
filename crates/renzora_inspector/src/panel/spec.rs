@@ -126,6 +126,16 @@ pub(crate) struct SectionSpec {
     /// Whether this section starts expanded (per the expand-default policy /
     /// expand-all override, computed in [`collect_sections`](super::collect::collect_sections)).
     pub(crate) open: bool,
+    /// The live graphics-quality tier and what it does to this component's
+    /// effect, when it does anything. `Some` puts the amber warning glyph in the
+    /// header, so a tier that silently switched the effect off doesn't read as a
+    /// broken effect. The tier travels with the gate because the tooltip names
+    /// it: "Low" is the answer the user needs, not "a tier".
+    /// See [`renzora::core::viewport_types::GraphicsQuality::inspector_gate`].
+    pub(crate) gate: Option<(
+        renzora::core::viewport_types::GraphicsQuality,
+        renzora::core::viewport_types::QualityGate,
+    )>,
     pub(crate) fields: Vec<FieldSpec>,
 }
 

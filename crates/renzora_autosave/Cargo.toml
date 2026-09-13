@@ -4,11 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Periodic scene auto-save. Editor-only plugin: counts down a user-set interval, then re-saves the open scene through the same path as Ctrl+S. The status bar's left label shows the live 'Auto save in Ns' countdown in place of 'Ready'."
 
-# Editor-scope plugin. Ships as an rlib member of the `renzora_editor` bundle
-# (NOT a standalone cdylib): the bundle's `export_plugin_bundle!` replays every
-# Editor-scope plugin from the shared inventory, so a loose editor cdylib would
-# double-install. Mirrors `renzora_tutorial` — `add!(AutoSavePlugin, Editor)`
-# self-registers via inventory.
+# Editor-scope plugin, linked into the `renzora_editor` image. Its
+# `add!(AutoSavePlugin, Editor)` puts it in the generated editor plugin list,
+# which is the only place an Editor-scope plugin is installed from. Mirrors
+# `renzora_tutorial`.
 
 [dependencies]
 bevy = { workspace = true }

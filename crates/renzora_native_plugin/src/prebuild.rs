@@ -29,11 +29,12 @@
 //! shape rather than being a special case threaded through boot.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use renzora_plugin_build::unpack::{self, SdkState};
 use renzora_plugin_build::Sdk;
 
-use crate::{exe_dir, is_native_source, is_standalone_source, layout, name_of, standalone};
+use crate::{exe_dir, is_native_source, layout, name_of};
 
 /// Where setup has got to, for a progress bar to draw.
 ///
@@ -47,7 +48,21 @@ pub enum Progress {
     /// the only pair with a known total.
     Unpacking { done: u64, total: u64 },
     /// Compiling plugin `name`, number `index` of `total`.
+    ///
+    /// `index` is the order the build STARTED in, not how many are finished.
+    /// Several arrive at once, because several plugins compile at a time — so
+    /// this drives the caption and not the bar. [`Built`](Self::Built) is what
+    /// measures progress.
     Building { name: String, index: usize, total: usize },
+    /// Plugin `name` finished, successfully or not; `done` of `total` are now
+    /// complete.
+    ///
+    /// Separate from [`Building`](Self::Building) because with a parallel build
+    /// the two are genuinely different numbers: eight plugins start within
+    /// milliseconds of each other and finish four seconds later. A bar driven by
+    /// starts jumps to 8/52 and then sits still, which is the one thing a
+    /// progress bar must not do; driven by completions it climbs once per plugin.
+    Built { name: String, done: usize, total: usize },
     /// One line the compiler wrote, as it wrote it.
     ///
     /// Carries no fraction — the bar stays where [`Building`](Self::Building)
@@ -73,6 +88,9 @@ impl std::fmt::Display for Progress {
             }
             Progress::Building { name, index, total } => {
                 write!(f, "Building plugins… [{index}/{total}] {name}")
+            }
+            Progress::Built { name, done, total } => {
+                write!(f, "Built {name} ({done}/{total})")
             }
             // One line, whatever the compiler produced. Trimmed because rustc
             // indents continuation lines heavily and a caption is one line wide.
@@ -111,11 +129,8 @@ impl Prepared {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolchainGap {
     /// rustup is here; the pinned toolchain is not. One command, ~400 MB.
-    ///
-    /// Standalone plugins are unaffected — they build with whatever toolchain
-    /// rustup already has — so this blocks the native ones only.
     Installable { version: String },
-    /// No Rust at all. Both kinds are blocked, and the fix is rustup's installer.
+    /// No Rust at all, and the fix is rustup's installer.
     RustupMissing,
 }
 
@@ -124,18 +139,16 @@ pub enum ToolchainGap {
 /// Answered after a run rather than before it, so it describes what actually
 /// stopped rather than what might.
 pub fn toolchain_gap() -> Option<ToolchainGap> {
-    if !standalone::have_toolchain() {
-        return Some(ToolchainGap::RustupMissing);
-    }
     let root = exe_dir()?;
     match Sdk::load(crate::sdk_dir(&root)).ok()?.toolchain() {
         renzora_plugin_build::Toolchain::ToolchainMissing { version } => {
             Some(ToolchainGap::Installable { version })
         }
-        // `RustupMissing` from the SDK's point of view means no rustup, but we
-        // already know a cargo exists — Rust installed some other way, with the
-        // wrong version for native plugins and nothing we can do about it.
-        _ => None,
+        // No rustup, or a `rustc` on `PATH` that is the wrong version. Either
+        // way the fix is the same: install rustup, which can then be asked for
+        // the pinned compiler.
+        renzora_plugin_build::Toolchain::RustupMissing { .. } => Some(ToolchainGap::RustupMissing),
+        renzora_plugin_build::Toolchain::Ready(_) => None,
     }
 }
 
@@ -171,11 +184,6 @@ pub fn needed() -> bool {
             if layout(&p, Some(sdk), native_stamp.as_deref()).needs_build {
                 return true;
             }
-        } else if is_standalone_source(&p) && layout(&p, None, None).needs_build {
-            // Only worth a window if there is something to build it with. A
-            // machine with no Rust installed would otherwise get the setup
-            // window on every launch, build nothing, and restart into it.
-            return standalone::have_toolchain();
         }
     }
     false
@@ -240,17 +248,6 @@ pub fn run(report: &mut impl FnMut(Progress)) -> Prepared {
     done
 }
 
-/// Which builder a pending plugin needs.
-///
-/// Not a property of the plugin so much as of its manifest: `crate-type` decides
-/// it, which is why nothing here reads a sidecar or trusts anything the
-/// marketplace recorded. See `is_native_source` / `is_standalone_source`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Native,
-    Standalone,
-}
-
 /// Compile every plugin whose artefact is missing or stale.
 ///
 /// Deliberately does NOT load anything: loading is the `App`'s job, and doing it
@@ -297,49 +294,133 @@ fn copy_source(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
-    // No SDK is not a reason to stop: it blocks the NATIVE plugins and nothing
-    // else. A standalone plugin links no Bevy and compiles against the plugin API
-    // staged in `<install>/crates/`, so it builds on a machine that has never
-    // unpacked one.
+    // Without an SDK there is nothing to compile against, so every plugin is
+    // left alone and the setup window says so rather than failing one build at
+    // a time.
     let sdk = Sdk::load(crate::sdk_dir(root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.
     let disabled = renzora::load_disabled_plugins();
-    let mut pending: Vec<(PathBuf, Kind)> = Vec::new();
+    let mut pending: Vec<PathBuf> = Vec::new();
     for p in crate::plugin_entries(root) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
             continue;
         }
-        if is_native_source(&p) {
-            if sdk.is_some() && layout(&p, sdk.as_ref(), native_stamp.as_deref()).needs_build {
-                pending.push((p, Kind::Native));
-            }
-        } else if is_standalone_source(&p) && layout(&p, None, None).needs_build {
-            pending.push((p, Kind::Standalone));
+        if is_native_source(&p)
+            && sdk.is_some()
+            && layout(&p, sdk.as_ref(), native_stamp.as_deref()).needs_build
+        {
+            pending.push(p);
         }
     }
     if pending.is_empty() {
         return 0;
     }
-    if pending.iter().any(|(_, k)| *k == Kind::Standalone) && !standalone::have_toolchain() {
-        report(Progress::Failed(
-            "Rust is not installed, so standalone plugins cannot be built. \
-             Install it from https://rustup.rs and relaunch."
-                .to_string(),
-        ));
-        pending.retain(|(_, k)| *k == Kind::Native);
-        if pending.is_empty() {
-            return 0;
-        }
-    }
+
+    // Longest first. A plugin with third-party dependencies runs cargo over a
+    // whole dependency tree — `text3d` pulls `lyon_tessellation`, `system_monitor`
+    // pulls `sysinfo` and `nvml-wrapper` — which takes a minute or so against the
+    // ~4 s a single `rustc` needs for everything else.
+    //
+    // `plugin_entries` returns them alphabetically, which put `system_monitor`
+    // and `text3d` near the end: the pool drained around the two slowest and the
+    // whole build appeared to hang on its last plugin with 31 cores idle. Nothing
+    // was wrong, it was just the worst possible order. Starting the expensive
+    // ones first overlaps them with the cheap majority instead.
+    //
+    // `sort_by_key` is stable, so the alphabetical order survives within each
+    // group and the build stays reproducible.
+    pending.sort_by_key(|p| !renzora_native_build::deps::has_third_party(p));
 
     let total = pending.len();
-    let mut built = 0;
+    let built = AtomicUsize::new(0);
     let writable = renzora_plugin_build::install::plugins_write_dir(root);
-    for (i, (plugin, kind)) in pending.iter().enumerate() {
-        let name = name_of(plugin);
-        report(Progress::Building { name: name.clone(), index: i + 1, total });
+
+    // One `rustc` per plugin, several at a time. The builds are independent —
+    // separate crates, each writing only into its own `build/` — so the only
+    // thing serialising them was the loop.
+    //
+    // Measured on a 32-core machine at ~4.6 s per plugin: 16 plugins took 70 s
+    // sequentially, 20 s at 8-way and 19 s at 16-way. The curve flattens early
+    // because `rustc` already threads its own codegen units, so past a handful
+    // of processes they are competing for the same cores. The cap is therefore
+    // about memory rather than CPU: each `rustc` loads the SDK's 921 metadata
+    // files, and fifty of those at once would be a lot of resident set on a
+    // machine that has 52 plugins to build.
+    let jobs = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .clamp(1, MAX_BUILD_JOBS)
+        .min(total);
+
+    // Workers send progress; the caller's `report` stays on this thread, because
+    // it is an `FnMut` the caller owns and draws a window with.
+    let (tx, rx) = std::sync::mpsc::channel::<Progress>();
+    let next = AtomicUsize::new(0);
+    // Finished, successfully or not — what the bar measures. `built` counts only
+    // the successes, which is what the caller is told at the end.
+    let done = AtomicUsize::new(0);
+
+    std::thread::scope(|scope| {
+        for _ in 0..jobs {
+            let tx = tx.clone();
+            let (next, built, pending, writable, sdk, native_stamp) =
+                (&next, &built, &pending, &writable, &sdk, &native_stamp);
+            let done = &done;
+            scope.spawn(move || loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= pending.len() {
+                    break;
+                }
+                let plugin = &pending[i];
+                let name = name_of(plugin);
+                build_one(plugin, i, total, writable, sdk, native_stamp, built, &tx);
+                // Sent whatever the outcome: the bar measures work finished, and
+                // a plugin that failed to compile is as finished as one that did
+                // not. Reporting only successes would leave the bar short of the
+                // end with nothing left to run.
+                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                let _ = tx.send(Progress::Built { name, done: n, total });
+            });
+        }
+        // The workers hold the only remaining senders, so the drain below ends
+        // when the last one finishes. Without this the loop never returns.
+        drop(tx);
+        for progress in rx {
+            report(progress);
+        }
+    });
+
+    built.load(Ordering::Relaxed)
+}
+
+/// The most `rustc` processes to run at once. See the note in [`build_stale`].
+const MAX_BUILD_JOBS: usize = 8;
+
+/// Compile one pending plugin, reporting through `tx`.
+///
+/// Split out of [`build_stale`] only so the worker body is not three levels of
+/// closure deep; it is the same sequence the loop used to run inline.
+#[allow(clippy::too_many_arguments)]
+fn build_one(
+    plugin: &Path,
+    i: usize,
+    total: usize,
+    writable: &Path,
+    sdk: &Option<Sdk>,
+    native_stamp: &Option<String>,
+    built: &AtomicUsize,
+    tx: &std::sync::mpsc::Sender<Progress>,
+) {
+    let report = |p: Progress| {
+        // The receiver outlives every worker (it is drained inside the same
+        // scope), so this only fails if the caller has already gone away.
+        let _ = tx.send(p);
+    };
+    let name = name_of(plugin);
+    report(Progress::Building { name: name.clone(), index: i + 1, total });
+    {
 
         // A plugin that shipped inside a macOS `.app` cannot be built where it
         // sits: `build/` would land in `Contents/MacOS/plugins/<name>/` and
@@ -357,26 +438,18 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
         // stamp matching the SDK beside them, so nothing goes stale until the
         // engine updates — and an update replaces the whole bundle, stamps
         // included. This is the safety net for when that reasoning is wrong.
-        let plugin = &match mirror_for_build(plugin, &writable) {
+        let plugin = &match mirror_for_build(plugin, writable) {
             Ok(p) => p,
             Err(e) => {
                 report(Progress::Failed(format!("{name}: {e}")));
-                continue;
+                return;
             }
         };
-        let (expected, l) = match kind {
-            Kind::Native => (
-                native_stamp.clone().unwrap_or_default(),
-                layout(plugin, sdk.as_ref(), native_stamp.as_deref()),
-            ),
-            // No expected stamp: nothing about this machine can make a
-            // standalone artefact stale. What is written beside it afterwards is
-            // provenance — which compiler produced it — and is never compared.
-            Kind::Standalone => (String::new(), layout(plugin, None, None)),
-        };
+        let expected = native_stamp.clone().unwrap_or_default();
+        let l = layout(plugin, sdk.as_ref(), native_stamp.as_deref());
         if let Err(e) = std::fs::create_dir_all(plugin.join("build")) {
             report(Progress::Failed(format!("{name}: {e}")));
-            continue;
+            return;
         }
         let mut on_line = |line: &str| {
             // Blank lines are separators in rustc/cargo output, not status. Left
@@ -392,20 +465,15 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
                 line: line.to_string(),
             });
         };
-        // Two builders, one shape of answer. The SDK drives `rustc` against the
-        // staged images; `standalone` runs `cargo` and links nothing.
-        let outcome = match kind {
-            Kind::Native => sdk
-                .as_ref()
-                .expect("a Native entry is only pushed when the SDK loaded")
-                .compile_with(plugin, &l.lib_path, &mut on_line)
-                .map_err(|e| e.to_string()),
-            Kind::Standalone => standalone::compile(plugin, &l.lib_path, &mut on_line),
-        };
+        let outcome = sdk
+            .as_ref()
+            .expect("a plugin is only pushed as pending when the SDK loaded")
+            .compile_with(plugin, &l.lib_path, &mut on_line)
+            .map_err(|e| e.to_string());
         match outcome {
             Ok(stamp) => match std::fs::write(&l.stamp_path, &stamp) {
                 Ok(()) => {
-                    built += 1;
+                    built.fetch_add(1, Ordering::Relaxed);
                     // Built: forget any earlier failure, so a later one is not
                     // mistaken for it.
                     let _ = std::fs::remove_file(&l.fail_path);
@@ -427,7 +495,6 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
             }
         }
     }
-    built
 }
 
 /// Relaunch this executable with the same arguments and exit.

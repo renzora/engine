@@ -11,7 +11,7 @@ use renzora_ember::widgets::{set_section_open, Section};
 
 use super::rebuild::AddButton;
 use super::section::{AddKeyframeBtn, FieldButton, LockBtn, RemoveBtn, ResetBtn};
-use super::undo::{AddComponentCmd, AddPluginComponentCmd, RemoveComponentCmd};
+use super::undo::{AddComponentCmd, RemoveComponentCmd};
 use super::{
     policy_open, record_field_change, InspectorRoot, InspectorSectionHeader, InspectorSectionsOpen,
     InspectorState, Mutate,
@@ -368,57 +368,6 @@ fn open_add_component(world: &mut World) {
     // feature ("Vignette") is a plugin that may own several components, and no
     // amount of per-component metadata reconstructs that grouping. Whatever
     // replaces the registry here has to be declared at plugin level.
-
-    // Plugin components. Injected here rather than through `InspectorRegistry`
-    // because `SearchEntry` takes a CLOSURE — so the component id can be captured
-    // — whereas `InspectorEntry` is built from bare `fn` pointers that have
-    // nowhere to put it.
-    let plugin_specs: Vec<(String, bevy::ecs::component::ComponentId, Vec<u8>)> = world
-        .get_resource::<renzora_plugin::host::PluginComponentSchemas>()
-        .map(|s| {
-            s.0.iter()
-                // A resource is global — there is no entity to add it to.
-                .filter(|i| !i.is_resource)
-                .map(|i| (i.display_name.clone(), i.id, i.default_value.clone()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    for (label, component, default_value) in plugin_specs {
-        // Already present — nothing to add.
-        if world.get_entity(entity).is_ok_and(|e| e.contains_id(component)) {
-            continue;
-        }
-        let default_value = if default_value.is_empty() {
-            // The plugin supplied no default. Zeroed is the only option left, and
-            // is at least a valid instance for any POD component.
-            let size = world
-                .components()
-                .get_info(component)
-                .map(|i| i.layout().size())
-                .unwrap_or(0);
-            vec![0u8; size]
-        } else {
-            default_value
-        };
-        entries.push(renzora_ember::widgets::SearchEntry::new(
-            "puzzle-piece",
-            &label,
-            "plugin",
-            move |w: &mut World| {
-                let ctx = renzora_undo::active_context(w);
-                renzora_undo::execute(
-                    w,
-                    ctx,
-                    Box::new(AddPluginComponentCmd {
-                        entity,
-                        component,
-                        default_value: default_value.clone(),
-                    }),
-                );
-            },
-        ));
-    }
 
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;

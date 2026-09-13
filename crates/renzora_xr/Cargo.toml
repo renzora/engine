@@ -4,9 +4,9 @@ version = "0.2.0"
 edition = "2021"
 description = "OpenXR/VR boot mode for the Renzora runtime — stereo rendering via bevy_mod_openxr, controller input, locomotion, controller visuals, and a desktop mirror camera. Statically linked into renzora_runtime behind its `xr` feature and activated by launching the runtime with --vr."
 
-# NOT a distribution plugin: OpenXR must replace Bevy's render init (device
-# creation goes through the XR runtime), which happens before any dlopen'd
-# plugin loads — so this crate is linked statically and wired in by
+# NOT an installable plugin: OpenXR must replace Bevy's render init (device
+# creation goes through the XR runtime), which happens before any plugin is
+# loaded — so this crate is linked statically and wired in by
 # `renzora_runtime::add_xr_rendering`. Deliberately no `renzora::add!` and no
 # contract-crate dependency: nothing here crosses a plugin boundary.
 

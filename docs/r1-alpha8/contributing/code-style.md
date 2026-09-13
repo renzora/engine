@@ -96,7 +96,6 @@ members = [
     "crates/renzora",
     "crates/renzora_*",        # every plugin crate
     "crates/renzora_*/editor", # nested editor halves of dual-mode crates
-    "crates/dynamic_plugin_loader",
     # vendored bevy_* crates listed explicitly (bevy_oxr is deliberately excluded)
 ]
 ```
@@ -200,7 +199,7 @@ let file = std::fs::read_to_string(&path).unwrap(); // don't
 
 ## Unsafe code
 
-- Avoid `unsafe` unless it is genuinely necessary — the main legitimate place is the FFI the `add!`/`export_plugin_bundle!` macros generate (e.g. the `plugin_bevy_hash` transmute) and GPU interop.
+- Avoid `unsafe` unless it is genuinely necessary — the main legitimate places are loading a plugin or editor image (`Library::new` and the symbol lookup after it) and GPU interop.
 - Every `unsafe` block needs a `// SAFETY:` comment stating the invariant that makes it sound.
 - Prefer a safe abstraction over leaving `unsafe` at the call site.
 

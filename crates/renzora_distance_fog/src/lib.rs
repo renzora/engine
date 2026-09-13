@@ -5,7 +5,7 @@
 //! crashes wgpu. Instead, `DistanceFog` is attached **resident** at camera spawn
 //! (see `renzora_engine::camera`), and [`reconcile_world_environment`] only ever
 //! *updates* it from [`renzora::WorldEnvironment`]'s fog section — disabled = a
-//! no-op falloff, never a removal. See `docs/world-environment-spec.md`.
+//! no-op falloff, never a removal.
 
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;

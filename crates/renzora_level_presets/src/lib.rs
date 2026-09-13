@@ -1469,7 +1469,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // The `WorldEnvironment` reconcile owns the resident camera-side
             // env state. It currently drives only fog (disabled by default —
             // matches the stock fog-less scene); more sections migrate here in
-            // later slices. See docs/world-environment-spec.md.
+            // later slices.
             (renzora::WorldEnvironment::default(),),
         ))
         .id()

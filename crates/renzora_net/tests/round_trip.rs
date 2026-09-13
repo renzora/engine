@@ -1,6 +1,5 @@
 //! The whole chain, end to end: `fetch` on a background thread → the queue →
-//! the frame pump → an `extern "C"` call into a backend → its events → back to
-//! the parked thread.
+//! the frame pump → the backend → its events → back to the parked thread.
 //!
 //! Every piece of this is unit-tested on its own, and none of that would have
 //! caught the failure this exists for: the pieces agreeing about the *protocol*
@@ -9,18 +8,17 @@
 //! the pump already looked — each leaves a thread parked forever and every
 //! individual test still green.
 //!
-//! The backend here is a real one as far as the boundary is concerned: it is
-//! reached through `NetEntry`, a bare `extern "C"` function pointer, with the
-//! request encoded and the events decoded by the same codec a `dlopen`'d plugin
-//! would use. What it is *not* is networked — it answers from a table, so the
-//! test has no sockets in it and cannot flake.
+//! The backend here is a real one as far as the contract is concerned: it
+//! implements `Backend` and is installed by `add_net_backend`, exactly as the
+//! shipped client is. What it is *not* is networked — it answers from a table,
+//! so the test has no sockets in it and cannot flake.
 
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use renzora_net::{Error, NetPlugin, Request};
-use renzora_plugin::host::{PluginNetBackend, PluginNetBackendEntry};
-use renzora_plugin::net::{Backend, BackendInfo, Caps, Event, EventKind};
+use renzora_net::AppNetBackendExt;
+use renzora_net::{Backend, BackendInfo, Caps, Event, EventKind};
 
 /// Answers from a table, one frame after the request arrives.
 ///
@@ -29,11 +27,13 @@ use renzora_plugin::net::{Backend, BackendInfo, Caps, Event, EventKind};
 /// ran.
 #[derive(Default)]
 struct Fake {
-    pending: Vec<renzora_plugin::net::Request>,
+    pending: Vec<renzora::net_backend::Request>,
 }
 
 impl Backend for Fake {
-    const NAME: &'static str = "fake";
+    fn name(&self) -> &str {
+        "fake"
+    }
 
     fn init(&mut self) -> Result<BackendInfo, String> {
         Ok(BackendInfo {
@@ -44,7 +44,7 @@ impl Backend for Fake {
 
     fn start(
         &mut self,
-        request: &renzora_plugin::net::Request,
+        request: &renzora::net_backend::Request,
         body: &[u8],
     ) -> Result<(), String> {
         let mut request = request.clone();
@@ -113,7 +113,6 @@ impl Backend for Fake {
     }
 }
 
-renzora_plugin::net_backend!(Fake);
 
 /// `renzora_net`'s request queue is process-global — it has to be, since
 /// `fetch` is called from threads with no access to a `World` — so these tests
@@ -129,13 +128,7 @@ fn exclusive() -> std::sync::MutexGuard<'static, ()> {
 fn app_with_backend() -> App {
     let mut app = App::new();
     app.add_plugins(NetPlugin);
-    let desc = net_backend::desc();
-    app.insert_resource(PluginNetBackend(Some(PluginNetBackendEntry {
-        name: "fake".to_string(),
-        state: desc.state as usize,
-        entry: desc.entry,
-        owner: 0,
-    })));
+    app.add_net_backend(Fake::default());
     app
 }
 
@@ -249,22 +242,43 @@ fn concurrent_requests_are_not_confused_with_each_other() {
     }
 }
 
-/// The backend going away mid-flight — a plugin unloaded or hot-reloaded — must
-/// fail everything waiting on it. Without this a parked thread waits out its full
-/// timeout for an answer that can no longer come from anywhere.
+/// A backend that panics is disabled, and everything waiting on it must be
+/// failed. Without this a parked thread waits out its full timeout for an answer
+/// that can no longer come from anywhere.
+///
+/// This replaces a test for the backend being *unloaded*, which a native client
+/// cannot be: it is part of the binary. Becoming unusable is the case that
+/// survived, and it takes the same path out.
+#[derive(Default)]
+struct Panics;
+
+impl Backend for Panics {
+    fn name(&self) -> &str {
+        "panics"
+    }
+    fn init(&mut self) -> Result<BackendInfo, String> {
+        Ok(BackendInfo { agent: "panics/1".to_string(), caps: Caps::CANCEL })
+    }
+    fn start(&mut self, _request: &renzora::net_backend::Request, _body: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+    fn poll(&mut self) -> Vec<Event> {
+        panic!("this backend is broken");
+    }
+}
+
 #[test]
-fn losing_the_backend_fails_the_requests_waiting_on_it() {
+fn a_backend_that_panics_fails_the_requests_waiting_on_it() {
     let _guard = exclusive();
-    let mut app = app_with_backend();
-    // A route the fake never answers, so the request is still in flight when the
-    // backend is taken away.
+    let mut app = App::new();
+    app.add_plugins(NetPlugin);
+    app.add_net_backend(Panics);
+
     let worker = std::thread::spawn(|| Request::get("https://example.com/hang").send_stream());
 
-    // One frame to hand the request over, then pull the backend out.
-    app.update();
-    app.update();
-    app.insert_resource(PluginNetBackend(None));
-    app.update();
+    // One frame adopts the backend, the next hands the request over and calls
+    // `poll`, which panics and poisons it.
+    pump_until(&mut app, || worker.is_finished());
 
     let mut stream = worker.join().unwrap().unwrap();
     // The stream ends immediately and says why, rather than yielding pieces.
@@ -299,14 +313,8 @@ fn a_request_made_before_the_backend_loads_waits_for_it() {
     }
     assert!(!worker.is_finished(), "the request should still be waiting");
 
-    // The plugin loads.
-    let desc = net_backend::desc();
-    app.insert_resource(PluginNetBackend(Some(PluginNetBackendEntry {
-        name: "fake".to_string(),
-        state: desc.state as usize,
-        entry: desc.entry,
-        owner: 0,
-    })));
+    // The backend registers.
+    app.add_net_backend(Fake::default());
     pump_until(&mut app, || worker.is_finished());
 
     assert_eq!(worker.join().unwrap().unwrap().text(), "early");

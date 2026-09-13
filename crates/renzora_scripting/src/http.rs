@@ -13,11 +13,6 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 
 /// Which piece of a streaming response a [`HttpResult`] is.
-///
-/// Mirrors `renzora_plugin::sys::HttpChunkKind` without depending on it — this
-/// module is the script-facing client and predates the plugin boundary; the
-/// plugin bridge converts between the two. Keeping them separate is what lets a
-/// build without the plugin host still stream to scripts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChunkKind {
     /// Body bytes; more may follow.
@@ -59,30 +54,6 @@ impl HttpInbox {
             .lock()
             .map(|mut v| std::mem::take(&mut *v))
             .unwrap_or_default()
-    }
-
-    /// Take only the results whose callback starts with `prefix`, leaving the
-    /// rest queued.
-    ///
-    /// Scripts and standalone plugins share one client and one queue — there is
-    /// no reason to run two — but they have separate consumers, and a plain
-    /// [`drain`](Self::drain) by either would swallow the other's responses.
-    /// The plugin bridge tags its callbacks with a prefix nothing else uses and
-    /// claims only those.
-    pub fn drain_matching(&self, prefix: &str) -> Vec<HttpResult> {
-        let Ok(mut v) = self.results.lock() else {
-            return Vec::new();
-        };
-        let mut taken = Vec::new();
-        let mut i = 0;
-        while i < v.len() {
-            if v[i].callback.starts_with(prefix) {
-                taken.push(v.remove(i));
-            } else {
-                i += 1;
-            }
-        }
-        taken
     }
 
     /// Spawn a background thread that performs the request and queues the

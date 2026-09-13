@@ -41,47 +41,9 @@ fn main() {
     // runtime ones — the ordering the old `load_bundle` call site guaranteed.
     renzora_editor::install(&mut app);
 
-    // C-ABI plugins from `<exe_dir>/plugins/`. Unaffected by static linking:
-    // they link no Bevy at all, so there is no ABI to match — the interface is
-    // passed in as a function table.
-    // No `statics`: linking plugins in is an export-time choice for a shipped
-    // game, and it would cost the editor the thing it needs most from them —
-    // hot reload, which needs a file on disk to watch and swap.
-    // Where a C-ABI plugin's settings go. A late-bound hook because
-    // `renzora_plugin` is the bottom of the stack — it cannot name the settings
-    // file, which belongs to `renzora`, which depends on it. Installed here
-    // because this is the one place that has both.
-    app.insert_resource(renzora_plugin::host::PluginSettingsStore {
-        load: renzora::core::settings_file::load_plugin_settings,
-        save: |key, blob| {
-            renzora::core::settings_file::save_plugin_settings(key, blob)
-                .map_err(|e| e.to_string())
-        },
-        clear: |key| {
-            renzora::core::settings_file::clear_plugin_settings(key).map_err(|e| e.to_string())
-        },
-    });
-    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
-        is_editor: true,
-        statics: Vec::new(),
-        // Read here rather than inside the loader: that crate is published to
-        // crates.io and cannot take a path dependency on the contract crate.
-        disabled: renzora_runtime::renzora::load_disabled_plugins(),
-    });
-    // The ONE pass over `plugins/`, immediately after the host it depends on:
-    // a standalone plugin resolves its host-component mirrors during
-    // `RenzoraPluginHostPlugin::build`, so the scan has to follow it. Both kinds
-    // load here — the scanner dispatches on which entry symbol an artefact
-    // exports, which is the only thing that can tell them apart now that they
-    // share one on-disk layout.
+    // Plugins from `<exe_dir>/plugins/`, last: an installed plugin layers on top
+    // of the editor exactly as an Editor-scope in-workspace one does.
     app.add_plugins(renzora_native_plugin::NativePluginLoader::default());
-    // Render passes those plugins registered. Separate plugin because the work
-    // happens in `finish`, after every `build` has run and the render sub-app
-    // exists.
-    app.add_plugins(renzora_postprocess::plugin_bridge::PluginRenderBridgePlugin);
-    // Custom shaded materials registered by those plugins — same `finish`
-    // reasoning as the render bridge.
-    renzora_postprocess::add_plugin_material(&mut app);
 
     app.run();
 }

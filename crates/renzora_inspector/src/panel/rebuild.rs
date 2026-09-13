@@ -280,6 +280,13 @@ fn inspector_signature(
     if let Some(s) = world.get_resource::<EditorSettings>() {
         (s.inspector_expand_default as u8).hash(&mut h);
     }
+    // The graphics-quality tier decides which sections wear the gate warning, and
+    // it changes without the component set changing at all — so without this the
+    // warning would only appear on the next reselect, which is precisely when the
+    // user has stopped wondering why the effect vanished.
+    if let Some(q) = world.get_resource::<renzora::ResolvedGraphicsQuality>() {
+        (q.0 as u8).hash(&mut h);
+    }
     // A section dropped somewhere new changes nothing about the *set* of
     // components, so the drag records a revision and this is what turns it into
     // a rebuilt (and therefore reordered) panel.

@@ -293,8 +293,15 @@ fn spawn_worker(worker: Arc<Mutex<Shared>>) {
                 // Unpacking reports continuously and has a real fraction — it
                 // belongs on the bar, not as thousands of log lines.
                 Progress::Unpacking { .. } => {}
-                Progress::Building { name, index, total } => {
-                    s.push_log(format!("Compiling {name}  ({index}/{total})"));
+                // No counter here: several plugins compile at once, so the
+                // number this carries is where the build STARTED and would read
+                // as the log jumping around. The count belongs on `Built`, which
+                // is the line that means one is actually done.
+                Progress::Building { name, .. } => {
+                    s.push_log(format!("Compiling {name}"));
+                }
+                Progress::Built { name, done, total } => {
+                    s.push_log(format!("Built {name}  ({done}/{total})"));
                 }
                 Progress::Compiling { line, .. } => {
                     let line = line.trim();
@@ -920,9 +927,12 @@ fn tick(
         // skipped", never "nothing runs".
         let frac = match p {
             Progress::Unpacking { done, total } => Some(*done as f32 / (*total).max(1) as f32),
-            Progress::Building { index, total, .. } => {
-                Some(*index as f32 / (*total).max(1) as f32)
-            }
+            // Completions, not starts. Eight plugins begin within milliseconds of
+            // each other, so a bar driven by `Building` leapt to 8/52 and then
+            // held still for the four seconds they all took — and reached the end
+            // while eight were still compiling.
+            Progress::Built { done, total, .. } => Some(*done as f32 / (*total).max(1) as f32),
+            Progress::Building { .. } => None,
             // A compiler line reports what is happening, not how far along it
             // is — the bar stays where `Building` put it and only the caption
             // moves. Same reasoning as `Failed`: no fraction is not zero.

@@ -59,17 +59,16 @@ pub(crate) fn tab_plugins(
 ///
 /// # Why the list is not a `read_dir`
 ///
-/// "Is this a plugin?" has a non-obvious answer, twice over: a standalone plugin
-/// is a library exporting one specific symbol and not a proc-macro dylib, a
-/// native plugin is a *directory* containing `src/lib.rs`, and both loaders also
-/// decline entries for reasons of their own — wrong scope for this binary,
-/// already linked in, an ABI too old. A panel that scans for itself drifts from
-/// the engine the first time either rule moves, and then shows a list that is
-/// confidently wrong.
+/// "Is this a plugin?" has a non-obvious answer: a *directory* whose manifest
+/// declares a `dylib`, or one holding nothing but a prebuilt `build/`. The
+/// loader also declines entries for reasons of its own — wrong scope for this
+/// binary, no shared engine image, a build that failed. A panel that scans for
+/// itself drifts from the engine the first time a rule moves, and then shows a
+/// list that is confidently wrong.
 ///
-/// So both loaders report into [`renzora::PluginInventory`] as they run and this
+/// So the loader reports into [`renzora::PluginInventory`] as it runs and this
 /// renders that. It reads only contract-crate types, which is why the settings
-/// crate needs no dependency on either loader.
+/// crate needs no dependency on the loader.
 ///
 /// # Why a grid
 ///
@@ -117,7 +116,6 @@ pub(crate) fn plugins_section(
 #[derive(Clone)]
 struct PluginCard {
     id: String,
-    kind: String,
     enabled: bool,
     status: String,
     /// Whether `status` describes something wrong, which decides its colour.
@@ -161,13 +159,7 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                     (why.lines().next().unwrap_or(why).to_string(), true)
                 }
             };
-            PluginCard {
-                id: e.id.clone(),
-                kind: e.kind.label().to_string(),
-                enabled,
-                status,
-                problem,
-            }
+            PluginCard { id: e.id.clone(), enabled, status, problem }
         })
         .collect();
 
@@ -192,7 +184,7 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .iter()
         .map(|c| {
             (
-                hash_str(&format!("{}:{}", c.kind, c.id)),
+                hash_str(&c.id),
                 hash_str(&format!("{}{}", c.enabled, c.status)),
             )
         })
@@ -250,10 +242,10 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         .id();
 
     // Artwork first, so the grid reads as a shelf of things rather than a list
-    // of switches. A plugin without a `thumbnail.jpg` gets its kind's glyph on
-    // the same tinted square, which keeps every card the same shape — a card
-    // that collapsed to text when art was missing would make the grid ragged,
-    // and most plugins do not ship art.
+    // of switches. A plugin without a `thumbnail.jpg` gets a glyph on the same
+    // tinted square, which keeps every card the same shape — a card that
+    // collapsed to text when art was missing would make the grid ragged, and
+    // most plugins do not ship art.
     let thumb = renzora_ember::widgets::file_image_tile(
         commands,
         fonts,
@@ -264,10 +256,10 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     );
 
     // The name gets its own full-width line, and the switch moves to a footer
-    // beside the kind. They shared a row while this was a text card; once the
-    // artwork went in above them, the switch left too narrow a column for a name
-    // like `chromatic_aberration`, which ran off the card. Pinning the switch to
-    // the end of the footer also puts every card's control in the same place.
+    // below it. They shared a row while this was a text card; once the artwork
+    // went in above them, the switch left too narrow a column for a name like
+    // `chromatic_aberration`, which ran off the card. Pinning the switch to the
+    // end of the footer also puts every card's control in the same place.
     let foot = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -317,16 +309,13 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         ))
         .id();
 
-    let kind = commands
-        .spawn((
-            Text::new(card.kind.clone()),
-            ui_font(&fonts.ui, 9.0),
-            TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::no_wrap(),
-            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
-        ))
+    // A bare spacer, so the switch sits at the end of the footer on every card
+    // whatever else the row holds. See the note above on why a fixed position
+    // matters more than the couple of pixels it costs.
+    let spacer = commands
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() })
         .id();
-    commands.entity(foot).add_children(&[kind, sw]);
+    commands.entity(foot).add_children(&[spacer, sw]);
     let status = commands
         .spawn((
             Text::new(card.status.clone()),

@@ -270,18 +270,17 @@ copy_shared_libs() {
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
-    # Plugins — every cdylib distribution plugin output. Excludes the
-    # SDK dylibs above, the wasm-only `renzora_preview` (it produces a
-    # cdylib for desktop too but isn't an engine plugin — no `add!`),
-    # and rust-internal artifacts (libstd, renzora_macros).
+    # Plugins — every cdylib the build produced. Excludes the shared images
+    # above, the wasm-only `renzora_preview` (it produces a cdylib for desktop
+    # too but isn't an engine plugin — no `add!`), and rust-internal artifacts
+    # (libstd, renzora_macros).
     for f in "$SRC"/*."$EXT"; do
         [ -f "$f" ] || continue
         local base=$(basename "$f")
         [[ "$base" == *bevy_dylib* ]] && continue
         # The two shared engine images, staged beside the exe just above. Swept
-        # into plugins/ they would be ~37 MB of duplicate dead weight AND get
-        # `dlopen`'d by the C-ABI loader looking for an entry point they do not
-        # export.
+        # into plugins/ they would be ~37 MB of duplicate dead weight that the
+        # loader then sniffs for a ctor symbol they do not export.
         [[ "$base" == *renzora_dylib* ]] && continue
         [[ "$base" == *renzora_ember_dylib* ]] && continue
         [[ "$base" == *libstd-* ]] && continue
@@ -300,7 +299,7 @@ copy_shared_libs() {
         # `renzora_postprocess` is now an rlib shim and emits no dylib, but
         # keep this guard so a stale dylib left in the cargo cache (from
         # before the crate-type change) is never swept into plugins/ — it
-        # has no `add!`/`plugin_bevy_hash`, so the loader would reject it.
+        # exports no plugin ctor, so the loader would decline it anyway.
         [[ "$base" == librenzora_postprocess."$EXT" ]] && continue
         [[ "$base" == renzora_postprocess."$EXT" ]] && continue
         [[ "$base" == librenzora_preview."$EXT" ]] && continue
@@ -477,7 +476,7 @@ build_desktop() {
     # builds the right host configuration.
     #
     # Runtime: only the host binary, with controlled features. No
-    # editor-only crates and no distribution plugins enter the build.
+    # editor-only crates enter the build.
     #
     # `renzora-android` (cdylib) and `renzora-ios` (staticlib) are
     # workspace members but mobile-only; exclude them from desktop.
@@ -562,7 +561,7 @@ build_desktop() {
 # per-platform CI lanes for everything published. See `build_desktop`.
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────
-# The C-ABI plugins are built here rather than in a lane of their own because
+# Plugin cdylibs are swept here rather than in a lane of their own because
 # they must land in `$OUTPUT_DIR/<platform>/plugins/` BEFORE the AppImage/.app
 # wrap moves that directory inside the bundle. `fixup_macos` likewise has to run
 # after them, so a plugin dylib gets its install name rewritten to @rpath along

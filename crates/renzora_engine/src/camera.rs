@@ -228,7 +228,14 @@ pub fn spawn_editor_camera(
         viewports.slots[i].camera_entity = Some(id);
     }
 
-    info!("[camera] Spawned {VIEWPORT_COUNT} editor viewport cameras");
+    // Says "spawned", not "rendering": all four exist from boot, but only slot 0
+    // starts active and `sync_viewport_camera_activation` switches the rest on
+    // solely while their panel is docked. This line read as "four cameras are
+    // rendering an empty scene" once, which sent a frame-rate hunt down the
+    // wrong path, so it now names the one that is actually live.
+    info!(
+        "[camera] Spawned {VIEWPORT_COUNT} editor viewport cameras; only slot 0 is active until another viewport panel is docked"
+    );
 }
 
 /// Create a tiny valid Rgba16Float cubemap to seed the secondary cameras'
@@ -801,7 +808,11 @@ pub fn sync_viewport_camera_targets(
     }
     if all_ready && cameras.iter().count() == VIEWPORT_COUNT {
         bound.0 = true;
-        info!("[camera] All {VIEWPORT_COUNT} viewport cameras bound to render targets");
+        // Binding a target is not the same as rendering into one: an inactive
+        // camera holds its image and runs no passes.
+        info!(
+            "[camera] All {VIEWPORT_COUNT} viewport cameras bound to render targets (binding only; inactive slots run no passes)"
+        );
     }
 }
 

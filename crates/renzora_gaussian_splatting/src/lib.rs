@@ -1,4 +1,4 @@
-//! 3D Gaussian-splatting distribution plugin.
+//! 3D Gaussian splatting.
 //!
 //! Wraps the vendored [`bevy_gaussian_splatting`] renderer as a single
 //! dlopen'd cdylib. Scenes author splats through the serializable

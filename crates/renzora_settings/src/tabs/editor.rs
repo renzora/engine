@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor_framework::EditorSettings;
+use renzora_editor_framework::{EditorSettings, ExternalSceneEdits};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::section;
 
@@ -124,6 +124,47 @@ pub(crate) fn tab_editor(
         |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.drop_import"), t);
+
+    // Scene files — how to resolve the open scene changing on disk while the
+    // editor has unsaved changes to it. Only that case: a clean scene always
+    // reloads, because there is nothing to lose.
+    let (sec, body) = section(
+        commands,
+        fonts,
+        "file-text",
+        &tr("common.scenes"),
+        A_BLUE,
+    );
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "general");
+    let ext_strs: Vec<String> = ExternalSceneEdits::ALL
+        .iter()
+        .map(|e| loc_opt(e.label()))
+        .collect();
+    let ext_labels: Vec<&str> = ext_strs.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &ext_labels,
+        // Seeded with the default; reseeded from the resource by bind_2way.
+        ExternalSceneEdits::ALL
+            .iter()
+            .position(|e| *e == ExternalSceneEdits::default())
+            .unwrap_or(0),
+        |w| {
+            let cur = w.resource::<EditorSettings>().external_scene_edits;
+            ExternalSceneEdits::ALL
+                .iter()
+                .position(|e| *e == cur)
+                .unwrap_or(0)
+        },
+        |w, &i| {
+            let e = ExternalSceneEdits::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<EditorSettings>().external_scene_edits = e;
+        },
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.external_scene_edits"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.external_scene_edits"));
 
     plugins_section(commands, fonts, col, focus);
 }

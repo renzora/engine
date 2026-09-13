@@ -117,18 +117,21 @@ pub(crate) struct NativeAssets {
     pub(crate) pending_single_select: Option<PathBuf>,
     /// Cached directory listing for the current folder. `read_dir` + a
     /// `metadata()` syscall per file is far too expensive to run every frame, so
-    /// `refresh_listing` rescans only when the folder/search/sort changes, after
-    /// an edit (`listing_dirty`), or on a slow throttle to catch external
-    /// changes. The grid snapshot and `visible_order` both read this — shared in
-    /// an `Arc` so neither clones the `Entry` data per frame.
+    /// `refresh_listing` rescans only when the folder/search/sort changes or
+    /// something marked it dirty. The grid snapshot and `visible_order` both
+    /// read this — shared in an `Arc` so neither clones the `Entry` data per
+    /// frame.
     pub(crate) listing: std::sync::Arc<Vec<Entry>>,
     /// Hash of the inputs the cached `listing` was built from (folder, search,
     /// sort, direction). A mismatch forces an immediate rescan.
     pub(crate) listing_sig: u64,
-    /// Seconds since the last rescan — drives the slow external-change throttle.
-    pub(crate) listing_timer: f32,
-    /// Set by edits (create / rename / delete / move) to force a rescan next
-    /// frame without waiting for the throttle.
+    /// Set to force a rescan next frame: by the panel's own edits (create,
+    /// rename, delete, move) and by `mark_listing_stale` when the project
+    /// watcher reports a change in the folder on screen.
+    ///
+    /// A `listing_timer` used to sit beside this and force a rescan every half
+    /// second regardless, to catch edits made outside the editor. That is the
+    /// watcher's job now, and a folder nobody is touching costs nothing.
     pub(crate) listing_dirty: bool,
     /// True while a tile is being dragged out (drives the cursor ghost).
     pub(crate) dragging: bool,
@@ -218,7 +221,6 @@ impl Default for NativeAssets {
             pending_single_select: None,
             listing: std::sync::Arc::new(Vec::new()),
             listing_sig: 0,
-            listing_timer: 0.0,
             listing_dirty: false,
             dragging: false,
             sort: SortMode::Name,

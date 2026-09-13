@@ -44,10 +44,9 @@ members = [
 # resolved to them, and a path copy sitting alongside the registry copy the
 # published avian pulls would be two distinct types sharing a name.
 # There is no `exclude` for plugins any more, because there is no `plugins/`.
-# This repository builds the engine; plugins — C-ABI and native alike — are
-# distributed through the marketplace and built where they are installed. What
-# stays here is the boundary itself (`crates/renzora_plugin`) and the in-workspace
-# plugin crates, which are rlibs linked straight into the binaries.
+# This repository builds the engine; plugins are distributed through the
+# marketplace and built where they are installed. What stays here is the
+# in-workspace plugin crates, which are rlibs linked straight into the binaries.
 # (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
 # is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
 # not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)
@@ -65,19 +64,19 @@ members = [
 # Android cdylib builds. The desktop binary (`renzora_app`) opts in via
 # its own `[dependencies]` entry; cargo's feature unification under
 # `--workspace` propagates it to plugin crates so they end up with the
-# same bevy compilation as the host (and the same `bevy::World` TypeId,
-# which `plugin_bevy_hash()` checks at dlopen time). Mobile/wasm builds
+# same bevy compilation as the host, and therefore the same `bevy::World`
+# TypeId an installed plugin binds against. Mobile/wasm builds
 # under `cargo build -p <mobile_crate>` only see their own dep tree
 # (resolver = "2") and stay clean of dynamic_linking.
-# Bevy feature policy — ABI-stability driven (read before touching this list).
-# Plugins dlopen against ONE shared `bevy_dylib`; its compiled feature set IS
-# the API surface every plugin can reach AND an input to the ABI hash. So we
-# enable a deliberately MAXIMAL-but-valid set here, once: "everything a plugin
-# could practically want" minus the three things that physically cannot be
-# blanket-enabled — (1) mutually-exclusive backends, (2) platform-specific
-# features, (3) dev/CI/trace features. Per-target backend choices live in the
-# `wasm` feature below and the mobile crates, not here. Widening this set later
-# costs an intra-version ABI bump, so we front-load it.
+# Bevy feature policy (read before touching this list).
+# Plugins bind against ONE shared `bevy_dylib`, and its compiled feature set IS
+# the API surface every plugin can reach. So we enable a deliberately
+# MAXIMAL-but-valid set here, once: "everything a plugin could practically want"
+# minus the three things that physically cannot be blanket-enabled —
+# (1) mutually-exclusive backends, (2) platform-specific features, (3) dev/CI/
+# trace features. Per-target backend choices live in the `wasm` feature below
+# and the mobile crates, not here. Widening this set later invalidates every
+# installed plugin's stamp and rebuilds the lot, so we front-load it.
 #
 # Deliberately OMITTED (each would be an ABI bump to add — do it with eyes open):
 #   meshlet, meshlet_processor                    ENABLED below (experimental
@@ -187,9 +186,8 @@ bevy = { version = "0.19", default-features = false, features = [
     # exported game uses the Bevy Remote Protocol, and it was the sole puller of
     # bevy_dev_tools, which would otherwise re-introduce bevy_pbr into a 2D build.)
     #
-    # DROPPED (2026-07 slim pass) — each had ZERO references in the workspace, and
-    # the "a plugin might want it" argument that justified them is going away with
-    # the C-ABI extension interface (plugins won't link bevy at all):
+    # DROPPED (2026-07 slim pass) — each had ZERO references in the workspace,
+    # and nothing has asked for them since:
     #   bevy_feathers            Renzora's UI is `renzora_ember`. The only mention
     #                              left is a colour constant copied by hand in
     #                              `renzora_grid/src/infinite_grid.rs`.
@@ -246,10 +244,8 @@ bevy = { version = "0.19", default-features = false, features = [
     # specular BRDF table and changes PBR output if removed.
     "bluenoise_texture", "dfg_lut", "area_light_luts",
     # Experimental hardware-raytraced lighting — backs the `renzora_solari`
-    # distribution plugin (Bevy's `SolariPlugins`). Enabling it recompiles
-    # `bevy_dylib` and MOVES the plugin ABI hash (CLAUDE.md §3): every existing
-    # distribution plugin must be rebuilt, and the pinned hash must be re-pinned
-    # after the next container build.
+    # plugin (Bevy's `SolariPlugins`). Enabling it recompiles `bevy_dylib`, which
+    # moves every installed plugin's stamp and rebuilds the lot on next launch.
     "bevy_solari",
     # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
     "bevy_post_process",
@@ -277,10 +273,10 @@ bevy = { version = "0.19", default-features = false, features = [
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and
     # grow RAM until a profiler connects, regardless of any in-app toggle. Tracy
-    # is instead opt-in via the `plugins/tracy` C-ABI plugin (frame marks +
+    # is instead opt-in via the Tracy plugin from the marketplace (frame marks +
     # diagnostic plots, started only on its toggle). Per-system CPU zones need a
-    # dedicated profiling build that re-adds `trace_tracy` — which MOVES the ABI
-    # hash (CLAUDE.md §3) and so is kept out of the normal build.
+    # dedicated profiling build that re-adds `trace_tracy`, which is kept out of
+    # the normal build for the reason above.
     # DROPPED: `meshlet` + `meshlet_processor` (experimental virtual geometry).
     # Nothing in the workspace referenced them, and `meshlet_processor` was the
     # sole consumer of `metis-sys`, whose vendored C is the only reason
@@ -360,12 +356,12 @@ dynamic_linking = ["bevy/dynamic_linking", "renzora_runtime?/dynamic_linking"]
 # it, and the lean exporter's `--no-default-features --features runtime` drops
 # it unless a game opts back in.
 xr = ["renzora_runtime?/xr"]
-# Link the game's C-ABI plugins INTO the binary instead of loading them from
+# Link the game's plugins INTO the binary instead of loading them from
 # `plugins/` beside it. Set only by the lean exporter, and only in its throwaway
 # copy of the workspace, where it also fills in the otherwise-empty
 # `renzora_static_plugins` crate. A dev-tree build with this on links nothing
 # extra — the checked-in crate returns an empty list — so turning it on by hand
-# is harmless and pointless. See `renzora_plugin::static_link`.
+# is harmless and pointless.
 static_plugins = ["dep:renzora_static_plugins"]
 # Compile the project's `.rs` scripts INTO the binary instead of loading each as
 # a dylib. Set only by the lean exporter, in the same throwaway workspace copy,
@@ -439,19 +435,11 @@ renzora_runtime = { path = "crates/renzora_runtime", optional = true }
 uuid = "1"
 
 # Misc
-# C-ABI plugin host. One crate for both sides of the boundary: a plugin depends
-# on `renzora_plugin` with default features and gets zero deps; the engine opts
-# into `host` for the interface impl, dispatcher and dlopen loader.
-renzora_plugin = { path = "crates/renzora_plugin", features = ["host"] }
-# Named directly so the plugin settings store can be installed beside the host
-# plugin: `renzora_plugin` cannot reach the settings file (it is the bottom of
-# the stack and `renzora` depends on *it*), so the binary wires the two together.
 renzora = { path = "crates/renzora", default-features = false }
 # The generated list of plugins linked into the binary. Optional because it is
 # empty (and so pure overhead) in every build but a lean export that asked for
 # static plugins — see the `static_plugins` feature above.
 renzora_static_plugins = { path = "crates/renzora_static_plugins", optional = true }
-# Render half of the plugin ABI — installs plugin-registered render passes.
 renzora_postprocess = { path = "crates/renzora_postprocess" }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
@@ -638,11 +626,10 @@ strip = "symbols"
 # `codegen-units` stays at the default (16), NOT 1 — forcing 1 was measured to
 # help only fat LTO, and to cost a lot of build time for little size under thin.
 #
-# `panic` stays `unwind`. `renzora_plugin` guards every call across the C-ABI
-# boundary with `catch_unwind` (audio/net/script backends, `ecs.rs`,
-# `host/mod.rs`); under `panic = "abort"` those become no-ops and a panicking
-# third-party plugin takes the whole editor down instead of being contained. The
-# ~6 MB of `.pdata` unwind tables it would save are not worth that.
+# `panic` stays `unwind`. The net backend's pump guards its calls with
+# `catch_unwind`; under `panic = "abort"` that becomes a no-op and one panicking
+# request takes the whole editor down instead of being contained. The ~6 MB of
+# `.pdata` unwind tables it would save are not worth that.
 opt-level = "s"
 lto = "thin"
 strip = "symbols"

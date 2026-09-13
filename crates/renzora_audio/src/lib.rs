@@ -2,16 +2,16 @@
 //!
 //! This crate owns the bus graph, the components scenes serialize, the command
 //! queue, the timeline and the emitter bookkeeping. What makes sound is a
-//! separate crate implementing [`renzora_plugin::audio::Backend`]:
+//! separate crate implementing [`renzora::audio_backend::Backend`]:
 //! `renzora_audio_backend`, which is linked in beside this one under the same
 //! `audio` feature, so a build either has both or neither.
 //!
 //! That split is why nothing here links a device, a decoder or any DSP.
 //! [`link`] is the one module that knows a backend exists at all, and it
 //! answers harmlessly when none is registered. That is not merely defensive:
-//! the backend is reached through the C-ABI contract rather than by name, so a
-//! marketplace plugin can still supply one, and a build with the `audio`
-//! feature off has this API and no mixer behind it.
+//! the backend is reached through a trait rather than by name, so an installed
+//! plugin can supply one, and a build with the `audio` feature off has this API
+//! and no mixer behind it.
 //!
 //! On wasm the same API is linked against a WebAudio backend instead, because
 //! cpal cannot capture in a browser. Neither backend knows the other exists.
@@ -34,8 +34,7 @@ pub mod decode;
 /// do, and a native plugin reaches only `bevy`, `renzora` and `renzora_ember`.
 /// The move cost nothing: `link.rs` had zero references to the rest of this
 /// crate — it was already a self-contained boundary — and the request
-/// vocabulary it speaks was always in `renzora_plugin::audio`, which the
-/// contract crate already depended on for the HTTP `net` types.
+/// vocabulary it speaks went with it.
 ///
 /// What stayed here is everything that is a *policy* rather than a boundary:
 /// the mixer, emitters, the timeline and its scheduler, autoplay, and decoding.
@@ -43,10 +42,10 @@ pub use renzora::audio::{self as link, AudioLink, CaptureId, SoundId, VoiceId};
 
 /// The request vocabulary, re-exported.
 ///
-/// A caller of this API should not have to name `renzora_plugin` to ask for a
-/// sound — that crate is the *boundary*, and which crate the types happen to be
-/// declared in is an implementation detail of how the backend is loaded.
-pub use renzora_plugin::audio::{
+/// A caller of this API should not have to name the contract crate to ask for a
+/// sound. Which crate the types happen to be declared in is an implementation
+/// detail of where the boundary sits.
+pub use renzora::audio_backend::{
     BackendInfo, Caps, EmitterState, ListenerState, PlayRequest, StopRequest, StopTarget,
 };
 

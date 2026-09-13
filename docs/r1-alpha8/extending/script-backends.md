@@ -3,182 +3,177 @@
 The engine ships a scripting **system** and no interpreter. Hooks, the command
 vocabulary, the context, the queue that applies commands to the world — all of
 that is statically linked and language-agnostic. Which language you can actually
-write scripts in is decided by which plugin is present in `plugins/`.
+write scripts in is decided by which plugin is installed.
 
-`plugins/lua` supplies Lua. This page is about supplying something else.
+**Rust is the primary scripting language** and does not go through this page at
+all: a `.rs` script is compiled to a native plugin and called with `&mut World`
+(see [Rust Scripts](../scripting/rust-scripts.md)). This page is about adding an
+*interpreted* language beside it.
 
 ## What you are building
 
-An ordinary [standalone plugin](/docs/r1-alpha8/extending/standalone-plugins) —
-a `cdylib` that links no Bevy and needs no engine checkout — which registers a
-`Backend` instead of (or as well as) systems and components.
+An ordinary [native plugin](native-plugins.md) that registers a `ScriptBackend`
+instead of (or as well as) systems and components.
 
 ```toml
-[workspace]
-
 [package]
 name = "wren"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["dylib"]
 
 [dependencies]
-renzora_plugin = { path = "../../crates/renzora_plugin", features = ["script"] }
+bevy = "0.19"
+renzora = "0.1"
 wren-sys = "..."   # whatever your interpreter needs
 ```
-
-The `script` feature adds the command vocabulary, the contexts, the codec, and
-the one `Interface` entry a backend registers through.
 
 ## The shape of a call
 
 ```text
-  host                                   plugin
-  ----                                   ------
-  encode FrameContext  -- once/frame -->  (cached by frame_seq)
-  encode EntityContext -- per entity -->
-  read + hand over source ------------>   compile / reuse VM
-                                          run the hook
-                       <-- ScriptReply -  commands, vars, draws
-  apply commands to the World
+  engine                                 backend
+  ------                                 -------
+  walk the scripted entities
+  build a ScriptContext        ------->
+  resolve + read the source    ------->  compile / reuse VM
+                                         run the hook
+                               <-------  Vec<ScriptCommand>
+  apply the commands to the World
 ```
 
-The host owns everything with a Bevy type in it: walking the scripted entities,
+The engine owns everything with a Bevy type in it: walking the scripted entities,
 building the context, resolving and reading the script file, applying whatever
 comes back. Your plugin owns exactly one thing — turning source text plus a
 context into a list of `ScriptCommand`s.
 
+That indirection is why a backend needs no `&mut World`. It describes what it
+wants and the engine decides when and how, which is what lets an interpreter run
+without an exclusive system.
+
 ## The trait
 
 ```rust
-use renzora_plugin::script::*;
+use bevy::prelude::*;
+use renzora_scripting::backend::{AppScriptBackendExt, ScriptBackend};
+use renzora_scripting::{ScriptCommand, ScriptContext, ScriptVariables};
+use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 struct WrenBackend { /* your VMs */ }
 
-impl Backend for WrenBackend {
-    const NAME: &'static str = "Wren";
-    const EXTENSIONS: &'static [&'static str] = &["wren"];
+impl ScriptBackend for WrenBackend {
+    fn name(&self) -> &str { "Wren" }
+    fn extensions(&self) -> &[&str] { &["wren"] }
 
-    fn set_bindings(&mut self, bindings: &[Binding]) {
-        // Functions domain crates declared. Build them into every VM you make.
-    }
+    fn set_scripts_folder(&mut self, path: PathBuf) { /* … */ }
+    fn set_file_reader(&mut self, reader: FileReader) { /* see below */ }
 
-    fn props(&mut self, script: &ScriptRef) -> Vec<VarDef> {
+    fn get_available_scripts(&self) -> Vec<(String, PathBuf)> { /* … */ }
+    fn get_script_props(&self, path: &Path) -> Vec<ScriptVariableDefinition> {
         // Parse whatever your language's prop syntax is, for the inspector.
         Vec::new()
     }
 
-    fn hook(
-        &mut self,
-        script: &ScriptRef,
-        hook: Hook,
-        ctx: &Ctx,
-        reply: &mut ScriptReply,
-    ) -> Result<(), String> {
-        // Run hook.fn_name() if the script defines it; push commands into
-        // `reply.commands`.
-        Ok(())
-    }
+    fn call_on_ready(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> { /* … */ }
 
-    fn eval(&mut self, expr: &str) -> Result<String, String> { /* console REPL */ }
+    fn call_on_update(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> { /* … */ }
 
-    fn evict(&mut self, path: &str, entity: u64) { /* drop cached VMs */ }
+    fn needs_reload(&self, path: &Path) -> bool { /* … */ }
+    fn reload(&self, path: &Path) -> Result<(), String> { /* … */ }
+    fn eval_expression(&self, expr: &str) -> Result<String, String> { /* console REPL */ }
+
+    // Every other hook has a no-op default — implement the ones your language
+    // supports and the rest simply never fire.
 }
-
-renzora_plugin::script_backend!(WrenBackend);
 
 pub struct WrenPlugin;
+
 impl Plugin for WrenPlugin {
     fn build(&self, app: &mut App) {
-        app.add_script_backend(script_backend::desc());
+        app.add_script_backend(WrenBackend::default());
     }
 }
-renzora_plugin::add!(WrenPlugin);
+
+renzora::plugin!(WrenPlugin, Runtime);
 ```
 
-The `script_backend!` macro emits the `extern "C"` entry point and the state it
-needs. It is a macro rather than a generic because the entry point must be a bare
-function pointer with nowhere to carry state, so it needs a `static` — and a
-`static` cannot be generic over your backend type.
+`add_script_backend` uses `get_resource_or_insert_with`, so your plugin has no
+ordering relationship with `ScriptingPlugin` — registration works whichever
+happened to be added first.
 
 ## Rules that are not optional
 
-**Never open a script file.** You are handed `script.source` and
-`script.version`; rebuild your VM when the version changes and that is the whole
-of hot-reload support. Exported and Android builds read scripts out of an rpak
-archive through a closure the engine owns, so a plugin doing its own `std::fs`
-would work in the editor and fail in every shipped game.
+**Read scripts through the file reader, not `std::fs`.** `set_file_reader` hands
+you a closure the engine owns. Exported and Android builds read scripts out of an
+rpak archive through it, so a backend doing its own `std::fs` would work
+perfectly in the editor and fail in every shipped game — the worst possible place
+for that difference to appear.
 
-**Cache the frame context by `frame_seq`.** The context arrives in two halves.
-The frame half — time, input, pressed keys, gamepads, the named-entity lookup —
-is identical for every scripted entity and the host encodes it once. If you
-decode it per entity you have given that saving straight back. The ergonomic
-layer does this for you if you use `Backend`; only raw `dispatch` users need to
-think about it.
+**Drop cached state in `evict`.** A backend that keeps a VM per `(entity,
+script)` — which is every backend that wants a script's globals to be per-entity
+state — otherwise grows that map forever as entities churn. An empty `path` means
+every script on that entity; a zero `entity` means every entity running that
+script.
 
-**Host reads are valid only during the call.** `ctx.host` is backed by a `&World`
-the engine drops when your hook returns. If your interpreter registers its
-functions once at VM creation — which it should — you will need to stash the
-table somewhere those closures can reach and clear it when the call ends. See
-`plugins/lua/src/host.rs` for the thread-local-plus-guard pattern.
-
-**Do not panic across the boundary.** The dispatcher catches panics for you and
-reports `ScriptStatus::Panicked`, but an abort from an `extern "C"` frame would
-take the editor with it, so do not defeat the guard.
+**Do not panic.** A panic in a hook takes the frame with it. Return
+`Err(String)`; the engine logs it against the script and carries on.
 
 ## Hooks
 
-`Hook::fn_name()` gives the conventional name for each, so every language agrees
-and a script ported between them does not need renaming:
+Every hook has a conventional name, so a script ported between languages does not
+need renaming:
 
 `on_ready`, `on_update`, `on_rpc`, `on_ui`, `on_draw`, `on_animation_event`,
-`on_http`, `on_player_joined`, `on_player_left`.
+`on_http`, `on_player_joined`, `on_player_left`, `on_scene_loaded`,
+`on_scene_load_failed`, `on_event`.
 
 A script that does not define a hook is the common case, not an error — most
-define two of the nine. Return `Ok` with an empty reply.
+define two. Return `Ok` with an empty `Vec`.
 
-Hooks are selected by an op code rather than one function pointer each, so a
-tenth hook added later is **not** an ABI break: a plugin that does not know an op
-returns `UnknownOp` and the host treats it exactly like an undefined hook.
+Every hook but `on_ready` and `on_update` has a default implementation that does
+nothing, so adding a thirteenth later breaks no existing backend.
 
 ## Declared bindings
 
-`set_bindings` hands you what domain crates declared — `apply_force`,
+Domain crates *declare* script functions rather than writing them — `apply_force`,
 `nav_set_destination`, `tr` and so on (see
-[Script API Bindings](/docs/r1-alpha8/extending/script-bindings)). Build a
-function for each:
+[Script API Bindings](script-bindings.md)). Read them from the
+`ScriptExtensions` resource and build a function for each:
 
 - `BindingKind::Action` — pack the parameters and push a `ScriptCommand::Action`.
   A `ParamKind::Vec3` consumes **three** script arguments and produces one.
-- `BindingKind::Read` — call `ctx.host.get(...)`, substituting the call's
-  arguments into the path with `renzora_plugin::script::substitute` so every
-  language resolves `clip_lengths.{0}` identically.
-- `BindingKind::Translate` — call `ctx.host.translate(key)`.
+- `BindingKind::Read` — read the named reflected field, substituting the call's
+  arguments into the path with `renzora_scripting::extension::substitute` so
+  every language resolves `clip_lengths.{0}` identically.
+- `BindingKind::Translate` — look the argument up in the localization table.
 
 Honouring these is what makes a new language useful immediately rather than
 after every domain crate has been taught about it.
 
 ## Two languages at once
 
-Backends are routed by file extension, so a project can have `.lua` and `.wren`
-entities side by side. Two backends claiming the *same* extension is refused —
-the first registration wins and the second is logged — because otherwise which
-interpreter ran a script would depend on plugin load order, which is directory
-iteration order, and one project would behave differently on two machines.
-
-## Blueprints
-
-`.blueprint`/`.bp` graphs are compiled to **Lua** by the host before the source
-reaches any backend, because `renzora_blueprint` links Bevy and cannot cross the
-boundary. Claim those extensions only if your language can execute Lua.
+Backends are routed by file extension, so a project can have `.rs` and `.wren`
+entities side by side. Several backends may be registered; two claiming the
+*same* extension is refused, because otherwise which interpreter ran a script
+would depend on plugin load order, and one project would behave differently on
+two machines.
 
 ## Reference
 
 | Thing | Where |
 |---|---|
-| The boundary | `crates/renzora_plugin/src/script/` |
-| The engine side | `crates/renzora_scripting/src/plugin_backend.rs` |
-| A working backend | `plugins/lua/` |
+| The trait | `crates/renzora_scripting/src/backend.rs` |
+| The command vocabulary | `crates/renzora_scripting/src/command.rs` |
+| Declared bindings | `crates/renzora_scripting/src/extension.rs` |

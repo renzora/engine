@@ -6,7 +6,7 @@
 //! inspector, and `renzora_level_presets` all share ONE `TypeId` across the
 //! dlopen boundary.
 //!
-//! **Residency model (see `docs/world-environment-spec.md`).** Each sub-section
+//! **Residency model.** Each sub-section
 //! carries its own `enabled`. A single `reconcile_world_environment` writer
 //! translates these into the **resident** camera-side render components —
 //! it NEVER adds/removes them, because they live in PBR's shared mesh-view bind
@@ -140,8 +140,7 @@ impl SsaoQuality {
 /// `enabled` defaults to `true` (the stock scene ships SSAO on). Slice 2 gates
 /// it by toggling `ScreenSpaceAmbientOcclusion`'s presence — Bevy has no
 /// "no-occlusion" knob, so a resident-and-neutral version (white AO texture +
-/// skipped compute) is deferred until/unless toggling proves to crash. See
-/// `docs/world-environment-spec.md`.
+/// skipped compute) is deferred until/unless toggling proves to crash.
 ///
 /// Every field past `enabled` was added after the section shipped, so each
 /// carries **both** `#[serde(default = ..)]` and `#[reflect(default = ..)]`:

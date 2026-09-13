@@ -293,25 +293,46 @@ fn font_dir_signature(dir: &std::path::Path) -> u64 {
 
 /// Keep [`FontRegistry`] in sync with the project's `fonts/` folder: load new
 /// `.ttf`/`.otf` files into `Assets<Font>` and drop removed ones. Polls the
-/// folder a few times a second (throttled) so dropping a font in is picked up
-/// live without a per-frame `read_dir`.
+/// folder, so dropping a font in is picked up live.
+///
+/// This used to re-`read_dir` the folder every thirty frames, roughly twice a
+/// second, forever. It now runs on the first population and then only when the
+/// project watcher says a file under `<project>/fonts` changed, which is the
+/// same answer without asking the disk for it.
 pub(crate) fn scan_project_fonts(
-    mut tick: Local<u32>,
     mut registry: ResMut<FontRegistry>,
     asset_server: Res<AssetServer>,
     ember: Option<Res<EmberFonts>>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
 ) {
-    *tick = tick.wrapping_add(1);
-    // First population runs immediately; afterwards poll ~twice a second.
-    if !registry.entries.is_empty() && !(*tick).is_multiple_of(30) {
+    let fonts_dir = project.as_ref().map(|p| p.path.join("fonts"));
+    // Read the buffer unconditionally so the cursor keeps moving: skipping it
+    // while the registry is empty would leave stale changes to be re-seen later.
+    let touched = if changes.is_empty() {
+        false
+    } else {
+        match fonts_dir.as_deref() {
+            Some(dir) => changes.read().any(|change| change.path.starts_with(dir)),
+            None => {
+                changes.clear();
+                false
+            }
+        }
+    };
+    // The first population still has to look: no event will mention the fonts
+    // that were already sitting in the folder when the project opened.
+    if !registry.entries.is_empty() && !touched {
         return;
     }
     let Some(ember) = ember else {
         return; // fonts not ready yet
     };
 
-    let dir = project.as_ref().map(|p| p.path.join("fonts"));
+    let dir = fonts_dir;
+    // Still signature-checked. The event says something under `fonts/` moved,
+    // not that the set of loadable fonts changed, and rebuilding the registry
+    // re-issues every handle: a `.txt` saved in there must not churn the list.
     let sig = dir.as_deref().map(font_dir_signature).unwrap_or(0);
     if !registry.entries.is_empty()
         && registry.scanned_dir.as_deref() == dir.as_deref()

@@ -260,7 +260,6 @@ jobs:
 
       # `tools/updater` is its own workspace too (it must share nothing with the
       # tree it replaces), so `--workspace` above doesn't reach it either. Linted
-      # here rather than in the `plugins` job that builds it, because this is the
-      # job with the clippy component installed.
+      # here because this is the job with the clippy component installed.
       - name: Clippy (update sidecar)
         run: cargo clippy --manifest-path tools/updater/Cargo.toml -- -D warnings

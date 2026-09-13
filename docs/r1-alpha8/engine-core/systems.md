@@ -70,9 +70,9 @@ Because a `Runtime` plugin's systems run inside the editor viewport too, your ga
 | 3 | `ScriptingPlugin` | `renzora_scripting` | Hooks and command queue; language backends are plugins |
 | 4 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |
 | 5 | `ViewportStretchPlugin` | `renzora_runtime` | pixel-art scaling — **game builds only** (`!is_editor`) |
-| 6+ | every `Runtime`-scope `add!` plugin | various | fanned out via `for_each_static_plugin(Runtime)` |
+| 6+ | every `Runtime`-scope `add!` plugin | various | the generated `renzora_runtime::plugins` list |
 
-`Editor`-scope plugins are **not** installed here. They arrive only through the editor bundle's `plugin_install_scope` entry point, called with `host_scope = Editor` when an editor session is detected. There is no compile-time `editor` feature.
+`Editor`-scope plugins are **not** installed here. They come from the editor image's own generated list, layered on top when an editor session is detected; a shipped game does not have that image beside it. There is no compile-time `editor` feature.
 
 The fan-out (step 7) visits plugins in ascending `priority` (default `0`), but that ordering controls only **when each plugin's `build` runs**, not when its systems execute each frame.
 

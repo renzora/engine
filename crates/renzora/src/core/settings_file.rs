@@ -21,7 +21,6 @@
 //! [viewport]                   # camera sensitivity, grid, gizmos, snapping
 //! [keybindings]                # action → key
 //! [projects."/home/me/game"]   # last scene, open tabs
-//! [plugins]                    # one opaque blob per C-ABI plugin
 //! ```
 //!
 //! # What is deliberately *not* here
@@ -222,86 +221,6 @@ pub fn save_project_section<T: Serialize>(root: &Path, value: &T) -> std::io::Re
     table.insert(
         "projects".to_string(),
         toml::Value::try_from(projects).map_err(std::io::Error::other)?,
-    );
-    write_file(&table)
-}
-
-// ── Plugin settings ─────────────────────────────────────────────────────────
-//
-// A C-ABI plugin cannot call the generic section API above: it links no
-// `renzora` at all, and reaches the host only through the function table in
-// `renzora_plugin::sys`. These three are what that table's `load_settings` /
-// `save_settings` call through to.
-//
-// The blob is **opaque text**. The host has no business knowing the shape of a
-// plugin's configuration, only where to keep it — but it is stored as a string
-// rather than bytes so it stays readable in the file the user owns, and so a
-// plugin writing something that is not UTF-8 is refused rather than corrupting
-// a file it shares with the editor's own preferences.
-
-/// One plugin's saved settings blob, from `[plugins]`.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn load_plugin_settings(key: &str) -> Option<String> {
-    read_file()
-        .remove("plugins")?
-        .try_into::<BTreeMap<String, String>>()
-        .ok()?
-        .remove(key)
-}
-
-/// Write one plugin's settings blob, leaving other plugins' alone.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn save_plugin_settings(key: &str, blob: &str) -> std::io::Result<()> {
-    let mut all = plugin_table();
-    all.insert(key.to_string(), blob.to_string());
-    write_plugin_table(all)
-}
-
-/// Forget one plugin's settings entirely.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn clear_plugin_settings(key: &str) -> std::io::Result<()> {
-    let mut all = plugin_table();
-    if all.remove(key).is_none() {
-        return Ok(());
-    }
-    write_plugin_table(all)
-}
-
-/// Forget every plugin's settings — View ▸ Reset to Defaults.
-///
-/// The whole `[plugins]` table rather than a key at a time, because the reset
-/// has no list of keys to work from and could not build one: a plugin's key is
-/// its own, the editor learns it only when that plugin asks to load or save, and
-/// a plugin that is not installed any more would never be cleared by a
-/// key-by-key sweep. Dropping the table is also the honest meaning of the
-/// choice — "no plugin has settings" is exactly the state a fresh install is in.
-///
-/// Returns whether there was anything to clear, so a caller can leave the
-/// section out of its "reset:" summary when no plugin had saved anything.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn clear_all_plugin_settings() -> std::io::Result<bool> {
-    let mut table = read_file();
-    if table.remove("plugins").is_none() {
-        return Ok(false);
-    }
-    write_file(&table)?;
-    Ok(true)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn plugin_table() -> BTreeMap<String, String> {
-    read_file()
-        .remove("plugins")
-        .and_then(|v| v.try_into::<BTreeMap<String, String>>().ok())
-        .unwrap_or_default()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn write_plugin_table(all: BTreeMap<String, String>) -> std::io::Result<()> {
-    let mut table = read_file();
-    table.insert(
-        "plugins".to_string(),
-        toml::Value::try_from(all).map_err(std::io::Error::other)?,
     );
     write_file(&table)
 }

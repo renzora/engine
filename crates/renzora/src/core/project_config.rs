@@ -645,8 +645,8 @@ pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()
 }
 
 /// Load the persisted developer-mode flag (default `false`). The editor seeds
-/// `EditorSettings.dev_mode` from this at startup, and a distribution plugin can
-/// read it directly (e.g. `plugins/tracy`).
+/// `EditorSettings.dev_mode` from this at startup, and an installed plugin can
+/// read it directly.
 pub fn load_dev_mode() -> bool {
     editor_field("dev_mode").and_then(|v| v.as_bool()).unwrap_or(false)
 }
@@ -749,11 +749,10 @@ pub fn save_ui_toolbar_order(_order: &[String]) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Plugins the user has turned off, by id (a native plugin's directory name, or
-/// a C-ABI plugin's library stem with any `lib` prefix removed).
+/// Plugins the user has turned off, by id (the plugin's directory name).
 ///
-/// Read by both plugin loaders before they open anything. Empty by default, so
-/// an editor that has never been told otherwise loads everything it finds.
+/// Read by the loader before it opens anything. Empty by default, so an editor
+/// that has never been told otherwise loads everything it finds.
 pub fn load_disabled_plugins() -> Vec<String> {
     #[cfg(target_arch = "wasm32")]
     {

@@ -14,7 +14,8 @@
 //!
 //! The previous updater replaced a single `.exe`. That stopped being what an
 //! install *is*: the engine ships two executables (`renzora-editor` and
-//! `renzora`), the C-ABI plugins under `plugins/`, and the OpenXR loader — and
+//! `renzora`), the shared images, the plugins under `plugins/`, and the OpenXR
+//! loader — and
 //! on Linux it is one `.AppImage`, on macOS one `.app` bundle. So the swap has
 //! two shapes, chosen from what `--staged` points at rather than from a platform
 //! flag:

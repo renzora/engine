@@ -43,14 +43,15 @@ A handful of crates form the spine that everything else plugs into:
 
 | Crate | Artifact | Role |
 |-------|----------|------|
-| `renzora` | `renzora.dll` (`dylib` + `rlib`) | The SDK / "contracts" crate — the `add!`/`export_plugin_bundle!` macros, `PluginScope`/`StaticPlugin`, the GI contract types, the post-process framework, the `runtime_warnings` ring buffer, and (under the `editor` feature) the editor contract registries |
+| `renzora` | `rlib` (shared through `renzora_dylib`) | The contract crate — the `add!` / `plugin!` macros, `PluginScope`, the GI contract types, the post-process framework, the audio/net/script boundary types, the `runtime_warnings` ring buffer, and (under the `editor` feature) the editor contract registries |
 | `renzora_runtime` | `rlib` | Shared engine library every binary links: `init_app`, `add_default_rendering`, `add_headless_rendering`, `add_engine_plugins` |
 | `renzora_engine` | `rlib` | The editor-free game core: VFS, custom asset reader, scene IO, autoload, crash reporting |
 | `renzora_editor` | `cdylib` | The **editor bundle** — statically links ~50 editor-only crates plus the dual-mode `/editor` subcrates as rlibs |
 | `renzora_editor_framework` | `rlib` | The editor SDK *implementation* (rlib-only — no dll is emitted) |
-| `dynamic_plugin_loader` | `rlib` | dlopens plugins at startup and hot-reloads ones dropped into `plugins/` mid-session |
+| `renzora_native_plugin` | `rlib` | Scans `plugins/`, rebuilds what is stale, loads the rest |
+| `renzora_plugin_build` | `rlib` | The compiler driver — reads the SDK manifest and invokes `rustc` directly |
 
-Shipping `renzora` as a shared `renzora.dll` means the host binary, the dlopen'd editor bundle, and every dynamic plugin all share **one** compiled copy of the SDK and therefore matching `TypeId`s. `bevy` itself is shared the same way (`bevy_dylib`, `dynamic_linking` + `prefer-dynamic`), so there is one `bevy_dylib` and Bevy's `TypeId`s line up across the dlopen boundary.
+The `renzora_dylib` and `renzora_ember_dylib` crates hold no code of their own: they exist so the host binary, the dlopen'd editor image and every installed plugin share **one** compiled copy of `renzora` and `renzora_ember`, and therefore one translation table, one Console buffer and one theme palette. `bevy` is shared the same way through `bevy_dylib` (`dynamic_linking` + `prefer-dynamic`), so Bevy's `TypeId`s line up across the dlopen boundary too.
 
 > The editor contract (`EditorSelection`, `FieldDef`/`FieldType`/`FieldValue`, the inspector/spawn/toolbar/shortcut registries, `AppEditorExt`, the field macros, `Inspectable`, `post_process`) was **folded into `renzora.dll`** under its `editor` feature. `renzora`'s default features are empty, so a crate that derives `Inspectable` or registers an inspector must depend on `renzora = { ..., features = ["editor"] }`.
 
@@ -80,20 +81,16 @@ renzora::add!(EarlySetupPlugin, Runtime, priority = -100); // installed earlier
 
 ### What `add!` expands to
 
-The macro (`crates/renzora/src/plugin_meta.rs`) emits **two parallel registration paths**:
+**Nothing at all, at the call site.** The macro (`crates/renzora/src/plugin_meta.rs`) exists so the declaration has somewhere to live and a shape a parser can rely on; the actual wiring is written by a build-time generator that reads every `add!` line *as text* and emits two committed files:
 
-1. **Always, on every platform** — an `inventory::submit!` of a `StaticPlugin { name, scope, priority, install }`. The `install` closure calls `app.add_plugins(<T as Default>::default())`. These are collected with `inventory::collect!(StaticPlugin)` into one global registry.
-2. **Only under `#[cfg(all(feature = "dlopen", not(ios/android/wasm)))]`** on the *calling* crate — three `#[no_mangle] extern "C"` exports so the loader can dlopen a standalone `.dll`/`.so`/`.dylib`:
+- `crates/renzora_runtime/src/plugins.rs` — every `Runtime`-scope plugin
+- `crates/renzora_editor/src/plugins.rs` — every `Editor`-scope plugin
 
-```rust
-#[no_mangle] pub extern "C" fn plugin_create() -> *mut dyn Plugin { /* Box::into_raw(...) */ }
-#[no_mangle] pub extern "C" fn plugin_scope()  -> u8            { /* Editor=0 | Runtime=1 */ }
-#[no_mangle] pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
-    // transmute(TypeId::of::<bevy::ecs::world::World>()) — the cross-dylib ABI guard
-}
-```
+Each is an ordinary list of `app.add_plugins(...)` calls in priority order. There is no registry to iterate, no constructor to keep alive against dead-stripping, and no FFI — a named type in a generated list is just a linker symbol.
 
-`plugin_bevy_hash` is the **ABI guard**: it is the transmuted `TypeId` of Bevy's `World`. The loader compares a plugin's hash to its own and rejects any mismatch, so a plugin built against a different Bevy/SDK can never be loaded into the running world.
+Because both files are committed, a plain `cargo build` needs no generator run. CI regenerates them and fails on a diff, which is what stops a stale list from shipping.
+
+This replaced an `inventory` registry, and the registry's removal took three dead-strip workarounds with it: a keepalive `build.rs` in each host, and an aggregator whose only job was forcing plugin objects into a lean export.
 
 ### Scopes
 
@@ -103,28 +100,7 @@ The macro (`crates/renzora/src/plugin_meta.rs`) emits **two parallel registratio
 pub enum PluginScope { Editor = 0, Runtime = 1 }
 ```
 
-A feature that needs editor tooling *and* runtime behaviour ships **two** plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`). `for_each_static_plugin(host_scope, f)` filters the global inventory by scope and runs `f` in priority order.
-
-### Two kinds of plugin
-
-| Kind | Crate type | How it loads |
-|------|------------|--------------|
-| **Workspace plugin** | `rlib` | Statically linked into the binary/bundle; registers through its inventory constructor at process start. `dlopen` is off, so the FFI symbols are not emitted and can't collide |
-| **Distribution plugin** | `cdylib` with a default-on `dlopen = []` feature | dlopen'd at startup, or hot-loaded when dropped into `<exe>/plugins/`. Because the FFI symbols are unmangled, a cdylib may contain **exactly one** `add!` |
-
-### The editor bundle: `export_plugin_bundle!`
-
-A bundle is a cdylib that statically links *many* plugin crates as rlibs (so each runs only its collision-safe inventory constructor) and calls `export_plugin_bundle!` exactly once. `crates/renzora_editor/src/lib.rs` does:
-
-```rust
-renzora::export_plugin_bundle!(foundation = [
-    renzora_asset_registry::AssetRegistryPlugin,
-    renzora_editor_framework::RenzoraEditorPlugin,
-    renzora_keybindings::KeybindingsPlugin,
-]);
-```
-
-This emits a single `extern "C" fn plugin_install_scope(*mut App, host_scope: u8) -> u32` (plus `plugin_bevy_hash`). At call time it installs the ordered `foundation` first, then replays `for_each_static_plugin(Editor)` from the **one global inventory**, dedup'd by name. Every install runs inside `catch_unwind`, and the function returns the count of plugins that panicked — **nothing ever unwinds across the FFI boundary**.
+A feature that needs editor tooling *and* runtime behaviour ships **two** plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`).
 
 ### Engine plugin install order
 
@@ -135,17 +111,21 @@ RuntimePlugin → InputPlugin → ScriptingPlugin → PhysicsPlugin
    (+ ViewportStretchPlugin when !is_editor)
 ```
 
-…and then fans out every `Runtime`-scope plugin from the inventory. It installs **no editor plugins** — those arrive only via the bundle's `plugin_install_scope` with `host_scope = Editor`, layered on top after the runtime foundation.
+…and then the generated `Runtime` list. It installs **no editor plugins**: those come from the editor image's own generated list, layered on top after the runtime foundation, and a shipped game simply does not have that image beside it.
 
-### The dynamic loader
+Plugins installed from `plugins/` come last, so an installed plugin's systems land where a statically linked one's would.
 
-`dynamic_plugin_loader` runs on the three desktop OSes (a no-op on wasm/mobile). It scans `<exe>/plugins/`, **rejects hash mismatches**, and:
+### The plugin loader
 
-- **Skips any cdylib that exports `plugin_install_scope`** — bundles load only from beside the exe, never from `plugins/`, so the editor can't be shipped *inside* a game.
-- Reads `plugin_scope`, gates `should_load` (Editor → only in an editor session; Runtime → always), then calls `plugin_create` and `plugin.build(app)`, keeping the `Library` alive in the `DynamicPluginRegistry`.
-- `HotPluginPlugin` watches `plugins/` about once a second on the `Last` schedule and live-builds newly dropped dlls into the running world; render-world plugins report `NeedsReload` ("restart to take effect").
-- The export UI's `scan_plugins` (now `renzora_plugin::host::loader::scan_plugins`) lists every C-ABI plugin in `plugins/` **with its scope**, which the export then records per plugin so the shipped host applies the same Editor/Runtime rule to a linked-in plugin as it would to a loaded one.
-- **`scan_plugins` maps nothing.** "Is this a plugin?" is a byte search for `renzora_plugin_init` in the file; the scope comes from `LoadedPlugins`, which recorded it when the plugin was loaded for real. Only a plugin this process never loaded falls back to mapping the image, and that mapping is then never unmapped. Listing a directory must never `LoadLibrary` + `FreeLibrary` its contents: that runs each image's initialisers *and* destructors, and `FreeLibrary` deadlocks the Windows loader lock against an image (like `tracy`) that started a thread at map time. In the editor it is doubly wrong — the running plugin is a `plugins/.reload/` shadow copy under a different filename, so mapping the original creates a *second* live instance of it.
+`renzora_native_plugin` runs on the three desktop OSes (a no-op on wasm/mobile). One pass over `<exe>/plugins/`, and for each directory in it:
+
+- **Rebuild anything stale.** A plugin records the content hash of the SDK it was built against; when the engine moves, the stamp stops matching and the plugin is recompiled before the `App` exists. An edit to its source does the same, compared by mtime.
+- **Skip anything disabled.** Checked before the directory is touched at all, so a disabled plugin costs no rebuild, no `Library::new`, and no static initializers.
+- **Decline anything without the ctor symbol, before mapping it.** "Is this one of ours?" is a byte search for `renzora_native_plugin_ctor` in the file. Deciding after `Library::new` would mean leaking every declined image — a library must never be `LoadLibrary`'d and then `FreeLibrary`'d to answer a question, because that runs its initialisers *and* its destructors, and `FreeLibrary` deadlocks the Windows loader lock against an image that started a thread at map time.
+- **Never unload.** Every system a plugin registered is a function pointer into its image, so the handles are `ManuallyDrop` for the life of the process. Disabling a plugin takes effect on the next launch, and the UI says so rather than pretending otherwise.
+- **Record what happened.** Loaded, disabled, skipped with a reason, or failed with the compiler's message — all of it into `renzora::PluginInventory`, which is what Settings → Editor → Plugins renders. A panel that scanned for itself would drift from the loader the first time a rule moved.
+
+The export UI reads the same directory through `renzora_native_plugin::installed_for`, which takes each plugin's scope **from the library it built** rather than from its source: the two disagree whenever one was edited without rebuilding, and what ships is the library.
 
 ## Rendering and post-processing
 
@@ -159,42 +139,41 @@ Renzora builds on Bevy's PBR/HDR pipeline plus a large family of plugin crates. 
 
 Each effect registers a type-erased pass into `RenderComposition` under a `(phase, order)` key, and **only runs when its settings component is present**, so inactive effects have zero render-graph overhead.
 
-All **53** of these effects are now [standalone C-ABI plugins](../extending/standalone-plugins.md) under `plugins/`, not engine crates. That is the significant structural change in alpha7: an effect links no Bevy, builds with any toolchain in about a second, and hot-reloads with its shader while the editor runs. Here is the complete `plugins/ascii`:
+These effects are [installed plugins](../extending/post-processing.md) under `plugins/`, not engine crates — an effect hot-reloads with its shader while the editor runs. Here is the complete `ascii`:
 
 ```rust
-use renzora_plugin::prelude::*;
+use bevy::prelude::*;
+use renzora::{post_process, AppEditorExt};
 
-const WGSL: &str = include_str!("ascii.wgsl");
-
-#[derive(Component)]
-#[repr(C)]
+#[post_process(shader = "ascii.wgsl", name = "ASCII", icon = "text-aa")]
 pub struct Ascii {
-    #[field(min = 2.0, max = 32.0, speed = 0.5)]
+    #[field(min = 2.0, max = 32.0, speed = 0.5, default = 8.0)]
     pub char_size: f32,
-    #[field(min = 0.0, max = 1.0, speed = 0.01)]
+    #[field(min = 0.0, max = 1.0, speed = 0.01, default = 0.5)]
     pub color_mix: f32,
-    #[field(min = 0.5, max = 3.0, speed = 0.01)]
+    #[field(min = 0.5, max = 3.0, speed = 0.01, default = 1.2)]
     pub contrast: f32,
 }
 
-// + a Default impl
-
+#[derive(Default)]
 pub struct AsciiPlugin;
 
 impl Plugin for AsciiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_post_process::<Ascii>("ascii", WGSL, RenderPhase::LdrPost, 0.0);
+        bevy::asset::embedded_asset!(app, "ascii.wgsl");
+        app.add_plugins(renzora::postprocess::PostProcessPlugin::<Ascii>::default());
+        app.register_inspectable::<Ascii>();
     }
 }
 
-renzora_plugin::add!(AsciiPlugin);
+renzora::plugin!(AsciiPlugin, Runtime);
 ```
 
-`renzora_postprocess::plugin_bridge` is the engine side of that call: it turns the registration into a real `RenderPassEntry`, sizes the uniform buffer from the component, and uploads its bytes each frame. The `#[field]` ranges become the inspector controls. There is no padding to count and no `enabled` flag — removing the component is what switches an effect off.
+`#[post_process]` writes the derives, the `Default` from the `default =` values, the `enabled` field and the padding before it, the `PostProcessEffect` impl, and the inspector section. `PostProcessPlugin<T>` turns that into a real `RenderPassEntry`, sizes the uniform buffer from the component and uploads its bytes each frame.
 
-> `renzora_postprocess` is otherwise a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so in-tree effects share one `RenderComposition` and matching `TypeId`s across the dlopen boundary.
+> `renzora_postprocess` is a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so every effect shares one `RenderComposition` and matching `TypeId`s across the dlopen boundary.
 
-What stays in-tree, compiled against real Bevy: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component the ABI cannot express, and the **multi-pass graph crates** (`renzora_lumen`, `renzora_rt`, `renzora_oit`, `renzora_solari`). `renzora_macros::post_process` and the `PostProcessEffect` trait still exist for that path but no longer have any users.
+What stays in-tree: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component rather than running a pass of their own, and the **multi-pass graph crates** (`renzora_lumen`, `renzora_rt`, `renzora_oit`, `renzora_solari`).
 
 ## Scene serialization
 

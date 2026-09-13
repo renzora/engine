@@ -12,10 +12,9 @@ description = "Loads native plugins — Bevy plugins shipped as Rust source, reb
 # memory corruption — it surfaces as nonsense like "Requested resource Schedules
 # does not exist in the World", from a `World` that plainly has one.
 #
-# This is also why the C-ABI mechanism is still needed: a lean export drops
-# `dynamic_linking`, so a shipped game has no shared images for a native plugin
-# to link against. The two serve different deployments — a native plugin extends
-# the editor, a C-ABI plugin ships inside the game.
+# A lean export drops `dynamic_linking`, so a shipped game has no shared images
+# for a plugin to link against and loads none from disk. It links the ones it
+# ships into the binary instead.
 #
 # Forwarded from `renzora_runtime`'s `dynamic_linking`, which is the same switch
 # that puts the shared images in the build. So a lean export (static, no dylibs)
@@ -30,11 +29,6 @@ renzora = { path = "../renzora", default-features = false }
 # Reads the SDK manifest and drives rustc. No Bevy in it, so the compile path
 # stays testable without booting an engine.
 renzora_plugin_build = { path = "../renzora_plugin_build" }
-# The C-ABI loader. This crate owns the ONE pass over `plugins/` and dispatches
-# to whichever loader an artefact belongs to, so it has to see both — and it is
-# the only side that can: `renzora_plugin` is published to crates.io and takes no
-# dependency on anything in this workspace.
-renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
 # The shared build helpers: the `rustc` command line for a native plugin, and
 # `tool()`, which finds a toolchain the editor's `PATH` does not name. No Bevy in
 # it, and no dependencies of its own.

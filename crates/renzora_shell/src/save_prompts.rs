@@ -9,8 +9,7 @@
 
 use bevy::prelude::*;
 
-use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::theme::{rgb, text_muted};
+use renzora_ember::font::EmberFonts;
 
 use crate::doc_tabs::close_doc_tab_by_id;
 
@@ -122,53 +121,33 @@ pub(crate) fn process_exit_request(
 /// markers — what differs between the three flows is the wording and what the
 /// buttons act on, never the card. The accent goes on the confirm button so
 /// `apply_theme` paints it the highlight color rather than the plain one.
+/// The unsaved-changes overlay, as `(root, cancel, discard, confirm)`.
+///
+/// A thin wrapper over [`renzora_ember::widgets::confirm_dialog`], which owns
+/// the shape. This used to lay the overlay out itself, and the scene-conflict
+/// prompt then wrote the same forty lines again — sizing, padding and the
+/// button row being exactly the things that should not drift between two
+/// dialogs in the same editor. Kept as a named helper because both call sites
+/// below want the same three buttons in the same order, which is a fact about
+/// saving rather than about dialogs.
 fn spawn_prompt(
     commands: &mut Commands,
     fonts: &EmberFonts,
     body: String,
     confirm_label: &str,
 ) -> (Entity, Entity, Entity, Entity) {
-    let (root, content) =
-        renzora_ember::widgets::overlay_sized(commands, fonts, "Unsaved Changes", 440.0, 188.0, true);
-
-    // Pad the content and lay out the message above a right-aligned button row.
-    commands.entity(content).insert(Node {
-        width: Val::Percent(100.0),
-        flex_grow: 1.0,
-        min_height: Val::Px(0.0),
-        flex_direction: FlexDirection::Column,
-        justify_content: JustifyContent::SpaceBetween,
-        padding: UiRect::all(Val::Px(16.0)),
-        ..default()
-    });
-
-    let message = commands
-        .spawn((
-            Text::new(body),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-
-    let row = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            justify_content: JustifyContent::FlexEnd,
-            column_gap: Val::Px(8.0),
-            ..default()
-        })
-        .id();
-
-    let cancel = renzora_ember::widgets::button(commands, &fonts.ui, "Cancel");
-    let discard = renzora_ember::widgets::button(commands, &fonts.ui, "Don't Save");
-    let confirm = renzora_ember::widgets::button(commands, &fonts.ui, confirm_label);
-    commands
-        .entity(confirm)
-        .insert(renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent));
-
-    commands.entity(row).add_children(&[cancel, discard, confirm]);
-    commands.entity(content).add_children(&[message, row]);
+    let (root, buttons) = renzora_ember::widgets::confirm_dialog(
+        commands,
+        fonts,
+        "Unsaved Changes",
+        body,
+        440.0,
+        188.0,
+        &["Cancel", "Don't Save", confirm_label],
+    );
+    let [cancel, discard, confirm] = buttons[..] else {
+        unreachable!("confirm_dialog returns one entity per label");
+    };
     (root, cancel, discard, confirm)
 }
 

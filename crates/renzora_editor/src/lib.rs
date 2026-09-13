@@ -21,10 +21,7 @@
 //! linked into each. That costs bytes and nothing else: a `TypeId` comes from a
 //! crate's stable id, not from which artifact swallowed it, so both sides agree
 //! about what a component is even with two copies of the code. It is the same
-//! arrangement every native plugin already runs under.
-//!
-//! Third-party extensions are C-ABI plugins (`renzora_plugin`), which link no
-//! Bevy at all and so have never had this constraint.
+//! arrangement every installed plugin already runs under.
 
 // Linked for their side effect only — see the dependency comment in
 // `Cargo.toml`. Their presence is what makes `renzora` and `renzora_ember`

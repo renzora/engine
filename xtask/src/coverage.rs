@@ -54,12 +54,10 @@
 //! ## One scope
 //!
 //! There used to be two, because `plugins/*` sat outside the workspace and
-//! `cargo test --workspace` had therefore never compiled ~14k lines of C-ABI
-//! boundary code. That directory is gone — plugins are distributed through the
-//! marketplace and built where they are installed — so a coverage run over this
-//! repository now covers all of it, with nothing silently outside the gate.
-//! `renzora_plugin`, the boundary itself, is a workspace member and is measured
-//! with everything else.
+//! `cargo test --workspace` had therefore never compiled a line of it. That
+//! directory is gone — plugins are distributed through the marketplace and built
+//! where they are installed — so a coverage run over this repository now covers
+//! all of it, with nothing silently outside the gate.
 
 use std::collections::BTreeMap;
 use std::path::Path;

@@ -2,7 +2,7 @@
 
 Renzora renders **3D Gaussian splats** — photorealistic point-cloud captures
 produced by 3DGS training pipelines — through the
-**`renzora_gaussian_splatting`** distribution plugin, which wraps the vendored
+**`renzora_gaussian_splatting`** plugin, which wraps the vendored
 [`bevy_gaussian_splatting`](https://github.com/mosure/bevy_gaussian_splatting)
 renderer. Drop a scanned scene or object into your level and it renders with
 full view-dependent lighting baked into the capture, no meshes or materials

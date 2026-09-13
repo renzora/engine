@@ -9,9 +9,7 @@ use super::execution::{
     ReflectionSet, ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptLogEntry,
     ScriptReflectionQueue,
 };
-use crate::command::{
-    to_engine_action, to_engine_prop, CharacterCommand, CharacterCommandQueue, ScriptCommand,
-};
+use crate::command::{CharacterCommand, CharacterCommandQueue, ScriptCommand};
 use crate::resources::ScriptTimers;
 
 /// System that applies script outputs to the world.
@@ -277,7 +275,7 @@ pub fn apply_script_commands(
                     entity_name,
                     component_type,
                     field_path,
-                    value: to_engine_prop(value),
+                    value,
                 });
             }
 
@@ -326,12 +324,9 @@ pub fn apply_script_commands(
                 args,
             } => {
                 let entity = source_entity;
-                // The boundary carries arguments as an ordered list; the event
+                // The command carries arguments as an ordered list; the event
                 // has always taken a map, and ten other crates observe it.
-                let args = args
-                    .into_iter()
-                    .map(|(k, v)| (k, to_engine_action(v)))
-                    .collect();
+                let args = args.into_iter().collect();
                 commands.queue(move |world: &mut World| {
                     world.trigger(renzora::ScriptAction {
                         name,
@@ -349,10 +344,7 @@ pub fn apply_script_commands(
             // the next frame's drain instead.
             ScriptCommand::Emit { name, args } => {
                 let from = Some(source_entity);
-                let args = args
-                    .into_iter()
-                    .map(|(k, v)| (k, to_engine_action(v)))
-                    .collect();
+                let args = args.into_iter().collect();
                 commands.queue(move |world: &mut World| {
                     world
                         .get_resource_or_insert_with(renzora::GameEventQueue::default)

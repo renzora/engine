@@ -35,6 +35,12 @@ impl Plugin for HanabiParticlePlugin {
 
         if !headless {
             app.add_plugins(HanabiPlugin);
+            // Registered here as well as by `renzora_project_watch`, and
+            // `add_message` is idempotent so the second call is free. This crate
+            // is in every build and the watcher is editor-only, so without it a
+            // shipped game reads a message nobody registered and panics on its
+            // first frame.
+            app.add_message::<renzora::core::project_files::ProjectFileChanged>();
             app.init_resource::<ParticleCommandQueue>();
             app.init_resource::<systems::ParticleSoftTexture>();
             app.init_resource::<systems::ParticleErosionNoise>();
@@ -87,8 +93,25 @@ impl Plugin for HanabiParticlePlugin {
             app.add_systems(
                 PostUpdate,
                 (
+                    // Before the rebuild it feeds, so an external edit lands on
+                    // the same frame the editor's own save would.
+                    systems::queue_externally_edited_effects,
                     systems::hot_reload_saved_effects,
                     systems::sync_hanabi_effects,
+                    // Builds an effect for any entity that has `HanabiEffect`
+                    // and no `HanabiEffectSynced`. That covers a scene load, and
+                    // also the frame AFTER `sync_hanabi_effects` tears an
+                    // emitter down because its source changed: the teardown has
+                    // to be its own frame so bevy_hanabi's render-world mirror
+                    // despawns and releases the old effect's GPU buffers before
+                    // a new one is built.
+                    //
+                    // This existed and was never scheduled, which is why a
+                    // source swap had to rebuild in place and got it wrong.
+                    systems::rehydrate_hanabi_effects,
+                    // After the sync, so it sees the result of the sync's own
+                    // commands rather than the state that went into them.
+                    systems::log_particle_state,
                     systems::apply_runtime_overrides,
                     systems::process_particle_commands,
                 )

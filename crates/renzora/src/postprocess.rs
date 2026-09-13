@@ -61,6 +61,17 @@ pub trait PostProcessEffect:
 {
     fn fragment_shader() -> ShaderRef;
 
+    /// Sort key within [`RenderPhase::LdrPost`] — lower runs first.
+    ///
+    /// Defaults to `0.0`, which is what nearly every effect wants: they are
+    /// independent filters over the finished picture and the order among them
+    /// does not read. An effect that must land *after* the rest (a vignette or a
+    /// letterbox, which should darken whatever the others produced rather than
+    /// be filtered by them) raises it.
+    fn order() -> f32 {
+        0.0
+    }
+
     /// When `true`, the pipeline adds two extra binding slots (texture_2d + sampler)
     /// after the uniform buffer. The effect must populate `ExtraTextureSource<Self>`
     /// so the handler can bind the texture at render time.
@@ -682,10 +693,10 @@ fn dispatch_overlay(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx
 /// **Add this if you register passes without a typed `PostProcessPlugin<T>`.**
 /// It used to be private and installed only as a side effect of that plugin,
 /// which was fine while every effect was an in-tree type. Once the effects moved
-/// to standalone C-ABI plugins nothing added it any more, so passes registered
-/// into `RenderComposition` and were never dispatched — every plugin effect
-/// silently did nothing, with no error anywhere, because registration and
-/// dispatch are wired up in two different places.
+/// out to installed plugins nothing added it any more, so passes registered into
+/// `RenderComposition` and were never dispatched — every plugin effect silently
+/// did nothing, with no error anywhere, because registration and dispatch are
+/// wired up in two different places.
 ///
 /// Idempotent: adding it twice is a no-op via `is_plugin_added`.
 pub struct PostProcessCorePlugin;
@@ -894,7 +905,7 @@ impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
             .add(RenderPassEntry {
                 id: core::any::type_name::<T>(),
                 phase: RenderPhase::LdrPost,
-                order: 0.0,
+                order: T::order(),
                 enabled: true,
                 handler: Box::new(TypedEffectHandler::<T>(PhantomData)),
             });

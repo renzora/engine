@@ -1,20 +1,20 @@
 //! The engine's networking API — and no networking.
 //!
 //! Renzora does not contain an HTTP client. It contains a way to *describe* a
-//! request and a way to wait for the answer; something on the other side of the
-//! C-ABI plugin boundary opens the socket. In a normal build that something is
-//! `plugins/http`, which links `ureq` and the TLS stack under it.
+//! request and a way to wait for the answer; something implementing
+//! [`Backend`] opens the socket. In a normal build that something is
+//! `renzora_http`, which links `ureq` and the TLS stack under it.
 //!
 //! This is the same split `renzora_audio` is: the engine keeps everything with a
-//! Bevy type in it, the plugin keeps everything with a dependency in it.
+//! Bevy type in it, the backend keeps everything with a dependency in it.
 //!
 //! ## Why
 //!
 //! `ureq` plus rustls, ring, webpki and the platform certificate verifiers is
 //! **twenty packages** that every build of the engine used to compile —
 //! including a 2D mobile game that never makes a request. Behind the boundary
-//! they are the plugin's dependencies, compiled once, and a game exported
-//! without the plugin ships without the stack at all.
+//! they are one crate's dependencies, and a build without that crate ships
+//! without the stack at all.
 //!
 //! The replaceability turned out to matter as much as the size. A browser build
 //! wants `fetch`; a console build wants the platform's own certified HTTP
@@ -49,6 +49,13 @@ mod pump;
 
 use bevy::prelude::*;
 
+/// The client contract, re-exported so a backend implementing it and a caller
+/// checking a capability both name one crate. It *lives* in the contract crate
+/// because `net`'s process-global queue holds these types.
+pub use renzora::net_backend::{
+    AppNetBackendExt, Backend, BackendInfo, Caps, Event, EventKind, NetBackend,
+};
+
 /// The request vocabulary and the submission queue now live in the **contract
 /// crate**, because the queue is a process-global `OnceLock` and a native plugin
 /// linking a private copy would get its own empty one — `is_available()` false,
@@ -59,10 +66,6 @@ use bevy::prelude::*;
 /// `renzora_net::Request` path still resolves.
 pub use renzora::net::{fetch, fetch_stream, is_available, Chunk, Error, Request, Response, Stream};
 pub use pump::NetLink;
-
-/// Capabilities a backend may claim, re-exported so a caller checking one does
-/// not have to name `renzora_plugin`.
-pub use renzora_plugin::net::Caps;
 
 /// Wires the frame pump in. Add it once; everything else is free functions,
 /// because the callers are background threads with no access to a `World`.

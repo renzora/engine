@@ -731,7 +731,9 @@ fn run_create(
         let dl = mk::download_asset(s, &asset.id)?;
         mk::download_file_progress(&dl.download_url, &mut ignore)?
     } else if asset.price_credits == 0 {
-        mk::download_file_progress(&mk::preview_file_url(&asset.id), &mut ignore)?
+        // The counted endpoint, so a signed-out template install reaches the
+        // creator's download count like a signed-in one does.
+        mk::download_install_file(&asset.id, &mut ignore)?
     } else {
         return Err("Sign in to use this template".into());
     };

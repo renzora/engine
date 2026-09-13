@@ -392,10 +392,42 @@ const FOLDER_SCAN_DEPTH: usize = 2;
 /// would otherwise do 50 recursive walks in the frame the tiles appear.
 const FOLDER_SCANS_PER_FRAME: usize = 4;
 
-/// How long a folder's scan is trusted before a visible tile rescans it. The
-/// safety net for images added by another tool, mirroring the listing's own
-/// slow rescan — but far lazier, because a scan walks subdirectories.
-const FOLDER_PREVIEW_TTL: f32 = 5.0;
+/// Forget a folder's cached preview when a file changes anywhere beneath it.
+///
+/// A scanned folder used to be trusted for five seconds and then re-walked, as
+/// "the safety net for images added by another tool, mirroring the listing's own
+/// slow rescan". Both halves of that are gone: the listing no longer rescans on
+/// a timer either, and the safety net is the project watcher.
+///
+/// It mattered more here than for the listing, because a preview scan walks
+/// **subdirectories**. With twenty folder tiles on screen that was twenty
+/// recursive subtree walks every five seconds, forever, for a set of pictures
+/// that almost never changes.
+///
+/// Invalidating an ancestor rather than an exact match is the whole job: the
+/// preview for `models/` is built from files somewhere below it, so a texture
+/// written into `models/props/crate/` has to expire `models/`.
+pub(crate) fn invalidate_folder_previews(
+    mut previews: ResMut<FolderPreviews>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+) {
+    if changes.is_empty() {
+        return;
+    }
+    let touched: Vec<PathBuf> = changes
+        .read()
+        .filter_map(|change| change.path.parent().map(|p| p.to_path_buf()))
+        .collect();
+    if touched.is_empty() {
+        return;
+    }
+    // No `version` bump: dropping an entry makes `images()` return `None`, the
+    // tile keeps drawing what it has, and the rescan that lands a frame or two
+    // later bumps the version itself if the pictures actually changed.
+    previews
+        .entries
+        .retain(|folder, _| !touched.iter().any(|dir| dir.starts_with(folder)));
+}
 
 /// The images each folder shows in its tile, so the browser previews a folder's
 /// contents instead of drawing the same glyph on all of them.
@@ -404,9 +436,15 @@ const FOLDER_PREVIEW_TTL: f32 = 5.0;
 /// which is far too expensive to repeat for every visible folder every frame.
 #[derive(Resource, Default)]
 pub struct FolderPreviews {
-    /// Folder → (up to [`FOLDER_PREVIEW_MAX`] image paths, when it was scanned).
-    /// An empty vec means "scanned, no images" — the miss is cached too.
-    entries: HashMap<PathBuf, (std::sync::Arc<Vec<PathBuf>>, f32)>,
+    /// Folder → up to [`FOLDER_PREVIEW_MAX`] image paths. An empty vec means
+    /// "walked, no images" — the miss is cached too, or a folder of meshes would
+    /// be re-walked forever for want of a picture to show.
+    ///
+    /// No timestamp: an entry is trusted until [`invalidate_folder_previews`]
+    /// drops it. It used to carry the time it was scanned and expire after five
+    /// seconds, which meant every folder tile on screen re-walked its whole
+    /// subtree every five seconds for as long as you looked at it.
+    entries: HashMap<PathBuf, std::sync::Arc<Vec<PathBuf>>>,
     /// Bumped only when a scan actually changes a folder's images. The grid's
     /// dirty token folds this in, which is what makes tiles rebuild once their
     /// scan lands — without it the mosaic would sit invisible until something
@@ -417,7 +455,7 @@ pub struct FolderPreviews {
 impl FolderPreviews {
     /// The images to draw in `folder`'s tile. `None` until the scan lands.
     pub fn images(&self, folder: &PathBuf) -> Option<std::sync::Arc<Vec<PathBuf>>> {
-        self.entries.get(folder).map(|(paths, _)| paths.clone())
+        self.entries.get(folder).cloned()
     }
 
     /// Changes whenever any folder's images change. See [`FolderPreviews::version`]'s field docs.
@@ -427,14 +465,18 @@ impl FolderPreviews {
 }
 
 /// Walks the folders that currently have a tile on screen and records which
-/// images each should show. Budgeted per frame, and each folder is re-walked at
-/// most once per [`FOLDER_PREVIEW_TTL`].
+/// images each should show.
+///
+/// Each folder is walked once and then cached until
+/// [`invalidate_folder_previews`] drops it, so a folder nobody is writing to is
+/// walked exactly once however long its tile stays on screen. Still budgeted per
+/// frame, because that is about the *first* display: navigating into a directory
+/// of fifty subfolders would otherwise do fifty recursive walks in the one frame
+/// the tiles appear.
 pub(crate) fn scan_folder_previews(
-    time: Res<Time>,
     tiles: Query<&crate::state::AssetTile>,
     mut previews: ResMut<FolderPreviews>,
 ) {
-    let now = time.elapsed_secs();
     let mut budget = FOLDER_SCANS_PER_FRAME;
     for tile in &tiles {
         if budget == 0 {
@@ -443,32 +485,27 @@ pub(crate) fn scan_folder_previews(
         if !tile.is_dir {
             continue;
         }
-        let fresh = previews
-            .entries
-            .get(&tile.path)
-            .is_some_and(|(_, at)| now - *at < FOLDER_PREVIEW_TTL);
-        if fresh {
+        // Cached until something under it changes. A miss is cached too (an
+        // empty vec means "walked, no images"), so a folder of meshes is not
+        // re-walked on every frame for want of a picture to show.
+        if previews.entries.contains_key(&tile.path) {
             continue;
         }
         let found = collect_folder_preview(&tile.path);
         budget -= 1;
-        // An unchanged rescan only restamps the clock. Replacing the entry would
-        // bump `version` and re-hash the whole grid every few seconds for a
-        // picture that didn't change.
-        if previews
+        // Only bump `version` when the pictures really changed: it feeds the
+        // grid's dirty token, and a re-hash of the whole grid for an identical
+        // mosaic is the churn this cache exists to avoid.
+        let same = previews
             .entries
             .get(&tile.path)
-            .is_some_and(|(paths, _)| **paths == found)
-        {
-            if let Some(slot) = previews.entries.get_mut(&tile.path) {
-                slot.1 = now;
-            }
-            continue;
-        }
+            .is_some_and(|paths| **paths == found);
         previews
             .entries
-            .insert(tile.path.clone(), (std::sync::Arc::new(found), now));
-        previews.version = previews.version.wrapping_add(1);
+            .insert(tile.path.clone(), std::sync::Arc::new(found));
+        if !same {
+            previews.version = previews.version.wrapping_add(1);
+        }
     }
 }
 

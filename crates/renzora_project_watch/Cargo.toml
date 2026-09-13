@@ -1,0 +1,33 @@
+[package]
+name = "renzora_project_watch"
+version = "0.1.0"
+edition = "2021"
+description = "One filesystem watcher over the open project. Publishes renzora::ProjectFileEvent for every change and forwards asset-shaped changes to AssetServer, so no other crate has to poll or run a watcher of its own."
+
+# Editor-scope plugin, linked into the `renzora_editor` image. A shipped game
+# reads its assets out of a `.rpak` and has nothing to hot-reload, so there is
+# nothing for this to watch outside the editor.
+
+[dependencies]
+bevy = { workspace = true }
+# The contract crate only. This plugin's whole output is
+# `renzora::ProjectFileEvent`, its whole input is `CurrentProject`, and the
+# `AssetReloadSink` it pushes through is a contract type too, so it links no
+# sibling crate at all. That is the point: every consumer subscribes to an event
+# rather than depending on the watcher.
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# The channel type `bevy_asset` hands its watchers. Bevy does not re-export it,
+# so it is named directly; the version matches what `bevy_asset` resolves, and
+# cargo unifies the two into one compilation rather than forking it.
+async-channel = "2"
+
+# `FileWatcher` lives behind Bevy's `file_watcher` feature, which the root
+# manifest turns on for every non-wasm target. Repeated here so that building
+# this crate alone (`cargo check -p renzora_project_watch`) still has the type,
+# rather than only working under a `--workspace` build that happens to unify the
+# feature in from `renzora_app`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { workspace = true, features = ["file_watcher"] }
+
+[lints]
+workspace = true

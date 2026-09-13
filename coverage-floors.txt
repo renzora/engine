@@ -85,8 +85,6 @@ renzora_oit_editor 0.0
 renzora_particle_editor 0.0
 renzora_physics 38.9
 renzora_physics_editor 0.0
-renzora_plugin 57.2
-renzora_plugin_derive 57.3
 renzora_postprocess 0.0
 renzora_preview 0.0
 renzora_ragdoll 0.0

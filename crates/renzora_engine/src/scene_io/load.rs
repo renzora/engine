@@ -202,7 +202,6 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
         );
     }
 
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     // Globals, not per-entity data — so this is a whole-scene load only. The
     // undo-restore path deliberately does not call it: restoring a deleted
@@ -356,6 +355,16 @@ pub fn load_scene(world: &mut World, path: &Path) {
         }
     };
 
+    // Record what we just read, for the same reason `save_scene` records what it
+    // wrote: this is now the state of the file as far as the editor is
+    // concerned, so a watcher event carrying these same bytes has nothing new in
+    // it. Recorded on read as well as write because a reload is a read, and
+    // without this a scene reloaded once would be reloaded again by its own
+    // event.
+    world
+        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .record(path, content.as_bytes());
+
     let trimmed = content.trim();
     if trimmed.is_empty() || trimmed == "(entities: {}, resources: {})" {
         console_info("Scene", format!("Scene is empty: {}", path.display()));
@@ -423,7 +432,6 @@ pub fn load_scene(world: &mut World, path: &Path) {
         );
     }
 
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     scene.write_raw_resources(world);
     match scene.write_to_world(world, &mut entity_map) {

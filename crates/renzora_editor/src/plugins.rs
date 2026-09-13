@@ -44,7 +44,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_http::RenzoraHttpPlugin::default());
     app.add_plugins(renzora_import_ui::ImportPlugin::default());
     app.add_plugins(renzora_inspector::InspectorPanelPlugin::default());
-    app.add_plugins(renzora_lens_distortion_editor::LensDistortionEditorPlugin::default());
     app.add_plugins(renzora_level_presets::LevelPresetsPlugin::default());
     app.add_plugins(renzora_lighting_editor::LightingEditorPlugin::default());
     app.add_plugins(renzora_marketplace::MarketplacePlugin::default());
@@ -57,6 +56,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_parkour_editor::ParkourEditorPlugin::default());
     app.add_plugins(renzora_particle_editor::ParticleEditorPlugin::default());
     app.add_plugins(renzora_physics_editor::PhysicsEditorPlugin::default());
+    app.add_plugins(renzora_project_watch::ProjectWatchPlugin::default());
     app.add_plugins(renzora_scene::ScenePlugin::default());
     app.add_plugins(renzora_scripting_editor::ScriptingEditorPlugin::default());
     app.add_plugins(renzora_settings::SettingsPlugin::default());
@@ -78,6 +78,4 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_update::UpdatePlugin::default());
     app.add_plugins(renzora_viewport::ViewportPlugin::default());
     app.add_plugins(renzora_volumetric_fog_editor::VolumetricFogEditorPlugin::default());
-    app.add_plugins(renzora_water_editor::WaterEditorPlugin::default());
-    app.add_plugins(renzora_wind_editor::WindEditorPlugin::default());
 }

@@ -5,8 +5,8 @@
 //! OpenXR owns graphics-device creation: the headset runtime dictates the
 //! Vulkan instance/device the app must render with, so `bevy_mod_openxr`
 //! replaces Bevy's `RenderPlugin` wholesale. That decision happens while the
-//! `App` is being assembled — long before `plugins/` cdylibs are dlopen'd —
-//! which is why VR cannot ship as a distribution plugin. Instead this crate is
+//! `App` is being assembled — long before anything in `plugins/` is loaded —
+//! which is why VR cannot ship as an installable plugin. Instead this crate is
 //! statically linked into `renzora_runtime` (behind its `xr` feature) and the
 //! binary opts in at launch with `--vr`:
 //!

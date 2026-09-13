@@ -180,7 +180,7 @@ On Linux, the editor output is additionally wrapped into an `AppDir` and package
 
 ### Shared libraries travel beside the binary
 
-Renzora's dynamic-plugin system requires the host binary, the dlopened editor bundle, and every distribution plugin to share **one** compiled copy of Bevy and of the `renzora` SDK so their `TypeId`s match across the dlopen boundary. The repo's `.cargo/config.toml` arranges this with `-C prefer-dynamic` + `bevy/dynamic_linking`, and embeds an rpath (`$ORIGIN` on Linux, `@loader_path` on macOS) so the binary finds those libraries next to itself.
+The host binary, the dlopened editor image, and every installed plugin must share **one** compiled copy of Bevy and of the `renzora` contract crate so their `TypeId`s match across the dlopen boundary. The root manifest's default `dynamic_linking` feature arranges this, and `.cargo/config.toml` embeds an rpath (`$ORIGIN` on Linux, `@loader_path` on macOS) so the binary finds those libraries next to itself.
 
 Because of that, `build-all.sh` copies, per target:
 

@@ -666,9 +666,11 @@ fn run_install(
             (bytes, dl.download_filename, dl.download_url)
         }
     } else if asset.price_credits == 0 {
-        let url = mk::preview_file_url(&asset.id);
+        // The install endpoint, not the preview proxy: this is a real install and
+        // has to reach the creator's download count like a signed-in one does.
+        let url = mk::install_file_url(&asset.id);
         shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
-        let bytes = mk::download_file_progress(&url, &mut on_bytes)?;
+        let bytes = mk::download_install_file(&asset.id, &mut on_bytes)?;
         (bytes, String::new(), url)
     } else {
         return Err("Sign in to download this asset".into());

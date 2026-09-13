@@ -7,7 +7,6 @@ pub mod auto_fit;
 pub mod backend;
 pub mod data;
 pub mod properties;
-pub mod plugin_bridge;
 pub mod read_state;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
@@ -109,9 +108,6 @@ impl Plugin for PhysicsPlugin {
 
         // Listen for script actions (apply_force, apply_impulse, set_velocity, kinematic_slide)
         app.add_observer(handle_physics_script_actions);
-
-        // The C-ABI surface: standalone plugins driving and reading bodies.
-        plugin_bridge::install(app);
 
         // Per-entity read-state mirror + script extension.
         app.add_systems(Update, read_state::auto_init_physics_read_state);
@@ -252,7 +248,12 @@ fn clear_avian_forces_2d(
 /// kinematic_slide) from scripts and blueprints.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,
-    mut commands: Commands,
+    // Every use of `commands` below sits behind `#[cfg(feature = "avian2d")]` or
+    // `"avian3d"`, so with neither backend compiled in the body touches it not at
+    // all and the `mut` reads as redundant. Dropping the `mut` would then break
+    // the build the moment a backend IS enabled, which is the configuration that
+    // ships, so the allow is the fix rather than the warning.
+    #[allow(unused_mut)] mut commands: Commands,
     mut pending_slides: Option<ResMut<PendingKinematicSlides>>,
     bodies_2d: Query<(), With<RuntimePhysics2d>>,
 ) {

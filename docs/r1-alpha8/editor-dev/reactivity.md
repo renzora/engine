@@ -421,15 +421,13 @@ fixed since**, and a stale finding is worse than no finding.
   `is_enabled_fn` (37 of 39 impls read `s.enabled`), so the module doc's claim
   that field-value edits do not rebuild is false for enable toggles.
 
-## The plugin-panel equivalent
+## The markup-panel equivalent
 
-C-ABI plugins have the same problem one layer up. `set_panel_content` replaces a
-panel's markup wholesale, so a plugin cannot update one label without respawning
-every widget in the panel — which drops input focus mid-keystroke. `ai_chat`
-works around it by tracking a dirty flag per surface and never re-sending the
-surface being typed into.
+A panel described as markup has the same problem one layer up: replacing its
+content replaces it wholesale, so one label cannot change without respawning
+every widget in the panel — which drops input focus mid-keystroke. The
+workaround is a dirty flag per surface, never re-sending the surface being typed
+into.
 
-The fix is the same shape: a targeted `set_panel_field(panel, marker, value)`
-that resolves a marker to an entity and writes one component. It rides the
-service channel, so it costs no `VERSION_MINOR` bump. It is independent of
-everything above.
+The fix is the same shape as everything above: resolve a marker to an entity and
+write one component, rather than rebuilding the tree.

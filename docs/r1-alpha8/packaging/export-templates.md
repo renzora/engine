@@ -189,7 +189,7 @@ On desktop it also copies any shared libraries sitting beside the runtime — bu
 
 ### Plugin selection
 
-Effects and other features live in distribution-plugin cdylibs. Export scans **the chosen platform's** `plugins/` directory with `renzora_plugin::host::loader::scan_plugins` (which lists each C-ABI plugin with its Editor/Runtime scope, and deliberately maps nothing to do it — see [architecture](../setup/architecture.md)), then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's `.ron` files. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
+Effects and other features are installed plugins. Export lists the **editor's own** `plugins/` directory with `renzora_native_plugin::installed_for`, which reads each plugin's scope from the library it built and offers only the `Runtime`-scope ones — an editor plugin can never ship, so there is no switch for it. It then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's scenes. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
 
 The directory scanned is the one the resolved template brought with it, not the editor's own. That distinction only started mattering when cross-platform templates began working: a Windows editor exporting a Linux game would otherwise offer its own `.dll`s, and the game would find nothing it could load — silently, since a plugin the host can't open is simply skipped. A template with no `plugins/` of its own falls back to the editor's, which is right for a same-platform export. Changing the target platform re-scans.
 
@@ -203,7 +203,7 @@ renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 
 ## Versioning
 
-Templates are matched to the engine **by version**, not by an ABI hash. The old `plugin_bevy_hash()` gate is gone along with the shared `bevy_dylib` it protected: a C-ABI plugin links no Bevy and negotiates compatibility through a version handshake plus `INTERFACE_PREFIX_HASHES` instead, so a plugin built by any rustc loads into any engine.
+Templates are matched to the engine **by version**, not by an ABI hash. The old `plugin_bevy_hash()` gate is gone: a plugin ships as source and is compiled against an SDK cut from the engine beside it, so there is no environment to match. When the engine moves, the plugin's content-hash stamp stops matching and it quietly rebuilds.
 
 What still has to line up is the **runtime and the editor**, because they share the scene format and the project config. That is what the version-scoped template store enforces: `~/.renzora/templates/<version>/` can only ever hand this editor a runtime published for its own version.
 

@@ -7462,11 +7462,12 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 name = "renzora"
 version = "0.1.0"
 dependencies = [
+ "avian2d",
+ "avian3d",
  "bevy",
  "naga",
  "renzora_macros",
  "renzora_native_build",
- "renzora_plugin",
  "ron 0.8.1",
  "serde",
  "serde_json",
@@ -7495,7 +7496,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
  "renzora_scripting",
  "ron 0.8.1",
  "serde",
@@ -7544,7 +7544,6 @@ dependencies = [
  "getrandom 0.4.3",
  "log",
  "renzora",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
  "renzora_static_plugins",
@@ -7605,7 +7604,6 @@ dependencies = [
  "bevy",
  "cfg-if",
  "renzora",
- "renzora_plugin",
  "serde",
  "symphonia",
 ]
@@ -7617,7 +7615,6 @@ dependencies = [
  "bevy",
  "cpal",
  "renzora",
- "renzora_plugin",
  "rtrb",
  "symphonia",
 ]
@@ -7847,8 +7844,6 @@ dependencies = [
  "renzora_import_ui",
  "renzora_inspector",
  "renzora_keybindings",
- "renzora_lens_distortion",
- "renzora_lens_distortion_editor",
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lighting_editor",
@@ -7867,6 +7862,7 @@ dependencies = [
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
+ "renzora_project_watch",
  "renzora_scene",
  "renzora_scripting",
  "renzora_scripting_editor",
@@ -7895,9 +7891,6 @@ dependencies = [
  "renzora_viewport",
  "renzora_volumetric_fog",
  "renzora_volumetric_fog_editor",
- "renzora_water",
- "renzora_water_editor",
- "renzora_wind_editor",
 ]
 
 [[package]]
@@ -7912,7 +7905,6 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_native_plugin",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
  "toml 0.8.23",
@@ -7926,7 +7918,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_macros",
- "renzora_plugin",
  "renzora_postprocess",
  "renzora_theme",
  "renzora_ui",
@@ -7990,7 +7981,6 @@ dependencies = [
  "renzora_macros",
  "renzora_network",
  "renzora_physics",
- "renzora_plugin",
  "renzora_rmip",
  "renzora_rpak",
  "renzora_scripting",
@@ -8051,7 +8041,6 @@ dependencies = [
  "renzora_import",
  "renzora_native_plugin",
  "renzora_net",
- "renzora_plugin",
  "renzora_plugin_build",
  "renzora_rpak",
  "renzora_rust_script",
@@ -8175,7 +8164,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
+ "renzora_net",
  "ureq",
 ]
 
@@ -8237,7 +8226,6 @@ dependencies = [
  "renzora_camera",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_plugin",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
@@ -8260,24 +8248,6 @@ dependencies = [
  "renzora",
  "renzora_scripting",
  "tempfile",
-]
-
-[[package]]
-name = "renzora_lens_distortion"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_lens_distortion_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_lens_distortion",
 ]
 
 [[package]]
@@ -8437,7 +8407,6 @@ dependencies = [
  "libloading 0.8.9",
  "renzora",
  "renzora_native_build",
- "renzora_plugin",
  "renzora_plugin_build",
 ]
 
@@ -8475,7 +8444,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_plugin",
  "serde",
  "serde_json",
 ]
@@ -8569,7 +8537,6 @@ dependencies = [
  "avian3d",
  "bevy",
  "renzora",
- "renzora_plugin",
  "renzora_scripting",
  "serde",
 ]
@@ -8585,17 +8552,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_plugin"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "libloading 0.8.9",
- "libm",
- "notify-debouncer-full",
- "renzora_plugin_derive",
-]
-
-[[package]]
 name = "renzora_plugin_build"
 version = "0.1.0"
 dependencies = [
@@ -8607,22 +8563,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_plugin_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
 name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "naga",
  "renzora",
- "renzora_plugin",
 ]
 
 [[package]]
@@ -8647,6 +8593,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "renzora_project_watch"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bevy",
+ "renzora",
 ]
 
 [[package]]
@@ -8721,7 +8676,6 @@ dependencies = [
  "renzora_hanabi",
  "renzora_input",
  "renzora_lang",
- "renzora_lens_distortion",
  "renzora_light2d",
  "renzora_lighting",
  "renzora_lumen",
@@ -8739,7 +8693,6 @@ dependencies = [
  "renzora_scripting",
  "renzora_shader",
  "renzora_skybox",
- "renzora_solari",
  "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
@@ -8747,8 +8700,6 @@ dependencies = [
  "renzora_tilemap",
  "renzora_tonemapping",
  "renzora_volumetric_fog",
- "renzora_water",
- "renzora_wind",
  "renzora_xr",
  "toml 0.8.23",
  "wgpu",
@@ -8796,7 +8747,6 @@ dependencies = [
  "renzora",
  "renzora_blueprint",
  "renzora_net",
- "renzora_plugin",
  "serde",
  "serde_json",
 ]
@@ -8909,14 +8859,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_solari"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
-]
-
-[[package]]
 name = "renzora_splash"
 version = "0.2.0"
 dependencies = [
@@ -8997,7 +8939,6 @@ name = "renzora_static_plugins"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora_plugin",
 ]
 
 [[package]]
@@ -9213,25 +9154,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_water"
-version = "0.1.0"
-dependencies = [
- "avian3d",
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
-name = "renzora_water_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_water",
-]
-
-[[package]]
 name = "renzora_webfs"
 version = "0.1.0"
 dependencies = [
@@ -9239,26 +9161,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "renzora_wind"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_bsn",
- "renzora_scripting",
- "ron 0.8.1",
-]
-
-[[package]]
-name = "renzora_wind_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_wind",
 ]
 
 [[package]]

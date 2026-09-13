@@ -12,18 +12,16 @@ lighting from emissive meshes and directional lights, with no baking.
 
 ## How to enable
 
-1. **Build the plugin.** `renzora_solari` is a `cdylib` distribution plugin. A
-   normal `renzora build` / `renzora run` produces `renzora_solari.{dll,so,dylib}`
-   alongside the other plugins.
-2. **Drop it in `plugins/`.** Place the plugin next to the engine binary (the
-   loader scans `<exe>/plugins/`). Present ⇒ Solari is available; delete it ⇒ it's
-   gone. Nothing in the host references it.
-3. **Run on an RT-capable GPU.** At startup the host probes the GPU adapter
+1. **Build the engine.** `renzora_solari` is an in-workspace plugin, compiled
+   into the binary by any ordinary `cargo renzora dist`. It is optional in the
+   feature graph, so the lean exporter can leave it out of a game that never
+   uses it.
+2. **Run on an RT-capable GPU.** At startup the host probes the GPU adapter
    (`raytracing_supported()`); on a GPU that reports the ray-tracing wgpu features
    it requests them and sets `renzora::GpuRaytracing { enabled: true }`. If the
    GPU can't do ray tracing, the plugin logs a warning and stays **inert** — the
    engine still boots normally.
-4. **Author `Solari Ray-Traced GI`.** Select the **World Environment** entity and
+3. **Author `Solari Ray-Traced GI`.** Select the **World Environment** entity and
    add the *Solari Ray-Traced GI* component (Inspector → Add Component →
    Lighting). Toggle it on.
 
@@ -299,10 +297,9 @@ signature.
 - Solari and Lumen are **mutually exclusive per camera** — don't author both
   `SolariGi` and `LumenLighting` on the same World Environment.
 
-## Plugin ABI note
+## Note on installed plugins
 
-Enabling the `bevy_solari` Bevy feature recompiles the shared `bevy_dylib`, which
-**moves the plugin ABI hash** (see [the plugin ABI section](../extending/plugins.md)
-and `CLAUDE.md` §3). Every existing distribution plugin must be rebuilt against
-the new dylib, and the pinned ABI hash is re-pinned to the new value after the
-build.
+Enabling the `bevy_solari` Bevy feature recompiles the shared `bevy_dylib`. That
+moves the content-hash stamp every installed plugin records, so the editor
+rebuilds all of them on the next launch. Nothing breaks and nothing needs
+re-pinning; the first start after the change just takes longer.

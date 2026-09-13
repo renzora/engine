@@ -280,7 +280,7 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "The post-process stack as a whole. Off takes every effect below with it AND \
                bevy own built-in post-process pipeline (~420 KiB), which survived having each \
                effect individually unticked because nothing named it. The framework itself \
-               stays: C-ABI plugins register their render passes through it, so a \
+               stays: plugins register their render passes through it, so a \
                plugin-provided effect still works. Tonemapping is separate — it lives in \
                bevy_core_pipeline, not here.",
         bevy_features: &["bevy_post_process"],
@@ -355,16 +355,6 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "Light-scattering fog volumes.",
         bevy_features: &[],
         runtime_features: &["volumetric_fog"],
-        default_on: true,
-        group: Some("postfx"),
-    },
-    Capability {
-        id: "lens_distortion",
-        section: "postfx",
-        label: "Lens distortion",
-        help: "Barrel / chromatic lens warp.",
-        bevy_features: &[],
-        runtime_features: &["lens_distortion"],
         default_on: true,
         group: Some("postfx"),
     },
@@ -468,16 +458,6 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "Named AnimatedSprite clips and their scripting API.",
         bevy_features: &[],
         runtime_features: &["sprite_anim"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "water",
-        section: "simulation",
-        label: "Water",
-        help: "FFT ocean water: wave cascades, foam and buoyancy.",
-        bevy_features: &[],
-        runtime_features: &["water"],
         default_on: true,
         group: None,
     },
@@ -689,10 +669,10 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "Keeps Rust's unwinding panic strategy. Turning it OFF builds with `panic = \"abort\"`, \
                which measured ~24% smaller (60.9 MB → 46.7 MB on a cube-and-light project) because \
                the unwind tables, landing pads and panic message/location strings all go. THE COST: \
-               the engine guards every call into a C-ABI plugin with `catch_unwind`, including each \
-               script call — with abort, a panicking plugin or script takes the whole game down \
-               instead of being caught and logged. Crash reports still work (the panic hook runs \
-               before the abort). Leave it on unless you've tested your game's scripts.",
+               the engine guards each script call and each network request with `catch_unwind` — \
+               with abort, one panicking script or request takes the whole game down instead of \
+               being caught and logged. Crash reports still work (the panic hook runs before the \
+               abort). Leave it on unless you've tested your game's scripts.",
         bevy_features: &[],
         runtime_features: &[],
         default_on: true,
@@ -958,7 +938,6 @@ fn detection_types(id: &str) -> &'static [&'static str] {
 
         // ── 3D subsystems ────────────────────────────────────────────────────
         "terrain" => &["renzora_terrain::"],
-        "water" => &["renzora_water::"],
         "lumen" => &["renzora_lumen::", "LumenLighting"],
         "gaussian_splatting" => &[
             "bevy_gaussian_splatting::",
@@ -984,7 +963,6 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "motion_blur" => &["renzora_motion_blur::"],
         "distance_fog" => &["renzora_distance_fog::", "set_fog"],
         "volumetric_fog" => &["renzora_volumetric_fog::"],
-        "lens_distortion" => &["renzora_lens_distortion::"],
         "oit" => &["renzora_oit::"],
         "antialiasing" => &["renzora_antialiasing::"],
 
@@ -1306,7 +1284,7 @@ pub fn defaults_from_scan(
             .iter()
             .map(|c| {
                 let on = match c.id {
-                    "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                    "solari" => selected_plugins.iter().any(|p| p == "solari"),
                     _ => c.default_on,
                 };
                 (c.id.to_string(), on)
@@ -1349,7 +1327,7 @@ pub fn defaults_from_scan(
                 // Follows its plugin, not the content: Solari is hardware
                 // ray-tracing, and a scene that would use it looks like any
                 // other lit scene.
-                "solari" => selected_plugins.iter().any(|p| p == "renzora_solari"),
+                "solari" => selected_plugins.iter().any(|p| p == "solari"),
                 "render_3d" => three_d,
                 "render_2d" => two_d,
                 "postfx" => any_postfx,
@@ -1464,7 +1442,6 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
 /// like that. Leaving it here silently dropped a 2D game's particle effects.
 pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "terrain",
-    "water",
     // the sky set
     "atmosphere",
     "environment_map",
@@ -1479,7 +1456,6 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "motion_blur",
     "distance_fog",
     "volumetric_fog",
-    "lens_distortion",
     "oit",
     "antialiasing",
     // 3D-only extras that build on bevy_pbr
@@ -1697,7 +1673,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_2d"], "the scene is plainly 2D");
         assert!(!s["render_3d"]);
-        for id in ["terrain", "water", "skybox", "atmosphere", "lumen", "gltf"] {
+        for id in ["terrain", "skybox", "atmosphere", "lumen", "gltf"] {
             assert!(!s[id], "`{id}` has nothing in this project");
         }
     }
@@ -1720,7 +1696,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_3d"]);
         assert!(s["terrain"]);
-        assert!(!s["water"], "one 3D subsystem must not imply the rest");
+        assert!(!s["lumen"], "one 3D subsystem must not imply the rest");
     }
 
     /// A subsystem reached only from a script survives, because the scan reads

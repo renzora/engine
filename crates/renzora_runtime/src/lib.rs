@@ -10,8 +10,9 @@
 //!   lean exporter should be able to strip it), and add a line to `plugins.rs`
 //!   under the matching feature gate. Editor-only crates go in `renzora_editor`
 //!   instead.
-//! - Third-party: ship a C-ABI plugin (`renzora_plugin`), `dlopen`'d from
-//!   `plugins/` by the loader, no engine source edits required.
+//! - Third-party: ship a plugin as source in `plugins/<name>/`, compiled against
+//!   the staged SDK and loaded by `renzora_native_plugin`. No engine source
+//!   edits required.
 
 use bevy::prelude::*;
 
@@ -567,48 +568,122 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         ..default()
     });
 
-    // XR-capable editor boot: when an OpenXR runtime is reachable, the editor
-    // renders on the OpenXR-created device with the headset SESSION dormant —
-    // flat editing is unchanged (same windows, same RTT viewports; the XR
-    // Vulkan init requests full adapter features, so wireframe etc. survive),
-    // and the "VR Headset" play target can light the headset up in-process,
-    // on demand, with the live scene. Without a runtime this is a no-op and
-    // the editor boots exactly as before (the VR play target then reports
-    // itself unavailable). Games opt into VR with `--vr` instead
+    // XR-capable editor boot, **opt-in**: `--xr` (or `RENZORA_XR=1`) renders on
+    // the OpenXR-created device with the headset SESSION dormant, so flat
+    // editing is unchanged (same windows, same RTT viewports; the XR Vulkan init
+    // requests full adapter features, so wireframe etc. survive) and the "VR
+    // Headset" play target can light the headset up in-process, on demand, with
+    // the live scene. Games opt into VR with `--vr` instead
     // (`add_xr_rendering`), which auto-starts the session.
+    // The decision is made here but ANNOUNCED after `app.add_plugins(plugins)`,
+    // and that split is the whole point of carrying a string out of this block.
+    //
+    // `LogPlugin` is only *configured* into the group above; the tracing
+    // subscriber it installs does not exist until the group is built. Every
+    // `info!` / `warn!` before that line is therefore formatted, handed to a
+    // global subscriber that is still the no-op default, and dropped. That is
+    // what happened to this very message: the XR state was logged from inside
+    // the block, nothing was ever printed in either direction, and the silence
+    // read as "XR is secretly on" rather than "the line never reached a
+    // subscriber". Two separate sessions were spent chasing a frame-rate ghost
+    // on the strength of a missing line. Decide early, log late.
     #[cfg(feature = "xr")]
-    let (plugins, xr_capable) = {
-        // Booting XR-capable disables `PipelinedRenderingPlugin` (the headset
-        // compositor wants synchronous submission), which serializes the main-world
-        // sim and the render sub-app onto one thread — a real editor-FPS cost. That
-        // trade is only worth it when a headset is actually in play. A dev who has an
-        // OpenXR runtime installed AND set as the system default (e.g. Oculus/Meta,
-        // SteamVR) but isn't using VR would otherwise pay it on every flat editor
-        // launch. `RENZORA_NO_XR=1` (or `--no-xr`) opts out: skip the XR plugins
-        // entirely and keep pipelined rendering on.
-        let no_xr = std::env::var_os("RENZORA_NO_XR").is_some()
-            || std::env::args().any(|a| a == "--no-xr");
-        if is_editor && !no_xr && renzora_xr::runtime_available() {
-            info!(
-                "[runtime] OpenXR runtime detected — booting XR-capable editor \
-                 (pipelined rendering disabled; set RENZORA_NO_XR=1 for a flat, \
-                 pipelined boot if you're not using a headset)"
-            );
-            let base = plugins
-                .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
-            (renzora_xr::xr_plugins(base, false), true)
-        } else {
-            if is_editor && no_xr && renzora_xr::runtime_available() {
-                info!(
-                    "[runtime] RENZORA_NO_XR set — skipping XR-capable boot; \
-                     pipelined rendering stays enabled"
-                );
+    let (plugins, xr_capable, xr_boot_note) = {
+        // Asked for, never inferred. Booting XR-capable disables
+        // `PipelinedRenderingPlugin` (the headset compositor wants synchronous
+        // submission), which serializes the main-world sim and the render
+        // sub-app onto one thread — measured at ~11.6 ms of a 27 ms frame.
+        //
+        // This used to key on `renzora_xr::runtime_available()` and opt *out*
+        // with `RENZORA_NO_XR`. Merely having a runtime installed and set as the
+        // system default — Meta Horizon, SteamVR — is not evidence anyone wants
+        // to edit in a headset, so the common case paid a third of its frame
+        // budget for a session that stays dormant. Worse, it depended on machine
+        // state rather than on the command, so the same build ran at different
+        // speeds on two desks with no flag to explain why.
+        //
+        // A missing runtime is now an error rather than a silent flat boot: if
+        // you typed `--xr` you meant it, and saying nothing would look like the
+        // flag did nothing.
+        let want_xr = std::env::var_os("RENZORA_XR").is_some()
+            || std::env::args().any(|a| a == "--xr");
+        if is_editor && want_xr {
+            if renzora_xr::runtime_available() {
+                let base = plugins
+                    .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+                (
+                    renzora_xr::xr_plugins(base, false),
+                    true,
+                    "XR: ON. --xr was given and an OpenXR runtime is reachable, so \
+                     this is the XR-capable boot and pipelined rendering is DISABLED. \
+                     Drop the flag for a flat, pipelined boot."
+                        .to_string(),
+                )
+            } else {
+                (
+                    plugins,
+                    false,
+                    "XR: OFF. --xr was given but no OpenXR runtime is reachable, so \
+                     this is the flat editor with pipelined rendering ON. Check that \
+                     a runtime is installed and set as the system default."
+                        .to_string(),
+                )
             }
-            (plugins, false)
+        } else {
+            // Said out loud on EVERY editor boot, reachable runtime or not.
+            // This used to be gated on `runtime_available()`, so a machine with
+            // no runtime got no line at all and "is XR on?" could only be
+            // answered by the absence of something. An absent line is not an
+            // answer: it reads exactly like a line that was never written, which
+            // is the other half of the bug described above. Reachability is now
+            // reported as part of the message rather than as the condition for
+            // printing it.
+            let note = if is_editor {
+                format!(
+                    "XR: OFF. --xr was not given, so this is the flat editor with \
+                     pipelined rendering ON (an OpenXR runtime is {}). Pass --xr to \
+                     edit in a headset.",
+                    if renzora_xr::runtime_available() {
+                        "installed and reachable, and is being left alone"
+                    } else {
+                        "not reachable"
+                    }
+                )
+            } else {
+                String::new()
+            };
+            (plugins, false, note)
         }
     };
 
     app.add_plugins(plugins);
+
+    // From here the subscriber exists, so these lines actually appear.
+    #[cfg(feature = "xr")]
+    if !xr_boot_note.is_empty() {
+        info!("[runtime] {xr_boot_note}");
+    }
+
+    // The direct measurement, not the inference. Disabling this plugin is the
+    // ONLY thing the XR boot does that costs a flat editor frames: it serializes
+    // the main-world sim and the render sub-app onto one thread, measured at
+    // ~11.6 ms of a 27 ms frame. Reading it back out of the built `App` answers
+    // "is the slow path on?" from the app itself rather than from whichever
+    // branch we believe we took, so a stutter hunt can rule it in or out in one
+    // line instead of arguing about a flag.
+    if is_editor {
+        let pipelined = app
+            .is_plugin_added::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+        info!(
+            "[runtime] pipelined rendering: {} ({})",
+            if pipelined { "ON" } else { "OFF" },
+            if pipelined {
+                "the render sub-app runs on its own thread, which is the fast path"
+            } else {
+                "the render sub-app is serialized onto the main thread, which costs roughly a third of the frame budget"
+            }
+        );
+    }
 
     // Profiling build only: record per-render-pass GPU timings. Bevy's render
     // diagnostics recorder is what allocates the Tracy GPU context and emits the
@@ -1109,8 +1184,9 @@ fn apply_window_icon(
 /// at process exit, and none of which the engine needs, because nothing saves
 /// state from a `Drop` (saves are user actions).
 ///
-/// Belt to the `ManuallyDrop` braces in `renzora_plugin`'s loader: that fixes
-/// the plugin images specifically, this keeps the whole teardown off the table.
+/// Belt to the `ManuallyDrop` braces in `renzora_native_plugin`'s loader: that
+/// fixes the plugin images specifically, this keeps the whole teardown off the
+/// table.
 /// `Last`, so it runs after every other system in the final frame.
 ///
 /// Leaves through [`renzora::exit_now`], which skips libc's atexit chain and the
@@ -1151,8 +1227,8 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     info!("[runtime] foundation: InputPlugin");
     app.add_plugins(renzora_input::InputPlugin);
     // The scripting host: hooks, the command vocabulary and the queue that applies
-    // them. Which LANGUAGE a game can be scripted in is a separate question — the
-    // interpreters are C-ABI plugins, chosen in the Plugins tab — so a game that
+    // them. Which LANGUAGE a game can be scripted in is a separate question — a
+    // backend is an installed plugin, chosen in the Plugins tab — so a game that
     // ships no scripts at all strips this whole layer.
     #[cfg(feature = "scripting")]
     {
@@ -1318,6 +1394,6 @@ pub fn build_runtime_app() -> App {
 }
 
 // Editor plugins are NOT installed here. They live in the separate
-// `renzora_editor` bundle dll (loaded at startup beside the exe) and are
-// installed via its `plugin_install_scope` FFI entry with `host_scope = Editor`.
+// `renzora_editor` image (loaded at startup from beside the exe) and are
+// installed by its `renzora_editor_install` entry point.
 // `renzora_runtime` is purely the runtime foundation.

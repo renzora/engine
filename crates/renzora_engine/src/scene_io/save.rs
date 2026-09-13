@@ -166,11 +166,6 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
-    // Cheap and idempotent. Called here rather than relying on the Startup
-    // system alone, so a plugin that registered a type after boot — a reload, a
-    // late load — is still described by the time its bytes are written.
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
-
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -267,6 +262,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, &serialized)?;
+    // Claim the write, so the watcher event it is about to cause is recognised
+    // as our own echo rather than as somebody editing the scene behind us. See
+    // `renzora::core::project_files::SelfWrites` and `renzora_scene::hot_reload`.
+    world
+        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .record(path, serialized.as_bytes());
     console_info(
         "Scene",
         format!(
@@ -328,11 +329,6 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
     if entities.is_empty() {
         return Ok("(entities: {}, resources: {})".to_string());
     }
-
-    // Cheap and idempotent. Called here rather than relying on the Startup
-    // system alone, so a plugin that registered a type after boot — a reload, a
-    // late load — is still described by the time its bytes are written.
-    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
 
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()

@@ -12,7 +12,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, keyed_list};
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, keyed_list_tokened};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu};
 use renzora_editor_framework::{EditorCommands, SplashState};
@@ -24,6 +24,19 @@ pub struct ScenesPanel;
 impl Plugin for ScenesPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScenesState>();
+        app.init_resource::<ScenesRevision>();
+        app.add_message::<renzora::core::project_files::ProjectFileChanged>();
+        // panel-systems-ungated: a `MessageReader` in a gated system advances no
+        // cursor while it is gated off, and the messages it skipped are dropped
+        // after two frames. Gated, this would miss every scene created while the
+        // panel was closed, and the panel would open showing a stale list with
+        // nothing left to tell it otherwise. Reading the buffer costs nanoseconds
+        // and bumping a counter costs nothing; the `read_dir` it replaced is what
+        // was expensive, and that is still gated behind the token.
+        app.add_systems(
+            Update,
+            bump_scenes_revision.run_if(in_state(SplashState::Editor)),
+        );
         app.register_panel_content("scenes", true, build)
             .systems(
             Update,
@@ -120,10 +133,75 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    keyed_list(commands, list, scenes_snapshot);
+    // Tokened, not plain `keyed_list`. The untokened form runs its snapshot
+    // every frame, and this snapshot calls `list_scenes`, which is a `read_dir`
+    // of `<project>/scenes` plus a sort: a filesystem read on the main thread on
+    // every frame the Scenes panel was visible.
+    //
+    // The token is a `u64` read of two resources, and the snapshot now runs only
+    // when the project changes or the watcher reports a `.bsn` arriving or
+    // leaving. Editing a scene's contents deliberately does not move it: the
+    // list shows which scenes exist, and saving one does not change that.
+    keyed_list_tokened(commands, list, scenes_token, scenes_snapshot);
 
     commands.entity(root).add_children(&[new_btn, list]);
     root
+}
+
+/// Counts `.bsn` files arriving in or leaving `<project>/scenes`.
+///
+/// A counter, bumped from the project watcher, so the panel's list can be
+/// rebuilt on a change without anything having to read the directory to find out
+/// whether there was one. See [`bump_scenes_revision`].
+#[derive(Resource, Default)]
+pub(crate) struct ScenesRevision(pub u64);
+
+/// Move [`ScenesRevision`] when a scene file appears or disappears.
+pub(crate) fn bump_scenes_revision(
+    project: Option<Res<CurrentProject>>,
+    mut rev: ResMut<ScenesRevision>,
+    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+) {
+    use renzora::core::project_files::{AssetKind, FileChange};
+
+    if changes.is_empty() {
+        return;
+    }
+    let Some(dir) = project.as_ref().map(|p| p.resolve_path("scenes")) else {
+        changes.clear();
+        return;
+    };
+    // A rename counts at both ends, so check the source too: renaming a scene
+    // out of the folder must drop it from the list.
+    let moved = changes.read().any(|change| {
+        let from_here = match &change.change {
+            FileChange::Renamed { from } => from.parent() == Some(dir.as_path()),
+            _ => false,
+        };
+        (from_here || change.path.parent() == Some(dir.as_path()))
+            && (change.kind == AssetKind::Scene
+                || matches!(&change.change, FileChange::Renamed { from }
+                    if AssetKind::from_path(from) == AssetKind::Scene))
+            // Contents changing does not change which scenes exist.
+            && !matches!(change.change, FileChange::Modified)
+    });
+    if moved {
+        rev.0 = rev.0.wrapping_add(1);
+    }
+}
+
+/// Cheap answer to "could the scene list have changed?", run before the snapshot.
+fn scenes_token(world: &Rx) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let rev = world.get_resource::<ScenesRevision>().map_or(0, |r| r.0);
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    rev.hash(&mut h);
+    // The project too: opening a different one changes the directory without any
+    // file in it having moved.
+    scenes_dir(world).hash(&mut h);
+    // And the active tab, which decides which row draws as selected.
+    current_scene_abs(world).hash(&mut h);
+    h.finish()
 }
 
 fn scenes_snapshot(world: &Rx) -> KeyedSnapshot {

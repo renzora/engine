@@ -1,10 +1,9 @@
-//! Renzora Lumen — the GI distribution plugin.
+//! Renzora Lumen — global illumination.
 //!
-//! Ships as a `cdylib` dlopen plugin (in `plugins/`) like the postprocess
-//! effects. `LumenPlugin` installs the Lumen voxel/trace passes AND its
-//! screen-space backend `renzora_rt::RtPlugin` (Lumen's `ScreenSpace` tier) —
-//! both must live in one dll so `RtLighting` has a single definition across the
-//! main/render worlds. Under the `editor` feature it also registers the Lumen +
+//! `LumenPlugin` installs the Lumen voxel/trace passes AND its screen-space
+//! backend `renzora_rt::RtPlugin` (Lumen's `ScreenSpace` tier) — both must live
+//! in one crate so `RtLighting` has a single definition across the main/render
+//! worlds. Under the `editor` feature it also registers the Lumen +
 //! RT inspectors and the diagnostics snapshot the debugger's Lumen panel reads.
 //!
 //! The settings components (`LumenLighting`, `RtLighting`, …) live in the shared
@@ -12,8 +11,7 @@
 //! debugger all share one `TypeId` across the dlopen boundary.
 //!
 //! Phase 1 implements only `Off` and `ScreenSpace`. Higher tiers
-//! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as `Off`;
-//! Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
+//! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as `Off`.
 
 use bevy::core_pipeline::Core3d;
 use renzora::RenderPhase;
@@ -54,7 +52,7 @@ pub(crate) enum LumenSystems {
 /// render-composition framework anchors in `EarlyPostProcess` BEFORE bevy's TAA
 /// (so the GI composite lands in the temporal history — otherwise SSGI flicker /
 /// SDF grey from a scrambled `post_process_write` ping-pong). Lumen never imports
-/// bevy's TAA; the framework owns that anchor. See `docs/render-composition.md`.
+/// bevy's TAA; the framework owns that anchor.
 fn configure_lumen_sets(render_app: &mut SubApp) {
     use LumenSystems::*;
     // EndMainPass → Clear → Inject → GeometryInject → Resolve (chained).

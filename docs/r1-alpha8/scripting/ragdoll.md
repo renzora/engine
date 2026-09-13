@@ -1,10 +1,10 @@
 # Ragdoll Physics
 
-Skeletal ragdoll physics, provided by the `renzora_ragdoll` distribution plugin. It auto-builds an Avian rigid body per bone from your skinned mesh's skeleton, plus a joint between every parent/child bone, and lets scripts toggle the whole skeleton between animated and physically-simulated with a single call.
+Skeletal ragdoll physics, provided by the `renzora_ragdoll` plugin. It auto-builds an Avian rigid body per bone from your skinned mesh's skeleton, plus a joint between every parent/child bone, and lets scripts toggle the whole skeleton between animated and physically-simulated with a single call.
 
 ## Backend
 
-`renzora_ragdoll` ships as a `cdylib` distribution plugin (same model as cloth/lumen) and wraps the same **Avian 3D** backend `renzora_physics` uses. It is not built into the engine by default — drop the built artifact into `<exe>/plugins/` to enable it (see [Building Plugins](/docs/r1-alpha8/extending/plugins)).
+`renzora_ragdoll` is an in-workspace plugin compiled into the engine, and wraps the same **Avian 3D** backend `renzora_physics` uses. It is optional in the feature graph, so the lean exporter leaves it out of a game with no ragdolls in it.
 
 ## Setting up a ragdoll
 
@@ -70,4 +70,4 @@ end
 ## Related
 
 - [Physics](/docs/r1-alpha8/scripting/physics) — the underlying Avian backend, rigid bodies, colliders
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — how distribution plugins like this one are built and loaded
+- [Building Plugins](/docs/r1-alpha8/extending/plugins) — how in-workspace plugins like this one are declared and wired in

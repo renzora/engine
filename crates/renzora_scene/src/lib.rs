@@ -32,6 +32,9 @@ mod thumbnail;
 use thumbnail::PendingSceneThumbnail;
 
 mod diagnostics;
+mod conflict_prompt;
+mod hot_reload;
+mod missing_assets;
 mod scenes;
 use diagnostics::SceneDiagnostics;
 use scenes::ScenesPanel;
@@ -1541,6 +1544,32 @@ impl Plugin for ScenePlugin {
                     .run_if(bevy::time::common_conditions::on_timer(
                         std::time::Duration::from_millis(250),
                     )),
+            )
+            // Reload the open scene when its file changes outside the editor.
+            // Chained because the collector hands the exclusive system its work
+            // through a resource, and an intervening frame would mean a save
+            // landing a frame later than it needs to.
+            .init_resource::<hot_reload::PendingSceneReloads>()
+            .init_resource::<hot_reload::SceneConflicts>()
+            .add_systems(
+                Update,
+                (
+                    hot_reload::collect_scene_changes,
+                    hot_reload::apply_scene_reloads,
+                    // After the reload, so a conflict raised this frame gets its
+                    // prompt on the same frame rather than the next.
+                    conflict_prompt::conflict_prompt_buttons,
+                    conflict_prompt::spawn_conflict_prompt,
+                )
+                    .chain()
+                    .run_if(in_state(SplashState::Editor)),
+            )
+            // Warn when the scene points at a file that has just been deleted.
+            // Not chained with the reload above: it reads the same messages but
+            // acts on the removals that one deliberately ignores.
+            .add_systems(
+                Update,
+                missing_assets::report_missing_assets.run_if(in_state(SplashState::Editor)),
             )
             .add_plugins(SceneDiagnostics)
             .add_plugins(ScenesPanel)

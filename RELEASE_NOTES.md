@@ -1,6 +1,51 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(inspector): a component the graphics quality tier has switched off now shows an amber warning in its header saying so, instead of looking broken
+- fix(marketplace): installing a free asset without signing in now counts towards the creator's downloads, which it never did
+- fix(marketplace): installing a multi-file asset counts one download instead of two
+- feat(marketplace): opening an asset in the editor's store now counts a view, as opening its page on the website already did
+- fix(particles): removing a particle effect, or pointing it at a different file, now works instead of leaving the old effect drawing or frozen
+- fix(particles): clearing the effect file leaves the emitter empty rather than swapping in a default effect that keeps emitting
+- fix(particles): editing a `.particle`'s spawn rate, burst count or timing now takes effect, which only its colours did before
+- fix(particles): an effect's light is removed when its effect no longer has one
+- fix(scene): a particle emitter no longer saves its live spawner timing into the scene file
+- feat(scene): choose what happens when a scene is edited outside the editor while you have unsaved changes: ask, reload, or keep yours (Settings → Editor → Scenes)
+- feat(scene): deleting a file the open scene still uses now warns and names the entities using it, instead of the mesh quietly vanishing
+- feat(particles): a `.particle` edited outside the editor updates every entity using it
+- feat(ui): a `.html` template edited outside the editor rebuilds the canvases using it
+- fix(assets): a file saved by an editor that writes to a temporary name and renames it now hot-reloads, which covers most editors and previously reloaded nothing
+- feat(engine): the editor watches the whole project, so a file edited outside it is picked up as soon as it is saved
+- fix(engine): a file being saved is no longer reported while it is still half-written under a temporary name
+- fix(assets): a texture, model or sound edited outside the editor reloads on save, which it never did before
+- perf(scripting): a Rust script rebuilds when you save it rather than up to half a second later, and an idle project costs nothing to watch
+- fix(scripting): opening a project no longer compiles every Rust script twice
+- perf(editor): the Assets panel, the script picker and the material picker no longer re-read the project on a timer to notice files changed outside the editor
+- perf(editor): the script and material pickers update from the file that changed instead of re-reading the project, so their cost no longer grows with project size
+- perf(editor): the Scenes panel no longer reads the scenes folder off disk on every frame it is open
+- perf(editor): the editor no longer stats the active theme's shader files every frame to notice a theme edit
+- perf(editor): project fonts and language packs are picked up when they change rather than by re-reading their folders on a timer
+- perf(editor): a folder tile in the Assets panel walks its contents once instead of every five seconds for as long as it is on screen
+- feat(scene): a scene edited outside the editor reloads in the viewport, and says so instead of reloading when you have unsaved changes
+- fix(scripting): the editor no longer stutters twice a second on a project with a lot of files, which the Rust script watcher was walking on the main thread
+- fix(editor): the VR on/off line at startup is printed again, having been written before the logger existed and silently dropped
+- feat(editor): every editor launch logs whether VR is on or off, and whether pipelined rendering is on
+- feat(editor): the console names each viewport camera as it switches on or off, and says why
+- fix(editor): the editor no longer loses a third of its frame rate just because an OpenXR runtime is installed; VR editing is opt-in with `--xr`
+- feat(plugin): a plugin can use the engine's physics types, so physics plugins no longer carry their own copy
+- feat(plugin): a plugin can declare script functions, which only engine crates could do before
+- refactor(plugin): Solari, lens distortion, wind and water ship as installed plugins rather than in the binary
+- refactor(plugin): there is one kind of installable plugin, and it is an ordinary Bevy plugin shipped as source
+- refactor(scripting): a language backend is a plain Rust trait a plugin registers, rather than a C-ABI boundary
+- feat(settings): Reset to Defaults no longer offers to clear plugin settings, which plugins now keep as ordinary resources
+- refactor(net): the HTTP client is a plain Rust trait rather than a C-ABI boundary
+- refactor(audio): the mixer is a plain Rust trait rather than a C-ABI boundary
+- fix(net): a backend that panics now fails the requests already handed to it, instead of leaving them parked until their own timeouts
+- perf(plugin): plugins build several at a time instead of one after another
+- perf(plugin): the plugins that take longest to build start first, so one no longer trails after the rest have finished
+- fix(plugin): a plugin's cargo build tree is deleted once it has been built, which was most of what an install kept on disk
+- fix(plugin): the setup progress bar follows plugins finishing rather than starting, so it no longer jumps ahead and then stalls
+- fix(plugin): a disabled plugin that has never been built now appears in Settings, so it can be turned back on
 - fix(ci): the Windows build no longer fails its own MSVC runtime audit when there is nothing to report
 - feat(ci): a manual build can target a single arch, such as `windows-x64`, instead of a whole operating system
 - fix(windows): the engine, its plugins and exported games link the Visual C++ runtime in, so they start on a machine that has never installed the redistributable
