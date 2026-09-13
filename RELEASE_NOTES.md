@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(sdk): a plugin or Rust script that fails to build now writes the compiler's diagnostic to a `build.log` in its own build directory, so it can be read after the window that showed it has closed
 - feat(inspector): a component the graphics quality tier has switched off now shows an amber warning in its header saying so, instead of looking broken
 - fix(marketplace): installing a free asset without signing in now counts towards the creator's downloads, which it never did
 - fix(marketplace): installing a multi-file asset counts one download instead of two

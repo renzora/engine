@@ -3,8 +3,9 @@
 //! The unit tests in `mod log` cover the format and the rotation. This covers
 //! the wiring, which is the part that actually breaks: that `compile_with`
 //! reaches the log at all, for a failure that never gets as far as running the
-//! compiler. Its own test binary because it sets `RENZORA_BUILD_LOG`, and
-//! environment variables are process-wide.
+//! compiler, and that it lands in the plugin's own build directory without
+//! being told where to write. Its own test binary because it sets
+//! `RENZORA_BUILD_LOG`, and environment variables are process-wide.
 
 use std::path::PathBuf;
 
@@ -34,12 +35,15 @@ fn a_failed_build_is_written_to_the_log() {
     std::fs::create_dir_all(plugin.join("src")).unwrap();
     std::fs::write(plugin.join("src").join("lib.rs"), "// never compiled\n").unwrap();
 
-    let log: PathBuf = tmp.join("build.log");
-    std::env::set_var("RENZORA_BUILD_LOG", &log);
-
     let sdk = Sdk::load(&sdk_root).expect("a manifest is all `load` needs");
     let out = plugin.join("build").join("log_me.dll");
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+
+    // Nothing tells it where to write: the default is the point. It goes beside
+    // the library the build was trying to produce, in the directory that build
+    // already owns, not into a shared file in the home directory where one
+    // plugin's diagnostics arrive interleaved with every other plugin's.
+    let log: PathBuf = plugin.join("build").join("build.log");
     let err = sdk.compile(&plugin, &out).expect_err("no such toolchain exists");
 
     let text = std::fs::read_to_string(&log).expect("the failure was logged");
@@ -60,10 +64,20 @@ fn a_failed_build_is_written_to_the_log() {
     let again = std::fs::read_to_string(&log).unwrap();
     assert!(again.len() > text.len(), "the second failure was appended");
 
+    // `RENZORA_BUILD_LOG` collects every plugin's failures into one named file
+    // instead, for anyone who would rather have that than one log per plugin.
+    let shared = tmp.join("everything.log");
+    std::env::set_var("RENZORA_BUILD_LOG", &shared);
+    sdk.compile(&plugin, &out).expect_err("still no such toolchain");
+    assert!(
+        std::fs::read_to_string(&shared).unwrap().contains("log_me"),
+        "the override takes the entry the plugin directory would have had"
+    );
+
     // And it can be switched off, which is what makes it safe to run builds in
-    // a test or a CI lane without writing to somebody's home directory.
+    // a test or a CI lane without leaving logs through the tree.
     std::env::set_var("RENZORA_BUILD_LOG", "off");
-    assert!(renzora_plugin_build::log::path().is_none());
+    assert!(renzora_plugin_build::log::path_for(&out).is_none());
 
     std::env::remove_var("RENZORA_BUILD_LOG");
     let _ = std::fs::remove_dir_all(&tmp);

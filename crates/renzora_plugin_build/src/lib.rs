@@ -46,11 +46,12 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-/// Where a failed build is written down.
+/// Where a failed build is written down: a `build.log` beside the library the
+/// build was trying to produce.
 ///
-/// Desktop-only for the same reason as [`unpack`]: it resolves a home directory
-/// and appends to a file, neither of which a browser has. A wasm build never
-/// reaches a compile it could log anyway — there is no `rustc` there to fail.
+/// Desktop-only for the same reason as [`unpack`]: it appends to a file on disk,
+/// which a browser has no way to do. A wasm build never reaches a compile it
+/// could log anyway: there is no `rustc` there to fail.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod log;
 pub mod toolchain;

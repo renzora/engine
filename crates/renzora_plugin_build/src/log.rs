@@ -8,9 +8,20 @@
 //! keeping — it is rustc's own, written for the author of the code that failed,
 //! and it is exactly what anyone answering "why won't my plugin build" needs.
 //!
-//! So every failure is also appended to `~/.renzora/logs/build.log`, next to the
-//! crash reports and for the same reason: somewhere fixed that a user can be
-//! told to open, and that survives the editor closing.
+//! So every failure is also appended to a `build.log` **beside the artifact the
+//! build was trying to write**: `plugins/<name>/build/build.log` for a plugin,
+//! `<project>/.renzora/scripts/<name>/build.log` for a Rust script. It survives
+//! the editor closing, which is the point, and it sits with the thing that
+//! failed rather than in one shared file somewhere else on the disk.
+//!
+//! It used to be a single `~/.renzora/logs/build.log`, on the reasoning that an
+//! install can be read-only and a log that only appears on writable machines is
+//! worse than none. That reasoning does not survive contact with where these
+//! builds actually write: the compiler's output goes into that same directory,
+//! so a plugin whose directory cannot be written to never reached a failure to
+//! log in the first place. What the shared file cost was the association: five
+//! plugins and a dozen scripts interleaved by timestamp, and the author of one
+//! of them reading all of it to find their own.
 //!
 //! **Best effort, everywhere.** A build that failed must not then fail
 //! *differently* because the log could not be written — every error here is
@@ -28,25 +39,27 @@ use crate::{crate_name, Error, Manifest};
 /// size rather than by number of entries is what bounds the worst case.
 const MAX_BYTES: u64 = 1 << 20;
 
-/// Overrides the path, or switches the log off with `0`, `off` or `false`.
+/// Collects every log into ONE named file, or switches logging off with `0`,
+/// `off` or `false`.
 ///
-/// For tests (which should not append to the home directory of whoever runs
-/// them) and for anyone who wants the file somewhere else.
+/// For tests and CI lanes, which should not scatter logs through a checkout, and
+/// for anyone who would rather have one file than one per plugin.
 const ENV: &str = "RENZORA_BUILD_LOG";
 
-/// Where failed builds are recorded, or `None` if nowhere.
+/// Where a failure building `out` is recorded, or `None` if nowhere.
+///
+/// Beside `out` itself, which for both callers is the directory that build
+/// already owns: `plugins/<name>/build/` holds the library, the stamp and the
+/// record of a previous failure, and a script's build directory holds the same.
+/// A log that names one plugin belongs with that plugin.
 ///
 /// Public because the useful thing to do with a build failure in the UI is offer
 /// to open this, and the caller needs the path to do that.
-pub fn path() -> Option<PathBuf> {
+pub fn path_for(out: &Path) -> Option<PathBuf> {
     match std::env::var_os(ENV) {
         Some(v) if is_off(&v) => None,
         Some(v) => Some(PathBuf::from(v)),
-        // `~/.renzora/logs/`, not the SDK or the plugin directory: an install
-        // can be read-only (a macOS bundle is signed, a Linux AppImage is a
-        // squashfs), and a log that only appears on the machines where the
-        // install happens to be writable is worse than no log at all.
-        None => Some(dirs::home_dir()?.join(".renzora").join("logs").join("build.log")),
+        None => Some(out.parent().unwrap_or(Path::new(".")).join("build.log")),
     }
 }
 
@@ -56,7 +69,7 @@ fn is_off(v: &std::ffi::OsStr) -> bool {
 
 /// Append one failure.
 pub(crate) fn record(manifest: &Manifest, dir: &Path, out: &Path, err: &Error) {
-    let Some(path) = path() else { return };
+    let Some(path) = path_for(out) else { return };
     let _ = append(&path, &entry(manifest, dir, out, err));
 }
 
@@ -203,6 +216,20 @@ mod tests {
         assert_eq!(kind(&Error::Deps(String::new())), "dependencies");
         assert_eq!(kind(&Error::NoRustc(String::new())), "rustc would not run");
         assert_eq!(kind(&Error::Missing(PathBuf::new())), "no SDK");
+    }
+
+    /// The default lands beside the artifact, which is what makes it the
+    /// failing plugin's log rather than everybody's.
+    #[test]
+    fn the_log_sits_beside_the_thing_being_built() {
+        // Only meaningful with no override in the ambient environment, and this
+        // test must not set one: the variable is process-wide and the tests
+        // below share the process.
+        if std::env::var_os(ENV).is_some() {
+            return;
+        }
+        let out = Path::new("/plugins/my-plugin/build/my_plugin.dll");
+        assert_eq!(path_for(out).unwrap(), Path::new("/plugins/my-plugin/build/build.log"));
     }
 
     #[test]
