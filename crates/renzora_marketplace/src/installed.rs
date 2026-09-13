@@ -144,8 +144,24 @@ pub enum UpdateState {
 /// sorts after `r1-alpha7` — which a plain string compare gets wrong. An
 /// unparseable tag returns `None`, and callers treat that as "cannot tell"
 /// rather than as a failure to satisfy.
+///
+/// A nightly orders as the release it is a nightly *of*. `version::nightly_prefix`
+/// builds these as `<release>-nightly-<ddmonyy>`, and the date on the end is the
+/// problem: the last run of digits is the year, which made the whole tag parse as
+/// `("r1-alpha8-nightly-16aug", 26)` — a prefix matching no release, so every
+/// comparison fell through to "cannot tell" and a nightly satisfied *every*
+/// floor, including ones it could not actually meet. Cutting the suffix first
+/// means an alpha8 nightly clears an alpha8 floor because it genuinely is alpha8,
+/// and an alpha6 nightly is correctly told to update.
 pub fn release_order(tag: &str) -> Option<(String, u32)> {
     let tag = tag.trim();
+    // Case-insensitive, and safe to index with: `to_ascii_lowercase` maps byte
+    // for byte, so the offset it finds is the same offset in the original and
+    // always lands on an ASCII boundary.
+    let tag = match tag.to_ascii_lowercase().find("-nightly-") {
+        Some(at) => &tag[..at],
+        None => tag,
+    };
     if tag.is_empty() {
         return None;
     }
@@ -236,6 +252,41 @@ mod tests {
     fn an_uncomparable_floor_does_not_block() {
         assert!(engine_satisfies("r1-alpha7", "whatever-2"));
         assert!(engine_satisfies("r1-alpha7", "2.0"));
+    }
+
+    /// A nightly is a build of a release, and orders as that release. Before
+    /// the suffix was stripped, the trailing date parsed as the version number
+    /// and every one of these was "cannot tell" — so a nightly cleared every
+    /// floor ever set, including the last case here.
+    #[test]
+    fn a_nightly_orders_as_the_release_it_is() {
+        assert_eq!(
+            release_order("r1-alpha8-nightly-16aug26"),
+            Some(("r1-alpha".into(), 8)),
+            "the trailing date must not be read as the release number"
+        );
+
+        // A dev on a nightly gets what that release gets.
+        assert!(engine_satisfies("r1-alpha8-nightly-16aug26", "r1-alpha8"));
+        assert!(engine_satisfies("r1-alpha8-nightly-16aug26", "r1-alpha7"));
+
+        // And is held to the same floor as that release, rather than sailing
+        // past it and failing later at build or load time.
+        assert!(!engine_satisfies("r1-alpha6-nightly-01jan26", "r1-alpha8"));
+    }
+
+    /// A floor someone wrote as a nightly still names a release.
+    #[test]
+    fn a_nightly_floor_reads_as_its_release() {
+        assert!(engine_satisfies("r1-alpha8", "r1-alpha8-nightly-16aug26"));
+        assert!(!engine_satisfies("r1-alpha7", "r1-alpha8-nightly-16aug26"));
+    }
+
+    /// Nothing but a suffix is still nothing to compare.
+    #[test]
+    fn a_bare_nightly_suffix_is_uncomparable() {
+        assert_eq!(release_order("-nightly-16aug26"), None);
+        assert!(engine_satisfies("r1-alpha7", "-nightly-16aug26"));
     }
 
     #[test]
