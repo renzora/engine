@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- build(ci): every nightly now checks that the published plugins still compile against the engine it just built, on all six desktop platforms
 - build: the macOS and Linux build artifacts no longer carry the application twice, halving them from 1.16 GB to about 660 MB
 - feat(sdk): a plugin or Rust script that fails to build now writes the compiler's diagnostic to a `build.log` in its own build directory, so it can be read after the window that showed it has closed
 - feat(inspector): a component the graphics quality tier has switched off now shows an amber warning in its header saying so, instead of looking broken

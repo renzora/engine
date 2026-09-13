@@ -82,6 +82,18 @@ build-editor = "build --profile dist --workspace"
 build-all = "build --profile dist --workspace"
 build-plugins = "build --profile dist --workspace"
 
+# Do a directory of native plugins still compile against the staged SDK?
+#
+# The same check the desktop lanes run on every nightly, against the same SDK a
+# user's machine would build them with. Point it at a checkout of
+# github.com/renzora/plugins:
+#
+#   cargo check-plugins --sdk dist/windows-x64/sdk --plugins ../plugins
+#
+# `--example`, so it is not built by any of the aliases above: this costs nothing
+# on a normal build and needs no workspace member of its own.
+check-plugins = "run -q --profile dist -p renzora_plugin_build --example check_plugins --"
+
 # WASM (game only — the editor bundle is a desktop dlopen target; no wasm editor)
 build-web = "build --profile dist --bin renzora --no-default-features --features wasm --target wasm32-unknown-unknown"
 

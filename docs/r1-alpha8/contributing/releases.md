@@ -109,6 +109,51 @@ which stopped being true once the marketplace installed into it and users could
 drop a plugin in by hand, so the sweep could only delete things it had not
 created.
 
+### Every nightly checks that the published plugins still build
+
+A native plugin ships as **source** and is compiled on the machine that installs
+it, so an engine change that breaks one is invisible here: it surfaces when a
+user launches an editor and finds the plugin skipped. Every desktop lane
+therefore clones [renzora/plugins](https://github.com/renzora/plugins) and
+compiles all of it against the SDK that lane just staged, using
+`renzora_plugin_build`'s own driver, which is the same code path a user's machine
+takes.
+
+Run the same check locally against any staged SDK:
+
+```sh
+cargo check-plugins --sdk dist/windows-x64/sdk --plugins ../plugins
+```
+
+Three things about where it sits are load-bearing:
+
+- **Before `Pack the plugin SDK`.** That step compresses `dist/<platform>/sdk/`
+  and deletes the extracted tree, which is what the check reads.
+- **On every platform's own runner.** An SDK cannot be cross-built, because its
+  proc-macro dylibs are artifacts of whatever machine ran the compiler. The
+  desktop matrix is already one runner per platform, so all six are checked for
+  free, and a plugin that builds on Linux but not against the MSVC SDK is caught.
+- **Report-only**, written to the job summary. By the time it runs the lane has
+  spent hours building, and `publish` ships whichever slices arrived, so a hard
+  failure would drop a whole platform out of a release over one broken
+  third-party plugin. Enforcement belongs in the plugins repo instead, where a
+  red run costs one rerun rather than six runner-hours.
+
+It checks that each plugin **compiles and exports `renzora_native_plugin_ctor`**,
+searching the built image for the symbol exactly as the loader does. It does not
+load them, so a plugin that compiles and then panics in `Plugin::build` still
+passes. Adding that is worth doing and has to run one plugin per subprocess,
+since the loader never drops a `Library`.
+
+The tool is an `examples/` target rather than a crate or an xtask subcommand: an
+example is not built by `cargo build --workspace`, so it costs nothing on every
+other build. xtask was the obvious home and is the wrong one, because it is
+deliberately its own workspace root so that it keeps building when a dangling
+generated dependency stops the engine workspace from loading. A path dependency
+on an engine crate would mean resolving `lints.workspace = true` against the very
+workspace that is broken, and `cargo renzora sync` is the tool that repairs that
+state.
+
 ## Binary size
 
 The engine is large — `.text` alone was 134 MB of the runtime's 187 MB — and essentially all of it is code, not data. Symbols are already stripped (`strip = "symbols"`; there are no `.debug*` sections and no PDB path embedded in a release binary), so there is nothing to sweep out. What there is, is monomorphized generics: a release `.rdata` carries ~12,000 distinct `bevy_ecs::` type-name strings, one per instantiated system-param combination.

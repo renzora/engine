@@ -634,6 +634,49 @@ jobs:
           fi
           echo "every staged plugin resolves its dependencies through @rpath"
 
+      # ── Do the published plugins still build against this engine? ─────────
+      # A native plugin ships as SOURCE and is compiled on the machine that
+      # installs it, so an engine change that breaks one is invisible until a
+      # user launches an editor and finds the plugin skipped. Nothing else in CI
+      # asks that question.
+      #
+      # In this workflow rather than `test.yml` because it needs a staged SDK,
+      # and this is the only workflow that produces one. Before `Pack the plugin
+      # SDK` because that step compresses `dist/<platform>/sdk/` and deletes the
+      # extracted tree this reads.
+      #
+      # On each platform's own runner, which falls out of a constraint rather
+      # than being a choice: an SDK cannot be cross-built, since its proc-macro
+      # dylibs are artifacts of whatever machine ran the compiler. The desktop
+      # matrix already IS one runner per platform, so checking all six costs
+      # nothing extra and catches a plugin that builds on Linux and not against
+      # the MSVC SDK.
+      #
+      # ── Report-only, deliberately ─────────────────────────────────────────
+      # `continue-on-error`, and the tool exits 0 on a plugin failure by itself.
+      # By the time this runs the lane has spent hours building, and `publish`
+      # takes whichever slices arrived: a hard failure here would drop a whole
+      # platform out of the release over one broken third-party plugin, which is
+      # worse than a red line in the job summary. Enforcement belongs in the
+      # plugins repo, where a red run costs one rerun instead of six
+      # runner-hours.
+      - name: Check the published plugins still build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          out="dist/${{ matrix.dist_dir }}"
+          if [ ! -f "$out/sdk/manifest.json" ]; then
+            echo "::warning::no staged SDK at $out/sdk, skipping the plugin check"
+            exit 0
+          fi
+          git clone --depth 1 https://github.com/renzora/plugins "$RUNNER_TEMP/plugins"
+          cargo run -q --profile "${RENZORA_PROFILE:-dist}" \
+            -p renzora_plugin_build --example check_plugins -- \
+            --sdk "$out/sdk" \
+            --plugins "$RUNNER_TEMP/plugins" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
       # SDK's proc macros are artifacts of the machine that compiled them and a

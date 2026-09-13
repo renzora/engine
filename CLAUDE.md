@@ -634,7 +634,8 @@ Several may be registered, and two languages coexist in one project. See
 | `crates/renzora_plugin_build/` | The compiler driver — reads `sdk/manifest.json` and invokes `rustc` directly. Shared by the loader and by xtask |
 | `crates/renzora_dylib/`, `crates/renzora_ember_dylib/` | The shared **contract** and **UI** images. Hold no code of their own; they exist so the process-global statics in `renzora` / `renzora_ember` are singular |
 | `crates/renzora_rust_script/` | `.rs` scripts — a native plugin per script, dispatched per entity with `&mut World` |
-| `xtask/src/sdk.rs`, `xtask/src/native_plugin.rs` | Stage the plugin SDK; build the repo's own native plugins the way a user's machine builds an installed one |
+| `xtask/src/sdk.rs` | Stages the plugin SDK. (`xtask/src/native_plugin.rs` is gone: the first-party plugins left for the marketplace and everything that existed only to build them went with them) |
+| `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
