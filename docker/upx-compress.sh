@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Compress Renzora binaries with UPX --brute.
 #
-# NOTE: release builds are ALREADY packed. `compress_binaries` in build-all.sh
-# runs `--best --lzma` inside each platform lane (it has to happen there, so
-# macOS is packed before it is signed). Running this over a release tree will
-# therefore hit `AlreadyPackedException` on the executables and skip them, which
-# is harmless — this script is for packing a tree built some other way, or for
-# squeezing the last few percent out with `--brute` where the CPU time is free.
+# NOTE: release builds are NOT packed, and this is not part of making one. The
+# release lanes used to pack every executable; that was removed after Defender
+# scored a packed `renzora.exe` as a trojan, and because packing invalidates a
+# code signature (see docker/build-all.sh). So this runs on request only, over
+# a tree you already have, when you have decided the trade is worth it for your
+# own distribution. It will refuse an already-packed file with
+# `AlreadyPackedException`, which is harmless.
 #
 # Usage:
 #   ./scripts/upx-compress.sh                       # compress every platform under dist/

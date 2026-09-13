@@ -115,5 +115,5 @@ RUN XGNU=$(cat /etc/renzora-linux-cross-gnu); XRUST=$(cat /etc/renzora-linux-cro
 linker = "/usr/local/bin/renzora-cross-linker"
 TOML
 
-# (UPX moved to docker/base/Dockerfile — every platform lane packs its own
-# binaries now, not just this one. See `compress_binaries` in build-all.sh.)
+# (UPX moved to docker/base/Dockerfile. Release builds no longer pack anything —
+# see docker/build-all.sh — but `renzora upx` still routes here on request.)

@@ -351,62 +351,23 @@ build_updater() {
 # import under a hashed filename — is real and is simply the price of the shared
 # images.
 
-# ── Compress the staged executables with UPX ─────────────────────────────────
-# Usage: compress_binaries <platform-name> <exe-suffix>
+# ── Why nothing here is compressed ───────────────────────────────────────────
+# This lane used to run the staged executables through UPX, which packed the
+# 187 MB `dist` runtime down to 32 MB — an 83% saving, and worth having. It was
+# removed, and should not come back:
 #
-# UPX packs an executable and prepends a decompressor stub, so the shipped file
-# unpacks itself into memory at launch. Measured on the `dist` runtime:
-# **187.3 MB -> 31.7 MB, an 83% saving**, and the packed binary boots through the
-# full plugin and scripting startup — nothing about Bevy's startup or the
-# dlopen'd plugins minds a decompressor stub.
+# * Windows Defender scored the packed `renzora.exe` from r1-alpha7 as
+#   `Trojan:Win32/Wacatac.C!ml`. That is a machine-learning verdict, and a
+#   self-extracting compressor stub that rewrites its own image at launch is
+#   exactly the shape those classifiers are trained on. Users had to talk their
+#   antivirus out of the engine before they could run it.
+# * Packing rewrites the file, which invalidates any code signature it carries.
+#   That is why packing had to happen before `fixup_macos` signed. Once Windows
+#   binaries are signed as well, there is no ordering that makes packing work
+#   for both — the constraint outlives the workaround.
 #
-# `--best --lzma`, not `--brute`: MEASURED on the 187 MB runtime, the two produce
-# a **byte-for-byte identical** file (33,363,456 bytes) — `--brute` took 1529 s,
-# `--best --lzma` took ~100 s. `--lzma` already pins UPX's strongest compressor,
-# and for an amd64 PE the filter space `--brute` additionally explores has
-# nothing better to find. (Measured on PE only; ELF/Mach-O were not compared.)
+# The release workflow's own packing pass is gone for the same reason.
 #
-# ── What is deliberately NOT packed ──────────────────────────────────────────
-# * `renzora-update` — the update sidecar. It is the thing that repairs a broken
-#   install; making it the one binary with an extra layer of machinery between
-#   the OS loader and `main` is precisely the wrong trade. It is 320 KB anyway.
-# * `plugins/*` — 68 libraries totalling ~15 MB against 450 MB of executables, so
-#   the win is noise, and packing a `dlopen`ed library is the least-tested UPX
-#   path of the three.
-#
-# ── Ordering ─────────────────────────────────────────────────────────────────
-# This MUST run before `fixup_macos`. Packing rewrites the file, which
-# invalidates any code signature it already carries, and arm64 macOS refuses to
-# launch a binary with an invalid signature — so `rcodesign` has to sign the
-# PACKED file, not the other way round.
-#
-# Best-effort per file: UPX refusing a particular binary must not sink an engine
-# build that is otherwise complete. A skipped file just ships uncompressed.
-compress_binaries() {
-    local PLATFORM="$1" SUF="$2"
-    local OUT="$OUTPUT_DIR/$PLATFORM"
-    if ! command -v upx >/dev/null 2>&1; then
-        echo "WARN: upx not found in this image — $PLATFORM ships uncompressed"
-        return 0
-    fi
-
-    local f before after
-    for f in "$OUT/renzora$SUF" "$OUT/renzora-editor$SUF" "$OUT/renzora-runtime$SUF"; do
-        [ -f "$f" ] || continue
-        before=$(stat -c %s "$f" 2>/dev/null || echo 0)
-        if upx --best --lzma -q "$f" >/dev/null 2>&1; then
-            after=$(stat -c %s "$f" 2>/dev/null || echo 0)
-            if [ "$before" -gt 0 ] && [ "$after" -gt 0 ]; then
-                awk -v b="$before" -v a="$after" -v n="$(basename "$f")" \
-                    'BEGIN { printf "  packed %-22s %.1f MB -> %.1f MB (%.0f%% saved)\n", n, b/1048576, a/1048576, (1-a/b)*100 }'
-            fi
-        else
-            echo "  WARN: upx declined $(basename "$f") — shipping it uncompressed"
-        fi
-    done
-    return 0
-}
-
 # ── Helper: make a macOS dist folder relocatable ─────────────────────────────
 # rustc records each dylib's absolute build path (/app/src/target/...) as its
 # install name, so the exe and plugins would ask dyld for those container
@@ -603,32 +564,25 @@ build_one() {
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            build_updater native "$LINUX_PLATFORM" ""
-            compress_binaries "$LINUX_PLATFORM" "" ;;
+            build_updater native "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
             # Cross arch — explicit --target triple (like macOS/Windows), not
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" ""
-            compress_binaries "$LINUX_CROSS_PLATFORM" "" ;;
+            build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            build_updater x86_64-pc-windows-msvc "windows-x64" ".exe"
-            compress_binaries "windows-x64" ".exe" ;;
+            build_updater x86_64-pc-windows-msvc "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
             build_updater x86_64-apple-darwin "macos-x64" ""
-            # Pack BEFORE signing — packing invalidates a signature.
-            compress_binaries "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
             build_updater aarch64-apple-darwin "macos-arm64" ""
-            # Pack BEFORE signing — packing invalidates a signature.
-            compress_binaries "macos-arm64" ""
             fixup_macos "$OUTPUT_DIR/macos-arm64" ;;
         *)
             echo "WARN: unknown desktop platform '$PLATFORM'"; return 1 ;;

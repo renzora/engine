@@ -176,12 +176,12 @@ TOML
 # The official static binary (not the apt `upx-ucl`, absent from this image's
 # sources). UPX packs PE/ELF/Mach-O regardless of host OS.
 #
-# It lives in the BASE, not in the linux image, because every platform lane now
-# packs its own output (`compress_binaries` in docker/build-all.sh) — the
-# Windows and macOS lanes run in their own containers and cannot reach a tool
-# installed only in the Linux one. `renzora upx`, which the CLI still routes to
-# the linux container to pack an already-built tree, keeps working by
-# inheritance.
+# Release builds do NOT use it — packing was removed from every lane after
+# Defender scored a packed `renzora.exe` as a trojan (see docker/build-all.sh).
+# It stays installed because `renzora upx` is still a command a user can run
+# against an already-built tree, on their own binaries and their own judgement;
+# it lives in the BASE rather than the linux image so any lane's container has
+# it, which is where it already was.
 ENV UPX_VERSION=5.1.1
 RUN UPX_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo arm64_linux || echo amd64_linux) \
     && curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${UPX_ARCH}.tar.xz" \

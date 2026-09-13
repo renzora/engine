@@ -93,18 +93,18 @@ created.
 
 The engine is large — `.text` alone was 134 MB of the runtime's 187 MB — and essentially all of it is code, not data. Symbols are already stripped (`strip = "symbols"`; there are no `.debug*` sections and no PDB path embedded in a release binary), so there is nothing to sweep out. What there is, is monomorphized generics: a release `.rdata` carries ~12,000 distinct `bevy_ecs::` type-name strings, one per instantiated system-param combination.
 
-Measured on `windows-x64`, both changes stacked:
+Measured on `windows-x64`:
 
-| | As shipped before | + size-opt profile | + UPX | Total |
-|---|---|---|---|---|
-| `renzora.exe` | 187.0 MB | 138.2 MB | **24.9 MB** | −86.7% |
-| `renzora-editor.exe` | 265.6 MB | 194.3 MB | **35.1 MB** | −86.8% |
+| | As shipped before | + size-opt profile | Total |
+|---|---|---|---|
+| `renzora.exe` | 187.0 MB | **138.2 MB** | −26.1% |
+| `renzora-editor.exe` | 265.6 MB | **194.3 MB** | −26.8% |
 
-These numbers are from when the editor was a **second executable**. It is a loadable image now (`renzora_editor.dll` beside `renzora.exe`), so the second row no longer names a file that ships — the measurement stands, the filename is history. UPX packs executables only, so the image is not packed and the ratios above no longer describe the whole download.
+These numbers are from when the editor was a **second executable**. It is a loadable image now (`renzora_editor.dll` beside `renzora.exe`), so the second row no longer names a file that ships — the measurement stands, the filename is history.
 
-The whole installed tree goes from ~470 MB to ~77 MB (the plugins stay unpacked at ~15 MB). The profile change alone accounts for a 26% cut and is the more durable half: it is less code, so it is less to page in, less to decompress and a smaller working set. UPX's 83% is a disk-and-download number that costs RAM and startup time back — see below.
+Releases used to be UPX-packed on top of this, which took the two files to 24.9 MB and 35.1 MB and the whole installed tree to ~77 MB. **That was removed** — see [below](#why-releases-are-no-longer-packed) — so the profile is now the only size lever, and the 26% above is the whole story rather than a first step.
 
-Three things act on that, in order of where they apply:
+Two things act on that:
 
 **1. There are two release profiles**, because shipping and iterating want opposite things — the smallest possible binary regardless of link time, versus a fast link regardless of size.
 
@@ -131,17 +131,18 @@ Two knobs are deliberately *not* set:
 
 The `tools/updater` build is unaffected — it is its own workspace with its own `[profile.dist]`.
 
-**2. UPX packs the executables**, in `compress_binaries` (`docker/build-all.sh`), with `--best --lzma`. Measured on the `dist` runtime: **187.3 MB → 31.7 MB, an 83% saving**, and the packed binary boots through full plugin and scripting startup. `--brute` was measured against it and produces a **byte-for-byte identical** file on this input (33,363,456 bytes) while taking 1529 s instead of ~100 s — `--lzma` already selects UPX's strongest compressor, and the extra combinations `--brute` tries have nothing better to find on an amd64 PE. Do not "upgrade" the lanes to `--brute`.
+**2. Bevy's feature set is deliberately maximal** and has *not* been trimmed. The justification recorded in `Cargo.toml` — that the shared `bevy_dylib`'s feature set was the plugin API surface and an input to the ABI hash — no longer applies, since nothing links Bevy but the engine itself. Trimming it (`bevy_solari`, `meshlet`) is therefore now possible and would be a real cut, but it removes engine capability rather than build overhead, so it is a product decision rather than a build one.
 
-Two things are deliberately not packed: **`renzora-update`**, because it is what repairs a broken install and should be the *last* binary with extra machinery between the loader and `main`; and the **staged plugin cdylibs**, tens of MB against 450 MB of executables.
+### Why releases are no longer packed
 
-**UPX is not free at runtime.** A normally-linked executable is demand-paged: the OS maps it and faults in only the pages actually touched, so a 138 MB binary with ~40 MB of hot code costs ~40 MB of working set. A packed executable cannot do that — the whole image is decompressed into private committed memory before `main` runs. Packing therefore trades disk for **RAM and a startup pause, on every launch**, for the editor as much as for an exported game. If that becomes the wrong trade, `compress_binaries` takes an explicit list of binaries and dropping `renzora` from it is a one-line change — though note that is now the *only* packed engine binary, since the editor is a `dlopen`'d image and UPX packs executables only.
+Every non-macOS executable used to be run through [UPX](https://upx.github.io/) with `--best --lzma` before it shipped. It worked, and it worked well: measured on the `dist` runtime, **187.3 MB → 31.7 MB, an 83% saving**, with the packed binary booting through full plugin and scripting startup. It was removed anyway, for two reasons that are not going away:
 
-**Ordering matters on macOS.** `compress_binaries` runs *before* `fixup_macos`, because packing rewrites the file and invalidates any signature it carries — and arm64 macOS refuses a binary whose signature does not verify. `rcodesign` must sign the packed file, not the other way round.
+- **Antivirus.** Windows Defender scored the packed `renzora.exe` from `r1-alpha7` as `Trojan:Win32/Wacatac.C!ml`. The `!ml` suffix means a machine-learning verdict rather than a signature match, and a self-extracting stub that decompresses and rewrites its own image before `main` runs is precisely the behaviour those classifiers are trained to catch. There is no packing setting that argues with a classifier. An engine users have to talk their antivirus out of is worse than a large one.
+- **Signing.** Packing rewrites the executable, which invalidates any code signature it already carries. macOS was excluded from packing for exactly that reason — `fixup_macos` signs ad-hoc, and arm64 refuses a binary whose signature does not verify. Once the Windows binaries are signed too, the same constraint applies there, so the step was on borrowed time regardless.
 
-On Linux, packing before the AppImage wrap is also the right order: LZMA beats the AppImage's own squashfs compression, so the resulting `.AppImage` lands near the UPX size rather than the squashfs one.
+Downloads are larger as a result. That is the accepted cost.
 
-**3. Bevy's feature set is deliberately maximal** and has *not* been trimmed. The justification recorded in `Cargo.toml` — that the shared `bevy_dylib`'s feature set was the plugin API surface and an input to the ABI hash — no longer applies, since nothing links Bevy but the engine itself. Trimming it (`bevy_solari`, `meshlet`) is therefore now possible and would be a real cut, but it removes engine capability rather than build overhead, so it is a product decision rather than a build one.
+`renzora upx [dist/<platform>]` still exists and still packs an already-built tree on request — it is a developer's own call on their own binaries. It is simply not something a release does.
 
 ## The updater
 

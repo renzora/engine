@@ -620,8 +620,11 @@ strip = "symbols"
 #   renzora.exe         187.0 MB -> 138.2 MB   (.text 134.6 -> 90.9 MB)
 #   renzora-editor.exe  265.6 MB -> 194.3 MB
 #
-# UPX then packs those to 24.9 MB and 35.1 MB — see `compress_binaries` in
-# docker/build-all.sh.
+# Those are the shipped sizes. Releases used to be UPX-packed on top (down to
+# 24.9 MB and 35.1 MB), which is no longer done — Defender scored the packed
+# `renzora.exe` as a trojan, and packing invalidates code signatures. See
+# docker/build-all.sh. That makes this profile the only size lever left, so the
+# numbers above are the whole story now rather than an intermediate step.
 #
 # `codegen-units` stays at the default (16), NOT 1 — forcing 1 was measured to
 # help only fat LTO, and to cost a lot of build time for little size under thin.

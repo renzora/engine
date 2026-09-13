@@ -657,8 +657,8 @@ jobs:
       # Placing it inside means this MUST run before the bundle is signed —
       # adding a file to a sealed `.app` invalidates the seal, and both the
       # ad-hoc seal `xtask` applied and the Developer ID signature below cover
-      # `Contents/`. It is the same ordering constraint the container lane
-      # already respects for UPX ("macOS is packed BEFORE it is signed").
+      # `Contents/`. Anything that rewrites bytes inside a signed bundle has to
+      # happen before the signing, not after it.
       #
       # The archive is only ever READ from there: the editor unpacks it to
       # `~/Library/Application Support/renzora/sdk` and never deletes it, so the
@@ -1057,44 +1057,23 @@ jobs:
         with:
           path: artifacts
 
-      # Every desktop slice now arrives unpacked. They are built by xtask, which
-      # does no packing — deliberately, since xtask is also the local dev path
-      # and nobody wants to iterate on a packed binary. (The container lane packs
-      # its own output via `compress_binaries`, which has to happen there so
-      # macOS is packed BEFORE it is signed; that only applies to the platforms
-      # it still builds.)
+      # Executables ship exactly as they were built. There used to be a UPX pass
+      # here that packed every non-macOS slice — it saved ~83% on the runtime,
+      # and it is gone on purpose:
       #
-      # So this catches whatever arrived unpacked. `upx -t` succeeds only on an
-      # already-packed file, which makes the pass idempotent and safe to run over
-      # every artifact rather than special-casing a lane.
+      # * Windows Defender scored the packed `renzora.exe` from r1-alpha7 as
+      #   `Trojan:Win32/Wacatac.C!ml`. That verdict is a machine-learning
+      #   heuristic, and a self-extracting compressor stub that rewrites its own
+      #   image at launch is exactly the shape those models are trained on. No
+      #   amount of packing tuning argues with a classifier; not packing does.
+      # * Packing rewrites the executable, which invalidates any code signature
+      #   it carries. macOS was already excluded for that reason (`fixup_macos`
+      #   signs ad-hoc, and arm64 refuses a binary whose signature does not
+      #   match). Once the Windows binaries are signed too, the same constraint
+      #   applies to them, so this step had no future either way.
       #
-      # macOS is pruned, and has to be. Packing rewrites the executable, which
-      # invalidates the ad-hoc signature `fixup_macos` applied — and arm64 macOS
-      # refuses to launch a binary whose signature does not match, so a packed
-      # slice would be smaller and dead. The container got this order right by
-      # packing before signing; a native lane signs during staging, so the only
-      # correct choice left here is not to pack. macOS ships uncompressed.
-      - name: Compress any unpacked executables
-        run: |
-          set -euo pipefail
-          UPX_VERSION=5.1.1
-          curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz" -o /tmp/upx.tar.xz
-          tar -xJf /tmp/upx.tar.xz -C /tmp
-          UPX=/tmp/upx-${UPX_VERSION}-amd64_linux/upx
-          while IFS= read -r -d '' f; do
-            if "$UPX" -t "$f" >/dev/null 2>&1; then continue; fi
-            before=$(stat -c %s "$f")
-            if "$UPX" --best --lzma -q "$f" >/dev/null 2>&1; then
-              after=$(stat -c %s "$f")
-              awk -v b="$before" -v a="$after" -v n="$f" \
-                'BEGIN { printf "packed %s: %.1f MB -> %.1f MB (%.0f%% saved)\n", n, b/1048576, a/1048576, (1-a/b)*100 }'
-            else
-              echo "WARN: upx declined $f — shipping it uncompressed"
-            fi
-          done < <(find artifacts -path '*macos*' -prune -o \
-                     \( -name 'renzora' -o -name 'renzora.exe' \
-                        -o -name 'renzora-editor' -o -name 'renzora-editor.exe' \) -type f -print0)
-
+      # A bigger download is the price, and it is the right one: an engine users
+      # have to talk their antivirus out of is worse than a slow one.
       - name: Package release assets
         run: |
           bash scripts/package-release.sh artifacts release-assets \
