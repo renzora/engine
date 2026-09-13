@@ -235,7 +235,7 @@ mod tests {
         for name in ["a.material", "a.material_bp"] {
             assert_eq!(kind(name), AssetKind::Material, "{name}");
         }
-        assert_eq!(kind("a.scene"), AssetKind::Scene);
+        assert_eq!(kind("a.bsn"), AssetKind::Scene);
         for name in ["a.wav", "a.ogg", "a.mp3", "a.flac", "a.opus"] {
             assert_eq!(kind(name), AssetKind::Audio, "{name}");
         }
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn the_build_system_indexes_the_current_project() {
         let tmp = tempfile::tempdir().unwrap();
-        write(tmp.path(), "scenes/main.scene", b"{}");
+        write(tmp.path(), "scenes/main.bsn", b"{}");
 
         let mut world = World::new();
         world.init_resource::<AssetRegistry>();
@@ -377,7 +377,7 @@ mod tests {
 
         let registry = world.resource::<AssetRegistry>();
         assert_eq!(registry.len(), 1);
-        assert_eq!(registry.get("scenes/main.scene").unwrap().kind, AssetKind::Scene);
+        assert_eq!(registry.get("scenes/main.bsn").unwrap().kind, AssetKind::Scene);
     }
 
     /// Opening a second project must not leave the first one's entries behind —
