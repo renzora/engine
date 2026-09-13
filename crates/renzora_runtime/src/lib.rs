@@ -671,6 +671,12 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // "is the slow path on?" from the app itself rather than from whichever
     // branch we believe we took, so a stutter hunt can rule it in or out in one
     // line instead of arguing about a flag.
+    //
+    // Native only: `pipelined_rendering` is `#[cfg(not(target_arch = "wasm32"))]`
+    // in bevy_render, because the web has no second thread to hand the render
+    // sub-app to. There is nothing to measure there and naming the plugin does
+    // not compile.
+    #[cfg(not(target_arch = "wasm32"))]
     if is_editor {
         let pipelined = app
             .is_plugin_added::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();

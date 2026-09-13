@@ -59,7 +59,13 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element"] }
 # macOS only, and deliberately not "desktop": Windows and Linux put their menu
 # inside the window, which the in-app hamburger already is.
 [target.'cfg(target_os = "macos")'.dependencies]
-muda = "0.17"
+# `default-features = false` drops muda's `gtk3` and `libxdo` features, which
+# are its Linux backend and do nothing on macOS. They are on by default, so
+# cargo resolved the whole GTK stack — gtk, gdk, pango, atk, cairo and glib —
+# into Cargo.lock for a dependency that only exists on macOS and could never
+# compile that path. It cost fifteen packages in the lockfile and a Dependabot
+# advisory against glib 0.18 that nothing here can reach.
+muda = { version = "0.17", default-features = false }
 # For two `NSUserDefaults` keys and nothing else — see `native_menu`'s
 # `quieten_edit_menu`. Already in the tree as muda's own dependency, so this
 # costs nothing to compile; naming it directly is what makes it usable here.

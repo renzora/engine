@@ -236,7 +236,7 @@ fn rescan_external_packs(
     // was pointed at one of these directories, so the root IS the answer, and
     // matching on it needs no path arithmetic.
     let touched = changes.read().any(|change| {
-        change.has_extension("toml") && dirs.iter().any(|dir| *dir == change.root)
+        change.has_extension("toml") && dirs.contains(&change.root)
     });
     if touched {
         scan_dirs(&mut state, &dirs);
