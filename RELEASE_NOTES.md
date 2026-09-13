@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- build: the macOS and Linux build artifacts no longer carry the application twice, halving them from 1.16 GB to about 660 MB
 - feat(sdk): a plugin or Rust script that fails to build now writes the compiler's diagnostic to a `build.log` in its own build directory, so it can be read after the window that showed it has closed
 - feat(inspector): a component the graphics quality tier has switched off now shows an amber warning in its header saying so, instead of looking broken
 - fix(marketplace): installing a free asset without signing in now counts towards the creator's downloads, which it never did

@@ -4,6 +4,22 @@
 # =============================================================================
 #
 # Usage: scripts/package-release.sh <artifacts-dir> <out-dir> <tag> <commit>
+#        scripts/package-release.sh --template-only <platform> <dist-dir>
+#
+# The second form is for a BUILD lane, and it exists because two platforms stage
+# their output twice. A `.dmg` *is* the `Renzora Engine.app` inside it, and an
+# `.AppImage` *is* the `Renzora Engine.AppDir` it was squashed from, so a lane
+# that uploaded its `dist/` whole shipped every macOS and Linux byte to the
+# publish job twice: the macos-arm64 artifact was 1.16 GB against a 585 MB disk
+# image. The bundle cannot simply be deleted before the upload, because this
+# script reads the export template OUT of it, and neither a `.dmg` nor a
+# squashfs can be opened on the Linux runner that publishes.
+#
+# So the lane cuts the template itself, with this, and then deletes the
+# duplicate. Same function, same file: the alternative was a second copy of
+# "what belongs in an export template" living in the workflow, drifting from
+# this one, and going wrong in the only place nobody looks (a macOS game
+# exported months later missing a dylib).
 #
 # `<artifacts-dir>` is where `actions/download-artifact` dropped every build
 # job's output, i.e. `<artifacts-dir>/<artifact-name>/<platform-dir>/…`. This
@@ -48,10 +64,35 @@
 
 set -euo pipefail
 
-ARTIFACTS_DIR="${1:?Usage: package-release.sh <artifacts-dir> <out-dir> <tag> <commit>}"
-OUT_DIR="${2:?missing <out-dir>}"
-TAG="${3:?missing <tag>}"
-COMMIT="${4:-}"
+# `--template-only` runs on the BUILD lane's own runner, which is macOS or
+# Linux rather than the Ubuntu box that publishes. Everything it reaches must
+# therefore work on both, which rules out the GNU-only `stat -c` and
+# `sha256sum` in `record` (macOS has `stat -f %z` and `shasum -a 256`). Rather
+# than write both dialects for a number nothing reads in this mode, `record`
+# just prints. The manifest is the publish job's job.
+MODE=package
+if [ "${1:-}" = "--template-only" ]; then
+    MODE=template
+    shift
+fi
+
+if [ "$MODE" = template ]; then
+    PLATFORM="${1:?Usage: package-release.sh --template-only <platform> <dist-dir>}"
+    DIST_DIR="${2:?missing <dist-dir>}"
+    # The template lands in the platform directory itself, so it rides to the
+    # publish job inside the artifact the lane already uploads.
+    DIST_DIR=$(cd "$DIST_DIR" && pwd)
+    OUT_DIR="$DIST_DIR"
+    ARTIFACTS_DIR=""
+    TAG=""
+    COMMIT=""
+else
+    ARTIFACTS_DIR="${1:?Usage: package-release.sh <artifacts-dir> <out-dir> <tag> <commit>}"
+    OUT_DIR="${2:?missing <out-dir>}"
+    TAG="${3:?missing <tag>}"
+    COMMIT="${4:-}"
+    DIST_DIR=""
+fi
 
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
@@ -61,7 +102,9 @@ OUT_DIR=$(cd "$OUT_DIR" && pwd)
 # relative (`artifacts`), so a relative value silently resolves against the wrong
 # base. That cost r1-alpha7's Linux editors their plugin SDK; see the note in
 # `package_desktop`. Normalising here means no caller has to remember.
-ARTIFACTS_DIR=$(cd "$ARTIFACTS_DIR" && pwd)
+if [ -n "$ARTIFACTS_DIR" ]; then
+    ARTIFACTS_DIR=$(cd "$ARTIFACTS_DIR" && pwd)
+fi
 
 # The version is the tag with any `-nightly-<date>` suffix removed, so a nightly
 # and its eventual release both report `r1-alpha7`.
@@ -94,6 +137,12 @@ record() {
     local file="$1" platform="$2" kind="$3"
     local name size sha
     name=$(basename "$file")
+    # A build lane has no manifest to add to, and `stat -c` / `sha256sum` are
+    # GNU spellings a macOS runner does not have. Say what was cut and stop.
+    if [ "$MODE" = template ]; then
+        printf '  %-40s %s\n' "$name" "$(du -h "$file" | cut -f1)"
+        return 0
+    fi
     size=$(stat -c %s "$file")
     sha=$(sha256sum "$file" | cut -d' ' -f1)
     MANIFEST_ROWS+=("$(printf '{"name":"%s","platform":"%s","kind":"%s","size":%s,"sha256":"%s"}' \
@@ -133,6 +182,38 @@ runtime_root() {
     return 0
 }
 
+# ── Helper: the single-file form of a platform's bundle, if there is one ─────
+# `<dir>/<something>.dmg` on macOS, `<dir>/<something>.AppImage` on Linux. Empty
+# output on Windows, which has no bundle at all. A `for` loop over the glob
+# rather than `ls`: an unmatched glob is left literal, and `[ -f ]` is what
+# rejects it, whereas `ls` would print an error and take `set -e` with it.
+bundle_image() {
+    local dir="$1" f
+    for f in "$dir"/*.dmg "$dir"/*.AppImage; do
+        [ -f "$f" ] && { echo "$f"; return 0; }
+    done
+    return 0
+}
+
+# ── Helper: the directory form of the same bundle ────────────────────────────
+bundle_tree() {
+    local dir="$1" d
+    for d in "$dir"/*.app "$dir"/*.AppDir; do
+        [ -d "$d" ] && { echo "$d"; return 0; }
+    done
+    return 0
+}
+
+# ── Helper: did the build lane delete the bundle after imaging it? ───────────
+# True when there is a `.dmg`/`.AppImage` and no `.app`/`.AppDir` beside it. The
+# image carries the same bytes, so keeping both doubled a ~585 MB artifact; the
+# lane drops the directory form and this is how packaging knows the binaries it
+# would otherwise read are no longer reachable.
+stripped_bundle() {
+    local dir="$1"
+    [ -n "$(bundle_image "$dir")" ] && [ -z "$(bundle_tree "$dir")" ]
+}
+
 # ── Build the export template for one desktop platform ───────────────────────
 # The template is the GAME, not the engine: `renzora[.exe]`, its plugins, the
 # shared libraries beside it, and (Windows) the OpenXR loader a `--vr` game
@@ -140,8 +221,36 @@ runtime_root() {
 # download and hand every exported game an editor it will never load.
 package_runtime_template() {
     local platform="$1" dir="$2"
+
+    # Already cut by the build lane, with `--template-only`, just before it
+    # deleted the bundle this would otherwise have been read out of. Moved
+    # rather than copied: the engine zip below is the whole directory, and a
+    # template zip left inside it would ship in both assets.
+    local pre="$dir/renzora-runtime-$platform.zip"
+    if [ "$MODE" != template ] && [ -f "$pre" ]; then
+        local asset="$OUT_DIR/renzora-runtime-$platform.zip"
+        rm -f "$asset"
+        mv "$pre" "$asset"
+        echo "   template cut by the build lane"
+        record "$asset" "$platform" runtime
+        return 0
+    fi
+
     local src; src=$(runtime_root "$dir")
     if [ -z "$src" ]; then
+        # A tree whose bundle was stripped MUST arrive with its template, and
+        # the two cases are worth telling apart: an ordinary tree with no
+        # runtime is odd but survivable, while a stripped one with no template
+        # means the lane deleted the only copy of the binaries there was. That
+        # is unrecoverable here and silently ships a platform with no export
+        # template, which is exactly the class of quiet omission that cost
+        # r1-alpha7's Linux editors their SDK.
+        if stripped_bundle "$dir"; then
+            echo "ERROR: $dir has a .dmg or .AppImage, no bundle beside it, and no" >&2
+            echo "       renzora-runtime-$platform.zip. The build lane deleted the bundle" >&2
+            echo "       without cutting the export template first (--template-only)." >&2
+            return 1
+        fi
         echo "WARN: no runtime binary found under $dir — no export template for $platform"
         return 0
     fi
@@ -193,9 +302,14 @@ package_desktop() {
     # Linux is the only one where "the tree" and "the bundle" are two copies of
     # the same bytes. `xtask`'s `--bundle` moves the binaries and shared
     # libraries into `Renzora Engine.AppDir/`, then squashes that into an
-    # `.AppImage` beside it, so shipping both would put ~128 MB in twice. The
-    # AppDir stays on disk regardless because `package_runtime_template` reads
-    # the runtime out of it, so it is excluded here rather than deleted.
+    # `.AppImage` beside it, so shipping both would put ~128 MB in twice.
+    #
+    # The build lane now deletes the AppDir once it has cut the export template
+    # out of it, so by the time this runs there is usually nothing to exclude.
+    # The exclusion stays because it still has a case to cover: appimagetool is
+    # optional (see `xtask/src/bundle.rs`), and a lane that could not build an
+    # AppImage keeps its AppDir, which is then the only copy of the binaries
+    # there is.
     #
     # Everything ELSE in the tree ships, `sdk.tar.zst` above all. The editor
     # unpacks that on first launch and cannot run a Rust script or a native
@@ -231,9 +345,15 @@ package_desktop() {
     # the DMG now. r1-alpha7 shipped no macOS build at all and every nightly
     # since failed Gatekeeper, so there is no installed base still asking for
     # the old asset name — this is the one moment the swap is free.
+    #
+    # Keyed on the `.dmg`, not on the `.app`: the lane deletes the bundle once
+    # the image carries it, so by the time this runs there is usually no `.app`
+    # left to match on. A `.app` with no `.dmg` beside it is still an error, and
+    # a louder one than it looks, since the image cannot be built or signed on
+    # this runner.
     local dmg=""
     for f in "$dir"/*.dmg; do [ -f "$f" ] && dmg="$f"; done
-    if [ -d "$dir" ] && ls "$dir"/*.app >/dev/null 2>&1; then
+    if [ -n "$dmg" ] || ls "$dir"/*.app >/dev/null 2>&1; then
         if [ -z "$dmg" ]; then
             echo "ERROR: $dir holds a .app but no .dmg." >&2
             echo "       The macOS lane must build one — it cannot be created or signed here." >&2
@@ -309,6 +429,32 @@ compress_sdk() {
     # `.github/workflows/build-engine.yml`) and the only job left here is to
     # notice when that did not happen, loudly. A silent fallback is exactly what
     # produced the 127 MB Linux asset described above.
+    # A macOS tree whose `.app` was deleted after the disk image was built. The
+    # SDK is inside that image, and the lane checked it was there before
+    # deleting anything, which is the better place for the check anyway since it
+    # is also the place that packs it. All that is left here is to catch a stray
+    # copy at the top of the tree, which on macOS is somewhere the editor never
+    # looks.
+    #
+    # Linux is deliberately NOT part of this. Its SDK ships BESIDE the AppImage
+    # and must: a squashfs is read-only, so `install::root()` follows `$APPIMAGE`
+    # to the directory the user unzipped. A stripped Linux tree therefore falls
+    # through to the ordinary top-level handling below, which is already right.
+    local dmg; dmg=$(bundle_image "$dir")
+    case "$dmg" in
+        *.dmg)
+            if [ -z "$(bundle_tree "$dir")" ]; then
+                if [ -e "$dir/sdk" ] || [ -e "$dir/sdk.tar.zst" ]; then
+                    echo "ERROR: $dir has an SDK beside the disk image." >&2
+                    echo "       The editor only ever looks inside the .app, so this copy is" >&2
+                    echo "       invisible to it; remove it in the build lane." >&2
+                    return 1
+                fi
+                return 0
+            fi
+            ;;
+    esac
+
     local app; app=$(find "$dir" -maxdepth 1 -name '*.app' -type d | head -1)
     if [ -n "$app" ]; then
         if [ -f "$app/Contents/MacOS/sdk.tar.zst" ]; then
@@ -382,6 +528,29 @@ package_web() {
     fi
     rm -rf "$stage"
 }
+
+# =============================================================================
+# `--template-only`: cut one platform's export template and stop
+# =============================================================================
+# The build lane's half of the job. Everything below this point belongs to the
+# publish job, which is a different runner on a different operating system.
+if [ "$MODE" = template ]; then
+    echo "=== Cutting the $PLATFORM export template ==="
+    # A no-op on a native runner, where the modes are whatever the compiler left
+    # and nothing has passed through `upload-artifact` yet. Run anyway, because
+    # `zip` stores the mode it finds and this is the last moment anything can
+    # influence what the template carries: once it is a zip inside an artifact,
+    # the pass at the top of `package_desktop` cannot reach into it.
+    restore_exec_bits "$DIST_DIR"
+    package_runtime_template "$PLATFORM" "$DIST_DIR"
+    if [ ! -f "$DIST_DIR/renzora-runtime-$PLATFORM.zip" ]; then
+        echo "ERROR: cut no export template for $PLATFORM from $DIST_DIR." >&2
+        echo "       Nothing may delete the bundle until this succeeds: the image" >&2
+        echo "       cannot be read on the runner that publishes." >&2
+        exit 1
+    fi
+    exit 0
+fi
 
 # =============================================================================
 # Walk the artifacts

@@ -1013,6 +1013,94 @@ jobs:
           hdiutil detach "$mnt"
           trap - EXIT
 
+      # ── The disk image IS the application, so the bundle beside it is a
+      # second copy of every byte ───────────────────────────────────────────
+      # A `.dmg` is a mountable folder holding `Renzora Engine.app` and a
+      # symlink to `/Applications`. Uploading `dist/` whole therefore shipped
+      # the application twice: the macos-arm64 artifact was 1.16 GB against the
+      # 585 MB image cut from it, and the publish job downloaded both halves to
+      # use one.
+      #
+      # The `.app` cannot simply be deleted, because the publish job reaches
+      # into it for two things, and neither can be done from a disk image on the
+      # Linux runner that publishes (no `hdiutil`, and re-sealing a signed
+      # bundle needs `codesign`):
+      #
+      #   1. the export template, cut from `Contents/MacOS/`
+      #   2. a check that `sdk.tar.zst` really is inside the bundle rather than
+      #      beside it, which is the difference between a shipped editor that
+      #      can compile a plugin and one that reports the SDK as `Absent`
+      #
+      # So both move here, ahead of the delete. The template is cut by
+      # `package-release.sh --template-only` rather than by a copy of its file
+      # list written out again in YAML: one definition of what belongs in an
+      # export template, in the file that already had it.
+      #
+      # After signing and notarization on purpose. The template is cut from the
+      # bundle that actually ships, so it carries the signed binaries rather
+      # than the ad-hoc-sealed ones they replaced.
+      - name: Cut the export template and drop the duplicate bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="dist/${{ matrix.dist_dir }}"
+          app="$out/Renzora Engine.app"
+          [ -d "$app" ] || { echo "::error::no .app staged at $app"; exit 1; }
+
+          # The SDK check that `compress_sdk` used to make at packaging time.
+          # It has to happen while the bundle is still here, and this is the
+          # better home for it anyway: `Pack the plugin SDK` above is what put
+          # the archive there, so the check now sits with the thing it checks.
+          if [ ! -f "$app/Contents/MacOS/sdk.tar.zst" ] && [ ! -d "$app/Contents/MacOS/sdk" ]; then
+            echo "::error::$app carries no SDK: the editor would report it Absent and could not build a plugin or a Rust script"
+            exit 1
+          fi
+
+          bash scripts/package-release.sh --template-only "${{ matrix.dist_dir }}" "$out"
+
+          rm -rf "$app"
+          echo "dropped the bundle; the disk image carries it"
+          du -sh "$out"
+
+      # ── And the same duplication on Linux, one bundle format over ─────────
+      # `xtask --bundle` MOVES the binaries and shared libraries into
+      # `Renzora Engine.AppDir/` and then squashes that into an `.AppImage`
+      # beside it, so the AppDir is the squashfs uncompressed: ~128 MB of the
+      # same bytes, riding in the artifact for the single reason that packaging
+      # read the export template out of it. `package-release.sh` already
+      # excluded it from the engine zip for exactly this reason; it just could
+      # not drop it any earlier.
+      #
+      # Cut the template here and it can. Unlike macOS the SDK stays where it
+      # is: it ships BESIDE the AppImage and has to, because a squashfs is
+      # read-only and `install::root()` follows `$APPIMAGE` to the directory the
+      # user unzipped.
+      #
+      # appimagetool is optional (`xtask/src/bundle.rs`), and a lane without it
+      # has no image. Then the AppDir is the only copy of the binaries there is
+      # and deleting it would ship a platform with no engine at all, so that
+      # case keeps the directory and lets packaging read it the old way.
+      - name: Cut the export template and drop the duplicate AppDir
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="dist/${{ matrix.dist_dir }}"
+
+          appimage=""
+          for f in "$out"/*.AppImage; do [ -f "$f" ] && appimage="$f"; done
+          if [ -z "$appimage" ]; then
+            echo "::notice::no AppImage in $out (appimagetool unavailable); keeping the AppDir, which is the only copy of the binaries"
+            exit 0
+          fi
+
+          bash scripts/package-release.sh --template-only "${{ matrix.dist_dir }}" "$out"
+
+          rm -rf "$out"/*.AppDir
+          echo "dropped the AppDir; $(basename "$appimage") carries it"
+          du -sh "$out"
+
       # Disk exhaustion is the likeliest failure on these runners, and cargo's
       # error for it is unhelpful; report free space either way so a failed run
       # says so directly instead of needing a second run to diagnose.

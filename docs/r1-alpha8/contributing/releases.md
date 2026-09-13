@@ -40,11 +40,15 @@ The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per ve
 
 | Platform | Where | Notes |
 |---|---|---|
-| linux x64 + arm64 | `ghcr.io/renzora/linux` container | one container cross-builds both |
-| macos x64 + arm64 | `ghcr.io/renzora/macos` container | osxcross builds both slices |
-| windows x64 | `ghcr.io/renzora/windows` container | via xwin |
+| linux x64 | native `ubuntu-latest` runner | AppImage |
+| linux arm64 | native `ubuntu-24.04-arm` runner | AppImage |
+| macos x64 | native `macos-26-intel` runner | signed, notarized `.dmg` |
+| macos arm64 | native `macos-latest` runner | signed, notarized `.dmg` |
+| windows x64 | native `windows-latest` runner | flat tree |
 | windows arm64 | native `windows-11-arm` runner | see below |
 | wasm32 | `ghcr.io/renzora/wasm` container | runtime + editor bundles |
+
+**Every desktop slice is native, and wasm is the only one left in a container.** An editor ships a plugin SDK, and an SDK cannot be cross-built: its proc-macro dylibs are artifacts of whatever machine ran the compiler, so a Linux container produces Linux ones no matter what `--target` says. A Windows user handed those gets `can't find crate for bevy_derive` and, behind it, every name in `bevy::prelude`. `docker/build-all.sh` therefore stages no editor at all. The desktop containers were retired rather than kept for the runtimes, because a native tree already yields both assets: the engine, and the export template cut from the same directory.
 
 **Windows ARM64 is the one target the Docker toolchain cannot produce.** The only MSVC pieces Microsoft allows to be redistributed (so xwin can bake them into a public image) are the CRT and SDK, which leaves clang as the C compiler — and clang can't stand in for MSVC on ARM64, because it emits MSVC NEON intrinsics as undefined externals no redistributable library provides. So that slice builds natively with the real MSVC toolchain on a GitHub-hosted arm64 runner.
 
@@ -56,12 +60,28 @@ Two assets per desktop platform, from `scripts/package-release.sh`:
 
 | Asset | What it is |
 |---|---|
-| `<platform>.zip` | the **engine** — `renzora` with the editor image (`renzora_editor.*`) beside it, plus `plugins/` and `sdk.tar.zst`. Windows is that tree flat; Linux ships the `.AppImage`; macOS the `.app`. |
+| `<platform>.zip` | the **engine**: `renzora` with the editor image (`renzora_editor.*`) beside it, plus `plugins/` and `sdk.tar.zst`. Windows is that tree flat; Linux ships the `.AppImage`. |
+| `<platform>.dmg` | **macOS only, in place of the zip.** A mountable folder holding `Renzora Engine.app` and a symlink to `/Applications`, signed, notarized and stapled. The SDK rides *inside* the bundle, because `install::root()` on macOS is `Contents/MacOS/` with no `$APPIMAGE`-style escape hatch. The updater mounts this and copies the app out. |
 | `renzora-runtime-<platform>.zip` | the **export template** — the game runtime and its `plugins/`, no editor. |
 
 Plus `manifest.json` (every asset with size and SHA-256, keyed by platform) and `SHA256SUMS`.
 
 The engine asset keeps the bare `<platform>.zip` name the earlier releases used, so links to it don't rot. The template name is derived from `Platform::dist_dir_name()` in code and from the platform directory name in the script, so the two halves of the contract cannot drift — they did once, and the result was a download feature that could never have succeeded.
+
+### The build lane cuts its own export template on macOS and Linux
+
+Both of those platforms stage their output twice. A `.dmg` **is** the `Renzora Engine.app` inside it, and an `.AppImage` **is** the `Renzora Engine.AppDir` it was squashed from, so a lane that uploaded `dist/` whole shipped every byte to the publish job two ways round: the macos-arm64 artifact was 1.16 GB against the 585 MB disk image cut from it.
+
+The bundle cannot just be deleted before the upload, because `package-release.sh` reads two things out of it, and the publish job runs on Linux where neither a signed `.dmg` nor a squashfs can be opened:
+
+1. the **export template**, cut from `Contents/MacOS/` or from the AppDir
+2. on macOS, a check that `sdk.tar.zst` really is **inside** the bundle rather than beside it, which is the difference between a shipped editor that can compile a plugin and one that reports the SDK as `Absent`
+
+So both move onto the build lane, which then deletes the duplicate. The template is cut by `scripts/package-release.sh --template-only <platform> <dist-dir>` rather than by a second copy of the file list written out in YAML, so there is one definition of what belongs in an export template. Packaging picks up the `renzora-runtime-<platform>.zip` the lane left in the tree, the same way it already accepts an `sdk.tar.zst` a lane packed for it.
+
+A lane without `appimagetool` builds no AppImage, and there the AppDir is the only copy of the binaries there is, so it is kept and packaging reads it the old way.
+
+**A stripped tree that arrives with no template is a hard failure**, not a warning. Shipping a platform with no export template is the quiet kind of omission that cost r1-alpha7's Linux editors their SDK, and it would not be noticed until somebody tried to export months later.
 
 ### Executable bits
 
