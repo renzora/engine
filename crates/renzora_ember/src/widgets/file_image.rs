@@ -3,7 +3,7 @@
 //! The counterpart to the markdown widget's URL cache: same shape, but the bytes
 //! come from the filesystem rather than the network. It exists because several
 //! panels need to show artwork that ships *beside* the thing it depicts — a
-//! plugin's `thumbnail.jpg` next to its `Cargo.toml` — which Bevy's
+//! plugin's `thumbnail.webp` next to its `Cargo.toml` — which Bevy's
 //! `AssetServer` cannot reach. The asset server resolves against the project's
 //! assets root, and these files live under the executable's `plugins/`
 //! directory, outside it.
@@ -114,7 +114,7 @@ fn start_decode(path: PathBuf, tx: Sender<Result<Decoded, PathBuf>>) {
 /// file loads.
 ///
 /// The placeholder is always spawned rather than swapped in on failure: a plugin
-/// that ships no `thumbnail.jpg` is the common case, not the error case, and a
+/// that ships no artwork is the common case, not the error case, and a
 /// box that fills in later would make the grid jump. The image is layered over
 /// the top and revealed only once decoded.
 ///

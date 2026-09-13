@@ -139,7 +139,24 @@ pub fn record_plugin(world: &mut World, id: impl Into<String>, state: PluginStat
         .record(id, state);
 }
 
-/// Where a plugin's store artwork lives: `<exe>/plugins/<id>/thumbnail.jpg`.
+/// Artwork filenames a plugin may ship, in the order they are tried.
+///
+/// **Every one of these is a real format in the wild**, which is the whole
+/// reason this is a list. The marketplace converted its covers to WebP and every
+/// thumbnail silently disappeared from both panels, because this used to name
+/// `thumbnail.jpg` and nothing else: 68 of 72 installed plugins shipped
+/// `thumbnail.webp`, one shipped `thumbnail.png`, and not one of them shipped
+/// the name being looked for. The failure is invisible by construction, since a
+/// plugin with no artwork is the ordinary case and draws a glyph.
+///
+/// WebP first because that is what the store publishes now. The rest are what a
+/// plugin author might reasonably have on disk, and all four decode with the
+/// features `renzora_ember` already enables.
+#[cfg(not(target_arch = "wasm32"))]
+const THUMBNAIL_FILES: &[&str] =
+    &["thumbnail.webp", "thumbnail.png", "thumbnail.jpg", "thumbnail.jpeg"];
+
+/// Where a plugin's store artwork lives: `<exe>/plugins/<id>/thumbnail.<ext>`.
 ///
 /// Here rather than in either panel because two of them need it — Settings →
 /// Plugins and the exporter's plugin picker — and a thumbnail that showed up in
@@ -157,20 +174,35 @@ pub fn record_plugin(world: &mut World, id: impl Into<String>, state: PluginStat
 #[cfg(not(target_arch = "wasm32"))]
 pub fn plugin_thumbnail_path(id: &str) -> Option<std::path::PathBuf> {
     let root = renzora_native_build::install::root()?;
-    let dirs = renzora_native_build::install::plugin_dirs(&root);
-    // The first that exists. Falling back to the first root when none does keeps
-    // the old behaviour for the caller, which expects a path it can test rather
-    // than a `None` meaning "no plugins at all".
-    let candidates = dirs
-        .iter()
-        .map(|d| d.join(id).join("thumbnail.jpg"));
+    thumbnail_in(&renzora_native_build::install::plugin_dirs(&root), id)
+}
+
+/// The artwork for `id` under any of `dirs`, or the first candidate when there
+/// is none.
+///
+/// Split from [`plugin_thumbnail_path`] so the search itself can be tested
+/// without an install to point at.
+///
+/// Roots are the outer loop and filenames the inner one, so a plugin the user
+/// installed wins over a same-named one sealed in the bundle whatever format
+/// each of them chose. Ordering it the other way round would let a stale
+/// `thumbnail.jpg` inside the `.app` beat the `thumbnail.webp` beside it.
+///
+/// Falling back to the first candidate when nothing exists keeps the old
+/// behaviour for the caller, which expects a path it can test rather than a
+/// `None` meaning "no plugins at all".
+#[cfg(not(target_arch = "wasm32"))]
+fn thumbnail_in(dirs: &[std::path::PathBuf], id: &str) -> Option<std::path::PathBuf> {
     let mut first = None;
-    for path in candidates {
-        if first.is_none() {
-            first = Some(path.clone());
-        }
-        if path.is_file() {
-            return Some(path);
+    for dir in dirs {
+        for name in THUMBNAIL_FILES {
+            let path = dir.join(id).join(name);
+            if first.is_none() {
+                first = Some(path.clone());
+            }
+            if path.is_file() {
+                return Some(path);
+            }
         }
     }
     first
@@ -180,4 +212,78 @@ pub fn plugin_thumbnail_path(id: &str) -> Option<std::path::PathBuf> {
 #[cfg(target_arch = "wasm32")]
 pub fn plugin_thumbnail_path(_id: &str) -> Option<std::path::PathBuf> {
     None
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod thumbnail_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// A scratch plugin root holding `<id>/<file>` for each name given.
+    fn root(tag: &str, id: &str, files: &[&str]) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("renzora-thumb-{}-{tag}", std::process::id()))
+            .join("plugins");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(id)).unwrap();
+        for f in files {
+            std::fs::write(dir.join(id).join(f), b"x").unwrap();
+        }
+        dir
+    }
+
+    /// The regression this list exists for. Every one of these is a format the
+    /// store or an author has actually shipped, and naming only `thumbnail.jpg`
+    /// meant none of them was ever found.
+    #[test]
+    fn every_shipped_format_is_found() {
+        for name in THUMBNAIL_FILES {
+            let dir = root(name, "crt", &[name]);
+            assert_eq!(
+                thumbnail_in(&[dir.clone()], "crt"),
+                Some(dir.join("crt").join(name)),
+                "{name} was not found"
+            );
+            let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+        }
+    }
+
+    /// WebP wins when a plugin carries more than one, because that is what the
+    /// store publishes and the others are likely to be a stale leftover.
+    #[test]
+    fn webp_is_preferred() {
+        let dir = root("order", "crt", &["thumbnail.jpg", "thumbnail.png", "thumbnail.webp"]);
+        assert_eq!(
+            thumbnail_in(&[dir.clone()], "crt"),
+            Some(dir.join("crt").join("thumbnail.webp"))
+        );
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    /// A root the user installed into beats one sealed in a bundle, whatever
+    /// format each chose. Roots are the outer loop for exactly this: ordering it
+    /// the other way would let a stale `.jpg` in the `.app` win.
+    #[test]
+    fn an_earlier_root_wins_over_a_later_one() {
+        let user = root("user", "crt", &["thumbnail.jpg"]);
+        let bundled = root("bundled", "crt", &["thumbnail.webp"]);
+        assert_eq!(
+            thumbnail_in(&[user.clone(), bundled.clone()], "crt"),
+            Some(user.join("crt").join("thumbnail.jpg")),
+            "the first root should win even with a less-preferred format"
+        );
+        let _ = std::fs::remove_dir_all(user.parent().unwrap());
+        let _ = std::fs::remove_dir_all(bundled.parent().unwrap());
+    }
+
+    /// A plugin with no artwork is the ordinary case, and the caller wants a
+    /// path it can test rather than a `None` that means "no plugins at all".
+    #[test]
+    fn no_artwork_still_returns_a_testable_path() {
+        let dir = root("none", "crt", &[]);
+        let got = thumbnail_in(&[dir.clone()], "crt").expect("a candidate path");
+        assert!(!got.is_file());
+        assert_eq!(got, dir.join("crt").join(THUMBNAIL_FILES[0]));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
 }
