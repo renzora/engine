@@ -46,6 +46,13 @@ use std::process::Command;
 
 use serde::Deserialize;
 
+/// Where a failed build is written down.
+///
+/// Desktop-only for the same reason as [`unpack`]: it resolves a home directory
+/// and appends to a file, neither of which a browser has. A wasm build never
+/// reaches a compile it could log anyway — there is no `rustc` there to fail.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod log;
 pub mod toolchain;
 /// Unpacking the shipped `sdk.tar.zst`.
 ///
@@ -315,6 +322,27 @@ impl Sdk {
     /// The lines are rustc's diagnostics and, for a plugin with third-party
     /// dependencies, cargo's `Compiling …` output.
     pub fn compile_with(
+        &self,
+        dir: &Path,
+        out: &Path,
+        on_line: &mut dyn FnMut(&str),
+    ) -> Result<String, Error> {
+        let result = self.compile_inner(dir, out, on_line);
+        // Every way a build can fail passes through here, which is the whole
+        // reason the recording happens at this level rather than in the three
+        // callers: each of them reports a failure somewhere that does not last
+        // (a window that closes, a Console line, a toast), and each would have
+        // had to remember to do this. See `mod log`.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Err(e) = &result {
+            log::record(&self.manifest, dir, out, e);
+        }
+        result
+    }
+
+    /// The build itself. Wrapped by [`compile_with`](Self::compile_with) so that
+    /// every `Err` it can return is logged in one place.
+    fn compile_inner(
         &self,
         dir: &Path,
         out: &Path,

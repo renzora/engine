@@ -44,6 +44,15 @@ serde_json = "1"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tar = "0.4"
 zstd = "0.13"
+# `mod log`'s only dependency: `~/.renzora/logs/build.log` needs a home
+# directory, and `dirs` is what every other crate that writes under `~/.renzora`
+# already uses — the crash reporter, the settings file, the dock layout. Hand
+# rolling `USERPROFILE`/`HOME` here would work almost always, and the failure
+# mode of "almost" is a log that lands somewhere other than where the rest of
+# the editor's files are. Target-scoped like the two above so the web build does
+# not carry it; already in the tree through `renzora_engine`, so it costs no
+# extra compile.
+dirs = "6"
 
 [lints]
 workspace = true

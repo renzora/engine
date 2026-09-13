@@ -151,6 +151,8 @@ Editing `src/` rebuilds too, on the next launch. That is the whole iteration loo
 
 The list is built from what the loaders reported, not from a directory scan, so it always matches what the engine really did. A plugin that failed to compile shows the first line of the error there and the whole thing in the Console.
 
+**Every failed build is also written to `~/.renzora/logs/build.log`.** The places a build failure is *shown* are all temporary — the setup window closes, the Console scrolls, a script's error arrives as a toast — and the compiler's own diagnostic is the part worth keeping. The file records each failure with a timestamp, which plugin it was, the source directory, the pinned rustc and target, and rustc's output verbatim. It covers all three build paths (first-run setup, installing a plugin, saving a Rust script), it appends rather than replacing, and it rotates to `build.log.old` once it passes a megabyte. Set `RENZORA_BUILD_LOG` to another path to move it, or to `off` to switch it off.
+
 **Changes take effect at the next launch.** That is structural rather than unfinished: a plugin adds systems, resources and function pointers to the `App` while it is being assembled, and Bevy cannot withdraw them. Unmapping the image is worse — a retired system is still *in* the schedule, merely returning early. So the switch records intent, and the loader acts on it at startup.
 
 A disabled plugin costs nothing at all: it is skipped before the directory is touched, so there is no rebuild if its stamp is stale, no `dlopen`, and none of its static initializers run. That matters when you are disabling one to find out whether it is the plugin breaking your editor — half-running it would tell you nothing.

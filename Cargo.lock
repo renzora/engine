@@ -8202,6 +8202,7 @@ dependencies = [
 name = "renzora_plugin_build"
 version = "0.1.0"
 dependencies = [
+ "dirs 6.0.0",
  "renzora_native_build",
  "serde",
  "serde_json",
