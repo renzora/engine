@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{
-    menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
+    clipboard, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
     screen_menu_est_height, screen_menu_flip, screen_menu_under, trigger_rect,
 };
 
@@ -300,6 +300,23 @@ pub(crate) fn asset_context_menu(
             let path = path.clone();
             move |_| duplicate_asset(&path)
         }),
+        menu_item(
+            &mut commands,
+            &fonts,
+            "clipboard",
+            &renzora::lang::t("assets.context.copy_path"),
+            {
+                let path = path.clone();
+                move |world| {
+                    if let Some(relative) = world
+                        .get_resource::<renzora::core::CurrentProject>()
+                        .and_then(|project| project.make_relative(&path))
+                    {
+                        clipboard::set_text(&relative);
+                    }
+                }
+            },
+        ),
         menu_item(&mut commands, &fonts, "folder-open", &renzora::lang::t("assets.context.reveal"), {
             let path = path.clone();
             move |_| reveal_in_explorer(&path)

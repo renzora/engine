@@ -1,6 +1,7 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(editor): asset context menus can copy project-relative paths
 - feat(marketplace): a plugin states the engine each release was built for, so you are offered the newest version your editor can actually run instead of one that will not load
 - feat(marketplace): the plugin store hides listings with no release for your engine, and shows the version you would get rather than the newest one published
 - feat(marketplace): the update check now says when a newer version exists but needs a newer editor, instead of showing nothing
