@@ -147,7 +147,35 @@ Open your asset and choose **Edit** (the `/marketplace/asset/<slug>/edit` route 
 
 > **Category can't be changed** after creation — it's locked in the edit form.
 
-> There is **no version history and no per-version changelog**. An asset carries a single version string and an *Updated* date; uploading new files overwrites the existing download. (This corrects older docs that promised preserved version history.)
+## Engine compatibility
+
+Each **release** states the oldest engine it runs on, chosen from **Built for** on the new-release page. "Any engine" is the default and means what it says.
+
+The value belongs to the release, not to the listing, and that is the whole design. A listing outlives the engine versions it was built for, so one value per listing could only ever describe the newest release, and stating a newer engine cut everyone below it off from the release that still worked for them.
+
+An editor is offered **the newest release built for an engine no newer than its own**. So a listing can carry two lines at once:
+
+| Release | Built for | r1-alpha7 gets | r1-alpha8 gets |
+|---|---|---|---|
+| 1.0.10 | r1-alpha7 | | |
+| 2.0.0 | r1-alpha8 | | ✓ |
+| 1.0.11 | r1-alpha7 | ✓ | |
+
+Publishing 1.0.11 after 2.0.0 is a normal thing to do: it is a fix to the r1-alpha7 line, and it reaches r1-alpha7 users without touching what r1-alpha8 users resolve.
+
+There is **no maximum version**. The ceiling on a release is implied by the next release that names a newer engine, so it never has to be written down and can never go stale. A plugin nobody has updated for the current engine keeps being offered, on the assumption it still works, which is what cargo and npm do; the alternative freezes the whole catalogue every time the engine moves.
+
+### One rule to keep in mind
+
+Because an editor takes the **highest version it can run**, a release on an older line must stay **below** everything on a newer line. Publishing 3.0.0 for r1-alpha7 while 2.0.0 sits on r1-alpha8 would hand r1-alpha8 users the r1-alpha7 code, since they can run both and yours sorts higher. `renzora publish` refuses that, and says which release it clashes with.
+
+### Correcting a release
+
+A release's engine can be changed after publishing, from the dropdown beside it in **Release history**. The engine a release needs is a claim about code that already shipped, and the usual way it turns out to be wrong is somebody installing it and watching it fail to load; a republish would spend a version number on a metadata fix. Only that release moves.
+
+### What an editor shows
+
+An editor browsing the marketplace sees only listings it has a runnable release of, labelled with the version it would actually get. If you are current for your engine and something newer exists behind an engine upgrade, the update check says so ("needs a newer editor") rather than staying quiet, which would make a maintained plugin look abandoned.
 
 ## Tracking performance
 

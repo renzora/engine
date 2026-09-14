@@ -1,6 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(marketplace): a plugin states the engine each release was built for, so you are offered the newest version your editor can actually run instead of one that will not load
+- feat(marketplace): the plugin store hides listings with no release for your engine, and shows the version you would get rather than the newest one published
+- feat(marketplace): the update check now says when a newer version exists but needs a newer editor, instead of showing nothing
 - feat(plugins): a plugin can add its own entry to the Assets and Attach create menus
 - fix(assets): the Lua Script entry no longer appears when no Lua interpreter is installed
 - fix(scripting): a plugin can implement a scripting language again, which fixes Lua

@@ -88,19 +88,40 @@ pub struct PluginUpdate {
     pub id: String,
     pub slug: String,
     pub name: String,
+    /// The newest version THIS engine can run, resolved by the marketplace.
+    ///
+    /// The engine no longer works this out for itself. Compatibility lives on
+    /// the release now, so only the marketplace can see the whole line of them,
+    /// and it is the side that knows how engine versions order.
     pub version: String,
-    /// Minimum engine release. Empty means the creator did not set one, which
-    /// is treated as "any" rather than as a floor nobody meets.
+    /// The engine [`version`](Self::version) was built for. Empty means any.
     #[serde(default)]
     pub min_engine_version: String,
+    /// The newest version that exists for any engine. Equal to
+    /// [`version`](Self::version) in the ordinary case.
+    ///
+    /// Empty from a marketplace that predates per-release compatibility, which
+    /// is the signal to fall back to comparing floors here.
+    #[serde(default)]
+    pub latest_version: String,
+    /// What [`latest_version`](Self::latest_version) requires.
+    #[serde(default)]
+    pub latest_min_engine_version: String,
     #[serde(default)]
     pub published: bool,
 }
 
-/// Latest published versions for a set of installed plugins, in one request.
+/// The release each installed plugin should be on, for THIS engine, in one
+/// request.
 ///
-/// Public — an update check should not need a sign-in, and the version is on
-/// the listing anyway.
+/// Public: an update check should not need a sign-in.
+///
+/// The engine version travels with the ids because the answer depends on it.
+/// A plugin's r1-alpha7 release stays the right one for an r1-alpha7 editor long
+/// after an r1-alpha8 release is published beside it, and only the marketplace
+/// can see that whole line of releases. Sending nothing gets the old answer,
+/// "whatever is newest", which is what offered r1-alpha7 users an update that
+/// would not load.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn plugin_updates(ids: &[String]) -> Result<Vec<PluginUpdate>, String> {
     if ids.is_empty() {
@@ -108,7 +129,10 @@ pub fn plugin_updates(ids: &[String]) -> Result<Vec<PluginUpdate>, String> {
     }
     super::client::post_json(
         &format!("{}/api/marketplace/plugin-updates", super::client::api_base()),
-        &serde_json::json!({ "ids": ids }),
+        &serde_json::json!({
+            "ids": ids,
+            "engine_version": renzora::version::ENGINE_VERSION,
+        }),
         None,
     )
 }
@@ -143,6 +167,14 @@ pub fn list_assets(
     if let Some(p) = max_price {
         url.push_str(&format!("&max_price={p}"));
     }
+    // Always sent. It hides listings this editor has no runnable release of,
+    // and relabels the rest with the version this editor would actually get, so
+    // a card cannot advertise 2.0.0 and install 1.0.11. A marketplace that does
+    // not know the parameter ignores it and answers as it always did.
+    url.push_str(&format!(
+        "&engine={}",
+        urlencoded(renzora::version::ENGINE_VERSION)
+    ));
 
     let response = super::client::get_json_raw(&url, None)?;
     response.json().map_err(|e| e.to_string())

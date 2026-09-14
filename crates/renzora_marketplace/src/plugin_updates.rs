@@ -80,6 +80,8 @@ fn start_check(mut state: ResMut<PluginUpdateCheck>) {
                     found.published,
                     &found.version,
                     &found.min_engine_version,
+                    &found.latest_version,
+                    &found.latest_min_engine_version,
                     engine,
                 );
                 matches!(

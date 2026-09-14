@@ -149,12 +149,21 @@ impl PluginStore {
             return Action::Busy;
         }
         if let Some(existing) = self.installed.iter().find(|p| p.asset_id == asset.id) {
-            // The listing is what the marketplace publishes *now*, so it stands
-            // in for the update check's `latest_version` — this page is looking
-            // at the catalogue, not at a cached copy of it.
+            // The catalogue is fetched with this engine's version, so
+            // `asset.version` is already the release this editor would get
+            // rather than the newest one published. That is why no floor is
+            // passed: there is nothing left here to compare it against, and the
+            // comparison would only be able to repeat what the marketplace
+            // already did with better information.
+            //
+            // A listing whose releases all need a newer engine does not reach
+            // this page at all, so "needs a newer editor" is not reachable from
+            // here; the update check is where that gets said.
             return match installed::update_state(
                 &existing.version,
                 true,
+                &asset.version,
+                "",
                 &asset.version,
                 "",
                 renzora::version::ENGINE_VERSION,

@@ -191,37 +191,208 @@ pub fn engine_satisfies(engine: &str, requires: &str) -> bool {
     }
 }
 
+/// A plugin version as numbers, for deciding which of two is newer.
+///
+/// Leading digit groups only, so `1.2.0-beta.1` reads as `1.2.0`. A creator's
+/// version is their own scheme and this is deliberately a weak reading of it:
+/// the one thing it has to get right is that `1.0.11` is newer than `1.0.10`,
+/// where a string compare says the opposite. Anything it cannot parse yields an
+/// empty key, which compares equal to every other empty one and so decides
+/// nothing, leaving the caller on its string comparison.
+///
+/// Matches `semver_key` in the marketplace's migration 057, so the two sides
+/// agree about which release is the newest.
+fn version_key(v: &str) -> Vec<u32> {
+    v.trim()
+        .split('.')
+        .map(|part| {
+            let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse::<u32>().ok()
+        })
+        .take_while(Option::is_some)
+        .flatten()
+        .collect()
+}
+
 /// Decide what to offer for one installed plugin.
 ///
-/// Versions are compared as strings for equality only: a creator's version is
-/// their own scheme, and "different from what is installed" is the honest
-/// reading of it. Ordering them would mean guessing at semver they never
-/// promised.
+/// `resolved_version` is what the marketplace says THIS engine can run, and
+/// `newest_version` is what exists for any engine. The engine no longer works
+/// either out for itself: compatibility lives on the release, so only the
+/// marketplace can see the whole line of them.
+///
+/// The gap between the two is the interesting case. Being current for your
+/// engine while something newer exists is not "up to date", and it is not an
+/// update either. It is "update the editor", and saying nothing would make a
+/// maintained plugin look abandoned.
+///
+/// `newest_version` empty means a marketplace that predates per-release
+/// compatibility. The floor comparison is kept for exactly that case, because
+/// the engine and the website deploy separately and one can be old while the
+/// other is new.
 pub fn update_state(
     installed_version: &str,
     published: bool,
-    latest_version: &str,
+    resolved_version: &str,
     min_engine_version: &str,
+    newest_version: &str,
+    newest_requires: &str,
     engine_version: &str,
 ) -> UpdateState {
     if !published {
         return UpdateState::Unavailable;
     }
-    if latest_version.trim() == installed_version.trim() {
-        return UpdateState::UpToDate;
+
+    // An older marketplace answers with the newest release and its floor, with
+    // no per-engine resolution behind it, so the floor still has to be checked
+    // here.
+    if newest_version.trim().is_empty() {
+        if resolved_version.trim() == installed_version.trim() {
+            return UpdateState::UpToDate;
+        }
+        if !engine_satisfies(engine_version, min_engine_version) {
+            return UpdateState::NeedsNewerEngine {
+                version: resolved_version.to_string(),
+                requires: min_engine_version.to_string(),
+            };
+        }
+        return UpdateState::Available { version: resolved_version.to_string() };
     }
-    if !engine_satisfies(engine_version, min_engine_version) {
+
+    let installed = installed_version.trim();
+    let resolved = resolved_version.trim();
+
+    // Never offer a move backwards as an update. Downgrading the editor after
+    // installing a plugin leaves the resolved version genuinely older than what
+    // is on disk, and "Update to 1.0.11" over an installed 2.0.0 is a worse
+    // answer than saying nothing.
+    let newer = |candidate: &str| -> bool {
+        if candidate.is_empty() || candidate == installed {
+            return false;
+        }
+        match (version_key(candidate), version_key(installed)) {
+            (c, i) if c.is_empty() || i.is_empty() => true,
+            (c, i) => c > i,
+        }
+    };
+
+    if newer(resolved) {
+        return UpdateState::Available { version: resolved.to_string() };
+    }
+
+    // Current for this engine, but not for every engine.
+    let newest = newest_version.trim();
+    if newest != resolved && newer(newest) {
         return UpdateState::NeedsNewerEngine {
-            version: latest_version.to_string(),
-            requires: min_engine_version.to_string(),
+            version: newest.to_string(),
+            requires: newest_requires.to_string(),
         };
     }
-    UpdateState::Available { version: latest_version.to_string() }
+
+    UpdateState::UpToDate
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The marketplace has resolved for this engine, so these only exercise
+    /// what the engine still decides: newer, older, or nothing to say.
+    fn state(installed: &str, resolved: &str, newest: &str, requires: &str) -> UpdateState {
+        update_state(installed, true, resolved, "", newest, requires, "r1-alpha7")
+    }
+
+    #[test]
+    fn a_newer_resolved_release_is_an_update() {
+        assert!(matches!(
+            state("1.0.2", "1.0.11", "1.0.11", ""),
+            UpdateState::Available { version } if version == "1.0.11"
+        ));
+    }
+
+    /// The case this whole per-release scheme exists for: current for your
+    /// engine, with something newer sitting behind an engine upgrade. Neither
+    /// "up to date" nor an update, and silence here makes a maintained plugin
+    /// look abandoned.
+    #[test]
+    fn current_for_this_engine_but_not_for_every_engine() {
+        assert!(matches!(
+            state("1.0.11", "1.0.11", "2.0.0", "r1-alpha8"),
+            UpdateState::NeedsNewerEngine { version, requires }
+                if version == "2.0.0" && requires == "r1-alpha8"
+        ));
+    }
+
+    #[test]
+    fn nothing_newer_anywhere_is_up_to_date() {
+        assert!(matches!(
+            state("2.0.0", "2.0.0", "2.0.0", ""),
+            UpdateState::UpToDate
+        ));
+    }
+
+    /// Downgrading the editor after installing leaves the resolved release
+    /// genuinely older than what is on disk. "Update to 1.0.11" over an
+    /// installed 2.0.0 is worse than saying nothing.
+    #[test]
+    fn an_older_resolved_release_is_not_offered_as_an_update() {
+        assert!(matches!(
+            state("2.0.0", "1.0.11", "2.0.0", "r1-alpha8"),
+            UpdateState::UpToDate
+        ));
+    }
+
+    /// The ordering a string compare gets backwards, and the reason this needs
+    /// a numeric key at all. Two digits against one is where it breaks: `1.0.11`
+    /// against `1.0.10` happens to come out right either way, so it proves
+    /// nothing.
+    #[test]
+    fn patch_versions_order_as_numbers() {
+        assert!(version_key("1.0.10") > version_key("1.0.9"));
+        assert!("1.0.10" < "1.0.9", "...which string ordering disagrees with");
+        assert!(matches!(
+            state("1.0.9", "1.0.10", "1.0.10", ""),
+            UpdateState::Available { .. }
+        ));
+        assert!(matches!(
+            state("1.0.10", "1.0.9", "1.0.10", ""),
+            UpdateState::UpToDate
+        ));
+    }
+
+    /// A version this cannot read is not a reason to refuse an update: the
+    /// creator's scheme is theirs, and "different" is the honest reading.
+    #[test]
+    fn an_unparseable_version_falls_back_to_difference() {
+        assert!(version_key("nightly").is_empty());
+        assert!(matches!(
+            state("nightly", "2024-06-01", "2024-06-01", ""),
+            UpdateState::Available { .. }
+        ));
+    }
+
+    /// A marketplace that predates per-release compatibility sends no
+    /// `latest_version`, and the floor comparison has to carry the decision.
+    /// The engine and the website deploy separately, so this is a real state.
+    #[test]
+    fn an_older_marketplace_still_gets_the_floor_checked() {
+        assert!(matches!(
+            update_state("1.0.0", true, "2.0.0", "r1-alpha8", "", "", "r1-alpha7"),
+            UpdateState::NeedsNewerEngine { .. }
+        ));
+        assert!(matches!(
+            update_state("1.0.0", true, "2.0.0", "r1-alpha7", "", "", "r1-alpha7"),
+            UpdateState::Available { .. }
+        ));
+    }
+
+    #[test]
+    fn an_unpublished_listing_is_left_alone() {
+        assert!(matches!(
+            update_state("1.0.0", false, "2.0.0", "", "2.0.0", "", "r1-alpha7"),
+            UpdateState::Unavailable
+        ));
+    }
 
     #[test]
     fn release_tags_order_numerically_not_lexically() {
@@ -289,37 +460,4 @@ mod tests {
         assert!(engine_satisfies("r1-alpha7", "-nightly-16aug26"));
     }
 
-    #[test]
-    fn a_matching_version_is_up_to_date() {
-        assert_eq!(
-            update_state("1.0.0", true, "1.0.0", "", "r1-alpha7"),
-            UpdateState::UpToDate
-        );
-    }
-
-    #[test]
-    fn a_different_version_is_an_update() {
-        assert_eq!(
-            update_state("1.0.0", true, "1.1.0", "", "r1-alpha7"),
-            UpdateState::Available { version: "1.1.0".into() }
-        );
-    }
-
-    /// The update exists but this editor is too old — say so rather than
-    /// showing nothing, which reads as "no update".
-    #[test]
-    fn an_update_needing_a_newer_engine_says_so() {
-        assert_eq!(
-            update_state("1.0.0", true, "2.0.0", "r1-alpha9", "r1-alpha7"),
-            UpdateState::NeedsNewerEngine { version: "2.0.0".into(), requires: "r1-alpha9".into() }
-        );
-    }
-
-    #[test]
-    fn an_unpublished_listing_offers_nothing() {
-        assert_eq!(
-            update_state("1.0.0", false, "2.0.0", "", "r1-alpha7"),
-            UpdateState::Unavailable
-        );
-    }
 }
