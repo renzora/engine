@@ -24,6 +24,41 @@ use crate::state::{
 /// a `.material` is opened and edited straight after creating it and a rename
 /// field in the way is one more thing to dismiss.
 pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
+    let content = kind.content(boilerplate(world));
+    create_named(world, kind.filename().to_string(), kind.is_folder(), content);
+}
+
+/// Create the file a registered menu item describes.
+///
+/// The plugin-contributed half of the same menu. Looked up by id at click time
+/// rather than captured, because the registry owns a boxed closure a menu
+/// callback cannot clone.
+///
+/// The content is built while the registry is still borrowed and handed on as a
+/// finished `String`, which is what keeps that borrow from colliding with the
+/// `&mut World` the write needs.
+pub(crate) fn create_registered_asset(world: &mut World, id: &str) {
+    let boilerplate = boilerplate(world);
+    let Some((filename, content)) = world
+        .get_resource::<renzora::CreateMenuRegistry>()
+        .and_then(|r| r.get(id))
+        .map(|i| (i.filename(), (i.starter)(boilerplate)))
+    else {
+        return;
+    };
+    create_named(world, filename, false, content);
+}
+
+/// The editor's "include boilerplate in new files" preference.
+fn boilerplate(world: &World) -> bool {
+    world
+        .get_resource::<renzora_editor_framework::EditorSettings>()
+        .is_none_or(|s| s.new_file_boilerplate)
+}
+
+/// The half both paths share: resolve the folder, pick a free name, write it,
+/// then select it (and start a rename, for a folder).
+fn create_named(world: &mut World, filename: String, is_folder: bool, content: String) {
     let folder = world
         .get_resource::<NativeAssets>()
         .and_then(|s| s.current.clone())
@@ -35,21 +70,18 @@ pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
     let Some(folder) = folder else {
         return;
     };
-    let boilerplate = world
-        .get_resource::<renzora_editor_framework::EditorSettings>()
-        .is_none_or(|s| s.new_file_boilerplate);
-    let path = unique_path(&folder, kind.filename(), kind.is_folder());
-    let ok = if kind.is_folder() {
+    let path = unique_path(&folder, &filename, is_folder);
+    let ok = if is_folder {
         std::fs::create_dir_all(&path).is_ok()
     } else {
-        std::fs::write(&path, kind.content(boilerplate)).is_ok()
+        std::fs::write(&path, content).is_ok()
     };
     if ok {
         // A new *folder* goes straight into its rename; a new file does not.
         // The name is the whole point of a folder, where a file arrives with an
         // extension the field would have to be careful of and a template that
         // already says what it is.
-        let start_naming = kind.is_folder();
+        let start_naming = is_folder;
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
             s.selected = Some(path.clone());
             s.listing_dirty = true;

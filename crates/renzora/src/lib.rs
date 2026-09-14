@@ -192,6 +192,13 @@ pub use script_hook::ScriptHook;
 // NOT glob re-exported: `command`, `context` and `component` are far too generic
 // for this crate's root, and `renzora_scripting` re-exports them flat anyway for
 // everything that was already written against it.
+/// Plugin-contributed entries in the "create a new file" menus.
+///
+/// Here rather than in either panel for the reason `backend` is: the two crates
+/// that need the type are the editor and an installed plugin.
+pub mod create_menu;
+pub use create_menu::{CreateMenuItem, CreateMenuRegistry, RegisterCreateMenuItem};
+
 pub mod backend;
 pub mod command;
 pub mod component;

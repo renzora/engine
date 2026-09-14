@@ -241,6 +241,7 @@ pub(crate) fn asset_context_menu(
     fonts: Option<Res<EmberFonts>>,
     state: Res<NativeAssets>,
     roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
+    registry: Option<Res<renzora::CreateMenuRegistry>>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -261,7 +262,7 @@ pub(crate) fn asset_context_menu(
     let win_h = win.height();
     // Nothing under the cursor → the click targets the *folder*, not an asset.
     let Some(path) = state.hovered.clone() else {
-        background_context_menu(&mut commands, &fonts, &state, cursor, win_h);
+        background_context_menu(&mut commands, &fonts, &state, cursor, win_h, registry.as_deref());
         return;
     };
     let fav_label = if state.favorites.contains(&path) {
@@ -275,7 +276,7 @@ pub(crate) fn asset_context_menu(
     // Same color-coded "create new X" rows as the Add button, led by the
     // "Create Asset" header — at the TOP of the menu so a new asset can be made
     // straight from the right-click menu (lands in the current folder).
-    let mut kids = new_asset_menu_items(&mut commands, &fonts);
+    let mut kids = new_asset_menu_items(&mut commands, &fonts, registry.as_deref());
     kids.push(menu_sep(&mut commands));
     // "Open in <Editor>" routes editor-backed assets to their panel/layout.
     if let Some((icon, label)) = open_action(&path) {
@@ -344,11 +345,12 @@ fn background_context_menu(
     state: &NativeAssets,
     cursor: Vec2,
     win_h: f32,
+    registry: Option<&renzora::CreateMenuRegistry>,
 ) {
     // Same upward flip as the per-asset menu: the create-asset list is tall
     // enough to be clipped by a click low in the window.
     let menu = screen_menu_flip(commands, cursor.x, cursor.y, win_h);
-    let mut kids = new_asset_menu_items(commands, fonts);
+    let mut kids = new_asset_menu_items(commands, fonts, registry);
     kids.push(menu_sep(commands));
     kids.push(menu_item(
         commands,
@@ -377,6 +379,7 @@ fn background_context_menu(
 /// screen, so the menu has to carry everything the hidden toolbar would have
 /// offered. See [`background_context_menu`] for why Create Asset comes first.
 pub(crate) fn add_menu_open(
+    registry: Option<Res<renzora::CreateMenuRegistry>>,
     q: Query<
         (
             &Interaction,
@@ -412,7 +415,7 @@ pub(crate) fn add_menu_open(
     } else {
         screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0)
     };
-    let mut kids = new_asset_menu_items(&mut commands, &fonts);
+    let mut kids = new_asset_menu_items(&mut commands, &fonts, registry.as_deref());
     if file_actions {
         kids.push(menu_sep(&mut commands));
         kids.push(menu_item(
@@ -431,7 +434,11 @@ pub(crate) fn add_menu_open(
 /// right-click menu, led by an Unreal-style "Create Asset" section header. Each
 /// row carries the type's accent color (icon + label) so the menu reads as the
 /// same color language as the asset tiles.
-fn new_asset_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
+fn new_asset_menu_items(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    registry: Option<&renzora::CreateMenuRegistry>,
+) -> Vec<Entity> {
     let mut kids = vec![menu_header(commands, fonts, &renzora::lang::t("assets.new.header"))];
     kids.extend(NewAsset::MENU.iter().map(|&kind| {
         menu_card(
@@ -444,7 +451,47 @@ fn new_asset_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Enti
             move |w| create_asset(w, kind),
         )
     }));
+    kids.extend(registered_menu_items(registry, commands, fonts));
     kids
+}
+
+/// The same rows, for file types a PLUGIN contributed.
+///
+/// Appended rather than merged into `NewAsset::MENU`, which stays the engine's
+/// own list. The split is the point: an entry is here exactly when something
+/// registered it, so the menu stops offering a Lua script to an editor with no
+/// Lua backend installed.
+///
+/// Takes the world because the registry is a resource and the caller is
+/// building UI; `None` when nothing has registered, which is a normal state and
+/// draws no extra rows.
+fn registered_menu_items(
+    registry: Option<&renzora::CreateMenuRegistry>,
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+) -> Vec<Entity> {
+    let Some(registry) = registry else {
+        return Vec::new();
+    };
+    registry
+        .items()
+        .iter()
+        .map(|item| {
+            let id = item.id.clone();
+            menu_card(
+                commands,
+                fonts,
+                &item.icon,
+                &item.label_text(),
+                &item.subtitle_text(),
+                // No per-type accent: the engine's palette is keyed to types it
+                // knows, and inventing one per plugin would read as meaning
+                // something it does not.
+                renzora_ember::theme::text_primary(),
+                move |w| crate::ops::create_registered_asset(w, &id),
+            )
+        })
+        .collect()
 }
 
 /// Open the sort menu (modes + ascending/descending) anchored under the button.
