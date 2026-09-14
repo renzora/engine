@@ -66,6 +66,7 @@ impl SpawnRegistries<'_> {
 /// hunting for a new one.
 pub(crate) fn hier_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
+    create_menu: Option<Res<renzora::CreateMenuRegistry>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     selection: Option<Res<EditorSelection>>,
@@ -141,7 +142,13 @@ pub(crate) fn hier_context_menu(
 
     // Make a new project asset (and, for scripts/blueprints, attach it here).
     kids.push(menu_sep(&mut commands));
-    kids.push(super::create_asset::create_submenu(&mut commands, &fonts, target, is_ui));
+    kids.push(super::create_asset::create_submenu(
+        &mut commands,
+        &fonts,
+        target,
+        is_ui,
+        create_menu.as_deref(),
+    ));
 
     // Label-color (entity color-coding) section.
     kids.push(menu_sep(&mut commands));

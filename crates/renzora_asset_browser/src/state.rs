@@ -533,7 +533,6 @@ pub(crate) enum NewAsset {
     Folder,
     Material,
     Blueprint,
-    Lua,
     Rust,
     Particle,
     Template,
@@ -543,10 +542,13 @@ pub(crate) enum NewAsset {
 impl NewAsset {
     /// The creatable file types offered by the Add button + right-click menu,
     /// in display order. `Folder` is excluded — it has its own toolbar button.
-    pub(crate) const MENU: [NewAsset; 7] = [
+    /// No `Lua`: the Lua plugin registers its own entry through
+    /// `register_create_menu_item`, so the row is present exactly when an
+    /// interpreter is. The engine used to offer it unconditionally and write a
+    /// `.lua` nothing could run.
+    pub(crate) const MENU: [NewAsset; 6] = [
         NewAsset::Material,
         NewAsset::Blueprint,
-        NewAsset::Lua,
         // Next to Lua: the two are the same choice (`renzora_rust_script`
         // claims `.rs` the way the Lua plugin claims `.lua`), and picking
         // between them is the first thing anyone scripting has to do.
@@ -561,7 +563,6 @@ impl NewAsset {
             NewAsset::Folder => "New Folder",
             NewAsset::Material => "NewMaterial.material",
             NewAsset::Blueprint => "NewBlueprint.blueprint",
-            NewAsset::Lua => "new_script.lua",
             NewAsset::Rust => "new_script.rs",
             NewAsset::Particle => "NewParticle.particle",
             NewAsset::Template => "NewTemplate.html",
@@ -580,7 +581,6 @@ impl NewAsset {
             // event, so a new file starts with On Ready + On Update placed —
             // see `renzora_blueprint::starter`.
             NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
-            NewAsset::Lua => renzora_scripting::starter_lua(boilerplate),
             NewAsset::Rust => renzora_scripting::starter_rust(boilerplate),
             NewAsset::Particle => "(name: \"New Particle\")".to_string(),
             NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
@@ -594,7 +594,6 @@ impl NewAsset {
             NewAsset::Folder => renzora::lang::t("assets.new.folder"),
             NewAsset::Material => renzora::lang::t("assets.new.material"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
-            NewAsset::Lua => renzora::lang::t("assets.new.lua"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle"),
             NewAsset::Template => renzora::lang::t("assets.new.template"),
@@ -608,7 +607,6 @@ impl NewAsset {
             NewAsset::Folder => renzora::lang::t("assets.new.folder"),
             NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
-            NewAsset::Lua => renzora::lang::t("assets.new.lua"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust_sub", "Rust Script"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle_sub"),
             NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
@@ -621,7 +619,7 @@ impl NewAsset {
             NewAsset::Folder => "folder-plus",
             NewAsset::Material => "palette",
             NewAsset::Blueprint => "blueprint",
-            NewAsset::Lua | NewAsset::Rust | NewAsset::Template => "code",
+            NewAsset::Rust | NewAsset::Template => "code",
             NewAsset::Particle => "sparkle",
             NewAsset::Bsn => "film-slate",
         }
@@ -634,7 +632,6 @@ impl NewAsset {
             NewAsset::Folder => (235, 200, 120),
             NewAsset::Material => (0, 200, 130),
             NewAsset::Blueprint => (100, 180, 255),
-            NewAsset::Lua => (120, 170, 255),
             // Matches `file_kind::type_info`'s `.rs` accent, so the menu card and
             // the tile the file lands as are the same colour.
             NewAsset::Rust => (230, 140, 90),

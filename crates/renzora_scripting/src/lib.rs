@@ -45,43 +45,11 @@ pub use renzora::get_handler::{
 pub use input::*;
 pub use plugin::*;
 
-/// Starter contents for a new `.lua` script.
-///
-/// Lives here, beside the hook vocabulary it demonstrates, so the two places
-/// that create scripts — the Assets panel's New menu and the hierarchy's
-/// right-click Attach — write the same file. The same reason
-/// `renzora_blueprint::starter_blueprint_json` lives in the blueprint crate.
-///
-/// `boilerplate` off gives a bare comment: Lua needs no skeleton to be a valid
-/// script, so "minimal" really is almost empty here — unlike Rust, which needs
-/// its entry-point macro either way.
-pub fn starter_lua(boilerplate: bool) -> String {
-    if !boilerplate {
-        return "-- New Lua script\n".to_string();
-    }
-    // Both hooks, and the one thing about transforms that catches everyone: the
-    // `position_*` globals are read-only inputs, so moving an entity means
-    // calling a function.
-    concat!(
-        "-- Attached to an entity. The engine calls these hooks; delete the\n",
-        "-- ones you don't need.\n",
-        "\n",
-        "function on_ready()\n",
-        "    -- Once, when the entity's scripts start.\n",
-        "end\n",
-        "\n",
-        "function on_update()\n",
-        "    -- Every frame. `delta` is seconds since the last one.\n",
-        "    --\n",
-        "    -- `position_x`, `rotation_y`, … are read-only inputs refreshed each\n",
-        "    -- frame — assigning to them does nothing. Move an entity by calling\n",
-        "    -- translate() / set_position(), or through physics.\n",
-        "    local speed = 5.0\n",
-        "    translate(input_x * speed * delta, 0, input_y * speed * delta)\n",
-        "end\n",
-    )
-    .to_string()
-}
+// `starter_lua` lived here, beside the hook vocabulary it demonstrates. It went
+// with the language: the Lua plugin registers its own create-menu entry and
+// supplies the starter text along with it, so an engine with no interpreter no
+// longer ships the first file for one. `starter_rust` stays, because the Rust
+// backend is in the workspace.
 
 /// Starter contents for a new `.rs` script.
 ///

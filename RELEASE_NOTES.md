@@ -1,6 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- feat(plugins): a plugin can add its own entry to the Assets and Attach create menus
+- fix(assets): the Lua Script entry no longer appears when no Lua interpreter is installed
 - fix(scripting): a plugin can implement a scripting language again, which fixes Lua
 - fix(plugins): a plugin's artwork shows up in Settings and the exporter again, whatever image format it ships
 - build(ci): every nightly now checks that the published plugins still compile against the engine it just built, on all six desktop platforms

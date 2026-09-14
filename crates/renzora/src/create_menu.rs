@@ -58,6 +58,10 @@ pub struct CreateMenuItem {
     /// Second line in the Assets menu. Falls back to the label.
     pub subtitle_key: String,
     pub subtitle_fallback: String,
+    /// Project-relative folder the hierarchy defaults its destination to, and
+    /// pre-creates so the picker has a real row to show even in a project that
+    /// has never had one. `scripts` for a language, `materials` for a material.
+    pub folder: String,
     /// Whether the hierarchy offers it on an entity.
     ///
     /// Scripts and UI templates attach to something; a material or a scene is a
@@ -84,6 +88,7 @@ impl CreateMenuItem {
             stem: stem.into(),
             extension: extension.into(),
             icon: "file".to_string(),
+            folder: "assets".to_string(),
             attaches: false,
             starter: Box::new(starter),
         }
@@ -103,6 +108,12 @@ impl CreateMenuItem {
 
     pub fn icon(mut self, icon: impl Into<String>) -> Self {
         self.icon = icon.into();
+        self
+    }
+
+    /// Where the hierarchy's Attach overlay points by default.
+    pub fn folder(mut self, folder: impl Into<String>) -> Self {
+        self.folder = folder.into();
         self
     }
 
@@ -197,6 +208,15 @@ mod tests {
         let reg = app.world().resource::<CreateMenuRegistry>();
         let ids: Vec<&str> = reg.attachable().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, ["lua"]);
+    }
+
+    /// The hierarchy pre-creates this folder, so a default that pointed at the
+    /// project root would litter it. `assets` is the one directory every project
+    /// already has.
+    #[test]
+    fn the_default_folder_is_assets() {
+        assert_eq!(item("lua").folder, "assets");
+        assert_eq!(item("lua").folder("scripts").folder, "scripts");
     }
 
     #[test]
