@@ -541,8 +541,12 @@ pub fn run_scripts(world: &mut World) {
             }
 
             // Let the backend reach the declared bindings.
+            //
+            // SAFETY: the resource is borrowed from `world`, which outlives
+            // `ctx`: the context is built here, handed to the backend, and
+            // dropped before this system returns.
             if let Some(extensions) = world.get_resource::<crate::extension::ScriptExtensions>() {
-                ctx.extensions_ptr = Some(extensions as *const crate::extension::ScriptExtensions);
+                unsafe { ctx.set_extensions(extensions) };
             }
 
             // Set up the get handler so scripts can read component fields

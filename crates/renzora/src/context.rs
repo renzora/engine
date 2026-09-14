@@ -219,7 +219,7 @@ pub struct ScriptContext {
     /// Pointer to the `ScriptExtensions` resource, so a backend can build the
     /// declared bindings. Valid only during script execution — the execution
     /// system sets it and the resource lives in the world it is borrowing.
-    pub(crate) extensions_ptr: Option<*const crate::extension::ScriptExtensions>,
+    pub(crate) extensions_ptr: Option<*const crate::script_extension::ScriptExtensions>,
 
     // === Outputs ===
     pub new_position: Option<Vec3>,
@@ -337,8 +337,22 @@ impl ScriptContext {
     /// # Safety
     /// The pointer is set by the execution system and is valid for the
     /// duration of script execution.
-    pub fn extensions(&self) -> Option<&crate::extension::ScriptExtensions> {
+    pub fn extensions(&self) -> Option<&crate::script_extension::ScriptExtensions> {
         self.extensions_ptr.map(|p| unsafe { &*p })
+    }
+
+    /// Point this context at the world's `ScriptExtensions` for one call.
+    ///
+    /// A setter rather than a public field because the field is a raw pointer
+    /// whose validity is a contract, not a property of the type: the caller must
+    /// be the execution system, holding the resource borrowed for at least as
+    /// long as the context. It was `pub(crate)` while the context and that system
+    /// lived in one crate, which said the same thing and enforced it for free.
+    ///
+    /// # Safety
+    /// `extensions` must outlive every call made against this context.
+    pub unsafe fn set_extensions(&mut self, extensions: &crate::script_extension::ScriptExtensions) {
+        self.extensions_ptr = Some(extensions as *const _);
     }
 
     /// Process a command, routing transform/environment commands to context fields

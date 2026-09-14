@@ -1,10 +1,23 @@
-mod backend;
-mod command;
-mod component;
-mod context;
+// Moved to the contract crate, for the same reason `diagnostics::script` was
+// (see below) and with more force: a language backend is supposed to be a
+// marketplace plugin, and an installed plugin is compiled against the staged
+// SDK, which offers `bevy`, `renzora` and `renzora_ember` and nothing else. So
+// while `ScriptBackend` lived here, no plugin could implement one. The Lua
+// backend had been unbuildable since the FFI it used instead was deleted.
+//
+// `get_handler` had to travel with them rather than stay: it is THREAD-LOCAL
+// state, and a plugin linking a private copy would read handlers the engine
+// never wrote. Every `get("Health.current")` would return nil with nothing
+// logged. In `renzora` it is covered by `renzora_dylib`, the shared image that
+// already exists to make exactly this class of static singular.
+//
+// Only the types moved. Everything that DOES anything with them (the engine,
+// the systems, the command-apply pass) stayed. Re-exported under the old paths
+// so no caller, in this crate or outside it, had to change.
+pub use renzora::{backend, command, component, context, get_handler};
+
 mod engine;
 pub mod extension;
-pub mod get_handler;
 pub mod http;
 mod input;
 mod plugin;
@@ -20,13 +33,13 @@ pub mod systems;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-pub use backend::*;
-pub use command::*;
-pub use component::*;
-pub use context::*;
+pub use renzora::backend::*;
+pub use renzora::command::*;
+pub use renzora::component::*;
+pub use renzora::context::*;
 pub use engine::*;
 pub use extension::*;
-pub use get_handler::{
+pub use renzora::get_handler::{
     AssetProgressBridge, AssetProgressSnapshot, SceneLoadBridge, SceneLoadSnapshot,
 };
 pub use input::*;

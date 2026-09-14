@@ -169,6 +169,41 @@ pub use script_ctx::ScriptCtx;
 /// The lifecycle events a Rust script can receive — see [`script_hook::ScriptHook`].
 pub mod script_hook;
 pub use script_hook::ScriptHook;
+
+// ── The language-backend half of scripting ───────────────────────────────
+// `renzora_scripting` owns the scripting SYSTEM and still does. These are the
+// types that cross its boundary, and they are here for the reason §6 of
+// CLAUDE.md gives: a type two crates both need has one definition, in the
+// contract crate.
+//
+// Concretely, the two crates are the engine and an INSTALLED PLUGIN. A language
+// backend is meant to be a marketplace plugin, and a plugin compiles against the
+// staged SDK, which offers `bevy`, `renzora` and `renzora_ember`. While
+// `ScriptBackend` lived in `renzora_scripting` there was no way for a plugin to
+// name it, so there could be no third-party language at all.
+//
+// `get_handler` is the one that could not have been solved by staging another
+// crate. It is thread-local state that answers a script's synchronous reads
+// mid-hook, so two copies means the backend reads handlers the engine never
+// wrote, and every `get` returns nothing with no error anywhere. Here, the
+// shared `renzora_dylib` image makes it singular, exactly as it already does for
+// the translation table and the console buffer.
+//
+// NOT glob re-exported: `command`, `context` and `component` are far too generic
+// for this crate's root, and `renzora_scripting` re-exports them flat anyway for
+// everything that was already written against it.
+pub mod backend;
+pub mod command;
+pub mod component;
+pub mod context;
+pub mod get_handler;
+// The names a backend actually writes, lifted to the root the way `ScriptCtx`
+// and `ScriptHook` are. A plugin implementing a language should not have to know
+// which of five modules each type happens to sit in.
+pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend};
+pub use command::ScriptCommand;
+pub use component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
+pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
 // ── Post-process framework ───────────────────────────────────────────────

@@ -56,8 +56,8 @@ without an exclusive system.
 
 ```rust
 use bevy::prelude::*;
-use renzora_scripting::backend::{AppScriptBackendExt, ScriptBackend};
-use renzora_scripting::{ScriptCommand, ScriptContext, ScriptVariables};
+use renzora::{AppScriptBackendExt, ScriptBackend};
+use renzora::{ScriptCommand, ScriptContext, ScriptVariables};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
@@ -109,9 +109,23 @@ impl Plugin for WrenPlugin {
 renzora::plugin!(WrenPlugin, Runtime);
 ```
 
-`add_script_backend` uses `get_resource_or_insert_with`, so your plugin has no
-ordering relationship with `ScriptingPlugin` — registration works whichever
-happened to be added first.
+**Everything a backend needs is in `renzora`, not `renzora_scripting`.** That is
+what makes a language installable at all: a native plugin compiles against the
+staged SDK, which offers `bevy`, `renzora` and `renzora_ember` and nothing else.
+While `ScriptBackend` lived in `renzora_scripting` no plugin could name it, and
+the Lua backend had been unbuildable ever since the FFI it used instead was
+removed. `renzora_scripting` still re-exports all of it, so engine-side code that
+was already written against the old paths is unaffected.
+
+`get_handler` travelled with the trait, and had to. It is thread-local state that
+answers a script's synchronous reads mid-hook, so a plugin linking a private copy
+would read handlers the engine never wrote: every `get("Health.current")` would
+return nothing, with no error anywhere. In `renzora` the shared `renzora_dylib`
+image makes it singular, exactly as it already does for the translation table.
+
+`add_script_backend` queues into `PendingScriptBackends`, which `ScriptingPlugin`
+drains in `PreStartup`, so your plugin has no ordering relationship with it:
+registration works whichever happened to be added first.
 
 ## Rules that are not optional
 

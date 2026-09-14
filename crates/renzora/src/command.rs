@@ -16,14 +16,14 @@
 //! site. It also keeps this enum readable as a list of what scripts can do,
 //! rather than a list of Bevy types.
 
-pub use renzora::{CharacterCommand, CharacterCommandQueue};
+pub use crate::{CharacterCommand, CharacterCommandQueue};
 
 /// The reflected-property value, as every other crate knows it.
-pub use renzora::PropertyValue;
+pub use crate::PropertyValue;
 
 /// The argument type for [`ScriptCommand::Action`] and [`ScriptCommand::Emit`],
-/// shared with the `renzora::ScriptAction` event those commands fire.
-pub use renzora::ScriptActionValue;
+/// shared with the [`crate::ScriptAction`] event those commands fire.
+pub use crate::ScriptActionValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScriptCommand {

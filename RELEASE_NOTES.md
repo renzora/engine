@@ -1,6 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
 ## Unreleased
+- fix(scripting): a plugin can implement a scripting language again, which fixes Lua
+- fix(plugins): a plugin's artwork shows up in Settings and the exporter again, whatever image format it ships
 - build(ci): every nightly now checks that the published plugins still compile against the engine it just built, on all six desktop platforms
 - build: the macOS and Linux build artifacts no longer carry the application twice, halving them from 1.16 GB to about 660 MB
 - feat(sdk): a plugin or Rust script that fails to build now writes the compiler's diagnostic to a `build.log` in its own build directory, so it can be read after the window that showed it has closed

@@ -63,6 +63,7 @@ impl Default for ScriptingPlugin {
 impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] ScriptingPlugin");
+        // See `collect_script_backends` below for why registration is a queue.
         // The engine starts with no backends at all. A language registers itself
         // with `add_script_backend`, so a build with no language present simply
         // runs no scripts rather than carrying an interpreter it may never use.
@@ -73,6 +74,8 @@ impl Plugin for ScriptingPlugin {
         }
 
         app.insert_resource(engine)
+            .init_resource::<renzora::backend::PendingScriptBackends>()
+            .add_systems(PreStartup, collect_script_backends)
             .init_resource::<ScriptInput>()
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
@@ -159,6 +162,34 @@ impl Plugin for ScriptingPlugin {
         // Bridge blueprint lifecycle/cursor ScriptActions (the interpreter only
         // emits ScriptActions; despawn + cursor lock would otherwise be no-ops).
         app.add_observer(handle_blueprint_lifecycle_actions);
+    }
+}
+
+/// Hand the engine every backend a language plugin registered during `build`.
+///
+/// `add_script_backend` cannot insert into [`ScriptEngine`] directly any more:
+/// the trait lives in the contract crate, so that an installed plugin can
+/// implement one, and the contract crate knows nothing about this one. So it
+/// queues into `renzora::backend::PendingScriptBackends` and this drains it.
+///
+/// `PreStartup`, because that is the first point at which every plugin's `build`
+/// has run. A language plugin has no ordering relationship with this one, and
+/// the queue is what keeps it that way: it does not matter which was added
+/// first, only that both finished building before this runs.
+///
+/// It also repairs a hazard the old direct insert had. `ScriptingPlugin::build`
+/// does `insert_resource(engine)` unconditionally, so a backend registered by a
+/// plugin that happened to build FIRST was silently thrown away with the
+/// resource it had created. Nothing ordered them, so that was luck rather than
+/// design.
+fn collect_script_backends(
+    mut pending: ResMut<renzora::backend::PendingScriptBackends>,
+    mut engine: ResMut<ScriptEngine>,
+) {
+    for backend in pending.0.drain(..) {
+        // `add_backend` propagates the scripts folder and the file reader the
+        // engine already holds, so arriving late costs a backend nothing.
+        engine.add_backend(backend);
     }
 }
 

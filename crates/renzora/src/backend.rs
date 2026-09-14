@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use bevy::prelude::Resource;
+
 use crate::command::ScriptCommand;
 use crate::component::{ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
@@ -60,7 +62,7 @@ pub trait ScriptBackend: Send + Sync {
         &self,
         path: &Path,
         rpc_name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, crate::ScriptActionValue>,
         from: u64,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
@@ -79,7 +81,7 @@ pub trait ScriptBackend: Send + Sync {
         &self,
         path: &Path,
         name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, crate::ScriptActionValue>,
         entity_bits: u64,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
@@ -92,7 +94,7 @@ pub trait ScriptBackend: Send + Sync {
     /// per frame per script-bearing entity. `g` is a canvas-style context
     /// (`g.width`/`g.height` = the draw surface size in px, plus `arc`/`line`/
     /// `circle`/`rect`/`text` methods) whose calls accumulate into the returned
-    /// [`renzora::DrawCmd`] list. Default no-op so backends without support compile.
+    /// [`crate::DrawCmd`] list. Default no-op so backends without support compile.
     fn call_on_draw(
         &self,
         path: &Path,
@@ -100,7 +102,7 @@ pub trait ScriptBackend: Send + Sync {
         height: f32,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
-    ) -> Result<Vec<renzora::DrawCmd>, String> {
+    ) -> Result<Vec<crate::DrawCmd>, String> {
         let _ = (path, width, height, ctx, vars);
         Ok(Vec::new())
     }
@@ -171,7 +173,7 @@ pub trait ScriptBackend: Send + Sync {
         &self,
         path: &Path,
         name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, crate::ScriptActionValue>,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
     ) -> Result<Vec<ScriptCommand>, String> {
@@ -213,16 +215,28 @@ pub trait AppScriptBackendExt {
     fn add_script_backend(&mut self, backend: impl ScriptBackend + 'static) -> &mut Self;
 }
 
+/// Backends registered before the scripting engine has collected them.
+///
+/// The handoff between [`AppScriptBackendExt::add_script_backend`] and
+/// `renzora_scripting`'s `ScriptEngine`, which owns the dispatch and stays where
+/// the systems are. Registration used to reach straight into that resource; it
+/// cannot from here, because the engine depends on this crate and not the other
+/// way round.
+///
+/// It is a queue rather than a direct insert for the reason the old code gave
+/// for `get_resource_or_insert_with`: a language plugin has no ordering
+/// relationship with `ScriptingPlugin`, and requiring one would make
+/// registration depend on which happened to be added first. Everything lands
+/// here during `build`, whoever ran first, and the engine drains it afterwards.
+#[derive(Resource, Default)]
+pub struct PendingScriptBackends(pub Vec<Box<dyn ScriptBackend>>);
+
 impl AppScriptBackendExt for bevy::app::App {
     fn add_script_backend(&mut self, backend: impl ScriptBackend + 'static) -> &mut Self {
-        // `get_resource_or_insert_with` rather than expecting the engine to be
-        // there: a language plugin has no ordering relationship with
-        // `ScriptingPlugin`, and requiring one would make registration depend on
-        // which happened to be added first.
-        let mut engine = self
-            .world_mut()
-            .get_resource_or_insert_with(crate::engine::ScriptEngine::default);
-        engine.add_backend(Box::new(backend));
+        self.world_mut()
+            .get_resource_or_insert_with(PendingScriptBackends::default)
+            .0
+            .push(Box::new(backend));
         self
     }
 }
