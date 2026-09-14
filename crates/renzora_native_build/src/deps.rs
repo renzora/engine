@@ -22,6 +22,26 @@
 //! So the hazard is not avoided by discipline, it is unreachable: there is no
 //! manifest anywhere in this path that mentions Bevy for cargo to resolve.
 //!
+//! # One toolchain, for both halves of the build
+//!
+//! The rlibs cargo produces here are read by the `rustc` that compiles the
+//! plugin, and rustc refuses to read crate metadata written by a different
+//! version of itself. So these two must be the SAME compiler, and "the same"
+//! cannot be left to the environment to arrange.
+//!
+//! It will not arrange it. The plugin's own `rustc` is resolved by absolute path
+//! through the SDK's pinned toolchain (see `renzora_plugin_build::toolchain`),
+//! while cargo — spawned as a bare name — resolves through rustup's *default*,
+//! which is whatever the machine happens to have set. A machine whose default is
+//! `stable` and whose SDK pins 1.95.0 compiles the dependencies with one
+//! compiler and reads them with another, and the build stops at
+//! `error[E0514]: found crate 'sysinfo' compiled by an incompatible version of
+//! rustc` — naming a crate the author did not choose the version of, and saying
+//! nothing about the toolchain that actually differs.
+//!
+//! [`build`] therefore takes the SDK's rustc version and pins cargo to it, the
+//! same way the plugin's own compiler is pinned. See [`Pinned`].
+//!
 //! # What a duplicate crate costs
 //!
 //! Nothing that matters. If a plugin asks for `serde` and the engine already
@@ -93,9 +113,6 @@ fn is_engine_crate(name: &str) -> bool {
     name == "bevy" || name.starts_with("bevy_") || name == "renzora" || name.starts_with("renzora_")
 }
 
-/// Compile `plugin_dir`'s third-party dependencies into `build_dir/deps`.
-///
-/// Returns empty — having run nothing — when the plugin declares none.
 /// Whether this plugin's manifest names a dependency that is not the SDK's.
 ///
 /// Cheap — it reads the manifest and parses nothing else — and it answers a
@@ -111,7 +128,15 @@ pub fn has_third_party(plugin_dir: &Path) -> bool {
         .is_some_and(|deps| !deps.is_empty())
 }
 
-pub fn build(plugin_dir: &Path, build_dir: &Path) -> Result<Deps, String> {
+/// Compile `plugin_dir`'s third-party dependencies into `build_dir/deps`.
+///
+/// Returns empty — having run nothing — when the plugin declares none.
+///
+/// `toolchain` is the SDK manifest's `rustc` (e.g. `"1.95.0"`), and every cargo
+/// this runs is pinned to it. It is not a hint: the rlibs produced here are read
+/// by a `rustc` of exactly that version, and metadata from any other is refused.
+/// See [`Pinned`] and the module docs.
+pub fn build(plugin_dir: &Path, build_dir: &Path, toolchain: &str) -> Result<Deps, String> {
     let manifest = plugin_dir.join("Cargo.toml");
     let Ok(text) = std::fs::read_to_string(&manifest) else {
         return Ok(Deps::default());
@@ -121,12 +146,18 @@ pub fn build(plugin_dir: &Path, build_dir: &Path) -> Result<Deps, String> {
         return Ok(Deps::default());
     }
 
+    // Resolved BEFORE the directory is touched, so a machine that cannot supply
+    // the pinned compiler fails having written nothing — and says which
+    // compiler, rather than leaving a half-built tree and an E0514 to come.
+    let pinned = Pinned::resolve(toolchain)?;
+
     let dir = build_dir.join("deps");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    pinned.invalidate_stale_cache(&dir);
     write_manifest(&dir, &wanted)?;
 
-    reject_engine_crates(&dir)?;
-    let artifacts = compile(&dir)?;
+    reject_engine_crates(&dir, &pinned)?;
+    let artifacts = compile(&dir, &pinned)?;
 
     // Match cargo's artifacts back to the DIRECT dependency names. Cargo reports
     // a crate name, which is the dependency name with hyphens turned into
@@ -140,6 +171,147 @@ pub fn build(plugin_dir: &Path, build_dir: &Path) -> Result<Deps, String> {
         }
     }
     Ok(Deps { externs, search: Some(dir.join("target").join("release").join("deps")) })
+}
+
+/// A cargo pinned to one Rust toolchain, and the `rustc` it must drive.
+///
+/// # Why pinning cargo is not enough on its own
+///
+/// Two separate things decide which compiler builds these rlibs, and setting
+/// either alone leaves a hole.
+///
+/// `RUSTUP_TOOLCHAIN` picks the toolchain a rustup **shim** resolves to. It
+/// outranks a directory override and a `rust-toolchain.toml`, which matters
+/// because plugins live in a directory the user owns and may have put one of
+/// those above — measured: with `channel = "1.93.0"` in a parent directory,
+/// `RUSTUP_TOOLCHAIN=1.95.0 rustc -vV` still reports 1.95.0. But it is only read
+/// by a shim, and [`crate::tool`] deliberately prefers `$CARGO` — which cargo
+/// sets, to an absolute non-shim path, for everything it spawns. An editor
+/// launched by `cargo renzora` therefore hands this a cargo that ignores the
+/// variable entirely.
+///
+/// `RUSTC` decides which compiler *that* cargo invokes, whichever cargo it is.
+/// Measured: a 1.94.0 cargo with `RUSTC` pointing at 1.95.0 produces an rlib
+/// stamped `rustc 1.95.0`. It closes the hole the variable above leaves, and it
+/// also displaces an inherited `$RUSTC` pointing at the toolchain that built the
+/// editor rather than the one the SDK was staged with.
+///
+/// Both are set, from one resolved answer, so the two mechanisms cannot disagree
+/// with each other.
+struct Pinned {
+    /// The cargo to spawn — absolute when rustup could name it.
+    cargo: PathBuf,
+    /// The version it is pinned to, e.g. `1.95.0`.
+    version: String,
+    /// The compiler cargo must use. `None` only when rustup could not name one
+    /// and the compiler already on `PATH` was verified to be the right version.
+    rustc: Option<PathBuf>,
+}
+
+impl Pinned {
+    /// Find cargo for `version`, or say why the machine cannot supply it.
+    ///
+    /// rustup first, because it is the only thing that can be *asked* for a
+    /// specific version — the same order, and for the same reason, as
+    /// `renzora_plugin_build::toolchain::resolve` uses for the plugin's own
+    /// compiler.
+    ///
+    /// The fallback is a machine with no rustup at all, where Rust was installed
+    /// some other way. There is exactly one compiler there and nothing can
+    /// redirect it, so the only useful question is whether it happens to be the
+    /// right one — asked here, and refused loudly if not, rather than left for
+    /// rustc to discover as an E0514 against a crate the author never picked.
+    fn resolve(version: &str) -> Result<Self, String> {
+        if let Some(cargo) = rustup_which(version, "cargo") {
+            return Ok(Self {
+                cargo,
+                version: version.to_string(),
+                rustc: rustup_which(version, "rustc"),
+            });
+        }
+        let found = path_rustc_release();
+        if found.as_deref() == Some(version) {
+            let cargo = crate::tool("cargo");
+            return Ok(Self { cargo, version: version.to_string(), rustc: None });
+        }
+        Err(format!(
+            "this plugin's dependencies must be compiled by Rust {version} — the \
+             version the SDK was built with — but the compiler here is {}.\n\
+             Install it with `rustup toolchain install {version}`.\n\
+             (Building them with any other version produces crate metadata this \
+             SDK's rustc refuses to read, which surfaces as `error[E0514]` \
+             against one of the dependencies.)",
+            found.as_deref().unwrap_or("not something this could identify"),
+        ))
+    }
+
+    /// A `Command` for the pinned cargo, with the environment already applied.
+    fn command(&self) -> Command {
+        let mut cmd = Command::new(&self.cargo);
+        crate::hide_console(&mut cmd);
+        cmd.env("RUSTUP_TOOLCHAIN", &self.version);
+        match &self.rustc {
+            Some(rustc) => {
+                cmd.env("RUSTC", rustc);
+            }
+            // Nothing to point at, so an inherited one must not be left to take
+            // effect: it would name the toolchain that built whatever spawned
+            // the editor, which is the mismatch this type exists to prevent.
+            None => {
+                cmd.env_remove("RUSTC");
+            }
+        }
+        cmd
+    }
+
+    /// Drop a `target/` left behind by a different toolchain.
+    ///
+    /// A successful build deletes `deps/` wholesale (see the note in
+    /// `renzora_plugin_build`), so this only ever sees what a **failed** one
+    /// left — and a failure is precisely when the tree is most likely to have
+    /// been built by the wrong compiler. Without this, fixing the toolchain and
+    /// building again reuses those rlibs and fails identically, which reads as
+    /// the fix not having worked.
+    ///
+    /// Keyed on a stamp of our own rather than on cargo's `.rustc_info.json`:
+    /// that file is cargo's private format, and cargo's own invalidation did not
+    /// catch this case to begin with.
+    fn invalidate_stale_cache(&self, dir: &Path) {
+        let stamp = dir.join(".toolchain");
+        if std::fs::read_to_string(&stamp).is_ok_and(|s| s.trim() == self.version) {
+            return;
+        }
+        let _ = std::fs::remove_dir_all(dir.join("target"));
+        let _ = std::fs::write(&stamp, format!("{}\n", self.version));
+    }
+}
+
+/// Ask rustup for the absolute path to one toolchain's `cargo` or `rustc`.
+///
+/// `None` when rustup is absent or does not have that toolchain — the caller
+/// treats both the same way, so they are not distinguished.
+fn rustup_which(version: &str, bin: &str) -> Option<PathBuf> {
+    let out = crate::hide_console(&mut Command::new(crate::tool("rustup")))
+        .args(["which", "--toolchain", version, bin])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
+    path.is_file().then_some(path)
+}
+
+/// The release string of whatever `rustc` resolves to here, e.g. `1.95.0`.
+fn path_rustc_release() -> Option<String> {
+    let out = crate::hide_console(&mut Command::new(crate::tool("rustc")))
+        .arg("-vV")
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|l| l.strip_prefix("release: "))
+        .map(|s| s.trim().to_string())
 }
 
 /// The `[dependencies]` entries that are NOT the engine's, verbatim.
@@ -232,8 +404,9 @@ fn write_manifest(dir: &Path, deps: &[(String, String)]) -> Result<(), String> {
 /// `cargo metadata` resolves the graph without compiling any of it — measured at
 /// ~12 s against a Bevy-pulling manifest — so the refusal costs seconds rather
 /// than the half-hour a Bevy build would have taken before failing.
-fn reject_engine_crates(dir: &Path) -> Result<(), String> {
-    let out = crate::hide_console(&mut Command::new(crate::tool("cargo")))
+fn reject_engine_crates(dir: &Path, pinned: &Pinned) -> Result<(), String> {
+    let out = pinned
+        .command()
         .current_dir(dir)
         .args(["metadata", "--format-version", "1", "--quiet"])
         .stderr(Stdio::piped())
@@ -281,7 +454,7 @@ fn reject_engine_crates(dir: &Path) -> Result<(), String> {
 /// reason: `target/release/deps/` accumulates several `-C metadata` variants of
 /// one crate, and picking by name produces a set that looks right and then fails
 /// to compile.
-fn compile(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+fn compile(dir: &Path, pinned: &Pinned) -> Result<Vec<(String, PathBuf)>, String> {
     // `stderr` is PIPED, not inherited: an inherited stderr is what forces a
     // console to exist for the child, which is the window `hide_console` is
     // suppressing. Cargo's progress lines go into the pipe and are dropped; its
@@ -300,7 +473,8 @@ fn compile(dir: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     // rlibs sit somewhere else, and rustc resolves one dependency from each. The
     // message names a crate the plugin never mentioned and says nothing about a
     // target directory.
-    let out = crate::hide_console(&mut Command::new(crate::tool("cargo")))
+    let out = pinned
+        .command()
         .current_dir(dir)
         .args(["build", "--release", "--message-format=json-render-diagnostics"])
         .arg("--target-dir")

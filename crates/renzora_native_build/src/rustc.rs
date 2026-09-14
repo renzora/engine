@@ -30,6 +30,17 @@ use crate::deps;
 pub struct Target<'a> {
     /// e.g. `x86_64-pc-windows-msvc`. Only the linker choice reads it.
     pub triple: &'a str,
+    /// The manifest's `rustc`, e.g. `1.95.0` — the version this SDK's images
+    /// were compiled by.
+    ///
+    /// Not a preference and not a fallback, which is why it sits beside `triple`
+    /// rather than being an `Option` a caller may omit. A plugin's third-party
+    /// dependencies are compiled by **cargo** and then read by the `rustc` this
+    /// SDK pins, and rustc refuses crate metadata written by any other version.
+    /// Leaving cargo to choose meant it chose rustup's default, so a machine
+    /// whose default had drifted off the pin failed at the link with
+    /// `error[E0514]` against a dependency the author never picked a version of.
+    pub toolchain: &'a str,
     /// The plugin's crate name, hyphens already turned into underscores.
     pub crate_name: &'a str,
     /// `--extern bevy=` — the facade **rlib**, which declares
@@ -138,7 +149,7 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     // Third-party crates the plugin declared, compiled by cargo from a manifest
     // that mentions no Bevy. Empty — and cargo never runs — unless the plugin
     // asked for something.
-    let extra = deps::build(t.plugin_dir, t.build_dir)?;
+    let extra = deps::build(t.plugin_dir, t.build_dir, t.toolchain)?;
     for (name, rlib) in &extra.externs {
         push!("--extern", format!("{name}={}", rlib.display()));
     }

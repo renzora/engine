@@ -378,6 +378,11 @@ impl Sdk {
 
         let target = native_build::Target {
             triple: &self.manifest.triple,
+            // The same version `rustc` above was resolved from, so the cargo
+            // that builds this plugin's dependencies and the compiler that reads
+            // their metadata are one toolchain by construction rather than by
+            // whatever rustup's default happens to be.
+            toolchain: &self.manifest.rustc,
             crate_name: &name,
             extern_bevy: &bevy,
             extern_renzora: &renzora,
