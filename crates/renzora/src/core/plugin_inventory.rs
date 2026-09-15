@@ -403,6 +403,16 @@ pub fn reveal_in_explorer(path: &std::path::Path) {
     }
 }
 
+/// There is no file manager to show it in, and no filesystem to show.
+///
+/// A no-op rather than a missing function, so a caller reaching for Reveal does
+/// not have to `cfg` around it — which is what the asset browser did before this
+/// moved here, and what the web editor's build needs it to keep doing. The other
+/// helpers in this module are absent on wasm instead, because "delete a plugin"
+/// has no sensible empty answer the way "show this to the user" does.
+#[cfg(target_arch = "wasm32")]
+pub fn reveal_in_explorer(_path: &std::path::Path) {}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod delete_tests {
     use super::*;
