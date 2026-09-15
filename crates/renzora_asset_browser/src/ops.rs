@@ -163,53 +163,15 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Open the OS file manager at `path` (selecting it where supported).
 /// Show `path` in the OS file manager.
 ///
-/// **A folder opens; a file is revealed inside its folder.** The two are not the
-/// same gesture, and treating them the same is what made this wrong: every
-/// platform arm reached for the *parent*, so right-clicking `plugins` in a
-/// project at `~/Documents/hello` opened `hello`, and Reveal on the empty grid
-/// (which passes the folder you are looking at) opened `~/Documents` — one level
-/// above the project, every time.
-///
-/// Selecting a folder inside its parent is technically "revealing" it, but
-/// nobody asking to see a folder in their file manager means "show me the folder
-/// next to its siblings". They mean open it.
+/// Delegates to the engine's one implementation. It lived here first, and the
+/// plugins panel needed the same gesture for two buttons of its own — the
+/// platform arms are fiddly enough (`explorer /select,`, `open -R`, and
+/// `xdg-open`'s refusal to select anything at all) that a second copy would
+/// have drifted from this one the first time any of them was corrected.
 pub(crate) fn reveal_in_explorer(path: &Path) {
-    let is_dir = path.is_dir();
-    #[cfg(target_os = "windows")]
-    {
-        if is_dir {
-            let _ = std::process::Command::new("explorer").arg(path).spawn();
-        } else {
-            // No space after the comma, and one argument: `explorer` parses
-            // `/select,<path>` as a single token.
-            let _ = std::process::Command::new("explorer")
-                .arg(format!("/select,{}", path.display()))
-                .spawn();
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let mut cmd = std::process::Command::new("open");
-        if !is_dir {
-            cmd.arg("-R");
-        }
-        let _ = cmd.arg(path).spawn();
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        // `xdg-open` has no "select this file" mode: handed a file it *launches*
-        // it in the default app, which is the one thing Reveal must not do. So a
-        // file opens its containing folder, without the file selected in it.
-        let target = if is_dir {
-            path
-        } else {
-            path.parent().unwrap_or(path)
-        };
-        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
-    }
+    renzora::core::reveal_in_explorer(path);
 }
 
 pub(crate) fn project_root(w: &Rx) -> Option<PathBuf> {

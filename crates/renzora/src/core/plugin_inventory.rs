@@ -214,6 +214,314 @@ pub fn plugin_thumbnail_path(_id: &str) -> Option<std::path::PathBuf> {
     None
 }
 
+/// The directory a plugin the user installs is written into.
+///
+/// The *writable* root specifically, which inside a macOS `.app` is not the one
+/// plugins are read from — see `install::plugin_dirs`. This is what a "show me
+/// the plugins folder" button opens: the place a new plugin goes, and the only
+/// place one can be removed from.
+///
+/// Created if it is not there yet. An install that has never taken a plugin has
+/// no such directory, and pointing a file manager at a path that does not exist
+/// raises an error dialog rather than showing an empty folder — which reads as
+/// the button being broken rather than as the folder being empty.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn plugins_dir() -> Option<std::path::PathBuf> {
+    let root = renzora_native_build::install::root()?;
+    let dir = renzora_native_build::install::plugins_write_dir(&root);
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir)
+}
+
+/// Where `id` actually lives, searching every root the loader reads.
+///
+/// Nearest first, so a plugin the user installed shadows a bundled one of the
+/// same name — the precedence `install::plugin_dirs` documents, and the one
+/// [`thumbnail_in`] already follows.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn plugin_dir(id: &str) -> Option<std::path::PathBuf> {
+    let root = renzora_native_build::install::root()?;
+    plugin_dir_in(&renzora_native_build::install::plugin_dirs(&root), id)
+}
+
+/// [`plugin_dir`] against an explicit set of roots, nearest first.
+///
+/// Split out for the same reason [`thumbnail_in`] is: the roots come from
+/// `current_exe()`, so the search itself is untestable without one.
+#[cfg(not(target_arch = "wasm32"))]
+fn plugin_dir_in(dirs: &[std::path::PathBuf], id: &str) -> Option<std::path::PathBuf> {
+    dirs.iter().map(|d| d.join(id)).find(|d| d.is_dir())
+}
+
+/// Whether `id` can be deleted, or ships sealed inside the editor.
+///
+/// The UI asks this to decide whether to draw a delete button at all, so the
+/// button is never offered for something [`delete_plugin`] would refuse. Both
+/// answer from the same rule — see [`removable_in`].
+#[cfg(not(target_arch = "wasm32"))]
+pub fn plugin_is_removable(id: &str) -> bool {
+    let Some(root) = renzora_native_build::install::root() else {
+        return false;
+    };
+    removable_in(
+        &renzora_native_build::install::plugins_write_dir(&root),
+        &renzora_native_build::install::plugin_dirs(&root),
+        id,
+    )
+}
+
+/// Not installed in a browser tab, so nothing to remove.
+#[cfg(target_arch = "wasm32")]
+pub fn plugin_is_removable(_id: &str) -> bool {
+    false
+}
+
+/// The bundle-safety rule, as a function of paths alone.
+///
+/// A plugin is removable when the directory it was actually found in sits under
+/// the *writable* root. On every platform but macOS there is only one root and
+/// the answer is always yes; inside a `.app` there are two, and the second is
+/// sealed by the bundle's signature.
+///
+/// Stated as "where it was found", not "does a directory of that name exist
+/// under the writable root" — those differ for a plugin that exists in both,
+/// which is the shadowing case `plugin_dirs` documents. The installed copy wins
+/// and is removable; deleting it must not be refused because a bundled one of
+/// the same name also exists, and must not delete the bundled one when it does
+/// not.
+#[cfg(not(target_arch = "wasm32"))]
+fn removable_in(writable: &std::path::Path, dirs: &[std::path::PathBuf], id: &str) -> bool {
+    plugin_dir_in(dirs, id).is_some_and(|found| found.starts_with(writable))
+}
+
+/// Delete an installed plugin from disk.
+///
+/// # What this deliberately cannot do
+///
+/// **It removes only from the writable root.** On macOS the editor reads plugins
+/// from two places and one of them is sealed inside the signed `.app`. That
+/// directory is still *writable*, which is the trap: `remove_dir_all` would
+/// succeed, nothing would complain, and the damage would surface later as a
+/// bundle that fails `codesign --verify` and is refused outright once
+/// re-quarantined. A plugin that ships with the editor is refused by name here
+/// instead, with a reason the user can act on.
+///
+/// **The plugin keeps running until the next launch.** Its code is mapped into
+/// this process and Bevy cannot withdraw the systems, resources and function
+/// pointers it registered — the same structural reason disabling waits for a
+/// restart (see the module docs). Deleting the directory is about what the
+/// *next* launch finds, and the UI has to say so rather than implying the plugin
+/// is gone.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn delete_plugin(id: &str) -> Result<(), String> {
+    let root = renzora_native_build::install::root()
+        .ok_or_else(|| "could not work out where the editor is installed".to_string())?;
+    let writable = renzora_native_build::install::plugins_write_dir(&root);
+    let dir = removable_plugin_dir(&writable, id)?;
+    if !dir.is_dir() {
+        // Present, but not in the root that can be written to — on every
+        // platform that is only ever the macOS bundle.
+        if plugin_dir(id).is_some() {
+            return Err(format!("`{id}` ships with the editor and cannot be removed"));
+        }
+        return Err(format!("`{id}` is not installed"));
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("could not delete `{id}`: {e}"))
+}
+
+/// Resolve `<writable>/<id>`, refusing an id that is not a plain directory name.
+///
+/// Split out so the guard can be tested without an install, and kept separate
+/// from the `is_dir` check so a caller can tell "refused" from "not there".
+///
+/// The guard matters more than it looks. `id` is a directory name the loader
+/// read off disk, so in practice it is already safe — but it is the argument to
+/// a `remove_dir_all`, and the cost of being wrong once is somebody's home
+/// directory. An id carrying a separator or a `..` is refused rather than
+/// normalised: nothing legitimate produces one, so there is no correct
+/// interpretation to fall back to.
+#[cfg(not(target_arch = "wasm32"))]
+fn removable_plugin_dir(
+    writable: &std::path::Path,
+    id: &str,
+) -> Result<std::path::PathBuf, String> {
+    let one_plain_component = !id.is_empty()
+        && !id.contains('/')
+        && !id.contains('\\')
+        && std::path::Path::new(id).components().count() == 1
+        && !matches!(id, "." | "..");
+    if !one_plain_component {
+        return Err(format!("`{id}` is not a plugin name"));
+    }
+    Ok(writable.join(id))
+}
+
+/// Show `path` in the OS file manager.
+///
+/// **A folder opens; a file is revealed inside its folder.** The two are not the
+/// same gesture, and treating them the same is what made this wrong once: every
+/// platform arm reached for the *parent*, so asking to see a folder opened the
+/// one above it, every time.
+///
+/// Selecting a folder inside its parent is technically "revealing" it, but
+/// nobody asking to see a folder in their file manager means "show me the folder
+/// next to its siblings". They mean open it.
+///
+/// Lives here rather than in a panel because three of them need it — the asset
+/// browser's Reveal and the plugins panel's two — and a set of platform arms
+/// this fiddly is exactly what should not be written twice.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reveal_in_explorer(path: &std::path::Path) {
+    let is_dir = path.is_dir();
+    #[cfg(target_os = "windows")]
+    {
+        if is_dir {
+            let _ = std::process::Command::new("explorer").arg(path).spawn();
+        } else {
+            // No space after the comma, and one argument: `explorer` parses
+            // `/select,<path>` as a single token.
+            let _ = std::process::Command::new("explorer")
+                .arg(format!("/select,{}", path.display()))
+                .spawn();
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        if !is_dir {
+            cmd.arg("-R");
+        }
+        let _ = cmd.arg(path).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // `xdg-open` has no "select this file" mode: handed a file it *launches*
+        // it in the default app, which is the one thing Reveal must not do. So a
+        // file opens its containing folder, without the file selected in it.
+        let target = if is_dir { path } else { path.parent().unwrap_or(path) };
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod delete_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("renzora-del-{}-{tag}", std::process::id()))
+            .join("plugins");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The ordinary case: an id names a directory directly under the writable
+    /// root, and nothing else.
+    #[test]
+    fn a_plain_name_resolves_under_the_writable_root() {
+        let dir = scratch("plain");
+        let got = removable_plugin_dir(&dir, "system_monitor").expect("an ordinary name");
+        assert_eq!(got, dir.join("system_monitor"));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    /// The guard that matters: this path ends in `remove_dir_all`, so an id that
+    /// could climb out of the plugins directory is refused rather than
+    /// normalised. Nothing legitimate produces one.
+    #[test]
+    fn an_id_that_could_escape_the_plugins_directory_is_refused() {
+        let dir = scratch("escape");
+        for bad in ["", ".", "..", "../../etc", "a/b", "a\\b", "/etc", "plug/"] {
+            assert!(
+                removable_plugin_dir(&dir, bad).is_err(),
+                "`{bad}` must be refused"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    /// The property the guard exists to hold, stated directly: whatever it
+    /// accepts resolves to an immediate child of the root it was handed.
+    #[test]
+    fn an_accepted_id_never_leaves_the_root() {
+        let dir = scratch("contained");
+        for name in ["a", "system_monitor", "a.b", "a-b_c", "chromatic_aberration"] {
+            let got = removable_plugin_dir(&dir, name).expect("a single component");
+            assert!(got.starts_with(&dir), "{name} escaped to {got:?}");
+            assert_eq!(got.parent(), Some(dir.as_path()));
+        }
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    /// The two roots a macOS install has: Application Support, then the sealed
+    /// `Contents/MacOS/plugins` inside the `.app`. Returns `(writable, dirs)`
+    /// in `plugin_dirs` order — writable first, which is precedence.
+    fn two_roots(tag: &str) -> (PathBuf, Vec<PathBuf>) {
+        let base = std::env::temp_dir().join(format!("renzora-rm-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let writable = base.join("Application Support").join("renzora").join("plugins");
+        let bundled =
+            base.join("Renzora Engine.app").join("Contents").join("MacOS").join("plugins");
+        std::fs::create_dir_all(&writable).unwrap();
+        std::fs::create_dir_all(&bundled).unwrap();
+        (writable.clone(), vec![writable, bundled])
+    }
+
+    /// A plugin the user installed is removable.
+    #[test]
+    fn an_installed_plugin_is_removable() {
+        let (writable, dirs) = two_roots("installed");
+        std::fs::create_dir_all(writable.join("system_monitor")).unwrap();
+        assert!(removable_in(&writable, &dirs, "system_monitor"));
+        let _ = std::fs::remove_dir_all(writable.ancestors().nth(3).unwrap());
+    }
+
+    /// The rule that protects the signature: a plugin that exists ONLY inside
+    /// the bundle is not removable. The directory is writable and
+    /// `remove_dir_all` would succeed — which is exactly why the refusal has to
+    /// be a decision rather than an error from the filesystem.
+    #[test]
+    fn a_bundled_plugin_is_not_removable() {
+        let (writable, dirs) = two_roots("bundled");
+        std::fs::create_dir_all(dirs[1].join("console")).unwrap();
+        assert!(
+            !removable_in(&writable, &dirs, "console"),
+            "deleting this would break the .app's signature"
+        );
+        let _ = std::fs::remove_dir_all(writable.ancestors().nth(3).unwrap());
+    }
+
+    /// Shadowing: the same name in both roots. The installed copy wins and is
+    /// removable — the presence of a bundled one must not refuse the delete,
+    /// and the delete must not reach the bundled one.
+    #[test]
+    fn an_installed_plugin_shadowing_a_bundled_one_is_still_removable() {
+        let (writable, dirs) = two_roots("shadow");
+        std::fs::create_dir_all(writable.join("console")).unwrap();
+        std::fs::create_dir_all(dirs[1].join("console")).unwrap();
+        assert!(removable_in(&writable, &dirs, "console"));
+        assert_eq!(
+            plugin_dir_in(&dirs, "console"),
+            Some(writable.join("console")),
+            "the installed copy is the one found"
+        );
+        let _ = std::fs::remove_dir_all(writable.ancestors().nth(3).unwrap());
+    }
+
+    /// A flat install — every platform but a macOS bundle — has one root, so
+    /// everything installed is removable.
+    #[test]
+    fn a_flat_install_can_remove_anything_it_has() {
+        let dir = scratch("flat");
+        std::fs::create_dir_all(dir.join("system_monitor")).unwrap();
+        assert!(removable_in(&dir, std::slice::from_ref(&dir), "system_monitor"));
+        assert!(!removable_in(&dir, std::slice::from_ref(&dir), "never_installed"));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod thumbnail_tests {
     use super::*;
