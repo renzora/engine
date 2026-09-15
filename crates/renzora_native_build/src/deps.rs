@@ -290,7 +290,34 @@ impl Pinned {
 ///
 /// `None` when rustup is absent or does not have that toolchain — the caller
 /// treats both the same way, so they are not distinguished.
+///
+/// # Why this asks what is installed first
+///
+/// `rustup which --toolchain <v>` **installs `<v>` if it is missing.** Naming a
+/// toolchain on a rustup command line is a request for it, so a lookup meant to
+/// answer "is this here?" instead downloads several hundred megabytes and
+/// answers "it is now".
+///
+/// That is not theoretical and it is not cheap. CI passed `1.0.0` — chosen for a
+/// test on the belief that no such toolchain could exist — and rustup fetched
+/// Rust 1.0.0, whose cargo predates `cargo metadata` by a dozen releases, so the
+/// build failed with `No such subcommand` and exit 127 instead of the "install
+/// Rust 1.95.0" this is supposed to say.
+///
+/// It also took a decision that is not this function's to take. Installing a
+/// toolchain is a ~400 MB download that `renzora_plugin_build::toolchain`
+/// deliberately puts behind a prompt saying so (see `Toolchain::needs`). A
+/// dependency build that quietly installs one behind the user's back defeats
+/// that, on a path that is not even the one that asks.
+///
+/// `rustup toolchain list` reads a directory and touches no network, so the
+/// question is asked of what is already on the machine. A version that is
+/// genuinely missing then falls through to the caller's error — which names it
+/// and says how to install it, which is the outcome that was wanted.
 fn rustup_which(version: &str, bin: &str) -> Option<PathBuf> {
+    if !toolchain_installed(version) {
+        return None;
+    }
     let out = crate::hide_console(&mut Command::new(crate::tool("rustup")))
         .args(["which", "--toolchain", version, bin])
         .output()
@@ -300,6 +327,88 @@ fn rustup_which(version: &str, bin: &str) -> Option<PathBuf> {
     }
     let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
     path.is_file().then_some(path)
+}
+
+/// Whether rustup already has `version`, without going near the network.
+///
+/// `rustup toolchain list` prints one toolchain per line as `<name>-<triple>`,
+/// sometimes followed by a marker: `1.95.0-aarch64-apple-darwin (active)`. A
+/// pinned version matches the `<name>` half.
+///
+/// The `-` in the prefix test is load-bearing: without it `1.9` would match
+/// `1.95.0-…` and the wrong toolchain would be reported as present.
+fn toolchain_installed(version: &str) -> bool {
+    let Ok(out) = crate::hide_console(&mut Command::new(crate::tool("rustup")))
+        .args(["toolchain", "list"])
+        .output()
+    else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    lists_toolchain(&String::from_utf8_lossy(&out.stdout), version)
+}
+
+/// Whether `listing` — the output of `rustup toolchain list` — contains
+/// `version`.
+///
+/// Split from [`toolchain_installed`] so the match can be tested without rustup,
+/// because getting it wrong is not a visible failure: a version reported present
+/// when it is not resolves to some *other* toolchain's cargo, which is precisely
+/// the silent compiler mismatch this module exists to stop.
+fn lists_toolchain(listing: &str, version: &str) -> bool {
+    listing.lines().any(|line| {
+        let name = line.split_whitespace().next().unwrap_or_default();
+        // The `-` is load-bearing. A bare `starts_with` would let `1.9` match
+        // `1.95.0-aarch64-apple-darwin`, and the build would then be pinned to a
+        // compiler the SDK was not staged with — reported as a success.
+        name == version || name.strip_prefix(version).is_some_and(|rest| rest.starts_with('-'))
+    })
+}
+
+#[cfg(test)]
+mod toolchain_list_tests {
+    use super::lists_toolchain;
+
+    /// Real `rustup toolchain list` output, markers and all.
+    const LISTING: &str = "\
+stable-aarch64-apple-darwin (default)
+1.93.0-aarch64-apple-darwin
+1.95.0-aarch64-apple-darwin (active)
+";
+
+    #[test]
+    fn an_installed_version_is_found_with_or_without_a_marker() {
+        assert!(lists_toolchain(LISTING, "1.95.0"), "the active one");
+        assert!(lists_toolchain(LISTING, "1.93.0"), "one with no marker");
+        assert!(lists_toolchain(LISTING, "stable"), "a channel name");
+    }
+
+    /// The failure that would not announce itself: a prefix of a version that IS
+    /// installed must not count as installed.
+    #[test]
+    fn a_prefix_of_an_installed_version_is_not_a_match() {
+        for near in ["1.9", "1.", "1", "1.95", "sta"] {
+            assert!(
+                !lists_toolchain(LISTING, near),
+                "`{near}` must not match a longer version"
+            );
+        }
+    }
+
+    #[test]
+    fn a_version_that_is_not_there_is_not_found() {
+        for absent in ["1.94.0", "9999.0.0", "1.0.0", "nightly"] {
+            assert!(!lists_toolchain(LISTING, absent), "`{absent}` is not installed");
+        }
+    }
+
+    /// No rustup, or a rustup that printed nothing.
+    #[test]
+    fn an_empty_listing_has_nothing() {
+        assert!(!lists_toolchain("", "1.95.0"));
+    }
 }
 
 /// The release string of whatever `rustc` resolves to here, e.g. `1.95.0`.

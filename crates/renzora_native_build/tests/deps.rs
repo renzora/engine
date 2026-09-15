@@ -212,10 +212,16 @@ fn a_toolchain_the_machine_lacks_is_refused_before_cargo_runs() {
         ),
     );
 
-    // A version that has never existed, so neither rustup nor a `PATH` compiler
-    // can satisfy it on any machine this test runs on.
-    let msg = deps::build(&dir, &root.join("build"), "1.0.0").expect_err("must be refused");
-    assert!(msg.contains("1.0.0"), "must name the version the SDK needs: {msg}");
+    // A version that cannot exist, so no machine can satisfy it.
+    //
+    // This said `1.0.0` first, on the reasoning that nothing would have it
+    // installed. Rust 1.0.0 is a real release: CI named it, `rustup which`
+    // **fetched it**, and the build got far enough to run a 2015 cargo that has
+    // no `metadata` subcommand — failing with `No such subcommand` instead of
+    // the refusal being tested. `rustup_which` no longer installs anything (see
+    // its note), and the version here is one the CDN cannot serve either way.
+    let msg = deps::build(&dir, &root.join("build"), "9999.0.0").expect_err("must be refused");
+    assert!(msg.contains("9999.0.0"), "must name the version the SDK needs: {msg}");
     assert!(
         msg.contains("rustup toolchain install"),
         "must say how to get it, not just that it is missing: {msg}"
@@ -259,5 +265,47 @@ fn a_dependency_tree_from_another_toolchain_is_discarded() {
         std::fs::read_to_string(deps_dir.join(".toolchain")).unwrap().trim(),
         host_toolchain(),
         "the tree must be stamped with the toolchain that actually built it"
+    );
+}
+
+/// Resolving a toolchain must never **install** one.
+///
+/// `rustup which --toolchain <v>` treats naming a toolchain as asking for it, so
+/// a lookup meant to answer "is this here?" downloads it instead. CI proved it:
+/// a test naming `1.0.0` fetched Rust 1.0.0 and then failed inside a cargo older
+/// than `cargo metadata`.
+///
+/// Two costs, and the second outlives the test. A question that was supposed to
+/// be free becomes a few hundred megabytes, and installing a toolchain is a
+/// decision `renzora_plugin_build::toolchain` deliberately puts behind a prompt
+/// that says how large it is — which a silent install on this path defeats.
+///
+/// Checked by the clock rather than by looking in `~/.rustup`: an install cannot
+/// happen in well under a second, and the assertion then holds without the test
+/// knowing how rustup lays its directory out. `1.0.0` specifically, because that
+/// is the one that actually got fetched.
+#[test]
+fn resolving_a_toolchain_never_downloads_one() {
+    let root = tmp("renzora_deps_noinstall");
+    let stub = stub_crate(&root, "ordinary");
+    let dir = plugin(
+        &root,
+        &format!(
+            "ordinary = {{ path = \"{}\" }}\n",
+            stub.display().to_string().replace('\\', "/")
+        ),
+    );
+
+    let started = std::time::Instant::now();
+    let msg = deps::build(&dir, &root.join("build"), "1.0.0").expect_err("must be refused");
+    let took = started.elapsed();
+
+    assert!(
+        msg.contains("1.0.0") && msg.contains("rustup toolchain install"),
+        "a real but uninstalled version must be refused, not fetched: {msg}"
+    );
+    assert!(
+        took < std::time::Duration::from_secs(20),
+        "took {took:?} — long enough that a toolchain was downloaded"
     );
 }
