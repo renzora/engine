@@ -24,6 +24,8 @@ Grab a build for your platform from [renzora.com/download](/download). Nothing e
 
 **Linux.** Extract the `.zip` and run the `.AppImage` inside it.
 
+The AppImage carries a `renzora-engine.desktop` entry and its icon, and the editor window claims `renzora-engine` as its Wayland `app_id` (X11 `WM_CLASS`), which is the string a desktop shell matches a running window to its launcher by. So installing the entry gets you the right icon in the dock, and pinning it associates with the running editor rather than sitting beside it. A game you export claims no such identity, because that one belongs to the editor.
+
 ### Nightly builds
 
 Alongside numbered releases there are nightly builds, tagged like `r1-alpha8-nightly-16aug26`. They carry the newest fixes and the newest bugs. Use one if you are working closely with engine changes. Do not ship a game on one.

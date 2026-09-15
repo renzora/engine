@@ -415,6 +415,33 @@ fn init_io_task_pool_with_large_stack() {
 #[cfg(not(target_arch = "wasm32"))]
 pub const SPLASH_WINDOW: (u32, u32) = (1040, 740);
 
+/// The window name a desktop shell matches against a launcher entry, or `None`
+/// for a window that should claim no launcher identity.
+///
+/// On Wayland this becomes the `app_id`, on X11 the `WM_CLASS`, and on Windows
+/// the window class name. A shell matches a running window to its `.desktop`
+/// file by exactly this string (COSMIC and GNOME against `<name>.desktop`), so
+/// without one the `renzora-engine.desktop` entry the linux staging writes into
+/// the AppDir has nothing to match: a generic dock icon, and a pin that never
+/// merges with the running window. It has to be set at window creation, because
+/// Bevy documents it as having no effect afterwards.
+///
+/// # Why the editor only
+///
+/// `renzora-engine` is the editor's identity: `docker/build-all.sh` writes
+/// `renzora-engine.desktop` with `Icon=renzora-engine` beside a matching PNG.
+/// The window setup here is shared with the shipped game, so handing a game the
+/// same string would have it claim the *editor's* launcher: a player who has
+/// Renzora installed would find their game grouped under the engine's dock icon,
+/// which is a worse answer than the generic icon it gets with no name at all.
+///
+/// A game wants its own app id, from its own project config, once the exporter
+/// generates a `.desktop` to go with it. Until it does, claiming nothing is the
+/// honest thing for it to claim.
+fn launcher_app_id(is_editor: bool) -> Option<String> {
+    is_editor.then(|| "renzora-engine".to_string())
+}
+
 pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
@@ -458,13 +485,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Renzora".into(),
-                    // Wayland app_id / X11 WM_CLASS. Desktops match the open
-                    // window to its launcher by this exact string (COSMIC and
-                    // GNOME match it against `<name>.desktop`), so without it
-                    // a pinned dock icon never associates with the running
-                    // editor — the window shows no icon and pinning appears
-                    // broken. Must be set at creation; it is immutable after.
-                    name: Some("renzora-engine".into()),
+                    name: launcher_app_id(is_editor),
                     // Initial values — `apply_window_config` overwrites these
                     // from `CurrentProject` once the project is loaded. The
                     // editor draws its own title bar so it wants
@@ -923,9 +944,9 @@ pub fn add_xr_rendering(app: &mut App) {
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Renzora (VR)".into(),
-                // Same launcher association as the desktop window — see the
-                // `name` on the non-XR primary window above.
-                name: Some("renzora-engine".into()),
+                // No `name`, deliberately: this path is always a game session
+                // (see the list above), and the editor's launcher identity is
+                // not a game's to claim. See `launcher_app_id`.
                 // The desktop window only hosts the spectator mirror — never
                 // block the XR frame loop on the monitor's vsync.
                 present_mode: PresentMode::AutoNoVsync,

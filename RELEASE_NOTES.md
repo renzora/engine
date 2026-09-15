@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-15 13:52
+- fix(linux): the editor window carries an app id, so a dock can show its icon and pinning it works
+
 ## 2026-09-15 13:38
 - feat(editor): asset context menus can copy project-relative paths
 
