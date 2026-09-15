@@ -37,6 +37,9 @@ Paths are **project-relative** (e.g. `models/player.glb`) — the custom asset r
 
 `AssetRegistryPlugin` walks the project tree **once**, on `OnEnter(SplashState::Loading)`, and records one `AssetEntry` per file. It deliberately does **not** read, decode, or instantiate anything — that stays with Bevy's `AssetServer`. The index powers the asset browser, drag-and-drop previews, and icon picking.
 
+In the Asset Browser, right-click a file or folder and select **Copy Path** to
+copy its project-relative path with forward slashes.
+
 ```rust
 pub struct AssetEntry {
     pub path: String,        // project-relative, e.g. "models/player.glb"

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-15 13:38
+- feat(editor): asset context menus can copy project-relative paths
+
 ## 2026-09-15 13:16
 - fix(plugins): deleting a plugin that is currently loaded works instead of failing on Windows, and the folder is reclaimed at the next start
 
