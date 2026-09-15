@@ -29,6 +29,7 @@ pub mod material_nodes; // the material node catalogue, as data
 pub mod material_ref; // pointing an entity at a .material file
 pub mod play_mode; // Play / Simulate / Edit state and its run conditions
 pub mod plugin_inventory; // what plugins were found on disk, and their state
+pub mod plugin_updates; // what the marketplace publishes for those plugins
 pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
 pub mod settings_file; // project.toml model + editor preferences
@@ -53,6 +54,7 @@ pub use material_nodes::*;
 pub use material_ref::*;
 pub use play_mode::*;
 pub use plugin_inventory::*;
+pub use plugin_updates::*;
 pub use project_config::*;
 pub use project_files::*;
 pub use script_bridge::*;

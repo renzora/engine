@@ -54,6 +54,7 @@ impl Plugin for SettingsPlugin {
                 fonts::apply_font_settings,
                 tabs::plugins::plugin_toggle_click,
                 tabs::plugins::open_plugins_folder_click,
+                tabs::plugins::open_plugin_updates_click,
                 tabs::plugins::plugin_delete_click,
                 tabs::plugins::plugin_delete_confirm_click,
                 tabs::theme::theme_save_click,

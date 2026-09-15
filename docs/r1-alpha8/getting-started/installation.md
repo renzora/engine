@@ -42,6 +42,14 @@ The dialog walks you through Download, then Install and Restart. The download is
 
 Nightly requires Dev Mode, which sits under the channel picker and in **Settings > Editor**. With Dev Mode off, every channel resolves to Stable.
 
+### Plugin updates
+
+Under the engine's own versions the dialog lists any installed plugins with a newer version published, because "am I up to date?" is one question and splitting the answer across two screens means half of it never gets read.
+
+**Update plugins** hands off to the marketplace's **Updates** view, which is where a plugin is actually installed from. A plugin update that needs a newer editor than you are running is listed with a lock rather than an arrow: it is waiting on the very update this dialog is offering.
+
+See [Browsing & Installing](/docs/r1-alpha8/marketplace/browsing) for the rest, including how to turn the startup reminder off.
+
 ## What's next
 
 - [The Dashboard](/docs/r1-alpha8/getting-started/dashboard) is the first screen you see.

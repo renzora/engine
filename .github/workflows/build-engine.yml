@@ -1238,19 +1238,31 @@ jobs:
             title="Renzora Engine $tag (nightly)"
           fi
 
-          # What this nightly carries: the `## Unreleased` section of
-          # RELEASE_NOTES.md, which every feature and fix appends to as it lands
-          # (CLAUDE.md §4). Keyed on that exact heading rather than "whatever the
-          # top section is", because between a release and the next version's
-          # first commit the file is a curated release document whose first
-          # section is prose about the release, not a list of unshipped changes.
-          # Absent or empty, a nightly falls back to the asset boilerplate alone
-          # — what it published before these notes existed.
+          # What this nightly carries: every timestamped section at the top of
+          # RELEASE_NOTES.md, which is where each feature and fix writes its line
+          # as it lands (CLAUDE.md §4). A section heading is the date and time the
+          # change was made, so the headings come through as well as the lines and
+          # the release page says when each one landed.
+          #
+          # The stop rule is "a `##` heading that does not begin with a digit",
+          # which is every heading that is not a timestamp: the tag heading a
+          # published nightly leaves behind, and the prose headings of a curated
+          # release document. Keying on the shape of the heading rather than on
+          # "whatever the top section is" is what keeps that second case right:
+          # between a release and the next version's first commit the file is a
+          # release document, not a list of unshipped changes.
+          #
+          # Each timestamp is demoted a level on the way out, so it nests under
+          # "Since the last nightly" instead of sitting beside the release page's
+          # own `###` sections.
+          #
+          # Absent or empty, a nightly falls back to the asset boilerplate alone,
+          # which is what it published before these notes existed.
           unreleased=""
           if [ -f RELEASE_NOTES.md ]; then
             unreleased=$(awk '
-              /^##[[:space:]]*[Uu]nreleased[[:space:]]*$/ { seen=1; next }
-              seen && /^##[[:space:]]/ { exit }
+              /^##[[:space:]]+[0-9]/ { seen=1; print "##" $0; next }
+              /^##[[:space:]]/ { if (seen) exit; next }
               seen { print }
             ' RELEASE_NOTES.md)
           fi

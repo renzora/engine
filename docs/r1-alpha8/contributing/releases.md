@@ -263,11 +263,28 @@ Opening the *next* version — bumping `ENGINE_VERSION`, forking `docs/<next>/`,
 
 ### The notes
 
-`RELEASE_NOTES.md` at the repo root is the body of a GitHub release, and it is written as work lands rather than reconstructed at the end. Every feature and every fix adds its line under the file's top **`## Unreleased`** section in the same change that ships it.
+`RELEASE_NOTES.md` at the repo root is the body of a GitHub release, and it is written as work lands rather than reconstructed at the end. Every feature and every fix adds its line in the same change that ships it, under a heading giving the date and time the change was made:
 
-**A nightly publishes that section.** The publish job lifts whatever sits under `## Unreleased` into the nightly's release page under *Since the last nightly*, above the standard asset descriptions. That is the whole reason the section is written in advance and named `Unreleased` rather than dated: a nightly's tag is only known at build time — the schedule skips a day nothing landed on — so naming it ahead would mean guessing a date, and a wrong guess publishes the wrong list under the wrong tag.
+```markdown
+# Renzora Engine `r1-alpha8`
 
-After a nightly goes out, rename its section to the tag that shipped it and open a fresh `## Unreleased` above. Nothing breaks if that is late: the job keys on the `## Unreleased` heading alone and ignores every heading below it. An empty or missing section is not an error either — the nightly falls back to the asset boilerplate by itself.
+## 2026-09-15 14:32
+- feat(editor): what it does, in the commit-subject voice
+
+## 2026-09-15 11:46
+- fix(plugin): what broke, and what now happens instead
+
+## r1-alpha8-nightly-06sep26
+- ...
+```
+
+Newest first. Lines that land together share a heading; work done at a different time gets its own.
+
+**A nightly publishes those sections.** The publish job lifts every timestamped section at the top of the file into the nightly's release page under *Since the last nightly*, above the standard asset descriptions, headings included, so the page says when each line landed rather than only what it was.
+
+It stops at the first `##` heading that does not begin with a digit, which is every heading that is not a timestamp: the tag heading a published nightly leaves behind, and the prose headings of a curated release document. Keying on the *shape* of the heading rather than on a fixed section name is what lets the headings carry a date at all, and it is what keeps a nightly cut between a release and the next version's first commit from publishing that release's prose as if it were a list of unshipped changes.
+
+After a nightly goes out, add its tag as a heading above the sections it shipped; new work then accumulates above that line. Nothing breaks if that is late: the worst case is the next nightly repeating a line. No timestamped section at all is not an error either: the nightly falls back to the asset boilerplate by itself.
 
 **A full release publishes the whole file.** Cutting `r1-alphaN` replaces `RELEASE_NOTES.md` with curated notes for that version — prose organised by theme, not the running list, which has by then served its purpose of making the prose writable. The job `cat`s the file in ahead of the asset boilerplate, so the notes and the "what's in the download" text are one page.
 

@@ -1,6 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
-## Unreleased
+## 2026-09-15 12:14
+- feat(marketplace): an Updates view lists the installed plugins with a newer version published, and updates them
+- feat(marketplace): a card says what you already have: grey Installed with a tick, or an amber Update when there is a newer version
+- feat(update): the software update dialog lists plugin updates under the engine's own versions
+- feat(settings): Settings ▸ Editor ▸ Plugins marks plugins with an update and counts them above the grid
+- feat(settings): a Plugin Update Reminders switch decides whether the editor volunteers that a plugin is out of date
+- feat(export): the exporter's Plugins tab marks any plugin that would ship out of date
+- fix(marketplace): a category's card grid fills the width instead of leaving most of a card's worth of gap at the end of every row
+
+## 2026-09-15 11:46
 - feat(marketplace): a plugin states the engine each release was built for, so you are offered the newest version your editor can actually run instead of one that will not load
 - feat(marketplace): the plugin store hides listings with no release for your engine, and shows the version you would get rather than the newest one published
 - feat(marketplace): the update check now says when a newer version exists but needs a newer editor, instead of showing nothing

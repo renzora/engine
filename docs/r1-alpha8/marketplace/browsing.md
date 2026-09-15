@@ -23,6 +23,7 @@ Down the left side of the marketplace you'll find:
 
 - Your **account** — "Signed in as …" and your current **credit balance**, or a **Sign In** button when you're signed out.
 - **Upload Asset** — a shortcut for publishing your own work (coming soon).
+- **Updates**: the plugins you have installed that have a newer version published, with an amber count beside it when there are any. See [Plugin updates](#plugin-updates) below.
 - The **category** list — click one to filter the grid; **All** clears the filter.
 
 ## Finding what you need
@@ -120,9 +121,37 @@ Prefer to do it by hand? You can:
 
 On the website, click any asset card to open its page, where you can see images, play audio, and watch video. For 3D models, materials, textures, and particle effects, a **Live Preview (BETA)** renders the asset right in your browser so you can spin it around before deciding. Each page also shows the star rating, downloads, tags, and the publish/updated dates.
 
+## What a card says you already have
+
+Hovering a card shows its action button, and that button knows whether you have the asset already. For plugins, which are the one category the editor tracks by identity rather than by files in your project, there are three answers:
+
+| Card | Button | Corner badge |
+|---|---|---|
+| Not installed | **Get** / **Install** in green, or the price in gold | none |
+| Installed and current | **Installed**, grey, and does nothing | a green tick |
+| Installed, newer version published | **Update**, amber | an amber arrow |
+
+The badge is drawn on the artwork and does *not* hide when the cursor leaves, so you can tell at a glance which of a shelf of plugins you already have.
+
+If the newer version needs a newer editor than the one you're running, the pill reads **Update editor** and opens the software updater instead, because installing the plugin would only fetch the release you already have.
+
+## Plugin updates
+
+Shortly after the editor starts it asks the marketplace what has been published for the plugins you have installed. If anything is out of date you get a single toast saying so, and the sidebar's **Updates** row picks up an amber count.
+
+Clicking **Updates** shows those plugins as ordinary cards, so updating one is the same install you did the first time: click **Update**, choose the destination, and it replaces the version on disk. As with any plugin install, the new code loads at the **next** startup.
+
+The same list appears in three other places, so you can act on it wherever you happen to notice it:
+
+- **Help ▸ Check for Updates**: under the engine's own versions, because "am I up to date?" is one question. An update waiting on a newer editor is fixed by the thing directly above it.
+- **Settings ▸ Editor ▸ Plugins**: an amber line above the plugin grid, and an amber badge on each stale plugin's card.
+- **Export ▸ Plugins**: an export ships the plugin directory exactly as it sits on disk, so this is the last chance to notice before a stale one is baked into a build you hand to players.
+
+To stop the editor volunteering the news, turn off **Settings ▸ Editor ▸ Plugins ▸ Plugin Update Reminders**. That silences the startup toast only; all four views still answer when you open them, because opening them is asking.
+
 ## Updating and removing
 
-- **Update** — click **Install** again to re-download the latest version into your project.
+- **Update**: for a plugin, use the **Updates** view above. For anything else, click **Install** again to re-download the latest version into your project.
 - **Remove** — delete the installed files from your project folder.
 
 ## Rating and reviews

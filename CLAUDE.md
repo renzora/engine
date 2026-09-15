@@ -349,41 +349,44 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
   given nightly actually contains. Reconstructing that afterwards means reading
   the commit range by hand — `r1-alpha7` was 700 commits, and that is the work
   this rule exists to stop repeating.
-- New lines go under **`## Unreleased`**, always the top section. Below it the
-  file is a history, newest first, of one section per published nightly:
+- **Each change gets its own heading: the date and time it was made**, in
+  `YYYY-MM-DD HH:MM`, newest first at the top of the file. Below the timestamped
+  sections the file is a history of one section per published nightly:
 
 ```markdown
 # Renzora Engine `r1-alpha8`
 
-## Unreleased
+## 2026-09-15 14:32
 - feat(editor): what it does, in the commit-subject voice
 
-## r1-alpha8-nightly-06sep26
+## 2026-09-15 11:46
 - fix(plugin): what broke, and what now happens instead
 
-## r1-alpha8-nightly-05sep26
+## r1-alpha8-nightly-06sep26
 - ...
 ```
 
-- **The publish job puts `## Unreleased` into the nightly's release page**, under
-  *Since the last nightly*. So the section is written before the build that
-  ships it, not after — which is why the heading is `Unreleased` and not a date.
-  A nightly's tag is only known at build time (the schedule skips a quiet day),
-  so naming the section ahead of time would mean guessing a date, and a guess
-  that missed would publish the wrong list under the wrong tag.
-- **After a nightly publishes, rename its section to the tag that shipped it**
-  and open a fresh `## Unreleased` above. That is the only manual step, it is
-  never urgent, and nothing breaks if it is late: CI keys on the `## Unreleased`
-  heading alone and ignores every heading below it.
-- An empty or absent `## Unreleased` is fine — the nightly falls back to the
-  asset boilerplate on its own, which is what it published before these notes
-  existed.
+  Several lines may share a heading when they land together; a change made at a
+  different time gets its own. Read the clock, do not guess the time.
+- **The publish job lifts every timestamped section into the nightly's release
+  page**, under *Since the last nightly*, headings included, so the page says
+  when each line landed.
+- It stops at the first `##` heading that does not begin with a digit. That is
+  every heading that is not a timestamp: the tag heading a published nightly
+  leaves behind, and the prose headings of a curated release document. Nothing
+  keys on a fixed section name, which is what lets the headings carry a date.
+- **After a nightly publishes, add its tag as a heading above the sections it
+  shipped**; new work then accumulates above that line. It is the only manual
+  step, it is never urgent, and nothing breaks if it is late: the worst case is
+  the next nightly repeating a line.
+- No timestamped section at all is fine: the nightly falls back to the asset
+  boilerplate on its own, which is what it published before these notes existed.
 - **A major release overwrites the file.** Cutting `r1-alphaN` replaces
   `RELEASE_NOTES.md` with the curated notes for that version — prose, not the
   running list, since the running list has by then done its job. The notes it
   replaced stay published on each nightly's GitHub page, which is the permanent
-  copy. The next version then starts a fresh `## Unreleased` under the new
-  heading.
+  copy. Prose headings are not timestamps, so a nightly cut in that window
+  correctly finds nothing to report.
 - **The first line must name the version being released.** The `setup` job
   refuses to start a release whose `RELEASE_NOTES.md` still names the previous
   one — the failure mode of a hand-written file is a stale one, not a missing

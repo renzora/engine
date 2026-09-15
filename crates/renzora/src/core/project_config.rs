@@ -210,6 +210,9 @@ mod wasm_prefs {
     pub fn save_skipped_update(_tag: Option<&str>) -> std::io::Result<()> {
         Ok(())
     }
+    pub fn save_plugin_update_reminders(_on: bool) -> std::io::Result<()> {
+        Ok(())
+    }
     pub fn save_tutorial_completed(_completed: bool) -> std::io::Result<()> {
         Ok(())
     }
@@ -329,6 +332,16 @@ struct EditorPrefFile {
     /// would quietly suppress releases nobody ever decided to skip.
     #[serde(default)]
     skipped_update: String,
+    /// Whether to say anything when an installed plugin has a newer release.
+    ///
+    /// On by default, and separate from the engine's own update channel: the two
+    /// are different decisions. Somebody tracking releases closely may still not
+    /// want a toast about a plugin every time they open the editor, and turning
+    /// this off silences only the *nudge*. The Updates view, the Settings grid
+    /// and the updater overlay all still say what is stale when you go and look,
+    /// because you asked at that point.
+    #[serde(default = "default_true")]
+    plugin_update_reminders: bool,
     /// Set once the onboarding tutorial has been completed or skipped. Per-user
     /// rather than per-project: the tutorial teaches the *editor*, so a user who
     /// has already sat through it doesn't want it again the next time they make
@@ -389,6 +402,7 @@ impl Default for EditorPrefFile {
             language: default_language(),
             update_channel: default_update_channel(),
             skipped_update: String::new(),
+            plugin_update_reminders: true,
             tutorial_completed: false,
             tutorial_chapters: Vec::new(),
         }
@@ -521,6 +535,31 @@ pub fn save_skipped_update(tag: Option<&str>) -> std::io::Result<()> {
 
     let mut prefs = app_prefs();
     prefs.skipped_update = tag.unwrap_or_default().to_string();
+    save_app_prefs(&prefs)
+}
+
+/// Should the editor volunteer that an installed plugin has a newer release?
+///
+/// On by default. See the field docs on `EditorPrefFile::plugin_update_reminders`
+/// for what turning it off does and does not silence.
+pub fn load_plugin_update_reminders() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        // A browser tab installs no plugins, so there is nothing to remind about.
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        app_prefs().plugin_update_reminders
+    }
+}
+
+/// Persist the plugin-reminder preference. Read-modify-write so the other prefs
+/// survive.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_plugin_update_reminders(on: bool) -> std::io::Result<()> {
+    let mut prefs = app_prefs();
+    prefs.plugin_update_reminders = on;
     save_app_prefs(&prefs)
 }
 

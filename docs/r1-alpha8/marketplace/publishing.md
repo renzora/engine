@@ -177,6 +177,14 @@ A release's engine can be changed after publishing, from the dropdown beside it 
 
 An editor browsing the marketplace sees only listings it has a runnable release of, labelled with the version it would actually get. If you are current for your engine and something newer exists behind an engine upgrade, the update check says so ("needs a newer editor") rather than staying quiet, which would make a maintained plugin look abandoned.
 
+### How a new release reaches people who already have it
+
+Publishing a plugin release is all you have to do. Shortly after an editor starts it asks the marketplace what it should be on for every plugin it has installed, and anything behind shows up as an amber **Update** on its card, in the marketplace's **Updates** view, in **Settings ▸ Editor ▸ Plugins**, in the software update dialog, and in the exporter's plugin list.
+
+Users can turn off the startup reminder, but not the marks: the four views answer whenever they are opened. A release that needs a newer editor than someone is running is still listed for them, as "needs a newer editor" beside the version it wants, so an upgrade they were going to do anyway picks it up.
+
+What this means for you is that a patch reaches installed users without them going looking, so a small fix is worth publishing rather than saving up. See [Browsing & Installing](/docs/r1-alpha8/marketplace/browsing) for what they see.
+
 ## Tracking performance
 
 Your [Dashboard](/dashboard) is where you manage published content. The header shows four totals — **Assets**, **Downloads**, **Earnings** (credits), and **Balance** (credits) — and the tabs below let you:

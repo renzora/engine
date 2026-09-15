@@ -256,6 +256,20 @@ removes the startup directory scan and the per-plugin load.
 effects, a plugin you patch without reshipping the game — or when you're not
 using lean mode.
 
+### Stale plugins
+
+An export copies or compiles each plugin directory exactly as it sits on disk, so
+a plugin you never updated ships as it is. Any plugin with a newer version
+published carries an amber arrow on its card, and an amber line above the grid
+says so before you build.
+
+Nothing is blocked. Shipping a known-good older version is a reasonable thing to
+do, and the export is not the place to argue about it. It is said out loud here
+because this is the last screen before a build, and the alternative is finding
+out from a player. Update them from the marketplace's **Updates** view (see
+[Browsing & Installing](/docs/r1-alpha8/marketplace/browsing)) and re-open the
+exporter.
+
 ### The web has no choice
 
 A browser has no `dlopen`, so a `plugins/` folder beside the bundle is never

@@ -57,8 +57,40 @@ pub(crate) fn register(app: &mut App) {
     });
     app.add_systems(
         Update,
-        open_on_action.run_if(in_state(renzora::SplashState::Editor)),
+        (open_on_action, open_on_updates_request)
+            .run_if(in_state(renzora::SplashState::Editor)),
     );
+}
+
+/// "Show me the plugins that need updating", from the updater overlay, the
+/// Settings plugin section or the exporter's plugin tab.
+///
+/// None of those three can link this crate, so they write
+/// [`renzora::PluginUpdatesRequested`] and this serves it. Unlike the shell
+/// action it does **not** toggle: every caller is asking to arrive somewhere
+/// specific, and closing the overlay because it happened to be open already
+/// would be the opposite of what was asked.
+fn open_on_updates_request(
+    request: Option<Res<renzora::PluginUpdatesRequested>>,
+    open: Query<Entity, With<StoreOverlayRoot>>,
+    mut data: Option<ResMut<crate::store::HubStoreData>>,
+    mut commands: Commands,
+) {
+    if request.is_none() {
+        return;
+    }
+    commands.remove_resource::<renzora::PluginUpdatesRequested>();
+    if let Some(data) = data.as_deref_mut() {
+        crate::store::show_updates(data);
+    }
+    // Already up, and now showing the right view. The store's tree reads
+    // `HubStoreData` reactively, so there is nothing to rebuild.
+    if !open.is_empty() {
+        return;
+    }
+    commands.queue(|world: &mut World| {
+        renzora::ShellActionInvoked::invoke(world, ACTION_ID)
+    });
 }
 
 /// Open (or close) the overlay when the action fires.

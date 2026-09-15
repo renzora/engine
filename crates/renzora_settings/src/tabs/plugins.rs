@@ -15,7 +15,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{section, toggle_switch};
 
 use crate::lang::tr;
-use crate::rows::{focus_hide, note_row};
+use crate::rows::{focus_hide, note_row, settings_row};
 use crate::state::A_TEAL;
 
 /// The Plugins "tab" now shows a SINGLE plugin's section — the one selected in
@@ -87,6 +87,51 @@ pub(crate) fn plugins_section(
     focus_hide(commands, sec, focus, "plugins");
     note_row(commands, fonts, body, &tr("settings.hint.plugins_restart"));
 
+    // Whether the editor volunteers that a plugin is out of date. It silences
+    // the startup toast and nothing else: this page, the updater overlay and
+    // the store's Updates view all still answer when asked, because asking is
+    // what opening them is.
+    let t = crate::rows::ctl_toggle(
+        commands,
+        true,
+        |w| {
+            w.get_resource::<renzora::PluginUpdateReminders>()
+                .map(|r| r.0)
+                .unwrap_or(true)
+        },
+        |w, &v| {
+            if let Some(mut r) = w.get_resource_mut::<renzora::PluginUpdateReminders>() {
+                if r.0 == v {
+                    return;
+                }
+                r.0 = v;
+            }
+            // Written straight away rather than on close: this is a preference
+            // about what happens at the *next* startup, and an editor that
+            // crashed before a deferred save would discard the one instruction
+            // the user gave it.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Err(e) = renzora::core::save_plugin_update_reminders(v) {
+                warn!("[plugins] could not save the update-reminder preference: {e}");
+            }
+        },
+    );
+    settings_row(
+        commands,
+        fonts,
+        body,
+        0,
+        &tr("settings.row.plugin_update_reminders"),
+        t,
+    );
+
+    // What is actually out of date, when something is. An amber line above the
+    // grid rather than only a badge on each card: the grid is seventy tiles and
+    // the question "is anything of mine stale" should be answerable without
+    // reading all of them.
+    let summary = update_summary_row(commands, fonts);
+    commands.entity(body).add_child(summary);
+
     // "Where is that folder?" is a real question, not a convenience. On macOS
     // the writable plugins root is under `~/Library/Application Support`, and
     // `~/Library` carries the `hidden` flag — so the directory the empty-state
@@ -135,6 +180,86 @@ pub(crate) fn plugins_section(
     commands.entity(body).add_child(grid);
 }
 
+/// The amber line above the grid: how many installed plugins are out of date,
+/// and a way straight to the place that fixes them.
+///
+/// Hidden when nothing is stale rather than showing "0 updates". The absence of
+/// the line is the answer, and a permanent row saying nothing is wrong is a row
+/// that gets read as wallpaper and then missed when it does say something.
+fn update_summary_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                margin: UiRect::horizontal(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER).with_alpha(0.14)),
+            BorderColor::all(rgb(renzora::PLUGIN_UPDATE_AMBER).with_alpha(0.5)),
+            Name::new("plugin-update-summary"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_display(commands, row, |w| {
+        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| !u.is_empty())
+    });
+
+    let ic = renzora_ember::font::icon_text(
+        commands,
+        &fonts.phosphor,
+        "arrow-circle-up",
+        renzora::PLUGIN_UPDATE_AMBER,
+        14.0,
+    );
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(text_primary())),
+            FocusPolicy::Pass,
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
+        let Some(u) = w.get_resource::<renzora::PluginUpdates>() else {
+            return String::new();
+        };
+        let (ready, blocked) = (u.ready(), u.blocked());
+        let plural = |n: usize| if n == 1 { "" } else { "s" };
+        match (ready, blocked) {
+            (0, 0) => String::new(),
+            (0, b) => tr("settings.plugin.updates_blocked").replace("{n}", &b.to_string()),
+            (r, 0) => tr("settings.plugin.updates_available")
+                .replace("{n}", &r.to_string())
+                .replace("{s}", plural(r)),
+            (r, b) => format!(
+                "{} {}",
+                tr("settings.plugin.updates_available")
+                    .replace("{n}", &r.to_string())
+                    .replace("{s}", plural(r)),
+                tr("settings.plugin.updates_blocked").replace("{n}", &b.to_string()),
+            ),
+        }
+    });
+
+    let open = renzora_ember::widgets::icon_label_button(
+        commands,
+        fonts,
+        "storefront",
+        &tr("settings.plugin.open_updates"),
+    );
+    commands.entity(open).insert((OpenPluginUpdates, FocusPolicy::Block));
+
+    commands.entity(row).add_children(&[ic, label, open]);
+    row
+}
+
 /// One card's worth of data, lifted out of the world so the build closure owns
 /// it — the builder runs later, with only `Commands`.
 #[derive(Clone)]
@@ -144,6 +269,13 @@ struct PluginCard {
     status: String,
     /// Whether `status` describes something wrong, which decides its colour.
     problem: bool,
+    /// What the marketplace publishes for this plugin, if anything newer.
+    ///
+    /// Drawn instead of `status`, not beside it: the card has one status line,
+    /// and "there is a 2.1.0" is more use than "Active" on a plugin that is
+    /// plainly running. A `Failed` plugin keeps its error, because a compile
+    /// error is the more urgent of the two facts.
+    update: Option<(String, bool)>,
     /// Whether this plugin can be deleted — false for one sealed inside the
     /// macOS `.app`, which is read-only in every sense that matters (see
     /// `renzora::core::delete_plugin`). Decided once here rather than in the
@@ -164,6 +296,10 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     // Read even when nothing is disabled, so the binding subscribes to it and a
     // toggle repaints the card it just changed.
     let disabled = rx.get_resource::<renzora::DisabledPlugins>();
+    // Same reason: read unconditionally so the snapshot subscribes, and the grid
+    // repaints when the check comes back rather than at the next unrelated
+    // change to the inventory.
+    let updates = rx.get_resource::<renzora::PluginUpdates>();
 
     let cards: Vec<PluginCard> = inventory
         .sorted()
@@ -192,7 +328,15 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
             // and answered by the same rule `delete_plugin` enforces, so a
             // button is never offered for something that would be refused.
             let removable = renzora::core::plugin_is_removable(&e.id);
-            PluginCard { id: e.id.clone(), enabled, status, problem, removable }
+            // Suppressed on a plugin that failed to build: that card's one line
+            // has to carry the compile error, which is the thing standing between
+            // the user and a working plugin. An update it cannot build either is
+            // not the news.
+            let update = (!problem)
+                .then(|| updates.and_then(|u| u.for_plugin(&e.id)))
+                .flatten()
+                .map(|u| (u.available_version.clone(), u.needs_newer_engine));
+            PluginCard { id: e.id.clone(), enabled, status, problem, update, removable }
         })
         .collect();
 
@@ -218,7 +362,10 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .map(|c| {
             (
                 hash_str(&c.id),
-                hash_str(&format!("{}{}{}", c.enabled, c.status, c.removable)),
+                hash_str(&format!(
+                    "{}{}{}{:?}",
+                    c.enabled, c.status, c.removable, c.update
+                )),
             )
         })
         .collect();
@@ -287,6 +434,43 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         placeholder(),
         10.0,
     );
+    // An amber disc on the artwork's corner, matching the store card's. The
+    // status line below says which version; this is what makes the card findable
+    // at a glance in a grid of seventy, which is the whole point of a grid.
+    if card.update.is_some() {
+        let badge = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(5.0),
+                    right: Val::Px(5.0),
+                    width: Val::Px(17.0),
+                    height: Val::Px(17.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border: UiRect::all(Val::Px(1.5)),
+                    border_radius: BorderRadius::all(Val::Px(9.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+                // A dark ring, so the disc reads as a badge on the artwork
+                // rather than as part of it. Plugin artwork is arbitrary.
+                BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
+                FocusPolicy::Pass,
+            ))
+            .id();
+        let ic = renzora_ember::font::icon_text(
+            commands,
+            &fonts.phosphor,
+            "arrow-up",
+            (26, 22, 10),
+            10.0,
+        );
+        commands.entity(ic).insert(FocusPolicy::Pass);
+        commands.entity(badge).add_child(ic);
+        // On the tile, which is the positioned box the badge is relative to.
+        commands.entity(thumb).add_child(badge);
+    }
 
     // The name gets its own full-width line, and the switch moves to a footer
     // below it. They shared a row while this was a text card; once the artwork
@@ -367,11 +551,24 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     }
     children.push(sw);
     commands.entity(foot).add_children(&children);
+    // An available update takes the status line. See `PluginCard::update`.
+    let (status_text, status_colour) = match &card.update {
+        Some((version, true)) => (
+            tr("settings.plugin.update_blocked").replace("{v}", version),
+            text_muted(),
+        ),
+        Some((version, false)) => (
+            tr("settings.plugin.update_available").replace("{v}", version),
+            renzora::PLUGIN_UPDATE_AMBER,
+        ),
+        None if card.problem => (card.status.clone(), warn_amber()),
+        None => (card.status.clone(), text_muted()),
+    };
     let status = commands
         .spawn((
-            Text::new(card.status.clone()),
+            Text::new(status_text),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(if card.problem { warn_amber() } else { text_muted() })),
+            TextColor(rgb(status_colour)),
             // One line: a compile failure's first rustc line is long enough to
             // stretch the card several rows tall and make the grid ragged. The
             // whole message is in the Console, which is where it belongs.
@@ -399,6 +596,27 @@ pub(crate) struct PluginDelete {
 /// Marks the section's "open the plugins folder" button.
 #[derive(Component)]
 pub(crate) struct OpenPluginsFolder;
+
+/// Marks the update summary's button into the marketplace's Updates view.
+#[derive(Component)]
+pub(crate) struct OpenPluginUpdates;
+
+/// The summary row's button → the marketplace, on its Updates view.
+///
+/// Writes a resource rather than calling anything: the settings crate cannot
+/// link the marketplace, and a request with no payload needs no more than this.
+/// See [`renzora::PluginUpdatesRequested`].
+///
+/// Fires on a press, like [`open_plugins_folder_click`] and for the same reason:
+/// the worst a spurious one can do is open a panel.
+pub(crate) fn open_plugin_updates_click(
+    q: Query<&Interaction, (With<OpenPluginUpdates>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::PluginUpdatesRequested);
+    }
+}
 
 /// The two buttons on the confirmation dialog, and the plugin they answer for.
 #[derive(Component)]

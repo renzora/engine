@@ -50,6 +50,14 @@ const ICON_RADIUS: f32 = 9.0;
 const CARD_PAD: f32 = 7.0;
 /// = `ICON_RADIUS + CARD_PAD`. See [`ICON_RADIUS`].
 const CARD_RADIUS: f32 = ICON_RADIUS + CARD_PAD;
+/// Fewest columns the browse grid ever has.
+///
+/// Two, not one: at one the single track is the whole panel and a 124px card
+/// centred in it sits marooned in the middle of the window. Two is the narrowest
+/// arrangement that still reads as a grid.
+const GRID_MIN_COLUMNS: u16 = 2;
+/// Width one browse-grid column wants: a card plus the gap after it.
+const GRID_COLUMN_TARGET: f32 = CARD_W + 12.0;
 /// Characters of an asset name a card shows before eliding. Derived from
 /// `CARD_W` minus its padding at the name's 12.5px size — an estimate, backed by
 /// a hard clip (see `asset_card`).
@@ -163,6 +171,23 @@ struct CachedPage {
     per_page: i64,
 }
 
+/// Which of the store's lists is showing.
+///
+/// Not a category, although the sidebar row for it sits with the categories: the
+/// catalogue is a query against the marketplace and this is a query against what
+/// is installed *here*, so the two share a place in the navigation and nothing
+/// else. Choosing a category or typing a search puts it back to [`Catalogue`],
+/// because both of those are questions about the catalogue.
+///
+/// [`Catalogue`]: StoreView::Catalogue
+#[derive(PartialEq, Eq, Clone, Copy, Default)]
+pub(crate) enum StoreView {
+    #[default]
+    Catalogue,
+    /// Installed plugins with something newer published.
+    Updates,
+}
+
 /// One category's home-page shelf: its display `name`, its `slug` (so "See all"
 /// can switch the browse query to it), and up to [`SECTION_CAP`] top assets.
 struct HomeSection {
@@ -185,6 +210,21 @@ pub(crate) struct HubStoreData {
     /// of the marketplace, not a dock panel — you are already here when you
     /// decide to sell something.
     pub(crate) publishing: bool,
+    /// Catalogue, or the plugins installed here that have something newer.
+    pub(crate) view: StoreView,
+    /// Listings for the plugins in [`renzora::PluginUpdates`], fetched when the
+    /// Updates view is first opened.
+    ///
+    /// The check itself answers with ids, names and versions and no artwork,
+    /// because it is a bulk question asked at startup about plugins the user may
+    /// never look at. The moment they do look, the grid wants real cards, so the
+    /// listings are fetched then: a handful of requests, on a worker, once.
+    update_assets: Vec<AssetSummary>,
+    update_rx: Option<Receiver<Vec<AssetSummary>>>,
+    /// Hash of the slugs `update_assets` was fetched for, so installing one and
+    /// retiring its entry refetches rather than leaving a stale card in the grid.
+    update_sig: u64,
+    update_loading: bool,
     search: String,
     category: Option<String>,
     sort: String,
@@ -223,6 +263,11 @@ impl Default for HubStoreData {
     fn default() -> Self {
         Self {
             publishing: false,
+            view: StoreView::Catalogue,
+            update_assets: Vec::new(),
+            update_rx: None,
+            update_sig: 0,
+            update_loading: false,
             search: String::new(),
             category: None,
             sort: "popular".into(),
@@ -269,8 +314,21 @@ impl HubStoreData {
     /// (grid + pager). Home shows only when nothing narrows the view: no search
     /// text and no specific category ("All"). A search or a chosen category —
     /// including a shelf's "See all" — flips to browse.
+    ///
+    /// The Updates view narrows it too, and to a list the shelves cannot
+    /// describe, so it is never home either.
     fn is_home(&self) -> bool {
-        self.search.is_empty() && self.category.is_none()
+        self.view == StoreView::Catalogue && self.search.is_empty() && self.category.is_none()
+    }
+
+    /// Showing installed plugins with something newer published.
+    ///
+    /// Shares the browse grid rather than building a second one: a card is a
+    /// card, and the pill on it already knows how to say **Update**. What it
+    /// does not share is the pager or the result count, both of which describe a
+    /// catalogue query that is not the one on screen.
+    fn is_updates(&self) -> bool {
+        self.view == StoreView::Updates
     }
 }
 
@@ -317,6 +375,14 @@ impl Plugin for StorePanel {
                 store_category_click,
                 store_page_click,
                 store_see_all_click,
+                // Nested for the same reason as the dropdowns above: Bevy's
+                // system tuple caps at 20.
+                (
+                    store_updates_click,
+                    store_updates_fetch,
+                    store_grid_columns,
+                    store_engine_update_click,
+                ),
                 store_install_click,
                 store_preview_click,
                 store_signin_click,
@@ -372,6 +438,16 @@ struct PreviewInstallBtn;
 /// A home shelf's header / "See all" — carries the category slug to browse.
 #[derive(Component)]
 struct StoreSeeAllBtn(String);
+/// The sidebar's **Updates** row.
+#[derive(Component)]
+struct StoreUpdatesRow;
+/// A card pill for an update this editor is too old to run: opens the updater
+/// rather than installing anything.
+#[derive(Component)]
+struct StoreEngineUpdateBtn;
+/// The browse grid, so its column count can be fitted to the measured width.
+#[derive(Component)]
+struct StoreGrid;
 
 fn signed_in(w: &Rx) -> bool {
     w.get_resource::<AuthSession>().map(|s| s.is_signed_in()).unwrap_or(false)
@@ -461,8 +537,36 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Browse: the flat grid + pager, shown for a search or a chosen category.
     // Wrapped so a single `bind_display` toggles both together.
+    // A real grid, not a wrapping row of fixed-width tiles.
+    //
+    // Wrapping leaves whatever the last column could not use as dead space
+    // against the right edge: most of a card's width at most window sizes, in
+    // exactly the place the home shelves put their "See all" circle. Two views
+    // of the same catalogue, one of which ends its rows with a control and the
+    // other with a hole the same size, reads as something missing rather than as
+    // a different layout.
+    //
+    // Equal `flex` tracks divide the width exactly, so the row always meets both
+    // edges; the card keeps its fixed width (see `asset_card`) and centres in
+    // its track, so the leftover is shared evenly between the cards instead of
+    // all landing at the end. `store_grid_columns` fits the track count to the
+    // measured width.
     let grid = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_content: AlignContent::FlexStart, align_items: AlignItems::FlexStart, column_gap: Val::Px(12.0), row_gap: Val::Px(14.0), padding: UiRect::right(Val::Px(4.0)), ..default() })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                display: Display::Grid,
+                grid_template_columns: vec![RepeatedGridTrack::flex(GRID_MIN_COLUMNS, 1.0)],
+                align_content: AlignContent::FlexStart,
+                align_items: AlignItems::FlexStart,
+                justify_items: JustifyItems::Center,
+                column_gap: Val::Px(12.0),
+                row_gap: Val::Px(14.0),
+                padding: UiRect::right(Val::Px(4.0)),
+                ..default()
+            },
+            StoreGrid,
+        ))
         .id();
     keyed_list(commands, grid, assets_snapshot);
     let grid_scroll = renzora_ember::widgets::scroll_view(commands, grid);
@@ -474,7 +578,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let d = w.resource::<HubStoreData>();
         !d.publishing && !d.is_home()
     });
-    commands.entity(browse).add_children(&[grid_scroll, pager]);
+    // "Loading…", "nothing found", "everything is up to date". It used to be a
+    // row *inside* the grid, which was fine while the grid was a wrapping row
+    // and wrong the moment it became a real grid: a note is not a card, and in a
+    // grid it would be laid out as one, squeezed into a single column.
+    let note = build_grid_note(commands, fonts);
+    commands.entity(browse).add_children(&[note, grid_scroll, pager]);
 
     // Publish: the uploader, in the same content area rather than a panel.
     let publish = commands
@@ -687,7 +796,7 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // The count is what the filters produced, so it lives with them.
     bind_text(commands, count, |w| {
         let d = w.resource::<HubStoreData>();
-        if d.is_home() { String::new() } else { format!("{} assets", d.total) }
+        if d.is_home() || d.is_updates() { String::new() } else { format!("{} assets", d.total) }
     });
     let sort_l = section_label(commands, fonts, "Sort");
     let rating_l = section_label(commands, fonts, "Rating");
@@ -697,11 +806,128 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .add_children(&[sort_l, sort, rating_l, rating, price_l, price, count]);
 
     let account_bar = build_account_bar(commands, fonts);
+    let updates_row = build_updates_row(commands, fonts);
     let cats_label = section_label(commands, fonts, "Categories");
     commands
         .entity(col)
-        .add_children(&[account_bar, cats_label, cats_scroll, sep, filters]);
+        .add_children(&[account_bar, updates_row, cats_label, cats_scroll, sep, filters]);
     col
+}
+
+/// The **Updates** row, above the categories.
+///
+/// Always there, even with nothing to update. It is the answer to "is anything
+/// of mine out of date", and a row that appears only once the answer is yes
+/// cannot be *asked*: you would have to already know. The amber count appears
+/// only when there is one, which is the part that should be conditional.
+fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                min_height: Val::Px(28.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(7.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border: UiRect::left(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            StoreUpdatesRow,
+            Name::new("store-updates"),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| {
+        if w.resource::<HubStoreData>().is_updates() {
+            rgb(accent()).with_alpha(0.18)
+        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+            rgb(hover_bg())
+        } else {
+            Color::NONE
+        }
+    });
+    bind_with(
+        commands,
+        row,
+        |w| w.resource::<HubStoreData>().is_updates(),
+        |w, e, sel: &bool| {
+            if let Some(mut b) = w.get_mut::<BorderColor>(e) {
+                b.left = if *sel { rgb(accent()) } else { Color::NONE };
+            }
+        },
+    );
+
+    // Amber whenever something is waiting, so the row carries the news without
+    // the count having to be read. The same amber the card pill and the Settings
+    // grid use. See `renzora::PLUGIN_UPDATE_AMBER`.
+    let ic = icon_text(commands, &fonts.phosphor, "arrow-circle-up", text_muted(), 13.0);
+    renzora_ember::reactive::tracked::bind_text_color(commands, ic, |w| {
+        if pending_updates(w) > 0 {
+            rgb(renzora::PLUGIN_UPDATE_AMBER)
+        } else {
+            rgb(text_muted())
+        }
+    });
+    let lbl = commands
+        .spawn((
+            Text::new("Updates".to_string()),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+            FocusPolicy::Pass,
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
+        ))
+        .id();
+
+    // A filled pill rather than plain text: it is a count of things to do, and
+    // at 9.5px beside a 13px label plain digits read as part of the word.
+    let badge = commands
+        .spawn((
+            Node {
+                min_width: Val::Px(17.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    bind_display(commands, badge, |w| pending_updates(w) > 0);
+    let badge_t = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 9.5),
+            // Dark on amber. White on this yellow is the one combination that
+            // disappears, and the badge is the thing meant to be seen.
+            TextColor(rgb((32, 26, 10))),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    bind_text(commands, badge_t, |w| pending_updates(w).to_string());
+    commands.entity(badge).add_child(badge_t);
+
+    commands.entity(row).add_children(&[ic, lbl, badge]);
+    row
+}
+
+/// How many installed plugins have something newer published.
+///
+/// Counts the blocked ones too. "Three updates, one of which needs a newer
+/// editor" is a fact about your install either way, and a badge that quietly
+/// dropped them would make the Updates view contradict the row that opened it.
+fn pending_updates(w: &Rx) -> usize {
+    w.get_resource::<renzora::PluginUpdates>()
+        .map(|u| u.entries.len())
+        .unwrap_or(0)
 }
 
 /// A small muted heading over one block of the filter column.
@@ -798,7 +1024,12 @@ fn build_pager(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let pager = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(8.0), flex_shrink: 0.0, ..default() })
         .id();
-    bind_display(commands, pager, |w| w.resource::<HubStoreData>().total_pages() > 1);
+    // Never in the Updates view: the page count describes the catalogue query,
+    // which is not the list on screen there.
+    bind_display(commands, pager, |w| {
+        let d = w.resource::<HubStoreData>();
+        !d.is_updates() && d.total_pages() > 1
+    });
     let prev = chip_button(commands, fonts, "caret-left", Some("Prev"), StorePageBtn(-1));
     bind_display(commands, prev, |w| w.resource::<HubStoreData>().page > 1);
     let label = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(value_text())))).id();
@@ -867,7 +1098,10 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String
         // states this list has, so they are the only two it shows.
         bind_bg(commands, row, move |w| {
             let d = w.resource::<HubStoreData>();
-            if d.category == slug {
+            // Not while the Updates view is up: the category is still set,
+            // because leaving Updates goes back to it, and two highlighted rows
+            // in one list is two answers to "where am I".
+            if d.category == slug && !d.is_updates() {
                 rgb(accent()).with_alpha(0.18)
             } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
                 rgb(hover_bg())
@@ -884,7 +1118,10 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String
         bind_with(
             commands,
             row,
-            move |w| w.resource::<HubStoreData>().category == slug,
+            move |w| {
+                let d = w.resource::<HubStoreData>();
+                d.category == slug && !d.is_updates()
+            },
             |w, e, sel: &bool| {
                 let c = if *sel { rgb(accent()) } else { Color::NONE };
                 if let Some(mut b) = w.get_mut::<BorderColor>(e) {
@@ -905,35 +1142,109 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String
     row
 }
 
-fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
+/// The line under the toolbar when the grid has nothing to show, or is still
+/// filling.
+///
+/// A sibling of the grid rather than a row inside it. See the call site: a note
+/// laid out as a grid cell is squeezed into one column, and it is not a card.
+fn build_grid_note(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let note = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            Node { margin: UiRect::all(Val::Px(16.0)), flex_shrink: 0.0, ..default() },
+        ))
+        .id();
+    bind_text(commands, note, |w| grid_note(w).unwrap_or_default());
+    bind_display(commands, note, |w| grid_note(w).is_some());
+    note
+}
+
+/// What the grid has to say for itself, or `None` when it has cards to show.
+///
+/// One function, read by both the note's bindings and by
+/// [`assets_snapshot`], which returns nothing whenever this returns something,
+/// so the two can never disagree about whether the grid is empty.
+fn grid_note(world: &Rx) -> Option<String> {
     let d = world.resource::<HubStoreData>();
+    if d.is_updates() {
+        if d.update_loading {
+            return Some("Checking the marketplace…".to_string());
+        }
+        if !d.update_assets.is_empty() {
+            return None;
+        }
+        let updates = world.get_resource::<renzora::PluginUpdates>();
+        // Never checked is not the same claim as "everything is current", and
+        // saying the second one would be a reassurance nobody has earned yet.
+        if !updates.is_some_and(|u| u.checked) {
+            return Some("Checking installed plugins…".to_string());
+        }
+        // Stale plugins, but no listings to show them with: every detail fetch
+        // failed. Saying "up to date" here would contradict the amber count in
+        // the sidebar row that was just clicked.
+        if updates.is_some_and(|u| !u.is_empty()) {
+            return Some("Couldn't reach the marketplace for the update details.".to_string());
+        }
+        return Some("Every installed plugin is up to date.".to_string());
+    }
     if d.loading {
-        return note_snapshot("Loading assets...");
+        return Some("Loading assets...".to_string());
     }
-    if d.assets.is_empty() {
-        return note_snapshot("No assets found. Try a different search or category.");
+    d.assets
+        .is_empty()
+        .then(|| "No assets found. Try a different search or category.".to_string())
+}
+
+fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
+    let empty = || KeyedSnapshot {
+        items: Vec::new(),
+        build: Box::new(|c: &mut Commands, _: &EmberFonts, _| c.spawn(Node::default()).id()),
+    };
+    if grid_note(world).is_some() {
+        return empty();
     }
-    let assets = d.assets.clone();
+    let d = world.resource::<HubStoreData>();
+    let updates_view = d.is_updates();
+    let assets = if updates_view { d.update_assets.clone() } else { d.assets.clone() };
     // A search is the one grid whose results are genuinely mixed, so it is the
     // one grid where a card has to say which category it is from. A category
     // grid already says so in the highlighted sidebar row.
-    let show_category = !d.search.trim().is_empty();
+    let show_category = !updates_view && !d.search.trim().is_empty();
+
+    // Resolved once for the whole grid rather than per card: the card builder
+    // runs with only `Commands` and has no world to ask, and asking once is also
+    // what subscribes this snapshot to the resource, so installing something
+    // repaints the card that installed it.
+    let updates = world.get_resource::<renzora::PluginUpdates>();
+    let states: Vec<renzora::PluginInstallState> = assets
+        .iter()
+        .map(|a| match updates {
+            Some(u) => renzora::PluginInstallState::of(u, &a.id),
+            None => renzora::PluginInstallState::Absent,
+        })
+        .collect();
+
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = assets
         .iter()
-        .map(|a| {
+        .zip(&states)
+        .map(|(a, state)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             a.slug.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            // `show_category` is in the hash: it changes what a card draws, so a
-            // card left over from a search must rebuild when the search clears.
-            (&a.name, &a.category, a.price_credits, a.downloads, show_category).hash(&mut h);
+            // `show_category` and `state` are in the hash: both change what a
+            // card draws, so a card left over from a search must rebuild when
+            // the search clears, and one whose plugin was just installed must
+            // rebuild into its Installed form.
+            (&a.name, &a.category, a.price_credits, a.downloads, show_category, state).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| asset_card(c, f, &assets[i], show_category)),
+        build: Box::new(move |c, f, i| asset_card(c, f, &assets[i], show_category, states[i])),
     }
 }
 
@@ -944,11 +1255,15 @@ fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
 /// a shelf has a header naming it, a browse grid has a highlighted sidebar row —
 /// and repeating it on forty cards spends the card's one line of context on
 /// something the user has just clicked.
+///
+/// `state` is what this editor already has of the listing. It decides the
+/// corner badge and what the pill offers; see [`corner_badge`] and [`get_pill`].
 fn asset_card(
     commands: &mut Commands,
     fonts: &EmberFonts,
     a: &AssetSummary,
     show_category: bool,
+    state: renzora::PluginInstallState,
 ) -> Entity {
     let base = rgb(section_bg());
     let hover = lighten(base, 0.12);
@@ -1190,10 +1505,69 @@ fn asset_card(
     // anyone who wants it; everyone else gets a page of assets instead of a page
     // of buttons, and the card itself still opens the detail overlay where the
     // full-size Get button lives.
-    let get = get_pill(commands, fonts, a, card);
+    let get = get_pill(commands, fonts, a, card, state);
     commands.entity(thumb).add_child(get);
+    // The badge is the half of the answer that does NOT hide: the pill appears
+    // under the cursor, so without it a card you already own looks exactly like
+    // one you do not until you hover it, and a grid of seventy plugins is
+    // precisely where that matters.
+    if let Some(badge) = corner_badge(commands, fonts, state) {
+        commands.entity(thumb).add_child(badge);
+    }
     commands.entity(card).add_children(&[thumb, info]);
     card
+}
+
+/// The small disc on the artwork's top-right corner: a green tick for something
+/// installed and current, an amber arrow for something with an update.
+///
+/// `None` for a listing this editor has no copy of, which is most of them: a
+/// badge on every card would say nothing.
+///
+/// Top-*right* because the theme Preview pill already owns the top-left, and a
+/// theme is a category that can be both installed and previewable.
+fn corner_badge(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    state: renzora::PluginInstallState,
+) -> Option<Entity> {
+    use renzora::PluginInstallState as S;
+    let (glyph, fill) = match state {
+        S::Absent => return None,
+        S::Installed => ("check", renzora::PLUGIN_INSTALLED_GREEN),
+        // The blocked case gets the same amber as the ordinary one. From the
+        // grid's point of view they are the same news, "this is out of date",
+        // and the difference between "install it" and "update the editor first"
+        // needs a sentence, which the detail overlay and the Updates view have
+        // room for and a 16px disc does not.
+        S::UpdateAvailable | S::UpdateBlocked => ("arrow-up", renzora::PLUGIN_UPDATE_AMBER),
+    };
+    let disc = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(6.0),
+                right: Val::Px(6.0),
+                width: Val::Px(18.0),
+                height: Val::Px(18.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(Val::Px(1.5)),
+                border_radius: BorderRadius::all(Val::Px(9.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(fill)),
+            // A dark ring, so the disc reads as a badge sitting on the artwork
+            // rather than as part of it. Artwork is arbitrary, and a green disc
+            // on a green screenshot is invisible without one.
+            BorderColor::all(rgba([16, 16, 20, 190])),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, glyph, (26, 22, 10), 10.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(disc).add_child(ic);
+    Some(disc)
 }
 
 // ── Home (storefront) ──────────────────────────────────────────────────────────
@@ -1232,18 +1606,35 @@ fn build_home(commands: &mut Commands) -> Entity {
 /// keyed by slug and rebuilt when the shelf's assets change.
 fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
-    let sections: Vec<(String, String, Vec<AssetSummary>)> =
-        d.sections.iter().map(|s| (s.slug.clone(), s.name.clone(), s.assets.clone())).collect();
+    let updates = world.get_resource::<renzora::PluginUpdates>();
+    // Carried per card, like the browse grid's. A shelf shows the same listings
+    // the browse grid does, so a plugin you have installed has to say so in both
+    // or the storefront contradicts the category page it links to.
+    let sections: Vec<(String, String, Vec<AssetSummary>, Vec<renzora::PluginInstallState>)> = d
+        .sections
+        .iter()
+        .map(|s| {
+            let states = s
+                .assets
+                .iter()
+                .map(|a| match updates {
+                    Some(u) => renzora::PluginInstallState::of(u, &a.id),
+                    None => renzora::PluginInstallState::Absent,
+                })
+                .collect();
+            (s.slug.clone(), s.name.clone(), s.assets.clone(), states)
+        })
+        .collect();
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = sections
         .iter()
-        .map(|(slug, name, assets)| {
+        .map(|(slug, name, assets, states)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             slug.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
             name.hash(&mut h);
-            for a in assets {
-                (&a.slug, &a.name, a.price_credits).hash(&mut h);
+            for (a, state) in assets.iter().zip(states) {
+                (&a.slug, &a.name, a.price_credits, state).hash(&mut h);
             }
             (k.finish(), h.finish())
         })
@@ -1251,8 +1642,8 @@ fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
     KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (slug, name, assets) = &sections[i];
-            build_section(c, f, slug, name, assets)
+            let (slug, name, assets, states) = &sections[i];
+            build_section(c, f, slug, name, assets, states)
         }),
     }
 }
@@ -1337,7 +1728,14 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
     col
 }
 
-fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: &str, assets: &[AssetSummary]) -> Entity {
+fn build_section(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    slug: &str,
+    name: &str,
+    assets: &[AssetSummary],
+    states: &[renzora::PluginInstallState],
+) -> Entity {
     let col = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
         .id();
@@ -1401,8 +1799,9 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
     // `false`: the header directly above these cards is the category.
     let cards: Vec<Entity> = assets
         .iter()
+        .zip(states)
         .take(SECTION_CAP)
-        .map(|a| asset_card(commands, fonts, a, false))
+        .map(|(a, state)| asset_card(commands, fonts, a, false, *state))
         .collect();
     commands.entity(row).add_children(&cards);
     // …then "See all", beside the run rather than inside it.
@@ -1434,11 +1833,42 @@ fn build_section(commands: &mut Commands, fonts: &EmberFonts, slug: &str, name: 
 /// Bound to `card`'s [`RelativeCursorPosition`] rather than its `Interaction`,
 /// because this pill blocks focus and would otherwise steal the hover it depends
 /// on the moment the cursor arrived.
-fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, card: Entity) -> Entity {
+fn get_pill(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    a: &AssetSummary,
+    card: Entity,
+    state: renzora::PluginInstallState,
+) -> Entity {
+    use renzora::PluginInstallState as S;
     let free = a.price_credits == 0;
-    let base = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 235]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 240]) };
-    let hot = if free { rgba([GREEN.0, GREEN.1, GREEN.2, 255]) } else { rgba([GOLD.0, GOLD.1, GOLD.2, 255]) };
-    let fg = if free { (255, 255, 255) } else { (40, 30, 8) };
+    // Three pills, not one with an alternative label.
+    //
+    // **Installed** is grey and does nothing. Reinstalling what you already have
+    // is not an action anybody means to take from a grid, and offering it in the
+    // same green as a fresh install is how you get one by accident; the detail
+    // overlay is where a deliberate reinstall lives.
+    //
+    // **Update** is amber, because it is neither of the other two: a green Get
+    // says "you do not have this" and the price says "this will cost you", and
+    // an update says something the store has no other colour for.
+    let (base, hot, fg) = match state {
+        S::Installed => (rgba([128, 132, 140, 225]), rgba([128, 132, 140, 225]), (236, 238, 242)),
+        S::UpdateAvailable | S::UpdateBlocked => {
+            let c = renzora::PLUGIN_UPDATE_AMBER;
+            (rgba([c.0, c.1, c.2, 240]), rgba([c.0, c.1, c.2, 255]), (40, 30, 8))
+        }
+        S::Absent if free => (
+            rgba([GREEN.0, GREEN.1, GREEN.2, 235]),
+            rgba([GREEN.0, GREEN.1, GREEN.2, 255]),
+            (255, 255, 255),
+        ),
+        S::Absent => (
+            rgba([GOLD.0, GOLD.1, GOLD.2, 240]),
+            rgba([GOLD.0, GOLD.1, GOLD.2, 255]),
+            (40, 30, 8),
+        ),
+    };
 
     let pill = commands
         .spawn((
@@ -1459,16 +1889,42 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, card:
             },
             BackgroundColor(base),
             Interaction::default(),
-            StoreInstallBtn(a.clone()),
             // REQUIRED, not belt-and-braces. Bevy 0.19 made `Node` require
             // `FocusPolicy` and defaults it to `Pass`, so `ui_focus_system` marks
             // every node under the cursor as pressed and only stops at a `Block`.
             // Without this the pill downloads AND the press carries on to the
             // card's `StoreCardBtn` behind it, opening the detail overlay too.
+            //
+            // Kept even for the inert Installed pill: swallowing the press is
+            // what makes it inert. Letting it through would open the detail
+            // overlay from a click aimed at a button that says you are done.
             FocusPolicy::Block,
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
+    match state {
+        // A label, not a button: nothing happens, and nothing about it invites a
+        // click.
+        S::Installed => {}
+        // The update exists but this editor cannot run it, so installing would
+        // fetch the release it already has. The actionable answer is one level
+        // up, and this is the button for it. The updater's own card sends you
+        // here for the opposite case, which closes the loop.
+        S::UpdateBlocked => {
+            commands.entity(pill).insert((
+                StoreEngineUpdateBtn,
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                renzora_ember::widgets::HoverTooltip::new(
+                    "This update needs a newer editor.".to_string(),
+                ),
+            ));
+        }
+        _ => {
+            commands.entity(pill).insert((
+                StoreInstallBtn(a.clone()),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ));
+        }
+    }
     bind_bg(commands, pill, move |w| {
         if matches!(w.get::<Interaction>(pill), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
             hot
@@ -1481,31 +1937,27 @@ fn get_pill(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, card:
             .is_some_and(|r| r.cursor_over)
     });
 
-    if free {
+    // What it already has beats what it costs: an update to something you own is
+    // an update whether the listing was free or paid, and re-quoting the price
+    // on a card for a plugin sitting in `plugins/` is an offer to buy it twice.
+    let (glyph, label) = match state {
+        S::Installed => ("check", "Installed".to_string()),
+        S::UpdateAvailable => ("arrow-circle-up", "Update".to_string()),
+        S::UpdateBlocked => ("arrow-circle-up", "Update editor".to_string()),
         // "Install", not "Download", for a plugin. Every other category IS a
         // download — the file lands in the project and the user does something
         // with it. A plugin is extracted, compiled and loaded into the editor,
         // and calling that "Download" describes the first tenth of it.
-        let plugin = is_plugin_slug(&a.category);
-        let (glyph, label) = if plugin {
-            ("puzzle-piece", "Install")
-        } else {
-            ("download-simple", "Download")
-        };
-        let ic = icon_text(commands, &fonts.phosphor, glyph, fg, 10.5);
-        commands.entity(ic).insert(FocusPolicy::Pass);
-        let t = commands
-            .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
-            .id();
-        commands.entity(pill).add_children(&[ic, t]);
-    } else {
-        let ic = icon_text(commands, &fonts.phosphor, "coins", fg, 10.5);
-        commands.entity(ic).insert(FocusPolicy::Pass);
-        let t = commands
-            .spawn((Text::new(format!("{}", a.price_credits)), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
-            .id();
-        commands.entity(pill).add_children(&[ic, t]);
-    }
+        S::Absent if free && is_plugin_slug(&a.category) => ("puzzle-piece", "Install".to_string()),
+        S::Absent if free => ("download-simple", "Download".to_string()),
+        S::Absent => ("coins", format!("{}", a.price_credits)),
+    };
+    let ic = icon_text(commands, &fonts.phosphor, glyph, fg, 10.5);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let t = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+        .id();
+    commands.entity(pill).add_children(&[ic, t]);
     pill
 }
 
@@ -1624,21 +2076,6 @@ fn lighten(c: Color, amt: f32) -> Color {
     )
 }
 
-fn note_snapshot(text: &'static str) -> KeyedSnapshot {
-    // Hash the message into the content key so a state change (e.g. Loading →
-    // No assets found) re-runs the builder; a constant key would reuse the old
-    // row and leave the stale "Loading..." text on screen.
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut h);
-    KeyedSnapshot {
-        items: vec![(u64::MAX, h.finish())],
-        build: Box::new(move |c, f, _| {
-            c.spawn((Text::new(text), ui_font(&f.ui, 11.0), TextColor(rgb(text_muted())), Node { margin: UiRect::all(Val::Px(16.0)), ..default() })).id()
-        }),
-    }
-}
-
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 fn poll_store(mut data: ResMut<HubStoreData>) {
@@ -1666,6 +2103,13 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
                     data.loading = false;
                 }
             }
+        }
+    }
+    if let Some(rx) = data.update_rx.as_ref() {
+        if let Ok(found) = rx.try_recv() {
+            data.update_assets = found;
+            data.update_rx = None;
+            data.update_loading = false;
         }
     }
     if let Some(rx) = data.cat_rx.as_ref() {
@@ -1772,6 +2216,11 @@ fn store_search_sync(input: Query<&EmberTextInput, With<StoreSearch>>, mut data:
     for inp in &input {
         if data.search != inp.value {
             data.search = inp.value.clone();
+            // Typing is a question about the catalogue, so it leaves the Updates
+            // view the way choosing a category does. Only on a real change: this
+            // runs every frame, and assigning the view unconditionally would make
+            // the Updates row un-clickable.
+            data.view = StoreView::Catalogue;
         }
     }
 }
@@ -1863,11 +2312,133 @@ fn store_category_click(q: Query<(&Interaction, &StoreCatRow), Changed<Interacti
 /// Switch the browse query to `category` (`None` = "All", back to home) and
 /// refetch from page 1. Shared by the sidebar rows and the home "See all"
 /// buttons so both take the exact same path into browse mode.
+///
+/// Also leaves the Updates view, which is not a category and cannot survive one
+/// being chosen: the grid it shares would otherwise show the catalogue's results
+/// under a highlighted Updates row.
 fn select_category(data: &mut HubStoreData, category: Option<String>) {
-    if data.category != category {
+    let leaving_updates = data.view != StoreView::Catalogue;
+    data.view = StoreView::Catalogue;
+    if data.category != category || leaving_updates {
         data.category = category;
         data.page = 1;
         data.dirty = true;
+    }
+}
+
+/// A blocked update's pill → open the editor's own updater.
+///
+/// [`renzora::core::UpdateRequested`] is the contract crate's request for it, so
+/// this crate needs no dependency on `renzora_update`. It is the same
+/// arrangement in reverse to the one that brings the updater's card back here.
+fn store_engine_update_click(
+    q: Query<&Interaction, (With<StoreEngineUpdateBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::core::UpdateRequested);
+    }
+}
+
+/// The sidebar's **Updates** row → show installed plugins with something newer.
+fn store_updates_click(
+    q: Query<&Interaction, (With<StoreUpdatesRow>, Changed<Interaction>)>,
+    mut data: ResMut<HubStoreData>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    show_updates(&mut data);
+}
+
+/// Enter the Updates view.
+///
+/// The catalogue's search text and chosen category are deliberately left alone.
+/// They are still in the field and still highlighted in the sidebar, so wiping
+/// them would throw away a query the user is coming back to; `is_updates`
+/// short-circuits everything that reads them while this view is up, and
+/// [`category_row`] drops its highlight so only one row reads as current.
+pub(crate) fn show_updates(data: &mut HubStoreData) {
+    data.view = StoreView::Updates;
+    data.publishing = false;
+}
+
+/// Fetch the listings behind the update entries, once per set.
+///
+/// Only when the view is actually open: an editor whose user never looks at
+/// Updates should not spend a request per stale plugin on startup. The signature
+/// covers the slugs, so installing one and retiring its entry refetches instead
+/// of leaving its card in the grid.
+#[cfg(not(target_arch = "wasm32"))]
+fn store_updates_fetch(mut data: ResMut<HubStoreData>, updates: Res<renzora::PluginUpdates>) {
+    if !data.is_updates() || data.update_loading {
+        return;
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for u in &updates.entries {
+        u.slug.hash(&mut h);
+    }
+    let sig = h.finish();
+    if data.update_sig == sig {
+        return;
+    }
+    data.update_sig = sig;
+    if updates.entries.is_empty() {
+        data.update_assets.clear();
+        return;
+    }
+
+    let slugs: Vec<String> = updates.entries.iter().map(|u| u.slug.clone()).collect();
+    let (tx, rx) = unbounded();
+    data.update_rx = Some(rx);
+    data.update_loading = true;
+    // One thread for the lot rather than one each: these are a handful of
+    // sequential requests and the grid has nothing to show until they are all
+    // in, so fanning out would buy a fraction of a second at the cost of a
+    // thread per stale plugin.
+    std::thread::spawn(move || {
+        let found: Vec<AssetSummary> = slugs
+            .iter()
+            .filter_map(|slug| crate::auth::marketplace::get_asset(slug).ok())
+            .map(|d| AssetSummary {
+                id: d.id,
+                name: d.name,
+                slug: d.slug,
+                description: d.description,
+                category: d.category,
+                price_credits: d.price_credits,
+                thumbnail_url: d.thumbnail_url,
+                version: d.version,
+                downloads: d.downloads,
+                creator_name: d.creator_name.unwrap_or_default(),
+            })
+            .collect();
+        let _ = tx.send(found);
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn store_updates_fetch(_data: ResMut<HubStoreData>, _updates: Res<renzora::PluginUpdates>) {}
+
+/// Fit the browse grid's column count to the width it actually got.
+///
+/// The same measure-and-refit the game-UI palette does, and for the same reason:
+/// this grid lives in an overlay the user resizes, so a count chosen once at
+/// build time is wrong as soon as the window changes. Written only on a change,
+/// so it does not dirty `Node`, and therefore re-run layout for the whole tree,
+/// every frame.
+fn store_grid_columns(mut grid: Query<(&bevy::ui::ComputedNode, &mut Node), With<StoreGrid>>) {
+    for (cn, mut node) in &mut grid {
+        let width = cn.size().x * cn.inverse_scale_factor();
+        if width <= 0.0 {
+            continue;
+        }
+        let n = ((width / GRID_COLUMN_TARGET).floor() as u16).clamp(GRID_MIN_COLUMNS, 24);
+        let want = vec![RepeatedGridTrack::flex(n, 1.0)];
+        if node.grid_template_columns != want {
+            node.grid_template_columns = want;
+        }
     }
 }
 

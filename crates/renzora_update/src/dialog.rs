@@ -28,6 +28,8 @@ pub(crate) fn register(app: &mut App) {
         (
             manage_modal,
             rebuild_version_list,
+            rebuild_plugin_updates,
+            plugin_updates_click,
             version_row_click,
             action_label_sync,
             action_click,
@@ -77,6 +79,14 @@ struct VersionList {
 /// One row in that list, carrying the tag it selects.
 #[derive(Component)]
 struct VersionRow(String);
+/// The plugin-updates list; `sig` is what it was last built from.
+#[derive(Component)]
+struct PluginUpdateList {
+    sig: u64,
+}
+/// "Update plugins": hands off to the marketplace's Updates view.
+#[derive(Component)]
+struct PluginUpdatesBtn;
 
 /// Colour with an explicit alpha. Ember's theme exposes only opaque `rgb`,
 /// and these tints have to sit over whatever the card behind them is.
@@ -521,6 +531,8 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
     // the truncated plain-text dump that used to sit here is gone: the "Release
     // notes" button opens the real thing in a browser instead.
 
+    let plugins = plugin_updates_block(commands, fonts);
+
     let install_path = install_path_row(commands, fonts);
 
     // ── Progress + error ─────────────────────────────────────────────────────
@@ -658,6 +670,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         rule,
         list_label,
         list_scroll,
+        plugins,
         install_path,
         progress,
         error,
@@ -1029,6 +1042,292 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(row).add_children(&[sw, label, hint]);
     row
+}
+
+/// Installed plugins with something newer published, under the engine's own
+/// versions.
+///
+/// # Why it is on this card at all
+///
+/// "Am I up to date?" is one question and the user asks it once. Splitting the
+/// answer between a dialog that knows about the engine and a storefront that
+/// knows about plugins means the honest answer to the question they asked is
+/// "yes, but go and look somewhere else", and nobody does. So the engine's
+/// answer and the plugins' answer sit on the same card, in that order, because
+/// that is the order they matter in: an update blocked on a newer editor is
+/// fixed by the thing directly above it.
+///
+/// The block does the listing and nothing else. Installing a plugin is the
+/// marketplace's install path (a permissions overlay, a download with a
+/// progress bar, a compile), and a second, worse copy of that behind a button on
+/// this card is exactly what [`PluginUpdatesBtn`] exists to avoid.
+///
+/// Hidden entirely when there is nothing stale, rather than shown empty with a
+/// reassurance. The card already has a headline for "nothing to do".
+fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(4.0),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .id();
+    bind_display(commands, col, |w| {
+        w.get_resource::<renzora::PluginUpdates>()
+            .is_some_and(|u| !u.is_empty())
+    });
+
+    let header = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            ..default()
+        })
+        .id();
+    let ic = icon_text(
+        commands,
+        &fonts.phosphor,
+        "puzzle-piece",
+        renzora::PLUGIN_UPDATE_AMBER,
+        13.0,
+    );
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let title = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            FocusPolicy::Pass,
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
+        ))
+        .id();
+    bind_text(commands, title, |w| {
+        let Some(u) = w.get_resource::<renzora::PluginUpdates>() else {
+            return String::new();
+        };
+        let (ready, blocked) = (u.ready(), u.blocked());
+        match (ready, blocked) {
+            (0, 0) => String::new(),
+            (0, b) => format!("{b} plugin update{} need a newer editor", plural(b)),
+            (r, 0) => format!("{r} plugin update{} available", plural(r)),
+            (r, b) => {
+                format!("{r} plugin update{} available, {b} waiting on a newer editor", plural(r))
+            }
+        }
+    });
+    let (open, _, _) = pill(
+        commands,
+        fonts,
+        "storefront",
+        &renzora::lang::t_or("update.btn.plugins", "Update plugins"),
+    );
+    commands.entity(open).insert(PluginUpdatesBtn);
+    // Only when something can actually be installed now. With every update
+    // blocked on a newer editor the button leads to a page that can only repeat
+    // what this line already said.
+    bind_display(commands, open, |w| {
+        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| u.ready() > 0)
+    });
+    commands.entity(header).add_children(&[ic, title, open]);
+
+    // Capped rather than scrolled. The card's one scrolling region is the
+    // version list, and a second scrollbar beside it turns a dialog into a form.
+    // The overflow line below says how many are not shown, and the button goes
+    // to the place that shows all of them.
+    let list = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(1.0),
+                ..default()
+            },
+            PluginUpdateList { sig: 0 },
+        ))
+        .id();
+
+    commands.entity(col).add_children(&[header, list]);
+    col
+}
+
+/// How many plugin rows the block lists before it stops and counts the rest.
+const PLUGIN_ROW_CAP: usize = 3;
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
+/// Rebuild the plugin rows only when what they show changed. Same content
+/// signature as [`rebuild_version_list`], and for the same reason: respawning
+/// rows every frame is how a reactive UI allocates hundreds of entities a frame.
+fn rebuild_plugin_updates(world: &mut World) {
+    let sig = {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        if let Some(u) = world.get_resource::<renzora::PluginUpdates>() {
+            for e in &u.entries {
+                for bytes in [e.id.as_bytes(), e.available_version.as_bytes()] {
+                    for b in bytes {
+                        h ^= *b as u64;
+                        h = h.wrapping_mul(0x100_0000_01b3);
+                    }
+                }
+                h ^= e.needs_newer_engine as u64;
+            }
+        }
+        h
+    };
+
+    let mut q = world.query::<(Entity, &PluginUpdateList)>();
+    let Some((list, current)) = q.iter(world).next().map(|(e, v)| (e, v.sig)) else {
+        return;
+    };
+    if current == sig {
+        return;
+    }
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+
+    let (rows, hidden) = world
+        .get_resource::<renzora::PluginUpdates>()
+        .map(|u| {
+            let rows: Vec<(String, String, bool, String)> = u
+                .entries
+                .iter()
+                .take(PLUGIN_ROW_CAP)
+                .map(|e| {
+                    (
+                        e.name.clone(),
+                        format!("{} → {}", e.installed_version, e.available_version),
+                        e.needs_newer_engine,
+                        e.requires_engine.clone(),
+                    )
+                })
+                .collect();
+            (rows, u.entries.len().saturating_sub(PLUGIN_ROW_CAP))
+        })
+        .unwrap_or_default();
+
+    let old: Vec<Entity> = world
+        .get::<Children>(list)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+
+    let mut queue = CommandQueue::default();
+    {
+        let mut commands = Commands::new(&mut queue, world);
+        for e in old {
+            commands.entity(e).try_despawn();
+        }
+        let mut kids: Vec<Entity> = rows
+            .iter()
+            .map(|(name, versions, blocked, requires)| {
+                plugin_update_row(&mut commands, &fonts, name, versions, *blocked, requires)
+            })
+            .collect();
+        if hidden > 0 {
+            kids.push(
+                commands
+                    .spawn((
+                        Text::new(format!("and {hidden} more")),
+                        ui_font(&fonts.ui, 10.5),
+                        TextColor(rgb(text_muted())),
+                        FocusPolicy::Pass,
+                        Node { margin: UiRect::left(Val::Px(8.0)), ..default() },
+                    ))
+                    .id(),
+            );
+        }
+        commands.entity(list).replace_children(&kids);
+        commands.entity(list).insert(PluginUpdateList { sig });
+    }
+    queue.apply(world);
+}
+
+fn plugin_update_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    name: &str,
+    versions: &str,
+    blocked: bool,
+    requires: &str,
+) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(ca(255, 255, 255, 8)),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    // A blocked update is a different kind of thing, not a dimmer one: it is
+    // waiting on the very update this card is offering, so it gets the lock
+    // rather than a greyed arrow.
+    let (glyph, colour) = if blocked {
+        ("lock-simple", text_muted())
+    } else {
+        ("arrow-circle-up", renzora::PLUGIN_UPDATE_AMBER)
+    };
+    let ic = icon_text(commands, &fonts.phosphor, glyph, colour, 12.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(name.to_string()),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(text_primary())),
+            FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+        ))
+        .id();
+    let note = if blocked && !requires.is_empty() {
+        format!("needs {requires}")
+    } else if blocked {
+        "needs a newer editor".to_string()
+    } else {
+        versions.to_string()
+    };
+    let version = commands
+        .spawn((
+            Text::new(note),
+            ui_font(&fonts.ui, 10.5),
+            TextColor(rgb(if blocked { text_muted() } else { renzora::PLUGIN_UPDATE_AMBER })),
+            FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(row).add_children(&[ic, label, version]);
+    row
+}
+
+/// "Update plugins" → the marketplace's Updates view.
+///
+/// A resource rather than a call, because this crate cannot link the
+/// marketplace. See [`renzora::PluginUpdatesRequested`].
+fn plugin_updates_click(
+    q: Query<&Interaction, (With<PluginUpdatesBtn>, Changed<Interaction>)>,
+    mut state: ResMut<UpdateState>,
+    mut commands: Commands,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    commands.insert_resource(renzora::PluginUpdatesRequested);
+    // Get out of the way. The store opens as an overlay of its own, and leaving
+    // this modal up behind it would leave two dismissable cards stacked over the
+    // editor with only one of them being looked at.
+    state.visible = false;
 }
 
 /// "Install to" — the directory the swap lands in, with a Browse… button.

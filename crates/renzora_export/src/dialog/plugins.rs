@@ -83,6 +83,26 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     }
 
     let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.plugins"), accent());
+
+    // What is about to be shipped, and whether it is the newest of itself.
+    //
+    // This is the last screen before a build, which makes it the last chance to
+    // notice: a plugin's directory is copied or compiled in exactly as it sits
+    // on disk, so shipping a stale one bakes it into an artefact that goes out
+    // to players. Nothing is blocked, because it is a legitimate thing to do and
+    // the export is not the place to argue; it is only said out loud, rather
+    // than discovered afterwards.
+    let stale_note = txt(
+        commands,
+        fonts,
+        &renzora::lang::t("export.plugins.updates_available"),
+        11.0,
+        AMBER,
+    );
+    bind_display(commands, stale_note, |w| {
+        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| !u.is_empty())
+    });
+    commands.entity(body).add_child(stale_note);
     // A wrapping grid of thumbnail cards, matching Settings → Plugins. This was
     // a zebra-striped list of checkboxes: seventy identical rows in which the
     // only way to tell one plugin from another was to read it. The artwork does
@@ -155,7 +175,23 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     // Filled by a command that can read the world (the plugin list is stable
     // after the scan).
     commands.queue(move |world: &mut World| {
-        let plugins: Vec<(String, String)> = world.get_resource::<ExportOverlayState>().map(|s| s.available_plugins.iter().map(|p| (p.id.clone(), format!("{:?}", p.scope))).collect()).unwrap_or_default();
+        // The stale flag travels with the card rather than being bound
+        // reactively: this list is built once from a scan that has already
+        // finished, and a per-card binding would be a subscription per plugin
+        // for an answer that cannot change while the dialog is open.
+        let stale: std::collections::HashSet<String> = world
+            .get_resource::<renzora::PluginUpdates>()
+            .map(|u| u.entries.iter().map(|e| e.id.clone()).collect())
+            .unwrap_or_default();
+        let plugins: Vec<(String, String, bool)> = world
+            .get_resource::<ExportOverlayState>()
+            .map(|s| {
+                s.available_plugins
+                    .iter()
+                    .map(|p| (p.id.clone(), format!("{:?}", p.scope), stale.contains(&p.id)))
+                    .collect()
+            })
+            .unwrap_or_default();
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
         let mut queue = CommandQueue::default();
         {
@@ -164,7 +200,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                 let note = c.spawn((Text::new(renzora::lang::t("export.plugins.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
                 c.entity(list).add_child(note);
             }
-            for (id, scope) in plugins.into_iter() {
+            for (id, scope, stale) in plugins.into_iter() {
                 let card = c
                     .spawn((
                         Node {
@@ -204,6 +240,44 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                     text_muted(),
                     10.0,
                 );
+                // The same amber disc the store card and the Settings grid draw,
+                // in the same corner. Three panels showing the same plugin have
+                // to mark it the same way or the mark has to be learned three
+                // times.
+                if stale {
+                    let badge = c
+                        .spawn((
+                            Node {
+                                position_type: PositionType::Absolute,
+                                top: Val::Px(5.0),
+                                right: Val::Px(5.0),
+                                width: Val::Px(17.0),
+                                height: Val::Px(17.0),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                border: UiRect::all(Val::Px(1.5)),
+                                border_radius: BorderRadius::all(Val::Px(9.0)),
+                                ..default()
+                            },
+                            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+                            BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
+                            FocusPolicy::Pass,
+                            renzora_ember::widgets::HoverTooltip::new(
+                                renzora::lang::t("export.plugins.update_tooltip"),
+                            ),
+                        ))
+                        .id();
+                    let bic = renzora_ember::font::icon_text(
+                        &mut c,
+                        &fonts.phosphor,
+                        "arrow-up",
+                        (26, 22, 10),
+                        10.0,
+                    );
+                    c.entity(bic).insert(FocusPolicy::Pass);
+                    c.entity(badge).add_child(bic);
+                    c.entity(thumb).add_child(badge);
+                }
 
                 // The name gets the card's full width on its own line. It used to
                 // share a row with the switch, which left a narrow column for a

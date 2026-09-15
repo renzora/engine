@@ -559,6 +559,14 @@ fn poll_install_result(
                     manager.scan_themes();
                 }
             }
+            // A plugin that was listed as out of date no longer is, and one that
+            // was not installed at all now is. Both are read straight off the
+            // directory this install just wrote, so the Updates view and the
+            // store's card badges follow without a second trip to the network.
+            #[cfg(not(target_arch = "wasm32"))]
+            if dir == "plugins" {
+                commands.queue(crate::plugin_updates::record_install);
+            }
         }
 
         // If this is the install the overlay is showing, it reports the result

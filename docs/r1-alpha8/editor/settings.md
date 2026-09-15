@@ -87,6 +87,10 @@ Pick a theme, or edit one. See [Themes](/docs/r1-alpha8/editor/themes).
 
 Every installed plugin, with a toggle. Turning one off takes effect on the next start. A plugin that has its own settings gets its own page under this group.
 
+A plugin with a newer version published is marked twice: an amber arrow on its card's artwork, and **Update to 1.2.0** in place of its status line. An amber line above the grid counts them and takes you straight to the marketplace's **Updates** view, which is where the update is installed from. One that needs a newer editor than you are running says so instead, and is fixed by **Help ▸ Check for Updates**.
+
+**Plugin Update Reminders** decides whether the editor volunteers any of this. On, it shows one toast at startup when something is out of date. Off, it says nothing and waits to be asked: this page, the updater and the marketplace's Updates view all still answer.
+
 New plugins are installed from the [Marketplace](/docs/r1-alpha8/marketplace/browsing) or from the dashboard.
 
 ## Resetting
