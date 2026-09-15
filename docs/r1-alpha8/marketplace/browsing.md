@@ -139,7 +139,7 @@ If the newer version needs a newer editor than the one you're running, the pill 
 
 Shortly after the editor starts it asks the marketplace what has been published for the plugins you have installed. If anything is out of date you get a single toast saying so, and the sidebar's **Updates** row picks up an amber count.
 
-Clicking **Updates** shows those plugins as ordinary cards, so updating one is the same install you did the first time: click **Update**, choose the destination, and it replaces the version on disk. As with any plugin install, the new code loads at the **next** startup.
+Clicking **Updates** shows those plugins as ordinary cards, so updating one is the same install you did the first time: click **Update**, choose the destination, and it replaces the version on disk. As with any plugin install, the new code loads at the **next** startup: the version you are running is mapped into the editor and cannot be withdrawn, so the old copy is set aside and cleaned up on the next launch. The install notice offers **Restart Editor** when you are ready.
 
 The same list appears in three other places, so you can act on it wherever you happen to notice it:
 

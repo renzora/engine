@@ -202,6 +202,11 @@ impl Plugin for MarketplacePlugin {
         // wasm bundle to check.
         #[cfg(not(target_arch = "wasm32"))]
         plugin_updates::register(app);
+        // Delete the plugin trees an update in a previous session had to move
+        // aside. Only a process that does not have them mapped can, and this is
+        // one; see `install::sweep_retired_plugins`.
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Startup, sweep_retired_plugins);
         wallet::register(app);
 
         // Offscreen previews for catalogue items: a 3D turntable for models and
@@ -212,6 +217,15 @@ impl Plugin for MarketplacePlugin {
         // Settings → Account.
         account_settings::register(app);
     }
+}
+
+/// Sweep last session's retired plugin trees, off the main thread.
+///
+/// Spawned rather than run inline: a retired tree holds a plugin's source and
+/// its `build/` output, and nothing at startup is waiting on the answer.
+#[cfg(not(target_arch = "wasm32"))]
+fn sweep_retired_plugins() {
+    std::thread::spawn(install::sweep_retired_plugins);
 }
 
 /// When the session ends, clear the account-scoped panel state so the next

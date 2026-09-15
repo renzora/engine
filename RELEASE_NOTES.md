@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-15 12:37
+- fix(marketplace): updating an installed plugin works while the editor is open, instead of failing with "the directory is not empty"
+
 ## 2026-09-15 12:14
 - feat(marketplace): an Updates view lists the installed plugins with a newer version published, and updates them
 - feat(marketplace): a card says what you already have: grey Installed with a tick, or an amber Update when there is a newer version
