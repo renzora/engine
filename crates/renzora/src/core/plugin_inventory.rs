@@ -312,6 +312,15 @@ fn removable_in(writable: &std::path::Path, dirs: &[std::path::PathBuf], id: &st
 /// restart (see the module docs). Deleting the directory is about what the
 /// *next* launch finds, and the UI has to say so rather than implying the plugin
 /// is gone.
+///
+/// **It is a rename, not a `remove_dir_all`.** That mapped library is a file
+/// Windows will not let anyone delete, so deleting a plugin that was actually
+/// loaded, which is most of them, failed outright with a sharing violation,
+/// while the doc-comment above claimed the delete was only about the next
+/// launch. `retire_plugin_dir` moves the tree out of `plugins/` instead, which
+/// is allowed for a mapped file, and a later launch that does not have it open
+/// reclaims the bytes. The same swap is what lets the marketplace replace a
+/// plugin it is running; see that module for the whole story.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn delete_plugin(id: &str) -> Result<(), String> {
     let root = renzora_native_build::install::root()
@@ -326,7 +335,9 @@ pub fn delete_plugin(id: &str) -> Result<(), String> {
         }
         return Err(format!("`{id}` is not installed"));
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| format!("could not delete `{id}`: {e}"))
+    renzora_native_build::install::retire_plugin_dir(&writable, id)
+        .map(|_| ())
+        .map_err(|e| format!("could not delete `{id}`: {e}"))
 }
 
 /// Resolve `<writable>/<id>`, refusing an id that is not a plain directory name.

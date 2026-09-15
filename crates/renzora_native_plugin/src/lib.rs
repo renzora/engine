@@ -342,6 +342,23 @@ impl Plugin for NativePluginLoader {
         let Some(root) = self.root.clone().or_else(exe_dir) else {
             return;
         };
+
+        // Delete the plugin trees a previous session had to move aside instead
+        // of deleting: one the marketplace replaced with an update, and one
+        // Settings' Delete button removed. Both had to rename rather than
+        // delete, because this loader had their library mapped into the
+        // process. This process does not, which is what makes it the one that
+        // can finish the job.
+        //
+        // Before the early return below, so an install with nothing left in
+        // `plugins/` still cleans up after the delete that emptied it. On a
+        // worker thread because a retired tree carries a `build/` directory and
+        // nothing here is waiting on the answer.
+        let sweep = renzora_native_build::install::plugins_write_dir(&root);
+        std::thread::spawn(move || {
+            renzora_native_build::install::sweep_retired_plugins(&sweep)
+        });
+
         // Both roots — the writable one and, inside a macOS bundle, the plugins
         // that shipped with the editor. `plugin_entries` settles precedence.
         let entries = plugin_entries(&root);

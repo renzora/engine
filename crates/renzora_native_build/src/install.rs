@@ -165,6 +165,96 @@ pub fn plugins_write_dir(root: &Path) -> PathBuf {
     root.join("plugins")
 }
 
+// ── Retiring a plugin directory ──────────────────────────────────────────────
+//
+// Replacing or deleting an installed plugin cannot be a `remove_dir_all` while
+// the editor is the thing that loaded it. Its built library is mapped into the
+// process, and a mapped image cannot be deleted on Windows: the delete fails,
+// and whatever was going to happen next happens against a directory that is
+// still there. That is how an update reported "The directory is not empty
+// (os error 145)": an error about the consequence rather than the cause.
+//
+// Renaming a mapped file IS allowed, on every platform this ships to, and it is
+// the same fact the update sidecar relies on to replace a running editor. So the
+// tree is renamed out of `plugins/` and deleted by a later launch that does not
+// have it open.
+//
+// This lives here, in the crate that owns the install layout, because two
+// unrelated callers need the same convention: the marketplace installer
+// replacing a plugin, and `renzora::core::delete_plugin` removing one. A second
+// definition of the prefix would be a sweep that stopped recognising half of
+// what it was supposed to clean up.
+
+/// Directory-name prefix for a plugin tree that has been moved out of the way.
+///
+/// Dotted, and deliberately a *sibling* of `plugins/` rather than a child: every
+/// directory under `plugins/` with a `src/lib.rs` is something the prebuild step
+/// compiles, so a retired copy left in there would be built alongside its own
+/// replacement, under a different crate name, for as long as it took the sweep
+/// to succeed.
+pub const RETIRED_PREFIX: &str = ".plugin-retired-";
+
+/// Is this directory one [`retire_plugin_dir`] created?
+///
+/// Public, and shared with [`sweep_retired_plugins`], because this predicate is
+/// what decides which directories are handed to `remove_dir_all` next to a live
+/// install. One definition, tested, rather than a `starts_with` at each site.
+pub fn is_retired_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with(RETIRED_PREFIX))
+}
+
+/// A free name beside `plugins` to move `name`'s tree to.
+///
+/// Stamped with the clock rather than counted: earlier retired copies are still
+/// on disk whenever the sweep could not delete them, so a counter would have to
+/// scan past all of them to find the first free slot.
+fn retired_path(beside: &Path, name: &str) -> PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    beside.join(format!("{RETIRED_PREFIX}{name}-{stamp}"))
+}
+
+/// Move `<plugins>/<name>` out of `plugins/`, and try to delete it.
+///
+/// The delete is best effort and is expected to fail for the plugin this process
+/// is running; [`sweep_retired_plugins`] finishes the job on a later launch.
+/// Returns where the tree went, for a caller that wants to say so.
+///
+/// `plugins` is the directory the plugin lives in, not the install root: inside
+/// a macOS bundle those are different places (see [`plugins_write_dir`]), and
+/// the retired tree belongs beside the one the plugin was actually in.
+pub fn retire_plugin_dir(plugins: &Path, name: &str) -> std::io::Result<PathBuf> {
+    let beside = plugins.parent().ok_or_else(|| {
+        std::io::Error::other(format!("{} has no parent directory", plugins.display()))
+    })?;
+    let retired = retired_path(beside, name);
+    std::fs::rename(plugins.join(name), &retired)?;
+    let _ = std::fs::remove_dir_all(&retired);
+    Ok(retired)
+}
+
+/// Delete the plugin trees previous sessions moved aside.
+///
+/// Call once per launch, off the main thread: a retired tree carries a plugin's
+/// source and its `build/` output and can be tens of megabytes, and nothing is
+/// waiting on the answer. One that still cannot be deleted is left for the next
+/// launch, which is the same outcome as never having tried.
+pub fn sweep_retired_plugins(plugins: &Path) {
+    let Some(beside) = plugins.parent() else { return };
+    let Ok(entries) = std::fs::read_dir(beside) else {
+        return;
+    };
+    for path in entries.flatten().map(|e| e.path()) {
+        if is_retired_dir(&path) {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
 /// `~/Library/Application Support/renzora`, the macOS home for engine data that
 /// is regenerable but too large to live in the bundle.
 ///
@@ -207,6 +297,36 @@ mod tests {
         // Right leaf names, no `.app` — a source tree that happens to match.
         assert!(!in_app_bundle(Path::new("/A/Renzora/Contents/MacOS")));
         assert!(!in_app_bundle(Path::new("/")));
+    }
+
+    /// The sweep's predicate decides what is handed to `remove_dir_all` beside a
+    /// live install, so it has to match what [`retire_plugin_dir`] writes and
+    /// nothing else that lives there.
+    #[test]
+    fn only_retired_directories_are_recognised() {
+        let beside = Path::new("/A/dist/windows-x64");
+        assert!(is_retired_dir(&retired_path(beside, "lumen")));
+        for keep in ["plugins", "sdk", "assets", "renzora.exe", ".plugin-incoming-lumen"] {
+            assert!(!is_retired_dir(&beside.join(keep)), "{keep} must be left alone");
+        }
+    }
+
+    /// Two retires of the same plugin in one session are the ordinary case
+    /// whenever the first could not be deleted, so the names must not collide.
+    #[test]
+    fn retired_names_do_not_repeat() {
+        let beside = Path::new("/A/dist/windows-x64");
+        assert_ne!(retired_path(beside, "lumen"), retired_path(beside, "lumen"));
+    }
+
+    /// The tree has to land beside `plugins/`, never inside it: the prebuild
+    /// step compiles every directory under there with a `src/lib.rs`.
+    #[test]
+    fn a_retired_tree_lands_outside_the_plugins_directory() {
+        let plugins = Path::new("/A/dist/windows-x64/plugins");
+        let retired = retired_path(plugins.parent().unwrap(), "lumen");
+        assert_eq!(retired.parent(), Some(Path::new("/A/dist/windows-x64")));
+        assert!(!retired.starts_with(plugins));
     }
 
     /// A flat install reads and writes plugins in one place, so nothing

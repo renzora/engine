@@ -85,7 +85,7 @@ Pick a theme, or edit one. See [Themes](/docs/r1-alpha8/editor/themes).
 
 <!-- screenshot: settings_plugins.png - the Plugins page listing installed plugins with their toggles -->
 
-Every installed plugin, with a toggle. Turning one off takes effect on the next start. A plugin that has its own settings gets its own page under this group.
+Every installed plugin, with a toggle and, for one you installed yourself, a delete button. Both take effect on the next start: a plugin's code is mapped into the running editor and cannot be withdrawn, so deleting one removes it from the plugins folder now and it stops loading next time. A plugin that has its own settings gets its own page under this group.
 
 A plugin with a newer version published is marked twice: an amber arrow on its card's artwork, and **Update to 1.2.0** in place of its status line. An amber line above the grid counts them and takes you straight to the marketplace's **Updates** view, which is where the update is installed from. One that needs a newer editor than you are running says so instead, and is fixed by **Help ▸ Check for Updates**.
 

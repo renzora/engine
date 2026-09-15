@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-15 13:16
+- fix(plugins): deleting a plugin that is currently loaded works instead of failing on Windows, and the folder is reclaimed at the next start
+
 ## 2026-09-15 12:37
 - fix(marketplace): updating an installed plugin works while the editor is open, instead of failing with "the directory is not empty"
 

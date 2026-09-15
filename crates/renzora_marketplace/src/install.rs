@@ -731,7 +731,7 @@ pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstal
         ));
     }
 
-    swap_in_plugin(root, &staging, &dest, &dir_name)?;
+    swap_in_plugin(&plugins, &staging, &dest, &dir_name)?;
     Ok(PluginInstall { path: dest, dir_name, updated, renamed_from })
 }
 
@@ -747,36 +747,26 @@ pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstal
 /// (os error 145)", an error about the wrong thing, on the one path every
 /// update takes.
 ///
-/// Renaming a mapped file is allowed, on every platform this ships to; it is the
-/// same fact the update sidecar relies on to replace a running editor. So the
-/// old tree moves out of `plugins/` and is swept on a later launch by a process
-/// that does not have it open. See [`sweep_retired_plugins`].
-///
-/// It has to leave `plugins/` rather than be renamed within it: `prebuild`
-/// compiles every directory under there with a `src/lib.rs`, so a retired copy
-/// left behind would be built alongside its replacement, under a different crate
-/// name, for as long as it took the sweep to succeed.
+/// `renzora_native_build::install::retire_plugin_dir` is the shared answer; see
+/// its module for why renaming works where deleting cannot, and why the tree has
+/// to leave `plugins/` rather than move within it. Settings' Delete button takes
+/// the same path, for the same reason.
 ///
 /// Consumes `staging` either way: on failure it is removed, so a part-written
 /// install never survives the error that reported it.
 #[cfg(not(target_arch = "wasm32"))]
-fn swap_in_plugin(root: &Path, staging: &Path, dest: &Path, dir_name: &str) -> Result<(), String> {
-    if let Some(parent) = dest.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            let _ = std::fs::remove_dir_all(staging);
-            return Err(format!("Failed to create {}: {e}", parent.display()));
-        }
+fn swap_in_plugin(plugins: &Path, staging: &Path, dest: &Path, dir_name: &str) -> Result<(), String> {
+    if let Err(e) = std::fs::create_dir_all(plugins) {
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(format!("Failed to create {}: {e}", plugins.display()));
     }
     if dest.exists() {
-        let retired = retired_path(root, dir_name);
-        if let Err(e) = std::fs::rename(dest, &retired) {
+        if let Err(e) = renzora_native_build::install::retire_plugin_dir(plugins, dir_name) {
             let _ = std::fs::remove_dir_all(staging);
             return Err(format!(
                 "Failed to replace the installed {dir_name}: {e}. Close the editor and install it again."
             ));
         }
-        // Best effort, and expected to fail for the plugin that is running.
-        let _ = std::fs::remove_dir_all(&retired);
     }
     std::fs::rename(staging, dest).map_err(|e| {
         let _ = std::fs::remove_dir_all(staging);
@@ -784,71 +774,13 @@ fn swap_in_plugin(root: &Path, staging: &Path, dest: &Path, dir_name: &str) -> R
     })
 }
 
-/// Directory-name prefix for a plugin tree an update moved out of the way.
-///
-/// Dotted, and deliberately a sibling of `plugins/` rather than a child: every
-/// directory under `plugins/` with a `src/lib.rs` is something `prebuild`
-/// compiles, and the whole point of retiring a tree is that nothing looks at it
-/// again.
-#[cfg(not(target_arch = "wasm32"))]
-const RETIRED_PREFIX: &str = ".plugin-retired-";
-
-/// A free name to move `dir_name`'s old tree to.
-///
-/// Stamped with the clock rather than counted, because the previous retired
-/// copies are still on disk whenever the sweep could not delete them, and a
-/// counter would have to scan past all of them to find the first free slot.
-#[cfg(not(target_arch = "wasm32"))]
-fn retired_path(root: &Path, dir_name: &str) -> PathBuf {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    root.join(format!("{RETIRED_PREFIX}{dir_name}-{stamp}"))
-}
-
-/// Is this directory name one the swap retired?
-///
-/// Shared by [`sweep_retired_plugins`] and its test, so the sweep and the
-/// naming can never disagree about which directories are ours to delete. That
-/// matters more than it looks: this predicate decides what gets handed to
-/// `remove_dir_all`, and it is pointed at the install root.
-#[cfg(not(target_arch = "wasm32"))]
-fn is_retired_dir(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.starts_with(RETIRED_PREFIX))
-}
-
-/// Delete the plugin trees previous sessions moved aside.
-///
-/// Runs on a worker thread at startup: a retired tree carries the source and a
-/// `build/` directory and can be tens of megabytes, and nothing is waiting on
-/// the answer. A tree that still cannot be deleted is left for the next launch,
-/// which is the same outcome as never having tried.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn sweep_retired_plugins() {
-    let Ok(plugins) = engine_plugins_dir() else {
-        return;
-    };
-    let Some(root) = plugins.parent() else { return };
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return;
-    };
-    for path in entries.flatten().map(|e| e.path()) {
-        if is_retired_dir(&path) {
-            let _ = std::fs::remove_dir_all(&path);
-        }
-    }
-}
-
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod plugin_swap_tests {
     use super::*;
 
     /// A scratch install root holding an empty `plugins/`, plus a staging
-    /// directory with one file in it.
-    fn scratch(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+    /// directory with one file in it. Returns `(root, plugins, dest, staging)`.
+    fn scratch(tag: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
         let root = std::env::temp_dir()
             .join(format!("renzora-swap-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -857,13 +789,14 @@ mod plugin_swap_tests {
         let staging = root.join(".plugin-incoming-lumen");
         std::fs::create_dir_all(staging.join("src")).unwrap();
         std::fs::write(staging.join("src").join("lib.rs"), b"new").unwrap();
-        (root, plugins.join("lumen"), staging)
+        let dest = plugins.join("lumen");
+        (root, plugins, dest, staging)
     }
 
     #[test]
     fn a_first_install_lands_at_the_destination() {
-        let (root, dest, staging) = scratch("first");
-        swap_in_plugin(&root, &staging, &dest, "lumen").expect("a fresh install");
+        let (root, plugins, dest, staging) = scratch("first");
+        swap_in_plugin(&plugins, &staging, &dest, "lumen").expect("a fresh install");
         assert_eq!(std::fs::read(dest.join("src").join("lib.rs")).unwrap(), b"new");
         assert!(!staging.exists(), "staging is consumed by the move");
         let _ = std::fs::remove_dir_all(&root);
@@ -875,12 +808,12 @@ mod plugin_swap_tests {
     /// (os error 145)".
     #[test]
     fn an_update_replaces_a_non_empty_destination() {
-        let (root, dest, staging) = scratch("update");
+        let (root, plugins, dest, staging) = scratch("update");
         std::fs::create_dir_all(dest.join("build")).unwrap();
         std::fs::write(dest.join("build").join("lumen.dll"), b"old").unwrap();
         std::fs::write(dest.join("stale.txt"), b"old").unwrap();
 
-        swap_in_plugin(&root, &staging, &dest, "lumen").expect("an update");
+        swap_in_plugin(&plugins, &staging, &dest, "lumen").expect("an update");
 
         assert_eq!(std::fs::read(dest.join("src").join("lib.rs")).unwrap(), b"new");
         assert!(
@@ -899,13 +832,13 @@ mod plugin_swap_tests {
     /// there would be built beside its own replacement.
     #[test]
     fn nothing_retired_is_left_under_plugins() {
-        let (root, dest, staging) = scratch("contained");
+        let (root, plugins, dest, staging) = scratch("contained");
         std::fs::create_dir_all(dest.join("src")).unwrap();
         std::fs::write(dest.join("src").join("lib.rs"), b"old").unwrap();
 
-        swap_in_plugin(&root, &staging, &dest, "lumen").expect("an update");
+        swap_in_plugin(&plugins, &staging, &dest, "lumen").expect("an update");
 
-        let under_plugins: Vec<_> = std::fs::read_dir(root.join("plugins"))
+        let under_plugins: Vec<_> = std::fs::read_dir(&plugins)
             .unwrap()
             .flatten()
             .map(|e| e.file_name())
@@ -913,18 +846,6 @@ mod plugin_swap_tests {
         assert_eq!(under_plugins.len(), 1, "only the plugin itself: {under_plugins:?}");
         assert_eq!(under_plugins[0], std::ffi::OsStr::new("lumen"));
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// The sweep's predicate decides what is handed to `remove_dir_all`, aimed
-    /// at the install root. It must match what the swap writes and nothing else
-    /// that lives there.
-    #[test]
-    fn only_retired_directories_are_swept() {
-        let root = Path::new("/install");
-        assert!(is_retired_dir(&retired_path(root, "lumen")));
-        for keep in ["plugins", "sdk", "assets", "renzora.exe", ".plugin-incoming-lumen"] {
-            assert!(!is_retired_dir(&root.join(keep)), "{keep} must be left alone");
-        }
     }
 }
 
