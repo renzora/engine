@@ -67,6 +67,11 @@ dynamic_linking = [
     "dep:renzora_ember_dylib",
     "renzora_native_plugin/dynamic_linking",
     "renzora_rust_script/dynamic_linking",
+    # A hand-written Bevy crate opened as a project is loaded the same way and
+    # for the same reason: it links the shared `bevy_dylib` so that its
+    # `Transform` and the engine's are one type. Without the shared images it
+    # would link its own Bevy and hand the editor a `World` of a different type.
+    "renzora_bevy_project/dynamic_linking",
 ]
 # The static counterpart: Rust scripts compiled into the binary rather than
 # loaded as dylibs. Set only by the lean exporter — see `static_scripts` in the
@@ -389,6 +394,7 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_bevy_project = { path = "../renzora_bevy_project" }
 renzora_net = { path = "../renzora_net" }
 renzora_rust_script = { path = "../renzora_rust_script" }
 # ── end generated ──

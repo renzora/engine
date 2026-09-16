@@ -20,6 +20,10 @@ pub mod material_binding;
 #[cfg(feature = "render_3d")]
 pub mod mesh_lod;
 pub mod named_entities;
+#[cfg(feature = "render_3d")]
+pub mod occlusion_culling;
+#[cfg(feature = "render_3d")]
+pub mod primitive_cache;
 pub mod procedural_meshes;
 pub mod scene_io;
 pub mod scene_stream;
@@ -509,7 +513,7 @@ impl Plugin for RuntimePlugin {
                             // but only after the damage is done.
                             if let Some(asset_path) = app.world().get_resource::<ProjectAssetPath>()
                             {
-                                asset_path.set(project.path.clone());
+                                asset_path.set(project.asset_root_path());
                             }
                             // Override default rendering mode if the
                             // project specifies one.
@@ -618,6 +622,11 @@ impl Plugin for RuntimePlugin {
                 blockout::project_blockout_uvs.after(TransformSystems::Propagate),
             );
 
+            // One mesh and one material per *kind* of primitive rather than per
+            // entity, so identical shapes batch into one draw call. Every path
+            // that spawns a built-in shape resolves its assets through this.
+            app.init_resource::<primitive_cache::PrimitiveAssets>();
+
             // Push `MeshColor` edits into the material. Here rather than beside
             // `rehydrate_meshes` in the game-boot block above, for exactly the
             // reason this block exists: that block is `!is_editor`, and the one
@@ -700,12 +709,20 @@ impl Plugin for RuntimePlugin {
             // DeferredPrepass so its prepass queue includes the deferred
             // opaque phase. Covers editor previews/thumbnails that spawn
             // their own Camera3d entities without our explicit attachment.
+            //
+            // Occlusion culling rides along: it is a per-camera decision made
+            // from the same inputs (deferred vs forward, isolated vs main), and
+            // has to run after the deferred safety net above so it never sees a
+            // camera that is about to become deferred this frame.
+            app.init_resource::<renzora::OcclusionCullingEnabled>();
             app.add_systems(
                 PostUpdate,
                 (
                     ensure_deferred_prepass_on_cameras,
                     ensure_contact_shadows_on_forward_cameras,
-                ),
+                    occlusion_culling::ensure_occlusion_culling_on_cameras,
+                )
+                    .chain(),
             );
 
             // Render-world half of the contact-shadows fix: seed the view's
@@ -777,8 +794,14 @@ impl Plugin for RuntimePlugin {
             // Editor-scoped and never reaches a game, so without this the
             // exported build runs the full fullscreen-pass stack at every tier.
             #[cfg(feature = "render_3d")]
-            app.add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
-                .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
+            app.add_systems(
+                Update,
+                (
+                    graphics_quality::sync_runtime_graphics_quality,
+                    occlusion_culling::sync_runtime_occlusion_culling,
+                ),
+            )
+            .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
         }
 
         // Editor camera lifecycle, the save-scene observer and the 2D
@@ -1024,11 +1047,9 @@ fn sync_project_asset_path(
     if !project.is_changed() {
         return;
     }
-    info!(
-        "[asset_reader] Project path set: {}",
-        project.path.display()
-    );
-    asset_path.set(project.path.clone());
+    let root = project.asset_root_path();
+    info!("[asset_reader] Project path set: {}", root.display());
+    asset_path.set(root);
 }
 
 /// Install the audio byte loader so Kira can load clips from the virtual

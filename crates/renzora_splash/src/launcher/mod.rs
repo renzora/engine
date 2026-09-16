@@ -334,7 +334,59 @@ fn build_shell(
 
 // ── Entering a project ───────────────────────────────────────────────────────
 
+/// Does opening `root` mean restarting rather than transitioning?
+///
+/// A Bevy project's code is a plugin, and a plugin is installed while the `App`
+/// is being built, a moment that has long passed by the time anyone is looking
+/// at the launcher. So opening one from a running editor cannot load it; the
+/// process has to be replaced by one launched for that project.
+///
+/// Returns the request to insert, or `None` to carry on as normal. It **decides**
+/// rather than acts so that both shapes of caller can use it: [`enter_project`]
+/// holds a `&mut World`, while File ▸ Open and File ▸ Recent are systems holding
+/// `Commands`.
+///
+/// **Every path that opens a project asks this**, because they do not share a
+/// tail. Without one helper, the dashboard's Open button routed correctly and
+/// clicking a card on the very same page did not, which is exactly how this was
+/// found.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn restart_needed_for(
+    launched: Option<&renzora::core::bevy_project::LaunchedBevyProject>,
+    root: &std::path::Path,
+) -> Option<renzora::RequestImportBevyProject> {
+    if !renzora::core::bevy_project::is_bevy_project(root) {
+        return None;
+    }
+    // Already the project this process was launched for. Re-entering it (File ▸
+    // New Project and back, say) is an ordinary transition: restarting would be
+    // a gratuitous ten seconds, and if its code had failed to build it would be
+    // an endless one.
+    if launched.is_some_and(|launched| launched.is(root)) {
+        return None;
+    }
+    info!("[splash] {} is a Bevy project; restarting to load its code", root.display());
+    Some(renzora::RequestImportBevyProject(Some(root.to_path_buf())))
+}
+
+/// The browser has no second process to restart into, and no `rustc` to build a
+/// project with in the first place.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn restart_needed_for(
+    _launched: Option<&renzora::core::bevy_project::LaunchedBevyProject>,
+    _root: &std::path::Path,
+) -> Option<renzora::RequestImportBevyProject> {
+    None
+}
+
 pub(crate) fn enter_project(world: &mut World, project: crate::project::CurrentProject) {
+    let launched = world
+        .get_resource::<renzora::core::bevy_project::LaunchedBevyProject>()
+        .cloned();
+    if let Some(request) = restart_needed_for(launched.as_ref(), &project.path) {
+        world.insert_resource(request);
+        return;
+    }
     if let Some(mut cfg) = world.get_resource_mut::<crate::config::AppConfig>() {
         cfg.add_recent_project(project.path.clone());
         let _ = cfg.save();

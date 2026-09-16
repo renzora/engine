@@ -18,6 +18,7 @@ pub mod viewport_types;
 pub mod animation; // .anim clip format + property keyframes
 pub mod asset_bytes; // the project/VFS byte loader for non-AssetServer assets
 pub mod auth; // sign-in state mirrored for the title bar
+pub mod bevy_project; // recognising a hand-written Bevy crate as a project
 pub mod blockout_grid; // the generated "no material yet" grid textures
 pub mod components; // shared ECS components + entity-tag markers
 pub mod editor_events; // one-way events the editor fires at other crates

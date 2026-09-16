@@ -294,6 +294,13 @@ pub struct CreateNodeRequested;
 #[derive(Resource)]
 pub struct OpenCodeEditorFile {
     pub path: std::path::PathBuf,
+    /// 1-based line to jump to once the file is open, when the requester knows
+    /// one. The inspector's **Project Components** rows do: a component is worth
+    /// opening *at its declaration*, not at the top of a 600-line module.
+    ///
+    /// `None` for every requester that only has a file: the asset browser, a
+    /// script drawer, a document tab.
+    pub line: Option<u32>,
 }
 
 /// One-shot: request the UI editor to open a `.html` template on a canvas.
@@ -413,14 +420,37 @@ pub struct ViewportRenderTarget {
 }
 
 /// Open an existing project from project.toml path
+///
+/// A folder with no `project.toml` is not necessarily not a project: a
+/// hand-written Bevy crate is one, and it has a `Cargo.toml` instead. That case
+/// is synthesized rather than read, and **nothing is written**. See
+/// [`crate::core::bevy_project`] for why dropping a `project.toml` into
+/// somebody's game repository is not an acceptable price for opening it.
 pub fn open_project(project_toml_path: &Path) -> Result<CurrentProject, Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string(project_toml_path)?;
-    let config: ProjectConfig = toml::from_str(&content)?;
-
     let path = project_toml_path
         .parent()
         .ok_or("Invalid project path")?
         .to_path_buf();
+
+    // Resolved from the *directory*, not from the path handed in. Callers reach
+    // here with three different things: `<dir>/project.toml` from the launcher,
+    // whatever file the Open dialog returned, and (now that a project need not
+    // have a `project.toml` at all) `<dir>/Cargo.toml`. All three mean "open
+    // the project in this folder", and deciding which file to read from the
+    // folder rather than from the argument is what makes them agree.
+    let toml = path.join("project.toml");
+    let config: ProjectConfig = if toml.is_file() {
+        toml::from_str(&std::fs::read_to_string(&toml)?)?
+    } else if let Some(config) = crate::core::bevy_project::config_for(&path) {
+        config
+    } else {
+        // Neither. Report against the path the caller named, so the message says
+        // the file they were actually looking for.
+        return Err(std::fs::read_to_string(project_toml_path)
+            .err()
+            .map(Box::<dyn std::error::Error>::from)
+            .unwrap_or_else(|| "not a project folder".into()));
+    };
 
     let mut project = CurrentProject { path, config };
     // The scene that was open and the document tabs are per-user, so they come

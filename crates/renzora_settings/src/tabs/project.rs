@@ -294,6 +294,33 @@ pub(crate) fn tab_project(
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.render_scale"), dv);
 
+    // Occlusion culling for the SHIPPED GAME — same split as graphics quality
+    // above: the row in Settings → Viewport → Performance is the editor's own
+    // viewports, and an export never sees it.
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| c.config.rendering.occlusion_culling)
+                .unwrap_or(true)
+        },
+        |w, &v| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering.occlusion_culling = v;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(
+        commands,
+        fonts,
+        body,
+        3,
+        &tr("settings.row.game_occlusion_culling"),
+        t,
+    );
+
     note_row(commands, fonts, body, &tr("settings.hint.restart_rendering"));
 
     // Window.

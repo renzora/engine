@@ -76,6 +76,8 @@ Each setting gets the control that fits it.
 
 A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum. A column of them reads at a glance without comparing digits.
 
+Once you are typing in a field, `Enter` accepts the value, `Esc` puts it back, and `Tab` accepts it and moves to the next field along (`Shift+Tab` for the previous one). Tabbing arrives with the whole value selected, so a position is typed X, `Tab`, Y, `Tab`, Z without touching the mouse.
+
 Every editable field has a small **reset** button to its right, which snaps it back to its default.
 
 Edits apply live. There is no Apply button.

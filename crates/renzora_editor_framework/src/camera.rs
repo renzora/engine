@@ -88,5 +88,18 @@ pub fn spawn_ui_camera(mut commands: Commands) {
         // renders onto this existing camera so we don't add a second active
         // window camera (which trips bevy_pbr's atmosphere-probe extraction).
         bevy::ui::IsDefaultUiCamera,
+        // Editor chrome, and it has to say so. `HideInHierarchy` is how anything
+        // that is not scene content opts out of the passes that walk the world
+        // looking for it: the unnamed-entity guard, and (the reason this was
+        // added) `renzora_bevy_project`'s camera adoption, which deactivates the
+        // game's cameras so they do not draw over the editor. Without this the
+        // adoption could not tell the editor's UI camera from a game's, took it
+        // for one, and switched off the camera the entire editor renders on:
+        // a black window with no chrome in it at all.
+        //
+        // `EditorUiCamera` is the specific marker, but it lives in this crate
+        // and the loader is `Runtime`-scope; `HideInHierarchy` is in the
+        // contract crate, which is where a fact two crates need belongs.
+        renzora::HideInHierarchy,
     ));
 }

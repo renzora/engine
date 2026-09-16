@@ -946,6 +946,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
         DocTabKind::Script | DocTabKind::Shader => {
             world.insert_resource(renzora::core::OpenCodeEditorFile {
                 path: path.to_path_buf(),
+                line: None,
             });
         }
         // A UI template opens on the canvas, not in the text editor. The code

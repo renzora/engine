@@ -10,7 +10,7 @@ use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{set_section_open, Section};
 
 use super::rebuild::AddButton;
-use super::section::{AddKeyframeBtn, FieldButton, LockBtn, RemoveBtn, ResetBtn};
+use super::section::{AddKeyframeBtn, FieldButton, LockBtn, OpenSourceBtn, RemoveBtn, ResetBtn};
 use super::undo::{AddComponentCmd, RemoveComponentCmd};
 use super::{
     policy_open, record_field_change, InspectorRoot, InspectorSectionHeader, InspectorSectionsOpen,
@@ -39,6 +39,32 @@ pub(super) fn remove_click(
                     captured: None,
                 }),
             );
+        });
+    }
+}
+
+/// Open the file a component's type is declared in, at its declaration.
+///
+/// The same request the asset browser and the Scripts section raise, so the
+/// code editor needs nothing new: it already honours the line.
+pub(super) fn open_source_click(
+    q: Query<(&Interaction, &OpenSourceBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (path, line) = (btn.path.clone(), btn.line);
+        cmds.push(move |w: &mut World| {
+            w.insert_resource(renzora::core::OpenCodeEditorFile {
+                path: path.clone(),
+                line: Some(line),
+            });
+            if let Some(mut dock) = w.get_resource_mut::<renzora_ember::dock::Dock>() {
+                dock.tree.focus_or_add_panel("code_editor");
+            }
         });
     }
 }

@@ -351,6 +351,96 @@ fn is_gltf_wrapper_name(name: &str) -> bool {
     matches!(base, "sceneroot" | "rootnode" | "scene")
 }
 
+/// What makes an entity the thing itself rather than plumbing above it.
+///
+/// Carrying any of these means the entity draws, lights, views or deforms
+/// something, so it is never hidden no matter how empty its transform looks.
+type Substantive = Or<(
+    With<Mesh3d>,
+    With<PointLight>,
+    With<SpotLight>,
+    With<DirectionalLight>,
+    With<Camera>,
+    With<SkinnedMesh>,
+)>;
+
+/// A spawned glTF scene's top entity, whoever spawned it: the editor's own
+/// import (`MeshInstanceData`) or a Bevy project's `commands.spawn`
+/// (`WorldAssetRoot`), and not one already processed.
+type SpawnedSceneRoot = (
+    Or<(With<renzora::MeshInstanceData>, With<WorldAssetRoot>)>,
+    Without<WrappersHidden>,
+);
+
+/// The read-only views [`hide_gltf_wrappers`] judges an entity by.
+///
+/// One `SystemParam` rather than six separate parameters, because they are one
+/// thing: everything needed to answer "is this entity worth a row in the
+/// hierarchy". Six of them also put the system past clippy's argument limit,
+/// which CI treats as an error.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct WrapperViews<'w, 's> {
+    names: Query<'w, 's, &'static Name>,
+    children: Query<'w, 's, &'static Children>,
+    transforms: Query<'w, 's, &'static Transform>,
+    substantive: Query<'w, 's, (), Substantive>,
+    /// Read for its `joints` list, never for the entity carrying it. See the
+    /// joint scan in [`hide_gltf_wrappers`].
+    skinned: Query<'w, 's, &'static SkinnedMesh>,
+    hidden: Query<'w, 's, (), With<renzora::HideInHierarchy>>,
+}
+
+/// Is this entity invisible plumbing: something that exists in the `World` but
+/// shows the reader nothing and cannot usefully be selected?
+///
+/// The name test above only recognises wrappers a *tool* named, and that is
+/// enough for a model the editor imported, whose chain really is
+/// `SceneRoot → RootNode.001 → Mesh`. It is not enough for a Bevy project,
+/// where the same chain is named after the asset: Bevy's glTF loader names the
+/// scene entity from `scene.name()` and the node entity from the node's own
+/// name, so a `light-square.glb` whose scene and node are both called
+/// `light-square` produces two identically-named folders above the mesh and
+/// neither spelling is on any list.
+///
+/// So this asks what the entity *is* instead of what it is called. Three
+/// conditions, and each one is a way of being able to see it:
+///
+/// * **exactly one child**: a node with several is a real grouping, and hiding
+///   it would reparent siblings that belong together;
+/// * **nothing renderable or drivable of its own**: no mesh, light, camera or
+///   skinned-mesh role, because any of those is the thing itself, not plumbing;
+/// * **an identity transform**: a non-identity one is an offset somebody
+///   authored, and hiding the row that carries it loses the only place it can be
+///   read or edited.
+///
+/// Hiding is all this does. The entity stays in the `World` with its children
+/// and its transform intact, and the hierarchy panel reparents its visible
+/// descendants onto the nearest visible ancestor. That matters here in a way it
+/// does not for an imported model: a Bevy project's code owns these entities and
+/// may hold `Entity` handles to them, so folding them the way
+/// [`flatten_pending_scenes`] folds an import would be rewriting a tree that is
+/// not the editor's to rewrite.
+fn is_pass_through(entity: Entity, views: &WrapperViews) -> bool {
+    if views.substantive.get(entity).is_ok() {
+        return false;
+    }
+    if views.children.get(entity).map(|c| c.len()) != Ok(1) {
+        return false;
+    }
+    // `abs_diff_eq` rather than `==`: the conversion transform and a round trip
+    // through a glTF matrix both land a hair off exact identity, and a wrapper
+    // that misses by 1e-7 is still a wrapper.
+    views
+        .transforms
+        .get(entity)
+        .map(|t| {
+            t.translation.abs_diff_eq(Vec3::ZERO, 1e-5)
+                && t.scale.abs_diff_eq(Vec3::ONE, 1e-5)
+                && t.rotation.abs_diff_eq(Quat::IDENTITY, 1e-5)
+        })
+        .unwrap_or(false)
+}
+
 /// System: walk each newly-imported model's subtree and tag GLTF wrapper
 /// nodes with `HideInHierarchy` so they don't clutter the hierarchy panel.
 /// The hierarchy panel skips hidden entities and re-parents their visible
@@ -363,16 +453,17 @@ fn is_gltf_wrapper_name(name: &str) -> bool {
 /// names are stable for the life of the entity.
 pub fn hide_gltf_wrappers(
     mut commands: Commands,
-    pending: Query<
-        (Entity, Option<&Children>, Option<&WrappersPending>),
-        // Use `MeshInstanceData` rather than `ImportedRoot` so rehydrated
-        // scenes loaded from disk get the same treatment — `ImportedRoot`
-        // is a runtime-only marker that isn't serialized.
-        (With<renzora::MeshInstanceData>, Without<WrappersHidden>),
-    >,
-    name_query: Query<&Name>,
-    children_query: Query<&Children>,
-    hidden_query: Query<(), With<renzora::HideInHierarchy>>,
+    // `MeshInstanceData` rather than `ImportedRoot` so rehydrated scenes loaded
+    // from disk get the same treatment, and `WorldAssetRoot` alongside it
+    // because a Bevy project spawns its own scenes: a
+    // `commands.spawn((WorldAssetRoot(handle), Transform))` in the project's
+    // Rust carries none of the editor's markers. Gating on `MeshInstanceData`
+    // alone meant the editor tidied the hierarchy for a model you dropped and
+    // left the identical chain untouched for the same model spawned by your
+    // code. The gate was describing who spawned the scene; what it needed to
+    // describe is that a scene was spawned. See [`SpawnedSceneRoot`].
+    pending: Query<(Entity, Option<&Children>, Option<&WrappersPending>), SpawnedSceneRoot>,
+    views: WrapperViews,
 ) {
     for (root, root_children, pending_marker) in pending.iter() {
         let has_children = root_children.map(|c| !c.is_empty()).unwrap_or(false);
@@ -395,20 +486,49 @@ pub fn hide_gltf_wrappers(
         // application — `flatten_pending_scenes` runs in the same set and
         // collapses some of these wrappers, so a wrapper we tagged here may
         // be gone by the time the insert applies.
+        // Every entity a `SkinnedMesh` in this subtree names as a joint, first,
+        // because a joint is not recognisable from its own components: the
+        // `SkinnedMesh` that references it is on the mesh, and the joint itself
+        // is a bare `Transform` with one child, which is precisely the shape
+        // [`is_pass_through`] hides. Hiding one takes a bone out of the
+        // hierarchy of every skinned model in the editor, so the set is
+        // collected in full before anything is judged, exactly as
+        // [`collect_joint_entities`] does it for the flatten pass.
+        let mut joints: HashSet<Entity> = HashSet::new();
+        let mut scan: Vec<Entity> = root_children.map(|c| c.iter().collect()).unwrap_or_default();
+        while let Some(entity) = scan.pop() {
+            if let Ok(kids) = views.children.get(entity) {
+                scan.extend(kids.iter());
+            }
+            if let Ok(skinned) = views.skinned.get(entity) {
+                joints.extend(skinned.joints.iter().copied());
+            }
+        }
+
         let mut stack: Vec<Entity> = root_children
             .map(|c| c.iter().collect())
             .unwrap_or_default();
         while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children_query.get(entity) {
+            if let Ok(kids) = views.children.get(entity) {
                 stack.extend(kids.iter());
             }
-            if hidden_query.get(entity).is_ok() {
+            if views.hidden.get(entity).is_ok() {
                 continue;
             }
-            let Ok(name) = name_query.get(entity) else {
-                continue;
-            };
-            if is_gltf_wrapper_name(name.as_str()) {
+            // Either test is enough. The name test keeps recognising a wrapper
+            // that a tool named and that structure alone would miss (a
+            // `RootNode` holding three siblings is still noise); the structural
+            // test catches the ones no list can predict, which is every wrapper
+            // in a project whose assets are named after themselves.
+            //
+            // The joint guard is on the structural test only. The name test
+            // predates it and already applied to joints, so leaving it alone is
+            // what keeps an imported model behaving exactly as it did.
+            let named_wrapper = views
+                .names
+                .get(entity)
+                .is_ok_and(|n| is_gltf_wrapper_name(n.as_str()));
+            if named_wrapper || (!joints.contains(&entity) && is_pass_through(entity, &views)) {
                 commands.entity(entity).try_insert(renzora::HideInHierarchy);
             }
         }

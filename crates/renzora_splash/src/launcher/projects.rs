@@ -51,6 +51,10 @@ struct NewProjectBtn;
 struct NewFromTemplateBtn;
 #[derive(Component)]
 struct OpenProjectBtn;
+#[derive(Component)]
+struct ImportBevyProjectBtn;
+#[derive(Component)]
+struct NewBevyProjectBtn;
 /// A recent-project card — a spectral sheen travels around its border on hover.
 #[derive(Component)]
 struct RecentRow;
@@ -99,8 +103,10 @@ pub(crate) fn systems(app: &mut App) {
         Update,
         (
             new_project_click,
+            new_bevy_project_click,
             new_from_template_click,
             open_project_click,
+            import_bevy_project_click,
             recent_open_click,
             recent_remove_click,
             animate_recent_borders,
@@ -154,6 +160,25 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let new = pill_button(commands, fonts, "plus", &renzora::lang::t("splash.new_project"), true);
     commands.entity(new).insert(NewProjectBtn);
+    // Beside New Project rather than a choice inside it. The two produce
+    // different things in different languages: one writes a `project.toml` and
+    // an empty scene for the editor to fill in, the other writes a cargo crate
+    // whose `fn main` is where the game goes. Folding them into one button would
+    // mean a dialog whose first question is which of two products you meant,
+    // asked before the button has done anything, and the dashboard's established
+    // answer to "genuinely a different action" is a button of its own.
+    let new_bevy = pill_button(
+        commands,
+        fonts,
+        "file-rs",
+        &renzora::lang::t("splash.new_bevy_project"),
+        false,
+    );
+    commands.entity(new_bevy).insert(NewBevyProjectBtn);
+    // Not on the web, where there is no cargo to build the crate with and no
+    // folder to write it into. `renzora_bevy_project`'s rebuild says the same
+    // thing when asked: "a Bevy project cannot be compiled in a browser".
+    bind_display(commands, new_bevy, |_| !cfg!(target_arch = "wasm32"));
     let template =
         pill_button(commands, fonts, "blueprint", &renzora::lang::t("splash.new_from_template"), false);
     commands.entity(template).insert(NewFromTemplateBtn);
@@ -167,8 +192,23 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let open =
         pill_button(commands, fonts, "folder-open", &renzora::lang::t("splash.open_project"), false);
     commands.entity(open).insert(OpenProjectBtn);
+    // A button of its own rather than a second thing `Open Project` might do.
+    // Importing a Bevy crate restarts the editor (its code is a plugin, and a
+    // plugin is installed while the `App` is being built), so it is genuinely a
+    // different action, and one nobody would find if it were hidden inside the
+    // Open dialog's file filter.
+    let import = pill_button(
+        commands,
+        fonts,
+        "file-code",
+        &renzora::lang::t("splash.import_bevy_project"),
+        false,
+    );
+    commands.entity(import).insert(ImportBevyProjectBtn);
     let search = build_search(commands, fonts);
-    commands.entity(toolbar).add_children(&[new, template, open, search]);
+    commands
+        .entity(toolbar)
+        .add_children(&[new, new_bevy, template, open, import, search]);
 
     let heading = commands
         .spawn((
@@ -348,8 +388,11 @@ fn all_rows(world: &Rx) -> Vec<RowData> {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| renzora::lang::t("splash.unknown_project"));
             let path_display = p.to_string_lossy().to_string();
+            // A Bevy project has no `project.toml` and is still perfectly
+            // openable, so a row for one must not be greyed out as missing.
             #[cfg(not(target_arch = "wasm32"))]
-            let exists = p.join("project.toml").exists();
+            let exists = p.join("project.toml").exists()
+                || renzora::core::bevy_project::is_bevy_project(p);
             #[cfg(target_arch = "wasm32")]
             let exists = true;
             let thumb = thumbs.and_then(|t| t.0.get(p).cloned());
@@ -773,6 +816,67 @@ fn open_project_click(
     }
 }
 
+/// Import Bevy Project goes through the contract-crate request, not straight to
+/// a dialog, so the launcher and the editor's File menu end up in the same
+/// handler. See `crate::handle_request_import_bevy_project`.
+fn import_bevy_project_click(
+    q: Query<&Interaction, (With<ImportBevyProjectBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::RequestImportBevyProject(None));
+    }
+}
+
+/// New Bevy Project = pick a folder, write a game into it, then hand off to the
+/// same request Import raises.
+///
+/// The handoff is the point. Everything after "there is a Bevy crate at this
+/// path" is already written and already tested: validation, recording the kind
+/// in `project.toml`, and the restart the code needs because a project's plugin
+/// is installed while the editor's `App` is being built. Creating the crate is
+/// the only new step, so it is the only step here.
+fn new_bevy_project_click(
+    q: Query<&Interaction, (With<NewBevyProjectBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(do_new_bevy_project);
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", expect(unused_variables, reason = "no dialog on the web"))]
+fn do_new_bevy_project(world: &mut World) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(folder) = rfd::FileDialog::new()
+            .set_title(renzora::lang::t("splash.new_bevy_project_pick_folder"))
+            .pick_folder()
+        else {
+            return;
+        };
+        let name = folder
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| renzora::lang::t("splash.new_project"));
+        match crate::bevy_scaffold::create_bevy_project(&folder, &name) {
+            Ok(()) => {
+                world.insert_resource(renzora::RequestImportBevyProject(Some(folder)));
+            }
+            // Reported rather than swallowed: the common failure is picking a
+            // folder that already holds a crate, and the scaffold refuses that
+            // by design instead of writing over it.
+            Err(e) => {
+                renzora::core::console_log::console_error(
+                    "Bevy",
+                    format!("could not create the project: {e}"),
+                );
+            }
+        }
+    }
+}
+
 fn recent_open_click(
     q: Query<(&Interaction, &RecentOpen), Changed<Interaction>>,
     mut commands: Commands,
@@ -832,15 +936,27 @@ fn do_open_recent(world: &mut World, path: &std::path::Path) {
 fn do_open_project(world: &mut World) {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if let Some(file) = rfd::FileDialog::new()
+        // A folder, not a `project.toml`. A Bevy project has no such file (its
+        // manifest is `Cargo.toml`) and picking the right one of two files to
+        // mean "this folder" was never the question being asked anyway.
+        // `open_project` works out which manifest to read from the folder.
+        let Some(root) = rfd::FileDialog::new()
             .set_title(renzora::lang::t("splash.open_project"))
-            .add_filter(renzora::lang::t("splash.project_file"), &["toml"])
-            .pick_file()
-        {
-            match open_project(&file) {
-                Ok(p) => super::enter_project(world, p),
-                Err(e) => error!("Failed to open project: {e}"),
-            }
+            .pick_folder()
+        else {
+            return;
+        };
+        // A Bevy crate cannot be entered, only restarted into: its code is a
+        // plugin, and a plugin is installed while the `App` is being built.
+        // Routed rather than refused, so picking one here does the right thing
+        // instead of reporting that a perfectly good project will not open.
+        if renzora::core::bevy_project::is_bevy_project(&root) {
+            world.insert_resource(renzora::RequestImportBevyProject(Some(root)));
+            return;
+        }
+        match open_project(&root) {
+            Ok(p) => super::enter_project(world, p),
+            Err(e) => error!("Failed to open project: {e}"),
         }
     }
     // Web: the browser's directory picker reaches the same real folder the

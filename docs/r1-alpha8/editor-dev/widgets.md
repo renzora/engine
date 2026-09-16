@@ -377,7 +377,8 @@ commands.entity(row).add_children(&[input, send]);
 ```
 
 - **Enter** in a focused single-line input inside the container simulates a press of `submit` — the panel's existing `Changed<Interaction>` click handler fires unchanged, so there is no separate "submitted" event to wire. (The simulated press is set in `PreUpdate`, so every `Update` handler sees it regardless of system order; hidden forms — a `Display::None` ancestor — never submit.)
-- **Tab / Shift+Tab** cycles focus between the form's visible inputs (wrapping, selecting the tabbed-into value). Tab also works without the marker: it falls back to the smallest ancestor subtree containing at least two inputs.
+- **Tab / Shift+Tab** cycles focus between the form's visible fields (wrapping, selecting the tabbed-into value). Tab also works without the marker: it falls back to the smallest ancestor subtree containing at least two fields.
+- A "field" is a text input **or** a numeric `drag_value`, and the two interleave in tree order, so a panel of mixed rows tabs straight down it. Tabbing out of a numeric field **commits** what was typed, exactly as Enter does: a drag-value holds typed digits in a buffer until something accepts them, and leaving the field is an acceptance. Nothing per-panel is needed for either: a field is a Tab stop by existing.
 
 The sign-in modal, chat composer, feed comments, forum reply/new-thread, and teams create/invite forms all use this.
 
@@ -400,7 +401,7 @@ The offset is saved in the `ScrollMemory` resource under that key and restored �
 
 **Scrubbing a ranged field.** Give a `drag_value` a `DragRange` and it draws a fill bar for the value and maps **its own width to the range**, so one pixel of drag is one pixel of bar and the fill keeps pace with the cursor. The widget's authored `step` still sets the feel of an *unranged* field, where there is no width to map. Holding **Shift** scrubs at a tenth of the rate, in both cases.
 
-**Typing into a numeric field.** Click one and the whole value reads as selected — an accent highlight fills the field, and the first keystroke replaces the number wholesale. Once you've typed, the highlight gives way to a caret. Both the boxed and the **flat** variants show the highlight; a flat field has no border or background of its own to put a focus ring on, so it is the only thing saying the field is live. (Skipping it there is what left the viewport toolbar's snap steps and camera-speed field silently in edit mode.) The value fill of a ranged field stands down while you type — a field being typed into is a text box, not a gauge.
+**Typing into a numeric field.** Click one and the whole value reads as selected — an accent highlight fills the field, and the first keystroke replaces the number wholesale. Once you've typed, the highlight gives way to a caret. Both the boxed and the **flat** variants show the highlight; a flat field has no border or background of its own to put a focus ring on, so it is the only thing saying the field is live. (Skipping it there is what left the viewport toolbar's snap steps and camera-speed field silently in edit mode.) The value fill of a ranged field stands down while you type — a field being typed into is a text box, not a gauge. `Enter`, `Tab` and a click elsewhere all commit; `Esc` cancels.
 
 **Wheel over a numeric field.** A `drag_value` (and the markup `drag_value=` kernel) only scrubs its value on **Shift+wheel**. A plain wheel is always handed to the enclosing scroll area, so dragging the panel scrollbar past a field never snags on it and silently changes the number — the panel scroll always wins, and value-scrubbing is an explicit opt-in gesture.
 

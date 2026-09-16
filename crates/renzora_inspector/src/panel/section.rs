@@ -48,6 +48,17 @@ pub(super) struct RemoveBtn {
     pub(super) type_id: &'static str,
 }
 
+/// Header glyph that opens the file a component's type is declared in.
+///
+/// Carries the location rather than the type, because the answer was already
+/// worked out when the section was collected and re-deriving it on click would
+/// mean reaching back into the label table from a UI system.
+#[derive(Component)]
+pub(super) struct OpenSourceBtn {
+    pub(super) path: std::path::PathBuf,
+    pub(super) line: u32,
+}
+
 #[derive(Component)]
 pub(crate) struct LockBtn {
     pub(crate) entity: Entity,
@@ -364,6 +375,30 @@ pub(super) fn build_section(
             },
         );
         extra.push(sw);
+    }
+    // Ahead of the trash, so the destructive glyph stays rightmost wherever a
+    // section has both.
+    if let Some((path, line)) = sec.source.clone() {
+        let open = phosphor_glyph(
+            commands,
+            fonts,
+            "file-code",
+            renzora_ember::theme::text_muted(),
+            13.0,
+        );
+        let label = path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        commands.entity(open).insert((
+            Interaction::default(),
+            // Block, like the toggle and trash: a press opens the file and must
+            // not also collapse the section behind it.
+            FocusPolicy::Block,
+            renzora_ember::widgets::HoverTooltip::new(format!("Open {label}:{line}")),
+            OpenSourceBtn { path, line },
+        ));
+        extra.push(open);
     }
     // Scripts and Material hide the header trash: both manage their own
     // contents (per-script remove; the material drawer's own binding controls),

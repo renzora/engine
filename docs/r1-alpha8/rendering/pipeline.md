@@ -356,6 +356,88 @@ vsync = false   # uncap the frame rate — useful for profiling
 `apply_window_config` maps this to the window's `PresentMode` (`AutoVsync` when
 true, `AutoNoVsync` when false). Defaults to `true`.
 
+## Culling — what never gets drawn
+
+Three mechanisms decide that a mesh costs nothing this frame. The first two are
+always on; the third is a switch.
+
+**Frustum culling** drops anything outside the camera's field of view. This is
+Bevy's default and needs nothing from you: every `Mesh3d` gets an `Aabb`
+automatically, and each camera tests against its own frustum, so an object off to
+the side is skipped by every camera that cannot see it. The only opt-out in the
+engine is `NoFrustumCulling` on the infinite editor grid and on world-space UI
+meshes, both of which have no meaningful bounds.
+
+**Distance culling** is the LOD system: a model with baked `_lodN.glb` variants
+swaps to a cheaper mesh as it recedes, and can disappear entirely if you set a
+cull distance. See [Streaming](../engine-core/streaming.md#mesh-lods).
+
+**Occlusion culling** drops what is inside the view but *behind* something
+opaque — the furniture in the next room while the door is shut. It is not the
+same as the depth test: depth rejects hidden *pixels*, but only after the GPU has
+transformed and skinned the vertices that produced them, so a detailed character
+behind a wall still costs its full vertex load. Occlusion culling tests bounding
+boxes against a depth pyramid instead, so that work is never scheduled.
+
+Bevy's implementation is two-phase and fully dynamic — no baking, no hand-placed
+portals, and large animated meshes can act as occluders:
+
+1. An **early depth prepass** renders what was visible last frame, giving a
+   conservative depth buffer.
+2. That is downsampled into a **hierarchical Z-buffer** (depth pyramid).
+3. Every mesh's bounding box is tested against it; anything provably behind is
+   dropped.
+4. A **late depth prepass** renders the survivors, then the normal passes run.
+
+### Turning it on and off
+
+| Where | Setting | Default |
+|---|---|---|
+| Editor viewports | Settings → Viewport → Performance → **Occlusion Culling** | on |
+| Shipped game | Settings → Project → Rendering → **Occlusion Culling (game)**, i.e. `[rendering] occlusion_culling` | on |
+
+```toml
+[rendering]
+occlusion_culling = true
+```
+
+Both feed one resource, `OcclusionCullingEnabled`, which
+`renzora_engine::occlusion_culling` reads to attach or remove Bevy's
+`OcclusionCulling` component per camera. It is a separate switch rather than a
+step in the [graphics quality tiers](#graphics-quality-tiers) on purpose:
+tiers gate expensive passes, and this one makes rendering *cheaper*, so tying it
+to High would disable it exactly where it is most wanted.
+
+### Where it declines
+
+Enabling it is a request, not a guarantee. Four cases turn it off, silently and
+by design:
+
+- **Deferred shading.** `DeferredPrepass` together with `OcclusionCulling` is
+  unspecified behaviour upstream, so a deferred camera is stripped of it. If your
+  project's rendering mode is Deferred, occlusion culling does nothing.
+- **Offscreen utility cameras** (material and model thumbnails, studio previews,
+  env bakes, the game-UI canvas — anything marked `IsolatedCamera`). Each would
+  allocate its own depth pyramid to cull a scene of one object.
+- **A camera with no depth prepass.** Upstream ignores `OcclusionCulling`
+  without one. Every camera the engine spawns has the full prepass bundle, but a
+  camera from a glTF node or a plugin need not.
+- **Platforms with no GPU preprocessing**, notably the web build (WebGL2 has no
+  compute shaders). Bevy marks those views `NoIndirectDrawing` and the component
+  sits inert.
+
+Unlike most of what rides on a camera here, this one is safe to toggle at
+runtime: it changes which render phases a view has and whether it owns a depth
+pyramid, both rebuilt from the component every frame.
+
+### When to turn it off
+
+Occlusion culling is not free — it examines bounding boxes and builds the depth
+pyramid every frame. It pays for itself in interiors, city streets and anything
+with large occluders, and buys nothing in an open landscape where almost
+everything in view is genuinely visible. Measure with the **Render Stats** panel
+below: if draw counts do not move when you turn it on, it is overhead.
+
 ## Debugging the pipeline
 
 `renzora_debugger` ships several render-focused editor panels:

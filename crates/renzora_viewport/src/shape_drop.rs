@@ -285,6 +285,7 @@ pub fn update_shape_drag_preview(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut drag_state: ResMut<ShapeDragState>,
     registry: Res<ShapeRegistry>,
+    mut cache: ResMut<renzora_engine::primitive_cache::PrimitiveAssets>,
     settings: Option<Res<ViewportSettings>>,
     grid: Option<Res<renzora::core::GridTexture>>,
     mut preview_state: ResMut<ShapeDragPreviewState>,
@@ -318,29 +319,26 @@ pub fn update_shape_drag_preview(
     match preview_state.preview_entity {
         // No preview yet — spawn it once the cursor is over the viewport.
         None => {
-            // Bail before building the mesh: `create_mesh` inserts a new asset
-            // every call, so probing the placement first would leak one per
-            // frame for as long as the drag hovers outside the viewport.
             if drag_state.drag_ground_position.is_none() {
                 drag_state.preview_position = None;
                 return;
             }
-            let Some(entry) = registry.get(shape_id) else {
+            let Some(default_color) = registry.get(shape_id).map(|e| e.default_color) else {
                 drag_state.preview_position = None;
                 return;
             };
 
-            let mesh = (entry.create_mesh)(&mut meshes);
-            // The ghost has to wear the grid the dropped shape will wear. The
-            // real one gets its UVs from `project_blockout_uvs`, which only
-            // looks at primitives that are in the scene, and this is not one
-            // yet — so it projects its own, at the scale it will land at. Without
-            // this the preview carries the registry's authored unwrap and the
-            // texture visibly changes the instant you let go, which is the same
-            // thing the tint below was fixed for.
-            if let Some(mut m) = meshes.get_mut(&mesh) {
-                renzora_engine::blockout::project_mesh_uvs(&mut m, Vec3::ONE);
-            }
+            // The ghost wears the same shared mesh and material the dropped
+            // shape will, so nothing about it changes visibly on release. That
+            // includes the UVs: the cached mesh is projected at scale 1, which
+            // is the scale the ghost sits at, and the real one gets the same
+            // projection from `project_blockout_uvs` once it is in the scene.
+            // (The ghost is not a scene primitive, so that system never sees
+            // it, which is why the ghost used to project its own.)
+            let Some(mesh) = cache.mesh(shape_id, &registry, &mut meshes) else {
+                drag_state.preview_position = None;
+                return;
+            };
             let min_offset = meshes
                 .get(&mesh)
                 .and_then(|m| m.compute_aabb())
@@ -356,10 +354,7 @@ pub fn update_shape_drag_preview(
             // doesn't visibly "change material" on drop — which meant matching
             // its tint too: this used to hardcode a tan, so every ghost was a
             // different color from the shape that landed.
-            let material = materials.add(renzora_engine::blockout::blockout_material(
-                entry.default_color,
-                grid.as_deref(),
-            ));
+            let material = cache.material(default_color, grid.as_deref(), &mut materials);
 
             let entity = commands
                 .spawn((

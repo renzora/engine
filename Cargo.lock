@@ -7275,6 +7275,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_bevy_project"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "libloading 0.8.9",
+ "renzora",
+ "renzora_engine",
+ "renzora_native_plugin",
+ "renzora_plugin_build",
+]
+
+[[package]]
 name = "renzora_bloom_effect"
 version = "0.1.0"
 dependencies = [
@@ -8308,6 +8320,7 @@ dependencies = [
  "renzora_atmosphere",
  "renzora_audio",
  "renzora_audio_backend",
+ "renzora_bevy_project",
  "renzora_bloom_effect",
  "renzora_blueprint",
  "renzora_cloth",

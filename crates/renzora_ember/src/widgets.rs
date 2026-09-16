@@ -455,7 +455,11 @@ impl Plugin for WidgetsPlugin {
                 // redrawn in the same frame rather than the next one.
                 text_input::text_input_bound_sync.before(text_input::text_input_sync),
                 text_input::text_input_sync,
-                form::form_tab_focus,
+                // After the numeric field's own key handling, so Tab's commit is
+                // the last word on this frame's edit state (Tab is not a key
+                // `drag_value_edit` acts on, but the order makes that explicit
+                // rather than schedule-dependent).
+                form::form_tab_focus.after(drag_value::drag_value_edit),
                 drag_window::drag_handle_move,
             ),
         );

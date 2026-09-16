@@ -95,6 +95,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
                 accent,
                 open: section_open(entry.type_id),
                 gate: gate_for(entry.type_id),
+                source: None,
                 fields: Vec::new(),
             });
             continue;
@@ -114,6 +115,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
                 accent,
                 open: section_open(entry.type_id),
                 gate: gate_for(entry.type_id),
+                source: None,
                 fields: Vec::new(),
             });
             continue;
@@ -213,6 +215,7 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
             accent,
             open: section_open(entry.type_id),
             gate: gate_for(entry.type_id),
+            source: None,
             fields,
         });
     }
@@ -252,7 +255,36 @@ fn append_reflected_sections(
         .get_resource::<crate::reflect_source::ReflectInspectorMode>()
         .copied()
         .unwrap_or_default();
-    if mode == crate::reflect_source::ReflectInspectorMode::Off {
+
+    // A Bevy project's own components are generated even when the mode is `Off`,
+    // and they are the one set where doing so is unambiguously right.
+    //
+    // `Off` is the default because "has no hand-written entry" usually means
+    // "is not authored state", and a generated section for derived state is
+    // inert: the owning system rewrites the component and the edit reverts
+    // within a frame. That reasoning inverts for a type declared in the user's
+    // own crate. It is authored state by definition, and it can never gain a
+    // hand-written entry, because no editor crate can name a type that lives in
+    // somebody else's repository. `ProjectComponentLabels` is exactly that set,
+    // recorded by the generated crate root, so the components it names are the
+    // only ones let through here.
+    //
+    // Keyed by lowercased short name and carrying where the author wrote it, so
+    // the same lookup that admits a section also gives its header the jump to
+    // the declaration. That link used to live in a separate Project Components
+    // list; it belongs on the component it opens.
+    let project_only = mode == crate::reflect_source::ReflectInspectorMode::Off;
+    let project: std::collections::HashMap<String, (std::path::PathBuf, u32)> = world
+        .get_resource::<renzora::core::bevy_project::ProjectComponentLabels>()
+        .map(|labels| {
+            labels
+                .0
+                .values()
+                .map(|c| (c.name.to_ascii_lowercase(), (c.file.clone(), c.line)))
+                .collect()
+        })
+        .unwrap_or_default();
+    if project_only && project.is_empty() {
         return;
     }
 
@@ -275,6 +307,12 @@ fn append_reflected_sections(
     }
 
     let generated = crate::reflect_source::reflect_sections(world.untracked(), entity, &|short| {
+        // Nothing but the project's own components, and no name-stemming: these
+        // names came from the author's source rather than from a curated entry,
+        // so they match exactly or they are not the project's.
+        if project_only {
+            return !project.contains_key(short);
+        }
         // Reflected type names carry noise words the curated names never do —
         // `AtmosphereComponentSettings` is the `Atmosphere` entry, `CloudsData`
         // is `Clouds`. Strip those before comparing, or every settings component
@@ -375,7 +413,14 @@ fn append_reflected_sections(
             accent: (150, 130, 200),
             // Closed by default: in `All` mode every component gains a second
             // section, and opening them all would bury the hand-written ones.
-            open: false,
+            // Open for a Bevy project's own components, where the opposite
+            // holds: there are a handful of them, they are the state the author
+            // actually wrote, and having to expand each one to find that out
+            // defeats the point of generating them.
+            open: project_only,
+            source: project
+                .get(&section.short_name.to_ascii_lowercase())
+                .cloned(),
             // A reflected section is keyed by type path, not by a registered
             // `type_id`, so it never matches the gate table. The hand-written
             // section for the same component carries the warning.

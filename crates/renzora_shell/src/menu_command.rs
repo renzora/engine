@@ -46,6 +46,13 @@ pub enum MenuCommand {
     /// about.
     NewProject,
     OpenProject,
+    /// File > Import Bevy Project: open a hand-written Bevy crate.
+    ///
+    /// Separate from [`Self::OpenProject`] because it restarts the editor rather
+    /// than transitioning it: a Bevy project's code is a plugin, and a plugin is
+    /// installed while the `App` is being built. See
+    /// `renzora_bevy_project`.
+    ImportBevyProject,
     /// One specific project from the recents list.
     OpenRecent(std::path::PathBuf),
     NewScene,
@@ -112,6 +119,9 @@ impl MenuCommand {
             }
             Self::OpenProject => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Pick));
+            }
+            Self::ImportBevyProject => {
+                world.insert_resource(ProjectSwitchRequest(ProjectSwitch::ImportBevy));
             }
             Self::OpenRecent(path) => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Recent(path)));

@@ -1,0 +1,42 @@
+[package]
+name = "renzora_bevy_project"
+version = "0.1.0"
+edition = "2021"
+description = "Loads a hand-written Bevy crate as a project: compiles it against the SDK and shows the world its code builds."
+
+[features]
+# Same switch, same reason, as `renzora_native_plugin`'s: a game crate links the
+# real Bevy and takes the engine's `&mut World`, which is only sound while one
+# `bevy_dylib` is shared between them. A lean export has no shared images, so the
+# loader declines rather than corrupting the `World`. See that crate's manifest
+# for the full argument, which is identical here.
+#
+# Forwarded from `renzora_runtime`.
+dynamic_linking = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# The SDK and the `rustc` driver. A game crate is compiled by exactly the same
+# path as a native plugin, because it IS one: the generated crate root exports
+# `renzora_native_plugin_ctor` like any other.
+renzora_plugin_build = { path = "../renzora_plugin_build" }
+# For `CTOR_SYMBOL` alone. The generated crate root calls `renzora::plugin!`,
+# which exports that name, and the loader here looks it up: two spellings of one
+# symbol is exactly the bug that would present as "this built fine and loaded
+# nothing".
+renzora_native_plugin = { path = "../renzora_native_plugin" }
+# For `ProjectAssetPath` alone, so the asset root can be set while the `App` is
+# still being built. A Bevy project loads its whole world in `Startup`, which is
+# a frame before the `Update` system that normally syncs it, and a frame late
+# is 23 `Path not found` errors and an empty world.
+renzora_engine = { path = "../renzora_engine", default-features = false }
+
+# Target-scoped for the reason `renzora_native_plugin` documents: wasm has no
+# dynamic loading and `libloading` has no backend for it, while the crate itself
+# must still compile there.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libloading = "0.8"
+
+[lints]
+workspace = true

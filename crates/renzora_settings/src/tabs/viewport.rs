@@ -164,6 +164,16 @@ pub(crate) fn tab_viewport(
         |w, &v| w.resource_mut::<ViewportSettings>().vsync = v,
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.vsync"), t);
+    // Occlusion culling — skips meshes hidden behind other geometry. Its own
+    // switch rather than a tier step: it makes rendering cheaper, so tying it to
+    // High would turn it off on the machines that need it most.
+    let t = ctl_toggle(
+        commands,
+        vp.occlusion_culling,
+        |w| w.resource::<ViewportSettings>().occlusion_culling,
+        |w, &v| w.resource_mut::<ViewportSettings>().occlusion_culling = v,
+    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.occlusion_culling"), t);
 
     let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.category.camera"), A_PURPLE);
     commands.entity(col).add_child(sec);

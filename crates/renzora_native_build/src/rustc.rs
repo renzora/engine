@@ -43,6 +43,15 @@ pub struct Target<'a> {
     pub toolchain: &'a str,
     /// The plugin's crate name, hyphens already turned into underscores.
     pub crate_name: &'a str,
+    /// The Rust edition to compile as, from the crate's own `Cargo.toml`.
+    ///
+    /// Hardcoded to `2021` until a project written in 2024 was opened. Nothing
+    /// about the failure says "edition": a 2024 crate compiled as 2021 reports
+    /// `expected one of ...` at its first `unsafe` attribute
+    /// (`#[unsafe(no_mangle)]`, which `renzora::plugin!` itself emits) or at a
+    /// `gen` identifier, in a file the author has every reason to believe is
+    /// correct, because under cargo it is.
+    pub edition: &'a str,
     /// `--extern bevy=` — the facade **rlib**, which declares
     /// `extern crate bevy_dylib` and routes Bevy's code to the shared image.
     pub extern_bevy: &'a Path,
@@ -100,7 +109,7 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     // called `lib` and every log line it emits is tagged `INFO lib:`,
     // indistinguishable from every other plugin's.
     push!("--crate-name", t.crate_name);
-    push!("--edition", "2021");
+    push!("--edition", t.edition);
     push!("--crate-type", "dylib");
     // The plugin must IMPORT Bevy and the contract crate, not embed them.
     // Without this it links its own copies and stops sharing the `World` the

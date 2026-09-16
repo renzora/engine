@@ -30,11 +30,23 @@ use renzora::core::{GridTexture, MeshColor, MeshPrimitive};
 ///
 /// Deliberately flat — no normal map, no occlusion map. See the module docs on
 /// `renzora::core::blockout_grid` for why relief was tried and taken back out.
+///
+/// The alpha mode follows the colour's own alpha. It used to be left at
+/// `Opaque` and switched to `Blend` only by [`apply_mesh_color`], so a shape
+/// *spawned* translucent rendered solid until someone touched its colour again,
+/// which read as the alpha slider being broken. Deciding it here means both
+/// paths agree, and it is what lets the material be shared by colour: the whole
+/// material is a function of its key.
 pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> StandardMaterial {
     StandardMaterial {
         base_color,
         base_color_texture: grid.map(|g| g.0.clone()),
         perceptual_roughness: 0.9,
+        alpha_mode: if base_color.alpha() < 1.0 {
+            AlphaMode::Blend
+        } else {
+            AlphaMode::Opaque
+        },
         ..default()
     }
 }
@@ -55,32 +67,38 @@ pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> Stand
 /// resolver owns the material, and writing a base colour over a compiled graph
 /// would fight it every frame the graph recompiled.
 ///
-/// Alpha is honoured by switching the alpha mode with it. `blockout_material`
-/// leaves the mode at `Opaque`, so a colour picked with alpha below 1 would
-/// otherwise look exactly like the opaque one and read as the alpha slider
-/// being broken.
+/// # Swapping the handle, not writing the material
+///
+/// This used to write the new colour into the material the entity was wearing,
+/// which was correct only while every primitive had a material to itself. They
+/// share one per colour now ([`crate::primitive_cache`]), so writing through the
+/// handle would repaint every other shape at that colour. Asking the cache for
+/// the material that *is* that colour gets the same result and keeps the sharing
+/// intact: recolour a hundred cubes to the same red and they converge onto one
+/// material rather than diverging into a hundred.
 #[cfg(feature = "render_3d")]
 pub fn apply_mesh_color(
+    mut commands: Commands,
     changed: Query<
-        (&MeshColor, &MeshMaterial3d<StandardMaterial>),
+        (Entity, &MeshColor),
         (
             Changed<MeshColor>,
+            With<MeshMaterial3d<StandardMaterial>>,
             Without<renzora::core::MaterialRef>,
         ),
     >,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
+    cache: Option<ResMut<crate::primitive_cache::PrimitiveAssets>>,
+    grid: Option<Res<GridTexture>>,
 ) {
-    let Some(mut materials) = materials else { return };
-    for (color, handle) in &changed {
-        let Some(mut material) = materials.get_mut(&handle.0) else {
-            continue;
-        };
-        material.base_color = color.0;
-        material.alpha_mode = if color.0.alpha() < 1.0 {
-            AlphaMode::Blend
-        } else {
-            AlphaMode::Opaque
-        };
+    let (Some(mut materials), Some(mut cache)) = (materials, cache) else {
+        return;
+    };
+    for (entity, color) in &changed {
+        let handle = cache.material(color.0, grid.as_deref(), &mut materials);
+        commands
+            .entity(entity)
+            .try_insert(MeshMaterial3d(handle));
     }
 }
 
@@ -120,9 +138,21 @@ const TILE: f32 = 1.0;
 ///
 /// Entities with a [`MaterialRef`](renzora::core::MaterialRef) are left alone:
 /// once a real material is on the mesh, its UVs are the author's business.
+///
+/// # Copy-on-write
+///
+/// These UVs are derived from the entity's own world scale, so they are the one
+/// piece of a primitive's mesh that genuinely cannot be shared. Primitives of a
+/// kind do share a mesh ([`crate::primitive_cache`]), so writing here would push
+/// one entity's scale onto every sibling rendering the same copy. An entity
+/// whose projection diverges therefore forks the mesh and keeps the fork; the
+/// shared copy stays at the scale-1 projection it was created with, which is
+/// what every unscaled primitive wants and so never forks.
 pub fn project_blockout_uvs(
-    query: Query<(Ref<Mesh3d>, Ref<GlobalTransform>), (With<MeshPrimitive>, Without<renzora::core::MaterialRef>)>,
+    mut commands: Commands,
+    query: Query<(Entity, Ref<Mesh3d>, Ref<GlobalTransform>), (With<MeshPrimitive>, Without<renzora::core::MaterialRef>)>,
     mut meshes: ResMut<Assets<Mesh>>,
+    cache: Option<Res<crate::primitive_cache::PrimitiveAssets>>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
 ) {
     // A mesh's *contents* can change without its handle changing: the mesh
@@ -139,7 +169,7 @@ pub fn project_blockout_uvs(
         }
     }
 
-    for (mesh3d, transform) in &query {
+    for (entity, mesh3d, transform) in &query {
         if !mesh3d.is_changed() && !transform.is_changed() && !touched.contains(&mesh3d.0.id()) {
             continue;
         }
@@ -164,6 +194,21 @@ pub fn project_blockout_uvs(
                     })
         );
         if unchanged {
+            continue;
+        }
+
+        // Diverged from the shared copy — take a private one rather than
+        // rewriting the mesh this entity's siblings are also rendering.
+        if cache
+            .as_ref()
+            .is_some_and(|c| c.is_shared_mesh(mesh3d.0.id()))
+        {
+            let Some(mut forked) = meshes.get(&mesh3d.0).cloned() else {
+                continue;
+            };
+            forked.insert_attribute(Mesh::ATTRIBUTE_UV_0, projected);
+            let handle = meshes.add(forked);
+            commands.entity(entity).try_insert(Mesh3d(handle));
             continue;
         }
 

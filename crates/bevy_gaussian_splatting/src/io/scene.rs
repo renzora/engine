@@ -220,8 +220,24 @@ impl AssetLoader for GaussianSceneLoader {
         load_gltf_scene(&bytes, load_context).await
     }
 
+    /// A **compound** extension, so this never shadows Bevy's own glTF loader.
+    ///
+    /// Renzora patch. Upstream claims `gltf` and `glb` outright, which looks
+    /// reasonable in a crate that is the whole app and is not survivable in an
+    /// engine: `AssetLoaders::get_by_path` picks the **last** loader registered
+    /// for an extension and does not consider the asset type being asked for
+    /// (`bevy_asset::server::loaders`), so registering this one took over every
+    /// `.glb` and `.gltf` load in the process. Every model in a project then
+    /// failed with `no KHR_gaussian_splatting primitives found`: an error about
+    /// gaussian splats, raised against a tree, by a loader nobody asked for.
+    ///
+    /// `foo.gsplat.glb` still reaches this loader, because Bevy matches the full
+    /// extension first and falls back to the secondary ones. `foo.glb` reaches
+    /// `GltfLoader`, which is what anyone writing it meant.
+    ///
+    /// Re-apply on re-vendor.
     fn extensions(&self) -> &[&str] {
-        &["gltf", "glb"]
+        &["gsplat.gltf", "gsplat.glb"]
     }
 }
 

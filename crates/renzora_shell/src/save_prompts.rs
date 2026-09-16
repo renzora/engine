@@ -385,6 +385,12 @@ pub(crate) enum ProjectSwitch {
     Pick,
     /// File > Recent Projects > one of them.
     Recent(std::path::PathBuf),
+    /// File > Import Bevy Project.
+    ///
+    /// Goes through the same prompt as the others because it leaves the project
+    /// just as completely, more so in fact: it restarts the process, so an
+    /// unsaved document is not merely closed but gone with the editor.
+    ImportBevy,
 }
 
 impl ProjectSwitch {
@@ -394,6 +400,7 @@ impl ProjectSwitch {
         match self {
             ProjectSwitch::New => "Save & New Project",
             ProjectSwitch::Pick | ProjectSwitch::Recent(_) => "Save & Open",
+            ProjectSwitch::ImportBevy => "Save & Import",
         }
     }
 
@@ -410,6 +417,9 @@ impl ProjectSwitch {
             }
             ProjectSwitch::Recent(path) => {
                 commands.insert_resource(renzora::RequestOpenProjectPath(path));
+            }
+            ProjectSwitch::ImportBevy => {
+                commands.insert_resource(renzora::RequestImportBevyProject(None));
             }
         }
     }

@@ -10,7 +10,7 @@
 use std::any::Any;
 
 use bevy::prelude::*;
-use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora::{MeshColor, MeshPrimitive};
 use renzora_editor_framework::{EditorLocked, EditorSelection, FieldValue, InspectorRegistry, SpawnRegistry};
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -282,23 +282,15 @@ impl UndoCommand for SpawnShapeCmd {
         "Spawn shape"
     }
     fn execute(&mut self, world: &mut World) {
-        let Some(create_mesh) = world
-            .resource::<ShapeRegistry>()
-            .get(&self.shape_id)
-            .map(|e| e.create_mesh)
+        // Fresh shapes wear the engine blockout grid as their "no texture yet"
+        // look, tinted by the preset color. Both handles come from the shared
+        // primitive cache, so a second cube of the same colour batches with the
+        // first instead of being its own mesh and its own material.
+        let Some((mesh, material)) =
+            renzora_engine::primitive_cache::primitive_assets(world, &self.shape_id, self.color)
         else {
             return;
         };
-        let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-        // Fresh shapes wear the engine blockout grid as their "no texture yet"
-        // look, tinted by the preset color.
-        let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
-        let material = world
-            .resource_mut::<Assets<StandardMaterial>>()
-            .add(renzora_engine::blockout::blockout_material(
-                self.color,
-                grid.as_ref(),
-            ));
         self.entity = world
             .spawn((
                 Name::new(self.name.clone()),
@@ -356,23 +348,14 @@ impl UndoCommand for DeleteShapesCmd {
     }
     fn undo(&mut self, world: &mut World) {
         for item in self.items.iter_mut() {
-            let Some(create_mesh) = world
-                .resource::<ShapeRegistry>()
-                .get(&item.shape_id)
-                .map(|e| e.create_mesh)
+            // Same shared mesh + material as SpawnShapeCmd, grid included, so
+            // undoing a delete doesn't bring the shape back flat and doesn't
+            // bring it back as a second copy of assets it used to share.
+            let Some((mesh, material)) =
+                renzora_engine::primitive_cache::primitive_assets(world, &item.shape_id, item.color)
             else {
                 continue;
             };
-            let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
-            // Same default material as SpawnShapeCmd, grid included, so
-            // undoing a delete doesn't bring the shape back flat.
-            let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
-            let material = world
-                .resource_mut::<Assets<StandardMaterial>>()
-                .add(renzora_engine::blockout::blockout_material(
-                    item.color,
-                    grid.as_ref(),
-                ));
             item.entity = world
                 .spawn((
                     Name::new(item.name.clone()),

@@ -1013,6 +1013,7 @@ pub(crate) fn sync_workspace_to_active_doc(
             if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
                 commands.insert_resource(renzora::core::OpenCodeEditorFile {
                     path: project.resolve_path(rel),
+                    line: None,
                 });
             }
             // Dirty either way: `focus_or_add_panel` returns false when the

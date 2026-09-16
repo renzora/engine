@@ -190,6 +190,8 @@ It is the same list as the Shape Library panel and the Hierarchy's **Add Entity*
 
 New shapes arrive with a generated grid material on them, so you can see their form and scale before you have made any materials. Replace it by dropping a material on the object.
 
+Shapes of the same kind share one mesh, and shapes of the same colour share one material, so a blockout made of two hundred identical cubes costs one of each rather than two hundred. That sharing is also what lets the renderer batch them into a single draw call, which is where the frame-time win comes from. It is invisible in use: scaling a shape gives it a private mesh at that point (its grid has to stay square, which is a per-object measurement), and recolouring one moves it onto the material for its new colour rather than repainting everything that shared the old one.
+
 ## Dropping models in
 
 Drag a model from the **Assets** panel into the viewport and it spawns where you dropped it, sitting on whatever surface is under the cursor.
@@ -223,6 +225,8 @@ Shadow maps and the sky's reflection probe also shrink a step at each tier, whic
 Medium is the default. The choice is per user, not per project: it is saved to `~/.renzora/settings.toml` and applies to every project you open on this machine.
 
 It is a different setting from the one under **Settings > Project > Rendering**, which is the tier the *exported game* runs at. A project set to High there still draws its editor viewport at whatever this one says.
+
+**Occlusion Culling**, in the same Performance section, is the other lever, and it works the opposite way round: it makes the scene cheaper by skipping meshes that are entirely hidden behind other solid geometry. On by default. It helps most in interiors and dense scenes and does nothing measurable in open landscapes, and it is switched off automatically for projects using Deferred rendering. See [Culling](../rendering/pipeline.md#culling--what-never-gets-drawn) for what it does and the cases where it declines.
 
 ### When a tier has switched an effect off
 

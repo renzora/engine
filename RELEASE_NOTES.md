@@ -1,5 +1,89 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-16 11:32
+- fix(assets): a Bevy project's textures and models load in the asset browser and show thumbnails, instead of reporting every file as not found
+
+## 2026-09-16 11:22
+- feat(splash): New Bevy Project writes a small playable Bevy game into a folder and opens it
+- fix(editor): a Bevy project no longer rebuilds itself forever, from the generated crate root its own build writes
+
+## 2026-09-16 10:59
+- feat(editor): a Bevy project's `Reflect` types all reach the type registry when its code loads, so its resources appear in the Resources panel
+- feat(inspector): a project component's section header opens the file that declares it, at its declaration
+- change(inspector): the Project Components list now holds only what has no section of its own, instead of repeating every component above it
+
+## 2026-09-16 09:58
+- feat(rendering): GPU occlusion culling skips meshes hidden behind other geometry, on by default and switchable in Settings
+- perf(editor): primitives of the same kind share one mesh and primitives of the same colour share one material, so identical shapes draw as one batch
+
+## 2026-09-16 09:31
+- feat(editor): Tab accepts the number you typed into a field and moves to the next one, so a position can be typed X, Tab, Y, Tab, Z
+
+## 2026-09-16 09:23
+- fix(editor): a model spawned by a Bevy project's own code no longer shows two empty folders above its mesh in the hierarchy
+
+## 2026-09-16 04:20
+- feat(inspector): a Bevy project's entities show a Project Components section listing the components the project's own code declared
+- feat(inspector): clicking one opens the file that declares it, at the line it is declared on
+- feat(editor): a request to open a file in the code editor can name a line to jump to
+- feat(inspector): a Bevy project's component that derives `Reflect` gets its own section with editable fields
+
+## 2026-09-16 03:45
+- fix(editor): clicking a panel in a Bevy project no longer freezes the cursor, when the project grabs it for mouse-look
+- fix(editor): a Bevy project's camera is adopted before Bevy can turn it into an atmosphere probe, rather than racing it in the same schedule
+
+## 2026-09-16 03:20
+- fix(editor): a Bevy project whose camera carries an atmosphere environment probe no longer crashes the editor on startup
+
+## 2026-09-16 03:05
+- fix(editor): a Bevy project that builds its App across several statements now loads, instead of failing to compile with "borrow of moved value"
+
+## 2026-09-16 02:45
+- perf(editor): opening an unchanged Bevy project reuses the last build instead of recompiling it, which took about ten seconds every launch
+- fix(editor): a Bevy project no longer relights the whole editor with its own ambient light
+
+## 2026-09-16 02:15
+- fix(editor): opening a Bevy project from the dashboard or File ▸ Recent loads its code, instead of opening an empty world
+
+## 2026-09-16 01:40
+- feat(editor): saving a Bevy project's Rust rebuilds it in the background, with compile errors in the Console and the Problems panel
+- feat(editor): the status bar says whether a Bevy project is rebuilding, failed to build, or is waiting for a restart to load
+
+## 2026-09-16 01:10
+- feat(sdk): `cargo run -p renzora_plugin_build --example plugin_interop` builds two plugins that share a type, as an executable check that a plugin can be linked as a library by another
+
+## 2026-09-16 00:35
+- feat(editor): saving a Bevy project writes what you placed in the editor to `src/renzora_authored.rs` as ordinary Bevy code
+- feat(editor): an entity in a Bevy project records whether it came from your code or from the editor, and only the editor's are written back
+
+## 2026-09-16 00:05
+- fix(editor): opening a Bevy project no longer switches off the camera the editor's own UI renders on, which left a black window
+- fix(editor): the editor's UI camera is marked as chrome, so passes that look for scene content skip it
+
+## 2026-09-15 23:52
+- fix(assets): a `.glb` or `.gltf` loads as a model again; the gaussian-splatting loader had claimed both extensions and took over every glTF load in the engine
+
+## 2026-09-15 23:35
+- fix(editor): a Bevy project's models load, instead of every asset it requests at startup being reported as not found
+- fix(editor): a Bevy project no longer paints the whole editor its own sky colour
+- fix(editor): a Bevy project's camera is adopted whatever frame it is spawned on, and no longer draws over the editor
+- fix(editor): opening a code-first project no longer reports a missing scene file it never had
+
+## 2026-09-15 23:02
+- fix(editor): importing a Bevy project works a second time, instead of silently doing nothing once its project.toml exists
+- fix(editor): importing a Bevy project opens it, instead of restarting to the dashboard
+- fix(editor): the Bevy project loader says why it loaded nothing rather than returning in silence
+
+## 2026-09-15 22:58
+- feat(editor): Import Bevy Project on the dashboard and in the File menu opens a hand-written Bevy crate
+- feat(editor): Open Project accepts a folder, and routes a Bevy crate to the importer instead of refusing it
+
+## 2026-09-15 21:43
+- feat(editor): a hand-written Bevy crate can be opened as a project with `--project`, and the editor shows the world its code builds
+- feat(editor): entities spawned by a Bevy project are named from their own components instead of being despawned as unnamed
+- feat(plugin): a plugin or project is compiled with the Rust edition its own `Cargo.toml` asks for
+- fix(editor): Open Project picks a folder instead of a `project.toml`, so a project without one can be opened
+
 ## 2026-09-15 13:52
 - fix(linux): the editor window carries an app id, so a dock can show its icon and pinning it works
 

@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+pub mod bevy_scaffold;
 pub mod config;
 pub mod github;
 mod chamber;
@@ -82,6 +84,7 @@ impl Plugin for SplashPlugin {
                 (
                     handle_request_open_project,
                     handle_request_open_project_path,
+                    handle_request_import_bevy_project,
                     mirror_recent_projects,
                 ),
             )
@@ -113,6 +116,7 @@ impl Plugin for SplashPlugin {
 fn handle_request_open_project(
     mut commands: Commands,
     request: Option<Res<renzora::RequestOpenProject>>,
+    launched: Option<Res<renzora::core::bevy_project::LaunchedBevyProject>>,
     mut app_config: ResMut<AppConfig>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
@@ -121,13 +125,26 @@ fn handle_request_open_project(
     }
     commands.remove_resource::<renzora::RequestOpenProject>();
 
+    // A folder, not a file. It used to ask for a `project.toml`, which a Bevy
+    // project does not have (its manifest is `Cargo.toml`) and asking the user
+    // to pick the right one of two files to say "this folder" was never the
+    // question anyway. `open_project` decides which manifest to read from the
+    // folder it is given.
     let Some(file) = rfd::FileDialog::new()
-        .set_title("Open Project")
-        .add_filter("Project File", &["toml"])
-        .pick_file()
+        .set_title(renzora::lang::t_or("splash.open_project_pick_folder", "Open Project"))
+        .pick_folder()
     else {
         return;
     };
+
+    // A Bevy project is opened by restarting, not by transitioning. Checked
+    // before the project is even parsed: the reason has nothing to do with
+    // whether its config reads, and `restart_needed_for` explains it once for
+    // every entry point.
+    if let Some(request) = launcher::restart_needed_for(launched.as_deref(), &file) {
+        commands.insert_resource(request);
+        return;
+    }
 
     let project = match project::open_project(&file) {
         Ok(p) => p,
@@ -161,6 +178,89 @@ fn handle_request_open_project(
     }
 }
 
+/// Consume `renzora::RequestImportBevyProject`: File > Import Bevy Project, and
+/// the dashboard button of the same name.
+///
+/// Ends in a **restart**, which is the whole reason this is not a branch inside
+/// [`handle_request_open_project`]. A Bevy project's code is a plugin, a plugin
+/// is installed while the `App` is being built, and that moment is long past by
+/// the time anyone clicks a menu. So the pick is validated here, where a bad one
+/// can still be reported in a dialog the user is looking at, and the good one is
+/// carried across the restart by
+/// [`renzora::core::bevy_project::restart_into`].
+///
+/// Validation is structural only: is this a crate, does it depend on Bevy.
+/// Whether its `fn main` can be read, and whether it compiles, are answered
+/// after the restart by the loader, which has the SDK and reports into the
+/// Console and the Problems panel. Answering them here would mean running a
+/// compiler from inside a file dialog's callback.
+#[cfg(not(target_arch = "wasm32"))]
+fn handle_request_import_bevy_project(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestImportBevyProject>>,
+    mut app_config: ResMut<AppConfig>,
+) {
+    let Some(request) = request else { return };
+    let picked = request.0.clone();
+    commands.remove_resource::<renzora::RequestImportBevyProject>();
+
+    // Already chosen by Open Project, which found a Bevy crate where it expected
+    // a Renzora one. Asking for the folder again would be asking the user to
+    // repeat themselves.
+    let root = match picked {
+        Some(root) => root,
+        None => {
+            let Some(root) = rfd::FileDialog::new()
+                .set_title(renzora::lang::t("splash.import_bevy_project"))
+                .pick_folder()
+            else {
+                return;
+            };
+            root
+        }
+    };
+
+    // Two different "no", and they need different words. A folder with no
+    // `Cargo.toml` is not a crate at all; one with a `Cargo.toml` and no `bevy`
+    // is somebody's CLI tool. Both used to be "could not open project".
+    if renzora::core::bevy_project::inspect(&root).is_none() {
+        let detail = if root.join("Cargo.toml").is_file() {
+            "Its Cargo.toml has no `bevy` dependency.\n\nIf this is a workspace, name the game \
+             crate in the root Cargo.toml:\n\n    [workspace.metadata.renzora]\n    member = \
+             \"crates/game\""
+        } else {
+            "There is no Cargo.toml here. Pick the folder that holds your crate."
+        };
+        rfd::MessageDialog::new()
+            .set_title("Not a Bevy Project")
+            .set_description(format!("{}\n\n{detail}", root.display()))
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+        return;
+    }
+
+    // Recorded before the restart, not after: the child process reads this file
+    // at launch, so writing it afterwards would be writing it in a process that
+    // no longer exists.
+    app_config.add_recent_project(root.clone());
+    let _ = app_config.save();
+    info!("[splash] importing Bevy project {}", root.display());
+    renzora::core::bevy_project::restart_into(&root);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn handle_request_import_bevy_project(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestImportBevyProject>>,
+) {
+    if request.is_some() {
+        commands.remove_resource::<renzora::RequestImportBevyProject>();
+        // Not a missing feature so much as a missing platform: the browser has
+        // no `rustc` to compile the crate and no `dlopen` to load it with.
+        warn!("Importing a Bevy project needs a Rust toolchain, so it is desktop-only");
+    }
+}
+
 /// Consume `renzora::RequestOpenProjectPath` — File > Recent Projects, which
 /// already knows the root and so skips the dialog `handle_request_open_project`
 /// opens. Everything after the pick is the same, deliberately: the entry is
@@ -173,12 +273,18 @@ fn handle_request_open_project(
 fn handle_request_open_project_path(
     mut commands: Commands,
     request: Option<Res<renzora::RequestOpenProjectPath>>,
+    launched: Option<Res<renzora::core::bevy_project::LaunchedBevyProject>>,
     mut app_config: ResMut<AppConfig>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
     let Some(request) = request else { return };
     let root = request.0.clone();
     commands.remove_resource::<renzora::RequestOpenProjectPath>();
+
+    if let Some(request) = launcher::restart_needed_for(launched.as_deref(), &root) {
+        commands.insert_resource(request);
+        return;
+    }
 
     let project = match project::open_project(&root.join("project.toml")) {
         Ok(p) => p,

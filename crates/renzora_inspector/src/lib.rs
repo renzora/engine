@@ -11,6 +11,7 @@ mod panel;
 pub mod reflect_source;
 mod resources;
 mod richtext;
+mod project_components;
 mod scripts;
 mod textfont;
 
@@ -37,6 +38,9 @@ impl Plugin for InspectorPanelPlugin {
         // The inspector panel + the script drawer.
         panel::register(app);
         scripts::register(app);
+        // The Bevy-project equivalent of the script drawer: what the project's
+        // own code put on this entity, and where that code lives.
+        project_components::register(app);
         camera_presets::register(app);
         textfont::register(app);
         resources::register(app);

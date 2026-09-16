@@ -136,6 +136,13 @@ pub(crate) struct SectionSpec {
         renzora::core::viewport_types::GraphicsQuality,
         renzora::core::viewport_types::QualityGate,
     )>,
+    /// Where this component's type is declared, when the editor knows: the file
+    /// and the 1-based line. Puts an "open source" glyph in the header.
+    ///
+    /// Only a Bevy project's own components have one. An engine component is
+    /// declared in a crate the user did not write and probably does not have
+    /// checked out, so offering to open it would be offering a broken link.
+    pub(crate) source: Option<(std::path::PathBuf, u32)>,
     pub(crate) fields: Vec<FieldSpec>,
 }
 

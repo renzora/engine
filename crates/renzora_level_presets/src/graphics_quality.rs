@@ -116,6 +116,7 @@ fn enforce_graphics_quality(
     settings: Option<Res<ViewportSettings>>,
     mut state: ResMut<GraphicsQualityState>,
     mut resolved: ResMut<ResolvedGraphicsQuality>,
+    mut occlusion: ResMut<renzora::OcclusionCullingEnabled>,
     routing: Option<ResMut<EffectRouting>>,
     mut commands: Commands,
     mut gi_rt: Query<&mut RtLighting, With<ViewportCamera>>,
@@ -137,6 +138,14 @@ fn enforce_graphics_quality(
     // that a shipped game applies from project config.
     if resolved.0 != q {
         resolved.0 = q;
+    }
+
+    // Same mirroring for occlusion culling, which is a separate switch rather
+    // than part of a tier: it makes rendering cheaper, so gating it behind the
+    // High tier would turn it off exactly where it is most wanted.
+    // `renzora_engine::occlusion_culling` reads this and decides per camera.
+    if occlusion.0 != settings.occlusion_culling {
+        occlusion.0 = settings.occlusion_culling;
     }
 
     // On a tier change, nudge the routers so any effect a lower tier had disabled
@@ -253,6 +262,7 @@ mod tests {
         });
         world.init_resource::<GraphicsQualityState>();
         world.init_resource::<ResolvedGraphicsQuality>();
+        world.init_resource::<renzora::OcclusionCullingEnabled>();
         world.insert_resource(DirectionalLightShadowMap { size: 4096 });
 
         let camera = world

@@ -812,14 +812,24 @@ fn sync_brush_active(paint: Res<TilemapPaintMode>, mut brush_active: ResMut<View
 /// viewport and a tilemap is active — the keyboard mirror of the header's
 /// Mode dropdown. Gated on viewport hover so Tab keeps its meaning in text
 /// fields and other panels.
+///
+/// Hover alone is not enough: Tab now moves between fields *and commits the
+/// one it leaves*, and a user typing in the inspector with the pointer resting
+/// over the viewport would otherwise flip the paint mode with every field they
+/// tab through. `ui_wants_keyboard` is the same gate every other editor
+/// shortcut uses while a field is being typed into.
 fn toggle_paint_mode_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
+    input_focus: Option<Res<renzora::core::session::InputFocusState>>,
     active: Res<ActiveTilemap>,
     mut settings: Option<ResMut<ViewportSettings>>,
 ) {
     use renzora::core::viewport_types::ViewportMode;
     if !keys.just_pressed(KeyCode::Tab) || active.0.is_none() {
+        return;
+    }
+    if input_focus.is_some_and(|f| f.ui_wants_keyboard) {
         return;
     }
     if !viewport.is_some_and(|v| v.hovered) {

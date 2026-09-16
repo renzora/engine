@@ -822,7 +822,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
 
     // Ensure the asset reader knows the project path before loading the scene.
     if let Some(project) = world.get_resource::<CurrentProject>() {
-        let path = project.path.clone();
+        let path = project.asset_root_path();
         if let Some(asset_path) = world.get_resource::<renzora_engine::ProjectAssetPath>() {
             info!("[scene] Syncing project asset path: {}", path.display());
             asset_path.set(path);
@@ -841,8 +841,20 @@ fn load_scene_on_enter_loading(world: &mut World) {
             .filter(|s| !s.is_empty())
             .cloned()
             .unwrap_or_else(|| project.config.main_scene.clone());
-        let path = project.resolve_path(&relative);
-        scene_io::load_scene(world, &path);
+        // A code-first project has no scene and never will: its world is built
+        // by its own `Startup` systems. Resolving an empty `main_scene` gives
+        // the project directory, and asking the loader to read a directory
+        // reported `Failed to read scene file <project>\ (os error 3)` on every
+        // open: an error about a file nobody ever asked for.
+        if relative.is_empty() {
+            info!(
+                "[scene] {} names no scene, so there is none to load",
+                project.config.name
+            );
+        } else {
+            let path = project.resolve_path(&relative);
+            scene_io::load_scene(world, &path);
+        }
     }
     extract_orbit_from_scene_camera(world);
 

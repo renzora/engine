@@ -372,6 +372,27 @@ pub struct RequestOpenProject;
 #[derive(bevy::prelude::Resource)]
 pub struct RequestOpenProjectPath(pub std::path::PathBuf);
 
+/// Request: import a hand-written Bevy crate as the project.
+///
+/// [`RequestOpenProject`]'s sibling for the other kind of project, and a
+/// separate request rather than a branch inside that one because the two do
+/// genuinely different things: opening a Renzora project is a state transition,
+/// and importing a Bevy one is a **restart**: its code is installed while the
+/// `App` is being built, which for the running editor has already happened.
+///
+/// Consumed by the splash plugin, which owns the folder dialog, validates the
+/// pick and hands off through
+/// [`core::bevy_project::restart_into`](crate::core::bevy_project::restart_into).
+///
+/// `None` means "ask the user which folder": the File menu and the dashboard
+/// button, neither of which knows one yet. `Some(path)` is a folder that has
+/// **already** been picked, which is what Open Project does when the thing it
+/// was handed turns out to be a Bevy crate: asking for a second folder right
+/// after the user chose one is the kind of thing software does when two features
+/// were bolted together rather than joined.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestImportBevyProject(pub Option<std::path::PathBuf>);
+
 /// The recently-opened project roots, most recent first.
 ///
 /// Mirrored out of the launcher's `AppConfig` by the splash plugin, which owns

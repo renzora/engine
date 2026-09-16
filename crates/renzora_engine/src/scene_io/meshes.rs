@@ -37,13 +37,15 @@ pub fn rehydrate_meshes(
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+    mut cache: Option<ResMut<crate::primitive_cache::PrimitiveAssets>>,
     grid: Option<Res<renzora::core::GridTexture>>,
 ) {
-    let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
+    let (Some(mut meshes), Some(mut materials), Some(mut cache)) = (meshes, materials, cache)
+    else {
         return;
     };
     for (entity, primitive, color, material_ref) in &query {
-        let Some(mesh) = registry.create_mesh(&primitive.0, &mut meshes) else {
+        let Some(mesh) = cache.mesh(&primitive.0, &registry, &mut meshes) else {
             warn!("Unknown shape ID '{}' — skipping rehydration", primitive.0);
             continue;
         };
@@ -61,10 +63,7 @@ pub fn rehydrate_meshes(
         // `MeshColor` is serialized, so this system *is* the material after a
         // reload: anything it gets wrong shows up as shapes changing appearance
         // when you save and open the scene again.
-        let material = materials.add(crate::blockout::blockout_material(
-            base_color,
-            grid.as_deref(),
-        ));
+        let material = cache.material(base_color, grid.as_deref(), &mut materials);
 
         commands
             .entity(entity)

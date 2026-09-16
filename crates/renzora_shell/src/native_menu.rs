@@ -75,6 +75,7 @@ fn command_id(cmd: &MenuCommand) -> String {
         OpenRecent(_) => unreachable!("handled above"),
         NewProject => "renzora.new_project",
         OpenProject => "renzora.open_project",
+        ImportBevyProject => "renzora.import_bevy_project",
         NewScene => "renzora.new_scene",
         OpenScene => "renzora.open_scene",
         Save => "renzora.save",
@@ -269,6 +270,7 @@ fn build_menu(world: &mut World) {
         &[
             &item(MenuCommand::NewProject, renzora::lang::t("menu.file.new_project")),
             &item(MenuCommand::OpenProject, renzora::lang::t("menu.file.open_project")),
+            &item(MenuCommand::ImportBevyProject, renzora::lang::t("menu.file.import_bevy_project")),
             &recent,
             &PredefinedMenuItem::separator(),
             &item(MenuCommand::NewScene, renzora::lang::t("menu.file.new_scene")),

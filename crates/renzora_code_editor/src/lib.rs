@@ -587,7 +587,14 @@ fn consume_open_code_editor_file(
     mut state: ResMut<CodeEditorState>,
 ) {
     let Some(req) = request else { return };
+    let line = req.line;
     state.open_file(req.path.clone());
+    // Queued rather than scrolled here: the file has only just been handed to
+    // the editor, so the view it would scroll has not been laid out yet. The
+    // Problems panel jumps by the same field, for the same reason.
+    if let Some(line) = line {
+        state.pending_goto_line = Some(line as usize);
+    }
     commands.remove_resource::<renzora::core::OpenCodeEditorFile>();
 }
 

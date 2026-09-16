@@ -1151,10 +1151,25 @@ pub struct RenderingConfig {
     /// non-`Disabled` `[viewport] stretch_mode` is active.
     #[serde(default = "default_render_scale")]
     pub render_scale: f32,
+    /// GPU occlusion culling for the **shipped game** — skip meshes that are
+    /// fully behind other opaque geometry, before their vertices are
+    /// transformed. See [`OcclusionCullingEnabled`] for what it does and when it
+    /// declines to do it.
+    ///
+    /// On by default: it is dynamic (no bake step), its CPU cost is negligible,
+    /// and it pays for itself in anything with interiors or dense geometry. Turn
+    /// it off for a scene where almost everything visible is genuinely visible
+    /// (an open landscape), where building the depth pyramid buys nothing.
+    #[serde(default = "default_occlusion_culling")]
+    pub occlusion_culling: bool,
 }
 
 fn default_render_scale() -> f32 {
     1.0
+}
+
+fn default_occlusion_culling() -> bool {
+    true
 }
 
 impl Default for RenderingConfig {
@@ -1163,6 +1178,7 @@ impl Default for RenderingConfig {
             mode: RenderingMode::default(),
             graphics_quality: crate::core::viewport_types::GraphicsQuality::default(),
             render_scale: default_render_scale(),
+            occlusion_culling: default_occlusion_culling(),
         }
     }
 }
@@ -1207,6 +1223,42 @@ impl ResolvedRenderingMode {
 /// seeder has run gets the safe, lighter tier rather than the full stack.
 #[derive(bevy::prelude::Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ResolvedGraphicsQuality(pub crate::core::viewport_types::GraphicsQuality);
+
+/// Whether GPU occlusion culling is wanted **this session**, seeded the same
+/// two ways [`ResolvedGraphicsQuality`] is: `renzora_engine` reads
+/// [`RenderingConfig::occlusion_culling`] for a shipped game, and the editor
+/// mirrors `ViewportSettings.occlusion_culling` (Settings → Viewport →
+/// Performance) onto it.
+///
+/// # What it buys
+///
+/// Frustum culling drops what is outside the camera's view. Occlusion culling
+/// drops what is *inside* it but behind something opaque, before the GPU
+/// transforms those vertices — which the depth test cannot do, because by the
+/// time a fragment is rejected on depth its vertices have already been shaded
+/// and skinned. Bevy's implementation is two-phase and fully dynamic: an early
+/// depth prepass over last frame's visible set builds a depth pyramid, every
+/// mesh's bounding box is tested against it, and the survivors go through a late
+/// prepass. There is no bake step and large animated meshes can occlude.
+///
+/// # Where it declines
+///
+/// "Wanted" rather than "in force" — `renzora_engine::occlusion_culling` is what
+/// decides per camera, and there are three cases where it will not attach:
+/// deferred shading (upstream states the combination is unspecified behaviour),
+/// an offscreen utility camera, and a platform with no GPU preprocessing, where
+/// Bevy marks the view `NoIndirectDrawing` and the component is inert anyway.
+///
+/// Defaults to `true`, matching [`RenderingConfig::occlusion_culling`], so a
+/// crate reading it before either seeder has run agrees with the seeders.
+#[derive(bevy::prelude::Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OcclusionCullingEnabled(pub bool);
+
+impl Default for OcclusionCullingEnabled {
+    fn default() -> Self {
+        Self(true)
+    }
+}
 
 /// One entry in [`ProjectConfig::editor_open_tabs`] — a document tab the
 /// editor had open when the project was last used. Lives in the contract
@@ -1295,6 +1347,10 @@ fn audio_is_empty(a: &AudioConfig) -> bool {
     a.buses.is_empty()
 }
 
+fn kind_is_authored(k: &ProjectKind) -> bool {
+    *k == ProjectKind::Authored
+}
+
 /// One project's editor state, stored per-user in `settings.toml` under
 /// `[projects."<absolute path>"]`.
 ///
@@ -1312,11 +1368,75 @@ pub struct ProjectEditorState {
     pub open_tabs: Vec<EditorOpenTab>,
 }
 
+/// Where a project's content actually comes from.
+///
+/// The engine's own projects are **authored**: a scene file is the truth, the
+/// editor edits it, and code is attached to entities. A Bevy project is
+/// **code-first**: there is no scene file and there never will be, because the
+/// world is built by `Startup` systems in the user's crate. That single
+/// difference changes what half the editor should do, which is why it is one
+/// field rather than a scattering of heuristics:
+///
+/// - the unnamed-entity guard *names* rather than despawns, because code that
+///   was never written for this engine does not call `Name::new`
+///   (`renzora_engine::named_entities`);
+/// - the asset reader looks under [`ProjectConfig::asset_root`], because Bevy's
+///   `AssetPlugin` roots at `assets/` and the engine roots at the project;
+/// - there is no main scene to open, so the editor goes straight to the world
+///   the game built.
+///
+/// Deliberately not inferred at every call site from "does a `Cargo.toml`
+/// exist". A Renzora project may perfectly well have one (it can hold native
+/// plugin sources or an `xtask`) and a heuristic that read that as "this is a
+/// Bevy game" would quietly change the behaviour of the guard and the asset
+/// reader on a project that never asked for it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectKind {
+    /// Scenes are the truth; the editor authors them. The historical default,
+    /// and what every `project.toml` written before this existed means.
+    #[default]
+    Authored,
+    /// A hand-written Bevy crate. The editor compiles it, loads it, and shows
+    /// the world its code builds. See `renzora_bevy_project`.
+    Bevy,
+}
+
+impl ProjectKind {
+    /// Is the world built by the project's own Rust code rather than a scene?
+    pub fn is_code_first(self) -> bool {
+        matches!(self, ProjectKind::Bevy)
+    }
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
     pub name: String,
     pub version: String,
+    /// Whether this project's world comes from a scene or from its own code.
+    ///
+    /// `#[serde(default)]` so every `project.toml` in existence keeps meaning
+    /// [`ProjectKind::Authored`], and `skip_serializing_if` so none of them
+    /// grows a line saying so. A Bevy project usually has no `project.toml` at
+    /// all: [`crate::open_project`] synthesizes its config from `Cargo.toml`
+    /// rather than writing a file into someone's git repository.
+    #[serde(default, skip_serializing_if = "kind_is_authored")]
+    pub kind: ProjectKind,
+    /// Project-relative directory the asset reader resolves paths against.
+    ///
+    /// Empty (the default) means the project root, which is what every Renzora
+    /// project has always meant: `models/tree.glb` is `<project>/models/tree.glb`.
+    /// A Bevy project sets `"assets"`, because `AssetPlugin`'s default
+    /// `file_path` is `assets` and its code says `load("models/tree.glb")`
+    /// meaning `<project>/assets/models/tree.glb`.
+    ///
+    /// Without it every asset a Bevy project loads misses, and the failure is
+    /// the worst shape available: `AssetNotFound` per handle, a scene that
+    /// renders empty, and nothing anywhere naming the directory that was
+    /// actually searched.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub asset_root: String,
     /// The engine version that created this project ([`crate::version::ENGINE_VERSION`]
     /// at the moment the folder was made, e.g. `"r1-alpha7"`).
     ///
@@ -1402,6 +1522,8 @@ impl Default for ProjectConfig {
         Self {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
+            kind: ProjectKind::Authored,
+            asset_root: String::new(),
             // Deliberately not `ENGINE_VERSION`: this default is also what an
             // in-memory config falls back to for an *existing* project, and
             // stamping it there would have the next save claim someone else's
@@ -1464,6 +1586,23 @@ impl CurrentProject {
 
     pub fn main_scene_path(&self) -> PathBuf {
         self.resolve_path(&self.config.main_scene)
+    }
+
+    /// The directory the asset reader resolves `load("…")` paths against.
+    ///
+    /// The project root for every project the engine has ever had, and
+    /// `<root>/assets` for a Bevy project, because that is where Bevy's own
+    /// `AssetPlugin` looks. Everything that hands a path to the reader goes
+    /// through here rather than reaching for `path` directly: the three call
+    /// sites that set it are spread across `renzora_engine` and `renzora_scene`
+    /// and each is there to beat a different piece of load-order, so a fourth
+    /// one that forgot the sub-directory would show up as assets that resolve
+    /// on some paths into the editor and not others.
+    pub fn asset_root_path(&self) -> PathBuf {
+        if self.config.asset_root.is_empty() {
+            return self.path.clone();
+        }
+        self.path.join(&self.config.asset_root)
     }
 
     /// Save the project config back to project.toml.
@@ -1541,18 +1680,36 @@ impl CurrentProject {
 
     /// Convert an absolute path to an asset-relative path for `AssetServer::load()`.
     ///
-    /// Strips the project root prefix so the resulting path
-    /// (e.g. `textures/foo.png`) is portable across machines and works with the
-    /// asset reader in both editor and standalone runtime builds.
+    /// Strips the **asset root** (see [`Self::asset_root_path`]), so the result
+    /// (`textures/foo.png`) is what the asset reader resolves, and is portable
+    /// across machines and between the editor and a standalone runtime.
+    ///
+    /// It stripped the *project* root until a Bevy project made the two
+    /// different. For every Renzora project they are the same directory, so the
+    /// bug was invisible for as long as that was the only kind of project there
+    /// was; open a Bevy crate, whose assets live in `<root>/assets`, and every
+    /// one of the 28 call sites handed the reader `assets/textures/foo.png` for
+    /// a reader already rooted at `<root>/assets`. That resolves to
+    /// `<root>/assets/assets/textures/foo.png`, and the whole asset browser
+    /// filled with `Path not found` and blank thumbnails for files plainly
+    /// sitting right there in the grid.
+    ///
+    /// A path under the project but **outside** the asset root (`src/main.rs`)
+    /// now falls through to the absolute path rather than being made relative to
+    /// something that cannot load it. That is what the callers already expect:
+    /// several test `is_absolute()` on the result and bail, precisely because an
+    /// absolute path is the signal that the asset server cannot take this one.
     pub fn make_asset_relative(&self, path: &Path) -> String {
+        let root = self.asset_root_path();
+
         // Try direct strip first
-        if let Ok(rel) = path.strip_prefix(&self.path) {
+        if let Ok(rel) = path.strip_prefix(&root) {
             return rel.to_string_lossy().replace('\\', "/");
         }
 
         // Try canonicalized paths
-        if let (Ok(canon_proj), Ok(canon_path)) = (self.path.canonicalize(), path.canonicalize()) {
-            if let Ok(rel) = canon_path.strip_prefix(&canon_proj) {
+        if let (Ok(canon_root), Ok(canon_path)) = (root.canonicalize(), path.canonicalize()) {
+            if let Ok(rel) = canon_path.strip_prefix(&canon_root) {
                 return rel.to_string_lossy().replace('\\', "/");
             }
         }
@@ -1586,6 +1743,8 @@ mod tests {
         let original = ProjectConfig {
             name: "Demo".into(),
             version: "0.2.1".into(),
+            kind: ProjectKind::Authored,
+            asset_root: String::new(),
             created_with: Some("r1-alpha7".into()),
             main_scene: "scenes/intro.ron".into(),
             editor_last_scene: Some("scenes/wip.ron".into()),
@@ -1816,5 +1975,51 @@ mod tests {
         // forward slashes regardless of input separator.
         let rel = std::path::Path::new("scenes/main.ron");
         assert_eq!(proj.make_relative(rel), Some("scenes/main.ron".into()));
+    }
+
+    /// A Renzora project keeps its assets at the root, so nothing changes: this
+    /// is the case that made the bug below invisible for as long as it was the
+    /// only kind of project the engine had.
+    #[test]
+    fn an_authored_projects_asset_path_is_relative_to_the_root() {
+        let proj = make_project("/projects/demo");
+        assert_eq!(
+            proj.make_asset_relative(Path::new("/projects/demo/textures/foo.png")),
+            "textures/foo.png"
+        );
+    }
+
+    /// The regression. A Bevy project's assets live in `<root>/assets`, and the
+    /// asset reader is rooted there, so the reader must be handed
+    /// `textures/foo.png`. Stripping the *project* root produced
+    /// `assets/textures/foo.png`, which the reader resolved against its own root
+    /// to `<root>/assets/assets/textures/foo.png` and reported as not found for
+    /// every file in the browser.
+    #[test]
+    fn a_bevy_projects_asset_path_is_relative_to_the_asset_root() {
+        let mut proj = make_project("/projects/game");
+        proj.config.kind = ProjectKind::Bevy;
+        proj.config.asset_root = "assets".to_string();
+        assert_eq!(
+            proj.make_asset_relative(Path::new("/projects/game/assets/textures/foo.png")),
+            "textures/foo.png"
+        );
+    }
+
+    /// A file inside the project but outside the asset root is not something the
+    /// asset server can load, and saying so with an absolute path is what the
+    /// callers test for: several check `is_absolute()` and skip. Returning
+    /// `src/main.rs` would look loadable and fail later instead.
+    #[test]
+    fn a_path_outside_the_asset_root_stays_absolute() {
+        let mut proj = make_project("/projects/game");
+        proj.config.kind = ProjectKind::Bevy;
+        proj.config.asset_root = "assets".to_string();
+        let out = proj.make_asset_relative(Path::new("/projects/game/src/main.rs"));
+        assert!(
+            Path::new(&out).is_absolute() || out.contains("src/main.rs"),
+            "expected the untouched path, got {out}"
+        );
+        assert_ne!(out, "src/main.rs");
     }
 }

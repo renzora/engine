@@ -68,6 +68,24 @@ pub(crate) struct EmberDragValue {
     caret: Entity,
 }
 
+impl EmberDragValue {
+    /// Whether the field is in keyboard-edit mode. Tab traversal treats an
+    /// editing field as the focused one, the way it treats a focused text input.
+    pub(crate) fn is_editing(&self) -> bool {
+        self.editing
+    }
+
+    /// Test-only: put the field into keyboard-edit mode with `typed` already in
+    /// its buffer. Reaching this state for real takes a window, a cursor and key
+    /// events; what the Tab tests are about is what happens *after* the typing.
+    #[cfg(test)]
+    pub(crate) fn begin_edit_for_test(&mut self, typed: &str) {
+        self.editing = true;
+        self.select_all = false;
+        self.buffer = typed.to_string();
+    }
+}
+
 /// Optional inclusive clamp for a [`drag_value`]. Insert alongside the widget
 /// to bound its scrub range (matches egui's `DragValue::range`). When present it
 /// also fills the field to show where the value sits in that range.
@@ -805,50 +823,118 @@ pub(crate) fn drag_value_edit(
             }
         }
 
-        // The value bar stands down while the field is being typed into. Both it
-        // and the select-all highlight are translucent accent washes over the
-        // same field, so together they read as one confusing half-lit box —
-        // and an editing field is a text box, not a gauge. `drag_value_apply`
-        // owns the bar the rest of the time; this runs on the frame the edit
-        // ends too (the commit clears `editing` above), so the bar comes back
-        // even when the value it was showing never changed.
-        if let Some(f) = dv.fill {
-            if let Ok(mut n) = nodes.get_mut(f) {
-                let d = if dv.editing || range.is_none() {
-                    Display::None
-                } else {
-                    Display::Flex
-                };
-                if n.display != d {
-                    n.display = d;
-                }
-            }
-        }
+        sync_edit_visuals(&dv, range.is_some(), &mut nodes);
+    }
+}
 
-        // Sync the full-field selection highlight + the caret to the final state.
-        // While everything is selected the highlight shows (no caret); once the
-        // selection is replaced the caret takes over.
-        if let Ok(mut n) = nodes.get_mut(dv.highlight) {
-            let d = if dv.editing && dv.select_all {
-                Display::Flex
-            } else {
+/// Redraw the three nodes that show a field's edit state: the value bar, the
+/// select-all highlight and the caret.
+///
+/// The value bar stands down while the field is being typed into. Both it and
+/// the select-all highlight are translucent accent washes over the same field,
+/// so together they read as one confusing half-lit box — and an editing field
+/// is a text box, not a gauge. `drag_value_apply` owns the bar the rest of the
+/// time; this also runs on the frame an edit *ends*, so the bar comes back even
+/// when the value it was showing never changed.
+///
+/// While everything is selected the highlight shows (no caret); once the
+/// selection is replaced the caret takes over.
+fn sync_edit_visuals(dv: &EmberDragValue, ranged: bool, nodes: &mut Query<&mut Node>) {
+    if let Some(f) = dv.fill {
+        if let Ok(mut n) = nodes.get_mut(f) {
+            let d = if dv.editing || !ranged {
                 Display::None
-            };
-            if n.display != d {
-                n.display = d;
-            }
-        }
-        if let Ok(mut n) = nodes.get_mut(dv.caret) {
-            let d = if dv.editing && !dv.select_all {
-                Display::Flex
             } else {
-                Display::None
+                Display::Flex
             };
             if n.display != d {
                 n.display = d;
             }
         }
     }
+    if let Ok(mut n) = nodes.get_mut(dv.highlight) {
+        let d = if dv.editing && dv.select_all {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if n.display != d {
+            n.display = d;
+        }
+    }
+    if let Ok(mut n) = nodes.get_mut(dv.caret) {
+        let d = if dv.editing && !dv.select_all {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if n.display != d {
+            n.display = d;
+        }
+    }
+}
+
+/// Accept what was typed into a field and leave keyboard-edit mode: exactly the
+/// ending `Enter` gives it, reused by Tab (see [`super::form`]).
+///
+/// Tab used to do nothing to a numeric field: focus moved on and the typed
+/// digits sat in a buffer nobody would ever commit, so the field silently
+/// snapped back to its old value. Tabbing out of a field accepts it, like
+/// every other editor's, so the commit has to live somewhere both keys can
+/// reach.
+pub(crate) fn tab_commit(
+    dv: &mut EmberDragValue,
+    bound: &mut Bound<f32>,
+    range: Option<&DragRange>,
+    snap: Option<&DragSnap>,
+    styled: Option<&mut Styled>,
+    cursor: &mut crate::cursor_icon::HoverCursor,
+    texts: &mut Query<&mut Text>,
+    nodes: &mut Query<&mut Node>,
+) {
+    if let Some(v) = parse_commit(&dv.buffer, range) {
+        let v = apply_snap(v, snap);
+        if v != bound.0 {
+            bound.0 = v;
+        }
+    }
+    dv.editing = false;
+    dv.select_all = false;
+    dv.buffer.clear();
+    cursor.0 = SystemCursorIcon::EwResize;
+    if let Some(s) = styled {
+        s.state = WidgetState::Normal;
+    }
+    if let Ok(mut t) = texts.get_mut(dv.text) {
+        *t = Text::new(format_num(bound.0));
+    }
+    sync_edit_visuals(dv, range.is_some(), nodes);
+}
+
+/// Enter keyboard-edit mode with the whole value selected, which is what a click
+/// on the field does, reused when Tab lands on one so a tabbed-into number can
+/// be typed over straight away.
+pub(crate) fn tab_focus(
+    dv: &mut EmberDragValue,
+    value: f32,
+    ranged: bool,
+    styled: Option<&mut Styled>,
+    cursor: &mut crate::cursor_icon::HoverCursor,
+    texts: &mut Query<&mut Text>,
+    nodes: &mut Query<&mut Node>,
+) {
+    dv.editing = true;
+    dv.buffer = edit_string(value);
+    dv.select_all = true;
+    cursor.0 = SystemCursorIcon::Text;
+    if let Some(s) = styled {
+        s.state = WidgetState::Active;
+    }
+    let buf = dv.buffer.clone();
+    if let Ok(mut t) = texts.get_mut(dv.text) {
+        *t = Text::new(buf);
+    }
+    sync_edit_visuals(dv, ranged, nodes);
 }
 
 /// Model (`Bound<f32>`) → displayed text + the value fill (drag or external

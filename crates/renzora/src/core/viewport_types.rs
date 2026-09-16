@@ -1136,6 +1136,13 @@ pub struct ViewportSettings {
     /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
     /// editor stays responsive on weak / high-DPI hardware out of the box.
     pub graphics_quality: GraphicsQuality,
+    /// GPU occlusion culling in the editor viewports — skip meshes fully hidden
+    /// behind other opaque geometry before their vertices are transformed.
+    /// Mirrored onto [`OcclusionCullingEnabled`](crate::OcclusionCullingEnabled)
+    /// by `renzora_level_presets::graphics_quality`, which is what actually
+    /// attaches it to a camera (and what declines to, on a deferred or offscreen
+    /// one). On by default. Settings → Viewport → Performance.
+    pub occlusion_culling: bool,
     /// Show the transform gizmo + selection outline/handles in **every** open
     /// viewport at once. Off by default — the gizmo follows the viewport your
     /// cursor is in, so the other views stay clean — matching most DCCs. Turn it
@@ -1197,6 +1204,7 @@ impl Default for ViewportSettings {
             vsync: true,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
+            occlusion_culling: true,
             gizmos_all_viewports: false,
             gizmo_pivot_bottom: true,
         }
@@ -1344,6 +1352,11 @@ pub struct PersistedViewportSettings {
     /// (`"Medium"`), so upgrading projects pick up the lighter default.
     #[serde(default = "default_graphics_quality")]
     pub graphics_quality: String,
+    /// Missing in configs written before this field existed → `true`, matching
+    /// the live default: an existing project should pick occlusion culling up
+    /// rather than be the one place it stays off.
+    #[serde(default = "default_true")]
+    pub occlusion_culling: bool,
     /// Missing in configs written before this field existed → `false`.
     #[serde(default)]
     pub gizmos_all_viewports: bool,
@@ -1416,6 +1429,7 @@ impl PersistedViewportSettings {
             vsync: s.vsync,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
             graphics_quality: s.graphics_quality.label().to_string(),
+            occlusion_culling: s.occlusion_culling,
             gizmos_all_viewports: s.gizmos_all_viewports,
         }
     }
@@ -1499,6 +1513,7 @@ impl PersistedViewportSettings {
         s.vsync = self.vsync;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
         s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
+        s.occlusion_culling = self.occlusion_culling;
         s.gizmos_all_viewports = self.gizmos_all_viewports;
     }
 }
@@ -1646,6 +1661,8 @@ mod tests {
             gizmo_drag_opacity: 0.6,
             // Non-default tier (default is Medium) so the round-trip exercises it.
             graphics_quality: GraphicsQuality::High,
+            // Non-default (default is true) so the round-trip exercises it.
+            occlusion_culling: false,
             // Non-default (default is false) so the round-trip exercises it.
             gizmos_all_viewports: true,
         }
@@ -1699,6 +1716,7 @@ mod tests {
         assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
         assert_eq!(original.graphics_quality, restored.graphics_quality);
+        assert_eq!(original.occlusion_culling, restored.occlusion_culling);
         assert_eq!(
             original.gizmos_all_viewports,
             restored.gizmos_all_viewports

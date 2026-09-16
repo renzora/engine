@@ -294,6 +294,7 @@ pub fn register(app: &mut App) {
         Update,
         (
             systems::remove_click,
+            systems::open_source_click,
             systems::add_button_click,
             systems::field_button_click,
             systems::reset_click,

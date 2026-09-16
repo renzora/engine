@@ -80,6 +80,12 @@ pub use renzora_native_build::deps;
 /// SDK has to agree on where the install root is, and inside a Linux AppImage
 /// that is NOT the executable's parent.
 pub use renzora_native_build::install;
+/// Re-exported for the same reason as [`deps`] and [`install`]: the `rustc`
+/// command line is shared with `xtask`, and anything that needs to build a
+/// plugin a slightly different way (the `plugin_interop` example builds one
+/// *without* pruning its metadata, so another plugin can link it) has to reach
+/// the one builder rather than assembling a second, drifting copy.
+pub use renzora_native_build::rustc;
 
 /// What the SDK's `manifest.json` records, written by `cargo renzora sdk`.
 #[derive(Debug, Deserialize)]
@@ -368,6 +374,7 @@ impl Sdk {
         // own plugins. Everything below is just resolving this SDK's manifest
         // into the absolute paths that shared code takes.
         let name = crate_name(dir);
+        let edition = edition(&manifest);
         let bevy = self.root.join(&self.manifest.r#extern.bevy);
         let renzora = self.root.join(&self.manifest.r#extern.renzora);
         let ember = self.manifest.r#extern.renzora_ember.as_ref().map(|e| self.root.join(e));
@@ -384,6 +391,7 @@ impl Sdk {
             // whatever rustup's default happens to be.
             toolchain: &self.manifest.rustc,
             crate_name: &name,
+            edition: &edition,
             extern_bevy: &bevy,
             extern_renzora: &renzora,
             extern_ember: ember.as_deref(),
@@ -473,6 +481,41 @@ fn crate_name(dir: &Path) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("plugin")
         .replace('-', "_")
+}
+
+/// The Rust edition `dir`'s manifest asks for.
+///
+/// `2021` when there is no `edition` key, which is deliberately **not** cargo's
+/// own default of 2015: a manifest with no edition here is one this crate
+/// generated, and [`ensure_cargo_manifest`] writes 2021 into it. Reading the key
+/// rather than assuming it is what lets a project supply its own manifest: a
+/// game crate written in edition 2024 compiles as 2024.
+///
+/// Parsed by hand rather than with `toml`, because the only thing wanted is one
+/// scalar out of a file whose shape is already known, and `serde` is otherwise
+/// not needed on this path at all.
+fn edition(dir: &Path) -> String {
+    let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+        return "2021".to_string();
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        // `[package]`-level only. A `[dependencies]` entry could carry the word
+        // in an inline table, and a section header ends the search rather than
+        // risking it.
+        if line.starts_with('[') && line != "[package]" {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("edition") {
+            if let Some(v) = value.trim_start().strip_prefix('=') {
+                let v = v.trim().trim_matches('"');
+                if !v.is_empty() {
+                    return v.to_string();
+                }
+            }
+        }
+    }
+    "2021".to_string()
 }
 
 /// Make sure `dir` has a `Cargo.toml`, and return `dir`.

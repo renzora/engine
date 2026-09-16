@@ -852,7 +852,7 @@ fn script_open_click(
                     None => path.clone(),
                 }
             };
-            w.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
+            w.insert_resource(renzora::core::OpenCodeEditorFile { path: abs, line: None });
             if let Some(mut dock) = w.get_resource_mut::<renzora_ember::dock::Dock>() {
                 dock.tree.focus_or_add_panel("code_editor");
             }
