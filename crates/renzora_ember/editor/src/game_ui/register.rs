@@ -12,6 +12,7 @@
 //! `crate::game_ui::ui_inspector`), and `UiWidgetType::icon()` became the free fn
 //! [`widget_icon`] here (icons are name-based, resolved via the phosphor map).
 
+use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
 use renzora::AppEditorExt;
@@ -690,18 +691,22 @@ fn render_target_and_systems(app: &mut App) {
     // (not an egui simulation). The scene backdrop behind it is
     // borrowed from `ViewportRenderTarget` (the slot-0 editor
     // camera image — 3D, or 2D when UI view was entered from
-    // 2D), so we don't spawn or maintain a second preview camera.
-    app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
+    // 2D). A separate transparent camera composites preview UI onto that image
+    // without changing the scene camera's logical coordinate system.
+    app.add_systems(
+        Startup,
+        (
+            canvas_render::setup_ui_canvas_render,
+            spawn_viewport_ui_preview_camera,
+        ),
+    );
     app.add_systems(Update, canvas_render::sync_render_target_to_reference);
     app.add_systems(
         Update,
         (
             ensure_ui_visibility_components,
             sync_ui_canvas_target_camera,
-            // After the routing decision it reads — a frame behind would show
-            // the unscaled canvas for one frame every time the Game UI toggle
-            // or the UI editor panel opens.
-            scale_canvas_for_viewport_preview,
+            sync_viewport_ui_preview_camera,
             sync_canvas_sort_order_from_hierarchy,
             debug_ui_tree,
         )
@@ -762,6 +767,31 @@ fn ensure_ui_visibility_components(
     }
 }
 
+/// A UI-only camera that composites game UI over the scene viewport.
+///
+/// Its image-target scale factor gives this UI tree its own logical pixel
+/// scale without changing the editor shell's global [`bevy::ui::UiScale`].
+#[derive(Component)]
+struct ViewportUiPreviewCamera;
+
+fn spawn_viewport_ui_preview_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera2d,
+        Camera {
+            clear_color: ClearColorConfig::None,
+            order: 1,
+            is_active: false,
+            ..default()
+        },
+        RenderLayers::none(),
+        ViewportUiPreviewCamera,
+        renzora::IsolatedCamera,
+        renzora::HideInHierarchy,
+        renzora::EditorLocked,
+        Name::new("Viewport UI Preview Camera"),
+    ));
+}
+
 /// Route every UI canvas to the one camera it should render through this frame.
 ///
 /// This is the **single authority** on canvas `UiTargetCamera` in the editor,
@@ -777,7 +807,7 @@ fn ensure_ui_visibility_components(
 ///
 /// - **Edit mode, UI editor open** → the offscreen UI render camera
 ///   (`UiCanvasRender`), whose image the canvas tab displays.
-/// - **Edit mode, UI editor closed** → the editor viewport camera, when the
+/// - **Edit mode, UI editor closed** → the viewport UI camera, when the
 ///   viewport's `show_game_ui` switch is on, so the game's UI composites over
 ///   the scene you are editing. Without this the switch appeared to do nothing:
 ///   canvases were routed to an offscreen camera that is only *active* while the
@@ -785,12 +815,8 @@ fn ensure_ui_visibility_components(
 ///   and toggling their `Visibility` changed nothing anyone could see.
 ///   With the switch off they stay on the offscreen route, which is the same as
 ///   not being drawn — no second mechanism needed to hide them.
-/// - **Play mode** → the editor viewport camera that renders the running game
-///   into the viewport image, so the UI composites on top. A 2D game plays
-///   through the editor 2D camera (the 3D editor camera is parked on a token
-///   render target then — UI hung off it would rasterize into a 64² image
-///   nobody displays). Play mode never renders through the *authored* scene
-///   camera, so we deliberately don't target it.
+/// - **Play mode** → the viewport UI camera, composited after whichever 2D or
+///   3D camera renders the running game.
 ///
 /// **Does not touch `Visibility`** — that's the user's / the script's concern.
 /// Earlier versions force-hid every canvas outside play mode, which polluted
@@ -799,9 +825,7 @@ fn sync_ui_canvas_target_camera(
     mut commands: Commands,
     play_mode: Res<renzora::PlayModeState>,
     render: Option<Res<canvas_render::UiCanvasRender>>,
-    editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
-    editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
-    kind_2d: Query<(), With<bevy::camera::Camera2d>>,
+    preview_camera: Query<Entity, With<ViewportUiPreviewCamera>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
     settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
@@ -809,16 +833,7 @@ fn sync_ui_canvas_target_camera(
     wins: Option<Res<renzora_ember::dock::DockWindows>>,
 ) {
     let offscreen = render.as_ref().map(|r| r.camera_entity);
-    let viewport_cam = || {
-        let game_is_2d = play_mode
-            .active_game_camera
-            .is_some_and(|e| kind_2d.get(e).is_ok());
-        if game_is_2d {
-            editor_cam_2d.iter().next()
-        } else {
-            editor_cam.iter().next()
-        }
-    };
+    let viewport_cam = || preview_camera.iter().next();
     let target = if play_mode.is_in_play_mode() {
         viewport_cam()
     } else {
@@ -861,76 +876,72 @@ fn sync_ui_canvas_target_camera(
     }
 }
 
-/// Scale a canvas that is being previewed *over the 3D viewport* down to fit
-/// it, the way the shipped game will.
-///
-/// The game does this with the global `UiScale`, which the editor can't touch:
-/// one resource drives every `bevy_ui` tree in the process, so moving it would
-/// resize the dock, the panels and the menu bar along with the preview. So the
-/// preview uses a per-entity `UiTransform` instead. It resamples rather than
-/// re-rasterizing, which is why the game doesn't do it this way — but this is a
-/// preview, and being the wrong *size* is a worse lie than being slightly soft.
-///
-/// Only canvases routed away from the UI editor's own camera need it. That
-/// target is resized to the canvas's reference resolution
-/// (`sync_render_target_to_reference`), so there the design box already fills
-/// it exactly and the identity transform is correct.
-fn scale_canvas_for_viewport_preview(
-    mut commands: Commands,
-    render: Option<Res<canvas_render::UiCanvasRender>>,
+fn sync_viewport_ui_preview_camera(
     render_target: Option<Res<renzora::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
-    canvases: Query<
+    ui_scale: Res<bevy::ui::UiScale>,
+    mut preview_camera: Query<
         (
             Entity,
-            &UiCanvas,
-            Option<&bevy::ui::UiTargetCamera>,
-            Option<&bevy::ui::UiTransform>,
+            &mut Camera,
+            &mut bevy::camera::RenderTarget,
+            &mut Projection,
         ),
-        Without<renzora::HideInHierarchy>,
+        With<ViewportUiPreviewCamera>,
     >,
+    canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
 ) {
-    let offscreen = render.as_ref().map(|r| r.camera_entity);
-    let viewport_size = render_target
+    let Ok((preview_entity, mut camera, mut camera_target, mut projection)) =
+        preview_camera.single_mut()
+    else {
+        return;
+    };
+    let primary_canvas = canvases
+        .iter()
+        .filter(|(_, target, canvas)| {
+            !canvas.is_world() && target.is_some_and(|target| target.entity() == preview_entity)
+        })
+        .max_by_key(|(entity, _, canvas)| (canvas.sort_order, std::cmp::Reverse(*entity)))
+        .map(|(_, _, canvas)| canvas);
+    let viewport = render_target
         .as_ref()
-        .and_then(|rt| rt.image.as_ref())
-        .and_then(|h| images.get(h))
-        .map(|img| img.size())
-        .map(|s| Vec2::new(s.x as f32, s.y as f32));
+        .and_then(|target| target.image.as_ref())
+        .and_then(|handle| images.get(handle).map(|image| (handle, image.size())));
 
-    for (entity, canvas, target_cam, existing) in &canvases {
-        if canvas.is_world() {
-            continue;
+    camera.is_active = primary_canvas.is_some() && viewport.is_some();
+    let (Some(canvas), Some((handle, size))) = (primary_canvas, viewport) else {
+        return;
+    };
+    let mut image_target: bevy::camera::ImageRenderTarget = handle.clone().into();
+    image_target.scale_factor = preview_target_scale_factor(
+        canvas.scale_mode(),
+        Vec2::new(size.x as f32, size.y as f32),
+        canvas.reference_width.max(1.0),
+        canvas.reference_height.max(1.0),
+        ui_scale.0,
+    );
+    let target_changed = match &*camera_target {
+        bevy::camera::RenderTarget::Image(current) => {
+            current.handle != image_target.handle
+                || (current.scale_factor - image_target.scale_factor).abs() > f32::EPSILON
         }
-        let on_ui_editor_camera = match (target_cam, offscreen) {
-            (Some(tc), Some(off)) => tc.entity() == off,
-            // Not routed anywhere yet — assume the editor's own target rather
-            // than scaling against a viewport it may never be shown in.
-            _ => true,
-        };
-
-        let want = if on_ui_editor_camera {
-            1.0
-        } else {
-            match viewport_size {
-                Some(size) if size.x > 0.0 && size.y > 0.0 => canvas.scale_mode().scale_for(
-                    canvas.reference_width.max(1.0),
-                    canvas.reference_height.max(1.0),
-                    size.x,
-                    size.y,
-                ),
-                _ => 1.0,
-            }
-        };
-
-        let current = existing.map(|t| t.scale.x).unwrap_or(1.0);
-        if (current - want).abs() <= f32::EPSILON {
-            continue;
-        }
-        let mut next = existing.copied().unwrap_or(bevy::ui::UiTransform::IDENTITY);
-        next.scale = Vec2::splat(want);
-        commands.entity(entity).insert(next);
+        _ => true,
+    };
+    if target_changed {
+        *camera_target = bevy::camera::RenderTarget::Image(image_target);
+        // Bevy refreshes target metadata when the projection is marked dirty.
+        projection.set_changed();
     }
+}
+
+fn preview_target_scale_factor(
+    mode: components::CanvasScaleMode,
+    target: Vec2,
+    ref_w: f32,
+    ref_h: f32,
+    editor_ui_scale: f32,
+) -> f32 {
+    mode.scale_for(ref_w, ref_h, target.x, target.y) / editor_ui_scale.max(f32::EPSILON)
 }
 
 fn debug_ui_tree(
@@ -1100,4 +1111,45 @@ fn register_ui_presets(app: &mut App) {
     // `UiWidgetType` vocabulary stay in `renzora_ember::game_ui::spawn` — they
     // are what a markup-inserting palette will need to describe — but nothing
     // reaches them from Add Entity any more.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use components::CanvasScaleMode;
+
+    #[test]
+    fn preview_camera_matches_runtime_scale() {
+        let target = Vec2::new(1225.0, 551.0);
+        let camera_scale =
+            preview_target_scale_factor(CanvasScaleMode::Expand, target, 1280.0, 720.0, 1.0);
+        let logical_size = target / camera_scale;
+
+        assert!((camera_scale - 551.0 / 720.0).abs() < 1e-6);
+        assert!((logical_size.x - 1_600.726).abs() < 1e-4);
+        assert!((logical_size.y - 720.0).abs() < 1e-4);
+        assert!((64.0 * camera_scale - 48.97778).abs() < 1e-4);
+        assert_eq!(
+            preview_target_scale_factor(
+                CanvasScaleMode::Constant,
+                Vec2::new(1920.0, 1200.0),
+                1280.0,
+                720.0,
+                1.0,
+            ),
+            1.0
+        );
+        assert!(
+            (preview_target_scale_factor(
+                CanvasScaleMode::Fit,
+                Vec2::new(1920.0, 1200.0),
+                1280.0,
+                720.0,
+                1.25,
+            ) * 1.25
+                - 1.5)
+                .abs()
+                < 1e-6
+        );
+    }
 }
