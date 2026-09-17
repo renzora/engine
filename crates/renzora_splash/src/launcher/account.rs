@@ -329,7 +329,13 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
             },
             BackgroundColor(c(22, 24, 30)),
             BorderColor::all(border_soft()),
-            GlobalZIndex(700),
+            // Above the dashboard panel itself (`launcher::OVERLAY_Z`). This was
+            // 700 against a dashboard at 500, back when the dashboard was the
+            // whole window. The dashboard is an overlay at 8000 now, and a
+            // `GlobalZIndex` is global however deep the node sits, so the old
+            // value put this menu behind the panel that opens it: the picker
+            // looked like it did nothing.
+            GlobalZIndex(super::OVERLAY_Z + 1),
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("splash-language-menu"),
         ))

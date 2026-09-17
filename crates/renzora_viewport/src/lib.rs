@@ -605,6 +605,7 @@ fn update_input_focus(
     drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
     code_editing: Option<Res<renzora_ember::widgets::AnyCodeEditorFocused>>,
     over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
+    modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
     // A focused bevy_ui (ember) text field "wants keyboard" — so editor
@@ -628,8 +629,18 @@ fn update_input_focus(
     // so clearing it here is what lets the claim lapse when the plugin stops
     // making it. See `InputFocusState::plugin_wants_keyboard`.
     let plugin_claim = std::mem::take(&mut input_focus.plugin_wants_keyboard);
-    input_focus.ui_wants_keyboard =
-        ember_focused || drag_editing || code_focused || simulating || plugin_claim;
+    // An open modal owns the keyboard as well as the pointer. Blocking clicks
+    // and letting Delete through is only half a modal: with the splash overlay
+    // or Settings up, G/R/S and Delete were still reaching the scene behind it,
+    // which is a deletion you cannot see happen. Text fields and code editors
+    // *inside* a modal are unaffected, because they raise their own flags above.
+    let modal_open = !modals.is_empty();
+    input_focus.ui_wants_keyboard = ember_focused
+        || drag_editing
+        || code_focused
+        || simulating
+        || plugin_claim
+        || modal_open;
     // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
     // / popup). The viewport's own hover flag (which already excludes overlays)
     // is what gates per-viewport interaction, so this only needs to flag the

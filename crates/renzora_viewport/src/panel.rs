@@ -243,7 +243,7 @@ fn report_viewport_geometry(
     viewports: Query<(&ComputedNode, &RelativeCursorPosition, &NativeViewport)>,
     windows: Query<&Window, With<PrimaryWindow>>,
     req: Option<Res<ViewportResizeRequest>>,
-    overlays: Query<(), With<renzora_ember::widgets::Overlay>>,
+    modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
 ) {
     let Some(req) = req else {
         return;
@@ -265,7 +265,14 @@ fn report_viewport_geometry(
     // over the viewport still suppresses the hover — while a widget living
     // *inside* an overlay surface keeps its own pointer state, which is the case
     // the resource cannot distinguish and this one needs.
-    let modal_open = !overlays.is_empty();
+    // Asked of `ModalSurface`, not `Overlay`. The two travel together on every
+    // dialog ember's `overlay()` builds, so this used to look equivalent, but
+    // they mean different things: `Overlay` is "a dismissable dialog root" and
+    // `ModalSurface` is "nothing behind me may be interacted with", which is the
+    // question being asked here. A custom modal adds only the second (its own
+    // doc says so), so Settings and the splash overlay were both invisible to
+    // this check and the viewport kept taking camera gestures underneath them.
+    let modal_open = !modals.is_empty();
     // Logical px from the window's top-left — the same space picking / camera
     // read `window.cursor_position()` in.
     let cursor = windows.iter().next().and_then(|w| w.cursor_position());

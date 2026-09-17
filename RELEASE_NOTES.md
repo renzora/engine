@@ -7,6 +7,9 @@
 - feat(editor): Help ▸ Splash Screen reopens the dashboard
 - change(editor): the editor window opens maximized instead of at launcher size
 - change(splash): the Light Chamber cinematic is gone, since the dashboard's background is now the editor
+- fix(editor): clicks and scrolls no longer pass through the splash overlay to the editor behind it
+- fix(editor): the viewport no longer takes camera gestures underneath the Settings overlay
+- fix(editor): editor shortcuts no longer reach the scene while a modal is open
 
 ## 2026-09-17 12:15
 - perf(editor): a plugin or Bevy project compiles below the editor in the scheduler, so the editor keeps its frame rate while it builds

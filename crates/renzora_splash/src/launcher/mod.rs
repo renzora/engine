@@ -178,11 +178,18 @@ fn dismiss_on_close_press(
 }
 
 /// Escape dismisses, as it does for every other modal surface in the editor.
+///
+/// Unless something is stacked on top. The dashboard's own pages open ember
+/// dialogs (a marketplace listing, the install progress, the sign-in modal), and
+/// `overlay_dismiss` closes the topmost of those on the same Escape. Without
+/// this check one press would close both, so backing out of a listing would also
+/// throw away the dashboard it was opened from.
 fn dismiss_on_escape(
     mut overlay: ResMut<renzora::SplashOverlay>,
     keys: Res<ButtonInput<KeyCode>>,
+    dialogs: Query<(), With<renzora_ember::widgets::Overlay>>,
 ) {
-    if overlay.open && keys.just_pressed(KeyCode::Escape) {
+    if overlay.open && dialogs.is_empty() && keys.just_pressed(KeyCode::Escape) {
         overlay.open = false;
     }
 }
@@ -294,7 +301,7 @@ const PANEL: (f32, f32) = (1040.0, 700.0);
 ///
 /// 8000 sits in the gap, and the gap is why there is a comment rather than a
 /// number.
-const OVERLAY_Z: i32 = 8000;
+pub(crate) const OVERLAY_Z: i32 = 8000;
 
 fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, rail: &[sections::RailEntry]) {
     // The scrim: the editor stays visible through it, dimmed, which is the whole
@@ -314,11 +321,30 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, rail: &[sections::R
             },
             BackgroundColor(scrim()),
             GlobalZIndex(OVERLAY_Z),
-            // Blocks, so the editor underneath cannot be clicked while the
-            // overlay is modal, and carries `Interaction` so a press on the
-            // scrim itself is the dismiss gesture.
+            // `FocusPolicy::Block` is not enough on its own, and finding that
+            // out is the whole reason this comment exists. It settles bevy_ui
+            // picking between *UI nodes*, which leaves every editor system that
+            // reads the mouse directly, the viewport's camera gestures, its
+            // picking raycasts, panel scroll, still acting on a pointer that is
+            // visually over a modal panel.
+            //
+            // `ModalSurface` is the editor's own answer to that: ember's
+            // `correct_pointer_state` clears `Interaction` and `cursor_over` on
+            // everything a modal covers (exempting the modal and its
+            // descendants), `scroll_wheel` confines the wheel to scroll areas
+            // inside it, and `PointerOverOverlay` goes true so handlers with no
+            // UI rect of their own stand down.
+            //
+            // `Overlay` is deliberately *not* here, though every ember dialog
+            // carries both. It would hand this entity to `overlay_dismiss`,
+            // which despawns it directly on Escape or an outside click. That
+            // fights `manage_splash`, which owns the lifecycle and would respawn
+            // it the next frame from a `SplashOverlay` still reading `open`, and
+            // its outside test is "not over an `OverlayCard`", which this panel
+            // is not: every click inside the dashboard would read as outside it.
             FocusPolicy::Block,
             Interaction::default(),
+            renzora_ember::widgets::ModalSurface,
             SplashScrim,
             SplashRoot,
             Name::new("splash-scrim"),
@@ -337,7 +363,13 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, rail: &[sections::R
                 max_height: Val::Percent(92.0),
                 min_height: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
-                overflow: Overflow::clip(),
+                // Deliberately **not** `Overflow::clip()`, tempting as it is for
+                // keeping the content inside the rounded corners. The language
+                // picker's menu is a child of its trigger deep inside this
+                // panel, and a clipping ancestor eats its own menu: it would
+                // open, be clipped to the panel's edge, and read as broken. The
+                // pages clip their own scroll views, which is where content
+                // actually overflows.
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
