@@ -842,6 +842,7 @@ fn build_menu_items(
             menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| MenuCommand::NewProject.run(w)),
             menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| MenuCommand::OpenProject.run(w)),
             menu_item(commands, fonts, "file-code", &renzora::lang::t("menu.file.import_bevy_project"), |w| MenuCommand::ImportBevyProject.run(w)),
+            menu_item(commands, fonts, "arrows-clockwise", &renzora::lang::t("menu.file.reload_project_code"), |w| MenuCommand::ReloadProjectCode.run(w)),
             recent_projects_submenu(commands, fonts, ctx.recents),
             menu_sep(commands),
             menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| MenuCommand::NewScene.run(w)),

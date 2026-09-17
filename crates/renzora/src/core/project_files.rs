@@ -158,6 +158,49 @@ pub enum FileChange {
 /// what make this hard. A `git checkout` or a batch export rewrites thousands of
 /// paths at once, and an observer would run a consumer once per path,
 /// synchronously, inside the drain. Buffering lets the asset browser re-list its
+/// Directories under a project root that hold build output rather than source.
+///
+/// `target` is cargo's and can be enormous: measured at 13 GB on one project
+/// here. `.renzora` is the engine's own staged crate and the libraries it builds
+/// from it.
+pub const BUILD_OUTPUT_DIRS: &[&str] = &["target", ".renzora", ".git", "node_modules", "dist"];
+
+/// Is `path` build output rather than something the author wrote?
+///
+/// **Filtered at the watcher, not at each reader**, which is the whole point of
+/// it living here. The watcher is recursive from the project root and cannot be
+/// told to skip a subtree (`notify` watches a tree, and Bevy's `FileWatcher`
+/// takes one root), so a `cargo build` inside the project turns into thousands
+/// of events a second. Every one of those used to be published and handed to a
+/// dozen readers: the asset browser, its thumbnails, the dock, the font loader,
+/// the markup templates, the particle editor and the project rebuild. The editor
+/// dropped frames for the length of any build the user ran in their own project,
+/// which looked like the engine being slow rather than like a firehose nobody
+/// had turned off.
+///
+/// A path outside `root` answers `true`: the watcher carries extra roots (the
+/// engine's own `languages/` folder is one), and this question is only ever
+/// asked about the project.
+///
+/// ```
+/// # use std::path::Path;
+/// # use renzora::core::project_files::is_build_output;
+/// let root = Path::new("/project");
+/// assert!(is_build_output(root, &root.join("target/debug/game.exe")));
+/// assert!(is_build_output(root, &root.join(".renzora/bevy/src/lib.rs")));
+/// assert!(!is_build_output(root, &root.join("src/main.rs")));
+/// assert!(!is_build_output(root, &root.join("assets/textures/floor.png")));
+/// ```
+pub fn is_build_output(root: &Path, path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return true;
+    };
+    relative.components().any(|component| {
+        let name = component.as_os_str().to_string_lossy();
+        BUILD_OUTPUT_DIRS.contains(&name.as_ref()) || name.starts_with('.')
+    })
+}
+
 /// directory once for the whole burst instead of a thousand times.
 #[derive(Message, Debug, Clone)]
 pub struct ProjectFileChanged {

@@ -53,6 +53,13 @@ pub enum MenuCommand {
     /// installed while the `App` is being built. See
     /// `renzora_bevy_project`.
     ImportBevyProject,
+    /// File > Reload Project Code: load the newest build of a Bevy project into
+    /// the running editor, rebuilding the world its code makes.
+    ///
+    /// Not a project switch, so it goes straight to its own request rather than
+    /// through `ProjectSwitchRequest`: the project is not changing, only the
+    /// code behind it, and none of the save-prompt machinery applies.
+    ReloadProjectCode,
     /// One specific project from the recents list.
     OpenRecent(std::path::PathBuf),
     NewScene,
@@ -122,6 +129,9 @@ impl MenuCommand {
             }
             Self::ImportBevyProject => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::ImportBevy));
+            }
+            Self::ReloadProjectCode => {
+                world.insert_resource(renzora::RequestProjectReload);
             }
             Self::OpenRecent(path) => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Recent(path)));

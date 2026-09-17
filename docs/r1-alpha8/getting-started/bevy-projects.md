@@ -65,19 +65,53 @@ What happens next depends on the result.
   within a second or two, while you are still looking at the code that caused
   them. This is most of the value, because most saves produce an error rather
   than a build you want to look at.
-- **It compiled.** The status bar says so and offers a restart. The new code
-  loads when you take it.
-
-That last step is a restart and not a hot swap, and the reason is structural:
-`add_plugins` scatters your systems through Bevy's schedules as function
-pointers, and Bevy has no API to take them back out. Adding them a second time
-would leave the old copies running beside the new ones with no way to tell them
-apart. So the slow half (the compile, several seconds) happens while you keep
-working, and the fast half (the restart, about three) happens when you ask.
+- **It compiled.** The viewport is swapped over to the new code. The editor is
+  not restarted: your panel layout, viewport camera, open tabs and selection all
+  stay where they were.
 
 A build that fails is not retried until you edit again, so one mistake reports
 once rather than scrolling. `target/`, `.renzora/` and dot-directories are not
 watched, since those are output rather than source.
+
+### What a reload does
+
+It rebuilds your world rather than patching it:
+
+1. the new library is loaded and its `Startup` runs, building the new world;
+2. **then** the previous generation's entities are despawned.
+
+That order matters on a project with real assets. Despawning first would drop the
+last handle to a mesh or texture, Bevy would free it, and the new startup would
+read all of it off disk again. Building first means both generations hold those
+handles for a moment, so every load is a cache hit and nothing is re-read.
+
+Clearing the old entities is correctness, not tidiness: add a field to a
+component and the new code reads it with a layout the old entities do not have.
+
+### The cost
+
+Each reload loads a library that can never be unloaded, because Bevy keeps a
+`drop` function pointer for every component type and never unregisters one.
+
+That library is compiled **code**, not content, so it tracks the size of your
+project rather than your assets: about 537 KB for the scaffold, and 4 MB for a
+5,500-line project carrying 93 MB of models. A session's worth is tens of
+megabytes, reclaimed when you restart the editor, which also prunes the files
+left behind in `.renzora/`.
+
+**File ▸ Reload Project Code** forces one by hand if you need it.
+
+## The viewport does not run your game
+
+Your `Startup` runs, so the world your code builds is there to look at and edit.
+Your `Update` systems do not.
+
+That is deliberate. A viewport that runs your game is a viewport where pressing
+Play changes the thing you are editing, and pressing Stop leaves the debris
+behind. Holding `Update` back means the world in front of you only changes when
+you change it.
+
+To actually play, press Play.
 
 ## What makes a folder a Bevy project
 
@@ -264,6 +298,26 @@ pub struct PlayerStatus {
 
 Anything registered arrives there, so game state you would otherwise have to
 `println!` at is live and editable while the game runs in the viewport.
+
+## Play runs the game in its own process
+
+Press Play and the editor launches the engine runtime pointed at your project,
+as a separate process with its own window. It loads the same library the editor
+built from your code, so Play costs a few seconds and usually nothing at all,
+because the build from your last save is already there.
+
+This is the shipped-game path, not a special editor mode: the same binary and the
+same loading your game gets when you export it.
+
+Stop kills the process. That is the point of doing it this way: everything the
+game spawned and every value it changed lived in that process, so none of it can
+leak back into the world you are editing. There is no snapshot to restore and
+nothing to get subtly wrong.
+
+Because the game reads your project from disk, the editor saves before it
+launches, so anything you placed is written back as Rust first (see [What you
+place in the editor is written back as
+Rust](#what-you-place-in-the-editor-is-written-back-as-rust)).
 
 ## Cameras
 

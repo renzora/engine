@@ -45,6 +45,69 @@ pub fn record(staged: &Path, stamp: &str, library: &Path) {
     let _ = std::fs::write(staged.join(STAMP), format!("{stamp}\n{name}\n"));
 }
 
+/// Delete every build but the one the stamp names.
+///
+/// Each build writes a generation-suffixed library (`grove-1726449182734.dll`)
+/// because the previous one is mapped into this process and cannot be replaced.
+/// That is the right thing to do and it litters: one library per save, plus the
+/// `.pdb` and import library beside it, for as long as a session lasts. A day of
+/// editing leaves a directory of dead builds and no way to tell which one is
+/// live.
+///
+/// **Only safe before anything is loaded**, which is why this runs at startup
+/// rather than after a rebuild. At that point no image in this directory is
+/// mapped, so every file that is not the current build is free to remove. Called
+/// after a reload it would be deleting the library the process is running from.
+///
+/// Best effort throughout. A file that will not delete is one that is somehow
+/// still held, and the right response is to leave it and carry on rather than
+/// refuse to open the project over housekeeping.
+pub fn prune_old_builds(staged: &Path) {
+    // Keep everything belonging to the recorded build: the library, its debug
+    // symbols and its import library all share a stem.
+    let keep = std::fs::read_to_string(staged.join(STAMP))
+        .ok()
+        .and_then(|text| text.lines().nth(1).map(|name| name.trim().to_string()))
+        .and_then(|name| {
+            Path::new(&name)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+        });
+
+    let Ok(entries) = std::fs::read_dir(staged) else {
+        return;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        // Build output only. The staged crate root and its manifest live in this
+        // directory too, and deleting those would cost a full restage.
+        if !matches!(ext.as_str(), "dll" | "pdb" | "lib" | "exp" | "so" | "dylib") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if keep.as_deref() == Some(stem.as_str()) {
+            continue;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        bevy::log::info!("[bevy-project] removed {removed} stale build file(s)");
+    }
+}
+
 /// The library from the last build, if it can still be used.
 ///
 /// `None` means build. Every reason to rebuild is a `None` here rather than an
@@ -72,32 +135,13 @@ pub fn reusable(staged: &Path, project: &Path, want_stamp: &str) -> Option<Built
 
 /// Directories that hold no source of the project's own.
 ///
-/// `.renzora` is the build's own output, and treating it as source compares the
-/// build against itself; `target` is cargo's and is enormous.
-///
-/// Shared with the file watcher on purpose. This list existed here first and the
-/// watcher did not have one, which is a loop and not a slow walk: a rebuild
-/// rewrites `.renzora/bevy/src/lib.rs`, the watcher reports a `.rs` change
-/// inside the project, and that schedules the rebuild that rewrites it again.
-/// One list means the two cannot disagree about what counts as source.
-pub const NON_SOURCE_DIRS: &[&str] = &["target", ".git", ".renzora", "node_modules", "dist"];
-
-/// Is `path` inside one of [`NON_SOURCE_DIRS`], relative to the project root?
-///
-/// Also excludes any dot-directory, matching the walk below: an editor's
-/// `.vscode`, a `.cargo` config directory and the rest hold nothing this
-/// compiles.
-pub fn is_build_output(root: &Path, path: &Path) -> bool {
-    let Ok(relative) = path.strip_prefix(root) else {
-        // Not under the root at all. Not this project's source, and saying so is
-        // the safe answer for both callers.
-        return true;
-    };
-    relative.components().any(|c| {
-        let name = c.as_os_str().to_string_lossy();
-        NON_SOURCE_DIRS.contains(&name.as_ref()) || name.starts_with('.')
-    })
-}
+/// The list lives in the contract crate because the **file watcher** needs the
+/// same answer, and two lists would eventually disagree. This one existed first
+/// and the watcher had none, which was not merely a slow walk but a loop: a
+/// rebuild rewrites `.renzora/bevy/src/lib.rs`, the watcher reported a `.rs`
+/// change inside the project, and that scheduled the rebuild that rewrote it
+/// again.
+pub use renzora::core::project_files::{is_build_output, BUILD_OUTPUT_DIRS as NON_SOURCE_DIRS};
 
 /// The most recent modification time among the project's Rust and its manifest.
 ///
@@ -266,5 +310,47 @@ mod tests {
     #[test]
     fn a_path_outside_the_project_is_not_source() {
         assert!(is_build_output(Path::new("/project"), Path::new("/elsewhere/src/main.rs")));
+    }
+
+    /// Every dead build goes, the live one and its debug symbols stay, and the
+    /// staged crate is not touched: deleting `src/lib.rs` or the manifest would
+    /// cost a full restage for nothing.
+    #[test]
+    fn pruning_keeps_the_recorded_build_and_the_staged_crate() {
+        let dir = scratch("prune");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src").join("lib.rs"), "// generated").unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
+        for name in ["game-1.dll", "game-1.pdb", "game-2.dll", "game-3.dll", "game-3.pdb"] {
+            std::fs::write(dir.join(name), "x").unwrap();
+        }
+        record(&dir, "abc", &dir.join("game-3.dll"));
+
+        prune_old_builds(&dir);
+
+        assert!(dir.join("game-3.dll").exists(), "the live build must survive");
+        assert!(dir.join("game-3.pdb").exists(), "its symbols share the stem");
+        assert!(!dir.join("game-1.dll").exists());
+        assert!(!dir.join("game-1.pdb").exists());
+        assert!(!dir.join("game-2.dll").exists());
+        assert!(dir.join("src").join("lib.rs").exists(), "the staged crate is not output");
+        assert!(dir.join("Cargo.toml").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// No stamp is a first run, or a directory left by a build that never
+    /// finished. Nothing is recorded as live, so every library in there is dead.
+    #[test]
+    fn pruning_without_a_stamp_removes_every_build() {
+        let dir = scratch("prune_no_stamp");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("game-1.dll"), "x").unwrap();
+        std::fs::write(dir.join("game-2.dll"), "x").unwrap();
+
+        prune_old_builds(&dir);
+
+        assert!(!dir.join("game-1.dll").exists());
+        assert!(!dir.join("game-2.dll").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

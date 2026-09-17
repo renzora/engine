@@ -69,6 +69,7 @@ use renzora::CurrentProject;
 pub mod cache;
 pub mod entry;
 pub mod scan;
+pub mod schedules;
 pub mod sync;
 pub mod writeback;
 
@@ -91,6 +92,13 @@ impl Plugin for BevyProjectPlugin {
             // and absent, and a reader for a message nobody registered has no
             // resource to read. Same shape, same fix, as `renzora_rust_script`.
             .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            // **`PreUpdate`, and before anything reads the world.** The
+            // project's `Startup` is what builds its world, so it has to have
+            // run before the first system that expects those entities to exist:
+            // the naming pass, the camera adoption and the hierarchy all look
+            // for them. Running it here rather than inside `load` gives it a
+            // world that has finished coming up.
+            .add_systems(PreUpdate, schedules::run_project_startup)
             .add_systems(
                 Update,
                 (
@@ -103,6 +111,7 @@ impl Plugin for BevyProjectPlugin {
                         sync::note_source_changes,
                         sync::start_rebuild,
                         sync::finish_rebuild,
+                        sync::apply_reload,
                         sync::show_sync_status,
                     )
                         .chain(),
@@ -307,6 +316,13 @@ fn load(app: &mut App, krate: &BevyCrate, root: &Path) -> Result<Vec<String>, St
         let mut notes = staged.notes;
         let staged_dir = staged.dir.clone();
 
+        // Before anything is mapped, and only here. `load` runs once while the
+        // editor's `App` is being built, so every library left in the staged
+        // directory is from a previous session and nothing in this process holds
+        // one. See [`cache::prune_old_builds`] for why that timing is the whole
+        // safety argument.
+        cache::prune_old_builds(&staged_dir);
+
         let install_root = renzora_plugin_build::install::root()
             .ok_or_else(|| "could not find the editor's own directory".to_string())?;
         let sdk = renzora_plugin_build::Sdk::load(renzora_plugin_build::install::sdk_dir(
@@ -383,8 +399,30 @@ fn load(app: &mut App, krate: &BevyCrate, root: &Path) -> Result<Vec<String>, St
         // The `App` is left half-configured afterwards, which is not good. It is
         // considerably better than taking the editor down: the user gets a
         // message naming the plugin, and can delete one line and rebuild.
+        // **Only the editor holds the project's systems back.**
+        //
+        // In the editor the viewport is for editing, so the project's `Update`
+        // is captured rather than run (see [`schedules`]). In the runtime there
+        // is no editing to protect and nothing ever reloads: this *is* the game,
+        // whether it was launched by Play or shipped, so the plugin is installed
+        // the ordinary way and every schedule it registers runs.
+        //
+        // Reading `EditorSession` rather than guessing: it is inserted before
+        // any plugin builds, precisely so dual-mode crates can branch on it.
+        let in_editor = app
+            .world()
+            .get_resource::<renzora::core::EditorSession>()
+            .is_some_and(|session| session.0);
+
+        let mut project_schedules = None;
         let installed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            app.add_plugins(Boxed(plugin));
+            if in_editor {
+                project_schedules = Some(schedules::capture(app, |app| {
+                    app.add_plugins(Boxed(plugin));
+                }));
+            } else {
+                app.add_plugins(Boxed(plugin));
+            }
         }));
 
         if let Some(clear) = editor_clear_color {
@@ -427,6 +465,22 @@ fn load(app: &mut App, krate: &BevyCrate, root: &Path) -> Result<Vec<String>, St
                  Bevy app too, and Bevy treats a duplicate plugin as a panic.",
                 krate.package
             ));
+        }
+
+        // Only in the editor: the runtime added the plugin normally and has
+        // nothing captured, so inserting an empty set would claim otherwise.
+        if let Some(captured) = project_schedules {
+            // Startup is deferred to the first frame rather than run here:
+            // `load` is called while the editor's own `App` is still being
+            // built, and a project's `Startup` is entitled to a world that has
+            // finished coming up.
+            app.insert_resource(schedules::ProjectSchedules(captured));
+            app.insert_resource(schedules::ProjectStartupPending(true));
+            notes.push(
+                "the viewport runs the project's startup only: its Update systems are held back \
+                 so editing is not fighting a running game. Press Play to run it"
+                    .to_string(),
+            );
         }
 
         console_success("Bevy", format!("loaded {}", krate.package));

@@ -393,6 +393,48 @@ pub struct RequestOpenProjectPath(pub std::path::PathBuf);
 #[derive(bevy::prelude::Resource)]
 pub struct RequestImportBevyProject(pub Option<std::path::PathBuf>);
 
+/// Load the newest build of the open Bevy project into the running editor.
+///
+/// Raised by the File menu and by the status bar's Reload action, consumed by
+/// `renzora_bevy_project::sync::apply_reload`, which despawns what the project's
+/// code spawned and builds it again from the new library.
+///
+/// Raised automatically by `finish_rebuild` after every successful build, so
+/// saving a file is all it takes for the viewport to show the new world. The
+/// menu item exists for the times that is not enough: a build collected while
+/// the editor was busy, or a load that failed and is worth retrying.
+///
+/// Each reload costs one mapped image for the life of the process, because the
+/// image can never be unmapped: Bevy stores a `drop` function pointer per
+/// component type and never unregisters one, so unloading would leave despawns
+/// calling into freed memory. That is about half a megabyte for a small project
+/// and a few for a large one, reclaimed when the editor restarts.
+///
+/// A no-op when nothing newer is on disk, which is what the menu item does most
+/// of the time, and why it reports rather than silently doing nothing.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestProjectReload;
+
+/// Load the native plugin in this directory into the running editor.
+///
+/// Raised by the marketplace once an install has finished writing, consumed by
+/// `renzora_native_plugin::consume_load_requests`. A resource rather than a
+/// direct call because the marketplace does not depend on the loader, and should
+/// not have to: "there is a new plugin at this path" is the whole message.
+///
+/// **Install only.** A loaded image can never be unmapped, so this must not be
+/// raised for a plugin already running: the old copy would keep going beside the
+/// new one. Updating and removing still cost a restart.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestLoadPlugin(pub std::path::PathBuf);
+
+/// Why the last [`RequestLoadPlugin`] did not load.
+///
+/// Set by the loader, read by whoever asked, so a failed runtime install can
+/// fall back to offering the restart that would have happened anyway.
+#[derive(bevy::prelude::Resource)]
+pub struct PluginLoadFailed(pub String);
+
 /// The recently-opened project roots, most recent first.
 ///
 /// Mirrored out of the launcher's `AppConfig` by the splash plugin, which owns

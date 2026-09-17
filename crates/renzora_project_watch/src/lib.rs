@@ -231,11 +231,30 @@ fn drain(
             if is_project {
                 if let Some(sink) = sink.as_ref() {
                     if let Some(event) = for_asset_server(&raw) {
-                        sink.send(event);
+                        // Same reason as below, and the asset server is the
+                        // reader that would suffer most: handed a path under
+                        // `target/` it looks for an asset that was never one.
+                        if !is_build_output_event(&event, &watched.root) {
+                            sink.send(event);
+                        }
                     }
                 }
             }
             for event in translate(raw, &watched.root) {
+                // Build output never reaches a reader. See
+                // [`renzora::core::project_files::is_build_output`]: the watch is
+                // recursive from the project root and cannot exclude a subtree,
+                // so a `cargo build` in the user's own project is a firehose,
+                // and every reader downstream used to drink from it.
+                //
+                // Dropped here rather than in each reader because there are a
+                // dozen of them and they would have to agree; the one that
+                // forgot would be the one that cost the frames.
+                if is_project
+                    && renzora::core::project_files::is_build_output(&watched.root, &event.path)
+                {
+                    continue;
+                }
                 log_event(&event);
                 events.write(event);
             }
@@ -316,6 +335,23 @@ fn log_event(event: &ProjectFileChanged) {
 /// server's point of view: that file now has different contents. The scratch
 /// events are dropped rather than forwarded, since reloading a path that exists
 /// for ten milliseconds achieves nothing.
+/// Does this asset-source event name something under a build-output directory?
+///
+/// The paths here are relative to the watch root, so they are joined back onto
+/// it and asked the one question there is one answer to. A variant carrying no
+/// path is passed through: the filter exists to drop a firehose, not to be
+/// clever about shapes it does not recognise.
+fn is_build_output_event(event: &AssetSourceEvent, root: &Path) -> bool {
+    let path = match event {
+        AssetSourceEvent::AddedAsset(p)
+        | AssetSourceEvent::ModifiedAsset(p)
+        | AssetSourceEvent::RemovedAsset(p) => p,
+        AssetSourceEvent::RenamedAsset { new, .. } => new,
+        _ => return false,
+    };
+    renzora::core::project_files::is_build_output(root, &root.join(path))
+}
+
 fn for_asset_server(raw: &AssetSourceEvent) -> Option<AssetSourceEvent> {
     let transient = |p: &Path| is_transient(&p.to_string_lossy().replace('\\', "/"));
     match raw {

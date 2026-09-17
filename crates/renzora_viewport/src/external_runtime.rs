@@ -117,6 +117,22 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
     Some(exe)
 }
 
+/// A Bevy project is played by the **engine runtime**, not by a binary of its
+/// own.
+///
+/// `renzora --no-editor --project <path>` is the shipped-game path, and
+/// `renzora_bevy_project` is a `Runtime` plugin, so the runtime loads a Bevy
+/// project exactly the way the editor does: from the library the SDK build
+/// already produced, in a few seconds, usually already cached from the last
+/// save. Building the project as a standalone cargo binary instead would
+/// recompile the whole of Bevy for something the engine can already run, and
+/// would cut the project off from every engine feature the SDK provides.
+///
+/// So Play needs nothing here beyond what [`spawn_runtime`] already does. This
+/// note exists because the standalone-binary route was built and removed, and
+/// it looks reasonable until you notice the runtime is right there.
+const _: () = ();
+
 /// Spawn the runtime pointed at `project_path`. Returns the child handle
 /// on success. The runtime accepts `--project <path>` and treats either a
 /// directory (looks for `project.toml` inside) or the `.toml` itself as

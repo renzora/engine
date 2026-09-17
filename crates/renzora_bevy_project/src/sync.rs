@@ -9,22 +9,34 @@
 //!   │
 //!   ├─ rebuild on a task pool          the editor keeps running at 60 fps
 //!   ├─ errors land in Console+Problems while you are still looking at the code
-//!   └─ on success: "Restart to load"   one click, ~3s, back where you were
+//!   └─ on success: swapped into the viewport, and Play runs it too
 //! ```
 //!
-//! # Why a restart and not a swap
+//! # What a save actually does
 //!
-//! A Rust script can be hot-swapped because it is *one function pointer* the
-//! engine holds: rebuild, `dlopen`, repoint, done (see
-//! `renzora_rust_script::watch`). A plugin is not that. `add_plugins` scatters
-//! the project's systems through Bevy's schedules as function pointers, and Bevy
-//! has no API to take them back out, so a second `add_plugins` would leave the
-//! old systems running beside the new ones, with no way to tell which is which.
+//! The compile runs on a task pool, so the editor keeps drawing. When it lands,
+//! [`apply_reload`] despawns what the project's code spawned, drops the previous
+//! generation's systems whole, and runs the new startup. The editor process is
+//! never restarted: the window, the GPU context, every loaded asset, the panel
+//! layout and the viewport camera all stay exactly where they were.
 //!
-//! So the rebuild happens live and the *load* waits for a restart. That splits
-//! the wait in the right place: the compile is the slow half (about 7 seconds on
-//! the project this was built against) and it happens while you keep working;
-//! the restart is about 3 seconds and happens when you ask.
+//! Play is unaffected and always current, because it spawns the engine runtime
+//! against the same library rather than sharing this process.
+//!
+//! # The one cost, and why it is paid
+//!
+//! Each reload `dlopen`s a library that can never be unmapped. Bevy stores a
+//! `drop` function pointer per component type and never unregisters one, so
+//! unloading would leave a later despawn calling into freed memory.
+//!
+//! The image is compiled code, not content, so it tracks the size of the project
+//! rather than the size of its assets: measured at 537 KB for a scaffold and
+//! 4 MB for a 5,500-line project carrying 93 MB of models. A session's worth is
+//! tens of megabytes, reclaimed on restart, with the files pruned from
+//! `.renzora/` at the next start.
+//!
+//! The alternative was asking the user to restart to see their own change, and
+//! that is the worse trade.
 //!
 //! # Why the error half matters more than the restart half
 //!
@@ -48,8 +60,12 @@ use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
 use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
 use renzora::core::bevy_project;
 use renzora::core::console_log::{console_error, console_info, console_success};
+use renzora::core::bevy_project::FromProjectCode;
 use renzora::core::project_files::ProjectFileChanged;
 use renzora::CurrentProject;
+
+use crate::cache;
+use crate::schedules::{ProjectSchedules, ProjectStartupPending};
 
 /// What the background rebuild is doing, and what came of it.
 ///
@@ -61,10 +77,14 @@ pub struct ProjectSync {
     /// The most recent source change we have not yet built.
     pending: Option<SystemTime>,
     /// The running build, if any.
-    building: Option<Task<Result<Vec<String>, String>>>,
-    /// A build finished and the code on disk is newer than the code loaded in
-    /// this process. Cleared only by a restart, because only a restart can load
-    /// it.
+    building: Option<Task<Result<Rebuilt, String>>>,
+    /// The newest build, waiting for someone to ask for it.
+    ///
+    /// Set when a rebuild succeeds and cleared when it is loaded. Its presence
+    /// is what makes "Reload" worth offering: without it the viewport is already
+    /// running the newest code.
+    pub loadable: Option<PathBuf>,
+    /// A build finished and the viewport is not running it yet.
     pub restart_wanted: bool,
     /// Why the last build failed, for a panel that wants to show it.
     pub last_error: Option<String>,
@@ -157,7 +177,17 @@ pub fn start_rebuild(
 ///
 /// Nothing here touches the `World`, which is what makes it safe to run on a
 /// task pool while the editor keeps drawing.
-fn rebuild(root: PathBuf) -> Result<Vec<String>, String> {
+/// What a finished build produced.
+///
+/// The library path is the point: a reload has to `dlopen` the artefact this
+/// particular build wrote, and the name carries a generation suffix precisely so
+/// that it is not predictable.
+pub struct Rebuilt {
+    pub library: PathBuf,
+    pub notes: Vec<String>,
+}
+
+fn rebuild(root: PathBuf) -> Result<Rebuilt, String> {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = root;
@@ -190,12 +220,17 @@ fn rebuild(root: PathBuf) -> Result<Vec<String>, String> {
 
         let mut notes = staged.notes;
         crate::compile(&sdk, &krate, &root, &staged.dir, &out, &mut notes, &mut |_| {})?;
-        Ok(notes)
+        // Recorded even though nothing loads it in this process: the next start
+        // finds the stamp already matching and opens the project without
+        // rebuilding it, so the save you just made is not paid for twice.
+        cache::record(&staged.dir, &sdk.stamp(), &out);
+        Ok(Rebuilt { library: out, notes })
     }
 }
 
 /// Collect a finished rebuild and say what happened.
 pub fn finish_rebuild(
+    mut commands: Commands,
     mut sync: ResMut<ProjectSync>,
     mut problems: Option<ResMut<ContentProblems>>,
     project: Option<Res<CurrentProject>>,
@@ -216,19 +251,21 @@ pub fn finish_rebuild(
         .unwrap_or_else(|| "the project".to_string());
 
     match result {
-        Ok(notes) => {
+        Ok(rebuilt) => {
             sync.last_error = None;
-            sync.restart_wanted = true;
-            for note in notes {
+            sync.loadable = Some(rebuilt.library);
+            for note in rebuilt.notes {
                 info!("[bevy-project] {note}");
             }
             if let Some(problems) = problems.as_mut() {
                 problems.clear_path(&problem_path(project.as_deref()));
             }
-            console_success(
-                "Bevy",
-                format!("{label} rebuilt; restart the editor to load it"),
-            );
+            // Straight into the viewport. [`apply_reload`] is next in the chain
+            // and is an exclusive system, which is a sync point, so this lands
+            // before it runs and the swap happens on the same frame the build
+            // was collected.
+            commands.insert_resource(renzora::RequestProjectReload);
+            let _ = label;
         }
         Err(report) => {
             // Both, and neither is redundant: the Console is where the author is
@@ -265,6 +302,148 @@ fn problem_path(project: Option<&CurrentProject>) -> String {
         .unwrap_or_else(|| "Cargo.toml".to_string())
 }
 
+/// Swap the newest build into the running editor.
+///
+/// Raised automatically after every successful build, so saving a file is the
+/// whole gesture: the viewport shows the world your new code builds, and the
+/// editor never closes.
+///
+/// # What it costs
+///
+/// One mapped image per reload, for the life of the process. The image can never
+/// be unmapped: `ComponentDescriptor` stores a `drop` function pointer for every
+/// component type the project registers, Bevy never unregisters a component, and
+/// despawning one after the image had gone would call into freed memory.
+///
+/// That is about half a megabyte for a small project and a few for a large one,
+/// because the image holds compiled code and not assets: a project with 93 MB of
+/// models measured at 4 MB. It is reclaimed when the editor restarts, and the
+/// files left in `.renzora/` are pruned on the next start.
+///
+/// # What it does
+///
+/// 1. **Despawn the old world.** Everything the project's startup created carries
+///    [`FromProjectCode`]. What you placed in the editor does not, and stays.
+/// 2. **Replace the schedules.** [`ProjectSchedules`] is dropped and replaced,
+///    taking the whole previous generation of systems with it. Nothing is
+///    retired or gated.
+/// 3. **Ask for startup again**, so the new code rebuilds its world next frame.
+///
+/// Clearing the entities is correctness, not tidiness: a struct that gained a
+/// field is read by the new code with a layout the old entities do not have.
+pub fn apply_reload(world: &mut World) {
+    let requested = world.remove_resource::<renzora::RequestProjectReload>().is_some();
+    if !requested {
+        return;
+    }
+    let Some(library) = world
+        .get_resource::<ProjectSync>()
+        .and_then(|sync| sync.loadable.clone())
+    else {
+        // Reached when the menu item is used with nothing newer on disk. The
+        // automatic path never gets here, because it only asks after a build.
+        console_info(
+            "Bevy",
+            "nothing new to load: the viewport is already running this code",
+        );
+        return;
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = library;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let plugin = match unsafe { crate::open(&library) } {
+            Ok(plugin) => plugin,
+            Err(report) => {
+                // The running generation is untouched, so the editor keeps
+                // working with the code it already had. A restart is the only
+                // way left to pick the build up, so say so in the status bar.
+                console_error("Bevy", format!("could not load the rebuild: {report}"));
+                if let Some(mut sync) = world.get_resource_mut::<ProjectSync>() {
+                    sync.restart_wanted = true;
+                }
+                return;
+            }
+        };
+
+        // **The new world is built before the old one is taken down**, and the
+        // order is load-bearing for a project with real assets.
+        //
+        // Despawning first drops every `Handle` the old entities held. If that
+        // takes an asset's last strong reference, Bevy frees it, and the new
+        // startup's `asset_server.load(...)` finds nothing cached and reads it
+        // off disk again. On a project with 93 MB of models that is a multi
+        // second stall and a full GPU re-upload, for assets that never changed.
+        //
+        // Building first means the old entities still hold those handles while
+        // the new startup asks for them, so every `load` is a cache hit and the
+        // refcount goes 1 -> 2 -> 1 without ever reaching zero. The two worlds
+        // coexist for the length of this one exclusive system, so nothing is
+        // ever drawn twice.
+        let previous: bevy::ecs::entity::EntityHashSet = {
+            let mut query = world.query_filtered::<Entity, With<FromProjectCode>>();
+            query.iter(world).collect()
+        };
+
+        let captured = crate::schedules::capture_into_world(world, crate::Boxed(plugin));
+        world.insert_resource(ProjectSchedules(captured));
+        // Run inline rather than leaving it to the next frame: at load time the
+        // editor's `App` is still being built and startup has to wait, but here
+        // the world is fully up, and waiting would put the despawn a frame away
+        // from the spawn that replaces it.
+        world.insert_resource(ProjectStartupPending(true));
+        crate::schedules::run_project_startup(world);
+
+        let despawned = despawn_project_entities(world, &previous);
+
+        if let Some(mut sync) = world.get_resource_mut::<ProjectSync>() {
+            sync.loadable = None;
+            sync.restart_wanted = false;
+        }
+
+        let label = world
+            .get_resource::<CurrentProject>()
+            .map(|p| p.config.name.clone())
+            .unwrap_or_else(|| "the project".to_string());
+        console_success(
+            "Bevy",
+            format!("{label} reloaded; {despawned} entities cleared and rebuilt from new code"),
+        );
+    }
+}
+
+/// Despawn the previous generation's entities, and say how many.
+///
+/// `previous` is the set captured before the new startup ran, so the entities
+/// that startup has just spawned are not in it and survive. Reading
+/// [`FromProjectCode`] here instead would take the new world down with the old.
+///
+/// Roots only: `despawn` takes descendants with it, and despawning a child whose
+/// parent is about to go is how a "ChildOf does not exist" flood starts.
+fn despawn_project_entities(
+    world: &mut World,
+    previous: &bevy::ecs::entity::EntityHashSet,
+) -> usize {
+    let roots: Vec<Entity> = previous
+        .iter()
+        .copied()
+        .filter(|entity| {
+            !world
+                .get::<ChildOf>(*entity)
+                .is_some_and(|parent| previous.contains(&parent.parent()))
+        })
+        .collect();
+    for entity in &roots {
+        if let Ok(entity) = world.get_entity_mut(*entity) {
+            entity.despawn();
+        }
+    }
+    roots.len()
+}
+
 /// Say in the status bar what the background build is doing.
 ///
 /// The one place a *state* belongs. A Console line saying "rebuilt" is gone by
@@ -291,9 +470,11 @@ pub fn show_sync_status(
     } else if sync.last_error.is_some() {
         (Some("Project failed to build".to_string()), Some(RED))
     } else if sync.restart_wanted {
+        // Only the failed-to-load path sets this now: a successful build
+        // reloads itself, so there is nothing to tell the user to do.
         (
-            Some(format!("Rebuilt, {RESTART_HINT} to load")),
-            Some(GREEN),
+            Some(format!("Rebuilt but not loaded, {RELOAD_HINT}")),
+            Some(AMBER),
         )
     } else {
         (None, None)
@@ -315,10 +496,9 @@ pub fn show_sync_status(
 
 const AMBER: [u8; 3] = [228, 132, 52];
 const RED: [u8; 3] = [220, 80, 80];
-const GREEN: [u8; 3] = [48, 196, 140];
 
 /// What the status line tells the user to press.
-const RESTART_HINT: &str = "File ▸ Import Bevy Project";
+const RELOAD_HINT: &str = "File ▸ Reload Project Code";
 
 /// Restart into the open project once its rebuild is in.
 ///
