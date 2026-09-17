@@ -95,6 +95,7 @@ fn command_id(cmd: &MenuCommand) -> String {
         ResetWorkspace => "renzora.reset_workspace",
         ResetGlobalDocks => "renzora.reset_global_docks",
         ResetDefaults => "renzora.reset_defaults",
+        SplashScreen => "renzora.splash_screen",
         Tutorial => "renzora.tutorial",
         Documentation => "renzora.documentation",
         YouTube => "renzora.youtube",
@@ -138,6 +139,7 @@ const ALL: &[MenuCommand] = {
         ResetWorkspace,
         ResetGlobalDocks,
         ResetDefaults,
+        SplashScreen,
         Tutorial,
         Documentation,
         YouTube,
@@ -358,6 +360,7 @@ fn build_menu(world: &mut World) {
         "Help",
         true,
         &[
+            &item(MenuCommand::SplashScreen, renzora::lang::t_or("menu.help.splash_screen", "Splash Screen")),
             &item(MenuCommand::Tutorial, renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial")),
             &PredefinedMenuItem::separator(),
             &item(MenuCommand::Documentation, renzora::lang::t("menu.help.documentation")),

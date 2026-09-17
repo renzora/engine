@@ -1,10 +1,24 @@
 # The Dashboard
 
-Start Renzora without a project and you land on the dashboard. It is where you pick a project, install plugins, and take engine updates.
+Start Renzora and the dashboard opens as a panel over the editor. It is where you pick a project, install plugins, and take engine updates.
 
-<!-- screenshot: dashboard_projects.png - the dashboard on its Projects page, recent project cards in a grid, rail on the left -->
+<!-- screenshot: dashboard_projects.png - the dashboard panel over a dimmed editor, Projects page, recent project cards in a grid, rail on the left -->
 
-The window has a rail down the left with one row per page, your account and language picker pinned at the bottom, and a status strip along the bottom with links to the website, YouTube, Discord and GitHub. Drag the window by its title bar.
+It has a rail down the left with one row per page, your account and language picker pinned at the bottom, and a status strip along the bottom with links to the website, YouTube, Discord and GitHub.
+
+## Dismissing it
+
+The editor behind the panel is real and already running. Press it, or press Escape, or use the ✕ in the panel's corner, and the dashboard goes away.
+
+What you are left in is the **Untitled** project: a scratch project the editor keeps in `~/.renzora/untitled`. You can build in it straight away. It opens with a ground grid and a sun and no world environment, so a mesh dropped in is lit and sitting on something, and the first sky in the scene is one you chose.
+
+Untitled is kept between launches. Quitting without making a project does not discard the work: the next launch opens back into it, and it is listed in Recent Projects like anything else.
+
+**File ▸ Create Project** is how a session stops being untitled. It asks for an empty folder, copies your work into it, and opens it as a real project, named after the folder. Build output and caches are left behind. The scratch folder stays where it is, ready for the next time.
+
+Bring the dashboard back at any point with **Help ▸ Splash Screen**.
+
+It appears on every launch except when a project was named on the command line with `--project`, where you have already said what you want to open.
 
 ## Projects
 
@@ -34,7 +48,7 @@ A template brings its own `project.toml`, so it can start you with a resolution,
 
 Install plugins here, before you open a project.
 
-A plugin is compiled and loaded when the editor starts, so installing one always ends with a restart. On the dashboard that restart costs nothing, which is why the page is here.
+A plugin is compiled on the machine that installs it and loaded into the editor that is already running, so installing one usually ends with the plugin simply working. The exception is a plugin that sets up rendering, which is compiled now and loads on the next start: see [Installing without a restart](../extending/native-plugins.md#installing-without-a-restart).
 
 <!-- screenshot: dashboard_plugins.png - the Plugins page, listings with Install buttons -->
 
@@ -74,4 +88,4 @@ You need an account only for paid marketplace listings and for publishing. Free 
 
 ## Language
 
-The last row of the rail picks the interface language. The choice is saved, takes effect on the dashboard immediately, and is already applied when the editor opens.
+The last row of the rail picks the interface language. The choice is saved and takes effect immediately, in the panel and in the editor behind it.

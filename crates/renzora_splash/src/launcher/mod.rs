@@ -58,6 +58,14 @@ use style::*;
 #[derive(Component)]
 pub(crate) struct SplashRoot;
 
+/// The dimmed backdrop behind the overlay panel. Pressing it dismisses.
+#[derive(Component)]
+pub(crate) struct SplashScrim;
+
+/// The panel header's close button.
+#[derive(Component)]
+pub(crate) struct SplashClose;
+
 /// Smoothed real-time FPS shown in the status strip. The splash is GPU-light, so
 /// this is a baseline for "is the app/window itself smooth?" to compare against
 /// the editor's much heavier per-frame render cost.
@@ -77,9 +85,9 @@ pub(crate) fn register(app: &mut App) {
         Update,
         (
             reopen_last_project,
-            native_splash_poll.run_if(in_state(SplashState::Splash)),
-            poll_releases.run_if(in_state(SplashState::Splash)),
-            update_fps.run_if(in_state(SplashState::Splash)),
+            native_splash_poll.run_if(overlay_open),
+            poll_releases.run_if(overlay_open),
+            update_fps.run_if(overlay_open),
             // `manage_splash` is exclusive (`&mut World`) and ran every frame for
             // the editor's entire life to rediscover "no splash, nothing to do".
             //
@@ -91,21 +99,22 @@ pub(crate) fn register(app: &mut App) {
             // total. So don't hunt exclusive systems expecting outsized wins; the
             // reason to gate this one is that it is 100% waste, not that it is big.
             //
-            // The condition is an `or`, not a plain `in_state`, because this system
-            // both *builds and tears down*: on leaving `Splash` it must still get
-            // one pass to despawn `SplashRoot`. Gating on state alone would strand
-            // the splash UI in the editor forever. Once torn down, neither arm
-            // holds and it stops for good — self-clearing, no flag needed.
+            // The condition is an `or`, not a plain "is the overlay open",
+            // because this system both *builds and tears down*: on the overlay
+            // closing it must still get one pass to despawn `SplashRoot`. Gating
+            // on the flag alone would strand the dashboard over the editor
+            // forever. Once torn down, neither arm holds and it stops for good:
+            // self-clearing, no flag needed.
             //
             // `rebuild_section` is chained after it so the page host exists on the
             // frame the dashboard is built, rather than one frame later.
-            (manage_splash, sections::rebuild_section).chain().run_if(
-                in_state(SplashState::Splash).or_else(any_with_component::<SplashRoot>),
-            ),
+            (manage_splash, sections::rebuild_section)
+                .chain()
+                .run_if(overlay_open.or_else(any_with_component::<SplashRoot>)),
             sections::nav_click,
-            chrome::window_btn_click,
-            chrome::drag_handle,
-            chrome::resize_zone_click,
+            dismiss_on_scrim_press,
+            dismiss_on_close_press,
+            dismiss_on_escape,
             chrome::url_click,
             #[cfg(target_arch = "wasm32")]
             collect_web_project_pick,
@@ -114,6 +123,68 @@ pub(crate) fn register(app: &mut App) {
 
     projects::systems(app);
     account::systems(app);
+}
+
+/// Is the dashboard up?
+///
+/// Two conditions, not one. `open` is the user's intent, and the state check is
+/// what keeps the overlay from painting over the loading screen: picking a
+/// project leaves the editor for a moment, and a dashboard drawn on top of the
+/// progress bar for that moment is the one frame where the user most wants to
+/// see what is happening.
+fn overlay_open(
+    overlay: Option<Res<renzora::SplashOverlay>>,
+    state: Option<Res<State<SplashState>>>,
+) -> bool {
+    overlay.is_some_and(|overlay| overlay.open) && state.is_some_and(|state| showable(state.get()))
+}
+
+/// The states the dashboard may be drawn in: anything that is not `Loading`.
+///
+/// `Editor` is the case that matters on the desktop, where the overlay sits over
+/// a live editor from the first frame. `Splash` is there for the browser, which
+/// has no scratch project to open into (no home directory, no `rustc`, no
+/// `--project`) and so never leaves the state it starts in. Excluding only
+/// `Loading` says what is actually meant, rather than listing the two states
+/// that happen to be left.
+fn showable(state: &SplashState) -> bool {
+    !matches!(state, SplashState::Loading)
+}
+
+/// Pressing the dimmed editor behind the panel dismisses the overlay.
+///
+/// The gesture that makes the overlay feel like something sitting on your work
+/// rather than a screen you are stuck on: press what you can see, and get to it.
+/// The panel itself carries `FocusPolicy::Block`, so a press inside it never
+/// reaches here.
+fn dismiss_on_scrim_press(
+    mut overlay: ResMut<renzora::SplashOverlay>,
+    scrim: Query<&Interaction, (Changed<Interaction>, With<SplashScrim>)>,
+) {
+    if scrim.iter().any(|i| matches!(i, Interaction::Pressed)) {
+        overlay.open = false;
+    }
+}
+
+/// The ✕ in the panel header, for anyone who does not know the scrim is
+/// clickable.
+fn dismiss_on_close_press(
+    mut overlay: ResMut<renzora::SplashOverlay>,
+    close: Query<&Interaction, (Changed<Interaction>, With<SplashClose>)>,
+) {
+    if close.iter().any(|i| matches!(i, Interaction::Pressed)) {
+        overlay.open = false;
+    }
+}
+
+/// Escape dismisses, as it does for every other modal surface in the editor.
+fn dismiss_on_escape(
+    mut overlay: ResMut<renzora::SplashOverlay>,
+    keys: Res<ButtonInput<KeyCode>>,
+) {
+    if overlay.open && keys.just_pressed(KeyCode::Escape) {
+        overlay.open = false;
+    }
 }
 
 fn native_splash_poll(mut stats: ResMut<GithubStats>) {
@@ -158,7 +229,10 @@ fn reopen_last_project(
 /// times while the language runtime loads its built-ins; the first observed
 /// value is swallowed rather than treated as a change.
 fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Local<bool>) {
-    let want = matches!(world.resource::<State<SplashState>>().get(), SplashState::Splash);
+    let want = world
+        .get_resource::<renzora::SplashOverlay>()
+        .is_some_and(|overlay| overlay.open)
+        && showable(world.resource::<State<SplashState>>().get());
     let mut q = world.query_filtered::<Entity, With<SplashRoot>>();
     let mut existing: Vec<Entity> = q.iter(world).collect();
 
@@ -179,12 +253,6 @@ fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Loc
         if world.get_resource::<EmberFonts>().is_none() {
             return;
         }
-        // The post camera (created at startup by `post`) must exist before we
-        // can route the background to it.
-        let Some(post_cam) = world.get_resource::<crate::post::SplashPost>().map(|p| p.camera)
-        else {
-            return;
-        };
         let fonts = world.resource::<EmberFonts>().clone();
         // Read out of the page registry here: `spawn_splash` has only `Commands`
         // and cannot see a resource.
@@ -192,7 +260,7 @@ fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Loc
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_splash(&mut commands, &fonts, post_cam, &rail);
+            spawn_splash(&mut commands, &fonts, &rail);
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -202,16 +270,36 @@ fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Loc
     }
 }
 
-fn spawn_splash(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    post_cam: Entity,
-    rail: &[sections::RailEntry],
-) {
-    // The root's colour is what shows when the cinematic isn't running
-    // (integrated GPU — see `post::gate_post_camera`), so it has to stand on its
-    // own: a near black with a trace of blue in it, matching the chamber's unlit
-    // air.
+/// The dashboard's size as an overlay, in logical pixels.
+///
+/// Large enough for the rail plus a page of plugin listings, which is what it
+/// was sized for as a window, and bounded so it stays a panel on a 4K display
+/// rather than growing back into a full screen. The scrim around it is what
+/// makes it read as sitting *on* the editor.
+const PANEL: (f32, f32) = (1040.0, 700.0);
+
+/// Above the editor's chrome, below the overlays the dashboard itself opens.
+///
+/// Both halves are load-bearing and they pull in opposite directions. The
+/// overlay is modal, so it has to cover the editor underneath: the highest
+/// editor surface is the play controls at 5000, and the dock, panels and top bar
+/// are far below that.
+///
+/// But the dashboard's own pages are the marketplace, and pressing Install or
+/// opening a listing raises an overlay from `renzora_marketplace`: the store at
+/// 9400, a listing at 9600, the install progress at 9700, the hub lightbox at
+/// 9900. Those are opened *from* this panel and have to appear over it, so
+/// anything at or above 9400 would hide the dashboard's own buttons behind the
+/// dashboard.
+///
+/// 8000 sits in the gap, and the gap is why there is a comment rather than a
+/// number.
+const OVERLAY_Z: i32 = 8000;
+
+fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, rail: &[sections::RailEntry]) {
+    // The scrim: the editor stays visible through it, dimmed, which is the whole
+    // point of the overlay. It used to be opaque and cover a window that had no
+    // editor behind it yet.
     let root = commands
         .spawn((
             Node {
@@ -220,68 +308,51 @@ fn spawn_splash(
                 top: Val::Px(0.0),
                 right: Val::Px(0.0),
                 bottom: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(scrim()),
+            GlobalZIndex(OVERLAY_Z),
+            // Blocks, so the editor underneath cannot be clicked while the
+            // overlay is modal, and carries `Interaction` so a press on the
+            // scrim itself is the dismiss gesture.
+            FocusPolicy::Block,
+            Interaction::default(),
+            SplashScrim,
+            SplashRoot,
+            Name::new("splash-scrim"),
+        ))
+        .id();
+
+    let panel = commands
+        .spawn((
+            Node {
+                width: Val::Px(PANEL.0),
+                height: Val::Px(PANEL.1),
+                // Shrinks on a window too small to hold it rather than
+                // overflowing off the edges, which a fixed size would do on a
+                // laptop with the editor un-maximized.
+                max_width: Val::Percent(92.0),
+                max_height: Val::Percent(92.0),
+                min_height: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
             BackgroundColor(window_bg()),
-            GlobalZIndex(500),
-            // Blocks so a press on the dashboard cannot reach anything behind it,
-            // but carries no drag handle any more — that is the title bar's.
+            // Blocks so a press inside the panel is not also a press on the
+            // scrim, which would dismiss the overlay on every click in it.
             FocusPolicy::Block,
             Interaction::default(),
-            SplashRoot,
-            Name::new("splash-root"),
-        ))
-        .id();
-
-    // The cinematic (the Light Chamber render, through its spectral finishing pass)
-    // is drawn into the offscreen post camera via its own UI root, so `post.wgsl`
-    // can sample it as a whole frame. It carries `SplashRoot` too, so it's torn down
-    // with the rest of the splash.
-    let bg_host = commands
-        .spawn((
-            fullscreen_abs(),
-            FocusPolicy::Pass,
-            bevy::ui::UiTargetCamera(post_cam),
-            SplashRoot,
-            Name::new("splash-bg-host"),
-        ))
-        .id();
-    let chamber = commands
-        .spawn((
-            fullscreen_abs(),
-            FocusPolicy::Pass,
-            crate::chamber::ChamberView,
-            Name::new("splash-chamber"),
-        ))
-        .id();
-    commands.entity(bg_host).add_child(chamber);
-
-    // The post-processed background, shown on the main camera behind the UI.
-    let post_view = commands
-        .spawn((
-            fullscreen_abs(),
-            FocusPolicy::Pass,
-            crate::post::PostView,
-            Name::new("splash-post"),
+            Name::new("splash-panel"),
         ))
         .id();
 
     let shell = build_shell(commands, fonts, rail);
-
-    commands.entity(root).add_children(&[post_view, shell]);
-    chrome::build_resize_zones(commands, root);
-}
-
-fn fullscreen_abs() -> Node {
-    Node {
-        position_type: PositionType::Absolute,
-        left: Val::Px(0.0),
-        top: Val::Px(0.0),
-        right: Val::Px(0.0),
-        bottom: Val::Px(0.0),
-        ..default()
-    }
+    commands.entity(panel).add_children(&[shell]);
+    commands.entity(root).add_children(&[panel]);
 }
 
 /// Title bar over rail + page over status strip.

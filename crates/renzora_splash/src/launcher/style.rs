@@ -19,17 +19,29 @@ pub(crate) fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
 }
 
-/// The window's own ground — what shows when the cinematic isn't running (an
-/// integrated GPU; see `post::gate_post_camera`), so it has to stand on its own:
-/// a near black with a trace of blue in it, matching the chamber's unlit air.
+/// The overlay panel's own ground: a near black with a trace of blue in it.
+///
+/// Opaque, unlike the surfaces inside it. The panel now sits over a live editor
+/// rather than over a cinematic, and a translucent panel there reads as a bug:
+/// the viewport's own contrast shows through the text, and it moves while you
+/// are trying to read a project name.
 pub(crate) fn window_bg() -> Color {
     c(4, 5, 9)
 }
 
-/// A dashboard panel. Deliberately translucent, and this is the whole reason the
-/// dashboard did not simply become an opaque dialog: the Light Chamber cinematic
-/// keeps running behind the window, and a solid surface would have thrown away a
-/// render nobody would ever see again.
+/// The dimmed editor behind the overlay.
+///
+/// Dark enough to push the workspace back and make the panel the only thing
+/// with contrast, light enough that you can still see *which* project you are
+/// about to leave. 72% is where a 4K viewport full of bright geometry stops
+/// competing with the panel's text.
+pub(crate) fn scrim() -> Color {
+    ca(0, 0, 0, 184)
+}
+
+/// A dashboard panel, a shade above [`window_bg`] so the two read as separate
+/// planes. Slightly translucent still, which now reads against the panel ground
+/// rather than against a cinematic.
 pub(crate) fn surface() -> Color {
     ca(10, 12, 20, 214)
 }

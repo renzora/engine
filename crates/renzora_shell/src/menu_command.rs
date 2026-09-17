@@ -45,6 +45,13 @@ pub enum MenuCommand {
     /// unsaved edits in them is the loss the window's × has always prompted
     /// about.
     NewProject,
+    /// File > Create Project: give the untitled scratch session a real home.
+    ///
+    /// Only offered while [`renzora::UntitledProject`] is present. It copies the
+    /// scratch folder to a folder you pick and opens the copy, so the work
+    /// carries over rather than starting again, which is the difference between
+    /// this and [`Self::NewProject`].
+    CreateProject,
     OpenProject,
     /// File > Import Bevy Project: open a hand-written Bevy crate.
     ///
@@ -92,6 +99,12 @@ pub enum MenuCommand {
     ResetDefaults,
 
     // ── Help ────────────────────────────────────────────────────────────────
+    /// Help > Splash Screen: put the dashboard back over the editor.
+    ///
+    /// The splash appears on launch and is dismissed by pressing the editor
+    /// behind it, so without a way back the projects list, the changelog and the
+    /// account pages would be reachable exactly once per session.
+    SplashScreen,
     Tutorial,
     Documentation,
     YouTube,
@@ -123,6 +136,9 @@ impl MenuCommand {
             // ── File ────────────────────────────────────────────────────────
             Self::NewProject => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::New));
+            }
+            Self::CreateProject => {
+                world.insert_resource(ProjectSwitchRequest(ProjectSwitch::CreateFromUntitled));
             }
             Self::OpenProject => {
                 world.insert_resource(ProjectSwitchRequest(ProjectSwitch::Pick));
@@ -183,6 +199,11 @@ impl MenuCommand {
             Self::ResetDefaults => crate::top_menu::reset_defaults_action(world),
 
             // ── Help ────────────────────────────────────────────────────────
+            Self::SplashScreen => {
+                if let Some(mut overlay) = world.get_resource_mut::<renzora::SplashOverlay>() {
+                    overlay.open = true;
+                }
+            }
             Self::Tutorial => world.insert_resource(TutorialRequested),
             Self::Documentation => open_url("https://renzora.com/docs"),
             Self::YouTube => open_url("https://youtube.com/@renzoragame"),

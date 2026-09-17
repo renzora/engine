@@ -1579,6 +1579,34 @@ pub struct CurrentProject {
     pub config: ProjectConfig,
 }
 
+/// Present when [`CurrentProject`] is the scratch project rather than one the
+/// user named and put somewhere.
+///
+/// The editor cannot run without a project. Around a hundred systems read
+/// [`CurrentProject`] unconditionally, and they are right to: a scene has to
+/// resolve against *somewhere*, thumbnails and imported assets have to be
+/// written *somewhere*, and "nowhere" is not a case any of them could do
+/// anything useful with. So dismissing the splash does not leave the editor
+/// project-less; it leaves it on a project in `~/.renzora/untitled` that the
+/// user never chose, which this marks.
+///
+/// What it changes is entirely presentational, plus one real action:
+///
+/// * the window title and the project label read "Untitled" rather than a path;
+/// * the recents list shows it as unsaved work rather than as a project;
+/// * **File > Create Project** appears, which is what turns the scratch folder
+///   into a real project wherever the user wants it.
+///
+/// It is deliberately a separate marker rather than a field on
+/// [`CurrentProject`], so that every existing construction site keeps compiling
+/// and so that "is this untitled" is answered by one question in one place
+/// instead of a bool threaded through the project config and out to disk. It is
+/// never serialized: the scratch project's own `project.toml` is an ordinary
+/// one, which is exactly what makes Create Project a copy rather than a
+/// conversion.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct UntitledProject;
+
 impl CurrentProject {
     pub fn resolve_path(&self, relative: &str) -> PathBuf {
         self.path.join(relative)

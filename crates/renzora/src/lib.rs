@@ -357,6 +357,37 @@ pub enum SplashState {
     Editor,
 }
 
+/// Is the splash overlay showing over the editor?
+///
+/// The splash used to be a screen: [`SplashState::Splash`] was a phase the
+/// editor had not started yet, and the dashboard filled the window. It is an
+/// overlay now, so the editor is running underneath from the first frame and
+/// "is the dashboard up" is a separate question from "what phase is the app
+/// in". This is that question.
+///
+/// It lives here rather than in `renzora_splash` because the editor opens it:
+/// Help > Splash Screen, and anything else that wants to put the dashboard back
+/// in front of the user. Setting `open` is the whole API; the splash plugin
+/// spawns and despawns the UI to match.
+#[derive(bevy::prelude::Resource, Default, Debug, Clone, Copy)]
+pub struct SplashOverlay {
+    pub open: bool,
+}
+
+/// Request: copy the open project into a folder the user picks, and open the
+/// copy.
+///
+/// File > Create Project, the way an untitled session stops being one. Inserted
+/// by the editor's File menu after the save prompt has had its say, consumed by
+/// the splash plugin, which owns the folder dialog and the recents list.
+///
+/// A copy rather than a move: the scratch project stays where it is, so the next
+/// launch still opens into a working Untitled rather than into a folder that
+/// disappeared. What it holds is whatever the last session left there, which is
+/// the same thing it has always held.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestCreateProjectFromCurrent;
+
 /// Marker request: open a different project. Inserted by the editor's File
 /// menu; consumed by the splash plugin which shows the file dialog,
 /// validates, updates recent projects, and transitions state.

@@ -332,6 +332,12 @@ struct MenuContext<'a> {
     /// Recently-opened project roots, most recent first — File > Recent
     /// Projects. Empty in a build with no splash plugin.
     recents: &'a [std::path::PathBuf],
+    /// Is the open project the scratch one?
+    ///
+    /// File > Create Project exists only then. Offering it in a real project
+    /// would be a second, subtly different New Project, and offering it greyed
+    /// out would be a row that is absent in every session that matters.
+    untitled: bool,
 }
 
 /// Spawn a top-menu dropdown anchored at `pos` and return its root.
@@ -389,6 +395,7 @@ fn top_menu_open(
     bridge: Option<Res<renzora::core::AuthBridge>>,
     update: Option<Res<renzora::core::UpdateAvailable>>,
     recents: Option<Res<renzora::RecentProjects>>,
+    untitled: Option<Res<renzora::UntitledProject>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -402,6 +409,7 @@ fn top_menu_open(
         avatar: account_avatar(&bridge),
         update_tag: update_tag.as_deref(),
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
+        untitled: untitled.is_some(),
     };
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
@@ -438,6 +446,7 @@ fn top_menu_hover(
     bridge: Option<Res<renzora::core::AuthBridge>>,
     update: Option<Res<renzora::core::UpdateAvailable>>,
     recents: Option<Res<renzora::RecentProjects>>,
+    untitled: Option<Res<renzora::UntitledProject>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -450,6 +459,7 @@ fn top_menu_hover(
         avatar: account_avatar(&bridge),
         update_tag: update_tag.as_deref(),
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
+        untitled: untitled.is_some(),
     };
     for (interaction, menu, rcp, cn) in &q {
         if *interaction == Interaction::Hovered && menu.0 != open_kind {
@@ -833,7 +843,8 @@ fn build_menu_items(
             }
             rows
         }
-        TopMenuKind::File => vec![
+        TopMenuKind::File => {
+            let mut rows = vec![
             // Both of these leave the project, so they ask
             // `save_prompts::process_project_switch_request` for it rather than
             // doing it: it closes every open document, and doing that on one
@@ -860,7 +871,17 @@ fn build_menu_items(
             menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| MenuCommand::ImportFolder.run(w)),
             menu_sep(commands),
             menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| MenuCommand::InstallPlugin.run(w)),
-        ],
+            ];
+            // Only while untitled, and first, because it is the one thing an
+            // untitled session eventually has to do: give the work a home.
+            // Absent rather than disabled in a real project, where it would be a
+            // second and subtly different New Project.
+            if ctx.untitled {
+                let create = menu_item(commands, fonts, "folder-simple-plus", &renzora::lang::t_or("menu.file.create_project", "Create Project…"), |w| MenuCommand::CreateProject.run(w));
+                rows.insert(0, create);
+            }
+            rows
+        }
         TopMenuKind::Edit => vec![
             menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| MenuCommand::Undo.run(w)),
             menu_item(commands, fonts, "arrow-u-up-right", &renzora::lang::t("common.redo"), |w| MenuCommand::Redo.run(w)),
@@ -880,6 +901,7 @@ fn build_menu_items(
             menu_item(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"), |w| MenuCommand::ResetDefaults.run(w)),
         ],
         TopMenuKind::Help => vec![
+            menu_item(commands, fonts, "sparkle", &renzora::lang::t_or("menu.help.splash_screen", "Splash Screen"), |w| MenuCommand::SplashScreen.run(w)),
             menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| MenuCommand::Tutorial.run(w)),
             menu_sep(commands),
             menu_item(commands, fonts, "book-open", &renzora::lang::t("menu.help.documentation"), |w| MenuCommand::Documentation.run(w)),

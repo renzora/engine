@@ -247,7 +247,7 @@ fn spawn_loading(
                     ..default()
                 },
                 FocusPolicy::Pass,
-                crate::post::HazeView,
+                crate::haze::HazeView,
                 Name::new("loading-haze"),
             ))
             .id();

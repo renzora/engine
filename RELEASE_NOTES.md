@@ -1,5 +1,13 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-17 13:20
+- feat(editor): the splash is an overlay over the running editor, dismissed by pressing the editor behind it
+- feat(editor): the editor opens into a scratch Untitled project, so you can build something without creating a project first
+- feat(editor): File ▸ Create Project copies an untitled session into a folder you pick and opens it as a real project
+- feat(editor): Help ▸ Splash Screen reopens the dashboard
+- change(editor): the editor window opens maximized instead of at launcher size
+- change(splash): the Light Chamber cinematic is gone, since the dashboard's background is now the editor
+
 ## 2026-09-17 12:15
 - perf(editor): a plugin or Bevy project compiles below the editor in the scheduler, so the editor keeps its frame rate while it builds
 

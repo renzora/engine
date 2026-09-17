@@ -391,6 +391,14 @@ pub(crate) enum ProjectSwitch {
     /// just as completely, more so in fact: it restarts the process, so an
     /// unsaved document is not merely closed but gone with the editor.
     ImportBevy,
+    /// File > Create Project, from an untitled session.
+    ///
+    /// The odd one out: it does not discard the work, it takes it with you. It
+    /// goes through the prompt anyway, and for the strongest reason of the five.
+    /// Creating the project copies the scratch folder *from disk*, so an unsaved
+    /// edit is not merely at risk of being lost, it is guaranteed to be missing
+    /// from the project you just made. Saving first is the whole point.
+    CreateFromUntitled,
 }
 
 impl ProjectSwitch {
@@ -401,6 +409,7 @@ impl ProjectSwitch {
             ProjectSwitch::New => "Save & New Project",
             ProjectSwitch::Pick | ProjectSwitch::Recent(_) => "Save & Open",
             ProjectSwitch::ImportBevy => "Save & Import",
+            ProjectSwitch::CreateFromUntitled => "Save & Create",
         }
     }
 
@@ -420,6 +429,9 @@ impl ProjectSwitch {
             }
             ProjectSwitch::ImportBevy => {
                 commands.insert_resource(renzora::RequestImportBevyProject(None));
+            }
+            ProjectSwitch::CreateFromUntitled => {
+                commands.insert_resource(renzora::RequestCreateProjectFromCurrent);
             }
         }
     }

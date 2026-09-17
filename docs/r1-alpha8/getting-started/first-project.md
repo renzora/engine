@@ -4,9 +4,11 @@ Make something move on screen. You will create a project, drop an object into th
 
 ## Create the project
 
-Open the editor. You land on the [dashboard](/docs/r1-alpha8/getting-started/dashboard), on its Projects page.
+Open the editor. The [dashboard](/docs/r1-alpha8/getting-started/dashboard) is in front of you, on its Projects page, with the editor behind it.
 
 Click **New Project** and choose a folder. The folder's name becomes the project's name. The editor creates the project and opens its starting scene.
+
+You do not have to decide now. Press the editor behind the panel and the dashboard goes away, leaving you in a scratch project called Untitled that you can build in immediately; **File ▸ Create Project** turns whatever you made there into a real project later. This page takes the direct route.
 
 <!-- screenshot: dashboard_new_project.png - the New Project flow, folder picker -->
 

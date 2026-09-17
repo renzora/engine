@@ -36,6 +36,7 @@ mod conflict_prompt;
 mod hot_reload;
 mod missing_assets;
 mod scenes;
+mod untitled_scene;
 use diagnostics::SceneDiagnostics;
 use scenes::ScenesPanel;
 
@@ -1616,9 +1617,15 @@ impl Plugin for ScenePlugin {
             // them so each editor overlay session starts at 0%.
             .add_systems(
                 OnEnter(SplashState::Editor),
-                |mut tasks: ResMut<LoadingTasks>| {
-                    tasks.clear();
-                },
+                (
+                    |mut tasks: ResMut<LoadingTasks>| {
+                        tasks.clear();
+                    },
+                    // After the scene has loaded, so "is this scene empty" is
+                    // asked of a scene that has finished arriving.
+                    untitled_scene::seed_untitled_scene,
+                )
+                    .chain(),
             )
             // Rehydrate systems run during Loading too. They drive GLB
             // resolution + spawn while the loading screen ticks.

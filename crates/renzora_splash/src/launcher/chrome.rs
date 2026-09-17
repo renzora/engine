@@ -1,13 +1,13 @@
-//! Window chrome: the title bar the borderless window drags by, the
-//! minimize/maximize/close buttons, the eight resize zones around the edge, and
-//! the click handler shared by every external link on the dashboard.
+//! The overlay panel's header: the product mark, the dismiss button, and the
+//! click handler shared by every external link on the dashboard.
 //!
-//! The drag handle used to be the splash root — the whole background — because
-//! the launcher had no chrome of its own to grab. The dashboard does, so
-//! dragging is now the title bar's job alone; a press on a page's empty
-//! background no longer picks the window up mid-scroll.
+//! It was window chrome, and the module is named for what is left of it. The
+//! splash used to be an undecorated window of its own, so it drew its own title
+//! bar to drag by, its own minimize/maximize/close buttons and eight resize
+//! zones around the edge. The dashboard is a panel inside the editor's window
+//! now: the editor owns the window and draws all of that, and what remains here
+//! is a header with a ✕ in it.
 
-use bevy::math::CompassOctant;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
@@ -15,18 +15,13 @@ use bevy::window::SystemCursorIcon;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::bind_bg;
-// Only the trailing maximize button swaps its glyph between square and restore;
-// the macOS zoom dot keeps one appearance whatever the window state.
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
-use renzora_ember::reactive::tracked::bind_text;
 // The mark is a file beside the executable, which the browser build has no
-// notion of — there it falls back to the glyph, and the on-disk image cache is
+// notion of: there it falls back to the glyph, and the on-disk image cache is
 // never named. See `build_mark`.
 #[cfg(not(target_arch = "wasm32"))]
 use renzora_ember::reactive::tracked::bind_with;
 #[cfg(not(target_arch = "wasm32"))]
 use renzora_ember::widgets::{FileImageWanted, FileImages};
-use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 
 use super::style::*;
 
@@ -41,21 +36,10 @@ pub(crate) const GITHUB_URL: &str = "https://github.com/renzora/engine";
 // spending its whole left side on a hex string that reads as an error code to
 // everyone who is not writing a prebuilt plugin.
 
-#[derive(Component)]
-pub(crate) struct SplashDragHandle;
-
-#[derive(Component, Clone, Copy)]
-pub(crate) enum WinBtn {
-    Min,
-    Max,
-    Close,
-}
-
-#[derive(Component)]
-pub(crate) struct SplashWinBtn(pub WinBtn);
-
-#[derive(Component)]
-pub(crate) struct SplashResizeZone(pub CompassOctant);
+// The drag handle, the three window buttons and the eight resize zones are gone
+// with the window they operated: the splash was an undecorated window of its
+// own, so it had to draw and drive its own chrome. It is a panel inside the
+// editor's window now, and the editor's title bar owns all of that.
 
 /// Anything that opens `url` in the system browser when pressed.
 #[derive(Component, Clone)]
@@ -63,8 +47,13 @@ pub(crate) struct SplashUrl(pub String);
 
 // ── Title bar ────────────────────────────────────────────────────────────────
 
-/// The strip across the top: the product mark on the left, the window controls
-/// on the right, and the whole thing a drag handle in between.
+/// The strip across the top of the overlay panel: the product mark on the left,
+/// the dismiss button on the right.
+///
+/// It was the window's title bar, carrying the minimize/maximize/close controls
+/// and acting as the drag handle for the whole undecorated splash window. None
+/// of that is the panel's business now: the editor owns the window and draws its
+/// own title bar, and this one closes a panel rather than an application.
 pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
@@ -79,12 +68,11 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
                 ..default()
             },
             BackgroundColor(rail_bg()),
-            // Blocks so the press starts a window drag here rather than falling
-            // through to whatever is behind the bar.
+            // Blocks so a press on the header is not also a press on the scrim,
+            // which would dismiss the overlay.
             FocusPolicy::Block,
             Interaction::default(),
-            SplashDragHandle,
-            Name::new("splash-title-bar"),
+            Name::new("splash-panel-header"),
         ))
         .id();
 
@@ -130,88 +118,47 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
         .id();
     commands.entity(brand).add_children(&[mark, name, dot, version]);
 
-    // macOS leads with the window buttons; every other platform trails with
-    // them. The editor's top bar makes the same choice — see
-    // `renzora_shell::top_bar::build_traffic_lights`, which is the same three
-    // dots for the same reason, drawn there because the two bars share no code.
-    #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
-    {
-        let lights = build_traffic_lights(commands);
-        commands.entity(bar).add_children(&[lights, brand]);
-    }
-    #[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
-    {
-        let controls = build_window_controls(commands, fonts);
-        commands.entity(bar).add_children(&[brand, controls]);
-    }
+    // The same side on every platform, unlike the window controls this replaced:
+    // a panel's dismiss button is not an OS window control, so the macOS
+    // convention of leading with it does not apply.
+    let close = build_close_button(commands, fonts);
+    commands.entity(bar).add_children(&[brand, close]);
     bar
 }
 
-/// The splash's traffic lights. See `renzora_shell::top_bar` for why they are
-/// drawn rather than asked of `NSWindow`.
+/// The ✕ that dismisses the overlay.
 ///
-/// A near-twin of the editor's, and deliberately not shared: the two title bars
-/// have no common crate, different button components (`SplashWinBtn` against
-/// `WindowBtn`) and different hover conventions, and a shared widget would have
-/// to be parameterised over all of it to save thirty lines.
-#[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
-fn build_traffic_lights(commands: &mut Commands) -> Entity {
-    const CLOSE: (u8, u8, u8) = (255, 95, 87);
-    const MINIMIZE: (u8, u8, u8) = (254, 188, 46);
-    const ZOOM: (u8, u8, u8) = (40, 200, 64);
-    const DOT: f32 = 12.0;
-
-    let group = commands
+/// A second way out, for anyone who does not discover that pressing the dimmed
+/// editor behind the panel works. Escape is the third.
+fn build_close_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let btn = commands
         .spawn((
             Node {
+                width: Val::Px(44.0),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                padding: UiRect::axes(Val::Px(12.0), Val::Px(0.0)),
+                justify_content: JustifyContent::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
-            Name::new("splash-traffic-lights"),
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            FocusPolicy::Block,
+            super::SplashClose,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("splash-panel-close"),
         ))
         .id();
-
-    let mut dots = Vec::new();
-    for (kind, color) in [
-        (WinBtn::Close, CLOSE),
-        (WinBtn::Min, MINIMIZE),
-        (WinBtn::Max, ZOOM),
-    ] {
-        let btn = commands
-            .spawn((
-                Node {
-                    width: Val::Px(DOT),
-                    height: Val::Px(DOT),
-                    border_radius: BorderRadius::all(Val::Px(DOT / 2.0)),
-                    ..default()
-                },
-                BackgroundColor(c(color.0, color.1, color.2)),
-                Interaction::default(),
-                FocusPolicy::Block,
-                SplashWinBtn(kind),
-                HoverCursor(SystemCursorIcon::Pointer),
-                Name::new("splash-traffic-light"),
-            ))
-            .id();
-        // Brightened on hover rather than glyph-revealed: the splash bar is
-        // short and these sit against a dark header where a lift in luminance
-        // reads more clearly than an 8px glyph would.
-        bind_bg(commands, btn, move |w| {
-            if is_hovered(w, btn) {
-                ca(color.0, color.1, color.2, 255)
-            } else {
-                c(color.0, color.1, color.2)
-            }
-        });
-        dots.push(btn);
-    }
-    commands.entity(group).add_children(&dots);
-    group
+    bind_bg(commands, btn, move |w| {
+        if is_hovered(w, btn) {
+            ca(255, 255, 255, 34)
+        } else {
+            Color::NONE
+        }
+    });
+    let glyph = icon_text(commands, &fonts.phosphor, "x", ICON_TEXT, 14.0);
+    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(btn).add_child(glyph);
+    btn
 }
 
 /// The Renzora mark in the title bar: the real icon, with a glyph standing in
@@ -295,217 +242,7 @@ fn brand_icon_path() -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
-// Trailing glyph buttons: every platform except native macOS, which uses the
-// leading dots instead. Still built on wasm, where it yields an empty row.
-#[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
-fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                ..default()
-            },
-            FocusPolicy::Pass,
-            Name::new("splash-window-controls"),
-        ))
-        .id();
-    // Same as the editor shell's title bar: a browser tab has no OS window to
-    // minimize, maximize or close, so the controls are left off rather than
-    // rendered as three buttons that do nothing.
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let min = win_button(commands, fonts, WinBtn::Min, "minus", false);
-        let max = win_button(commands, fonts, WinBtn::Max, "square", false);
-        let close = win_button(commands, fonts, WinBtn::Close, "x", true);
-        commands.entity(row).add_children(&[min, max, close]);
-    }
-    #[cfg(target_arch = "wasm32")]
-    let _ = fonts;
-    row
-}
-
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
-fn win_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    kind: WinBtn,
-    icon: &str,
-    is_close: bool,
-) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                width: Val::Px(44.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
-            SplashWinBtn(kind),
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("splash-win-btn"),
-        ))
-        .id();
-    bind_bg(commands, btn, move |w| {
-        if is_hovered(w, btn) {
-            if is_close {
-                c(232, 17, 35)
-            } else {
-                ca(255, 255, 255, 34)
-            }
-        } else {
-            Color::NONE
-        }
-    });
-    let glyph = icon_text(commands, &fonts.phosphor, icon, ICON_TEXT, 14.0);
-    commands.entity(glyph).insert(FocusPolicy::Pass);
-    if matches!(kind, WinBtn::Max) {
-        let square = renzora_ember::font::icon_glyph("square").unwrap_or('\u{E4C6}');
-        let restore = renzora_ember::font::icon_glyph("arrows-in-simple").unwrap_or('\u{E4C6}');
-        bind_text(commands, glyph, move |w| {
-            let maxed = w
-                .get_resource::<WindowActionQueue>()
-                .map(|q| q.maximized)
-                .unwrap_or(false);
-            (if maxed { restore } else { square }).to_string()
-        });
-    }
-    commands.entity(btn).add_child(glyph);
-    btn
-}
-
-// ── Resize zones ─────────────────────────────────────────────────────────────
-
-pub(crate) fn build_resize_zones(commands: &mut Commands, root: Entity) {
-    let t = Val::Px(8.0);
-    let cz = Val::Px(16.0);
-    let edges: [(CompassOctant, Edge); 8] = [
-        (CompassOctant::North, Edge::horiz_top(t)),
-        (CompassOctant::South, Edge::horiz_bottom(t)),
-        (CompassOctant::West, Edge::vert_left(t)),
-        (CompassOctant::East, Edge::vert_right(t)),
-        (CompassOctant::NorthWest, Edge::corner(true, true, cz)),
-        (CompassOctant::NorthEast, Edge::corner(false, true, cz)),
-        (CompassOctant::SouthWest, Edge::corner(true, false, cz)),
-        (CompassOctant::SouthEast, Edge::corner(false, false, cz)),
-    ];
-    for (octant, e) in edges {
-        let cursor = resize_cursor(octant);
-        let zone = commands
-            .spawn((
-                e.into_node(),
-                BackgroundColor(Color::NONE),
-                GlobalZIndex(560),
-                Interaction::default(),
-                // Or a drag from an edge starts an OS *move* as well as a resize.
-                FocusPolicy::Block,
-                SplashResizeZone(octant),
-                HoverCursor(cursor),
-                Name::new("splash-resize"),
-            ))
-            .id();
-        commands.entity(root).add_child(zone);
-    }
-}
-
-struct Edge {
-    left: Val,
-    right: Val,
-    top: Val,
-    bottom: Val,
-    width: Val,
-    height: Val,
-}
-impl Edge {
-    fn horiz_top(t: Val) -> Self {
-        Self { left: Val::Px(16.0), right: Val::Px(16.0), top: Val::Px(0.0), bottom: Val::Auto, width: Val::Auto, height: t }
-    }
-    fn horiz_bottom(t: Val) -> Self {
-        Self { left: Val::Px(16.0), right: Val::Px(16.0), top: Val::Auto, bottom: Val::Px(0.0), width: Val::Auto, height: t }
-    }
-    fn vert_left(t: Val) -> Self {
-        Self { left: Val::Px(0.0), right: Val::Auto, top: Val::Px(16.0), bottom: Val::Px(16.0), width: t, height: Val::Auto }
-    }
-    fn vert_right(t: Val) -> Self {
-        Self { left: Val::Auto, right: Val::Px(0.0), top: Val::Px(16.0), bottom: Val::Px(16.0), width: t, height: Val::Auto }
-    }
-    fn corner(left_side: bool, top_side: bool, cz: Val) -> Self {
-        Self {
-            left: if left_side { Val::Px(0.0) } else { Val::Auto },
-            right: if left_side { Val::Auto } else { Val::Px(0.0) },
-            top: if top_side { Val::Px(0.0) } else { Val::Auto },
-            bottom: if top_side { Val::Auto } else { Val::Px(0.0) },
-            width: cz,
-            height: cz,
-        }
-    }
-    fn into_node(self) -> Node {
-        Node {
-            position_type: PositionType::Absolute,
-            left: self.left,
-            right: self.right,
-            top: self.top,
-            bottom: self.bottom,
-            width: self.width,
-            height: self.height,
-            ..default()
-        }
-    }
-}
-
-fn resize_cursor(octant: CompassOctant) -> SystemCursorIcon {
-    match octant {
-        CompassOctant::North | CompassOctant::South => SystemCursorIcon::NsResize,
-        CompassOctant::East | CompassOctant::West => SystemCursorIcon::EwResize,
-        CompassOctant::NorthWest | CompassOctant::SouthEast => SystemCursorIcon::NwseResize,
-        CompassOctant::NorthEast | CompassOctant::SouthWest => SystemCursorIcon::NeswResize,
-    }
-}
-
 // ── Interaction systems ──────────────────────────────────────────────────────
-
-pub(crate) fn window_btn_click(
-    q: Query<(&Interaction, &SplashWinBtn), Changed<Interaction>>,
-    queue: Option<ResMut<WindowActionQueue>>,
-) {
-    let Some(mut queue) = queue else { return };
-    for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        queue.push(match btn.0 {
-            WinBtn::Min => WindowAction::Minimize,
-            WinBtn::Max => WindowAction::ToggleMaximize,
-            WinBtn::Close => WindowAction::Close,
-        });
-    }
-}
-
-pub(crate) fn drag_handle(
-    q: Query<&Interaction, (With<SplashDragHandle>, Changed<Interaction>)>,
-    queue: Option<ResMut<WindowActionQueue>>,
-) {
-    let Some(mut queue) = queue else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        queue.push(WindowAction::StartDrag);
-    }
-}
-
-pub(crate) fn resize_zone_click(
-    q: Query<(&Interaction, &SplashResizeZone), Changed<Interaction>>,
-    queue: Option<ResMut<WindowActionQueue>>,
-) {
-    let Some(mut queue) = queue else { return };
-    for (interaction, zone) in &q {
-        if *interaction == Interaction::Pressed {
-            queue.push(WindowAction::StartResize(zone.0));
-        }
-    }
-}
 
 pub(crate) fn url_click(q: Query<(&Interaction, &SplashUrl), Changed<Interaction>>) {
     for (interaction, url) in &q {
