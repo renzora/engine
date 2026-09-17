@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-17 15:22
+- fix(editor): a Bevy project that uses states loads, instead of failing with "the `StateTransition` schedule is missing"
+
 ## 2026-09-17 13:20
 - feat(editor): the splash is an overlay over the running editor, dismissed by pressing the editor behind it
 - feat(editor): the editor opens into a scratch Untitled project, so you can build something without creating a project first

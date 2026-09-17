@@ -45,6 +45,9 @@
 //! editor's schedules are back. That is rare (it exists for plugins that need
 //! another plugin's resources) and the failure is the old behaviour rather than
 //! a crash: those systems run in the editor's `Update`.
+//!
+//! The replacement set is empty of *systems*, not of *schedules*: see
+//! [`empty_like`] for why a plugin can tell the difference, and what it cost.
 
 use bevy::ecs::entity::EntityHashSet;
 use bevy::ecs::schedule::{ScheduleLabel, Schedules};
@@ -76,7 +79,7 @@ pub struct ProjectStartupPending(pub bool);
 /// The swap is the whole mechanism. See the module docs.
 pub fn capture(app: &mut App, install: impl FnOnce(&mut App)) -> Schedules {
     let editor = app.world_mut().remove_resource::<Schedules>();
-    app.world_mut().insert_resource(Schedules::default());
+    app.world_mut().insert_resource(empty_like(editor.as_ref()));
 
     install(app);
 
@@ -90,6 +93,54 @@ pub fn capture(app: &mut App, install: impl FnOnce(&mut App)) -> Schedules {
         app.world_mut().insert_resource(editor);
     }
     project
+}
+
+/// The same *set* of schedules the editor has, every one of them empty.
+///
+/// A bare `Schedules::default()` is not a blank slate, it is a world where no
+/// schedule exists, and a plugin can tell the difference. `init_state` reaches
+/// for `StateTransition` to register the state's transition systems into it, and
+/// a missing schedule is not something it works around:
+///
+/// ```text
+/// The `StateTransition` schedule is missing. Did you forget to add
+/// StatesPlugin or DefaultPlugins before calling init_state?
+/// ```
+///
+/// That killed every Bevy project using states, on load, with a message
+/// pointing at the project's own `main` rather than at the editor that took the
+/// schedule away. `add_systems` never noticed because it creates a schedule on
+/// demand; anything that expects one to be *there* did.
+///
+/// So the replacement mirrors the editor's labels and holds none of its systems.
+/// The project registers into its own copies, they are captured with the rest,
+/// and the editor's are put back untouched. Empty schedules that the project
+/// never touches cost a hash-map entry each.
+///
+/// The project's `StateTransition` is captured and, like its `Update`, not run:
+/// the viewport runs a project's `Startup` and nothing else, so its states stay
+/// at their initial value while you edit. That is the intended behaviour rather
+/// than a shortfall, and the same reason `Update` is held back.
+///
+/// One cosmetic edge: on the reload path the shell `App` has an empty plugin
+/// registry, so `init_state` logs "States were added to the app, but
+/// `StatesPlugin` is not installed" once. The plugin *is* installed, in the real
+/// app the world came from; it is `is_plugin_added` that cannot see it.
+fn empty_like(editor: Option<&Schedules>) -> Schedules {
+    use bevy::ecs::schedule::Schedule;
+
+    let mut fresh = Schedules::default();
+    let Some(editor) = editor else {
+        return fresh;
+    };
+    // Taken from the schedule rather than the map key: the key is a
+    // `&dyn ScheduleLabel`, which cannot be interned through a trait object,
+    // while `Schedule::label` hands back the `InternedScheduleLabel` it already
+    // holds.
+    for (_, schedule) in editor.iter() {
+        fresh.insert(Schedule::new(schedule.label()));
+    }
+    fresh
 }
 
 /// [`capture`], from a `&mut World` rather than a `&mut App`.
@@ -234,6 +285,59 @@ mod tests {
             app.add_systems(Startup, |mut ran: ResMut<Ran>| ran.startup += 1);
             app.add_systems(Update, |mut ran: ResMut<Ran>| ran.update += 1);
         }
+    }
+
+    /// A project that uses states must survive being captured.
+    ///
+    /// `init_state` does not just insert a resource: it reaches for the
+    /// `StateTransition` schedule and registers the state's transition systems
+    /// into it. Swapping in an empty `Schedules` took that schedule away, so
+    /// every Bevy project using states died on load with
+    ///
+    /// ```text
+    /// The `StateTransition` schedule is missing. Did you forget to add
+    /// StatesPlugin or DefaultPlugins before calling init_state?
+    /// ```
+    ///
+    /// which reads like the project's own bug and is not.
+    #[test]
+    fn a_project_that_uses_states_loads() {
+        #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+        enum Wave {
+            #[default]
+            Idle,
+            Fighting,
+        }
+
+        struct StatefulGame;
+        impl Plugin for StatefulGame {
+            fn build(&self, app: &mut App) {
+                app.init_state::<Wave>();
+                app.add_systems(OnEnter(Wave::Fighting), || {});
+            }
+        }
+
+        let mut app = App::new();
+        // What the editor has and a bare `App::new()` does not: `StateTransition`
+        // arrives with `StatesPlugin`, which is part of `DefaultPlugins`. Without
+        // this the test would be asking whether `capture` can mirror a schedule
+        // the editor never had.
+        app.add_plugins(bevy::state::app::StatesPlugin);
+
+        let captured = capture(&mut app, |app| {
+            app.add_plugins(StatefulGame);
+        });
+
+        assert!(
+            app.world().contains_resource::<State<Wave>>(),
+            "the state resource belongs in the live world, like every other resource"
+        );
+        // The transition systems are the project's, so they go with the
+        // project's schedules rather than into the editor's.
+        assert!(
+            captured.get(StateTransition).is_some(),
+            "the project's state transition schedule must be captured, not lost"
+        );
     }
 
     /// The whole mechanism, in one test: a plugin's resources reach the live
