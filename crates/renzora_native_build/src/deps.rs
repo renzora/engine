@@ -248,7 +248,10 @@ impl Pinned {
     /// A `Command` for the pinned cargo, with the environment already applied.
     fn command(&self) -> Command {
         let mut cmd = Command::new(&self.cargo);
-        crate::hide_console(&mut cmd);
+        // Below the editor in the scheduler: this builds a plugin's third-party
+        // dependency tree, which is the longest compile in the whole path and
+        // the one most likely to be running while someone is still working.
+        crate::background_compile(&mut cmd);
         cmd.env("RUSTUP_TOOLCHAIN", &self.version);
         match &self.rustc {
             Some(rustc) => {

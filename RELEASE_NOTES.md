@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-17 12:15
+- perf(editor): a plugin or Bevy project compiles below the editor in the scheduler, so the editor keeps its frame rate while it builds
+
 ## 2026-09-16 18:22
 - feat(marketplace): installing a plugin loads it into the running editor, instead of asking for a restart
 - feat(sdk): a native plugin can be installed into a running `World`, which is what a restart used to be needed for

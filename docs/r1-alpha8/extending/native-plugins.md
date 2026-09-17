@@ -330,10 +330,13 @@ Your `Startup` systems are run once as part of the install, because Bevy runs
 `Startup` only at app start and a plugin added later would otherwise register
 them into a schedule that never runs again.
 
-Three things the shell does not carry, and a plugin relying on any of them
+`Plugin::finish` and `Plugin::cleanup` run too, driven off the shell's own
+registry, so a plugin and everything it nested get the whole lifecycle rather
+than just `build`.
+
+Two things the shell does not carry, and a plugin relying on either of them
 installs incompletely until the next start:
 
-- **`Plugin::finish` and `Plugin::cleanup` are not called.**
 - **`is_plugin_added` answers against an empty registry.** Bevy's
   duplicate-plugin panic does not fire, and a plugin that writes
   `if !app.is_plugin_added::<X>() { app.add_plugins(X) }` will add a second `X`
@@ -354,6 +357,18 @@ installs incompletely until the next start:
   A text scan is a blunt instrument and it errs towards flagging: a false
   positive costs a restart that was not needed, a false negative leaves a plugin
   that looks installed and is not.
+
+The compile runs in the background, up to four at a time, with a busy indicator
+in the status bar rather than a frozen window. It is also spawned one scheduler
+class below the editor (`BELOW_NORMAL_PRIORITY_CLASS` on Windows, `nice` on
+unix), because a compile will otherwise saturate every core and take the
+editor's frame rate down with it for the length of the build. That costs no
+build time worth measuring: priority only decides who wins a core that two
+things want at once, so with the editor idle the compiler still gets the whole
+machine.
+
+That lever does not reach a `cargo` you run in your own terminal, which nothing
+here spawned. Only the builds the editor starts by itself are lowered.
 
 **Updating and removing still need a restart**, for the reason below.
 

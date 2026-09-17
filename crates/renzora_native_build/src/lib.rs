@@ -150,6 +150,98 @@ pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Comma
     cmd
 }
 
+/// Hide the console *and* put the child below whatever spawned it in the
+/// scheduler.
+///
+/// The case this is for is a compile the editor starts while a user is still
+/// working in it: installing a plugin, and rebuilding an open Bevy project on
+/// save. It is applied to every compile these crates spawn regardless, including
+/// first-run setup, because it costs nothing there: see below.
+///
+/// A compile saturates every core it is given. At equal priority the scheduler
+/// then time-slices the editor's main and render threads against a dozen rustc
+/// threads, and the frame rate collapses for the length of the build: a plugin
+/// install became a visibly stuttering editor for a minute rather than a
+/// background task.
+///
+/// Dropping the compiler one class fixes that without costing build time in any
+/// case that matters, because priority only decides who wins a *contended* core.
+/// With the editor idle the compiler still gets the whole machine; with the
+/// editor drawing it yields for the milliseconds a frame needs and takes the
+/// core straight back.
+///
+/// This cannot help with a `cargo` a user runs in their own terminal, which is
+/// the other half of the same complaint. Nothing here spawned that process, so
+/// there is no handle to lower; the only lever would be raising the editor
+/// itself, which is a machine-wide change and belongs behind a setting.
+///
+/// Both platforms lower rather than raise, deliberately: a raise can starve the
+/// compositor and make the whole desktop worse to fix one window.
+pub fn background_compile(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW` and `BELOW_NORMAL_PRIORITY_CLASS`, from
+        /// `winbase.h`. Spelled out rather than pulled from `windows-sys`: this
+        /// crate deliberately has no dependencies.
+        ///
+        /// Set together in one call because `creation_flags` *replaces* the
+        /// flags rather than adding to them, so calling [`hide_console`] as well
+        /// would silently drop whichever of the two ran first.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+        cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: `pre_exec` runs between fork and exec, where only
+        // async-signal-safe calls are allowed. `nice` is a thin wrapper over
+        // `setpriority`, which is on the POSIX list.
+        unsafe {
+            cmd.pre_exec(|| {
+                // Declared rather than depended on, to keep this crate's empty
+                // dependency list (see the crate header). The symbol is in libc,
+                // which `std` already links on every unix.
+                extern "C" {
+                    fn nice(increment: i32) -> i32;
+                }
+                // The return value is deliberately ignored: `nice` can only fail
+                // for a *negative* increment, and a compile that failed to lower
+                // itself is still a compile worth running.
+                nice(10);
+                Ok(())
+            });
+        }
+    }
+    cmd
+}
+
+#[cfg(test)]
+mod spawn_tests {
+    /// A lowered child still runs.
+    ///
+    /// Thin, but it covers the two ways [`super::background_compile`] can fail
+    /// closed rather than loudly: a wrong `creation_flags` constant on Windows
+    /// makes `CreateProcess` reject the whole spawn, and a `pre_exec` that
+    /// returns an error on unix aborts the child between fork and exec. Either
+    /// one turns every plugin build into "failed to start the compiler", and
+    /// neither shows up in a type check.
+    #[test]
+    fn a_lowered_child_still_runs() {
+        let mut cmd = if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/c", "exit", "0"]);
+            c
+        } else {
+            std::process::Command::new("true")
+        };
+        super::background_compile(&mut cmd);
+        let status = cmd.status().expect("the lowered child failed to spawn");
+        assert!(status.success(), "the lowered child exited {status}");
+    }
+}
+
 #[cfg(test)]
 mod tool_tests {
     use super::tool;

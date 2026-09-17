@@ -407,9 +407,11 @@ impl Sdk {
         let args = native_build::rustc::args(&target).map_err(Error::Deps)?;
 
         let mut cmd = Command::new(&rustc);
-        // No console window for the compiler — its output is streamed to the
-        // caller below and shown in the setup window instead.
-        native_build::hide_console(&mut cmd);
+        // No console window for the compiler: its output is streamed to the
+        // caller below and shown in the setup window instead. Below the editor
+        // in the scheduler too, so installing a plugin while the editor is open
+        // does not cost it its frame rate for the length of the build.
+        native_build::background_compile(&mut cmd);
         for (key, value) in native_build::rustc::env_vars(&target) {
             cmd.env(key, value);
         }
