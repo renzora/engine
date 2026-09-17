@@ -1,5 +1,23 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-16 18:22
+- feat(marketplace): installing a plugin loads it into the running editor, instead of asking for a restart
+- feat(sdk): a native plugin can be installed into a running `World`, which is what a restart used to be needed for
+- feat(editor): a plugin compiles in the background with a progress indicator in the status bar, instead of freezing the editor while it builds
+- change(marketplace): the Restart Editor button is offered when updating a plugin, not when installing one
+- fix(plugins): a plugin installed while the editor is running now runs its startup systems, instead of loading and doing nothing
+- fix(plugins): a plugin installed while the editor is running keeps the systems it registers, instead of having them discarded by the schedule it was installed from
+- feat(plugins): a plugin that sets up rendering is built and left for the next start, instead of installing with its render half missing
+- perf(editor): a build running inside the open project no longer floods the editor with file-change events from `target/`
+
+## 2026-09-16 14:53
+- feat(editor): the viewport runs a Bevy project's startup but not its update systems, so editing is not fighting a running game
+- feat(editor): Play runs a Bevy project in the engine runtime as its own process, so nothing it does survives Stop
+- feat(editor): saving a Bevy project rebuilds it and swaps the new world into the viewport, without restarting the editor
+- feat(editor): File ▸ Reload Project Code loads the newest build by hand
+- feat(editor): a background rebuild is recorded, so the next start opens the project without building it again
+- fix(editor): stale build libraries are deleted from a Bevy project's `.renzora` folder at startup, instead of accumulating
+
 ## 2026-09-16 11:32
 - fix(assets): a Bevy project's textures and models load in the asset browser and show thumbnails, instead of reporting every file as not found
 

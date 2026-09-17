@@ -339,6 +339,34 @@ impl Plugin for NativePluginLoader {
         // the export copied them, and the game has no effects and says nothing.
         let shared_images = cfg!(feature = "dynamic_linking");
 
+        // **First, before any early return below.** This is the door a plugin
+        // installed later comes in through, and the case that needs it most is
+        // the one where `plugins/` is empty right now: a fresh install has
+        // nothing to walk, takes the `entries.is_empty()` return, and would
+        // never have registered the system that loads what the user is about to
+        // install. The request would then sit in the world unread, which is
+        // exactly how this presented: the marketplace downloaded a plugin, wrote
+        // it to disk, and nothing ever built or loaded it.
+        app.add_systems(Update, consume_load_requests);
+        app.init_resource::<PendingPluginInstall>();
+        // The install runs in a pass of its own, after `Last`. See
+        // [`PluginInstallPass`] for why it cannot share a schedule with the
+        // systems a plugin is about to register.
+        app.init_schedule(PluginInstallPass);
+        app.add_systems(PluginInstallPass, install_ready_plugins);
+        app.world_mut()
+            .resource_mut::<bevy::app::MainScheduleOrder>()
+            .insert_after(Last, PluginInstallPass);
+        // Left, because it is about the editor's own state rather than the
+        // scene's, and low order so it sits before anything a plugin adds.
+        use renzora::RenzoraShellExt as _;
+        app.register_shell_status_item(renzora::ShellStatusItem {
+            id: "plugin-install",
+            align: renzora::ShellStatusAlign::Left,
+            order: -100,
+            render: install_progress,
+        });
+
         let Some(root) = self.root.clone().or_else(exe_dir) else {
             return;
         };
@@ -480,6 +508,293 @@ impl Plugin for NativePluginLoader {
             }
         }
         app.insert_resource(LoadedNativePlugins { _libraries: libraries });
+    }
+}
+
+/// A runtime install waiting on its compiler.
+///
+/// The build is the slow half: a plugin that has never been compiled takes
+/// tens of seconds, and doing that where the request arrives froze the editor
+/// for the whole of it, which reads as a hang rather than as work. `rustc` was
+/// always a child process; what was wrong was waiting for it on the main thread.
+#[derive(Resource, Default)]
+struct PendingPluginInstall {
+    /// Directories asked for and not yet started.
+    ///
+    /// A queue rather than a single slot, because [`renzora::RequestLoadPlugin`]
+    /// is a resource and inserting one replaces the last. Installing three
+    /// plugins in quick succession used to drop all but the newest, and the
+    /// symptom would have been the other two silently never loading.
+    queue: std::collections::VecDeque<PathBuf>,
+    /// Builds in flight, by plugin name.
+    running: Vec<(String, bevy::tasks::Task<Result<(String, Outcome), String>>)>,
+    /// Builds that finished, waiting for [`PluginInstallPass`] to install them.
+    ///
+    /// Handed over rather than installed where they are collected, because
+    /// collection happens in `Update` and installing there loses the plugin's
+    /// systems. See [`PluginInstallPass`].
+    ready: Vec<Result<(String, Outcome), String>>,
+}
+
+/// The schedule a runtime install actually happens in.
+///
+/// **Not `Update`, and the reason is not a preference.** While a schedule runs,
+/// Bevy takes it *out* of `Schedules` (`World::schedule_scope`) and puts it back
+/// afterwards. Installing from a command queued in `Update` therefore ran while
+/// `Update` was absent, so the plugin's `app.add_systems(Update, …)` created a
+/// fresh empty `Update`, and the scope then restored the original over the top:
+///
+/// ```text
+/// WARN bevy_ecs::world: Schedule `Update` was inserted during a call to
+///      `World::schedule_scope`: its value has been overwritten
+/// ```
+///
+/// Every system the plugin registered went in the bin, which is why a plugin
+/// could load, draw its panel, and do nothing at all.
+///
+/// A label of this crate's own, run after `Last`, fixes it for every schedule at
+/// once: the only ones absent while it runs are `Main` and this one, and no
+/// plugin adds systems to either.
+#[derive(bevy::ecs::schedule::ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+struct PluginInstallPass;
+
+/// How many `rustc` processes to run at once for runtime installs.
+///
+/// Lower than the pre-boot pass, which goes 8- to 16-way, because there is a
+/// live editor to keep drawing here and `rustc` threads its own codegen units:
+/// past a handful of processes they are competing for the same cores anyway.
+/// Still more than one, because different plugins are independent crates each
+/// writing only into its own `build/`, so the only thing serialising them was
+/// the loop.
+const MAX_RUNTIME_BUILD_JOBS: usize = 4;
+
+/// The left-hand status segment while a plugin compiles.
+///
+/// [`ShellStatusBar::Busy`] rather than a fraction: `rustc` reports no progress,
+/// and a bar that creeps toward 90% and waits is a lie told for the whole of the
+/// wait. An animated sweep says "working", which is the true statement.
+fn install_progress(world: &World) -> Vec<renzora::ShellStatusSegment> {
+    let Some(pending) = world.get_resource::<PendingPluginInstall>() else {
+        return Vec::new();
+    };
+    let waiting = pending.queue.len();
+    let text = match pending.running.as_slice() {
+        [] => return Vec::new(),
+        [(name, _)] if waiting == 0 => format!("Building {name}"),
+        running => format!("Building {} plugins", running.len() + waiting),
+    };
+    vec![
+        renzora::ShellStatusSegment::new("package", text, [228, 132, 52])
+            .bar(renzora::ShellStatusBar::Busy),
+    ]
+}
+
+/// Start building a plugin somebody asked for while the editor was running.
+///
+/// Requests arrive as a resource rather than a message so the marketplace can
+/// raise one without depending on this crate.
+fn consume_load_requests(
+    mut commands: Commands,
+    request: Option<Res<renzora::RequestLoadPlugin>>,
+    mut pending: ResMut<PendingPluginInstall>,
+) {
+    // Take the request first, so a plugin asked for this frame can start on it.
+    if let Some(request) = request {
+        let dir = request.0.clone();
+        commands.remove_resource::<renzora::RequestLoadPlugin>();
+        // Never twice: the same directory queued again while its build is in
+        // flight would put two compilers in one `build/`.
+        let name = name_of(&dir);
+        let known = pending.running.iter().any(|(running, _)| *running == name)
+            || pending.queue.contains(&dir);
+        if !known {
+            pending.queue.push_back(dir);
+        }
+    }
+
+    // Collect finished builds, so one that landed is installed on the frame it
+    // landed rather than the frame after.
+    let mut finished = Vec::new();
+    let mut index = 0;
+    while index < pending.running.len() {
+        match bevy::tasks::block_on(bevy::tasks::poll_once(&mut pending.running[index].1)) {
+            Some(result) => {
+                finished.push(result);
+                // Already finished, so dropping the handle cancels nothing.
+                // `swap_remove` keeps this loop O(n) without disturbing the
+                // entries it has not reached, since it moves the last into the
+                // hole and the index is not advanced.
+                let _ = pending.running.swap_remove(index);
+            }
+            None => index += 1,
+        }
+    }
+    pending.ready.extend(finished);
+
+    // Start what there is room for. Different plugins are independent crates
+    // writing only into their own `build/`, which is what makes running several
+    // safe; the cap is about leaving the editor some cores.
+    while pending.running.len() < MAX_RUNTIME_BUILD_JOBS {
+        let Some(dir) = pending.queue.pop_front() else {
+            break;
+        };
+        let name = name_of(&dir);
+        renzora::core::console_log::console_info(
+            "Plugin",
+            format!("building {name}; the editor keeps running while it compiles"),
+        );
+        let task =
+            bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { build_for_install(dir) });
+        pending.running.push((name, task));
+    }
+}
+
+/// Compile and open a plugin, off the main thread.
+///
+/// Everything here is the same work the build-time pass does; the only reason it
+/// is a separate function is that it must not touch the `World`, which is what
+/// makes it safe to run on a task pool while the editor keeps drawing.
+fn build_for_install(dir: PathBuf) -> Result<(String, Outcome), String> {
+    let name = name_of(&dir);
+    if !cfg!(feature = "dynamic_linking") {
+        return Err(format!(
+            "{name} is a native plugin and this build links no shared engine image"
+        ));
+    }
+    let root = exe_dir().ok_or_else(|| "could not find the editor's own directory".to_string())?;
+    let sdk = Sdk::load(sdk_dir(&root)).ok();
+    let expected = sdk.as_ref().map(Sdk::stamp);
+    // `in_editor` is true by construction: only the editor installs a plugin
+    // while running. A shipped game has no marketplace to install one from.
+    let outcome = load_one(&dir, sdk.as_ref(), expected.as_deref(), true)
+        .map_err(|e| format!("{name} failed to build: {e}"))?;
+
+    // Built either way, then declined if it renders. The build is the expensive
+    // half and is not wasted: the stamp is recorded, so the next start loads it
+    // without compiling anything.
+    if matches!(outcome, Outcome::Loaded(_)) && wants_render_app(&dir) {
+        return Err(format!(
+            "{name} sets up rendering, which cannot be done while the editor is running. It is \
+             built and will load on the next start"
+        ));
+    }
+    Ok((name, outcome))
+}
+
+/// Does this plugin's source reach for the render sub-app?
+///
+/// A plugin installed at runtime is built through a shell `App` that has no
+/// sub-apps, because sub-apps live on the `App` and only the `World` can be
+/// lent. So `get_sub_app_mut(RenderApp)` returns `None` and an
+/// `ExtractResourcePlugin` logs an error into the void:
+///
+/// ```text
+/// ERROR bevy_render::extract_resource: Render app did not exist …
+/// ```
+///
+/// The plugin then installs with its rendering half missing, which is worse than
+/// not installing it: it looks like it worked. Asking the source first turns
+/// that into one honest sentence.
+///
+/// **A text scan, deliberately conservative.** There is no way to ask a compiled
+/// plugin what it is about to do, and the failure modes are not symmetric: a
+/// false positive costs a restart that was not needed, a false negative leaves a
+/// plugin that is silently half-installed. So a mention in a comment counts.
+///
+/// The durable answer is for a plugin to *say so* in its `plugin.toml`, which
+/// would make this the fallback for plugins published before that existed rather
+/// than the only source of truth. Worth doing; not done.
+fn wants_render_app(dir: &Path) -> bool {
+    /// Naming any of these means touching the render world.
+    ///
+    /// The last two are the engine's own wrappers, and they are the reason this
+    /// list is not just Bevy's names. A `#[post_process]` plugin contains no
+    /// mention of `RenderApp` at all: the `get_sub_app_mut(RenderApp)`,
+    /// `ExtractComponentPlugin` and `RenderStartup` calls are inside
+    /// `renzora::postprocess`, several layers below anything the author wrote.
+    /// Scanning only for Bevy's names would pass every post-process plugin
+    /// through and half-install all of them.
+    const MARKERS: &[&str] = &[
+        "RenderApp",
+        "ExtractResourcePlugin",
+        "ExtractComponentPlugin",
+        "ExtractSchedule",
+        "RenderStartup",
+        "get_sub_app",
+        "sub_app_mut",
+        "post_process",
+        "postprocess",
+    ];
+
+    fn scan(dir: &Path, found: &mut bool) {
+        if *found {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan(&path, found);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if MARKERS.iter().any(|marker| text.contains(marker)) {
+                        *found = true;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut found = false;
+    scan(&dir.join("src"), &mut found);
+    found
+}
+
+/// Install everything whose build has finished.
+///
+/// Exclusive, and in [`PluginInstallPass`] rather than `Update`, so that every
+/// schedule a plugin might add systems to is present in `Schedules` while it
+/// builds. See that label for what went wrong when it was not.
+fn install_ready_plugins(world: &mut World) {
+    let ready: Vec<_> = match world.get_resource_mut::<PendingPluginInstall>() {
+        Some(mut pending) if !pending.ready.is_empty() => std::mem::take(&mut pending.ready),
+        _ => return,
+    };
+    for result in ready {
+        finish_install(world, result);
+    }
+}
+
+/// Install a plugin whose build has finished. Main thread, because lending the
+/// world to a shell `App` needs `&mut World`.
+fn finish_install(world: &mut World, result: Result<(String, Outcome), String>) {
+    match result.and_then(|(name, outcome)| adopt(world, name, outcome)) {
+        Ok(name) => {
+            renzora::core::console_log::console_success(
+                "Plugin",
+                format!("{name} installed and running; no restart needed"),
+            );
+            info!("[plugin] {name} loaded at runtime");
+        }
+        Err(report) => {
+            // Not fatal, and deliberately not silent: the reason is the thing
+            // that tells the user whether a restart would even help. A plugin
+            // declined for rendering is built and waiting, so it is reported as
+            // a state rather than a failure; anything else is the real thing.
+            renzora::core::console_log::console_warn("Plugin", report.clone());
+            warn!("[plugin] {report}");
+            // Marks the plugin as present but not running, so Settings shows it
+            // with a reason instead of leaving it looking broken or absent.
+            renzora::record_plugin(
+                world,
+                report.split_whitespace().next().unwrap_or("plugin"),
+                renzora::PluginState::Skipped(report.clone()),
+            );
+            world.insert_resource(renzora::PluginLoadFailed(report));
+        }
     }
 }
 
@@ -969,6 +1284,81 @@ fn default_lib_ext() -> String {
 
 /// Regression cover for the failed-build record in [`layout`].
 ///
+/// Install a plugin into a running editor, without a restart.
+///
+/// The build-time pass ([`NativePluginLoader`]) is still where plugins normally
+/// come from: it runs once, over everything in `plugins/`, before the `App`
+/// exists. This is the other door, for a plugin that arrives *after* that, which
+/// in practice means one just installed from the marketplace.
+///
+/// Everything about the load is identical: same staleness check, same rebuild,
+/// same symbol dispatch, same scope gate, same `ManuallyDrop`. The only
+/// difference is that [`renzora::core::runtime_app::with_app`] is what makes an
+/// `App` available at all, by lending the live world to a shell for the length
+/// of `build`. See that module for what the shell does not carry.
+///
+/// # What this does not do
+///
+/// **Uninstall, or update in place.** A loaded image is permanent, so removing a
+/// plugin still means a restart, and installing a second copy of one already
+/// loaded would run both. Callers must not offer this for a plugin that is
+/// already in [`renzora::plugin_inventory`] as loaded.
+///
+/// Returns the plugin's name on success, so the caller can report it.
+pub fn install_at_runtime(world: &mut World, dir: &Path) -> Result<String, String> {
+    let (name, outcome) = build_for_install(dir.to_path_buf())?;
+    adopt(world, name, outcome)
+}
+
+/// Put an already-built plugin into the running world.
+///
+/// The half that must be on the main thread, split from the build so the build
+/// can be on a task pool. See [`build_for_install`].
+fn adopt(world: &mut World, name: String, outcome: Outcome) -> Result<String, String> {
+    let (plugin, library) = match outcome {
+        Outcome::Loaded(loaded) => loaded,
+        Outcome::Skipped(why) => return Err(format!("{name} {why}")),
+        Outcome::NotAPlugin => return Err(format!("{name} is not a plugin")),
+    };
+
+    // `install_plugin` rather than a bare `add_plugins`: Bevy runs `Startup`
+    // once, at app start, so a plugin installed later would register startup
+    // systems into a schedule that never runs again. That is not a subtle
+    // failure to reason about later, it is the failure: the plugin installs, its
+    // panel opens, its status item draws, and everything they read is empty
+    // because whatever gathered the data was a startup system.
+    //
+    // The panic is caught inside `install_plugin`, where the world is safe, and
+    // handed back as an error. See its docs for why it cannot be caught here.
+    let built = renzora::core::runtime_app::install_plugin(world, Boxed(plugin));
+
+    if let Err(what) = built {
+        // The image stays mapped. It has to: `build` may have got far enough to
+        // register something that points into it, and there is no way to know
+        // how far it got. `forget` rather than `ManuallyDrop` because nothing
+        // holds this one afterwards, so leaking it outright is the whole intent.
+        std::mem::forget(library);
+        return Err(format!(
+            "{name} panicked while installing: {what}. The usual cause is adding a plugin the \
+             editor already has"
+        ));
+    }
+
+    // Held for the life of the process, like every other loaded plugin. Pushed
+    // into the same resource the build-time pass fills, so there is one place
+    // that owns them rather than two.
+    match world.get_resource_mut::<LoadedNativePlugins>() {
+        Some(mut loaded) => loaded._libraries.push(std::mem::ManuallyDrop::new(library)),
+        None => {
+            world.insert_resource(LoadedNativePlugins {
+                _libraries: vec![std::mem::ManuallyDrop::new(library)],
+            });
+        }
+    }
+    renzora::record_plugin(world, &name, renzora::PluginState::Loaded);
+    Ok(name)
+}
+
 /// The bug this pins: a plugin that would not compile made `needs_build` true
 /// forever. `prebuild::needed()` reads that, `main` runs the setup window when it
 /// says yes and then restarts the process — so a single broken plugin looped the

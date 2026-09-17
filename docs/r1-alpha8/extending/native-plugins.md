@@ -314,9 +314,52 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 `rustc::fixup_install_names` runs after every link and points those at `@rpath`, which resolves against the executable's own rpath. You do not call it; it is worth knowing about because it is the reason a plugin you built by hand with a bare `rustc` will load and then behave as though the engine around it never started.
 
+## Installing without a restart
+
+A plugin installed from the marketplace is loaded into the running editor and
+works immediately. It is the same load in every other respect: same staleness
+check, same rebuild, same symbol dispatch, same scope gate.
+
+The trick is only about reaching an `App`. `Plugin::build` takes `&mut App`, and
+a running editor has none: the runner owns it and systems see `&mut World`. So
+`renzora::core::runtime_app::with_app` lends the live world to an empty `App`
+for the length of the call and takes it back afterwards. Resources land in the
+real world, systems join the real schedules, and the shell is discarded.
+
+Your `Startup` systems are run once as part of the install, because Bevy runs
+`Startup` only at app start and a plugin added later would otherwise register
+them into a schedule that never runs again.
+
+Three things the shell does not carry, and a plugin relying on any of them
+installs incompletely until the next start:
+
+- **`Plugin::finish` and `Plugin::cleanup` are not called.**
+- **`is_plugin_added` answers against an empty registry.** Bevy's
+  duplicate-plugin panic does not fire, and a plugin that writes
+  `if !app.is_plugin_added::<X>() { app.add_plugins(X) }` will add a second `X`
+  over the editor's.
+- **There are no sub-apps**, so a plugin that touches `RenderApp` cannot be
+  installed live at all. Sub-apps live on the `App` rather than in the `World`,
+  so there is nothing to lend the shell.
+
+  **This is detected before the install, not after.** The editor reads the
+  plugin's source for render-world markers; if it finds any, the plugin is still
+  compiled (so the next start is instant) and a line in the Console says it loads
+  on restart. That is the case for anything using `RenderApp`,
+  `ExtractResourcePlugin`, `ExtractComponentPlugin`, `RenderStartup` or a
+  sub-app directly — **and for every `#[post_process]` plugin**, because
+  `renzora::postprocess` reaches for the render app several layers below
+  anything you wrote.
+
+  A text scan is a blunt instrument and it errs towards flagging: a false
+  positive costs a restart that was not needed, a false negative leaves a plugin
+  that looks installed and is not.
+
+**Updating and removing still need a restart**, for the reason below.
+
 ## Limits
 
-- **Nothing is ever unloaded.** Every system a plugin registered is a function pointer into its image, and a Bevy schedule holds those for the life of the `App`. Unmapping the image turns them into dangling pointers, so a reload leaks the old one (a few hundred KB) and a restart reclaims it.
+- **Nothing is ever unloaded.** Every system a plugin registered is a function pointer into its image, and a Bevy schedule holds those for the life of the `App`. `ComponentDescriptor` also keeps a `drop` function pointer for every component type the plugin registered, and Bevy never unregisters a component. Unmapping the image turns all of them into dangling pointers, so a reload leaks the old one (a few hundred KB) and a restart reclaims it. This is why an *update* cannot be applied live: the copy already running would keep running beside the new one.
 - **Loading is synchronous.** A stale plugin rebuilds during app assembly, holding startup for about a second each.
 - **No undo integration yet.** A plugin can mutate the World freely but cannot push onto the editor's undo stack — that lives outside the contract crate.
 - **A plugin can crash the editor.** A panic while constructing or during load is caught; a segfault is not. Installing a plugin runs its code, and the source is on disk to read.

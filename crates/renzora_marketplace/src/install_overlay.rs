@@ -122,7 +122,11 @@ pub(crate) struct OverlayInstall {
     pub(crate) shared: Arc<InstallShared>,
     /// Set when the worker finishes; until then the bar is live.
     pub(crate) outcome: Option<Result<String, String>>,
-    /// A plugin needs a restart to load, so the result offers one.
+    /// This is a plugin, so a restart *may* be worth offering when it finishes.
+    ///
+    /// Only "may": a fresh install loads into the running editor and needs none.
+    /// The button's own binding narrows it to updates, which is the case that
+    /// cannot be applied live.
     pub(crate) offer_restart: bool,
 }
 
@@ -542,7 +546,7 @@ fn poll_install_result(
         // Queued rather than run here: the pipeline fires an event per material
         // so `.material` files get written, and that needs a `World`.
         if outcome.is_ok() && install::install_dir_for_category(&category) == "models" {
-            if let Some(root) = installed {
+            if let Some(root) = installed.clone() {
                 commands.queue(move |world: &mut World| {
                     renzora_import::import_tree_in_place(world, &root)
                 });
@@ -566,6 +570,31 @@ fn poll_install_result(
             #[cfg(not(target_arch = "wasm32"))]
             if dir == "plugins" {
                 commands.queue(crate::plugin_updates::record_install);
+                // Ask the loader to take it now rather than on the next start.
+                // Only for a *new* plugin: a loaded image can never be unmapped,
+                // so loading an update would run both versions at once. An
+                // update still needs the restart, and says so below.
+                if let Some(path) = installed.clone() {
+                    commands.queue(move |world: &mut World| {
+                        // The directory name is the id the loader records under.
+                        let id = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        let already_loaded = world
+                            .get_resource::<renzora::PluginInventory>()
+                            .is_some_and(|inv| {
+                                inv.entries.iter().any(|e| {
+                                    e.id == id
+                                        && matches!(e.state, renzora::PluginState::Loaded)
+                                })
+                            });
+                        if already_loaded {
+                            return;
+                        }
+                        world.insert_resource(renzora::RequestLoadPlugin(path));
+                    });
+                }
             }
         }
 
@@ -585,11 +614,14 @@ fn poll_install_result(
         };
 
         // Otherwise it outlived its overlay (closed, or a second install), so it
-        // falls back to the notice. A plugin is opened once during `App`
-        // assembly, so a new one on disk is not a new one in the process — the
-        // notice offers the restart rather than leaving the user to work out
-        // that the thing they just installed is not there.
-        let offer_restart = dir == "plugins" && title == "Asset Installed";
+        // falls back to the notice.
+        //
+        // The restart is offered for an **update**, not a fresh install. A new
+        // plugin is loaded into the running editor above and is working by the
+        // time this notice appears. An update cannot be: the copy already in the
+        // process can never be unmapped, so the new one only takes over on the
+        // next start, and saying so is the honest thing.
+        let offer_restart = dir == "plugins" && body.starts_with("Updated");
         let f = fonts.clone();
         commands.queue(move |world: &mut World| {
             let mut queue = CommandQueue::default();
@@ -736,8 +768,15 @@ fn run_install(
             ),
             None => String::new(),
         };
+        // Where it landed, so the outcome handler can ask the loader to take it
+        // without a restart. Set for a plugin as well as for every other asset
+        // kind now: this branch used to return before the slot was written,
+        // because nothing downstream had any use for a plugin's path.
+        if let Ok(mut slot) = shared.installed.lock() {
+            *slot = Some(done.path.clone());
+        }
         return Ok(format!(
-            "{verb} \"{}\" as plugin '{}'.{renamed} It is built on the next start.",
+            "{verb} \"{}\" as plugin '{}'.{renamed}",
             asset.name, done.dir_name
         ));
     }
@@ -836,9 +875,21 @@ fn build_progress_step(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     let restart = crate::util::pill_button(commands, fonts, "Restart Editor", GREEN, (255, 255, 255));
     commands.entity(restart).insert(InstallRestartBtn);
+    // Shown for an **update**, never for a fresh install. A new plugin is loaded
+    // into the running editor and is already working by the time this modal
+    // appears, so a Restart button would be telling the user to do something
+    // that has already happened. An update is the case that genuinely needs one:
+    // the copy already mapped into the process can never be unloaded, so the new
+    // version only takes over on the next start.
+    //
+    // Decided from the outcome text rather than from `offer_restart` alone,
+    // because which of the two this was is not known until the install answers:
+    // `install_plugin_asset` returns a message beginning "Updated" or
+    // "Installed".
     bind_display(commands, restart, |w| {
-        w.get_resource::<OverlayInstall>()
-            .is_some_and(|s| s.offer_restart && matches!(s.outcome, Some(Ok(_))))
+        w.get_resource::<OverlayInstall>().is_some_and(|s| {
+            s.offer_restart && matches!(&s.outcome, Some(Ok(msg)) if msg.starts_with("Updated"))
+        })
     });
     let close = button(commands, &fonts.ui, "Close");
     commands.entity(close).insert(InstallCloseBtn);
