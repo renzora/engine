@@ -113,6 +113,17 @@ you change it.
 
 To actually play, press Play.
 
+This applies to every system your project registers, including ones a plugin
+registers from `Plugin::finish` rather than `Plugin::build`.
+
+**Your plugins are yours.** They are added to a shell app holding the editor's
+world, so the editor never records them as its own. Two things follow: you may
+add a plugin the editor already has (`FrameTimeDiagnosticsPlugin` is the usual
+one) without the duplicate-plugin panic Bevy would otherwise raise, and the
+editor's own `is_plugin_added` checks are not answered by your project. That
+second one is why the FPS readout stopped reading zero when a project brought
+its own diagnostics.
+
 ## What makes a folder a Bevy project
 
 A `Cargo.toml` with a `bevy` dependency, and no `project.toml`. That is the whole

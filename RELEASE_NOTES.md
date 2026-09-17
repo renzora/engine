@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-17 18:28
+- fix(editor): the FPS readout works with a Bevy project open, instead of sitting at 0 when the project brings its own diagnostics
+- fix(bevy-project): a project can add a plugin the editor already has, instead of failing to load with a duplicate-plugin panic
+- fix(bevy-project): a plugin that registers its systems from `finish` is held back from the viewport like every other
+
 ## 2026-09-17 15:22
 - fix(editor): a Bevy project that uses states loads, instead of failing with "the `StateTransition` schedule is missing"
 

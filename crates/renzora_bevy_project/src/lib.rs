@@ -391,10 +391,15 @@ fn load(app: &mut App, krate: &BevyCrate, root: &Path) -> Result<Vec<String>, St
             .cloned();
 
         // `catch_unwind` around the install, and only here. A game crate's
-        // `build` is arbitrary code written against a plain Bevy app, and the
-        // most likely way it panics is `add_plugins` on something the editor
-        // already has. `FrameTimeDiagnosticsPlugin` is the common one, and
-        // Bevy's duplicate-plugin check is a panic rather than an error.
+        // `build` is arbitrary code written against a plain Bevy app, and it may
+        // panic for any reason of its own.
+        //
+        // It used to be mostly about one reason: `add_plugins` on something the
+        // editor already had, `FrameTimeDiagnosticsPlugin` being the common one,
+        // since Bevy's duplicate-plugin check is a panic rather than an error.
+        // That case is gone, because `schedules::capture` isolates the plugin
+        // registry as well as the schedules, so a project may add a plugin the
+        // editor has. This stays for everything else.
         //
         // The `App` is left half-configured afterwards, which is not good. It is
         // considerably better than taking the editor down: the user gets a

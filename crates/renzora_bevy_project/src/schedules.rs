@@ -38,16 +38,22 @@
 //!   process (see `renzora_viewport::external_runtime`), which is what makes
 //!   Stop leave nothing behind.
 //!
-//! # The edge worth knowing
-//!
-//! A plugin that registers systems from [`Plugin::finish`] rather than
-//! [`Plugin::build`] escapes this, because `finish` runs later, after the
-//! editor's schedules are back. That is rare (it exists for plugins that need
-//! another plugin's resources) and the failure is the old behaviour rather than
-//! a crash: those systems run in the editor's `Update`.
+//! # Two things that are not obvious
 //!
 //! The replacement set is empty of *systems*, not of *schedules*: see
 //! [`empty_like`] for why a plugin can tell the difference, and what it cost.
+//!
+//! The plugin **registry** is isolated too, not just the schedules. The project
+//! is built into a shell `App` holding the real world, so its plugins never
+//! enter the editor's registry. That matters because `is_plugin_added` is a
+//! question other code acts on: a plugin the editor can see but whose systems it
+//! does not have is a `true` that means `false`. See [`capture`].
+//!
+//! `Plugin::finish` and `Plugin::cleanup` run inside the capture, so a plugin
+//! that registers its systems there is captured like any other. That used to be
+//! the documented edge of this module: `finish` ran later, from the editor's own
+//! pass, with the editor's schedules back in place, and those systems ended up
+//! in the editor's `Update`.
 
 use bevy::ecs::entity::EntityHashSet;
 use bevy::ecs::schedule::{ScheduleLabel, Schedules};
@@ -81,7 +87,40 @@ pub fn capture(app: &mut App, install: impl FnOnce(&mut App)) -> Schedules {
     let editor = app.world_mut().remove_resource::<Schedules>();
     app.world_mut().insert_resource(empty_like(editor.as_ref()));
 
-    install(app);
+    // The plugin *registry* is isolated as well as the schedules, by building
+    // into a shell `App` holding the real world. Without this the editor's
+    // `is_plugin_added` learns about plugins whose systems it does not have, and
+    // answers `true` for something that is not running.
+    //
+    // That is not hypothetical. A project adding `FrameTimeDiagnosticsPlugin`
+    // registered the frame-time diagnostic into the shared `DiagnosticsStore`
+    // and had its measuring system captured, so nothing ever fed it. The status
+    // bar then asked `is_plugin_added::<FrameTimeDiagnosticsPlugin>()`, got
+    // `true`, stood down from adding a working one, and read 0 FPS for the rest
+    // of the session.
+    //
+    // A shell's registry starts empty and is dropped, so the project's plugins
+    // are the project's. It also means a project may add a plugin the editor
+    // already has, which is otherwise a duplicate-plugin panic, and
+    // `FrameTimeDiagnosticsPlugin` is exactly the plugin a game is most likely
+    // to add.
+    {
+        let mut shell = App::empty();
+        core::mem::swap(shell.world_mut(), app.world_mut());
+        install(&mut shell);
+        // The rest of the lifecycle, while the schedules are still swapped out.
+        //
+        // These used to be run by the editor's own `finish` pass, because the
+        // project's plugins were in the editor's registry: the module docs
+        // called that "the edge worth knowing", since a plugin registering
+        // systems from `finish` had them land in the editor's `Update` rather
+        // than being captured. Running it here closes that edge rather than
+        // documenting it, and a project's `finish` sees every plugin it depends
+        // on, because they are all in this same shell.
+        shell.finish();
+        shell.cleanup();
+        core::mem::swap(shell.world_mut(), app.world_mut());
+    }
 
     let project = app
         .world_mut()
@@ -159,6 +198,11 @@ fn empty_like(editor: Option<&Schedules>) -> Schedules {
 /// which makes every `App` method the plugin reaches for operate on the real
 /// world. The scratch `App` is a shell holding a borrowed world, not a second
 /// world.
+///
+/// [`capture`] now makes a shell of its own for the same reason, so this one
+/// exists only to satisfy its `&mut App` signature. Nesting the two is harmless:
+/// the outer shell holds the world for the length of the call and contributes
+/// nothing else.
 pub fn capture_into_world(world: &mut World, plugin: impl Plugin) -> Schedules {
     let mut shell = App::empty();
     core::mem::swap(shell.world_mut(), world);
@@ -337,6 +381,120 @@ mod tests {
         assert!(
             captured.get(StateTransition).is_some(),
             "the project's state transition schedule must be captured, not lost"
+        );
+    }
+
+    /// What the project adds must not change the editor's answer to "is this
+    /// plugin added".
+    ///
+    /// The 0 FPS bug: a project adds `FrameTimeDiagnosticsPlugin`, its measuring
+    /// system is captured and never runs, and the status bar's
+    /// `if !is_plugin_added { add a working one }` then declines to add one.
+    /// Nothing feeds the diagnostic and the readout sits at zero all session.
+    ///
+    /// Modelled with a plain plugin rather than Bevy's, because the property is
+    /// about the registry and not about diagnostics.
+    #[test]
+    fn a_projects_plugins_do_not_enter_the_editors_registry() {
+        #[derive(Resource, Default, PartialEq, Debug)]
+        struct Fed(u32);
+
+        /// Stands in for `FrameTimeDiagnosticsPlugin`: something both the
+        /// project and the editor might add, which does real per-frame work.
+        struct FeederPlugin;
+        impl Plugin for FeederPlugin {
+            fn build(&self, app: &mut App) {
+                app.init_resource::<Fed>();
+                app.add_systems(Update, |mut fed: ResMut<Fed>| fed.0 += 1);
+            }
+        }
+
+        struct GameWithFeeder;
+        impl Plugin for GameWithFeeder {
+            fn build(&self, app: &mut App) {
+                app.add_plugins(FeederPlugin);
+            }
+        }
+
+        let mut app = App::new();
+        let _captured = capture(&mut app, |app| {
+            app.add_plugins(GameWithFeeder);
+        });
+
+        assert!(
+            !app.is_plugin_added::<FeederPlugin>(),
+            "the editor must not believe it has a plugin whose systems were captured"
+        );
+
+        // So the editor's own guarded add still happens, and still works.
+        if !app.is_plugin_added::<FeederPlugin>() {
+            app.add_plugins(FeederPlugin);
+        }
+        app.update();
+        assert_eq!(
+            *app.world().resource::<Fed>(),
+            Fed(1),
+            "the editor's copy runs; this is the readout that used to sit at zero"
+        );
+    }
+
+    /// A project may add a plugin the editor already has.
+    ///
+    /// Bevy makes a duplicate plugin a panic, and the isolated registry is what
+    /// stops one. `FrameTimeDiagnosticsPlugin` is the plugin a game is most
+    /// likely to add and the editor most likely to have.
+    #[test]
+    fn a_project_may_add_a_plugin_the_editor_already_has() {
+        struct Shared;
+        impl Plugin for Shared {
+            fn build(&self, app: &mut App) {
+                app.add_systems(Update, || {});
+            }
+        }
+
+        let mut app = App::new();
+        app.add_plugins(Shared);
+
+        // Would panic with "plugin was already added" if the registry were shared.
+        let _captured = capture(&mut app, |app| {
+            app.add_plugins(Shared);
+        });
+    }
+
+    /// A plugin that registers from `finish` is captured like any other.
+    ///
+    /// This used to be the module's documented escape hatch: `finish` ran from
+    /// the editor's own pass, after the schedules were back, so those systems
+    /// ran in the editor's `Update` and a reload could not take them out again.
+    #[test]
+    fn systems_registered_from_finish_are_captured_too() {
+        #[derive(Resource, Default, PartialEq, Debug)]
+        struct Late(u32);
+
+        struct LateRegistrar;
+        impl Plugin for LateRegistrar {
+            fn build(&self, app: &mut App) {
+                app.init_resource::<Late>();
+            }
+            fn finish(&self, app: &mut App) {
+                app.add_systems(Update, |mut late: ResMut<Late>| late.0 += 1);
+            }
+        }
+
+        let mut app = App::new();
+        let captured = capture(&mut app, |app| {
+            app.add_plugins(LateRegistrar);
+        });
+
+        app.update();
+        assert_eq!(
+            *app.world().resource::<Late>(),
+            Late(0),
+            "a finish-registered system must not run from the editor's Update"
+        );
+        assert!(
+            captured.get(Update).is_some(),
+            "it belongs in the project's schedules, where a reload can drop it"
         );
     }
 
