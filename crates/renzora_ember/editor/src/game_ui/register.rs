@@ -861,31 +861,57 @@ fn sync_ui_canvas_target_camera(
     }
 }
 
-/// Scale a canvas that is being previewed *over the 3D viewport* down to fit
-/// it, the way the shipped game will.
+/// Lay a canvas previewed *over the viewport* out at the size the shipped game
+/// would lay it out at, then scale that result down to fit.
 ///
-/// The game does this with the global `UiScale`, which the editor can't touch:
-/// one resource drives every `bevy_ui` tree in the process, so moving it would
-/// resize the dock, the panels and the menu bar along with the preview. So the
-/// preview uses a per-entity `UiTransform` instead. It resamples rather than
-/// re-rasterizing, which is why the game doesn't do it this way — but this is a
-/// preview, and being the wrong *size* is a worse lie than being slightly soft.
+/// The game changes the *logical* size the tree is laid out in, by moving the
+/// global `UiScale` before layout runs. The editor cannot: one resource drives
+/// every `bevy_ui` tree in the process, so touching it would resize the dock,
+/// the panels and the menu bar along with the preview. The preview therefore
+/// has to reproduce those semantics per-canvas, and reproducing them means
+/// doing **both** halves:
 ///
-/// Only canvases routed away from the UI editor's own camera need it. That
-/// target is resized to the canvas's reference resolution
-/// (`sync_render_target_to_reference`), so there the design box already fills
-/// it exactly and the identity transform is correct.
+/// 1. lay the root out in a box of `target / scale` logical pixels, so
+///    percentages and edge anchors resolve against the size the game would use;
+/// 2. scale that box by `scale`, so it covers the real target exactly.
+///
+/// Doing only the second half is the bug this fixes (#110). Under `Expand` the
+/// root is already `100% x 100%`, so a transform could resize the rendered tree
+/// but could not change the width layout had used. A `64px` bar anchored to the
+/// bottom was laid out against the true viewport, then the whole thing was
+/// shrunk about its centre, so the bar ended up floating ~65px clear of the
+/// bottom edge it was pinned to. Above the reference resolution the same
+/// arithmetic ran the other way and pushed the edges off-screen.
+///
+/// `Fit` was never affected: its root is the fixed reference box, which is
+/// exactly the thing a centre-scale is supposed to move, so the rect it wants
+/// is already right and only the transform is needed. `Constant`'s factor is
+/// `1.0`, so both halves are no-ops.
+///
+/// Why a rect and a transform rather than a second camera with its own target
+/// scale factor: a camera's scale factor is part of its render target's
+/// *identity* in Bevy 0.19 (`ImageRenderTarget` hashes and compares on it), and
+/// two cameras composite onto one image only by sharing a main texture, which
+/// is keyed on that identity. A preview camera at any factor but `1.0` gets its
+/// own texture and writes it out over the scene rather than onto it, which
+/// blanks the viewport.
+///
+/// Only canvases routed away from the UI editor's own camera need any of this.
+/// That target is resized to the canvas's reference resolution
+/// (`sync_render_target_to_reference`), so there the design box already fills it
+/// exactly and the untouched root is correct.
 fn scale_canvas_for_viewport_preview(
     mut commands: Commands,
     render: Option<Res<canvas_render::UiCanvasRender>>,
     render_target: Option<Res<renzora::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
-    canvases: Query<
+    mut canvases: Query<
         (
             Entity,
             &UiCanvas,
             Option<&bevy::ui::UiTargetCamera>,
-            Option<&bevy::ui::UiTransform>,
+            &mut bevy::ui::Node,
+            Option<&mut bevy::ui::UiTransform>,
         ),
         Without<renzora::HideInHierarchy>,
     >,
@@ -898,7 +924,7 @@ fn scale_canvas_for_viewport_preview(
         .map(|img| img.size())
         .map(|s| Vec2::new(s.x as f32, s.y as f32));
 
-    for (entity, canvas, target_cam, existing) in &canvases {
+    for (entity, canvas, target_cam, mut node, existing) in &mut canvases {
         if canvas.is_world() {
             continue;
         }
@@ -909,27 +935,66 @@ fn scale_canvas_for_viewport_preview(
             _ => true,
         };
 
-        let want = if on_ui_editor_camera {
-            1.0
-        } else {
-            match viewport_size {
-                Some(size) if size.x > 0.0 && size.y > 0.0 => canvas.scale_mode().scale_for(
-                    canvas.reference_width.max(1.0),
-                    canvas.reference_height.max(1.0),
-                    size.x,
-                    size.y,
-                ),
-                _ => 1.0,
-            }
+        let mode = canvas.scale_mode();
+        let sized = matches!(mode, components::CanvasScaleMode::Expand);
+        let scale = match viewport_size {
+            Some(size) if !on_ui_editor_camera && size.x > 0.0 && size.y > 0.0 => mode.scale_for(
+                canvas.reference_width.max(1.0),
+                canvas.reference_height.max(1.0),
+                size.x,
+                size.y,
+            ),
+            _ => 1.0,
         };
 
-        let current = existing.map(|t| t.scale.x).unwrap_or(1.0);
-        if (current - want).abs() <= f32::EPSILON {
+        // Hand the rect back to `heal_canvas_root_geometry` the moment this
+        // canvas stops being a viewport preview, so the invariant resumes and
+        // a stale preview rect cannot outlive the thing that wanted it.
+        let owns_rect = sized && scale != 1.0 && !on_ui_editor_camera;
+        if !owns_rect {
+            commands
+                .entity(entity)
+                .remove::<components::CanvasPreviewSized>();
+            // The transform is left to `heal_canvas_root_transform`, which
+            // resets it for the same reason and also repairs scenes that were
+            // saved with an older build's preview scale baked in.
             continue;
         }
-        let mut next = existing.copied().unwrap_or(bevy::ui::UiTransform::IDENTITY);
-        next.scale = Vec2::splat(want);
-        commands.entity(entity).insert(next);
+
+        let Some(size) = viewport_size else { continue };
+        let logical = size / scale;
+        let offset = Vec2::new(
+            components::preview_centre_scale_offset(logical.x, scale),
+            components::preview_centre_scale_offset(logical.y, scale),
+        );
+
+        // Writes are guarded: an unconditional assignment dirties `Node` and
+        // `UiTransform` every frame, which re-runs layout for the whole tree on
+        // a viewport that is not even moving.
+        let want_w = bevy::ui::Val::Px(logical.x);
+        let want_h = bevy::ui::Val::Px(logical.y);
+        if node.width != want_w || node.height != want_h {
+            node.width = want_w;
+            node.height = want_h;
+        }
+
+        let mut next = existing
+            .as_deref()
+            .copied()
+            .unwrap_or(bevy::ui::UiTransform::IDENTITY);
+        next.scale = Vec2::splat(scale);
+        next.translation = bevy::ui::Val2::px(offset.x, offset.y);
+        match existing {
+            Some(mut current) if *current != next => *current = next,
+            Some(_) => {}
+            None => {
+                commands.entity(entity).insert(next);
+            }
+        }
+
+        commands
+            .entity(entity)
+            .insert(components::CanvasPreviewSized);
     }
 }
 

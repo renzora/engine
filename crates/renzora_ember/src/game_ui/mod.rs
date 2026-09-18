@@ -121,6 +121,7 @@ impl Plugin for GameUiPlugin {
                 // Before the geometry healer: that one needs a `Node` to exist.
                 heal_canvas_missing_node,
                 heal_canvas_root_geometry,
+                heal_canvas_root_transform,
             ),
         );
 
@@ -508,7 +509,10 @@ fn heal_canvas_missing_node(
 /// Writing only on a mismatch matters — an unconditional assignment would dirty
 /// `Node` every frame and re-run layout for the whole UI tree.
 fn heal_canvas_root_geometry(
-    mut canvases: Query<(Entity, &UiCanvas, &mut Node)>,
+    mut canvases: Query<
+        (Entity, &UiCanvas, &mut Node),
+        Without<components::CanvasPreviewSized>,
+    >,
     mut corrected: Local<bevy::platform::collections::HashSet<Entity>>,
 ) {
     for (entity, canvas, mut node) in &mut canvases {
@@ -539,6 +543,41 @@ fn heal_canvas_root_geometry(
             node.width = want.width;
             node.height = want.height;
             node.margin = want.margin;
+        }
+    }
+}
+
+/// Force every canvas root's `UiTransform` back to the identity.
+///
+/// A canvas root's transform is not authorable for the same reason its rect is
+/// not: the canvas is the surface, and how it maps onto the window is
+/// [`UiScale`](bevy::ui::UiScale)'s job, not a per-entity transform's. The
+/// runtime therefore always wants the identity here.
+///
+/// This exists because the editor used to write its preview scale onto exactly
+/// this component, and scene save serializes reflected components on any named
+/// entity. So the preview factor was baked into `.bsn` files: a scene saved at
+/// one viewport size came back carrying, say,
+/// `UiTransform: (scale: (0.6166667, 0.6166667))`, and a shipped game then
+/// applied that on top of its own `UiScale`, shrinking the whole UI by a factor
+/// nobody could see the source of. Healing it means an already-poisoned scene
+/// repairs itself on load rather than needing a migration.
+///
+/// The preview is exempt while it owns the root, which is what
+/// [`components::CanvasPreviewSized`] marks. That marker cannot be saved, so a
+/// loaded scene is never exempt.
+///
+/// Writes only on a mismatch: an unconditional assignment would dirty
+/// `UiTransform` every frame and re-run layout for the whole tree.
+fn heal_canvas_root_transform(
+    mut canvases: Query<
+        &mut bevy::ui::UiTransform,
+        (With<UiCanvas>, Without<components::CanvasPreviewSized>),
+    >,
+) {
+    for mut transform in &mut canvases {
+        if *transform != bevy::ui::UiTransform::IDENTITY {
+            *transform = bevy::ui::UiTransform::IDENTITY;
         }
     }
 }

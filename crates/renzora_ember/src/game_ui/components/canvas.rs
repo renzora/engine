@@ -203,6 +203,34 @@ pub fn canvas_root_node(canvas: &UiCanvas) -> bevy::ui::Node {
     }
 }
 
+/// The editor's viewport preview owns this canvas root's rect for now.
+///
+/// The root rect is normally an invariant re-established every frame by
+/// `heal_canvas_root_geometry`, because nothing should be able to author it.
+/// The one legitimate exception is the editor previewing a canvas over a
+/// viewport that is not the reference resolution: reproducing the runtime's
+/// scaling there means laying the canvas out at `target / scale` and scaling
+/// the result down, and the layout half of that is a rect the healer would
+/// otherwise revert on the same frame.
+///
+/// Deliberately **not** `Reflect`, so it cannot reach a saved scene. A scene
+/// that came back carrying it would keep the healer off a root whose preview
+/// rect is meaningless in the new session, and in a shipped game there is no
+/// editor to ever take it off again.
+#[derive(Component)]
+pub struct CanvasPreviewSized;
+
+/// The offset that keeps a centre-scaled box's top-left corner at the origin.
+///
+/// `UiTransform` scales a node about its own centre, so a box of logical length
+/// `logical` scaled by `scale` leaves its top-left at `logical / 2 * (1 - scale)`
+/// instead of at `0`. The preview needs the scaled result flush with the
+/// target's corner, not floating in the middle of it, so this is subtracted
+/// back off as a translation.
+pub fn preview_centre_scale_offset(logical: f32, scale: f32) -> f32 {
+    -(logical / 2.0) * (1.0 - scale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +285,41 @@ mod tests {
         assert_eq!(node.left, Val::Percent(50.0));
         assert_eq!(node.margin.left, Val::Px(-640.0));
         assert_eq!(node.margin.top, Val::Px(-360.0));
+    }
+
+    /// The worked example from issue #110: a `1280x720` reference previewed in
+    /// a `1225x551` viewport. Laying out at `target / scale` and scaling back by
+    /// `scale` has to land exactly on the target, or an edge-anchored child
+    /// misses the edge it was pinned to.
+    #[test]
+    fn expand_preview_box_scales_back_onto_the_target() {
+        let (tw, th) = (1225.0_f32, 551.0_f32);
+        let scale = CanvasScaleMode::Expand.scale_for(1280.0, 720.0, tw, th);
+        assert!((scale - 551.0 / 720.0).abs() < 1e-6);
+
+        let (lw, lh) = (tw / scale, th / scale);
+        assert!((lw - 1600.726).abs() < 1e-3);
+        assert!((lh - 720.0).abs() < 1e-3);
+        assert!((lw * scale - tw).abs() < 1e-3);
+        assert!((lh * scale - th).abs() < 1e-3);
+
+        // A 64px bar authored against the reference renders at ~49px.
+        assert!((64.0 * scale - 48.97778).abs() < 1e-4);
+    }
+
+    /// Centre-scaling moves a box's top-left corner; the preview needs it flush
+    /// with the target's corner, so the offset has to cancel that exactly.
+    #[test]
+    fn centre_scale_offset_pins_the_top_left() {
+        let logical = 1600.726_f32;
+        let scale = 1225.0 / logical;
+        let offset = preview_centre_scale_offset(logical, scale);
+
+        // Where the corner lands: centre + (0 - centre) * scale, then shifted.
+        let centre = logical / 2.0;
+        assert!((centre - centre * scale + offset).abs() < 1e-3);
+        // An unscaled box needs no correction at all.
+        assert_eq!(preview_centre_scale_offset(1280.0, 1.0), 0.0);
     }
 
     #[test]

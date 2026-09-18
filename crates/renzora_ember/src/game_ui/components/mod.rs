@@ -7,7 +7,9 @@ mod theme;
 mod widget;
 mod widgets;
 
-pub use canvas::{canvas_root_node, CanvasScaleMode, UiCanvas};
+pub use canvas::{
+    canvas_root_node, preview_centre_scale_offset, CanvasPreviewSized, CanvasScaleMode, UiCanvas,
+};
 pub use interaction::*;
 pub use style::*;
 pub use theme::*;
