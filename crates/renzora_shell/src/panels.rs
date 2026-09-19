@@ -40,6 +40,9 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("viewport-3", "Viewport 3", "perspective", "Scene"),
     ("viewport-4", "Viewport 4", "perspective", "Scene"),
     ("camera_preview", "Camera Preview", "video-camera", "Scene"),
+    // Where Play runs. Not a viewport: it holds the running game's own window,
+    // which is a different process, so nothing the editor draws appears in it.
+    ("play", "Play", "play-circle", "Scene"),
     // Audio
     ("mixer", "Mixer", "faders", "Audio"),
     // Animation

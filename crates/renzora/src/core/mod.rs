@@ -34,6 +34,7 @@ pub mod plugin_updates; // what the marketplace publishes for those plugins
 pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
 pub mod runtime_app; // reaching `App` methods from a running editor
+pub mod window_embed; // putting the game's window inside the editor's
 pub mod settings_file; // project.toml model + editor preferences
 pub mod script_bridge; // the inboxes scripting drains each frame
 pub mod session; // process kind + the editor's one-shot requests

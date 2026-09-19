@@ -149,12 +149,26 @@ const _: () = ();
 /// every `[audio]`, `[autoload]` and `[plugin]` line, every panic — went
 /// nowhere. Debugging a game that behaves differently outside the editor meant
 /// running it by hand from a terminal to find out why.
-pub fn spawn_runtime(binary: &Path, project_path: &Path, vr: bool) -> std::io::Result<Child> {
+pub fn spawn_runtime(
+    binary: &Path,
+    project_path: &Path,
+    vr: bool,
+    embed_into: Option<renzora::core::window_embed::NativeWindow>,
+) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
+    // Whatever the last run left. The game reports its own handle on startup,
+    // and until it does there must be nothing here: the previous run's handle
+    // names a dead window, and Windows reuses handles, so placing it could move
+    // something else entirely.
+    EMBEDDED_GAME_WINDOW.store(0, std::sync::atomic::Ordering::Relaxed);
+
     let mut command = Command::new(binary);
     command.arg("--no-editor").arg("--project").arg(project_path);
     if vr {
         command.arg("--vr");
+    }
+    if let Some(parent) = embed_into {
+        command.arg("--embed").arg(parent.to_string());
     }
     // Piped, and therefore *must* be drained: a pipe nobody reads fills up and
     // then blocks the child on its next log line. The reader threads below are
@@ -174,6 +188,22 @@ pub fn spawn_runtime(binary: &Path, project_path: &Path, vr: bool) -> std::io::R
 /// Read `stream` line by line on its own thread, pushing each line into the
 /// editor console. Detached: the read ends when the child closes the pipe, so
 /// the thread retires itself with the process it was reading.
+/// The embedded game's window handle, or 0 while there is not one.
+///
+/// A static rather than a field on [`ExternalRuntime`] because the only thing
+/// that learns it is a detached reader thread with no access to the `World`.
+/// Cleared when the runtime is killed, so a stale handle from the last run can
+/// never be placed: that handle belongs to a dead process, and on Windows
+/// handles are reused.
+pub(crate) static EMBEDDED_GAME_WINDOW: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
+
+/// The embedded game's window, if one is attached right now.
+pub fn embedded_game_window() -> Option<renzora::core::window_embed::NativeWindow> {
+    let handle = EMBEDDED_GAME_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+    (handle != 0).then_some(handle)
+}
+
 fn forward_to_console(stream: impl std::io::Read + Send + 'static) {
     use renzora::core::console_log::console_log;
     use std::io::{BufRead, BufReader};
@@ -187,6 +217,13 @@ fn forward_to_console(stream: impl std::io::Read + Send + 'static) {
             let line = String::from_utf8_lossy(&bytes);
             let line = strip_ansi(line.trim_end_matches('\r'));
             if line.trim().is_empty() {
+                continue;
+            }
+            // The embed handshake, not a log line: an embedded game prints its
+            // window handle here because this pipe is the channel that already
+            // exists. Taken and not shown.
+            if let Some(child) = renzora::core::window_embed::handshake_handle(&line) {
+                EMBEDDED_GAME_WINDOW.store(child, std::sync::atomic::Ordering::Relaxed);
                 continue;
             }
             let (level, message) = classify_runtime_line(&line);
@@ -265,6 +302,9 @@ fn classify_runtime_line(line: &str) -> (renzora::core::console_log::LogLevel, S
 pub fn kill_runtime(runtime: &mut ExternalRuntime) -> bool {
     runtime.phase = RuntimePhase::Idle;
     runtime.prepare_elapsed = 0.0;
+    // Before the kill, not after: the window dies with the process, and a
+    // handle that outlives its window is one the placer would keep moving.
+    EMBEDDED_GAME_WINDOW.store(0, std::sync::atomic::Ordering::Relaxed);
     let Some(mut child) = runtime.child.take() else {
         return false;
     };
@@ -307,6 +347,7 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
             runtime.child = None;
             runtime.phase = RuntimePhase::Idle;
             runtime.prepare_elapsed = 0.0;
+            EMBEDDED_GAME_WINDOW.store(0, std::sync::atomic::Ordering::Relaxed);
         }
         Ok(None) => {}
         Err(_) => {
@@ -315,6 +356,7 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
             runtime.child = None;
             runtime.phase = RuntimePhase::Idle;
             runtime.prepare_elapsed = 0.0;
+            EMBEDDED_GAME_WINDOW.store(0, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }

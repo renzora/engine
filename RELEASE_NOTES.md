@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-19 02:40
+- feat(editor): a Play panel runs the game inside the editor, in its own process, and is the default play target
+
 ## 2026-09-19 01:59
 - change(editor): Play always runs the game in its own process; the Viewport and Scripts targets are gone
 - change(editor): the VR play target is offered only when the editor was started VR-capable

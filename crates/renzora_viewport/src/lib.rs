@@ -23,6 +23,7 @@ mod height_ruler;
 mod lit_accent;
 mod modal_hud;
 mod nav;
+mod play_panel;
 mod shading;
 mod overlay_2d;
 mod panel;
@@ -282,6 +283,7 @@ impl Plugin for ViewportPlugin {
         panel::register(app);
         game_view::register(app);
         camera_preview_panel::register(app);
+        play_panel::register(app);
         modal_hud::register(app);
         overlay_2d::register(app);
         stats_overlay::register(app);

@@ -5,6 +5,10 @@ edition = "2021"
 
 
 [dependencies]
+# Naming the window-handle variants, to hand the editor's own handle to a game
+# process as its parent window. Already in the graph: `bevy_window` returns
+# these types from its public API.
+raw-window-handle = "0.6"
 renzora_undo = { path = "../renzora_undo" }
 renzora_theme = { path = "../renzora_theme" }
 renzora_ember = { path = "../renzora_ember" }
