@@ -801,7 +801,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
         // Only the runtime is ever embedded: the editor is the thing it embeds
-        // *into*. Same schedule and the same reason as `apply_window_icon` —
+        // *into*. Same schedule and the same reason as `apply_window_icon`:
         // the window handle does not exist until winit has resumed.
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, embed_window);
