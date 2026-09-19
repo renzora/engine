@@ -133,10 +133,15 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // independently (picking VR doesn't erase the remembered viewport-vs-
     // window choice), so external play must only fire when Window is the
     // EFFECTIVE target.
+    // Every non-VR play is external now, so this no longer reads
+    // `external_play_window`. It used to, back when Viewport was a target and
+    // the setting chose between in-process and out; a user who had picked
+    // Viewport has `false` persisted, and honouring it after the target was
+    // removed would leave them with a Play button that does nothing at all.
     let enabled = world
         .get_resource::<EditorSettings>()
-        .map(|s| s.external_play_window && !s.play_launch_vr)
-        .unwrap_or(false);
+        .map(|s| !s.play_launch_vr)
+        .unwrap_or(true);
     if !enabled && !runtime_alive {
         return false;
     }

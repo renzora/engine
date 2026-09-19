@@ -19,9 +19,13 @@ use renzora_ember::widgets::Popup;
 /// actions before it. It has previously lived at the trailing end of the
 /// viewport's own tool strip — the top bar wins because running the game is not
 /// a viewport action, and this bar is on screen in every workspace.
-pub(crate) fn build_play_group(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+pub(crate) fn build_play_group(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    vr_available: bool,
+) -> Entity {
     let play = build_play_button(commands, font);
-    let caret = build_play_target_caret(commands, font);
+    let caret = build_play_target_caret(commands, font, vr_available);
     let group = commands
         .spawn((
             Node {
@@ -132,27 +136,20 @@ pub(crate) fn play_btn_click(
     play_mode: Option<ResMut<renzora::core::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
-    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     global_cam: Option<Res<GlobalSceneHasCamera>>,
 ) {
     let Some(mut pm) = play_mode else { return };
     let runtime_alive = runtime.is_some_and(|r| r.is_alive());
     // A camera in a global scene counts even though it isn't loaded yet.
     let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
-    let simulate = settings.is_some_and(|s| s.play_launch_simulate);
     for interaction in &btns {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        // `is_in_play_mode` deliberately EXCLUDES Simulating, so cover it too.
-        if runtime_alive || pm.is_in_play_mode() || pm.is_simulating() {
+        if runtime_alive || pm.is_in_play_mode() {
             pm.request_stop = true;
         } else if pm.is_editing() && has_cam {
-            if simulate {
-                pm.request_simulate = true;
-            } else {
-                pm.request_play = true;
-            }
+            pm.request_play = true;
         }
     }
 }
@@ -256,28 +253,20 @@ pub(crate) fn update_play_button(
     let muted = tc(t.text.muted);
 
     let active = runtime.is_some_and(|r| r.is_alive())
-        || play_mode
-            .as_ref()
-            .is_some_and(|p| p.is_in_play_mode() || p.is_simulating());
+        || play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
     // Matches `play_btn_click`: a global scene's camera counts, so the button
     // doesn't read as disabled while the click handler would accept it.
     let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
     let choice = settings
         .as_deref()
         .map(PlayLaunchChoice::current)
-        .unwrap_or(PlayLaunchChoice::Viewport);
-    let simulate = choice == PlayLaunchChoice::Simulate;
+        .unwrap_or(PlayLaunchChoice::Window);
 
     // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
     let (icon_name, color, playing) = if active {
         ("stop", red, true)
     } else {
-        let (idle_icon, idle_color) = if simulate {
-            ("flask", rgb(SIM_BLUE))
-        } else {
-            ("play", green)
-        };
-        (idle_icon, if has_cam { idle_color } else { muted }, false)
+        ("play", if has_cam { green } else { muted }, false)
     };
     let label_text = if playing {
         renzora::lang::t("common.stop")
@@ -327,52 +316,43 @@ pub(crate) struct PlayTargetCaret;
 /// What the Play button launches — the selection made in the play-target menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayLaunchChoice {
-    /// Full play inside the editor viewport panel.
-    Viewport,
     /// Full play in its own OS runtime window (project window settings).
     Window,
     /// Full play in a VR headset: the external runtime process launched with
     /// `--vr` (OpenXR stereo rendering + a desktop mirror window).
     Vr,
-    /// Simulate: scripts + physics tick while the editor stays live.
-    Simulate,
 }
 
 impl PlayLaunchChoice {
     /// The mode currently selected, resolved from
     /// [`renzora_editor_framework::EditorSettings`].
+    ///
+    /// `Window` is the floor rather than one option among several: play always
+    /// leaves this process now, so an unset or unrecognised preference lands on
+    /// the target that always works.
     fn current(s: &renzora_editor_framework::EditorSettings) -> Self {
-        if s.play_launch_simulate {
-            Self::Simulate
-        } else if s.play_launch_vr {
+        if s.play_launch_vr {
             Self::Vr
-        } else if s.external_play_window {
-            Self::Window
         } else {
-            Self::Viewport
+            Self::Window
         }
     }
 
     fn icon(self) -> &'static str {
         match self {
-            Self::Viewport => "frame-corners",
             Self::Window => "app-window",
             Self::Vr => "virtual-reality",
-            Self::Simulate => "flask",
         }
     }
 
-    /// What the Play button reads while idle. Window stays the plain "Play" —
-    /// launching the game in its own window is what a play button ordinarily
-    /// means — while the targets that put the game somewhere else name
-    /// themselves, so the button says where the next Play will run without
+    /// What the Play button reads while idle. Window stays the plain "Play",
+    /// because launching the game is what a play button ordinarily means, while
+    /// VR names itself so the button says where the next Play will run without
     /// having to open the caret menu to check.
     fn play_label(self) -> String {
         match self {
-            Self::Viewport => renzora::lang::t_or("shell.play_button.viewport", "Play Viewport"),
             Self::Window => renzora::lang::t("common.play"),
             Self::Vr => renzora::lang::t_or("shell.play_button.vr", "Play VR"),
-            Self::Simulate => renzora::lang::t_or("shell.play_target.scripts", "Scripts"),
         }
     }
 }
@@ -396,7 +376,11 @@ pub(crate) struct PlayTargetOptionIcon {
 /// window mode, resizable). Picking an option writes
 /// `EditorSettings.external_play_window` and persists it per-user, so the
 /// choice sticks across sessions; the next Play uses it.
-fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+fn build_play_target_caret(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    vr_available: bool,
+) -> Entity {
     let panel = commands
         .spawn((
             Node {
@@ -421,18 +405,21 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         ))
         .id();
 
-    // Window and VR are the two targets that need something outside this
-    // process: Window spawns `<exe_dir>/renzora` as a child process (see
-    // `renzora_viewport::external_runtime`) and VR needs an OpenXR device. A
-    // browser tab has neither, so the web editor doesn't offer them.
+    // Every target runs the game outside this process, which is the whole
+    // point: the editor's world is for editing, and a play mode that shares it
+    // is one where pressing Play changes the thing you were working on. Window
+    // spawns `<exe_dir>/renzora` as a child process (see
+    // `renzora_viewport::external_runtime`) and VR needs an OpenXR device.
     //
-    // Viewport and Simulate both run in-process and work unchanged — which is
-    // the whole reason play mode needed no porting for the web build.
-    let mut choices = vec![(
-        PlayLaunchChoice::Viewport,
-        "frame-corners",
-        renzora::lang::t_or("shell.play_target.viewport", "Viewport"),
-    )];
+    // A browser tab has neither, so the web editor offers nothing here. That is
+    // a real loss rather than an oversight: play used to run in-process and so
+    // needed no porting for the web build.
+    //
+    // "Viewport" and "Scripts" are gone. Viewport played into the editor's own
+    // viewport panel, sharing the edit world; Scripts ticked scripts and physics
+    // with the editor left live. Both are the same mistake in different sizes.
+    #[allow(unused_mut)]
+    let mut choices: Vec<(PlayLaunchChoice, &str, String)> = Vec::new();
     #[cfg(not(target_arch = "wasm32"))]
     {
         choices.push((
@@ -440,20 +427,19 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
             "app-window",
             renzora::lang::t_or("shell.play_target.runtime_window", "Window"),
         ));
-        choices.push((
-            PlayLaunchChoice::Vr,
-            "virtual-reality",
-            renzora::lang::t_or("shell.play_target.vr", "VR Headset"),
-        ));
+        // Only on an XR-capable boot. `VrPlayState` is initialised by
+        // `renzora_xr`, which `renzora_runtime` installs only when `--xr` found
+        // an OpenXR runtime at launch, so its presence *is* the question "can
+        // this process drive a headset". Offering the row otherwise is offering
+        // a target that cannot start, on the majority of machines.
+        if vr_available {
+            choices.push((
+                PlayLaunchChoice::Vr,
+                "virtual-reality",
+                renzora::lang::t_or("shell.play_target.vr", "VR Headset"),
+            ));
+        }
     }
-    // "Scripts", not "Simulate". The mode ticks your scripts with the editor
-    // left live, and "Simulate" reads as a physics-only preview next to a Play
-    // button — the one thing it is *not* mainly for.
-    choices.push((
-        PlayLaunchChoice::Simulate,
-        "flask",
-        renzora::lang::t_or("shell.play_target.scripts", "Scripts"),
-    ));
 
     let mut rows = Vec::new();
     for (choice, icon_name, label) in choices {
@@ -547,16 +533,15 @@ pub(crate) fn play_target_option_click(
         }
         if let Some(s) = settings.as_mut() {
             match opt.choice {
-                PlayLaunchChoice::Simulate => s.play_launch_simulate = true,
-                PlayLaunchChoice::Vr => {
-                    s.play_launch_simulate = false;
-                    s.play_launch_vr = true;
-                }
-                PlayLaunchChoice::Viewport | PlayLaunchChoice::Window => {
-                    s.play_launch_simulate = false;
+                PlayLaunchChoice::Vr => s.play_launch_vr = true,
+                // `external_play_window` stays true for both, because both are
+                // the external runtime: the VR target is the same child process
+                // launched with `--vr`. It is no longer a choice between
+                // in-process and out, only between where the out-of-process
+                // game draws.
+                PlayLaunchChoice::Window => {
                     s.play_launch_vr = false;
-                    let runtime_window = opt.choice == PlayLaunchChoice::Window;
-                    s.external_play_window = runtime_window;
+                    s.external_play_window = true;
                 }
             }
         }
@@ -598,6 +583,3 @@ pub(crate) fn update_play_target_menu(
     }
 }
 
-/// Simulate's accent colour (blue) — distinct from Play's green so the two
-/// launch modes read apart at a glance on the Play button.
-const SIM_BLUE: (u8, u8, u8) = (86, 169, 247);

@@ -46,7 +46,12 @@ pub(crate) struct ShellActionBtn(&'static str);
 
 /// The top bar: File/Edit/View/Help on the left, the layout ribbon centered,
 /// action buttons on the right.
-pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: &EmberFonts) -> Entity {
+pub(crate) fn build_top_bar(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    fonts: &EmberFonts,
+    vr_available: bool,
+) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -96,7 +101,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
-    let play = build_play_group(commands, font);
+    let play = build_play_group(commands, font, vr_available);
     // The document tabs, for anyone who'd rather not spend a row of the window
     // on them — hidden unless Settings has them set to Dropdown, in which case
     // the strip under this bar is the one that's hidden instead.

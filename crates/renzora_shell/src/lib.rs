@@ -506,6 +506,11 @@ fn manage_shell_root(
     theme_menu_open: Res<ThemeMenuOpen>,
     asset_server: Res<AssetServer>,
     splash: Option<Res<State<renzora::SplashState>>>,
+    // Present only on an XR-capable boot: `renzora_xr` initialises it, and
+    // `renzora_runtime` installs that plugin only when `--xr` found an OpenXR
+    // runtime. So this *is* "can this process drive a headset", and it decides
+    // whether the play-target menu offers VR at all.
+    vr: Option<Res<renzora::VrPlayState>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
@@ -531,7 +536,14 @@ fn manage_shell_root(
         } else {
             (Vec::new(), String::new())
         };
-        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0);
+        spawn_shell(
+            &mut commands,
+            &fonts,
+            &themes,
+            &active,
+            theme_menu_open.0,
+            vr.is_some(),
+        );
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
         dirty.0 = true;
@@ -555,6 +567,7 @@ fn spawn_shell(
     themes: &[String],
     active: &str,
     theme_menu_open: bool,
+    vr_available: bool,
 ) {
     let font = &fonts.ui;
     let root = commands
@@ -576,7 +589,7 @@ fn spawn_shell(
     // column after a spell inside the viewport panel (see [`build_doc_tabs`]):
     // as shell chrome they are on screen in every workspace, including the
     // viewport-less asset layouts an open material routes the editor into.
-    let top_bar = build_top_bar(commands, font, fonts);
+    let top_bar = build_top_bar(commands, font, fonts, vr_available);
     let doc_tabs = build_doc_tabs(commands);
 
     // Wrapper holding the workspace dock and the global bottom panel overlaid

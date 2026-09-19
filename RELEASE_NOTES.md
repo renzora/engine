@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-09-19 01:59
+- change(editor): Play always runs the game in its own process; the Viewport and Scripts targets are gone
+- change(editor): the VR play target is offered only when the editor was started VR-capable
+
 ## 2026-09-17 18:28
 - fix(editor): the FPS readout works with a Bevy project open, instead of sitting at 0 when the project brings its own diagnostics
 - fix(bevy-project): a project can add a plugin the editor already has, instead of failing to load with a duplicate-plugin panic
