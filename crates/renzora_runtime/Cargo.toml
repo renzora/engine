@@ -254,12 +254,6 @@ environment_map = ["dep:renzora_environment_map"]
 skybox = ["dep:renzora_skybox"]
 
 [dependencies]
-# Naming the window-handle variants, to turn Bevy's `RawHandleWrapper` into the
-# plain integer `renzora::core::window_embed` works in. Already in the graph:
-# `bevy_window` returns these types from its own public API, so this pins
-# nothing new, it only lets us say the names.
-raw-window-handle = "0.6"
-
 # Feature crates that used to be loaded from `plugins/`, now statically linked.
 #
 # They are engine features rather than things a user installs, so they belong in

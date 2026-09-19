@@ -316,9 +316,6 @@ pub(crate) struct PlayTargetCaret;
 /// What the Play button launches — the selection made in the play-target menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayLaunchChoice {
-    /// The game runs in the editor's Play panel: the same child process, with
-    /// its window made a child of the editor's and placed over the panel.
-    Panel,
     /// Full play in its own OS runtime window (project window settings).
     Window,
     /// Full play in a VR headset: the external runtime process launched with
@@ -330,37 +327,31 @@ impl PlayLaunchChoice {
     /// The mode currently selected, resolved from
     /// [`renzora_editor_framework::EditorSettings`].
     ///
-    /// `Panel` is the default, and it is what `false` means: the setting now
-    /// chooses where an out-of-process game *lands*, not whether it leaves.
-    /// A user who had the old Viewport target has `false` persisted, so they
-    /// land in the panel, which is the nearest thing to what they had.
+    /// `Window` is the floor rather than one option among several: play always
+    /// leaves this process now, so an unset or unrecognised preference lands on
+    /// the target that always works.
     fn current(s: &renzora_editor_framework::EditorSettings) -> Self {
         if s.play_launch_vr {
             Self::Vr
-        } else if s.external_play_window {
-            Self::Window
         } else {
-            Self::Panel
+            Self::Window
         }
     }
 
     fn icon(self) -> &'static str {
         match self {
-            Self::Panel => "frame-corners",
             Self::Window => "app-window",
             Self::Vr => "virtual-reality",
         }
     }
 
-    /// What the Play button reads while idle. Panel stays the plain "Play",
-    /// because playing in the editor is what a play button ordinarily means,
-    /// while the targets that put the game somewhere else name themselves: the
-    /// button says where the next Play will run without having to open the
-    /// caret menu to check.
+    /// What the Play button reads while idle. Window stays the plain "Play",
+    /// because launching the game is what a play button ordinarily means, while
+    /// VR names itself so the button says where the next Play will run without
+    /// having to open the caret menu to check.
     fn play_label(self) -> String {
         match self {
-            Self::Panel => renzora::lang::t("common.play"),
-            Self::Window => renzora::lang::t_or("shell.play_button.window", "Play in Window"),
+            Self::Window => renzora::lang::t("common.play"),
             Self::Vr => renzora::lang::t_or("shell.play_button.vr", "Play VR"),
         }
     }
@@ -431,11 +422,6 @@ fn build_play_target_caret(
     let mut choices: Vec<(PlayLaunchChoice, &str, String)> = Vec::new();
     #[cfg(not(target_arch = "wasm32"))]
     {
-        choices.push((
-            PlayLaunchChoice::Panel,
-            "frame-corners",
-            renzora::lang::t_or("shell.play_target.panel", "Play Panel"),
-        ));
         choices.push((
             PlayLaunchChoice::Window,
             "app-window",
@@ -546,14 +532,13 @@ pub(crate) fn play_target_option_click(
             continue;
         }
         if let Some(s) = settings.as_mut() {
-            // Both remaining flags are stored independently so picking VR does
-            // not erase the remembered panel-versus-window choice.
             match opt.choice {
                 PlayLaunchChoice::Vr => s.play_launch_vr = true,
-                PlayLaunchChoice::Panel => {
-                    s.play_launch_vr = false;
-                    s.external_play_window = false;
-                }
+                // `external_play_window` stays true for both, because both are
+                // the external runtime: the VR target is the same child process
+                // launched with `--vr`. It is no longer a choice between
+                // in-process and out, only between where the out-of-process
+                // game draws.
                 PlayLaunchChoice::Window => {
                     s.play_launch_vr = false;
                     s.external_play_window = true;

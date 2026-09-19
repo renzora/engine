@@ -450,13 +450,6 @@ fn launcher_app_id(is_editor: bool) -> Option<String> {
 pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
-    // Launched by the editor to live inside its play panel. Read here, before
-    // the window descriptor is built, because both things it changes
-    // (`decorations`, `visible`) can only be set at creation: turning
-    // decorations off afterwards resizes the render surface out from under
-    // anything sized against the window, and a window that has already appeared
-    // cannot be un-appeared.
-    let embedded = renzora::core::window_embed::embed_target_from_args().is_some();
     // Must run before `DefaultPlugins` so we win the `IoTaskPool::get_or_init`
     // race — see the function doc for why the IO workers need a larger stack.
     init_io_task_pool_with_large_stack();
@@ -511,20 +504,8 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // off the right/bottom.
                     // Editor: false (it draws its own chrome). Runtime: true
                     // (OS title bar). Decided at runtime via `is_editor`.
-                    //
-                    // An embedded game has neither: it is about to become a
-                    // child window inside the editor's play panel, where a title
-                    // bar and a resize border would be chrome for a window the
-                    // user cannot move or resize.
-                    decorations: !is_editor && !embedded,
+                    decorations: !is_editor,
                     resizable: true,
-                    // An embedded game is created hidden and shown by
-                    // `embed_window` once it has been reparented and placed.
-                    // Reparenting a window that is already on screen works, but
-                    // it appears at its own size in the middle of the display
-                    // first and then jumps into the panel, which reads as a bug
-                    // rather than as opening.
-                    visible: !embedded,
                     // The editor opens on the workspace, with the splash as an
                     // overlay over it, so it is created large and centred at
                     // [`INITIAL_WINDOW`] and maximized at startup.
@@ -800,11 +781,6 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         // the editor's own window.
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
-        // Only the runtime is ever embedded: the editor is the thing it embeds
-        // *into*. Same schedule and the same reason as `apply_window_icon`:
-        // the window handle does not exist until winit has resumed.
-        #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(Update, embed_window);
     }
 }
 
@@ -1041,88 +1017,6 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
 
     let wait = Duration::from_secs_f64(1.0 / tick_rate.max(1) as f64);
     app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));
-}
-
-/// Become a child window of the editor's play panel, once there is a window to
-/// reparent.
-///
-/// Runs on `Update` rather than `Startup` because the handle does not exist
-/// yet at `Startup`: `RawHandleWrapper` is added when winit actually creates
-/// the window, which is after the `resumed` event. The same reason
-/// `apply_window_icon` lives there.
-///
-/// Self-disabling through `done`, because reparenting is a one-off: the window
-/// stays a child for the life of the process, and the editor drives its
-/// position from then on.
-///
-/// Failure here is not fatal and deliberately not silent. On a platform that
-/// cannot do this (Wayland, macOS) the game simply stays in its own window,
-/// which is the behaviour the Window play target has always had.
-#[cfg(not(target_arch = "wasm32"))]
-fn embed_window(
-    handles: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
-    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
-    mut done: Local<bool>,
-) {
-    use renzora::core::window_embed;
-
-    if *done {
-        return;
-    }
-    let Some(parent) = window_embed::embed_target_from_args() else {
-        *done = true;
-        return;
-    };
-    let Ok(handle) = handles.single() else {
-        // No window yet. Try again next frame.
-        return;
-    };
-    *done = true;
-
-    let Some(child) = native_window_of(handle.get_window_handle()) else {
-        warn!("[embed] this platform has no child windows; the game stays in its own window");
-        // The window was created hidden on the strength of being embedded, so
-        // it has to be shown by hand now that it will not be.
-        if let Ok(mut window) = windows.single_mut() {
-            window.visible = true;
-        }
-        return;
-    };
-
-    if window_embed::embed_into(child, parent) {
-        // Straight to stdout rather than through the log: the editor reads this
-        // off the pipe it already drains, and a log line would be formatted,
-        // levelled and possibly filtered before it got there.
-        println!("{}", window_embed::handshake_line(child));
-        use std::io::Write as _;
-        let _ = std::io::stdout().flush();
-        info!("[embed] attached to the editor's play panel");
-        // Left hidden on purpose. The editor places it and then shows it, so it
-        // never appears at the wrong size in the wrong corner for a frame.
-    } else {
-        warn!("[embed] could not attach to the editor; the game stays in its own window");
-        if let Ok(mut window) = windows.single_mut() {
-            window.visible = true;
-        }
-    }
-}
-
-/// The native handle behind a Bevy window.
-///
-/// The match the contract crate deliberately does not carry, because naming
-/// these variants needs `raw_window_handle` and that crate is Bevy-and-serde
-/// only. See `renzora::core::window_embed`.
-#[cfg(not(target_arch = "wasm32"))]
-fn native_window_of(
-    handle: raw_window_handle::RawWindowHandle,
-) -> Option<renzora::core::window_embed::NativeWindow> {
-    match handle {
-        #[cfg(target_os = "windows")]
-        raw_window_handle::RawWindowHandle::Win32(h) => Some(h.hwnd.get()),
-        #[cfg(all(unix, not(target_os = "macos")))]
-        raw_window_handle::RawWindowHandle::Xlib(h) => Some(h.window as isize),
-        _ => None,
-    }
 }
 
 /// Fill the screen, because the editor's first screen is the workspace.

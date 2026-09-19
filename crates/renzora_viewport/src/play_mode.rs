@@ -133,15 +133,15 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // independently (picking VR doesn't erase the remembered viewport-vs-
     // window choice), so external play must only fire when Window is the
     // EFFECTIVE target.
-    // Every non-VR play is external now. `external_play_window` no longer
-    // decides *whether* the game leaves this process, only *where it lands*:
-    // true is a window of its own, false is the play panel. It used to mean
-    // in-process versus out, and a user who had picked the old Viewport target
-    // has `false` persisted, which now reads as the panel. That is the right
-    // landing spot for them and the new default besides.
-    let settings = world.get_resource::<EditorSettings>();
-    let enabled = settings.map(|s| !s.play_launch_vr).unwrap_or(true);
-    let want_own_window = settings.is_some_and(|s| s.external_play_window);
+    // Every non-VR play is external now, so this no longer reads
+    // `external_play_window`. It used to, back when Viewport was a target and
+    // the setting chose between in-process and out; a user who had picked
+    // Viewport has `false` persisted, and honouring it after the target was
+    // removed would leave them with a Play button that does nothing at all.
+    let enabled = world
+        .get_resource::<EditorSettings>()
+        .map(|s| !s.play_launch_vr)
+        .unwrap_or(true);
     if !enabled && !runtime_alive {
         return false;
     }
@@ -219,16 +219,7 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
         ),
     );
 
-    // Embedded unless the user asked for a window of its own. `None` here is
-    // also what a platform without child windows reports, and it means the same
-    // thing to the spawn: launch the game in its own window.
-    let embed_into = if want_own_window {
-        None
-    } else {
-        crate::play_panel::editor_window(world)
-    };
-
-    match spawn_runtime(&binary, &project_path, false, embed_into) {
+    match spawn_runtime(&binary, &project_path, false) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);

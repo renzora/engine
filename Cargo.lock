@@ -8314,7 +8314,6 @@ dependencies = [
  "bevy",
  "image",
  "libloading 0.8.9",
- "raw-window-handle",
  "renzora",
  "renzora_animation",
  "renzora_antialiasing",
@@ -8775,7 +8774,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
- "raw-window-handle",
  "renzora",
  "renzora_animation",
  "renzora_blueprint",
