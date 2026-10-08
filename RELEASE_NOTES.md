@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-07 21:03
+- fix(hierarchy): Duplicate in the hierarchy right-click menu copies every component, like Ctrl+D, instead of making an empty entity at the origin
+
 ## 2026-09-18 16:27
 - fix(game-ui): an `expand` canvas previewed over the viewport lays out like the shipped game, so edge-anchored UI reaches the edge
 - fix(game-ui): a canvas root no longer keeps a preview scale that was saved into a scene, which shrank the UI in an exported game
