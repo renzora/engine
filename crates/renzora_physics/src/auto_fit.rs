@@ -54,30 +54,14 @@ pub fn auto_fit_collision_shapes(
             commands.entity(entity).remove::<PendingAutoFit>();
             continue;
         }
-        let Some((min, max)) = combined_world_aabb(entity, &aabbs, &children) else {
-            // Mesh not ready yet — try again next frame.
+        // Bounds are taken in the collider's own local space, corner by corner.
+        // Fitting a world-axis box first and mapping that back inflated every
+        // rotated collider (a 15 degree Y platform grew to 1.4x1.6 of its mesh).
+        let inv = entity_gt.affine().inverse();
+        let Some((local_min, local_max)) = combined_local_aabb(entity, inv, &aabbs, &children) else {
+            // Mesh not ready yet: try again next frame.
             continue;
         };
-
-        let inv = entity_gt.affine().inverse();
-        let corners = [
-            Vec3::new(min.x, min.y, min.z),
-            Vec3::new(max.x, min.y, min.z),
-            Vec3::new(min.x, max.y, min.z),
-            Vec3::new(max.x, max.y, min.z),
-            Vec3::new(min.x, min.y, max.z),
-            Vec3::new(max.x, min.y, max.z),
-            Vec3::new(min.x, max.y, max.z),
-            Vec3::new(max.x, max.y, max.z),
-        ];
-
-        let mut local_min = Vec3::splat(f32::INFINITY);
-        let mut local_max = Vec3::splat(f32::NEG_INFINITY);
-        for c in corners {
-            let lp = inv.transform_point3(c);
-            local_min = local_min.min(lp);
-            local_max = local_max.max(lp);
-        }
 
         let half = (local_max - local_min) * 0.5;
         let center = (local_max + local_min) * 0.5;
@@ -104,13 +88,26 @@ pub fn auto_fit_collision_shapes(
             CollisionShapeType::Mesh => unreachable!(),
         }
 
-        commands.entity(entity).insert(new_shape);
+        // A default-valued shape on a unit mesh already fits; rewriting it only
+        // injects float noise (0.5 -> 0.49999997) and dirties a loaded scene.
+        if !shape_close(shape, &new_shape) {
+            commands.entity(entity).insert(new_shape);
+        }
         commands.entity(entity).remove::<PendingAutoFit>();
     }
 }
 
-fn combined_world_aabb(
+fn shape_close(a: &CollisionShapeData, b: &CollisionShapeData) -> bool {
+    const EPS: f32 = 1e-4;
+    a.offset.abs_diff_eq(b.offset, EPS)
+        && a.half_extents.abs_diff_eq(b.half_extents, EPS)
+        && (a.radius - b.radius).abs() <= EPS
+        && (a.half_height - b.half_height).abs() <= EPS
+}
+
+fn combined_local_aabb(
     root: Entity,
+    to_local: bevy::math::Affine3A,
     aabbs: &Query<(&Aabb, &GlobalTransform)>,
     children: &Query<&Children>,
 ) -> Option<(Vec3, Vec3)> {
@@ -127,9 +124,9 @@ fn combined_world_aabb(
                 for sy in [-1.0, 1.0] {
                     for sz in [-1.0, 1.0] {
                         let local = center + half * Vec3::new(sx, sy, sz);
-                        let world = gt.transform_point(local);
-                        min = min.min(world);
-                        max = max.max(world);
+                        let root_local = to_local.transform_point3(gt.transform_point(local));
+                        min = min.min(root_local);
+                        max = max.max(root_local);
                     }
                 }
             }
