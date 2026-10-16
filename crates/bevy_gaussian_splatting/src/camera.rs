@@ -4,6 +4,7 @@ use bevy::{
 };
 
 #[derive(Clone, Component, Debug, Default, ExtractComponent, Reflect)]
+#[extract_app(bevy::render::RenderApp)]
 pub struct GaussianCamera {
     pub warmup: bool,
 }

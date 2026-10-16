@@ -9,7 +9,7 @@ pub struct TerrainSplatmapMaterialPlugin;
 
 impl Plugin for TerrainSplatmapMaterialPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "shaders/terrain_splatmap.wgsl");
+        bevy::asset::embedded_asset!(app, "shaders/terrain_splatmap.wesl");
         app.add_plugins(MaterialPlugin::<TerrainSplatmapMaterial>::default());
     }
 }
@@ -185,7 +185,7 @@ pub struct TerrainSplatmapMaterial {
 
 impl Material for TerrainSplatmapMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_terrain/shaders/terrain_splatmap.wgsl".into()
+        "embedded://renzora_terrain/shaders/terrain_splatmap.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

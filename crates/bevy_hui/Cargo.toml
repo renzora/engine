@@ -1,3 +1,9 @@
+# Vendored fork of bevy_hui. Bevy 0.20 port changes:
+#   - a `<button>` inserts `FocusPolicy::Block` + `Interaction` directly, the two
+#     things the deprecated (and now unnameable) `bevy_ui::Button` required, so
+#     hover/press styling and bindings keep working unchanged.
+#   - border radii are written through `.into()`: `BorderRadius` corners are
+#     `CornerRadius` (elliptical) in 0.20.
 [package]
 name = "bevy_hui"
 authors = ["Lorenz Mielke"]

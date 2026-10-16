@@ -343,7 +343,7 @@ pub fn update_shape_drag_preview(
             }
             let min_offset = meshes
                 .get(&mesh)
-                .and_then(|m| m.compute_aabb())
+                .and_then(|m| m.get_aabb())
                 .map(|aabb| Vec3::from(aabb.center - aabb.half_extents))
                 .unwrap_or(Vec3::ZERO);
 

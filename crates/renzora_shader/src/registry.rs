@@ -154,7 +154,9 @@ pub fn inject_param_constants(wgsl: String, param_block: &str) -> String {
 /// Ensure the WGSL output declares the `ShaderUniforms` struct and
 /// `@group(3) @binding(0)` binding. If already present, returns as-is.
 fn ensure_uniforms_binding(wgsl: String) -> String {
-    if wgsl.contains("@group(3)") {
+    // A shader that declares its own material bindings, by number or (WESL)
+    // by `constants::MATERIAL_BIND_GROUP`, manages that group itself.
+    if wgsl.contains("@group(3)") || wgsl.contains("MATERIAL_BIND_GROUP") {
         return wgsl;
     }
 
@@ -163,15 +165,28 @@ fn ensure_uniforms_binding(wgsl: String) -> String {
     output
 }
 
-/// Find the byte position right after the last `#import` / `#define_import_path` line.
+/// Find the byte position right after the last import: a `#import` /
+/// `#define_import_path` line, or the line that ends a WESL `import ...;`
+/// statement, which may span several (`import bevy_pbr::render::{\n ...\n};`).
+/// WESL requires every import before the first declaration, so injecting
+/// anywhere earlier would break the shader.
 /// Handles both `\n` and `\r\n` correctly (the old `lines().len() + 1` was wrong on Windows).
 fn find_after_last_import(source: &str) -> usize {
     let mut last_import_end = 0;
     let mut found = false;
+    let mut in_wesl_import = false;
 
     for (byte_pos, line) in line_byte_ranges(source) {
         let t = line.trim();
-        if t.starts_with("#import") || t.starts_with("#define_import_path") {
+        let code = t.split("//").next().unwrap_or("").trim_end();
+        if t.starts_with("import ") || (t.starts_with("@if(") && code.contains(" import ")) {
+            in_wesl_import = true;
+        }
+        let ends_import = (in_wesl_import && code.ends_with(';'))
+            || t.starts_with("#import")
+            || t.starts_with("#define_import_path");
+        if ends_import {
+            in_wesl_import = false;
             last_import_end = byte_pos + line.len();
             // Skip past the newline character(s)
             if source[last_import_end..].starts_with("\r\n") {

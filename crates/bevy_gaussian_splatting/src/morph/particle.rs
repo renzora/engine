@@ -7,7 +7,7 @@ use std::marker::Copy;
 
 #[allow(unused_imports)]
 use bevy::{
-    asset::{LoadState, RenderAssetUsages, load_internal_asset, uuid_handle},
+    asset::{LoadState, RenderAssetUsages, uuid_handle},
     core_pipeline::{Core3d, Core3dSystems},
     ecs::system::{SystemParamItem, lifetimeless::SRes},
     prelude::*,
@@ -82,11 +82,11 @@ where
             render_app.add_systems(ExtractSchedule, extract_particle_behaviors);
         }
 
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             PARTICLE_SHADER_HANDLE,
-            "particle.wgsl",
-            Shader::from_wgsl
+            "particle.wesl",
+            "morph/particle"
         );
 
         app.register_type::<ParticleBehaviors>();
@@ -202,6 +202,7 @@ impl<R: PlanarSync> FromWorld for ParticleBehaviorPipeline<R> {
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("apply_particle_behaviors".into()),
                 zero_initialize_workgroup_memory: true,
+                constants: Vec::new(),
             });
 
         Self {

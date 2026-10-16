@@ -1,0 +1,45 @@
+# Vendored from crates.io `bevy_interleave` 0.10.0 (MIT, github.com/mosure/bevy_interleave)
+# for the Bevy 0.20 port: no published release supports 0.20 yet, and
+# `bevy_gaussian_splatting` needs it. Changes from upstream:
+#   - bevy/wgpu moved to 0.20/30, bevy taken from the workspace so the graph
+#     holds one Bevy.
+#   - the interface and macro crates are path deps to their vendored copies.
+#   - 0.20 port: `SyncComponent` takes the target app (`<RenderApp>`), in the
+#     interface's `PlanarHandle` bound and in the impl the planar macro emits.
+#   - examples, tests and profiles dropped (not vendored).
+# Excluded from CI test/clippy like the other vendored ecosystem crates.
+[package]
+edition = "2024"
+name = "bevy_interleave"
+version = "0.10.0"
+authors = ["mosure <mitchell@mosure.me>"]
+description = "bevy support for e2e packed to planar bind groups"
+license = "MIT"
+repository = "https://github.com/mosure/bevy_interleave"
+
+[lib]
+name = "bevy_interleave"
+path = "src/lib.rs"
+
+[dependencies]
+bevy = { workspace = true }
+bevy_interleave_interface = { path = "../bevy_interleave_interface" }
+bevy_interleave_macros = { path = "../bevy_interleave_macros" }
+bytemuck = "1.24"
+serde = "1.0"
+wgpu = "30"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Location",
+    "Node",
+    "Window",
+]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"

@@ -81,8 +81,8 @@ use bevy::prelude::*;
 use libloading::{Library, Symbol};
 #[cfg(target_arch = "wasm32")]
 use wasm_dl::{Library, Symbol};
-use renzora::core::console_log::{console_error, console_success};
-use renzora::{CurrentProject, SplashState};
+use renzora::core::console_log::console_error;
+use renzora::SplashState;
 use renzora_plugin_build::Sdk;
 use renzora_scripting::{scripts_should_run, ScriptComponent};
 
@@ -225,11 +225,14 @@ impl Plugin for RustScriptPlugin {
             .add_systems(
                 Update,
                 (
-                    // Gated on `Editor` so it cannot fire during `Loading`,
-                    // which is before `compile_and_load` has run and claimed the
-                    // walk. It still covers the case that build does not: a
-                    // project switched while the editor is already up, where
-                    // `OnEnter(Editor)` never fires again.
+                    // This is also the project-open build: the walk runs on a
+                    // task pool, each script builds on another, and each loads
+                    // on the main thread as it finishes. It used to be a
+                    // separate `OnEnter(Editor)` system that built every script
+                    // in turn on the main thread, which held the editor at a
+                    // few frames a second for the first seconds of every
+                    // project open. Gated on `Editor` so a project's scripts are
+                    // not built while the splash is still loading it.
                     watch::scan_on_project_open.run_if(in_state(SplashState::Editor)),
                     watch::watch,
                     watch::finish,
@@ -244,10 +247,6 @@ impl Plugin for RustScriptPlugin {
             // export time and travel beside the executable. In the editor the
             // manifest is absent and this is a single failed file read.
             .add_systems(PreUpdate, (register_backend, load_prebuilt_scripts))
-            // Compiling is separate from dispatching so one script failing to
-            // build leaves the others running, and so the compile can later move
-            // off the main thread without touching the dispatcher.
-            .add_systems(OnEnter(SplashState::Editor), compile_and_load)
             // Gated exactly like the Lua path. Without this a script starts
             // running the moment it is dropped on an entity, in edit mode, which
             // is both surprising and destructive — a script that spawns or
@@ -336,8 +335,8 @@ fn register_backend(
 ///
 /// Runs once. There is nothing to compile, nothing to load and nothing that can
 /// fail — the entry points were resolved by the linker, so if the binary started
-/// they are valid. That is the whole difference from `compile_and_load`: the
-/// same map, filled from an array instead of from `dlopen`.
+/// they are valid. That is the whole difference from the editor's build
+/// ([`watch`]): the same map, filled from an array instead of from `dlopen`.
 ///
 /// Keyed by file name to match what `dispatch` resolves against, which is also
 /// what the exporter keyed the table on.
@@ -425,77 +424,6 @@ impl LoadedScripts {
     }
 }
 
-/// Build and load every `.rs` in the open project's `scripts/`.
-///
-/// On entering the editor rather than at startup, because a project — and
-/// therefore a `scripts/` directory — does not exist before then.
-fn compile_and_load(world: &mut World) {
-    let Some(project) = world.get_resource::<CurrentProject>().map(|p| p.path.clone()) else {
-        return;
-    };
-    // The whole project, not `scripts/` alone — see `collect_project_scripts`
-    // for why, and for what keeps a non-script `.rs` out of the set.
-    let sources: Vec<PathBuf> = collect_project_scripts(&project);
-    if sources.is_empty() {
-        return;
-    }
-
-    // This walk IS the opening scan, so claim it: `scan_on_project_open` would
-    // otherwise do the same walk for the same project and race these builds.
-    // Claimed before the SDK check below, because a project with no SDK still
-    // does not want a second walk finding scripts it cannot build either.
-    world
-        .resource_mut::<watch::ScriptWatcher>()
-        .mark_scanned(project.clone());
-
-    let Some(sdk_dir) = sdk_dir() else { return };
-    let sdk = match Sdk::load(sdk_dir) {
-        Ok(sdk) => sdk,
-        Err(e) => {
-            // Said once rather than per script: without an SDK nothing can be
-            // built, and the reason is the same for all of them.
-            warn!("rust scripts cannot be built: {e}");
-            console_error("Script", format!("Rust scripts cannot be built — {e}"));
-            return;
-        }
-    };
-
-    for src in sources {
-        let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
-        // Claim this source's mtime for the watcher BEFORE building it. The
-        // watcher decides what to rebuild by comparing against `seen`, and it
-        // has never seen anything yet — so without this it noticed every script
-        // half a second later and built the whole directory a second time, on
-        // the task pool, while these builds were still finishing. Two rustc runs
-        // per script at project open, and a leaked image for each.
-        //
-        // Recorded even when the build below fails, matching the watcher's own
-        // rule: a script that does not compile stays quiet until it is edited
-        // again rather than re-reporting the same error every poll.
-        if let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) {
-            world.resource_mut::<watch::ScriptWatcher>().mark_seen(src.clone(), mtime);
-        }
-        match build_to_path(&sdk, &project, &src).and_then(|p| load_library(&p)) {
-            Ok((f, hook, lib)) => {
-                world
-                    .resource_mut::<LoadedScripts>()
-                    .insert(name.clone(), f, hook, lib);
-                info!("[rust-script] loaded {name}");
-                console_success("Script", format!("compiled {name}"));
-            }
-            Err(e) => {
-                // Both, and neither is redundant. `error!` reaches stdout and the
-                // Problems panel (which has a tracing layer); the Console panel
-                // has none and only shows what is pushed to it explicitly. A
-                // compile error is the single thing a script author most needs to
-                // see, so it goes to the place they are already looking.
-                error!("[rust-script] {name}: {e}");
-                console_error("Script", format!("{name}\n{e}"));
-            }
-        }
-    }
-}
-
 /// Compile one `.rs` into `<project>/.renzora/scripts/`, returning the library.
 ///
 /// Split from [`load_library`] so the compile — the second that matters — can run
@@ -508,33 +436,58 @@ fn compile_and_load(world: &mut World) {
 pub fn build_to_path(sdk: &Sdk, project: &Path, src: &Path) -> Result<PathBuf, String> {
     let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("script");
     let build = project.join(".renzora").join("scripts").join(stem);
-    std::fs::create_dir_all(build.join("src")).map_err(|e| e.to_string())?;
+    let source = std::fs::read(src).map_err(|e| e.to_string())?;
 
-    // `Sdk::compile` takes a plugin-shaped DIRECTORY (`<dir>/src/lib.rs`) — it
+    // The library is named for what it was built from: this source, against this
+    // SDK. A script that has not changed since the last launch therefore finds
+    // its library already on disk and skips rustc, which used to cost about a
+    // second per script on every project open.
+    //
+    // It also keeps the old rule that a recompile writes a NEW file rather than
+    // overwriting the loaded one: on Windows the previous library is still
+    // mapped and cannot be replaced, and on every platform overwriting a mapped
+    // image is a way to crash later rather than fail now. Changed source is a
+    // different name; unchanged source is the same, already-correct file.
+    let key = build_key(&sdk.stamp(), &source);
+    let ext = &sdk.manifest().lib_ext;
+    let out = build.join(format!("{stem}-{key:016x}.{ext}"));
+    if out.is_file() {
+        return Ok(out);
+    }
+
+    // `Sdk::compile` takes a plugin-shaped DIRECTORY (`<dir>/src/lib.rs`): it
     // generates the Cargo.toml Bevy's derives need there and takes the crate name
     // from it. A script is one loose file, so it is staged into that shape rather
     // than teaching the compiler a second layout.
-    std::fs::copy(src, build.join("src").join("lib.rs")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(build.join("src")).map_err(|e| e.to_string())?;
+    std::fs::write(build.join("src").join("lib.rs"), &source).map_err(|e| e.to_string())?;
 
-    // A recompile writes a NEW file rather than overwriting the loaded one: on
-    // Windows the previous library is still mapped and cannot be replaced, and on
-    // every platform overwriting a mapped image is a way to crash later rather
-    // than fail now. The generation counter is the file's own mtime, which is
-    // monotonic enough and needs no state kept anywhere.
-    let gen = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let out = build.join(format!("{stem}-{gen}.{}", sdk.manifest().lib_ext));
-
-    sdk.compile(&build, &out).map_err(|e| {
+    // Built under a temporary name and renamed into place, so a build that dies
+    // halfway can never leave a file the cache check above would trust.
+    let partial = build.join(format!("{stem}-{key:016x}.partial.{ext}"));
+    sdk.compile(&build, &partial).map_err(|e| {
         // Point at the file the author edits, not the staged copy they have never
-        // seen — a diagnostic naming `.renzora/scripts/spin/src/lib.rs` sends
+        // seen: a diagnostic naming `.renzora/scripts/spin/src/lib.rs` sends
         // them to a derived file that is overwritten on every build.
         e.to_string()
             .replace(&build.join("src").join("lib.rs").to_string_lossy().to_string(), &src.to_string_lossy())
     })?;
+    std::fs::rename(&partial, &out).map_err(|e| e.to_string())?;
     Ok(out)
+}
+
+/// FNV-1a over the SDK stamp and the script source.
+///
+/// Spelled out rather than taken from `std`, whose hasher is not promised to
+/// give the same answer from one Rust release to the next; this key names files
+/// that have to be found again on the next launch.
+fn build_key(stamp: &str, source: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in stamp.as_bytes().iter().chain([0u8].iter()).chain(source) {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// `dlopen` a built script and find its entry point.
@@ -626,7 +579,7 @@ pub const PREBUILT_MANIFEST: &str = "scripts.index";
 ///
 /// | | compiled | loaded by |
 /// |---|---|---|
-/// | editor | on save, from source | `compile_and_load` |
+/// | editor | on project open and on save, from source | [`watch`] |
 /// | copy-based export | at export time, by the editor | this |
 /// | lean export | into the binary | `load_static_scripts` |
 ///
@@ -777,15 +730,15 @@ pub fn dispatch(
 
     // Resolved before the loop so the resource is not borrowed across a call that
     // may insert, remove or despawn anything at all.
-    let resolved: Vec<(Entity, ScriptFn)> = {
+    let resolved: Vec<(Entity, String, ScriptFn)> = {
         let loaded = world.resource::<LoadedScripts>();
         calls
             .into_iter()
-            .filter_map(|(e, name)| loaded.entries.get(&name).map(|f| (e, *f)))
+            .filter_map(|(e, name)| loaded.entries.get(&name).map(|f| (e, name, *f)))
             .collect()
     };
 
-    for (entity, f) in resolved {
+    for (entity, name, f) in resolved {
         // An earlier script may have despawned this entity — its own, even.
         if world.get_entity(entity).is_err() {
             continue;
@@ -793,14 +746,38 @@ pub fn dispatch(
         // A panic crossing the boundary is undefined, so it is caught: a broken
         // script stops working rather than taking the editor with it. A segfault
         // is still fatal and nothing here can help with that.
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(world, entity))).is_err() {
-            error!("[rust-script] panicked on {entity}");
+        //
+        // Through `recoverable::catch` rather than bare `catch_unwind`, which is
+        // what keeps the crash reporter's dialog from announcing a crash that
+        // this line is about to recover from.
+        if let Err(caught) = renzora::core::recoverable::catch(|| f(world, entity)) {
+            let why = describe_panic(&name, &caught);
+            error!("[rust-script] {name} panicked on {entity}: {why}");
             // Deliberately not per-frame-guarded: a panicking script panics every
             // frame, and a Console that says so sixty times is still better than
             // one that says it once and scrolls away. The panel coalesces repeats
             // into a count.
-            console_error("Script", format!("panicked while running on {entity}"));
+            console_error("Script", format!("{name} panicked on {entity}: {why}"));
         }
+    }
+}
+
+/// A caught script panic, pointed at the file the author edits.
+///
+/// The panic location is the staged copy the compiler actually read,
+/// `<project>/.renzora/scripts/<stem>/src/lib.rs`, which is overwritten on every
+/// build and which the author has never opened. The line and column are the
+/// same in both, so only the file is swapped for the script's own name.
+pub(crate) fn describe_panic(name: &str, caught: &renzora::core::recoverable::CaughtPanic) -> String {
+    let at = caught.location.as_deref().map(|loc| {
+        match loc.rsplit_once("lib.rs:") {
+            Some((staged, line_col)) if staged.contains(".renzora") => format!("{name}:{line_col}"),
+            _ => loc.to_string(),
+        }
+    });
+    match at {
+        Some(at) => format!("{} (at {at})", caught.message),
+        None => caught.message.clone(),
     }
 }
 

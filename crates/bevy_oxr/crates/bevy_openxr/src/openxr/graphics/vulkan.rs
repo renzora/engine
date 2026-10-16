@@ -102,6 +102,9 @@ unsafe impl GraphicsExt for openxr::Vulkan {
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 },
+                // wgpu 30: the runtime hands out a fresh swapchain image each
+                // frame, so its old contents are never read.
+                TextureUses::UNINITIALIZED,
             )
         };
         Ok(texture)

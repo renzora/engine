@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use bevy_app::App;
@@ -34,7 +33,6 @@ use bevy_render::renderer::RenderAdapterInfo;
 use bevy_render::renderer::RenderDevice;
 use bevy_render::renderer::RenderInstance;
 use bevy_render::renderer::RenderQueue;
-use bevy_render::renderer::WgpuWrapper;
 use bevy_render::settings::RenderCreation;
 #[cfg(feature = "window_support")]
 use bevy_winit::UpdateMode;
@@ -115,10 +113,10 @@ impl Plugin for OxrInitPlugin {
                         RenderPlugin {
                             render_creation: RenderCreation::manual(
                                 device.into(),
-                                RenderQueue(Arc::new(WgpuWrapper::new(queue))),
-                                RenderAdapterInfo(WgpuWrapper::new(adapter_info)),
-                                RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
-                                RenderInstance(Arc::new(WgpuWrapper::new(wgpu_instance))),
+                                RenderQueue::new(queue),
+                                RenderAdapterInfo::new(adapter_info),
+                                RenderAdapter::new(adapter),
+                                RenderInstance::new(wgpu_instance),
                             ),
                             synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                             debug_flags: self.render_debug_flags,
@@ -198,10 +196,10 @@ impl Plugin for OxrInitPlugin {
                     app.add_plugins(RenderPlugin {
                         render_creation: RenderCreation::manual(
                             device.into(),
-                            RenderQueue(Arc::new(WgpuWrapper::new(queue))),
-                            RenderAdapterInfo(WgpuWrapper::new(adapter_info)),
-                            RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
-                            RenderInstance(Arc::new(WgpuWrapper::new(wgpu_instance))),
+                            RenderQueue::new(queue),
+                            RenderAdapterInfo::new(adapter_info),
+                            RenderAdapter::new(adapter),
+                            RenderInstance::new(wgpu_instance),
                         ),
                         synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                         debug_flags: self.render_debug_flags,

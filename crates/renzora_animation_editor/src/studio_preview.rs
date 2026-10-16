@@ -30,15 +30,26 @@ pub fn studio_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock>>
 /// regardless of panel state so close transitions are always caught.
 pub fn sync_studio_preview_activation(
     dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     mut camera_q: Query<&mut Camera, With<StudioPreviewCamera>>,
     preview_q: Query<Entity, With<StudioPreviewModel>>,
     mut tracker: ResMut<StudioPreviewTracker>,
     mut commands: Commands,
 ) {
-    let mounted = dock.is_some_and(|d| d.tree.contains_panel("studio_preview"));
+    let mounted = dock.as_ref().is_some_and(|d| d.tree.contains_panel("studio_preview"));
+    // Render only while the panel is the visible tab somewhere. `mounted` is
+    // also true for a background tab, which kept this camera rendering a lit,
+    // shadowed scene behind whatever tab was in front of it.
+    let visible = renzora_ember::dock::panel_visible_anywhere(
+        "studio_preview",
+        dock.as_deref(),
+        fixed.as_deref(),
+        wins.as_deref(),
+    );
     for mut camera in camera_q.iter_mut() {
-        if camera.is_active != mounted {
-            camera.is_active = mounted;
+        if camera.is_active != visible {
+            camera.is_active = visible;
         }
     }
     if !mounted {
@@ -185,7 +196,10 @@ pub fn setup_studio_preview(
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.12, 0.12, 0.14, 1.0)),
             order: -5,
-            is_active: true,
+            // Off until `sync_studio_preview_activation` sees its panel. That
+            // system only runs in the editor state, so spawning active rendered
+            // this scene through the whole splash and loading screens.
+            is_active: false,
             ..default()
         },
         RenderTarget::Image(image_handle.into()),
@@ -565,7 +579,7 @@ fn resolve_model_path(
 /// Dropping the short-circuit costs nothing: the loop below already walks the
 /// full ancestor chain, so a preview root at any depth is still found.
 pub fn hide_new_preview_descendants(
-    trigger: On<Insert, ChildOf>,
+    trigger: On<Insert<ChildOf>>,
     parent_q: Query<&ChildOf>,
     preview_root_q: Query<(), With<StudioPreviewModel>>,
     already_hidden: Query<(), With<HideInHierarchy>>,

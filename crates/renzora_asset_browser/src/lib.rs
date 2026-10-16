@@ -18,6 +18,7 @@ mod layout;
 mod menus;
 mod ops;
 mod panel;
+mod references;
 mod rename;
 mod selection;
 mod state;
@@ -105,7 +106,7 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
         // viewport. It opens the UI workspace now; the code editor is still
         // tabbed beside the canvas there for anyone who wants the markup.
         "html" => DocTabKind::Ui,
-        "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
+        "wgsl" | "wesl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })
 }
@@ -123,6 +124,7 @@ impl Plugin for AssetBrowserPlugin {
             .add_plugins(model_thumbnails::ModelThumbnailPlugin);
 
         app.init_resource::<state::NativeAssets>();
+        app.add_observer(references::rewrite_project_references);
         app.init_resource::<renzora::core::SelectAllClaimed>();
         app.init_resource::<renzora::core::AssetBrowserCwd>();
         app.init_resource::<renzora::core::AssetDropScrollRequest>();

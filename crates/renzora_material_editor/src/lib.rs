@@ -14,6 +14,7 @@ pub mod preview;
 
 use bevy::prelude::*;
 use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
+use renzora::core::project_files::{AssetKind, ProjectFileChanged};
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
@@ -109,6 +110,7 @@ impl Plugin for MaterialEditorPlugin {
         app.add_plugins(drawer::MaterialDrawer);
         app.add_plugins(preview_panel::MaterialPreviewPanel);
         app.add_plugins(graph::MaterialGraphPanel);
+        app.add_systems(Update, reload_externally_edited_materials);
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());
@@ -183,13 +185,35 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
         return false;
     }
     info!("[material_editor] Saved {}", path);
+    // Claim the write, so `reload_externally_edited_materials` does not refresh
+    // the material a second time when the watcher reports this save.
+    world
+        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .record(&fs_path, graph_json.as_bytes());
+
+    refresh_material(world, path);
+    true
+}
+
+/// Make everything showing `path` (a project-relative `.material`) pick up
+/// what is on disk now: the compiled material, the meshes using it, and its
+/// thumbnail.
+pub(crate) fn refresh_material(world: &mut World, path: &str) {
+    let Some(fs_path) = world
+        .get_resource::<CurrentProject>()
+        .map(|p| p.path.join(path))
+    else {
+        return;
+    };
 
     // Invalidate resolver cache so the mesh picks up the new material
-    world.resource_mut::<MaterialCache>().invalidate(path);
+    if let Some(mut cache) = world.get_resource_mut::<MaterialCache>() {
+        cache.invalidate(path);
+    }
 
     // Invalidate the cached PNG thumbnail + registry entry so the asset
     // browser re-captures next time this material is visible.
-    let material_abs = std::path::PathBuf::from(&fs_path);
+    let material_abs = fs_path;
     if let Some(project) = world.get_resource::<CurrentProject>().cloned() {
         let thumb = material_thumb_path(&material_abs, &project);
         let _ = std::fs::remove_file(&thumb);
@@ -208,7 +232,50 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
     for entity in entities {
         world.entity_mut(entity).remove::<MaterialResolved>();
     }
-    true
+}
+
+/// Refresh a `.material` changed on disk by anything but the material editor:
+/// a text editor, a `git pull`, or the asset browser rewriting its texture
+/// paths after a move.
+///
+/// The resolver compiles a material once and caches it by path, so before this
+/// an outside edit stayed invisible until the project was reopened. Moving an
+/// imported model is what made that matter: its materials were rewritten to
+/// the new texture paths and kept drawing with the old, missing ones.
+fn reload_externally_edited_materials(
+    mut changes: MessageReader<ProjectFileChanged>,
+    project: Option<Res<CurrentProject>>,
+    self_writes: Option<Res<renzora::core::project_files::SelfWrites>>,
+    mut commands: Commands,
+) {
+    let Some(project) = project else {
+        changes.clear();
+        return;
+    };
+    let mut paths: Vec<String> = Vec::new();
+    for change in changes.read() {
+        if change.kind != AssetKind::Material || !change.is_live() || change.root != project.path {
+            continue;
+        }
+        // The editor's own save already refreshed it.
+        if self_writes.as_ref().is_some_and(|sw| {
+            std::fs::read(&change.path).is_ok_and(|b| sw.matches(&change.path, &b))
+        }) {
+            continue;
+        }
+        if !paths.contains(&change.relative) {
+            paths.push(change.relative.clone());
+        }
+    }
+    if paths.is_empty() {
+        return;
+    }
+    commands.queue(move |world: &mut World| {
+        for path in &paths {
+            info!("[material_editor] {path} changed on disk, reloading it");
+            refresh_material(world, path);
+        }
+    });
 }
 
 /// Console + Problems panel for a save-compile's warnings.

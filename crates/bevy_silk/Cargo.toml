@@ -1,3 +1,6 @@
+# Vendored bevy_silk. 0.20 port: avian comes from the workspace (its Bevy 0.20
+# branch); parry 0.31 takes a glam `Pose` in `project_point`, so the nalgebra
+# conversions in the avian collision system are gone.
 [package]
 name = "bevy_silk"
 version = "0.10.0"
@@ -28,14 +31,14 @@ thiserror = "2.0"
 workspace = true
 
 [dependencies.avian3d]
-version = "0.7"
+workspace = true
 optional = true
 default-features = false
-features = ["3d", "f32", "default-collider", "parry-f32"]
+features = ["3d","default-collider", "parry-f32"]
 
 [dev-dependencies]
 rand = "0.8"
-avian3d = "0.7"
+avian3d = { workspace = true, features = ["3d","default-collider", "parry-f32"] }
 
 [dev-dependencies.bevy]
 workspace = true

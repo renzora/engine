@@ -18,7 +18,7 @@ pub struct GizmoMaterial {
 
 impl Material for GizmoMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_gizmo/shaders/gizmo_material.wgsl".into()
+        "embedded://renzora_gizmo/shaders/gizmo_material.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

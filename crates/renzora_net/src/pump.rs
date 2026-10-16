@@ -7,8 +7,6 @@
 //! Nothing here blocks. The transfers happen on the backend's own threads; this
 //! is only the hand-off.
 
-use std::panic::AssertUnwindSafe;
-
 use bevy::prelude::*;
 
 use renzora::net::shared;
@@ -75,11 +73,13 @@ impl NetLink {
             return None;
         }
         let backend = self.backend.as_deref_mut()?;
-        match std::panic::catch_unwind(AssertUnwindSafe(|| f(backend))) {
+        // `recoverable::catch`, so the crash reporter does not announce a crash
+        // that this line recovers from.
+        match renzora::core::recoverable::catch(|| f(backend)) {
             Ok(v) => Some(v),
-            Err(_) => {
+            Err(caught) => {
                 let name = self.name().unwrap_or("?").to_string();
-                error!("[net] backend `{name}` panicked in {what} and has been disabled");
+                error!("[net] backend `{name}` panicked in {what} and has been disabled: {caught}");
                 self.poisoned = true;
                 // Failed HERE rather than on the next frame, because the
                 // requests that matter are the ones already handed over: they

@@ -765,6 +765,10 @@ fn handle_camera_view_request(
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
+    transforms: Query<&GlobalTransform>,
+    children: Query<&Children>,
+    bounds: Query<(&GlobalTransform, &Aabb)>,
+    projections: Query<&Projection, With<EditorCamera>>,
 ) {
     let Some(request) = request else { return };
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
@@ -803,6 +807,60 @@ fn handle_camera_view_request(
                 orbit.distance = (max_dist * 2.5).max(3.0);
                 pivot_lock.0 = true;
             }
+        }
+        // The same path the F key takes, down to reading the viewport's own fov
+        // rather than assuming one. Framing against the wrong angle is wrong by
+        // exactly the ratio between them.
+        renzora::core::CameraViewRequest::Frame(entity) => {
+            let vertical_fov = projections
+                .iter()
+                .find_map(|p| match p {
+                    Projection::Perspective(p) => Some(p.fov),
+                    _ => None,
+                })
+                .unwrap_or(std::f32::consts::FRAC_PI_4);
+            match selection_bounds(entity, &children, &bounds) {
+                Some((center, radius)) => orbit.frame_on(center, radius, vertical_fov),
+                // Nothing measurable: centre on it and leave the distance alone.
+                // How far back you want to be from a light or an empty is a
+                // question about the scene around it, which this cannot see.
+                None => {
+                    if let Ok(gt) = transforms.get(entity) {
+                        orbit.focus_on(gt.translation());
+                    }
+                }
+            }
+            pivot_lock.0 = true;
+        }
+        renzora::core::CameraViewRequest::LookAt { eye, target } => {
+            let offset = eye - target;
+            let distance = offset.length();
+            // An eye sitting on its own target has no direction to face, and
+            // normalising it would hand the camera a NaN it never recovers from.
+            if distance > 1e-4 {
+                // u is the focus-to-camera unit vector, matching the convention
+                // `calculate_position` and `set_from_view` both use.
+                let u = offset / distance;
+                orbit.focus = target;
+                orbit.distance = distance.max(0.1);
+                orbit.pitch = u.y.clamp(-1.0, 1.0).asin().clamp(-1.5, 1.5);
+                orbit.yaw = u.x.atan2(u.z);
+                pivot_lock.0 = true;
+            }
+        }
+        renzora::core::CameraViewRequest::SetOrbit {
+            focus,
+            yaw,
+            pitch,
+            distance,
+        } => {
+            orbit.focus = focus;
+            orbit.yaw = yaw;
+            // Clamped to the same range the mouse orbit is held to, so a value
+            // out of it cannot put the view somewhere dragging can never undo.
+            orbit.pitch = pitch.clamp(-1.5, 1.5);
+            orbit.distance = distance.max(0.1);
+            pivot_lock.0 = true;
         }
     }
     commands.remove_resource::<renzora::core::CameraViewRequest>();

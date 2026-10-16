@@ -28,7 +28,10 @@ impl Default for TonemappingSettings {
 
 fn mode_to_tonemapping(mode: u32) -> Tonemapping {
     let tm = match mode {
-        0 => Tonemapping::None,
+        // "None" has always meant "no tone curve". Bevy 0.20 made
+        // `Tonemapping::None` a full passthrough that also skips colour grading
+        // and dithering; `Linear` is the old meaning.
+        0 => Tonemapping::Linear,
         1 => Tonemapping::Reinhard,
         2 => Tonemapping::ReinhardLuminance,
         3 => Tonemapping::AcesFitted,
@@ -81,7 +84,7 @@ fn sync_tonemapping(
                 let tm = if settings.enabled {
                     mode_to_tonemapping(settings.mode)
                 } else {
-                    Tonemapping::None
+                    Tonemapping::Linear
                 };
                 // Tonemapping = the picture-formation curve only. Exposure (ev100)
                 // is a CAMERA lens attribute now (edited in the Camera section,
@@ -172,9 +175,10 @@ fn cleanup_tonemapping(
             if let Ok(mut ec) = commands.get_entity(*target) {
                 // `Tonemapping::default()` is TonyMcMapface — identical to what
                 // was already showing — so resetting to the default would make
-                // removal look like a no-op. `None` is the visibly-off state and
-                // matches `enabled: false` in sync, so toggling and removing agree.
-                ec.insert(Tonemapping::None);
+                // removal look like a no-op. `Linear` (no curve, grading kept) is
+                // the visibly-off state and matches `enabled: false` in sync, so
+                // toggling and removing agree.
+                ec.insert(Tonemapping::Linear);
             }
         }
     }

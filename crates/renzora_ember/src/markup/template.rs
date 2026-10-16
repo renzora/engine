@@ -32,7 +32,7 @@ use crate::markup::loader::{build_template_onto, template_deps_ready, TemplateHa
 struct PendingTemplate(Handle<HtmlTemplate>);
 
 fn on_template_path_inserted(
-    trigger: On<Insert, HtmlTemplatePath>,
+    trigger: On<Insert<HtmlTemplatePath>>,
     paths: Query<&HtmlTemplatePath>,
     // A WORLD-space canvas is a 3D object that carries a template path, but its
     // markup must NOT build onto the canvas entity — that would add screen-space

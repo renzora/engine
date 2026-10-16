@@ -19,7 +19,7 @@ pub(crate) struct GradientEditorPlugin;
 
 impl Plugin for GradientEditorPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "gradient.wgsl");
+        bevy::asset::embedded_asset!(app, "gradient.wesl");
         app.add_plugins(UiMaterialPlugin::<GradientMaterial>::default());
         app.add_systems(Update, (gradient_attach, gradient_sync, gradient_drag).chain());
     }
@@ -53,7 +53,7 @@ pub(crate) struct GradientStop {
 
 impl UiMaterial for GradientMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/gradient/gradient.wgsl".into()
+        "embedded://renzora_ember/widgets/gradient/gradient.wesl".into()
     }
 }
 

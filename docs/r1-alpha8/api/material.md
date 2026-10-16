@@ -447,11 +447,12 @@ At compile time each `function/call` inlines the function's WGSL helper at modul
 
 ## Code shaders
 
-Besides node graphs, `MaterialRef` can point at a `.shader` file — a hand-written shader. `renzora_shader` ships four transpiling backends, all targeting WGSL for Bevy's pipeline:
+Besides node graphs, `MaterialRef` can point at a `.shader` file, or straight at a `.wgsl` / `.wesl` file: a hand-written shader. `renzora_shader` ships five backends, all producing what Bevy's pipeline compiles (WGSL or WESL):
 
 | Backend (`language`) | Handles | Notes |
 |----------------------|---------|-------|
-| `Bevy` | WGSL using `#import bevy_*` | Bevy-flavored WGSL (naga_oil); default |
+| `WESL` | WESL (`.wesl`) | `import bevy_pbr::render::...;`, `@if(FLAG)`; the default since Bevy 0.20 |
+| `Bevy` | the pre-0.20 dialect using `#import` / `#ifdef` | translated to WESL as it loads, so old shaders keep working |
 | `WGSL` | raw WGSL | `@fragment`, `var<uniform>`, … |
 | `GLSL` | `.glsl`, `.frag`, `.vert` | `#version`, `void main()`, `uniform`/`varying` |
 | `ShaderToy` | ShaderToy-style fragment code | `mainImage`, `iTime`, `iResolution` |
@@ -468,7 +469,7 @@ A `.shader` file is a JSON `ShaderFile`:
 The compiler transpiles to WGSL, injects a `ShaderUniforms` bind group (`time`, `delta_time`, `resolution`, `mouse`, `frame`) at `@group(3) @binding(0)` when the source references `uniforms.*`, and turns `@param` comment annotations into WGSL `const` declarations so parameter names resolve as variables. A `Fragment` shader previews on a mesh via `CodeShaderMaterial`; `Material` and `PostProcess` types are compile-checked.
 
 ```wgsl
-#import bevy_pbr::forward_io::VertexOutput
+import bevy_pbr::render::forward_io::VertexOutput;
 
 // @param speed float 1.0 0.1 5.0 Animation speed
 // @param tint  color 1.0 0.8 0.6 1.0
@@ -483,7 +484,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 ```
 
-`@param` syntax is `// @param <name> <type> <default> [min max] [description]`, where `<type>` is `float`, `vec2`, `vec3`, `vec4`, `color`, `int`, or `bool`. Author and preview code shaders in the **Shader Editor** (the asset browser routes `.wgsl`/`.glsl`/`.vert`/`.frag` there).
+`@param` syntax is `// @param <name> <type> <default> [min max] [description]`, where `<type>` is `float`, `vec2`, `vec3`, `vec4`, `color`, `int`, or `bool`. Author and preview code shaders in the **Shader Editor** (the asset browser routes `.wgsl`/`.glsl`/`.vert`/`.frag` there). The example is WESL; the same shader written with `#import bevy_pbr::forward_io::VertexOutput` still works, because the engine translates the old dialect (see [Shaders](../rendering/shaders.md)).
 
 ## Scripting
 

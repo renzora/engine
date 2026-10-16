@@ -5,7 +5,7 @@
 //!     directly. Only covers StandardMaterial — other material types (terrain,
 //!     foliage) ignore these toggles.
 //!   - Visualization modes: swap each mesh's material for a
-//!     [`ViewportDebugMaterial`] driven by `viewport_debug.wgsl`. Works with
+//!     [`ViewportDebugMaterial`] driven by `viewport_debug.wesl`. Works with
 //!     any source material type through the generic
 //!     [`apply_visualization_mode_for<M>`] system.
 

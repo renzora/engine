@@ -78,12 +78,12 @@ pub struct LumenSkyCubemap {
     pub intensity: f32,
 }
 
-// Bevy 0.19: ExtractComponent requires SyncComponent.
-impl bevy::render::sync_component::SyncComponent for LumenSkyCubemap {
+// ExtractComponent requires SyncComponent; both name the target app since 0.20.
+impl bevy::render::sync_component::SyncComponent<RenderApp> for LumenSkyCubemap {
     type Target = Self;
 }
 
-impl ExtractComponent for LumenSkyCubemap {
+impl ExtractComponent<RenderApp> for LumenSkyCubemap {
     type QueryData = &'static LumenSkyCubemap;
     type QueryFilter = ();
     type Out = LumenSkyCubemap;
@@ -205,7 +205,7 @@ impl FromWorld for LumenTracePipeline {
                     // (Rgba16Float). Stage 4 output of the filter
                     // pipeline — the half-res pyramid + mip_level
                     // chain ends here, upsampled with edge-preserving
-                    // bilateral weights. `lumen_trace.wgsl` mixes
+                    // bilateral weights. `lumen_trace.wesl` mixes
                     // this directly with the voxel-cone fallback
                     // without further LOD picking.
                     texture_2d(TextureSampleType::Float { filterable: true }),
@@ -249,7 +249,7 @@ impl FromWorld for LumenTracePipeline {
             .create_view(&TextureViewDescriptor::default());
 
         let asset_server = world.resource::<AssetServer>();
-        let shader = asset_server.load("embedded://renzora_lumen/lumen_trace.wgsl");
+        let shader = asset_server.load("embedded://renzora_lumen/lumen_trace.wesl");
         let fullscreen = world.resource::<bevy::core_pipeline::FullscreenShader>();
 
         let pipeline_cache = world.resource::<PipelineCache>();
@@ -275,6 +275,7 @@ impl FromWorld for LumenTracePipeline {
                         write_mask: ColorWrites::ALL,
                     }),
                 ],
+                constants: vec![],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
@@ -445,7 +446,7 @@ pub fn lumen_trace_pass(
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
             return;
         };
-        let Some(depth_view) = prepass.depth_view() else {
+        let Some(depth_view) = prepass.depth_only_view() else {
             return;
         };
         let Some(normal_view) = prepass.normal_view() else {
@@ -545,7 +546,7 @@ pub struct LumenTracePlugin;
 
 impl Plugin for LumenTracePlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "lumen_trace.wgsl");
+        bevy::asset::embedded_asset!(app, "lumen_trace.wesl");
 
         // Mirror the camera's `EnvironmentMapLight` into a
         // `LumenSkyCubemap` and extract that to the render world so the

@@ -47,8 +47,8 @@ pub(crate) struct NodeGraphPlugin;
 
 impl Plugin for NodeGraphPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "cable.wgsl");
-        bevy::asset::embedded_asset!(app, "grid.wgsl");
+        bevy::asset::embedded_asset!(app, "cable.wesl");
+        bevy::asset::embedded_asset!(app, "grid.wesl");
         app.add_plugins(UiMaterialPlugin::<CableMaterial>::default());
         app.add_plugins(UiMaterialPlugin::<GridMaterial>::default());
         app.add_plugins(view::NodeGraphViewPlugin);
@@ -141,7 +141,7 @@ impl Default for CableMaterial {
 
 impl UiMaterial for CableMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/node_graph/cable.wgsl".into()
+        "embedded://renzora_ember/widgets/node_graph/cable.wesl".into()
     }
 }
 
@@ -160,7 +160,7 @@ pub(crate) struct GridMaterial {
 
 impl UiMaterial for GridMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/node_graph/grid.wgsl".into()
+        "embedded://renzora_ember/widgets/node_graph/grid.wesl".into()
     }
 }
 

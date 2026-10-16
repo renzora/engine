@@ -941,11 +941,11 @@ mod tests {
 
     fn fonts() -> EmberFonts {
         EmberFonts {
-            ui: FontSource::SansSerif,
+            ui: FontSource::sans_serif(),
             phosphor: Handle::default(),
-            mono: FontSource::Monospace,
-            default_ui: FontSource::SansSerif,
-            default_mono: FontSource::Monospace,
+            mono: FontSource::monospace(),
+            default_ui: FontSource::sans_serif(),
+            default_mono: FontSource::monospace(),
         }
     }
 

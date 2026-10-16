@@ -361,6 +361,7 @@ impl FromWorld for GeometryInjectPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("inject".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });

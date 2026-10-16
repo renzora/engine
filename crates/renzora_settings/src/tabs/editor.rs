@@ -113,6 +113,35 @@ pub(crate) fn tab_editor(
     settings_row(commands, fonts, body, 0, &tr("settings.row.graphics_backend"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.restart_editor"));
 
+    const SPLASH_EFFECTS: [renzora::SplashEffects; 3] = [
+        renzora::SplashEffects::Auto,
+        renzora::SplashEffects::Full,
+        renzora::SplashEffects::Reduced,
+    ];
+    let label_strs = [
+        tr("settings.option.splash_effects_auto"),
+        tr("settings.option.splash_effects_full"),
+        tr("settings.option.splash_effects_reduced"),
+    ];
+    let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &labels,
+        0, // reseeded from state by bind_2way on the first frame
+        |w| {
+            let e = w.resource::<EditorSettings>().splash_effects;
+            SPLASH_EFFECTS.iter().position(|x| *x == e).unwrap_or(0)
+        },
+        |w, &i| {
+            if let Some(e) = SPLASH_EFFECTS.get(i).copied() {
+                w.resource_mut::<EditorSettings>().splash_effects = e;
+            }
+        },
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.splash_effects"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.splash_effects"));
+
     // Import — the former Assets tab, a single toggle. Folded in here so it
     // stops being a whole sidebar category holding one checkbox.
     let (sec, body) = section(commands, fonts, "folder-open", &tr("common.import"), A_BLUE);

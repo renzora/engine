@@ -53,7 +53,7 @@ impl Tri3Material {
 
 impl UiMaterial for Tri3Material {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/game_ui/shapes/tri3.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/tri3.wesl".into()
     }
 }
 

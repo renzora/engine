@@ -54,7 +54,7 @@ impl ArcMaterial {
 
 impl UiMaterial for ArcMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/game_ui/shapes/arc.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/arc.wesl".into()
     }
 }
 

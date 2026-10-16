@@ -26,10 +26,8 @@ use crate::{
 use bevy::{
     camera::visibility::RenderLayers,
     core_pipeline::tonemapping::{Tonemapping, TonemappingLuts, get_lut_bindings},
-    math::{
-        Affine3A,
-        bounding::{Aabb2d, IntersectsVolume},
-    },
+    math::Affine3A,
+    shape::{Aabb2d, IntersectsVolume},
     platform::{
         collections::{HashMap, HashSet},
         hash::FixedHasher,

@@ -186,10 +186,10 @@ impl UiBorderRadius {
     /// Convert to bevy's BorderRadius component.
     pub fn to_bevy(&self) -> bevy::ui::BorderRadius {
         bevy::ui::BorderRadius {
-            top_left: bevy::ui::Val::Px(self.top_left),
-            top_right: bevy::ui::Val::Px(self.top_right),
-            bottom_right: bevy::ui::Val::Px(self.bottom_right),
-            bottom_left: bevy::ui::Val::Px(self.bottom_left),
+            top_left: bevy::ui::Val::Px(self.top_left).into(),
+            top_right: bevy::ui::Val::Px(self.top_right).into(),
+            bottom_right: bevy::ui::Val::Px(self.bottom_right).into(),
+            bottom_left: bevy::ui::Val::Px(self.bottom_left).into(),
         }
     }
 }

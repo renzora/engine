@@ -110,6 +110,24 @@ pub fn install_panic_hook(is_editor: bool) {
     let default_hook = panic::take_hook();
 
     panic::set_hook(Box::new(move |panic_info| {
+        // A panic the engine is about to catch (a script, a plugin constructor,
+        // a backend link) is not a crash. Reporting it as one put the modal crash
+        // dialog over an editor that was still running, and did so every frame
+        // for a script that panics every frame. Only the location is kept, for
+        // the catcher's own Console line; the backtrace is skipped too, since
+        // capturing one per frame is what a looping panic would otherwise cost.
+        if renzora::core::recoverable::panic_will_be_caught() {
+            if let Some(loc) = panic_info.location() {
+                renzora::core::recoverable::record_location(sanitize_paths(&format!(
+                    "{}:{}:{}",
+                    loc.file(),
+                    loc.line(),
+                    loc.column()
+                )));
+            }
+            return;
+        }
+
         let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
             s.to_string()
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {

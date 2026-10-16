@@ -13,6 +13,7 @@
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponent;
 use bevy::render::sync_component::SyncComponent;
+use bevy::render::RenderApp;
 use serde::{Deserialize, Serialize};
 
 // ── RT (screen-space GI) ──────────────────────────────────────────────────
@@ -60,11 +61,11 @@ impl Default for RtLighting {
 // 0.19: `ExtractComponent` now requires `SyncComponent` (ensures the entity is
 // synced to the render world). `Target` is what gets removed from the render
 // world when this component is removed — for a self-extracting component, Self.
-impl SyncComponent for RtLighting {
+impl SyncComponent<RenderApp> for RtLighting {
     type Target = RtLighting;
 }
 
-impl ExtractComponent for RtLighting {
+impl ExtractComponent<RenderApp> for RtLighting {
     type QueryData = &'static RtLighting;
     type QueryFilter = ();
     type Out = RtLighting;
@@ -134,11 +135,11 @@ impl Default for LumenLighting {
     }
 }
 
-impl SyncComponent for LumenLighting {
+impl SyncComponent<RenderApp> for LumenLighting {
     type Target = LumenLighting;
 }
 
-impl ExtractComponent for LumenLighting {
+impl ExtractComponent<RenderApp> for LumenLighting {
     type QueryData = &'static LumenLighting;
     type QueryFilter = ();
     type Out = LumenLighting;
@@ -243,6 +244,53 @@ pub struct SolariGi {
     #[serde(default = "light_proxies_default")]
     #[reflect(default = "light_proxies_default")]
     pub light_proxies: bool,
+    /// How much work Solari spends per frame, traded against noise. See
+    /// [`SolariQuality`]. A scene saved before this existed loads as `High`,
+    /// which is what it rendered as before.
+    #[serde(default)]
+    #[reflect(default)]
+    pub quality: SolariQuality,
+}
+
+/// Solari's cost/noise preset, mapped by the Solari plugin onto the sample
+/// counts and bounce depth of Bevy's `SolariLighting`.
+///
+/// The step that matters most is ReSTIR, which `Low` turns off. It reuses
+/// samples across neighbouring pixels and past frames, and it is the only
+/// denoising this build has: Bevy's other one is DLSS Ray Reconstruction, which
+/// needs NVIDIA's SDK at build time and is not enabled. So `Low` is the fastest
+/// and visibly the grainiest; it is meant for moving around a scene, not for
+/// judging lighting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[reflect(Default)]
+pub enum SolariQuality {
+    /// No ReSTIR, one bounce, fewest samples.
+    Low,
+    /// ReSTIR on, two bounces, half of Bevy's sample counts.
+    Medium,
+    /// ReSTIR on with Bevy's own defaults (three bounces).
+    #[default]
+    High,
+    /// ReSTIR on, four bounces, double the samples. For stills.
+    Ultra,
+}
+
+impl SolariQuality {
+    /// Every preset, in the order the inspector lists them.
+    pub const ALL: [Self; 4] = [Self::Low, Self::Medium, Self::High, Self::Ultra];
+
+    /// The inspector dropdown labels, index for index with [`ALL`](Self::ALL).
+    pub const LABELS: [&'static str; 4] = ["Low", "Medium", "High", "Ultra"];
+
+    /// The inspector dropdown label.
+    pub fn label(self) -> &'static str {
+        Self::LABELS[self as usize]
+    }
+
+    /// The preset with this [`label`](Self::label), if any.
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|q| q.label() == label)
+    }
 }
 
 /// Default for [`SolariGi::suppress_shadow_maps`], used both by `serde` and by
@@ -264,6 +312,7 @@ impl Default for SolariGi {
             enabled: true,
             suppress_shadow_maps: shadow_map_suppression_default(),
             light_proxies: light_proxies_default(),
+            quality: SolariQuality::default(),
         }
     }
 }

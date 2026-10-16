@@ -345,7 +345,7 @@ use renzora::core::resize::not_resizing;
 app.add_systems(Update, my_press_system.run_if(not_resizing));
 ```
 
-A panel that hit-tests with `Interaction` is safe from resize handles specifically, because `ResizeHandle` also forces `FocusPolicy::Block` onto the node it marks, so the press stops there. Don't assume that's the default: in Bevy 0.19 `FocusPolicy` defaults to `Pass`, and an unblocked node marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks carry no `Interaction` at all and so block nothing — `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `FocusPolicy::Block` (and `ResizeHandle`, if it resizes something).
+A panel that hit-tests with `Interaction` is safe from resize handles specifically, because `ResizeHandle` also forces `FocusPolicy::Block` onto the node it marks, so the press stops there. Don't assume that's the default: since Bevy 0.19 `FocusPolicy` defaults to `Pass`, and an unblocked node marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks carry no `Interaction` at all and so block nothing; `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `FocusPolicy::Block` (and `ResizeHandle`, if it resizes something).
 
 ## A status-bar item
 

@@ -64,16 +64,16 @@ fn hook_fn(world: &World, file: &str) -> Option<ScriptHookFn> {
 
 /// Call one script's hook, catching a panic the way [`crate::dispatch`] does —
 /// a broken script stops working rather than taking the editor with it.
-fn call(world: &mut World, entity: Entity, f: ScriptHookFn, hook: &ScriptHook<'_>) {
+fn call(world: &mut World, entity: Entity, name: &str, f: ScriptHookFn, hook: &ScriptHook<'_>) {
     if world.get_entity(entity).is_err() {
         return;
     }
-    let guard = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(world, entity, hook)));
-    if guard.is_err() {
-        error!("[rust-script] panicked in {} hook on {entity}", hook.name());
+    if let Err(caught) = renzora::core::recoverable::catch(|| f(world, entity, hook)) {
+        let why = crate::describe_panic(name, &caught);
+        error!("[rust-script] {name} panicked in {} hook on {entity}: {why}", hook.name());
         renzora::core::console_log::console_error(
             "Script",
-            format!("panicked in the {} hook on {entity}", hook.name()),
+            format!("{name} panicked in the {} hook on {entity}: {why}", hook.name()),
         );
     }
 }
@@ -95,7 +95,7 @@ pub fn dispatch_hooks(world: &mut World) {
             .collect()
     };
     for (entity, name, f) in pending_ready {
-        call(world, entity, f, &ScriptHook::Ready);
+        call(world, entity, &name, f, &ScriptHook::Ready);
         world.resource_mut::<ReadiedScripts>().0.insert((entity, name));
     }
 
@@ -119,16 +119,17 @@ pub fn dispatch_hooks(world: &mut World) {
     for (entity, size) in surfaces {
         // Only if this entity runs a Rust script with hooks — the surface map
         // is shared with the Lua path and holds its canvases too.
-        let Some(f) = attached
+        let Some((name, f)) = attached
             .iter()
             .find(|(e, _)| *e == entity)
-            .and_then(|(_, name)| hook_fn(world, name))
+            .and_then(|(_, name)| hook_fn(world, name).map(|f| (name.clone(), f)))
         else {
             continue;
         };
         call(
             world,
             entity,
+            &name,
             f,
             &ScriptHook::Draw {
                 width: size.x,
@@ -172,9 +173,9 @@ pub fn dispatch_hooks(world: &mut World) {
     }
 
     // Resolved once: the same list serves every event this frame.
-    let targets: Vec<(Entity, ScriptHookFn)> = attached
+    let targets: Vec<(Entity, String, ScriptHookFn)> = attached
         .iter()
-        .filter_map(|(e, name)| hook_fn(world, name).map(|f| (*e, f)))
+        .filter_map(|(e, name)| hook_fn(world, name).map(|f| (*e, name.clone(), f)))
         .collect();
     if targets.is_empty() {
         return;
@@ -185,8 +186,8 @@ pub fn dispatch_hooks(world: &mut World) {
             path: &ev.path,
             error: ev.error.as_deref(),
         };
-        for (entity, f) in &targets {
-            call(world, *entity, *f, &hook);
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
         }
     }
     for ev in &ui_events {
@@ -195,8 +196,8 @@ pub fn dispatch_hooks(world: &mut World) {
             args: &ev.args,
             source: Entity::from_bits(ev.entity_bits),
         };
-        for (entity, f) in &targets {
-            call(world, *entity, *f, &hook);
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
         }
     }
     for ev in &rpc_events {
@@ -205,8 +206,8 @@ pub fn dispatch_hooks(world: &mut World) {
             args: &ev.args,
             from: ev.from,
         };
-        for (entity, f) in &targets {
-            call(world, *entity, *f, &hook);
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
         }
     }
     for ev in &anim_events {
@@ -214,8 +215,8 @@ pub fn dispatch_hooks(world: &mut World) {
             name: &ev.name,
             source: Entity::from_bits(ev.entity_bits),
         };
-        for (entity, f) in &targets {
-            call(world, *entity, *f, &hook);
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
         }
     }
     for ev in &player_events {
@@ -224,8 +225,8 @@ pub fn dispatch_hooks(world: &mut World) {
         } else {
             ScriptHook::PlayerLeft { id: ev.id }
         };
-        for (entity, f) in &targets {
-            call(world, *entity, *f, &hook);
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
         }
     }
 }

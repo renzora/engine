@@ -209,6 +209,7 @@ impl Plugin for MaterialResolverPlugin {
         //     accidentally satisfy.
         #[cfg(feature = "editor")]
         app
+            .init_resource::<MaterialValidationPending>()
             // `PreUpdate`: the validator arrives via `Commands`, and a material
             // resolved the same frame reports nothing, then is never looked at
             // again. `resource_changed` because the check otherwise allocates
@@ -238,28 +239,136 @@ fn in_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
     session.is_some_and(|s| s.is_editor())
 }
 
+/// The fragment source each graph material's shader was built from, as
+/// codegen (or a saved `.material`) wrote it, keyed by shader uuid.
+///
+/// The bound `Shader` holds the WESL translation, but the node source map
+/// indexes lines of the text codegen wrote, and the validator maps its errors
+/// back onto those lines. So that text is what gets validated. A side table
+/// rather than a field because the uuid is all `GraphMaterial` can carry (see
+/// `surface_ext.rs`); entries are dropped once their shader is gone.
+#[cfg(feature = "editor")]
+fn authored_sources() -> std::sync::MutexGuard<'static, HashMap<Uuid, String>> {
+    static SOURCES: std::sync::OnceLock<std::sync::Mutex<HashMap<Uuid, String>>> =
+        std::sync::OnceLock::new();
+    SOURCES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// How many material validations are still running in the background.
+///
+/// Zero means every material the editor holds has its verdict in
+/// `ContentProblems`; tests wait on it rather than on a frame count.
+#[cfg(feature = "editor")]
+#[derive(Resource, Default)]
+pub struct MaterialValidationPending(pub usize);
+
+/// Frames the shader-library count must hold still before materials are
+/// validated against it.
+///
+/// Libraries stream in over many frames while a project loads, and each new
+/// one invalidates every verdict. Validating on every change compiled each
+/// material several times over during a load, for verdicts thrown away a few
+/// frames later.
+#[cfg(feature = "editor")]
+const LIBRARY_SETTLE_FRAMES: u32 = 10;
+
+/// One material's validation, running on the async compute pool.
+#[cfg(feature = "editor")]
+struct ValidationJob {
+    uuid: Uuid,
+    libraries: usize,
+    task: bevy::tasks::Task<Vec<renzora::content_problems::ContentProblem>>,
+}
+
 /// Compile the WGSL each graph material binds and record what the compiler says.
 ///
 /// Keyed on the shader uuid rather than driven off the resolve, because the
 /// validator needs bevy_pbr's libraries and those land a frame after the first
 /// material resolves. A fresh uuid per compile catches recompiles too.
+///
+/// The compiles run on the async compute pool. Each costs tens of
+/// milliseconds, and a scene's worth of them on the main thread froze the
+/// editor for seconds while a project loaded.
 #[cfg(feature = "editor")]
+#[allow(clippy::too_many_arguments)]
 fn report_material_problems(
     mut checked: Local<HashMap<String, (Uuid, usize)>>,
+    mut jobs: Local<HashMap<String, ValidationJob>>,
+    mut settle: Local<(usize, u32)>,
+    mut pending: ResMut<MaterialValidationPending>,
     cache: Res<MaterialCache>,
     graph_materials: Option<Res<Assets<GraphMaterial>>>,
     shaders: Option<Res<Assets<Shader>>>,
-    validator: Option<ResMut<super::validate::ShaderValidator>>,
+    validator: Option<Res<super::validate::ShaderValidator>>,
     mut problems: ResMut<renzora::content_problems::ContentProblems>,
 ) {
-    let (Some(mut validator), Some(graph_materials), Some(shaders)) =
+    let (Some(validator), Some(graph_materials), Some(shaders)) =
         (validator, graph_materials, shaders)
     else {
         return;
     };
     let libraries = validator.library_count();
+    let current_uuid = |path: &str| {
+        cache
+            .graph_materials
+            .get(path)
+            .and_then(|handle| graph_materials.get(handle))
+            .and_then(|m| m.extension.shader_uuid)
+    };
 
-    checked.retain(|path, _| cache.graph_materials.contains_key(path));
+    // Collect finished compiles. A verdict for a shader that has since been
+    // replaced, or a material that left the cache, describes nothing on
+    // screen, so it is dropped instead of reported.
+    jobs.retain(|path, job| {
+        let Some(found) = bevy::tasks::futures::check_ready(&mut job.task) else {
+            return true;
+        };
+        if current_uuid(path) == Some(job.uuid) {
+            // Logged to both consoles, once per compile (the uuid key):
+            // `warn!` feeds Scene Diagnostics via `runtime_warnings`,
+            // `console_error` feeds the Console panel's buffer.
+            for problem in &found {
+                warn!("{}: {}", path, problem.message);
+                renzora::console_log::console_error("Material", format!("{path}: {}", problem.message));
+            }
+            // Errors only: the compile sites own the Warning rows for this path.
+            problems.set_severity(
+                path.clone(),
+                renzora::content_problems::ProblemSeverity::Error,
+                found,
+            );
+            checked.insert(path.clone(), (job.uuid, job.libraries));
+        }
+        false
+    });
+    // Dropping a task cancels it.
+    jobs.retain(|path, _| cache.graph_materials.contains_key(path));
+
+    // Drop the authored source of a material that left the cache. Only ever by
+    // a uuid this system recorded: the table is shared by every `App` in the
+    // process (the tests run several), so pruning by "not in my shader
+    // assets" would delete another app's entries.
+    checked.retain(|path, (uuid, _)| {
+        let keep = cache.graph_materials.contains_key(path);
+        if !keep {
+            authored_sources().remove(uuid);
+        }
+        keep
+    });
+
+    if settle.0 != libraries {
+        *settle = (libraries, 0);
+    } else {
+        settle.1 = settle.1.saturating_add(1);
+    }
+    let settled = settle.1 >= LIBRARY_SETTLE_FRAMES;
+
+    // Every material still owed a verdict: running, or waiting for the
+    // libraries to settle.
+    let mut outstanding = 0;
     for (path, handle) in &cache.graph_materials {
         let Some(uuid) = graph_materials
             .get(handle)
@@ -273,32 +382,35 @@ fn report_material_problems(
         if checked.get(path) == Some(&(uuid, libraries)) {
             continue;
         }
-        let Some(source) = shaders
-            .get(&Handle::<Shader>::Uuid(uuid, PhantomData))
-            .and_then(|shader| match &shader.source {
-                bevy::shader::Source::Wgsl(src) => Some(src.to_string()),
-                _ => None,
-            })
-        else {
+        // A recompile replaced this path's shader; its old source is dead.
+        if let Some((old, _)) = checked.get(path).filter(|(old, _)| *old != uuid) {
+            authored_sources().remove(old);
+        }
+        // Wait for the shader itself, which lands with the material.
+        if !shaders.contains(&Handle::<Shader>::Uuid(uuid, PhantomData)) {
+            continue;
+        }
+        let Some(source) = authored_sources().get(&uuid).cloned() else {
             continue;
         };
-        let node_lines = cache.node_line_maps.get(path).map(Vec::as_slice).unwrap_or(&[]);
-        let found = validator.problems_for_source(&source, node_lines);
-        // Logged to both consoles, once per compile (the uuid key): `warn!`
-        // feeds Scene Diagnostics via `runtime_warnings`, `console_error`
-        // feeds the Console panel's buffer.
-        for problem in &found {
-            warn!("{}: {}", path, problem.message);
-            renzora::console_log::console_error("Material", format!("{path}: {}", problem.message));
+        outstanding += 1;
+        // Not while the libraries are still arriving, and never a second
+        // compile of this exact shader against these libraries.
+        if !settled
+            || jobs
+                .get(path)
+                .is_some_and(|job| job.uuid == uuid && job.libraries == libraries)
+        {
+            continue;
         }
-        // Errors only — the compile sites own the Warning rows for this path.
-        problems.set_severity(
-            path.clone(),
-            renzora::content_problems::ProblemSeverity::Error,
-            found,
-        );
-        checked.insert(path.clone(), (uuid, libraries));
+        let node_lines = cache.node_line_maps.get(path).cloned().unwrap_or_default();
+        let job_validator = validator.clone();
+        let task = bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new)
+            .spawn(async move { job_validator.problems_for_source(&source, &node_lines) });
+        // Replaces (and so cancels) a compile of an older shader or library set.
+        jobs.insert(path.clone(), ValidationJob { uuid, libraries, task });
     }
+    pending.0 = outstanding;
 }
 
 /// Build the validator once the shader libraries have loaded, and rebuild it
@@ -584,6 +696,7 @@ fn resolve_material_refs(
                 }
             }
         } else if path.ends_with(".wgsl")
+            || path.ends_with(".wesl")
             || path.ends_with(".glsl")
             || path.ends_with(".frag")
             || path.ends_with(".vert")
@@ -635,6 +748,9 @@ fn resolve_material_refs(
             }
             match resolve_raw_shader(
                 &fs_path,
+                path,
+                project.as_deref(),
+                &asset_server,
                 &mut code_materials,
                 &mut shaders,
                 &mut shader_cache,
@@ -717,10 +833,19 @@ fn resolve_code_shader(
     Some(materials.add(mat))
 }
 
-/// Load a raw shader file (.wgsl, .glsl, .frag, .vert), auto-detect language,
-/// compile it, and create a `CodeShaderMaterial`.
+/// Load a raw shader file (.wgsl, .wesl, .glsl, .frag, .vert), auto-detect
+/// language, compile it, and create a `CodeShaderMaterial`.
+///
+/// `asset_path` is the project-relative path the mesh references. A WESL
+/// shader is registered under it, because that is what its relative imports
+/// (`import super::noise::fbm;`) resolve against, and the files it imports
+/// are loaded beside it.
+#[allow(clippy::too_many_arguments)]
 fn resolve_raw_shader(
     path: &str,
+    asset_path: &str,
+    project: Option<&renzora::CurrentProject>,
+    asset_server: &AssetServer,
     materials: &mut Assets<CodeShaderMaterial>,
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
@@ -735,7 +860,11 @@ fn resolve_raw_shader(
         }
     };
 
-    let language = crate::file::detect_language(&source).to_string();
+    let language = if path.ends_with(".wesl") {
+        "WESL".to_string()
+    } else {
+        crate::file::detect_language(&source).to_string()
+    };
     let wgsl = match registry.compile(&language, &source) {
         Ok(w) => w,
         Err(e) => {
@@ -744,8 +873,13 @@ fn resolve_raw_shader(
         }
     };
 
-    let label = format!("code_shader://{}", path);
-    let shader_handle = shader_cache.get_or_insert(&wgsl, &label, shaders);
+    let asset_path = asset_path.replace('\\', "/");
+    let shader_handle = shader_cache.get_or_insert_with_imports(&wgsl, &asset_path, shaders, |file| {
+        let fs = project
+            .map(|p| p.resolve_path(file).to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|| file.to_string());
+        reader.read_string(&fs).map(|_| asset_server.load::<Shader>(file.to_string()))
+    });
 
     let mat = CodeShaderMaterial {
         shader_handle,
@@ -1218,7 +1352,14 @@ fn assemble_graph_material(
     // `Handle<Shader>` directly (packed-struct + non-Copy).
     let shader_uuid = Uuid::new_v4();
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
-    let shader = Shader::from_wgsl(fragment_shader, format!("material://{}", path));
+    // Codegen, and every `.material` saved before Bevy 0.20, writes the old
+    // naga_oil dialect; `shader_source` translates it to WESL.
+    #[cfg(feature = "editor")]
+    authored_sources().insert(shader_uuid, fragment_shader.clone());
+    let shader = renzora::shader_source::shader(
+        fragment_shader,
+        format!("material/{}.wgsl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
+    );
     let _ = shaders.insert(&shader_handle, shader);
 
     let mut mat = if let Some(fb) = fallback_texture {

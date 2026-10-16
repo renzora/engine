@@ -141,6 +141,7 @@ where
 }
 
 #[derive(Component, ExtractComponent, Debug, Default, Clone, PartialEq, Reflect)]
+#[extract_app(bevy::render::RenderApp)]
 #[reflect(Component)]
 pub struct SortTrigger {
     pub camera_index: usize,

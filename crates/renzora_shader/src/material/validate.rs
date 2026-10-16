@@ -1,22 +1,25 @@
-//! Compiles generated material shaders the way the engine does — naga_oil's
-//! composer over the app's own `Assets<Shader>`, then naga.
+//! Compiles generated material shaders the way the engine does: the WESL
+//! compiler over the app's own `Assets<Shader>` libraries, then naga.
+//!
+//! Material codegen, and every `.material` saved before Bevy 0.20, writes the
+//! old naga_oil dialect. It reaches the GPU through
+//! [`renzora::shader_source`], which translates it to WESL, so this compiles
+//! the same translation and maps errors back to lines of the source codegen
+//! wrote, which is what the node source map indexes.
 
 use bevy::prelude::*;
-use bevy::shader::{Shader, ShaderImport};
-use naga_oil::compose::{
-    Composer, ComposerError, ComposerErrorInner, ErrSource, NagaModuleDescriptor,
-    ShaderDefValue, ShaderType,
-};
+use bevy::shader::{Shader, ShaderDefVal, ShaderImport, Source};
 use renzora::content_problems::{ContentProblem, ProblemSeverity};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
+use wesl::syntax::{ModulePath, PathOrigin};
 
 use super::codegen::CompileResult;
 
-/// naga_oil tags composed-module spans with the source-module index in the
-/// high bits (`compose/mod.rs` — private there, so mirrored here). Index 0 is
-/// the top-level generated source; anything else is a bevy_pbr library,
-/// whose errors are engine bugs, not user bugs.
-const SPAN_SHIFT: usize = 21;
+/// The module path the generated shader is compiled under. Never imported by
+/// anything; it only has to differ from every library's.
+const GENERATED_MODULE: &str = "renzora_generated_material";
 
 #[derive(Debug, Clone)]
 pub struct ValidationError {
@@ -26,8 +29,8 @@ pub struct ValidationError {
     /// codespan-rendered diagnostic against the composed shader source.
     pub message: String,
     /// 1-based line in the *generated* fragment shader, when the span points
-    /// at it. `None` for errors inside bevy_pbr's libraries or in
-    /// preprocessor directives — those are engine bugs, not user bugs.
+    /// at it. `None` for errors inside bevy_pbr's libraries or on a line the
+    /// translation synthesized: those are engine bugs, not user bugs.
     pub line: Option<u32>,
 }
 
@@ -37,33 +40,130 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-/// A composer preloaded with every shader library an app has registered.
+/// Every shader library an app has registered, by WESL module path.
 ///
-/// Building one walks all of bevy_pbr's modules, so it is built once and held
-/// rather than made per material.
-#[derive(Resource)]
+/// A snapshot of the sources, taken once and held rather than per material:
+/// the WESL compiler resolves imports from it on demand, so unlike the old
+/// composer nothing has to be added in dependency order.
+///
+/// Cheap to clone (the sources sit behind an `Arc`) and compiles through
+/// `&self`, so the editor can hand a copy to a background task: one material
+/// costs tens of milliseconds to compile, and doing a scene's worth of them on
+/// the main thread froze the editor while a project loaded.
+#[derive(Resource, Clone)]
 pub struct ShaderValidator {
-    composer: Composer,
+    modules: Arc<HashMap<ModulePath, String>>,
+    /// `const NAME = value;` for every numeric pipeline define, served as the
+    /// `constants` module the way Bevy's pipeline cache does.
+    constants: String,
+    /// Flags every compile enables: the pipeline's, plus each numeric define's
+    /// name (a numeric define also turns on its flag in 0.20) and any boolean
+    /// define a library was loaded with.
+    flags: Vec<String>,
     library_count: usize,
     unresolved: Vec<String>,
 }
 
-impl ShaderValidator {
-    /// Load the shader *libraries* in `shaders` into a composer.
-    ///
-    /// A module has to be added after everything it imports, so this recurses
-    /// through `Shader::imports` rather than trusting `Assets` iteration order.
-    pub fn new(shaders: &Assets<Shader>) -> Self {
-        let by_path = importable_libraries(shaders);
-        let mut composer = Composer::default();
-        let mut unresolved = Vec::new();
-        for shader in by_path.values() {
-            add_module(&mut composer, &by_path, shader, &mut unresolved);
+impl wesl::Resolver for ShaderValidator {
+    fn resolve_source<'a>(
+        &'a self,
+        path: &ModulePath,
+    ) -> Result<Cow<'a, str>, wesl::error::ResolveError> {
+        let path = self.canonical_path(path);
+        if path.origin == PathOrigin::Package("constants".into()) && path.components.is_empty() {
+            return Ok(Cow::Borrowed(&self.constants));
         }
+        self.modules
+            .get(&path)
+            .map(|s| Cow::Borrowed(s.as_str()))
+            .ok_or_else(|| {
+                wesl::error::ResolveError::ModuleNotFound(path.clone(), "not registered".into())
+            })
+    }
+
+    // Bevy's own resolver does the same: a `bevy_pbr::...` path written inside
+    // package `x` arrives as package `x/bevy_pbr`.
+    fn canonical_path(&self, path: &ModulePath) -> ModulePath {
+        match &path.origin {
+            PathOrigin::Package(pkg) if pkg.contains('/') => ModulePath {
+                origin: PathOrigin::Package(pkg.rsplit('/').next().unwrap_or(pkg).to_string()),
+                components: path.components.clone(),
+            },
+            _ => path.clone(),
+        }
+    }
+}
+
+/// The libraries plus the one generated module being compiled.
+///
+/// The generated module is served from here rather than added to the shared
+/// snapshot, which is what lets several compiles run at once against it.
+struct WithGenerated<'a> {
+    libraries: &'a ShaderValidator,
+    main: &'a ModulePath,
+    source: &'a str,
+}
+
+impl wesl::Resolver for WithGenerated<'_> {
+    fn resolve_source<'a>(
+        &'a self,
+        path: &ModulePath,
+    ) -> Result<Cow<'a, str>, wesl::error::ResolveError> {
+        if path == self.main {
+            return Ok(Cow::Borrowed(self.source));
+        }
+        self.libraries.resolve_source(path)
+    }
+
+    fn canonical_path(&self, path: &ModulePath) -> ModulePath {
+        self.libraries.canonical_path(path)
+    }
+}
+
+impl ShaderValidator {
+    /// Snapshot the shader *libraries* in `shaders`.
+    pub fn new(shaders: &Assets<Shader>) -> Self {
+        let libraries = importable_libraries(shaders);
+
+        // Bevy attaches some defines to a library rather than a pipeline
+        // (`mesh_view_types` carries the light-count limits) and gathers them
+        // from every imported library at compile time. Taking the union of
+        // all of them here is the same thing for any shader that imports them.
+        let mut numeric: std::collections::BTreeMap<String, String> = pipeline_numeric_defs()
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
+        let mut flags: Vec<String> = PIPELINE_FLAGS.iter().map(|f| f.to_string()).collect();
+        for (_, shader) in &libraries {
+            for def in &shader.shader_defs {
+                match def {
+                    ShaderDefVal::Bool(name, true) => flags.push(name.to_string()),
+                    ShaderDefVal::Bool(_, false) => {}
+                    ShaderDefVal::Int(name, v) => {
+                        numeric.insert(name.to_string(), v.to_string());
+                    }
+                    ShaderDefVal::UInt(name, v) => {
+                        numeric.insert(name.to_string(), v.to_string());
+                    }
+                }
+            }
+        }
+        flags.extend(numeric.keys().cloned());
+        let constants = numeric
+            .iter()
+            .map(|(name, value)| format!("const {name} = {value};\n"))
+            .collect();
+
+        let modules: HashMap<ModulePath, String> = libraries
+            .into_iter()
+            .map(|(path, shader)| (path, shader.source.as_str().to_string()))
+            .collect();
         Self {
-            library_count: by_path.len(),
-            composer,
-            unresolved,
+            library_count: modules.len(),
+            modules: Arc::new(modules),
+            constants,
+            flags,
+            unresolved: Vec::new(),
         }
     }
 
@@ -77,22 +177,21 @@ impl ShaderValidator {
         self.library_count
     }
 
-    /// Whether a library actually made it into the composer.
+    /// Whether a library is in the snapshot, by its WESL module path
+    /// (`bevy_pbr::render::pbr_functions`).
     ///
-    /// Deliberately not the same question as "is the asset loaded". A library
-    /// whose own imports have not arrived yet is a perfectly present `Shader`
-    /// asset that the composer *rejects*, and every material that imports it
-    /// then fails naming **it** rather than the dependency that was late. So
-    /// anything waiting on the library set has to ask this, not `Assets`.
+    /// The snapshot only holds sources; a library whose own imports are still
+    /// streaming in is present here and fails at compile time naming the
+    /// missing import, which is the dependency that was actually late.
     pub fn has_module(&self, module: &str) -> bool {
-        self.composer.contains_module(module)
+        module_path(module).is_some_and(|p| self.modules.contains_key(&p))
     }
 
-    /// Libraries the composer refused, each as `module: reason`.
+    /// Libraries that could not be registered, each as `module: reason`.
     ///
-    /// Empty in a fully-loaded app. Non-empty means either a genuinely broken
-    /// library or — far more often — a validator built while assets were still
-    /// streaming in, which is what this exists to make visible.
+    /// Always empty now: WESL resolves imports at compile time, so a library
+    /// can no longer be refused on its own. Kept so callers that report it
+    /// still compile; a missing import shows up in the material's own error.
     pub fn unresolved_libraries(&self) -> &[String] {
         &self.unresolved
     }
@@ -100,7 +199,7 @@ impl ShaderValidator {
     /// Compile a [`CompileResult`]'s fragment shader, once per pipeline-define
     /// configuration codegen branches on. `Err` carries one entry per failing
     /// configuration.
-    pub fn validate(&mut self, result: &CompileResult) -> Result<(), Vec<ValidationError>> {
+    pub fn validate(&self, result: &CompileResult) -> Result<(), Vec<ValidationError>> {
         // A codegen error already means the shader is known-incomplete. Compiling
         // its half-built output reports secondary noise instead of the cause.
         if !result.errors.is_empty() {
@@ -112,8 +211,9 @@ impl ShaderValidator {
         }
 
         let mut errors = Vec::new();
+        let prepared = Prepared::new(&result.fragment_shader);
         for defines in FRAGMENT_CONFIGS {
-            self.compile_one(&result.fragment_shader, defines, &mut errors);
+            self.compile_one(&prepared, defines, &mut errors);
         }
 
         // `result.vertex_shader` is left alone: nothing writes it to disk or binds it.
@@ -141,13 +241,14 @@ impl ShaderValidator {
     /// puts an error on a node. Pass `&[]` when the source came from
     /// somewhere with no map — the problem then carries no line or node.
     pub fn problems_for_source(
-        &mut self,
+        &self,
         source: &str,
         node_lines: &[(u64, u32, u32)],
     ) -> Vec<ContentProblem> {
         let mut errors = Vec::new();
+        let prepared = Prepared::new(source);
         for defines in FRAGMENT_CONFIGS {
-            self.compile_one(source, defines, &mut errors);
+            self.compile_one(&prepared, defines, &mut errors);
         }
 
         let mut order: Vec<String> = Vec::new();
@@ -179,103 +280,164 @@ impl ShaderValidator {
             .collect()
     }
 
-    fn compile_one(&mut self, source: &str, defines: &[&str], errors: &mut Vec<ValidationError>) {
-        let mut shader_defs = pipeline_shader_defs();
-        for d in defines {
-            shader_defs.insert((*d).to_string(), ShaderDefValue::Bool(true));
+    fn compile_one(&self, prepared: &Prepared, defines: &[&str], errors: &mut Vec<ValidationError>) {
+        let label = || defines.join(",");
+        let mut options = wesl::CompileOptions {
+            imports: true,
+            condcomp: true,
+            // What Bevy's pipeline cache passes; with it on, importing a
+            // library item Bevy did not mark public is an error Bevy never sees.
+            visibility: false,
+            ..Default::default()
+        };
+        for flag in self.flags.iter().map(String::as_str).chain(defines.iter().copied()) {
+            options.features.flags.insert(flag.to_string(), true.into());
         }
 
-        let module = self.composer.make_naga_module(NagaModuleDescriptor {
-            source,
-            file_path: "generated.wgsl",
-            shader_type: ShaderType::Wgsl,
-            shader_defs,
-            ..Default::default()
-        });
+        let main = ModulePath {
+            origin: PathOrigin::Package(GENERATED_MODULE.into()),
+            components: Vec::new(),
+        };
+        let resolver = WithGenerated {
+            libraries: self,
+            main: &main,
+            source: &prepared.wesl,
+        };
+        let compiled = wesl::compile(&main, &options, &resolver);
 
-        let label = || defines.join(",");
-        match module {
-            Ok(module) => {
-                if let Err(err) = renzora::wgsl::validate(&module) {
-                    errors.push(ValidationError {
-                        defines: label(),
-                        // Debug dump — validation errors have no `emit_to_string`.
-                        // Unreachable in practice: `make_naga_module` already
-                        // validated the composed module, so its own error
-                        // (with a decodable span) fires first. No line here.
-                        message: format!("{err:?}"),
-                        line: None,
-                    });
+        let wgsl = match compiled {
+            Ok(out) => out.to_string(),
+            Err(err) => {
+                let diagnostic = err.diagnostic();
+                // Only an error in the generated module can be a user's: one
+                // inside a library is an engine bug, and naming a node for it
+                // would send the user hunting in the wrong place.
+                let in_generated = diagnostic.detail.module_path.as_ref().is_none_or(|p| *p == main);
+                let line = diagnostic
+                    .detail
+                    .span
+                    .filter(|_| in_generated)
+                    .and_then(|span| prepared.original_line(span.range().start));
+                errors.push(ValidationError {
+                    defines: label(),
+                    message: diagnostic.render_plain(),
+                    line,
+                });
+                return;
+            }
+        };
+
+        // What wgpu then does with the output. The WESL compiler resolves
+        // names and conditionals but does not type-check, so a wrong type in a
+        // user snippet only surfaces here, against the compiled text.
+        if let Err(message) = renzora::wgsl::check(&wgsl) {
+            let line = first_reported_line(&message)
+                .and_then(|l| wgsl.lines().nth(l.saturating_sub(1) as usize))
+                .and_then(|text| prepared.line_of_text(text));
+            errors.push(ValidationError {
+                defines: label(),
+                message,
+                line,
+            });
+        }
+    }
+}
+
+/// A source made ready to compile: translated to WESL once, with what is
+/// needed to map a position in the translation back to the line codegen wrote.
+struct Prepared {
+    original: String,
+    wesl: String,
+}
+
+impl Prepared {
+    fn new(source: &str) -> Self {
+        Self {
+            original: source.to_string(),
+            wesl: renzora::shader_source::to_wesl(source).source,
+        }
+    }
+
+    /// The original line holding the WESL text at byte `byte`.
+    fn original_line(&self, byte: usize) -> Option<u32> {
+        let line = self.wesl[..byte.min(self.wesl.len())].lines().count().max(1);
+        let text = self.wesl.lines().nth(line - 1)?;
+        self.line_of_text(text)
+    }
+
+    /// The 1-based original line whose code matches `text`. The translation
+    /// moves lines (imports to the top, `@if` attributes in front) but leaves
+    /// the code of an ordinary statement as codegen wrote it, so matching the
+    /// trimmed text finds it; a line the translation synthesized, or one it
+    /// rewrote (an import path), matches nothing and gets no line.
+    fn line_of_text(&self, text: &str) -> Option<u32> {
+        let want = strip_condition(text.trim());
+        if want.is_empty() {
+            return None;
+        }
+        let mut hits = self
+            .original
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.trim() == want);
+        let (index, _) = hits.next()?;
+        // Two identical lines are ambiguous: better no node than the wrong one.
+        if hits.next().is_some() {
+            return None;
+        }
+        Some(index as u32 + 1)
+    }
+}
+
+/// `@if(FLAG) statement` with the attribute removed.
+fn strip_condition(line: &str) -> &str {
+    let Some(rest) = line.strip_prefix("@if(") else { return line };
+    let mut depth = 1usize;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return rest[i + 1..].trim_start();
                 }
             }
-            Err(err) => errors.push(ValidationError {
-                defines: label(),
-                line: error_line(&err, &self.composer),
-                message: err.emit_to_string(&self.composer),
-            }),
+            _ => {}
         }
     }
+    line
 }
 
-/// The 1-based line a `ComposerError` points at in the *generated* source —
-/// decodable because naga_oil's preprocessor is line-preserving, so a line in
-/// the preprocessed text is the same line in what codegen emitted.
-///
-/// Only `ErrSource::Constructing` (the top-level generated shader) is
-/// decodable. Errors inside imported bevy_pbr modules, and preprocessor
-/// errors on directive lines, return `None`: they are engine bugs, and a
-/// node attribution would send the user hunting in the wrong place.
-fn error_line(err: &ComposerError, composer: &Composer) -> Option<u32> {
-    let ErrSource::Constructing { .. } = err.source else {
-        return None;
-    };
-    let source = err.source.source(composer);
-    let range = match &err.inner {
-        ComposerErrorInner::WgslParseError(parse) => {
-            parse.labels().next().and_then(|(span, _)| span.to_range())
-        }
-        ComposerErrorInner::ShaderValidationError(with_span) => {
-            with_span.spans().last().and_then(|(span, _)| span.to_range())
-        }
-        _ => None,
-    }?;
-    if range.start >> SPAN_SHIFT != 0 {
-        return None;
-    }
-    let byte = (range.start & ((1 << SPAN_SHIFT) - 1)).saturating_sub(err.source.offset());
-    Some(line_of_byte(&source, byte))
+/// The first `:line:col` naga's rendered diagnostic points at, as a line.
+fn first_reported_line(message: &str) -> Option<u32> {
+    message.lines().find_map(|l| {
+        let l = l.trim();
+        let rest = l.strip_prefix("┌─ ").or_else(|| l.strip_prefix("--> "))?;
+        rest.split(':').nth(1)?.parse().ok()
+    })
 }
 
-/// 1-based line number of byte offset `byte` in `source`.
-fn line_of_byte(source: &str, byte: usize) -> u32 {
-    source[..byte.min(source.len())].matches('\n').count() as u32 + 1
-}
+/// Boolean defines `MeshPipeline` puts in front of every material shader.
+const PIPELINE_FLAGS: [&str; 2] = ["VERTEX_OUTPUT_INSTANCE_INDEX", "VERTEX_POSITIONS"];
 
-/// What `PipelineCache` and `MeshPipeline` put in front of every material
-/// shader they compile. Without them bevy_pbr's own libraries do not
-/// preprocess, so this is the floor the generated code sits on rather than a
-/// choice.
+/// Numeric defines `PipelineCache` and `MeshPipeline` add. In 0.20 each is
+/// readable as `constants::NAME` and enables a flag of the same name.
 ///
 /// The storage-buffer count is a device limit in the real pipeline
-/// (`PipelineCache::new`). There is no device here, so it takes wgpu's default
-/// — the branch every desktop backend picks.
-fn pipeline_shader_defs() -> HashMap<String, ShaderDefValue> {
+/// (`PipelineCache::new`). There is no device here, so it takes wgpu's default,
+/// the branch every desktop backend picks.
+fn pipeline_numeric_defs() -> [(&'static str, u32); 3] {
     let limits = bevy::render::settings::WgpuLimits::default();
-    HashMap::from([
+    [
         (
-            "AVAILABLE_STORAGE_BUFFER_BINDINGS".to_string(),
-            ShaderDefValue::UInt(limits.max_storage_buffers_per_shader_stage),
+            "AVAILABLE_STORAGE_BUFFER_BINDINGS",
+            limits.max_storage_buffers_per_shader_stage,
         ),
-        (
-            "MATERIAL_BIND_GROUP".to_string(),
-            ShaderDefValue::UInt(bevy::pbr::MATERIAL_BIND_GROUP_INDEX as u32),
-        ),
-        (
-            "VERTEX_OUTPUT_INSTANCE_INDEX".to_string(),
-            ShaderDefValue::Bool(true),
-        ),
-        ("VERTEX_POSITIONS".to_string(), ShaderDefValue::Bool(true)),
-    ])
+        ("MATERIAL_BIND_GROUP", bevy::pbr::MATERIAL_BIND_GROUP_INDEX as u32),
+        // `MeshPipeline::specialize` always sets it, from the camera's
+        // transmission quality; 8 is the default (medium) setting.
+        ("SCREEN_SPACE_SPECULAR_TRANSMISSION_BLUR_TAPS", 8),
+    ]
 }
 
 /// Every configuration that ships gets compiled: with and without the mesh
@@ -288,54 +450,42 @@ const FRAGMENT_CONFIGS: [&[&str]; 3] = [
     &["VERTEX_UVS_A", "VERTEX_COLORS", "ENVIRONMENT_MAP"],
 ];
 
-/// The importable libraries in `shaders`, keyed by import path.
+/// The importable WESL libraries in `shaders`, keyed by module path.
 ///
-/// Only `ShaderImport::Custom` modules qualify — that variant means the
-/// source declared `#define_import_path`, which is what makes it importable.
-/// The rest are plain files, generated material shaders among them, and
-/// adding those puts every compiled material in the import namespace.
-fn importable_libraries(shaders: &Assets<Shader>) -> HashMap<&ShaderImport, &Shader> {
+/// Only `ShaderImport::Custom` modules qualify: that is what an embedded
+/// library (`embedded://bevy_pbr/render/mesh_functions.wesl`) gets, and it is
+/// what makes it importable by package path. The rest are plain files,
+/// generated material shaders among them, and adding those puts every
+/// compiled material in the import namespace.
+fn importable_libraries(shaders: &Assets<Shader>) -> Vec<(ModulePath, &Shader)> {
     shaders
         .iter()
-        .map(|(_, s)| (&s.import_path, s))
-        .filter(|(path, _)| matches!(path, ShaderImport::Custom(_)))
+        .filter(|(_, s)| matches!(s.source, Source::Wesl(_)))
+        .filter_map(|(_, s)| match &s.import_path {
+            ShaderImport::Custom(name) => Some((module_path(name)?, s)),
+            ShaderImport::AssetPath(_) => None,
+        })
         .collect()
 }
 
-/// The number of shader libraries currently registered — what
+/// `bevy_pbr::render::forward_io` as a package module path, the way Bevy's
+/// pipeline cache reads a `ShaderImport::Custom`.
+fn module_path(name: &str) -> Option<ModulePath> {
+    let mut segments = name.split("::");
+    let package = segments.next().filter(|s| !s.is_empty())?;
+    let components = segments
+        .map(|s| (!s.is_empty()).then(|| s.to_string()))
+        .collect::<Option<Vec<_>>>()?;
+    Some(ModulePath {
+        origin: PathOrigin::Package(package.to_string()),
+        components,
+    })
+}
+
+/// The number of shader libraries currently registered, which is what
 /// [`ShaderValidator::new`] builds from right now.
 pub fn library_count(shaders: &Assets<Shader>) -> usize {
     importable_libraries(shaders).len()
-}
-
-fn add_module(
-    composer: &mut Composer,
-    by_path: &HashMap<&ShaderImport, &Shader>,
-    shader: &Shader,
-    unresolved: &mut Vec<String>,
-) {
-    let name = shader.import_path.module_name();
-    if composer.contains_module(&name) {
-        return;
-    }
-    for import in &shader.imports {
-        if let Some(dep) = by_path.get(import) {
-            add_module(composer, by_path, dep, unresolved);
-        }
-    }
-    // A library that fails to add is one this validator cannot resolve imports
-    // through; the material that needs it then fails with that name in the
-    // message, which is more useful than a panic here naming only the library.
-    //
-    // But it is recorded rather than discarded, because the failure and the
-    // symptom name different modules and that gap cost two CI investigations.
-    // When `mesh_view_bindings` has not streamed in yet, `pbr_fragment` is a
-    // present, valid asset that the composer refuses — and every material then
-    // reports `required import 'bevy_pbr::pbr_fragment' not found`, pointing at
-    // the library that is fine instead of the one that is missing.
-    if let Err(e) = composer.add_composable_module(shader.into()) {
-        unresolved.push(format!("{name}: {e}"));
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -394,7 +544,7 @@ mod tests {
             // on: the module is *in the composer*. That is only knowable by
             // building one, hence the rebuild — throttled to at most one per three
             // stable frames, and in practice satisfied on the first attempt.
-            let required = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
+            let required = ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"];
             let mut last = 0usize;
             let mut stable = 0;
             let mut built: Option<ShaderValidator> = None;
@@ -464,7 +614,7 @@ mod tests {
     #[test]
     fn required_libraries_reach_the_composer() {
         let validator = validator();
-        for module in ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"] {
+        for module in ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"] {
             assert!(
                 validator.has_module(module),
                 "{module} is not in the composer, so every material importing \
@@ -479,7 +629,7 @@ mod tests {
 
     #[test]
     fn every_shipped_material_compiles_to_valid_wgsl() {
-        let mut validator = validator();
+        let validator = validator();
         let dir = materials_dir();
         let mut count = 0;
         let mut failures = Vec::new();
@@ -594,7 +744,7 @@ mod tests {
 
     #[test]
     fn every_node_type_generates_valid_wgsl() {
-        let mut validator = validator();
+        let validator = validator();
         let mut failures = Vec::new();
         let mut count = 0;
         for def in nodes::ALL_NODES {
@@ -677,7 +827,7 @@ mod tests {
             .map(|i| i as u32 + 1)
             .unwrap();
 
-        let mut validator = validator();
+        let validator = validator();
         let errors = validator
             .validate(&result)
             .expect_err("the snippet must fail to compile");
@@ -760,7 +910,7 @@ mod tests {
     fn math_nodes_vectorize_to_widest_wire() {
         use crate::material::graph::{is_dynamic_pin, resolve_math_ranks};
 
-        let mut validator = validator();
+        let validator = validator();
         let mut failures = Vec::new();
         let mut count = 0;
         for def in nodes::ALL_NODES {
@@ -840,7 +990,7 @@ mod tests {
     fn math_node_unlatches_when_the_wide_wire_detaches() {
         use crate::material::graph::resolve_math_ranks;
 
-        let mut validator = validator();
+        let validator = validator();
         let (mut graph, m) = vectorization_cell("math/add", "param/vec4", Sibling::Unconnected);
         assert_eq!(resolve_math_ranks(&graph)[&m], PinType::Vec4);
         let result = codegen::compile(&graph);

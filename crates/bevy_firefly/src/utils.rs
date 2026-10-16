@@ -1,6 +1,7 @@
 use bevy::{platform::collections::HashSet, prelude::*, sprite::Anchor};
 
 use crate::sprites::ExtractedSlice;
+use crate::texture_slice::{TextureSlice, compute_slices};
 
 // use crate::sprites::stencil::ExtractedSlice;
 /// Component storing texture slices for tiled or sliced sprite entities
@@ -78,7 +79,7 @@ fn compute_sprite_slices(
         }
     };
     let slices = match &sprite.image_mode {
-        SpriteImageMode::Sliced(slicer) => slicer.compute_slices(texture_rect, sprite.custom_size),
+        SpriteImageMode::Sliced(slicer) => compute_slices(slicer, texture_rect, sprite.custom_size),
         SpriteImageMode::Tiled {
             tile_x,
             tile_y,

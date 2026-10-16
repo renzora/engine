@@ -31,7 +31,7 @@ use renzora::{EditorCamera, PlayModeState};
 #[allow(clippy::too_many_arguments)]
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_image_path_inserted(
-    trigger: On<Insert, renzora::core::SpriteImagePath>,
+    trigger: On<Insert<renzora::core::SpriteImagePath>>,
     paths: Query<&renzora::core::SpriteImagePath>,
     sizes: Query<&renzora::core::SpriteCustomSize>,
     has_sprite: Query<(), With<bevy::sprite::Sprite>>,
@@ -60,7 +60,7 @@ pub fn on_sprite_image_path_inserted(
 /// observer fires last finds the other component already present.
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_inserted_apply_image_path(
-    trigger: On<Insert, bevy::sprite::Sprite>,
+    trigger: On<Insert<bevy::sprite::Sprite>>,
     paths: Query<&renzora::core::SpriteImagePath>,
     sizes: Query<&renzora::core::SpriteCustomSize>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
@@ -130,7 +130,7 @@ pub fn mirror_sprite_custom_size(
 /// where `mirror_sprite_custom_size` re-inserts the same size it just read).
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_custom_size_inserted(
-    trigger: On<Insert, renzora::core::SpriteCustomSize>,
+    trigger: On<Insert<renzora::core::SpriteCustomSize>>,
     sizes: Query<&renzora::core::SpriteCustomSize>,
     mut sprites: Query<&mut bevy::sprite::Sprite>,
 ) {
@@ -272,7 +272,7 @@ pub fn apply_y_sort(
 /// forever — nothing else writes `Sprite.rect`.
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_sheet_removed(
-    trigger: On<Remove, renzora::core::SpriteSheet>,
+    trigger: On<Remove<renzora::core::SpriteSheet>>,
     mut sprites: Query<&mut bevy::sprite::Sprite>,
 ) {
     if let Ok(mut sprite) = sprites.get_mut(trigger.entity) {
@@ -352,7 +352,7 @@ fn apply_sprite_image_path(
 /// Load a sprite texture with the project's configured filter. Bevy's
 /// default ImagePlugin uses linear filtering (right for 3D PBR, wrong
 /// for pixel art — every scaled pixel becomes a smear). Per-asset
-/// override via `load_with_settings` keeps 3D textures linear while
+/// override via the load builder's `with_settings` keeps 3D textures linear while
 /// sprite textures land with whatever the project asks for.
 #[cfg(feature = "render_2d")]
 fn load_sprite_image(

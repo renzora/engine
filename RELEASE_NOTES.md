@@ -1,5 +1,73 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-16 13:35
+- perf(viewport): the viewport renders only when the scene changes, so a heavy scene no longer slows the rest of the editor while nothing moves; Display > Render > Realtime renders every frame
+
+## 2026-10-16 12:39
+- fix(materials): imported materials render as plain PBR materials again instead of compiling a shader each, which also puts imported models back into Solari's ray tracing
+
+## 2026-10-16 12:18
+- feat(solari): `cargo renzora` builds in NVIDIA DLSS Ray Reconstruction whenever the DLSS SDK is set up, which denoises Solari on an RTX card under Vulkan
+- fix(solari): switching Solari off and on again brings the ray-traced lighting back, and no longer switches a Deferred project to forward rendering
+
+## 2026-10-16 11:32
+- feat(solari): the Solari component has a Quality preset (Low, Medium, High, Ultra) that trades frame rate against noise
+- fix(solari): Solari denoises again with ReSTIR, which Bevy 0.20 had switched off by default
+- fix(solari): the Console warns when Solari has no sky light because the Environment Map is off
+- docs(solari): the Solari page explains the sky light Bevy 0.20 added and the new Quality presets
+
+## 2026-10-16 10:22
+- fix(rendering): resizing the viewport with screen-space GI on no longer leaves the sky black until the camera moves
+
+## 2026-10-15 21:36
+- fix(scripting): opening a project no longer drops the editor to a few frames a second while its Rust scripts build
+- fix(scripting): a Rust script that has not changed since the last launch loads without being recompiled
+
+## 2026-10-15 21:12
+- fix(rendering): sky lighting is no longer rebuilt every frame, which cost frame rate and left black patches in the environment
+
+## 2026-10-15 20:15
+- fix(editor): the status bar is back at the bottom of the window, and a floating dock window no longer grows past its own edge
+- fix(materials): opening a project no longer freezes the editor while its materials are checked for shader errors
+
+## 2026-10-15 14:53
+- feat(engine): the engine runs on Bevy 0.20 and Rust 1.97.1
+- feat(shaders): shaders are written in WESL, and `.wesl` files can be opened, edited, previewed and dropped onto meshes like `.wgsl`
+- feat(shaders): a `.wesl` shader can import functions from another `.wesl` file in the project
+- feat(shaders): shaders written for earlier versions (`#import`, `#ifdef`) keep working, including those in saved materials, themes and plugins
+- fix(rendering): glass, water and Scene Color materials still refract the scene behind them
+- fix(rendering): the "None" tonemapping mode still keeps colour grading and dithering
+
+## 2026-10-15 13:35
+- feat(viewport): a `.wgsl` shader can be dragged onto a mesh in the viewport or the Hierarchy to apply it
+
+## 2026-10-15 06:31
+- fix(assets): moving or renaming an asset updates the paths stored in the project's materials, scenes, particles and UI templates, so a moved model keeps its textures
+- feat(materials): a `.material` changed on disk outside the Material Editor reloads in the viewport
+
+## 2026-10-15 04:31
+- feat(editor): a project opens in a centered 1600x900 window instead of maximizing
+- feat(settings): Launcher Effects turns off the launcher cinematic and loading-screen haze, automatically on ultrawide and larger-than-4K displays
+- feat(viewport): the log names the active cameras and the environment maps being filtered whenever either changes
+
+## 2026-10-15 03:14
+- perf(rendering): environment maps are only re-filtered while their sky, image or camera is changing, instead of every frame
+- perf(viewport): the debug visualization and infinite grid no longer re-upload their GPU data every frame
+- perf(ui): theme surface materials are only re-uploaded when their colors, image or animation actually change
+- perf(editor): the material, shader, studio, particle and camera preview cameras stop rendering when their panel is not the visible tab
+
+## 2026-10-15 02:22
+- fix(settings): the renderer backend chosen in Settings now takes effect on restart instead of always falling back to Vulkan
+
+## 2026-09-25 11:11
+- fix(scripting): a Rust script that panics no longer brings up the crash dialog, and the Console names the script, the message and the line
+
+## 2026-09-22 18:26
+- docs(plugin): the editor API said a plugin cannot make its edits undoable, which stopped being true when the undo core moved to the contract crate
+
+## 2026-09-21 19:17
+- feat(camera): a plugin can move the viewport camera, framing an entity or looking from a point at a target
+
 ## 2026-09-18 16:27
 - fix(game-ui): an `expand` canvas previewed over the viewport lays out like the shipped game, so edge-anchored UI reaches the edge
 - fix(game-ui): a canvas root no longer keeps a preview scale that was saved into a scene, which shrank the UI in an exported game

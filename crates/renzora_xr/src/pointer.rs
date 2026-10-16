@@ -37,7 +37,7 @@ fn publish_wand_rays(
         if let Some(tf) = transform {
             pointers.0.push(renzora::WorldUiPointerRay {
                 id,
-                ray: bevy::math::Ray3d::new(tf.translation(), tf.forward()),
+                ray: bevy::shape::Ray3d::new(tf.translation(), tf.forward()),
                 trigger,
             });
         }

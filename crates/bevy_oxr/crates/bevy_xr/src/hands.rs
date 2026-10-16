@@ -10,7 +10,6 @@ use bevy_ecs::{
     world::World,
 };
 use bevy_log::warn;
-use bevy_math::bool;
 use bevy_transform::components::Transform;
 
 pub const HAND_JOINT_COUNT: usize = 26;

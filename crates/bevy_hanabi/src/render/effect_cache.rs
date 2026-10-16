@@ -311,7 +311,8 @@ impl ParticleSlab {
             {
                 let mut mapped = indirect_index_buffer
                     .slice(..indirect_capacity_bytes)
-                    .get_mapped_range_mut();
+                    .get_mapped_range_mut()
+                    .expect("buffer created mapped_at_creation");
                 let mut values = vec![0u32; capacity as usize * 3];
                 let slice: &mut [u32] = values.as_mut_slice();
                 for index in 0..capacity {

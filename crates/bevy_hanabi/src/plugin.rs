@@ -42,7 +42,8 @@ use crate::{
         EffectsMeta, EventCache, GpuBatchInfo, GpuBufferOperations, GpuEffectMetadata,
         GpuSpawnerParams, HanabiRenderPlugin, InitFillDispatchQueue, ParticlesInitPipeline,
         ParticlesRenderPipeline, ParticlesUpdatePipeline, PrefixSumPipeline, PropertyBindGroups,
-        PropertyCache, RenderDebugSettings, ShaderCache, SimParams, SortBindGroups,
+        translated_shader, PropertyCache, RenderDebugSettings, ShaderCache, SimParams,
+        SortBindGroups, VFX_COMMON_MODULE,
         SortFillDispatchQueue, SortedEffectBatches, StorageType as _, UtilsPipeline,
     },
     spawn::{self, Random},
@@ -137,17 +138,10 @@ impl HanabiPlugin {
             .replace("{{BATCH_INFO_PADDING}}", &batch_info_padding_code)
             .replace("{{EFFECT_METADATA_PADDING}}", &effect_metadata_padding_code)
             .replace("{{EFFECT_METADATA_STRIDE}}", &effect_metadata_stride_code);
-        Shader::from_wgsl(
-            common_code,
-            std::path::Path::new(file!())
-                .parent()
-                .unwrap()
-                .join(format!(
-                    "render/vfx_common_{}.wgsl",
-                    min_storage_buffer_offset_alignment
-                ))
-                .to_string_lossy(),
-        )
+        // Registered under the one module name the other shaders import,
+        // whatever the alignment: a device has a single alignment, so only
+        // one variant is ever registered.
+        translated_shader(VFX_COMMON_MODULE, &common_code)
     }
 
     /// Create the `vfx_indirect.wgsl` shader with proper alignment.
@@ -168,17 +162,13 @@ impl HanabiPlugin {
             "{{EFFECT_METADATA_STRIDE}}",
             &render_effect_indirect_stride_code,
         );
-        Shader::from_wgsl(
-            indirect_code,
-            std::path::Path::new(file!())
-                .parent()
-                .unwrap()
-                .join(format!(
-                    "render/vfx_indirect_{}_{}.wgsl",
-                    min_storage_buffer_offset_alignment,
-                    if has_events { "events" } else { "noevent" },
-                ))
-                .to_string_lossy(),
+        translated_shader(
+            &format!(
+                "bevy_hanabi::vfx_indirect_{}_{}",
+                min_storage_buffer_offset_alignment,
+                if has_events { "events" } else { "noevent" },
+            ),
+            &indirect_code,
         )
     }
 
@@ -188,14 +178,7 @@ impl HanabiPlugin {
     /// file.
     pub(crate) fn make_prefix_sum_shader() -> Shader {
         let prefix_sum_code = include_str!("render/vfx_prefix_sum.wgsl");
-        Shader::from_wgsl(
-            prefix_sum_code,
-            std::path::Path::new(file!())
-                .parent()
-                .unwrap()
-                .join("render/vfx_prefix_sum.wgsl")
-                .to_string_lossy(),
-        )
+        translated_shader("bevy_hanabi::vfx_prefix_sum", prefix_sum_code)
     }
 }
 
@@ -304,29 +287,14 @@ impl Plugin for HanabiPlugin {
             let indirect_shader_noevent = HanabiPlugin::make_indirect_shader(align, false);
             let indirect_shader_events = HanabiPlugin::make_indirect_shader(align, true);
             let prefix_sum_shader = HanabiPlugin::make_prefix_sum_shader();
-            let sort_fill_shader = Shader::from_wgsl(
+            let sort_fill_shader = translated_shader(
+                "bevy_hanabi::vfx_sort_fill",
                 include_str!("render/vfx_sort_fill.wgsl"),
-                std::path::Path::new(file!())
-                    .parent()
-                    .unwrap()
-                    .join("render/vfx_sort_fill.wgsl")
-                    .to_string_lossy(),
             );
-            let sort_shader = Shader::from_wgsl(
-                VFX_SORT_WGSL,
-                std::path::Path::new(file!())
-                    .parent()
-                    .unwrap()
-                    .join("render/vfx_sort.wgsl")
-                    .to_string_lossy(),
-            );
-            let sort_copy_shader = Shader::from_wgsl(
+            let sort_shader = translated_shader("bevy_hanabi::vfx_sort", &VFX_SORT_WGSL);
+            let sort_copy_shader = translated_shader(
+                "bevy_hanabi::vfx_sort_copy",
                 include_str!("render/vfx_sort_copy.wgsl"),
-                std::path::Path::new(file!())
-                    .parent()
-                    .unwrap()
-                    .join("render/vfx_sort_copy.wgsl")
-                    .to_string_lossy(),
             );
 
             let mut assets = app.world_mut().resource_mut::<Assets<Shader>>();

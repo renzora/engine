@@ -51,6 +51,10 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 **UI Workspace** covers document tabs, what happens after you drag a panel out of the bottom panel, and whether new files start with boilerplate.
 
+## General
+
+**Renderer** holds the **Graphics Backend** the editor starts with, which takes effect after a restart, and **Launcher Effects**: the launcher's 3D cinematic and the animated haze behind the loading screen. Both fill the window, so their cost grows with the display. **Auto** turns them off on ultrawide and larger-than-4K displays and leaves them on elsewhere; **Full** and **Reduced** force one or the other.
+
 ## Viewport, Camera and Gizmos
 
 <!-- screenshot: settings_viewport.png - the Viewport settings page showing the Grid section -->

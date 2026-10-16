@@ -191,7 +191,8 @@ Built-in backends (registered by `ShaderPlugin`):
 
 | Backend | Extensions | What it does |
 |---------|------------|--------------|
-| `BevyBackend` | `bevy.wgsl` | Passthrough — Bevy's `naga_oil` resolves `#import` directives at runtime. |
+| `BevyBackend` | `bevy.wgsl` | The pre-0.20 `#import` / `#ifdef` dialect, translated to WESL (Bevy 0.20 dropped the preprocessor that read it). |
+| `WeslBackend` | `wesl` | WESL, passed through; Bevy's WESL compiler resolves its imports when the pipeline is built. |
 | `WgslBackend` | `wgsl` | Plain WGSL, validated with naga. |
 | `GlslBackend` | `glsl`, `frag`, `vert` | GLSL fragment shaders transpiled to WGSL via naga. |
 | `ShaderToyBackend` | `shadertoy` | Wraps a ShaderToy `mainImage(...)` in GLSL, transpiles to WGSL, and maps `iTime`/`iResolution`/`iMouse`/`iTimeDelta`/`iFrame` onto the engine's `ShaderUniforms`. |

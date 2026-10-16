@@ -648,7 +648,7 @@ pub fn frame_2d_default(
 /// middle of the runtime window — sprites authored against the
 /// outline would appear off-centre.
 pub fn on_camera_2d_inserted(
-    trigger: On<Insert, Camera2d>,
+    trigger: On<Insert<Camera2d>>,
     mut projections: Query<&mut Projection>,
 ) {
     let entity = trigger.entity;
@@ -656,6 +656,29 @@ pub fn on_camera_2d_inserted(
         if let Projection::Orthographic(ortho) = projection.as_mut() {
             ortho.viewport_origin = Vec2::new(0.0, 1.0);
         }
+    }
+}
+
+/// Give every 3D camera screen-space transmission, as Bevy did before 0.20.
+///
+/// Up to 0.19 `ScreenSpaceTransmission` was a required component of
+/// `Camera3d`, so glass, water and any graph material reading Scene Color
+/// refracted the scene behind them on every camera. Bevy 0.20 made it opt-in;
+/// without this every such material would quietly lose its refraction (and a
+/// Scene Color node would read black). A camera that already carries one,
+/// with its own quality settings, keeps it.
+#[cfg(feature = "render_3d")]
+pub fn on_camera_3d_added_enable_transmission(
+    trigger: On<Add<Camera3d>>,
+    has: Query<(), With<bevy::pbr::ScreenSpaceTransmission>>,
+    mut commands: Commands,
+) {
+    let entity = trigger.entity;
+    if has.contains(entity) {
+        return;
+    }
+    if let Ok(mut ec) = commands.get_entity(entity) {
+        ec.try_insert(bevy::pbr::ScreenSpaceTransmission::default());
     }
 }
 
@@ -668,7 +691,7 @@ pub fn on_camera_2d_inserted(
 /// so legacy scenes converge to the Godot-style convention as soon as
 /// they load. No-op for `Camera3d` and any other camera kind.
 pub fn on_projection_inserted_for_2d(
-    trigger: On<Insert, Projection>,
+    trigger: On<Insert<Projection>>,
     cameras_2d: Query<(), With<Camera2d>>,
     mut projections: Query<&mut Projection>,
 ) {

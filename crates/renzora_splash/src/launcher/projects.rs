@@ -545,10 +545,10 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
                 justify_content: JustifyContent::Center,
                 overflow: Overflow::clip(),
                 border_radius: BorderRadius {
-                    top_left: Val::Px(CARD_RADIUS - 1.5),
-                    top_right: Val::Px(CARD_RADIUS - 1.5),
-                    bottom_left: Val::Px(0.0),
-                    bottom_right: Val::Px(0.0),
+                    top_left: Val::Px(CARD_RADIUS - 1.5).into(),
+                    top_right: Val::Px(CARD_RADIUS - 1.5).into(),
+                    bottom_left: Val::Px(0.0).into(),
+                    bottom_right: Val::Px(0.0).into(),
                 },
                 ..default()
             },

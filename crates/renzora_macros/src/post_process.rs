@@ -388,6 +388,7 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
                  bevy::render::render_resource::ShaderType, bevy::render::extract_component::ExtractComponent)]
         #[serde(crate = "renzora::serde")]
         #[reflect(Component, Serialize, Deserialize)]
+        #[extract_app(bevy::render::RenderApp)]
         #[extract_component_filter(With<Camera3d>)]
         #vis struct #struct_name {
             #(#user_field_decls,)*

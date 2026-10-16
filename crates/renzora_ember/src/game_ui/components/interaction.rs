@@ -5,6 +5,23 @@ use serde::{Deserialize, Serialize};
 
 use super::style::{UiFill, UiStateStyle};
 
+// ── Button marker ───────────────────────────────────────────────────────────
+
+/// Marks a game UI node as a button: something that blocks the pointer, tracks
+/// hover and press in `Interaction`, and that gamepad navigation can focus.
+///
+/// This is what `bevy_ui`'s own `Button` was. Bevy 0.20 deprecated that one
+/// and made its type private, so it can no longer be inserted from outside
+/// Bevy; its replacement in `bevy_ui_widgets` adds press and activate
+/// behaviour of its own that ember's widgets do not expect. This keeps the
+/// exact 0.19 contract (the same three required components) under a name
+/// ember owns. Not serialized: spawn and markup code insert it.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect)]
+#[reflect(Component, Default)]
+#[allow(deprecated)]
+#[require(Node, bevy::ui::FocusPolicy::Block, Interaction)]
+pub struct UiButton;
+
 // ── Interaction Styles ──────────────────────────────────────────────────────
 
 /// Per-state style overrides for interactive widgets.

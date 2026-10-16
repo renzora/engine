@@ -29,7 +29,7 @@ impl Language {
         match ext {
             "lua" => Language::Lua,
             "rs" => Language::Rust,
-            "wgsl" | "glsl" => Language::Wgsl,
+            "wgsl" | "wesl" | "glsl" => Language::Wgsl,
             "py" => Language::Python,
             "sh" | "bash" => Language::Shell,
             "sql" => Language::Sql,

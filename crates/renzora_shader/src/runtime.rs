@@ -26,7 +26,7 @@ pub const DEFAULT_CODE_SHADER_HANDLE: Handle<Shader> =
 
 /// Default fragment shader WGSL.
 const DEFAULT_FRAG: &str = r#"
-#import bevy_pbr::forward_io::VertexOutput
+import bevy_pbr::render::forward_io::VertexOutput;
 
 struct ShaderUniforms {
     time: f32,
@@ -167,7 +167,33 @@ impl ShaderCache {
             return handle.clone();
         }
 
-        let shader = Shader::from_wgsl(wgsl.to_string(), label.to_string());
+        let handle = shaders.add(renzora::shader_source::shader(wgsl, label));
+        self.entries.insert(hash, handle.clone());
+        handle
+    }
+
+    /// [`Self::get_or_insert`] for a shader that may import other project
+    /// files (`import super::noise::fbm;`). `load` is handed each file the
+    /// shader could import and returns a handle when it exists; those are
+    /// kept on the shader so the WESL compiler can resolve them, which is the
+    /// part Bevy's own loader does for a file it loads itself.
+    pub fn get_or_insert_with_imports(
+        &mut self,
+        wgsl: &str,
+        label: &str,
+        shaders: &mut Assets<Shader>,
+        mut load: impl FnMut(&str) -> Option<Handle<Shader>>,
+    ) -> Handle<Shader> {
+        let hash = hash_source(wgsl);
+        if let Some(handle) = self.entries.get(&hash) {
+            return handle.clone();
+        }
+        let mut shader = renzora::shader_source::shader(wgsl, label);
+        for file in renzora::shader_source::wesl_import_files(&shader) {
+            if let Some(dep) = load(&file) {
+                shader.file_dependencies.push(dep);
+            }
+        }
         let handle = shaders.add(shader);
         self.entries.insert(hash, handle.clone());
         handle
@@ -200,7 +226,7 @@ pub struct CodeShaderState {
 // ── Systems ─────────────────────────────────────────────────────────────────
 
 fn setup_default_code_shader(mut shaders: ResMut<Assets<Shader>>) {
-    let shader = Shader::from_wgsl(DEFAULT_FRAG.to_string(), "code_shader://default");
+    let shader = Shader::from_wesl(DEFAULT_FRAG, "code_shader/default.wesl");
     let _ = shaders.insert(&DEFAULT_CODE_SHADER_HANDLE, shader);
 }
 
@@ -244,7 +270,7 @@ pub fn apply_code_shader(
 
     // For the editor preview, we update the default handle in-place
     // so the preview quad's material picks it up immediately.
-    let shader = Shader::from_wgsl(wgsl.to_string(), "code_shader://preview");
+    let shader = renzora::shader_source::shader(wgsl, "code_shader/preview.wgsl");
     let _ = shaders.insert(&DEFAULT_CODE_SHADER_HANDLE, shader);
     state.last_wgsl_hash = Some(hash);
     true

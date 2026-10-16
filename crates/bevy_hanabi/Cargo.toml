@@ -1,3 +1,25 @@
+# Vendored bevy_hanabi. Bevy 0.20 port (Rust side only), on top of the earlier
+# local patches:
+#   - bevy 0.20 / wgpu 30 / naga 30 / naga_oil 0.23.
+#   - `EffectVisibilityClass` extracts with `#[extract_app(RenderApp)]`.
+#   - observers take `On<Remove<T>>`; `iter_many` results go through `.matched()`.
+#   - pipeline descriptors carry the new empty `constants` list.
+#   - `get_mapped_range_mut` returns a `Result` (unwrapped: the buffers are
+#     created `mapped_at_creation`).
+#   - `FromType` is `CreateTypeData`; `TemporaryRenderEntity::default()`;
+#     `AssetId::invalid()` (deprecated) is `AssetId::default()` in unused bin keys.
+#   - shaders: Bevy 0.20 hands a `Shader::from_wgsl` source to wgpu untouched,
+#     so the naga_oil-era templates are translated to WESL at runtime, after
+#     the `{{...}}` substitution (`render::translated_shader`, using
+#     `renzora_legacy_shaders`), and loaded with `Shader::from_wesl` under
+#     `embedded://bevy_hanabi/...` paths. `vfx_common` is registered as the
+#     module `bevy_hanabi::vfx_common`, the name its importers ask for.
+#   - two source fixes the stricter 0.20 parser needs: parentheses around a
+#     `>>` mixed with `|` in `vfx_common.wgsl`, and `@interpolate(flat)` on
+#     the integer `slab_particle_index` varying in `vfx_render.wgsl`.
+#   - `vfx_utils.wgsl` is still composed by hanabi's own naga_oil 0.23 (it
+#     imports nothing). The `#[cfg(test)]` shader tests in `lib.rs` still
+#     compose against Bevy's view module with naga_oil and are not ported.
 [package]
 name = "bevy_hanabi"
 version = "0.19.0"
@@ -20,15 +42,19 @@ anyhow = "1.0"
 bitflags = "2.3"
 bytemuck = { version = "1.5", features = ["derive", "must_cast"] }
 fixedbitset = "0.5"
-# Match wgpu 29's naga (29). naga_oil 0.22 tracks naga 29; on 0.20 (naga 27) the
-# composed `naga::Module` was a different type than wgpu 29's `ShaderSource::Naga`.
-naga = { version = "29", features = ["wgsl-in"] }
-naga_oil = { version = "0.22", default-features = false, features = ["test_shader"] }
+# Match wgpu 30's naga (30). naga_oil 0.23 tracks naga 30; a skew makes the
+# composed `naga::Module` a different type than wgpu's `ShaderSource::Naga`.
+naga = { version = "30", features = ["wgsl-in"] }
+naga_oil = { version = "0.23", default-features = false, features = ["test_shader"] }
 rand = "0.10"
 rand_pcg = "0.10"
 ron = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2"
+# Translates hanabi's naga_oil-era shader templates to WESL at runtime, after
+# the `{{...}}` substitution, since Bevy 0.20 no longer preprocesses WGSL.
+# A dependency-free leaf crate, so vendoring it in costs nothing.
+renzora_legacy_shaders = { path = "../renzora_legacy_shaders" }
 
 [dev-dependencies]
 # Test code (`#[cfg(test)]` modules in `render/*` and `test_utils`) blocks on
@@ -39,10 +65,10 @@ futures = "0.3"
 [dependencies.bevy]
 workspace = true
 
-# Match bevy 0.19's wgpu (29) — hanabi hands GPU buffers/pipelines to bevy's
+# Match bevy 0.20's wgpu (30): hanabi hands GPU buffers/pipelines to bevy's
 # render world, so a version skew makes those distinct types.
 [dependencies.wgpu]
-version = "29"
+version = "30"
 default-features = false
 features = [
     "wgsl",

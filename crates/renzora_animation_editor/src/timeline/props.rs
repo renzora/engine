@@ -132,11 +132,11 @@ pub(super) fn set_key_interp(world: &mut World, track: usize, idx: usize, interp
 }
 
 /// The interpolation choices offered in a property key's right-click menu, as
-/// `(icon, label, interp)`. A curated subset of Bevy's [`EaseFunction`](bevy::math::curve::EaseFunction)
+/// `(icon, label, interp)`. A curated subset of Bevy's [`EaseFunction`](bevy::curve::EaseFunction)
 /// set — the ones that read clearly on a float/Vec3/Color dopesheet — plus the
 /// two non-eased modes. Per-key authoring writes one of these into `PropertyKey`.
 pub(super) fn interp_menu_choices() -> [(&'static str, &'static str, renzora::Interp); 9] {
-    use bevy::math::curve::EaseFunction as E;
+    use bevy::curve::EaseFunction as E;
     use renzora::Interp;
     [
         ("minus", "Linear", Interp::Linear),

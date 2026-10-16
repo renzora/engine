@@ -71,6 +71,17 @@ pub struct ViewportCamera2d(pub usize);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PrimaryViewportCamera;
 
+/// On a viewport camera that is switched off only because nothing in the scene
+/// changed (`renzora_viewport::redraw`), not because its panel closed.
+///
+/// Anything that treats a camera turning active as "something may have changed
+/// while it was off" should ignore this case: the redraw gate only idles a
+/// camera while nothing changes, and wakes it the moment something does. The
+/// environment-map filter gate is the reader; without the marker it re-filtered
+/// the sky every time the viewport woke up.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ViewportRedrawIdle;
+
 /// Marker component tagging an entity as a 2D scene node.
 ///
 /// Currently semantically equivalent to a plain `Transform` parent, but
@@ -502,7 +513,7 @@ pub struct WorldUiPointerRay {
     /// Producer id — unique per source, stable across frames.
     pub id: u8,
     /// Where the device is pointing, in world space.
-    pub ray: bevy::math::Ray3d,
+    pub ray: bevy::shape::Ray3d,
     /// Analog press, 0..1.
     pub trigger: f32,
 }
@@ -981,6 +992,46 @@ impl AssetPathChanged {
             None
         }
     }
+
+    /// Rewrite every quoted reference to the moved asset inside a text file's
+    /// contents, or `None` when there is nothing to change.
+    ///
+    /// For the files that store paths on disk rather than in a live component:
+    /// a `.material` names its textures, a `.bsn` its models, a `.html` its
+    /// images. Importing a model into the wrong folder and dragging it out used
+    /// to leave every one of its materials pointing at textures in the folder it
+    /// had just left.
+    ///
+    /// Only a path that fills a whole string literal, or for a folder begins
+    /// one, is touched. A bare substring match would rewrite `props/rock` inside
+    /// `props/rock_large/...` and inside prose that merely mentions the path.
+    pub fn rewrite_text(&self, text: &str) -> Option<String> {
+        if self.old.is_empty() || !text.contains(self.old.as_str()) {
+            return None;
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        let mut changed = false;
+        while let Some(at) = rest.find(self.old.as_str()) {
+            let end = at + self.old.len();
+            let quoted = rest[..at].ends_with(['"', '\'']);
+            let closes = match rest[end..].chars().next() {
+                Some('"' | '\'') => true,
+                Some('/') => self.is_dir,
+                _ => false,
+            };
+            out.push_str(&rest[..at]);
+            if quoted && closes {
+                out.push_str(&self.new);
+                changed = true;
+            } else {
+                out.push_str(&self.old);
+            }
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        changed.then_some(out)
+    }
 }
 
 #[cfg(test)]
@@ -1022,6 +1073,54 @@ mod asset_path_changed_tests {
     fn dir_rename_respects_path_boundaries() {
         let ev = dir("scenes", "levels");
         assert_eq!(ev.rewrite("scenes2/main.bsn"), None);
+    }
+
+    /// The case that motivated `rewrite_text`: a model folder dragged out of
+    /// the folder it was imported into, with its materials naming textures by
+    /// their full project path.
+    #[test]
+    fn text_rewrite_follows_a_moved_folder() {
+        let ev = dir("models/Running/Bistro", "models/Bistro");
+        let text = r#"{"TexturePath": "models/Running/Bistro/textures/a.rmip"}"#;
+        assert_eq!(
+            ev.rewrite_text(text).as_deref(),
+            Some(r#"{"TexturePath": "models/Bistro/textures/a.rmip"}"#)
+        );
+    }
+
+    #[test]
+    fn text_rewrite_handles_bsn_and_html_quoting() {
+        let ev = file("models/a.glb", "props/a.glb");
+        assert_eq!(
+            ev.rewrite_text(r#"(model_path:Some("models/a.glb"))"#).as_deref(),
+            Some(r#"(model_path:Some("props/a.glb"))"#)
+        );
+        assert_eq!(
+            ev.rewrite_text("<img src='models/a.glb'>").as_deref(),
+            Some("<img src='props/a.glb'>")
+        );
+    }
+
+    /// Neither a sibling with a longer name nor an unquoted mention is a
+    /// reference to the moved asset.
+    #[test]
+    fn text_rewrite_only_touches_whole_quoted_paths() {
+        let ev = dir("props/rock", "props/stone");
+        assert_eq!(ev.rewrite_text(r#""props/rock_large/a.rmip""#), None);
+        assert_eq!(ev.rewrite_text("see props/rock/a.rmip for details"), None);
+        let ev = file("models/a.glb", "props/a.glb");
+        assert_eq!(ev.rewrite_text(r#""models/a.glb.bak""#), None);
+        assert_eq!(ev.rewrite_text(r#""models/a.glb/x""#), None);
+    }
+
+    #[test]
+    fn text_rewrite_replaces_every_occurrence() {
+        let ev = dir("old", "new");
+        let text = r#"["old/a.png", "keep/old/b.png", "old/c.png"]"#;
+        assert_eq!(
+            ev.rewrite_text(text).as_deref(),
+            Some(r#"["new/a.png", "keep/old/b.png", "new/c.png"]"#)
+        );
     }
 }
 

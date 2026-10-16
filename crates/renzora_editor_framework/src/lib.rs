@@ -296,7 +296,12 @@ impl Plugin for RenzoraEditorPlugin {
         renzora::core::settings_file::migrate_legacy_prefs();
         // `from_disk`, not `init_resource`: `Default` is the shipped values, and
         // the saved ones have to be read off disk at boot.
-        app.insert_resource(EditorSettings::from_disk())
+        let settings = EditorSettings::from_disk();
+        // Seeded from disk here, not left to the first `sync_splash_effects`:
+        // the launcher builds its cinematic on its first frame.
+        let splash_effects = renzora::SplashEffectsSetting(settings.splash_effects);
+        app.insert_resource(settings)
+            .insert_resource(splash_effects)
             .init_resource::<renzora::core::DevMode>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
@@ -323,7 +328,7 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
-            .add_systems(Update, (apply_vsync_setting, sync_dev_mode))
+            .add_systems(Update, (apply_vsync_setting, sync_dev_mode, sync_splash_effects))
             .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
                 Update,
@@ -442,6 +447,18 @@ fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora::
         dev.0 = settings.dev_mode;
     } else if dev.is_changed() && settings.dev_mode != dev.0 {
         settings.dev_mode = dev.0;
+    }
+}
+
+/// Mirror `EditorSettings.splash_effects` into the contract resource the splash
+/// crate reads, so the launcher honours a change made in Settings the next time
+/// it is shown (File > Open Project returns to it in the same process).
+fn sync_splash_effects(
+    settings: Res<EditorSettings>,
+    mut mirrored: ResMut<renzora::SplashEffectsSetting>,
+) {
+    if mirrored.0 != settings.splash_effects {
+        mirrored.0 = settings.splash_effects;
     }
 }
 
@@ -996,7 +1013,7 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
         "lua" | "js" | "ts" | "py" => DocTabKind::Script,
         // See the note on the copy of this table in `renzora_asset_browser`.
         "html" => DocTabKind::Ui,
-        "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
+        "wgsl" | "wesl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })
 }

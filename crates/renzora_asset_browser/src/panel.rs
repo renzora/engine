@@ -517,10 +517,10 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 // rounded pill floating between square buttons reads as a
                 // fourth button.
                 border_radius: BorderRadius {
-                    top_left: Val::Px(11.0),
-                    bottom_left: Val::Px(11.0),
-                    top_right: Val::Px(2.0),
-                    bottom_right: Val::Px(2.0),
+                    top_left: Val::Px(11.0).into(),
+                    bottom_left: Val::Px(11.0).into(),
+                    top_right: Val::Px(2.0).into(),
+                    bottom_right: Val::Px(2.0).into(),
                 },
                 ..default()
             },

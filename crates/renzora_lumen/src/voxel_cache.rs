@@ -73,12 +73,12 @@ pub struct VoxelCacheView {
     pub debug_active: bool,
 }
 
-// Bevy 0.19: ExtractComponent requires SyncComponent.
-impl bevy::render::sync_component::SyncComponent for VoxelCacheView {
+// ExtractComponent requires SyncComponent; both name the target app since 0.20.
+impl bevy::render::sync_component::SyncComponent<bevy::render::RenderApp> for VoxelCacheView {
     type Target = Self;
 }
 
-impl ExtractComponent for VoxelCacheView {
+impl ExtractComponent<bevy::render::RenderApp> for VoxelCacheView {
     type QueryData = &'static VoxelCacheView;
     type QueryFilter = ();
     type Out = VoxelCacheView;
@@ -233,7 +233,7 @@ impl FromWorld for VoxelCachePipelines {
                 ),
             ),
         );
-        let inject_shader = asset_server.load("embedded://renzora_lumen/voxel_inject.wgsl");
+        let inject_shader = asset_server.load("embedded://renzora_lumen/voxel_inject.wesl");
         let pipeline_cache = world.resource::<PipelineCache>();
         let inject_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             label: Some("voxel_inject_pipeline".into()),
@@ -241,6 +241,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: inject_shader,
             shader_defs: vec![],
             entry_point: Some("inject".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -260,6 +261,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: clear_shader,
             shader_defs: vec![],
             entry_point: Some("clear".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -282,6 +284,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: resolve_shader,
             shader_defs: vec![],
             entry_point: Some("resolve".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -309,7 +312,7 @@ impl FromWorld for VoxelCachePipelines {
                 ),
             ),
         );
-        let debug_shader = asset_server.load("embedded://renzora_lumen/voxel_debug.wgsl");
+        let debug_shader = asset_server.load("embedded://renzora_lumen/voxel_debug.wesl");
         let fullscreen = world.resource::<bevy::core_pipeline::FullscreenShader>();
         let debug_pipeline = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
             label: Some("voxel_debug_pipeline".into()),
@@ -324,6 +327,7 @@ impl FromWorld for VoxelCachePipelines {
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
+                constants: vec![],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
@@ -582,7 +586,7 @@ pub fn voxel_inject_pass(
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
             return;
         };
-        let Some(depth_view) = prepass.depth_view() else { return; };
+        let Some(depth_view) = prepass.depth_only_view() else { return; };
 
         // Visible-surface inject only — clear runs before us, resolve
         // runs after us (and after the geometry inject between).
@@ -641,7 +645,7 @@ pub fn voxel_debug_pass(
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
             return;
         };
-        let Some(depth_view) = prepass.depth_view() else { return; };
+        let Some(depth_view) = prepass.depth_only_view() else { return; };
 
         let post_process = view_target.post_process_write();
         let bind_group = render_context.render_device().create_bind_group(
@@ -681,10 +685,10 @@ pub struct VoxelCachePlugin;
 
 impl Plugin for VoxelCachePlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "voxel_inject.wgsl");
+        bevy::asset::embedded_asset!(app, "voxel_inject.wesl");
         bevy::asset::embedded_asset!(app, "voxel_clear.wgsl");
         bevy::asset::embedded_asset!(app, "voxel_resolve.wgsl");
-        bevy::asset::embedded_asset!(app, "voxel_debug.wgsl");
+        bevy::asset::embedded_asset!(app, "voxel_debug.wesl");
 
         app.add_systems(Update, sync_voxel_cache_views);
         app.add_plugins(ExtractComponentPlugin::<VoxelCacheView>::default());

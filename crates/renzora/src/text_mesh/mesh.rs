@@ -18,8 +18,8 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::text::{
     ComputedTextBlock, Font, FontAtlasSet, FontCx, FontHinting, FontSize, FontSource, Justify,
-    LayoutCx, LetterSpacing, LineBreak, LineHeight, ScaleCx, TextBounds, TextFont, TextLayoutInfo,
-    TextPipeline,
+    LayoutCx, LetterSpacing, LineBreak, LineHeight, RemSize, ScaleCx, TextBounds, TextElement,
+    TextFont, TextLayoutInfo, TextPipeline,
 };
 
 use super::pack::{glyph_key, pack_sdf_strip};
@@ -68,11 +68,13 @@ pub fn build_text_mesh(
     let spans = std::iter::once((
         Entity::PLACEHOLDER,
         0usize,
-        text,
-        &text_font,
-        Color::WHITE,
-        LineHeight::default(),
-        LetterSpacing::default(),
+        TextElement::Text {
+            text,
+            font: &text_font,
+            color: Color::WHITE,
+            line_height: LineHeight::default(),
+            letter_spacing: LetterSpacing::default(),
+        },
     ));
     pipeline
         .update_buffer(
@@ -86,7 +88,7 @@ pub fn build_text_mesh(
             font_cx,
             layout_cx,
             Vec2::splat(1000.0),
-            rem,
+            RemSize(rem),
         )
         .ok()?;
     let mut info = TextLayoutInfo::default();

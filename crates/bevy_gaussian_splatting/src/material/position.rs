@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     prelude::*,
 };
 
@@ -9,11 +9,11 @@ pub struct PositionMaterialPlugin;
 
 impl Plugin for PositionMaterialPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             POSITION_SHADER_HANDLE,
-            "position.wgsl",
-            Shader::from_wgsl
+            "position.wesl",
+            "material/position"
         );
     }
 }

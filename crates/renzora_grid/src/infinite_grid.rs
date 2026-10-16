@@ -32,7 +32,7 @@ use bevy::render::{
     },
     render_resource::{
         binding_types::uniform_buffer, BindGroup, BindGroupEntries, BindGroupLayoutDescriptor,
-        BindGroupLayoutEntries, BlendState, ColorTargetState, ColorWrites, CompareFunction,
+        BindGroupLayoutEntries, BlendState, BufferId, ColorTargetState, ColorWrites, CompareFunction,
         DepthStencilState, DynamicUniformBuffer, FragmentState, MultisampleState, PipelineCache,
         PrimitiveState, RenderPipelineDescriptor, ShaderStages, ShaderType,
         SpecializedRenderPipeline, SpecializedRenderPipelines, TextureFormat,
@@ -50,7 +50,7 @@ pub struct InfiniteGridPlugin;
 
 impl Plugin for InfiniteGridPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "infinite_grid.wgsl");
+        embedded_asset!(app, "infinite_grid.wesl");
         app.register_type::<InfiniteGrid>()
             .register_type::<InfiniteGridSettings>();
     }
@@ -93,14 +93,14 @@ impl Plugin for InfiniteGridPlugin {
 // the uniform, the draw command and the phase item below.
 pub use renzora::grid::{InfiniteGrid, InfiniteGridSettings};
 
-#[derive(Debug, ShaderType)]
+#[derive(Debug, Clone, PartialEq, ShaderType)]
 struct InfiniteGridUniform {
     rot_matrix: Mat3,
     offset: Vec3,
     normal: Vec3,
 }
 
-#[derive(Debug, ShaderType)]
+#[derive(Debug, Clone, PartialEq, ShaderType)]
 struct InfiniteGridSettingsUniform {
     scale: f32,
     // 1 / fadeout_distance
@@ -130,6 +130,10 @@ impl InfiniteGridSettingsUniform {
 #[derive(Resource, Default)]
 struct InfiniteGridUniforms {
     uniforms: DynamicUniformBuffer<InfiniteGridUniform>,
+    /// What was last uploaded, per grid and per camera override. When this
+    /// frame's values match, nothing is rewritten; see [`prepare_infinite_grids`].
+    uploaded: Vec<(Entity, InfiniteGridUniform, InfiniteGridSettingsUniform)>,
+    uploaded_cameras: Vec<(Entity, InfiniteGridSettingsUniform)>,
 }
 
 #[derive(Resource, Default)]
@@ -148,23 +152,30 @@ struct PerCameraSettingsUniformOffset {
     offset: u32,
 }
 
+/// The grid's uniform bind group, kept until either buffer is reallocated.
+/// `buffers` are the ids it was built against.
 #[derive(Resource)]
 struct InfiniteGridBindGroup {
     value: BindGroup,
+    buffers: (BufferId, BufferId),
 }
 
-#[derive(Component)]
-struct ViewBindGroup {
+/// One view bind group shared by every view. All views live in the same
+/// `ViewUniforms` buffer and are told apart by the dynamic offset at draw time,
+/// so a per-view bind group (which this used to create for every view, shadow
+/// cascades included, on every frame) bought nothing.
+#[derive(Resource)]
+struct InfiniteGridViewBindGroup {
     value: BindGroup,
+    buffer: BufferId,
 }
 
 struct DrawInfiniteGridCommand;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawInfiniteGridCommand {
-    type Param = SRes<InfiniteGridBindGroup>;
+    type Param = (SRes<InfiniteGridBindGroup>, SRes<InfiniteGridViewBindGroup>);
     type ViewQuery = (
         Read<ViewUniformOffset>,
-        Read<ViewBindGroup>,
         Option<Read<PerCameraSettingsUniformOffset>>,
     );
     type ItemQuery = Read<InfiniteGridUniformOffsets>;
@@ -172,20 +183,16 @@ impl<P: PhaseItem> RenderCommand<P> for DrawInfiniteGridCommand {
     #[inline]
     fn render<'w>(
         _item: &P,
-        (view_uniform, view_bind_group, camera_settings_offset): ROQueryItem<
-            'w,
-            '_,
-            Self::ViewQuery,
-        >,
+        (view_uniform, camera_settings_offset): ROQueryItem<'w, '_, Self::ViewQuery>,
         maybe_base_offsets: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        bind_group: SystemParamItem<'w, '_, Self::Param>,
+        (bind_group, view_bind_group): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let Some(base_offsets) = maybe_base_offsets else {
             bevy::log::warn!("InfiniteGridUniformOffsets missing");
             return RenderCommandResult::Skip;
         };
-        pass.set_bind_group(0, &view_bind_group.value, &[view_uniform.offset]);
+        pass.set_bind_group(0, &view_bind_group.into_inner().value, &[view_uniform.offset]);
         pass.set_bind_group(
             1,
             &bind_group.into_inner().value,
@@ -209,21 +216,25 @@ fn prepare_view_bind_groups(
     view_uniforms: Res<ViewUniforms>,
     pipeline: Res<InfiniteGridPipeline>,
     pipeline_cache: Res<PipelineCache>,
-    views: Query<Entity, With<ViewUniformOffset>>,
+    existing: Option<Res<InfiniteGridViewBindGroup>>,
 ) {
-    let Some(binding) = view_uniforms.uniforms.binding() else {
+    let (Some(binding), Some(buffer)) =
+        (view_uniforms.uniforms.binding(), view_uniforms.uniforms.buffer())
+    else {
         return;
     };
-    for entity in views.iter() {
-        let bind_group = render_device.create_bind_group(
-            "infinite_grid_view_bind_group",
-            &pipeline_cache.get_bind_group_layout(&pipeline.view_layout),
-            &BindGroupEntries::single(binding.clone()),
-        );
-        commands
-            .entity(entity)
-            .insert(ViewBindGroup { value: bind_group });
+    if existing.is_some_and(|e| e.buffer == buffer.id()) {
+        return;
     }
+    let bind_group = render_device.create_bind_group(
+        "infinite_grid_view_bind_group",
+        &pipeline_cache.get_bind_group_layout(&pipeline.view_layout),
+        &BindGroupEntries::single(binding),
+    );
+    commands.insert_resource(InfiniteGridViewBindGroup {
+        value: bind_group,
+        buffer: buffer.id(),
+    });
 }
 
 /// What [`extract_infinite_grids`] reads off one grid entity. A named alias only
@@ -303,46 +314,81 @@ fn extract_per_camera_grid_settings(
 #[derive(Component, Clone, Default)]
 pub struct GridLayers(pub RenderLayers);
 
+/// Upload each grid's position and settings, and each camera override.
+///
+/// Skips everything when this frame's values equal what was last uploaded and
+/// every entity still carries its offsets. The grid almost never moves, and
+/// rewriting both buffers and re-inserting every offset component each frame
+/// was measured at 3.4 ms of render thread, nearly all of it waiting on the
+/// render queue's lock behind other prepare systems.
+#[allow(clippy::type_complexity)]
 fn prepare_infinite_grids(
     mut commands: Commands,
     // `Without<ExtractedView>` so a camera carrying a per-view `InfiniteGridSettings`
     // override isn't itself treated as a grid *instance* (it has both a transform
     // and the settings). Cameras are handled by the `cameras` query below.
-    grids: Query<(Entity, &GlobalTransform, &InfiniteGridSettings), Without<ExtractedView>>,
-    cameras: Query<(Entity, &InfiniteGridSettings), With<ExtractedView>>,
+    grids: Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &InfiniteGridSettings,
+            Has<InfiniteGridUniformOffsets>,
+        ),
+        Without<ExtractedView>,
+    >,
+    cameras: Query<
+        (Entity, &InfiniteGridSettings, Has<PerCameraSettingsUniformOffset>),
+        With<ExtractedView>,
+    >,
     mut position_uniforms: ResMut<InfiniteGridUniforms>,
     mut settings_uniforms: ResMut<InfiniteGridDisplaySettingsUniforms>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
+    let grid_values: Vec<_> = grids
+        .iter()
+        .map(|(entity, transform, settings, _)| {
+            let t = transform.compute_transform();
+            let position = InfiniteGridUniform {
+                rot_matrix: Mat3::from_quat(t.rotation.inverse()),
+                offset: transform.translation(),
+                normal: *transform.up(),
+            };
+            (entity, position, InfiniteGridSettingsUniform::from_settings(settings))
+        })
+        .collect();
+    let camera_values: Vec<_> = cameras
+        .iter()
+        .map(|(entity, settings, _)| (entity, InfiniteGridSettingsUniform::from_settings(settings)))
+        .collect();
+
+    let offsets_present = grids.iter().all(|(.., has)| has) && cameras.iter().all(|(.., has)| has);
+    if offsets_present
+        && position_uniforms.uniforms.buffer().is_some()
+        && grid_values == position_uniforms.uploaded
+        && camera_values == position_uniforms.uploaded_cameras
+    {
+        return;
+    }
+
     position_uniforms.uniforms.clear();
     settings_uniforms.uniforms.clear();
-    for (entity, transform, settings) in &grids {
-        let t = transform.compute_transform();
-        let offset = transform.translation();
-        let normal = transform.up();
-        let rot_matrix = Mat3::from_quat(t.rotation.inverse());
-        commands.entity(entity).insert(InfiniteGridUniformOffsets {
-            position_offset: position_uniforms.uniforms.push(&InfiniteGridUniform {
-                rot_matrix,
-                offset,
-                normal: *normal,
-            }),
-            settings_offset: settings_uniforms
-                .uniforms
-                .push(&InfiniteGridSettingsUniform::from_settings(settings)),
+    for (entity, position, settings) in &grid_values {
+        commands.entity(*entity).insert(InfiniteGridUniformOffsets {
+            position_offset: position_uniforms.uniforms.push(position),
+            settings_offset: settings_uniforms.uniforms.push(settings),
         });
     }
 
-    for (entity, settings) in &cameras {
+    for (entity, settings) in &camera_values {
         commands
-            .entity(entity)
+            .entity(*entity)
             .insert(PerCameraSettingsUniformOffset {
-                offset: settings_uniforms
-                    .uniforms
-                    .push(&InfiniteGridSettingsUniform::from_settings(settings)),
+                offset: settings_uniforms.uniforms.push(settings),
             });
     }
+    position_uniforms.uploaded = grid_values;
+    position_uniforms.uploaded_cameras = camera_values;
 
     position_uniforms
         .uniforms
@@ -360,6 +406,7 @@ fn prepare_bind_groups_for_infinite_grids(
     pipeline: Res<InfiniteGridPipeline>,
     pipeline_cache: Res<PipelineCache>,
     render_device: Res<RenderDevice>,
+    existing: Option<Res<InfiniteGridBindGroup>>,
 ) {
     let Some((infinite_grid_uniform_binding, settings_binding)) = infinite_grid_uniforms
         .uniforms
@@ -368,6 +415,19 @@ fn prepare_bind_groups_for_infinite_grids(
     else {
         return;
     };
+    let Some(buffers) = infinite_grid_uniforms
+        .uniforms
+        .buffer()
+        .zip(settings_uniforms.uniforms.buffer())
+        .map(|(a, b)| (a.id(), b.id()))
+    else {
+        return;
+    };
+    // Rewriting a buffer's contents keeps the bind group valid; only a
+    // reallocation (the buffer outgrowing its capacity) needs a new one.
+    if existing.is_some_and(|e| e.buffers == buffers) {
+        return;
+    }
 
     let bind_group = render_device.create_bind_group(
         "infinite_grid_bind_group",
@@ -377,7 +437,10 @@ fn prepare_bind_groups_for_infinite_grids(
             settings_binding.clone(),
         )),
     );
-    commands.insert_resource(InfiniteGridBindGroup { value: bind_group });
+    commands.insert_resource(InfiniteGridBindGroup {
+        value: bind_group,
+        buffers,
+    });
 }
 
 fn queue_infinite_grids(
@@ -507,7 +570,7 @@ impl FromWorld for InfiniteGridPipeline {
                 ),
             ),
         );
-        let shader = load_embedded_asset!(world.resource::<AssetServer>(), "infinite_grid.wgsl");
+        let shader = load_embedded_asset!(world.resource::<AssetServer>(), "infinite_grid.wesl");
         let fullscreen_shader = world.resource::<FullscreenShader>().clone();
 
         Self {

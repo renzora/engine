@@ -1,0 +1,42 @@
+# Vendored from crates.io `bevy_args` 4.0.0 (MIT, github.com/mosure/bevy_args)
+# for the Bevy 0.20 port: no published release supports 0.20 yet, and
+# `bevy_gaussian_splatting` needs it. Changes from upstream: bevy taken from
+# the workspace (0.20) so the graph holds one Bevy; examples and profiles
+# dropped. Excluded from CI test/clippy like the other vendored crates.
+[package]
+edition = "2021"
+name = "bevy_args"
+version = "4.0.0"
+authors = ["mosure <mitchell@mosure.me>"]
+description = "bevy plugin to parse command line arguments and URL query parameters"
+license = "MIT"
+repository = "https://github.com/mosure/bevy_args"
+
+[features]
+bevy = ["dep:bevy"]
+default = ["bevy"]
+
+[lib]
+name = "bevy_args"
+path = "src/lib.rs"
+
+[dependencies]
+bevy = { workspace = true, optional = true }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Location",
+    "Node",
+    "Window",
+]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"

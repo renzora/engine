@@ -43,6 +43,7 @@ impl Default for XrProjection {
 
 /// Marker component for an XR view. It is the backends responsibility to update this.
 #[derive(Clone, Copy, Component, ExtractComponent, Debug, Default)]
+#[extract_app(bevy_render::RenderApp)]
 #[require(Camera3d, XrTracker)]
 pub struct XrCamera(pub u32);
 

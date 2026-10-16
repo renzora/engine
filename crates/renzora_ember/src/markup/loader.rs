@@ -382,7 +382,7 @@ fn apply_xnode_to(
                 password,
                 ctx.host,
             ));
-        commands.entity(entity).insert(Button);
+        commands.entity(entity).insert(crate::game_ui::components::UiButton);
     } else if is_icon_node(node) {
         // `<icon>` — styled like a node here; the glyph + Phosphor font are
         // applied later by `icons::apply_icons` (stamped below where the font
@@ -464,10 +464,10 @@ fn apply_xnode_to(
     // the adjacent corners (top→top_left, right→top_right, …) — same mapping
     // bevy_hui's apply_computed uses.
     if let Some(r) = border_radius_rect {
-        layout.border_radius.top_left = r.top;
-        layout.border_radius.top_right = r.right;
-        layout.border_radius.bottom_right = r.bottom;
-        layout.border_radius.bottom_left = r.left;
+        layout.border_radius.top_left = r.top.into();
+        layout.border_radius.top_right = r.right.into();
+        layout.border_radius.bottom_right = r.bottom.into();
+        layout.border_radius.bottom_left = r.left.into();
     }
 
     // Capture the authored display before `layout` is moved, so a `show=`
@@ -494,7 +494,7 @@ fn apply_xnode_to(
             target: target.clone(),
             host: ctx.host,
         });
-        ec.insert(Button);
+        ec.insert(crate::game_ui::components::UiButton);
     }
     if let Some(target) = defs.get("drag_value") {
         let min = defs.get("drag_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
@@ -505,7 +505,7 @@ fn apply_xnode_to(
             max,
             host: ctx.host,
         });
-        ec.insert(Button);
+        ec.insert(crate::game_ui::components::UiButton);
         // `RelativeCursorPosition` is auto-updated by bevy_ui's focus system and
         // gives the cursor's 0..1 position within the node — what the drag reads.
         ec.insert(bevy::ui::RelativeCursorPosition::default());
@@ -569,7 +569,7 @@ fn apply_xnode_to(
         ec.insert(crate::markup::widgets::Disclose {
             target: target.clone(),
         });
-        ec.insert(Button);
+        ec.insert(crate::game_ui::components::UiButton);
     }
 
     // `<icon name="...">` — stamp the Icon; the icons system renders the glyph
@@ -680,7 +680,7 @@ fn apply_xnode_to(
     // item entity inside a `<for>`). Needs Button for Interaction.
     if defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
         ec.insert(crate::markup::dnd::DragItem { payload: ctx.host });
-        ec.insert(Button);
+        ec.insert(crate::game_ui::components::UiButton);
         // Pass so the item still receives Interaction (for pickup) but doesn't
         // block the drop zone beneath it from detecting the cursor.
         ec.insert(bevy::ui::FocusPolicy::Pass);
@@ -785,7 +785,7 @@ fn apply_xnode_to(
 
     match &node.node_type {
         NodeType::Button => {
-            ec.insert(Button);
+            ec.insert(crate::game_ui::components::UiButton);
         }
         NodeType::Text => {
             // `<text>HERE</text>`: text content lives in the template's slot

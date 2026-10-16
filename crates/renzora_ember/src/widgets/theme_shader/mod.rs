@@ -40,11 +40,12 @@ use bevy::ui_render::UiMaterialPlugin;
 
 use crate::theme::{accent, text_primary, window_bg};
 
-/// Built-in animated fallback (matrix rain), compiled in.
-const BUILTIN_WGSL: &str = include_str!("matrix_rain.wgsl");
+/// Built-in animated fallback (matrix rain), compiled in. WESL: it reaches the
+/// GPU through `renzora::shader_source`, which recognises the `import`.
+const BUILTIN_WGSL: &str = include_str!("matrix_rain.wesl");
 /// Built-in image-display shader (cover-fits the theme image), for surfaces that
 /// set an image but no shader of their own.
-const IMAGE_WGSL: &str = include_str!("theme_image.wgsl");
+const IMAGE_WGSL: &str = include_str!("theme_image.wesl");
 
 /// Change-keys for the two built-in sources (custom shaders hash to >= 2).
 const BUILTIN_KEY: u64 = 0;
@@ -175,7 +176,12 @@ trait SurfaceMat: UiMaterial {
     const SURFACE: ThemeSurface;
     fn shader_handle() -> Handle<Shader>;
     fn make(time: f32, image: Handle<Image>) -> Self;
-    fn refresh(&mut self, time: f32);
+    /// Recolor from the theme, and advance the clock when `time` is given.
+    fn refresh(&mut self, time: Option<f32>);
+    /// Whether [`refresh`](Self::refresh) with these inputs would change
+    /// anything. Asked first because taking the asset mutably is what costs:
+    /// it re-prepares the material's buffer and bind group on the render thread.
+    fn is_stale(&self, time: Option<f32>, image: AssetId<Image>) -> bool;
     fn image_id(&self) -> AssetId<Image>;
     fn set_image(&mut self, image: Handle<Image>);
 }
@@ -220,14 +226,23 @@ macro_rules! surface_mat {
                     fg: Vec4::ONE,
                     image,
                 };
-                m.refresh(time);
+                m.refresh(Some(time));
                 m
             }
-            fn refresh(&mut self, time: f32) {
-                self.params = Vec4::new(time, 0.0, 0.0, 0.0);
+            fn refresh(&mut self, time: Option<f32>) {
+                if let Some(time) = time {
+                    self.params = Vec4::new(time, 0.0, 0.0, 0.0);
+                }
                 self.bg = rgb_f32(window_bg());
                 self.accent = rgb_f32(accent());
                 self.fg = rgb_f32(text_primary());
+            }
+            fn is_stale(&self, time: Option<f32>, image: AssetId<Image>) -> bool {
+                time.is_some_and(|t| self.params.x != t)
+                    || self.bg != rgb_f32(window_bg())
+                    || self.accent != rgb_f32(accent())
+                    || self.fg != rgb_f32(text_primary())
+                    || self.image.id() != image
             }
             fn image_id(&self) -> AssetId<Image> {
                 self.image.id()
@@ -305,7 +320,7 @@ fn drive_surface<M: SurfaceMat>(
         None => {
             let _ = shaders.insert(
                 &M::shader_handle(),
-                Shader::from_wgsl(BUILTIN_WGSL, "renzora_ember/theme_surface.wgsl"),
+                renzora::shader_source::shader(BUILTIN_WGSL, "renzora_ember/theme_surface.wgsl"),
             );
             let h = mats.add(M::make(time.elapsed_secs(), default_img.0.clone()));
             *shared = Some(h.clone());
@@ -323,24 +338,38 @@ fn drive_surface<M: SurfaceMat>(
             Some(SurfaceSource::Image) => IMAGE_WGSL.to_string(),
             _ => BUILTIN_WGSL.to_string(),
         };
+        // A theme folder's shader may be written in the pre-0.20 dialect;
+        // `shader_source` translates it so old themes keep working.
         let _ = shaders.insert(
             &M::shader_handle(),
-            Shader::from_wgsl(source, "renzora_ember/theme_surface.wgsl"),
+            renzora::shader_source::shader(source, "renzora_ember/theme_surface.wgsl"),
         );
         *applied = want_key;
     }
 
-    // Animate, recolor, and bind the surface's image (or the default) once/frame.
+    // Recolor and bind the surface's image (or the default), and advance the
+    // clock only for an animated shader that is actually on screen. This used to
+    // take every surface's material mutably on every frame, enabled or not,
+    // which re-prepared all five materials on the render thread each frame.
+    let enabled = state.is_some();
+    let animated = enabled
+        && !matches!(state.as_ref().map(|s| &s.1), Some(SurfaceSource::Image))
+        && attached.iter().any(|(_, surf)| surf.surface == M::SURFACE);
+    let clock = animated.then(|| time.elapsed_secs());
     let want_image = surface_image(M::SURFACE).unwrap_or_else(|| default_img.0.clone());
-    if let Some(mut m) = mats.get_mut(&handle) {
-        m.refresh(time.elapsed_secs());
-        if m.image_id() != want_image.id() {
-            m.set_image(want_image);
+    if mats
+        .get(&handle)
+        .is_some_and(|m| m.is_stale(clock, want_image.id()))
+    {
+        if let Some(mut m) = mats.get_mut(&handle) {
+            m.refresh(clock);
+            if m.image_id() != want_image.id() {
+                m.set_image(want_image);
+            }
         }
     }
 
     // Attach the shared material where this surface is enabled; drop it elsewhere.
-    let enabled = state.is_some();
     for (e, surf) in &unattached {
         if surf.surface == M::SURFACE && enabled {
             commands.entity(e).try_insert(MaterialNode(handle.clone()));

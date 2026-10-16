@@ -1,6 +1,7 @@
 pub mod config;
 pub mod github;
 mod chamber;
+mod effects;
 pub mod launcher;
 pub mod loading;
 mod loading_ui;
@@ -87,7 +88,7 @@ impl Plugin for SplashPlugin {
             )
             .add_systems(
                 OnEnter(SplashState::Loading),
-                (loading::log_loading_entered, maximize_for_editor),
+                (loading::log_loading_entered, size_for_editor),
             );
 
         // Dev shortcut: `--project <path>` skips the splash UI and jumps
@@ -257,7 +258,14 @@ fn apply_project_arg(mut commands: Commands) {
     }
 }
 
-/// Grow the window to fill the screen now that a project is opening.
+/// The window size a project opens at, in logical pixels. Smaller than 1080p
+/// on purpose, so it fits any desktop display with room around it, and the
+/// maximize button is one click away for anyone who wants the whole screen.
+#[cfg(not(target_arch = "wasm32"))]
+const EDITOR_WINDOW: (f32, f32) = (1600.0, 900.0);
+
+/// Grow the window to an editor-sized, centred window now that a project is
+/// opening.
 ///
 /// The editor window is *created* at `renzora_runtime::SPLASH_WINDOW` — a
 /// launcher-sized box in the middle of the screen — because that is the right
@@ -269,20 +277,36 @@ fn apply_project_arg(mut commands: Commands) {
 /// it play out inside the launcher-sized window only to snap open at the end
 /// reads as a stutter at exactly the point the user is waiting.
 ///
-/// A user who maximized the splash themselves gets a no-op, and a user who
-/// wants a smaller editor window can still resize it — nothing here runs again.
+/// This used to maximize. On a 49" 5120x1440 display that put the loading
+/// screen and every editor frame at 3.5x the pixels of 1080p, which nobody had
+/// asked for. A user who wants that clicks maximize; nothing here runs again.
+/// The size is clamped to 90% of the primary monitor so a small laptop screen
+/// still gets a window that fits.
 #[cfg(not(target_arch = "wasm32"))]
-fn maximize_for_editor(
+fn size_for_editor(
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+    monitors: Query<&bevy::window::Monitor, With<bevy::window::PrimaryMonitor>>,
 ) {
-    if let Ok(mut window) = windows.single_mut() {
-        window.set_maximized(true);
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    let (mut width, mut height) = EDITOR_WINDOW;
+    if let Some(monitor) = monitors.iter().next() {
+        let scale = monitor.scale_factor.max(0.5) as f32;
+        let max_w = monitor.physical_width as f32 / scale * 0.9;
+        let max_h = monitor.physical_height as f32 / scale * 0.9;
+        let fit = (max_w / width).min(max_h / height).min(1.0);
+        width *= fit;
+        height *= fit;
     }
+    window.resolution.set(width.round(), height.round());
+    window.position =
+        bevy::window::WindowPosition::Centered(bevy::window::MonitorSelection::Current);
 }
 
-/// The browser has no OS window to maximize; the canvas is sized by the page.
+/// The browser has no OS window to resize; the canvas is sized by the page.
 #[cfg(target_arch = "wasm32")]
-fn maximize_for_editor() {}
+fn size_for_editor() {}
 
 /// Marker resource: splash should immediately transition back to editor
 /// (e.g. project opened via File menu).

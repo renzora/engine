@@ -750,7 +750,7 @@ fn stamp_strip_click(stamp: Query<(&Interaction, &StampBtn), Changed<Interaction
 
 /// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
 fn auto_insert_collider_for_shape(
-    trigger: On<Insert, renzora::MeshPrimitive>,
+    trigger: On<Insert<renzora::MeshPrimitive>>,
     mut commands: Commands,
     query: Query<&renzora::MeshPrimitive, Without<CollisionShapeData>>,
 ) {

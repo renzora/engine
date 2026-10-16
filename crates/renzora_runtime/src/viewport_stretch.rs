@@ -214,7 +214,7 @@ fn redirect_game_cameras_to_offscreen(
 /// stretch resource doesn't exist yet at insert time, then the user
 /// hot-reloads project config).
 fn on_camera_2d_added_redirect(
-    trigger: On<Insert, Camera2d>,
+    trigger: On<Insert<Camera2d>>,
     stretch: Option<Res<ViewportStretchImage>>,
     cameras: Query<Option<&RenderLayers>, With<Camera2d>>,
     blit_cameras: Query<(), With<BlitCamera>>,

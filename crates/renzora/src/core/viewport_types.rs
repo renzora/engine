@@ -1126,6 +1126,17 @@ pub struct ViewportSettings {
     /// counter reflect actual render capacity at the cost of possible
     /// screen tearing.
     pub vsync: bool,
+    /// Render the viewport every frame (`true`), or only when the scene has
+    /// changed (`false`, the default).
+    ///
+    /// The editor UI and the 3D viewport share one renderer and one frame, so a
+    /// heavy scene used to drag every panel down to its frame rate. With this
+    /// off the viewport renders for a short settle window after something
+    /// changes, then holds its last image, and the UI runs at full speed while
+    /// nothing in the scene moves. Display > Render > Realtime turns it back on
+    /// for shader animation, particles and anything else that moves without the
+    /// scene changing. See `renzora_viewport::redraw`.
+    pub realtime: bool,
     /// Opacity (0–1) the transform gizmo fades to while a handle is being
     /// dragged. The handles render always-on-top, so at full opacity they hide
     /// whatever you're moving; fading them lets the object stay visible during
@@ -1195,6 +1206,7 @@ impl Default for ViewportSettings {
             pending_view_angle: None,
             pending_camera_home: false,
             vsync: true,
+            realtime: false,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
             gizmos_all_viewports: false,
@@ -1337,6 +1349,10 @@ pub struct PersistedViewportSettings {
     pub floor_y: f32,
     #[serde(default = "default_true")]
     pub vsync: bool,
+    /// Defaults off, the same as a fresh project: rendering on change is what
+    /// every project gets from now on.
+    #[serde(default)]
+    pub realtime: bool,
     #[serde(default = "default_gizmo_drag_opacity")]
     pub gizmo_drag_opacity: f32,
     /// Graphics-quality tier label (`"Low"` / `"Medium"` / `"High"`). Missing in
@@ -1414,6 +1430,7 @@ impl PersistedViewportSettings {
             floor_snap_enabled: sn.floor_snap_enabled,
             floor_y: sn.floor_y,
             vsync: s.vsync,
+            realtime: s.realtime,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
             graphics_quality: s.graphics_quality.label().to_string(),
             gizmos_all_viewports: s.gizmos_all_viewports,
@@ -1497,6 +1514,7 @@ impl PersistedViewportSettings {
             floor_y: self.floor_y,
         };
         s.vsync = self.vsync;
+        s.realtime = self.realtime;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
         s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
         s.gizmos_all_viewports = self.gizmos_all_viewports;
@@ -1643,6 +1661,8 @@ mod tests {
             pending_view_angle: None,
             pending_camera_home: false,
             vsync: false,
+            // Non-default (default is false) so the round-trip exercises it.
+            realtime: true,
             gizmo_drag_opacity: 0.6,
             // Non-default tier (default is Medium) so the round-trip exercises it.
             graphics_quality: GraphicsQuality::High,
@@ -1697,6 +1717,7 @@ mod tests {
         assert_eq!(original.camera, restored.camera);
         assert_eq!(original.snap, restored.snap);
         assert_eq!(original.vsync, restored.vsync);
+        assert_eq!(original.realtime, restored.realtime);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
         assert_eq!(original.graphics_quality, restored.graphics_quality);
         assert_eq!(

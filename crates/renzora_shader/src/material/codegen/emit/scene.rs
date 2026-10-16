@@ -108,12 +108,21 @@ impl Ctx<'_> {
                 // For reliable "sky-in-refraction", use `scene/env_map_sample`
                 // instead — that samples the env cubemap directly and works
                 // regardless of transmission pipeline state.
+                //
+                // Since Bevy 0.20 the texture is not even bound unless the
+                // pipeline sets `VIEW_TRANSMISSION_TEXTURE`, which needs the
+                // camera to carry `ScreenSpaceTransmission`. Without it the
+                // node reads black instead of failing to compile.
                 self.uses_transmission = true;
                 let uv = self.input(node, "uv");
                 let v = self.next_var("scenec");
+                self.emit("#ifdef VIEW_TRANSMISSION_TEXTURE".to_string());
                 self.emit(format!(
                     "    let {v} = textureSample(view_transmission_texture, view_transmission_sampler, {uv});"
                 ));
+                self.emit("#else".to_string());
+                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }

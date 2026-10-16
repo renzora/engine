@@ -164,6 +164,16 @@ pub(crate) fn tab_viewport(
         |w, &v| w.resource_mut::<ViewportSettings>().vsync = v,
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.vsync"), t);
+    // The same switch as Display > Render > Realtime in the viewport toolbar.
+    // It belongs with the frame-rate settings too: off is what keeps a heavy
+    // scene from dragging the whole editor down while nothing moves.
+    let t = ctl_toggle(
+        commands,
+        vp.realtime,
+        |w| w.resource::<ViewportSettings>().realtime,
+        |w, &v| w.resource_mut::<ViewportSettings>().realtime = v,
+    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.realtime_viewport"), t);
 
     let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.category.camera"), A_PURPLE);
     commands.entity(col).add_child(sec);

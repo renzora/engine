@@ -39,7 +39,7 @@ struct CodeContentRoot;
 /// Text/code extensions accepted by drop-to-open. Mirrors the asset browser's
 /// code-editor-backed kinds.
 const CODE_EXTENSIONS: &[&str] = &[
-    "lua", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "htm", "css", "bsn",
+    "lua", "rs", "py", "js", "ts", "wgsl", "wesl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "htm", "css", "bsn",
 ];
 
 /// A tab chip → selects open_files[idx] on click.

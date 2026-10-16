@@ -41,13 +41,16 @@ pub struct PipelinePlugin;
 
 impl Plugin for PipelinePlugin {
     fn build(&self, app: &mut App) {
-        load_shader_library!(app, "shaders/types.wgsl");
-        load_shader_library!(app, "shaders/utils.wgsl");
+        // WESL since the Bevy 0.20 port. The libraries are importable at their
+        // embedded path, `bevy_firefly::shaders::types` / `::utils`, which
+        // replaced the old `#define_import_path firefly::types` names.
+        load_shader_library!(app, "shaders/types.wesl");
+        load_shader_library!(app, "shaders/utils.wesl");
 
-        embedded_asset!(app, "shaders/create_lightmap.wgsl");
-        embedded_asset!(app, "shaders/apply_lightmap.wgsl");
-        embedded_asset!(app, "shaders/combine_lightmaps.wgsl");
-        embedded_asset!(app, "shaders/sprite.wgsl");
+        embedded_asset!(app, "shaders/create_lightmap.wesl");
+        embedded_asset!(app, "shaders/apply_lightmap.wesl");
+        embedded_asset!(app, "shaders/combine_lightmaps.wesl");
+        embedded_asset!(app, "shaders/sprite.wesl");
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -144,7 +147,7 @@ fn init_lightmap_creation_pipeline(
         lut_layout,
         sampler,
         vertex_state,
-        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/create_lightmap.wgsl"),
+        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/create_lightmap.wesl"),
     });
 }
 
@@ -236,7 +239,9 @@ impl SpecializedRenderPipeline for LightmapCreationPipeline {
             let method = key.intersection(LightPipelineKey::TONEMAP_METHOD_RESERVED_BITS);
 
             if method == LightPipelineKey::TONEMAP_METHOD_NONE {
-                shader_defs.push("TONEMAP_METHOD_NONE".into());
+                // Bevy 0.20's tonemapping shader calls the no-curve path
+                // `TONEMAP_METHOD_LINEAR`; there is no `_NONE` flag any more.
+                shader_defs.push("TONEMAP_METHOD_LINEAR".into());
             } else if method == LightPipelineKey::TONEMAP_METHOD_REINHARD {
                 shader_defs.push("TONEMAP_METHOD_REINHARD".into());
             } else if method == LightPipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE {
@@ -280,6 +285,7 @@ impl SpecializedRenderPipeline for LightmapCreationPipeline {
                 })],
                 shader_defs,
                 entry_point: Some(Cow::Borrowed("fragment")),
+                ..default()
             }),
             primitive: default(),
             depth_stencil: default(),
@@ -377,7 +383,7 @@ fn init_lightmap_application_pipeline(
         filtering_sampler,
         non_filtering_sampler,
         vertex_state,
-        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/apply_lightmap.wgsl"),
+        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/apply_lightmap.wesl"),
     });
 }
 
@@ -414,6 +420,7 @@ impl SpecializedRenderPipeline for LightmapApplicationPipeline {
                 })],
                 shader_defs,
                 entry_point: Some(Cow::Borrowed("fragment")),
+                ..default()
             }),
             primitive: default(),
             depth_stencil: default(),
@@ -463,7 +470,7 @@ fn init_lightmap_combination_pipeline(
         layout,
         sampler,
         vertex_state,
-        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/combine_lightmaps.wgsl"),
+        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/combine_lightmaps.wesl"),
     });
 }
 
@@ -485,6 +492,7 @@ impl SpecializedRenderPipeline for LightmapCombinationPipeline {
                 })],
                 shader_defs: default(),
                 entry_point: Some(Cow::Borrowed("fragment")),
+                ..default()
             }),
             primitive: default(),
             depth_stencil: default(),
@@ -546,7 +554,7 @@ fn init_sprite_pipeline(mut commands: Commands, asset_server: Res<AssetServer>) 
     commands.insert_resource(SpritePipeline {
         view_layout,
         material_layout,
-        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/sprite.wgsl"),
+        shader: load_embedded_asset!(asset_server.as_ref(), "shaders/sprite.wesl"),
     });
 }
 
@@ -569,7 +577,8 @@ impl SpecializedRenderPipeline for SpritePipeline {
             let method = key.intersection(SpritePipelineKey::TONEMAP_METHOD_RESERVED_BITS);
 
             if method == SpritePipelineKey::TONEMAP_METHOD_NONE {
-                shader_defs.push("TONEMAP_METHOD_NONE".into());
+                // See the lightmap pipeline: 0.20 names this path `_LINEAR`.
+                shader_defs.push("TONEMAP_METHOD_LINEAR".into());
             } else if method == SpritePipelineKey::TONEMAP_METHOD_REINHARD {
                 shader_defs.push("TONEMAP_METHOD_REINHARD".into());
             } else if method == SpritePipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE {
@@ -653,6 +662,7 @@ impl SpecializedRenderPipeline for SpritePipeline {
                 entry_point: Some("vertex".into()),
                 shader_defs: shader_defs.clone(),
                 buffers: vec![instance_rate_vertex_buffer_layout],
+                ..default()
             },
             fragment: Some(FragmentState {
                 shader: self.shader.clone(),
@@ -670,6 +680,7 @@ impl SpecializedRenderPipeline for SpritePipeline {
                         write_mask: ColorWrites::ALL,
                     }),
                 ],
+                ..default()
             }),
             layout: vec![self.view_layout.clone(), self.material_layout.clone()],
             primitive: PrimitiveState {

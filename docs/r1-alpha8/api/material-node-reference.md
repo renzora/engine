@@ -12,8 +12,9 @@ All nodes live in `renzora_shader` — declared in `material/nodes.rs` (`ALL_NOD
 and compiled to WGSL in `material/codegen.rs`. There are **13 categories** and
 **159 node types**. Every generated fragment shader — one synthetic graph per
 node type, plus every `.material` shipped under `assets/materials/` — is
-compiled in the test suite the way the engine compiles it: naga_oil's composer
-over bevy_pbr's own shader sources, then naga. Imports resolve to the real
+compiled in the test suite the way the engine compiles it: translated from the
+`#import` dialect codegen writes to WESL, compiled by the WESL compiler against
+bevy_pbr's own shader sources, then validated by naga. Imports resolve to the real
 thing, so a node whose codegen drifts invalid is a CI failure rather than a
 silent runtime fallback.
 

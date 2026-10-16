@@ -54,7 +54,7 @@ impl WedgeMaterial {
 
 impl UiMaterial for WedgeMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/game_ui/shapes/wedge.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/wedge.wesl".into()
     }
 }
 

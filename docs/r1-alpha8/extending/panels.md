@@ -44,7 +44,7 @@ Add it to `Cargo.toml` anyway, so rust-analyzer can resolve the paths while you 
 
 ```toml
 [dependencies]
-bevy = "0.19"
+bevy = "0.20"
 renzora = { path = "../../crates/renzora" }
 renzora_ember = { path = "../../crates/renzora_ember" }
 ```
@@ -276,9 +276,11 @@ fn my_panel_system(q: Query<&Interaction, (With<ResetButton>, Changed<Interactio
 
 `Changed<Interaction>` matters: `Pressed` persists for as long as the mouse is held, so without it the action fires every frame of the click.
 
+Bevy 0.20 deprecates `Interaction` in favour of the `Hovered` and `Pressed` components. It still works and the whole editor is built on it, so expect a deprecation warning rather than a break; ember will move over in one go.
+
 Two things that will catch you once:
 
-**Give every interactive node a `FocusPolicy`.** In Bevy 0.19 the default is `Pass`, so an unmarked node lets a press fall through to whatever is behind it — including the viewport, which will interpret it as a click in the scene.
+**Give every interactive node a `FocusPolicy`.** In Bevy (0.19 and 0.20) the default is `Pass`, so an unmarked node lets a press fall through to whatever is behind it, including the viewport, which will interpret it as a click in the scene.
 
 **Gate empty-space actions on `ScrollbarBusy`.** If your panel does something on a click in its background, that fires while the user is dragging your scrollbar unless you check.
 
@@ -432,7 +434,7 @@ The same reasoning is why `renzora` is a shared image, and why the loader refuse
 
 **Don't query `Query<&Window>.single()` unfiltered.** With a torn-off dock window present there is more than one, and the query panics or silently picks the wrong one.
 
-**UI entities have no `GlobalTransform` in Bevy 0.19.** A system that queries one compiles and then never runs, because nothing matches. Use `UiGlobalTransform`.
+**UI entities have no `GlobalTransform` in Bevy 0.19 and later.** A system that queries one compiles and then never runs, because nothing matches. Use `UiGlobalTransform`.
 
 **Don't order systems against `screen_menu_dismiss`.** It runs where it does for a reason and ordering against it deadlocks the dismissal.
 

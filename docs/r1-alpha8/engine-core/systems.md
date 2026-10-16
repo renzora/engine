@@ -1,6 +1,6 @@
 # Writing Systems
 
-Systems hold all the logic in a Renzora game; they are plain Bevy 0.19 functions that a plugin registers on a schedule.
+Systems hold all the logic in a Renzora game; they are plain Bevy 0.20 functions that a plugin registers on a schedule.
 
 ## Systems live in plugins
 
@@ -246,7 +246,7 @@ fn regenerate_health(
 }
 ```
 
-Despawn entities after a timer. In Bevy 0.19 `despawn()` is **recursive by default** — it removes the entity and its children, so there is no separate `despawn_recursive()`:
+Despawn entities after a timer. Since Bevy 0.19 `despawn()` is **recursive by default**: it removes the entity and its children, so there is no separate `despawn_recursive()`:
 
 ```rust
 #[derive(Component)]

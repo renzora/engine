@@ -42,9 +42,9 @@ polyanya = { path = "../polyanya", features = ["serde"] }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 
 [dependencies.avian3d]
-version = "0.7"
+workspace = true
 default-features = false
-features = ["3d", "f32", "default-collider", "parry-f32"]
+features = ["3d","default-collider", "parry-f32"]
 optional = true
 
 # Lua types referenced by the NavScriptExtension impl.

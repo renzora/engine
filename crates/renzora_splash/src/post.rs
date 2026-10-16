@@ -3,7 +3,7 @@
 //! The splash background (the Light Chamber render — see `chamber.rs`) is
 //! rendered to an offscreen image by a dedicated `Camera2d` (mirroring
 //! `renzora_game_ui_editor`'s `canvas_render`). A fullscreen [`PostView`] node on
-//! the main camera then samples that image through `post.wgsl`, which does the
+//! the main camera then samples that image through `post.wesl`, which does the
 //! lens/film grade — halation, lateral chromatic aberration, vignette, grain —
 //! effects a UI overlay can't do because it can't read what's behind it. The
 //! interactive launcher UI stays on the main camera, on top of the post result, so
@@ -61,13 +61,13 @@ pub(crate) struct PostMaterial {
 
 impl UiMaterial for PostMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/post.wgsl".into()
+        "embedded://renzora_splash/post.wesl".into()
     }
 }
 
 pub(crate) fn register(app: &mut App) {
-    bevy::asset::embedded_asset!(app, "post.wgsl");
-    bevy::asset::embedded_asset!(app, "haze.wgsl");
+    bevy::asset::embedded_asset!(app, "post.wesl");
+    bevy::asset::embedded_asset!(app, "haze.wesl");
     app.add_plugins(UiMaterialPlugin::<PostMaterial>::default());
     app.add_plugins(UiMaterialPlugin::<HazeMaterial>::default());
     app.add_systems(Startup, setup_post);
@@ -140,9 +140,12 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 fn gate_post_camera(
     state: Res<State<SplashState>>,
     integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    effects: crate::effects::SplashEffects,
     mut cam: Query<&mut Camera, With<PostCamera>>,
 ) {
-    let cinematic_ok = !integrated.is_some_and(|g| g.yes);
+    // Must agree with `chamber::manage_chamber`: this camera renders the
+    // cinematic, so it is off whenever the cinematic is.
+    let cinematic_ok = !integrated.is_some_and(|g| g.yes) && !effects.reduced();
     let want = matches!(state.get(), SplashState::Splash) && cinematic_ok;
     for mut c in &mut cam {
         if c.is_active != want {
@@ -212,7 +215,7 @@ pub(crate) struct HazeMaterial {
 
 impl UiMaterial for HazeMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/haze.wgsl".into()
+        "embedded://renzora_splash/haze.wesl".into()
     }
 }
 

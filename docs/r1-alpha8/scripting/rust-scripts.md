@@ -53,9 +53,19 @@ That last one is how you test a single script without running the whole game.
 
 Saving rebuilds the script. The compile runs off the main thread, so the editor does not freeze.
 
+Opening a project builds its scripts the same way, in the background. A script that has not changed since the last launch is not compiled again: its previous build is reused, as long as the engine has not been updated since. Scripts that do need a build finish a moment after the project opens, so pressing Play in the first second or two can start before they are ready.
+
 Compile errors, panics and a missing SDK all appear in the **Console**, with the line numbers pointing at your file.
 
 A script that fails to compile is not retried until you edit it again, so one error does not turn into a scrolling wall.
+
+A script that **panics** while running is not a crash. The editor catches it, and the Console names the script, the panic message and the line in your file:
+
+```
+panics_on_purpose.rs panicked on 2984v0: index out of bounds: the len is 0 but the index is 3 (at panics_on_purpose.rs:8:18)
+```
+
+The panic stops that call, not the editor, and the rest of the scene keeps running. A script that panics every frame reports every frame, and the Console folds the repeats into a count. Fix the file and save, and it picks up the new build.
 
 ## What you can reach
 

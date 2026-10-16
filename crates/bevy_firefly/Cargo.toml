@@ -9,6 +9,17 @@
 #   - `FireflyGizmosPlugin` put behind a (default-off) `gizmos` feature, so the
 #     crate still compiles when a lean export strips bevy's `bevy_gizmos`.
 #   - examples/assets/dev-dependencies dropped (not vendored).
+#   - Ported to Bevy 0.20 (no upstream release for it yet):
+#     - shaders are WESL (`src/shaders/*.wesl`); the libraries moved from
+#       `firefly::types`/`firefly::utils` to `bevy_firefly::shaders::*`, and the
+#       no-curve tonemap flag is `TONEMAP_METHOD_LINEAR` (also used for the new
+#       `Tonemapping::Linear`).
+#     - `src/texture_slice.rs` carries 0.19's CPU sprite slicing, which 0.20
+#       removed from `bevy_sprite`; `SpriteSystems` ordering dropped with it.
+#     - compositing space read from `ResolvedCompositingSpace` on the view;
+#       `#[extract_app(RenderApp)]` on extracted components; `On<Remove<T>>`
+#       observers; `bevy::shape` bounding volumes; `..default()` for the new
+#       pipeline-state `constants` field.
 # Consumed by `renzora_light2d`; excluded from CI test/clippy like the other
 # vendored ecosystem crates.
 [package]
@@ -41,7 +52,7 @@ serde = ["dep:serde", "bevy/serialize"]
 # unconditionally): `Gizmos` only exists when bevy is built with `bevy_gizmos`,
 # and the lean exporter strips that for a shipped game, so an always-on debug
 # plugin here broke every 2D export with debug drawing turned off. Nothing in
-# renzora adds the plugin — `renzora_light2d` draws its own selection outlines —
+# renzora adds the plugin (`renzora_light2d` draws its own selection outlines),
 # so this stays off until someone asks for it, and asking for it also asks for
 # the bevy feature it needs.
 gizmos = ["bevy/bevy_gizmos"]

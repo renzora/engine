@@ -13,7 +13,6 @@ use bevy::{
         view::{NoIndirectDrawing, RetainedViewEntity},
     },
     sprite::Anchor,
-    sprite_render::SpriteSystems,
 };
 
 use crate::{
@@ -52,7 +51,10 @@ impl Plugin for ExtractPlugin {
             (
                 extract_camera_phases,
                 cleanup_configless_cameras,
-                extract_sprites.in_set(SpriteSystems::ExtractSprites),
+                // Bevy 0.20 has no `SpriteSystems::ExtractSprites` set to join:
+                // its sprites extract as `Mesh2d` now. This system fills
+                // firefly's own `ExtractedSprites`, so it needs no ordering.
+                extract_sprites,
                 extract_sprite_events,
                 extract_world_data,
                 extract_lights,

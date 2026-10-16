@@ -360,7 +360,7 @@ impl<'w> DynamicSceneBuilder<'w> {
                         .reflect(original_entity)?;
 
                     let component =
-                        clone_reflect_value(component.as_partial_reflect(), type_registration);
+                        clone_reflect_value(component.as_partial_reflect(), type_registration)?;
 
                     entry.components.push(component);
                     Some(())

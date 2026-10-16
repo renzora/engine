@@ -2,7 +2,7 @@
 //! instance records the grass pipeline draws.
 //!
 //! This decides *where the blades are*, not what they look like: the blade's
-//! geometry is rebuilt from `@builtin(vertex_index)` in `grass.wgsl`, so nothing
+//! geometry is rebuilt from `@builtin(vertex_index)` in `grass.wesl`, so nothing
 //! here emits a vertex. Each blade costs one 48-byte [`GrassInstance`].
 
 use bevy::prelude::*;

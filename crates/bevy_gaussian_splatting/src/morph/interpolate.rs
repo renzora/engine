@@ -1,7 +1,7 @@
 use std::{any::TypeId, marker::PhantomData};
 
 use bevy::{
-    asset::{Assets, LoadState, load_internal_asset, uuid_handle},
+    asset::{Assets, LoadState, uuid_handle},
     core_pipeline::{Core3d, Core3dSystems, prepass::PreviousViewUniformOffset},
     prelude::*,
     render::{
@@ -59,11 +59,11 @@ where
             return;
         }
 
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             INTERPOLATE_SHADER_HANDLE,
-            "interpolate.wgsl",
-            Shader::from_wgsl
+            "interpolate.wesl",
+            "morph/interpolate"
         );
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -102,7 +102,7 @@ fn ensure_gaussian_interpolate_synced<R: PlanarSync>(
                 ?entity,
                 "adding SyncToRenderWorld to GaussianInterpolate entity"
             );
-            commands.entity(entity).insert(SyncToRenderWorld);
+            commands.entity(entity).insert(SyncToRenderWorld::default());
         }
     }
 }
@@ -213,6 +213,7 @@ where
                 shader_defs,
                 entry_point: Some("interpolate_gaussians".into()),
                 zero_initialize_workgroup_memory: true,
+                constants: Vec::new(),
             });
 
         Self {

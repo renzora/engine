@@ -23,14 +23,18 @@ members = [
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a
     # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
     # is its own vendored workspace.
+    "crates/bevy_args",
     "crates/bevy_firefly",
     "crates/bevy_gaussian_splatting",
+    "crates/bevy_interleave",
+    "crates/bevy_interleave_interface",
+    "crates/bevy_interleave_macros",
     "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_silk",
     "crates/vleue_navigator",
-    # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.32
-    # (bevy 0.19's glam). Upstream polyanya 0.16.1 is the latest and still pins
+    # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.33
+    # (bevy 0.20's glam). Upstream polyanya 0.16.1 is the latest and still pins
     # glam 0.30, which would otherwise clash with bevy's glam (two `Vec2` types).
     "crates/polyanya",
     "crates/bvh2d",
@@ -57,6 +61,13 @@ members = [
 # crate, warning in the ones with no such feature. The dlopen FFI path is gone,
 # so the allow is no longer needed.
 [workspace.lints.rust]
+# TEMPORARY, for one deprecation: Bevy 0.20 deprecated `bevy_ui::Interaction`
+# in favour of `picking::hover::Hovered` and `ui::Pressed`, and the editor UI
+# reads `Interaction` in about 2,350 places. Every other deprecation was fixed
+# when the workspace moved to 0.20, so this hides nothing else today. Moving
+# off `Interaction` is its own piece of work; remove this line when it is done,
+# and check for other deprecations before then, since this allow hides them too.
+deprecated = "allow"
 
 [workspace.dependencies]
 # `dynamic_linking` is intentionally NOT in workspace defaults — it pulls
@@ -82,7 +93,8 @@ members = [
 #   meshlet, meshlet_processor                    ENABLED below (experimental
 #                                                   virtual geometry)
 #   (bevy_solari IS enabled below — it backs the renzora_solari plugin.)
-#   dlss, force_disable_dlss                      NVIDIA proprietary SDK
+#   dlss, force_disable_dlss                      NVIDIA proprietary SDK; opt-in
+#                                                   via the `dlss` feature below
 #   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
 #     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
 #     bevy_ci_testing, bevy_debug_stepping,         all OFF — `trace_tracy` too
@@ -114,10 +126,10 @@ members = [
 #     explicit `GhostNode` marker — a bare component-less child was never traversed
 #     under either setting.
 #
-# SOURCE: Bevy 0.19 is published on crates.io. The `bevy` umbrella pulls its
-# sub-crates as matching 0.19.x registry deps, so the tree stays internally
-# consistent — one Bevy across the dlopen boundary.
-bevy = { version = "0.19", default-features = false, features = [
+# SOURCE: Bevy 0.20 is published on crates.io. The `bevy` umbrella pulls its
+# sub-crates as matching 0.20.x registry deps, so the tree stays internally
+# consistent: one Bevy across the dlopen boundary.
+bevy = { version = "0.20", default-features = false, features = [
     # ── The `2d` / `3d` / `ui` metas, EXPANDED LEAF BY LEAF ──────────────────
     # Bevy's default is the four metas `2d, 3d, ui, audio`. We take
     # `default-features = false` and re-add all but `audio` — Renzora's audio is
@@ -135,7 +147,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # claiming they had been dropped as unused: `sysinfo_plugin` (→ sysinfo),
     # `bevy_gilrs` (→ gilrs, gilrs-core) and `bevy_clipboard` (→ arboard).
     #
-    # This set is the exact union of `2d + 3d + ui` for Bevy 0.19.0, verified by
+    # This set is the exact union of `2d + 3d + ui` for Bevy 0.20.0, verified by
     # diffing the resolved feature list either side of the expansion. Keep it
     # exact: on a Bevy bump, re-derive it from that release's `Cargo.toml` — the
     # `2d`/`3d`/`ui` entries and the `default_app`, `default_platform`,
@@ -165,8 +177,9 @@ bevy = { version = "0.19", default-features = false, features = [
     # `scene` + `picking`
     "bevy_scene", "bevy_world_serialization",
     "bevy_picking", "mesh_picking", "sprite_picking", "ui_picking",
-    # `common_api` — the part 2d, 3d and ui share.
-    "bevy_animation", "bevy_camera", "bevy_color", "bevy_gizmos", "bevy_image",
+    # `common_api`: the part 2d, 3d and ui share. `bevy_curve` is new in 0.20,
+    # which split curves and easing (`EaseFunction`) out of `bevy_math`.
+    "bevy_animation", "bevy_camera", "bevy_color", "bevy_curve", "bevy_gizmos", "bevy_image",
     "bevy_mesh", "bevy_shader", "bevy_material", "bevy_text", "bevy_window", "png",
     # Render stack shared by all three.
     "bevy_render", "bevy_core_pipeline", "bevy_gizmos_render",
@@ -284,13 +297,20 @@ bevy = { version = "0.19", default-features = false, features = [
     # can go with it.
 ] }
 # Individual Bevy sub-crates that some vendored ecosystem crates depend on
-# directly (not via the `bevy` umbrella). Same 0.19 line as `bevy` above so they
-# resolve to the one 0.19.x release — preserving a single Bevy across the dlopen
+# directly (not via the `bevy` umbrella). Same 0.20 line as `bevy` above so they
+# resolve to the one 0.20.x release, preserving a single Bevy across the dlopen
 # boundary.
-bevy_math = { version = "0.19", default-features = false }
-bevy_reflect = { version = "0.19", default-features = false }
-bevy_light = { version = "0.19", default-features = false }
-bevy_picking = { version = "0.19", default-features = false }
+bevy_math = { version = "0.20", default-features = false }
+bevy_reflect = { version = "0.20", default-features = false }
+bevy_light = { version = "0.20", default-features = false }
+bevy_picking = { version = "0.20", default-features = false }
+# Avian has no Bevy 0.20 release yet. This is the branch of its open 0.20 pull
+# request (avianphysics/avian#1070), pinned so a push to it cannot change the
+# build. Every crate takes avian from here so the graph holds one copy: two
+# would be two distinct `RigidBody` types sharing a name. Move back to a
+# crates.io version once one supports 0.20.
+avian3d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
+avian2d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
 log = "0.4"
 
 [package]
@@ -402,6 +422,12 @@ static_scripts = ["renzora_runtime?/static_scripts"]
 # Bevy already frame-marks, and the `plugins/tracy` bridge marking too would
 # double-count every frame.
 profiling = ["bevy/trace", "bevy/trace_tracy", "renzora_runtime?/profiling"]
+# NVIDIA DLSS Ray Reconstruction, which denoises Solari (`cargo renzora --dlss`).
+# Out of `default` because building it needs NVIDIA's DLSS SDK, the Vulkan SDK
+# and clang on the machine (see `crates/renzora_runtime/src/dlss.rs`). It moves
+# the shared Bevy's feature set like `profiling` does, so installed plugins
+# rebuild on the next launch.
+dlss = ["bevy/dlss", "renzora_runtime?/dlss"]
 # The web lane's entry point: `--no-default-features --features wasm`, which is
 # how it drops `dynamic_linking` and `xr` (neither exists on wasm).
 #

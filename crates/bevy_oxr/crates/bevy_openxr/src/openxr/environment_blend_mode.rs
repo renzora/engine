@@ -3,6 +3,7 @@ use bevy_render::extract_resource::ExtractResource;
 use openxr::EnvironmentBlendMode;
 
 #[derive(Resource, ExtractResource, Clone)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrEnvironmentBlendModes {
     available_blend_modes: Vec<EnvironmentBlendMode>,
     current_blend_mode: EnvironmentBlendMode,

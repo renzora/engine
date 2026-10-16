@@ -1,0 +1,16 @@
+debug/
+target/
+vendor/
+out/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+*.py
+
+*.ply
+*.gcloud
+
+.DS_Store
+
+www/assets/

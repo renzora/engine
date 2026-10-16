@@ -37,9 +37,10 @@ Auditing is the price of the speed-up, not an optional extra.
 Auditing is not skimming for plausibility. Concretely, before you submit:
 
 - **Every API the patch calls actually exists**, with that signature, in the
-  pinned versions this workspace uses (**Bevy 0.19**, **Rust 1.95.0**). Models
-  confidently invent Bevy APIs, and they blend versions — a 0.16-era method name
-  in 0.19 code is the single most common failure we see.
+  pinned versions this workspace uses (**Bevy 0.20**, **Rust 1.97.1**). Models
+  confidently invent Bevy APIs, and they blend versions: a 0.19-era name in 0.20
+  code (`On<Add, X>` for `On<Add<X>>`, `#import` instead of a WESL `import`) is
+  the single most common failure we see.
 - **You've read the surrounding module.** Renzora has a lot of hard-won,
   non-obvious shape to it, and a model working from a small window will
   cheerfully undo it. If your patch removes or contradicts a `//!`/`///` comment

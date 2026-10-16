@@ -123,13 +123,13 @@ fn touch_canvas(world: &mut World, entity: Entity) {
     }
 }
 
-fn mark_canvas_changed_on_canvas_insert(trigger: On<Insert, UiCanvas>, mut commands: Commands) {
+fn mark_canvas_changed_on_canvas_insert(trigger: On<Insert<UiCanvas>>, mut commands: Commands) {
     let entity = trigger.entity;
     commands.queue(move |world: &mut World| touch_canvas(world, entity));
 }
 
 fn mark_canvas_changed_on_path_insert(
-    trigger: On<Insert, HtmlTemplatePath>,
+    trigger: On<Insert<HtmlTemplatePath>>,
     canvases: Query<(), With<UiCanvas>>,
     mut commands: Commands,
 ) {

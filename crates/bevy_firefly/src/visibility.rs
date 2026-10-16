@@ -7,7 +7,7 @@ use std::any::TypeId;
 
 use bevy::{
     camera::visibility::{SetViewVisibility, VisibilitySystems, VisibleEntities},
-    math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
+    shape::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
 };
 

@@ -3,7 +3,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     core_pipeline::{Core3d, Core3dSystems, prepass::PreviousViewUniformOffset},
     prelude::*,
     render::{
@@ -82,13 +82,13 @@ where
             return;
         }
 
-        load_internal_asset!(app, RADIX_SHADER_HANDLE, "radix.wgsl", Shader::from_wgsl);
+        crate::load_wesl!(app, RADIX_SHADER_HANDLE, "radix.wesl", "sort/radix");
 
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             TEMPORAL_SORT_SHADER_HANDLE,
-            "temporal.wgsl",
-            Shader::from_wgsl
+            "temporal.wesl",
+            "sort/temporal"
         );
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -379,6 +379,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs: shader_defs.clone(),
         entry_point: Some("radix_reset".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     let radix_sort_a = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -389,6 +390,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs: shader_defs.clone(),
         entry_point: Some("radix_sort_a".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     let radix_sort_b = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -399,6 +401,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs: shader_defs.clone(),
         entry_point: Some("radix_sort_b".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     let radix_sort_c_count = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -409,6 +412,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs: shader_defs.clone(),
         entry_point: Some("radix_sort_c_count_tiles".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     let radix_sort_c_scan = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -419,6 +423,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs: shader_defs.clone(),
         entry_point: Some("radix_sort_c_scan_tiles".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     let radix_sort_c_scatter = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -429,6 +434,7 @@ fn queue_radix_sort_pipeline_variant(
         shader_defs,
         entry_point: Some("radix_sort_c_scatter".into()),
         zero_initialize_workgroup_memory: true,
+        constants: Vec::new(),
     });
 
     RadixSortPipelineVariant {

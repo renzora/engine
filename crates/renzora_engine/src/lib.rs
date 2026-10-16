@@ -353,6 +353,10 @@ impl Plugin for RuntimePlugin {
         // observer catches reflection-loaded `Projection` overwrites.
         app.add_observer(camera::on_camera_2d_inserted);
         app.add_observer(camera::on_projection_inserted_for_2d);
+        // Bevy 0.20 made screen-space transmission opt-in per camera; keep it
+        // on everywhere so refractive materials look as they always have.
+        #[cfg(feature = "render_3d")]
+        app.add_observer(camera::on_camera_3d_added_enable_transmission);
 
         // Sprite scene systems — the 2D half of the pipeline, stripped from a
         // 3D-only lean export via the `render_2d` feature (mirror of how

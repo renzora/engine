@@ -113,7 +113,7 @@ impl AssetKind {
             "wav" | "ogg" | "mp3" | "flac" | "opus" => AssetKind::Audio,
             "mp4" | "avi" | "mov" | "webm" => AssetKind::Video,
             "lua" | "rs" | "js" | "ts" => AssetKind::Script,
-            "wgsl" | "glsl" | "vert" | "frag" | "hlsl" => AssetKind::Shader,
+            "wgsl" | "wesl" | "glsl" | "vert" | "frag" | "hlsl" => AssetKind::Shader,
             "particle" => AssetKind::Particle,
             "anim" => AssetKind::Animation,
             "html" => AssetKind::UiTemplate,

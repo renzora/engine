@@ -37,9 +37,9 @@ renzora_animation = { path = "../renzora_animation", default-features = false }
 renzora_physics = { path = "../renzora_physics", default-features = false, features = ["avian3d"] }
 
 [dependencies.avian3d]
-version = "0.7"
+workspace = true
 default-features = false
-features = ["3d", "f32", "default-collider", "parry-f32"]
+features = ["3d","default-collider", "parry-f32"]
 
 # Tests only: system/param names in ECS validation errors, so a failing
 # headless test says WHICH resource is missing.

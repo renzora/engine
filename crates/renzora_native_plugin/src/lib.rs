@@ -788,9 +788,11 @@ fn load_one(
     // A panic here would unwind across the library boundary, which is undefined.
     // Catching it turns a broken plugin into one that fails to load rather than
     // one that takes the editor with it. A segfault is still fatal — nothing at
-    // this layer can help with that.
-    let plugin = std::panic::catch_unwind(std::panic::AssertUnwindSafe(*ctor))
-        .map_err(|_| "panicked while constructing".to_string())?;
+    // this layer can help with that. `recoverable::catch` rather than bare
+    // `catch_unwind`, so the crash reporter does not announce a crash that this
+    // line recovers from.
+    let plugin = renzora::core::recoverable::catch(*ctor)
+        .map_err(|caught| format!("panicked while constructing: {caught}"))?;
     Ok(Outcome::Loaded((plugin, lib)))
 }
 

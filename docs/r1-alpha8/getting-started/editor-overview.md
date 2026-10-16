@@ -16,7 +16,7 @@ The editor is the engine. What you see while editing is how your game runs.
 | Inspector | The settings of whatever you have selected. |
 | Bottom panel | A collapsible strip shared by every workspace, holding Assets, Timeline, Console and the Mixer. `Ctrl+Space` toggles it. |
 
-The window is borderless. Drag the top bar to move it, double-click to maximize, drag any edge to resize.
+The window is borderless. Drag the top bar to move it, double-click to maximize, drag any edge to resize. A project opens in a centered 1600x900 window, smaller on a screen that can't fit it, rather than filling the screen; maximize it if you want the whole display.
 
 <!-- screenshot: top_bar.png - the top bar close up: menu button, settings gear, undo/redo/save, play controls, workspace ribbon, window buttons -->
 

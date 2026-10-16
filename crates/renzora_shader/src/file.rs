@@ -54,7 +54,8 @@ pub struct ShaderFile {
 impl Default for ShaderFile {
     fn default() -> Self {
         Self {
-            language: "Bevy".into(),
+            // The default template is WESL; "Bevy" is the pre-0.20 dialect.
+            language: "WESL".into(),
             shader_type: ShaderType::default(),
             shader_source: DEFAULT_BEVY_SOURCE.into(),
             compiled_wgsl: None,
@@ -329,18 +330,26 @@ pub fn detect_language(source: &str) -> &'static str {
         return "ShaderToy";
     }
 
-    // Bevy WGSL: uses #import directives (naga_oil)
-    if source.contains("#import bevy_") || source.contains("#import bevy::") {
+    // GLSL's unmistakable markers first: GLSL has `#ifdef` too, which would
+    // otherwise read as Bevy's old dialect below.
+    if source.contains("#version") || source.contains("void main") || source.contains("gl_Frag") {
+        return "GLSL";
+    }
+
+    // Bevy's pre-0.20 dialect: `#import`, `#ifdef`, `#{...}` (naga_oil).
+    // Checked on the whole directive set, not just `#import bevy_`, because a
+    // shader with only an `#ifdef` is just as unusable without translation.
+    if renzora_legacy_like(source) {
         return "Bevy";
     }
 
-    // GLSL: C-style signatures, #version, or void main()
-    if source.contains("#version")
-        || source.contains("void main")
-        || source.contains("gl_Frag")
-        || source.contains("uniform ")
-        || source.contains("varying ")
-    {
+    // WESL: an `import a::b;` statement, which plain WGSL cannot have.
+    if renzora::shader_source::dialect(source, "") == renzora::shader_source::Dialect::Wesl {
+        return "WESL";
+    }
+
+    // GLSL's weaker markers, which a comment in another language could hold.
+    if source.contains("uniform ") || source.contains("varying ") {
         return "GLSL";
     }
 
@@ -354,11 +363,19 @@ pub fn detect_language(source: &str) -> &'static str {
         return "WGSL";
     }
 
-    // Default to Bevy (most common in this engine)
-    "Bevy"
+    // Default to WESL: the language Bevy compiles everything with since 0.20,
+    // and a superset of plain WGSL.
+    "WESL"
 }
 
-const DEFAULT_BEVY_SOURCE: &str = r#"#import bevy_pbr::forward_io::VertexOutput
+/// The naga_oil dialect, as `renzora::shader_source` sees it.
+fn renzora_legacy_like(source: &str) -> bool {
+    renzora::shader_source::dialect(source, "") == renzora::shader_source::Dialect::Legacy
+}
+
+// The templates a new shader starts from are WESL, the language Bevy 0.20
+// compiles everything with. Imports end with `;` and come first.
+const DEFAULT_BEVY_SOURCE: &str = r#"import bevy_pbr::render::forward_io::VertexOutput;
 
 // @param speed float 1.0 0.1 5.0 Animation speed
 // @param tint color 1.0 0.8 0.6 1.0
@@ -376,13 +393,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-pub const DEFAULT_MATERIAL_SOURCE: &str = r#"#import bevy_pbr::forward_io::VertexOutput
+pub const DEFAULT_MATERIAL_SOURCE: &str = r#"import bevy_pbr::render::forward_io::VertexOutput;
 
 struct MyMaterial {
     color: vec4<f32>,
 }
 
-@group(3) @binding(0)
+@group(constants::MATERIAL_BIND_GROUP) @binding(0)
 var<uniform> material: MyMaterial;
 
 @fragment
@@ -392,7 +409,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-pub const DEFAULT_POST_PROCESS_SOURCE: &str = r#"#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
+pub const DEFAULT_POST_PROCESS_SOURCE: &str = r#"import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
 @group(0) @binding(0)
 var screen_texture: texture_2d<f32>;

@@ -1,6 +1,6 @@
 //! The SDF text material — an unlit, alpha-blended material that samples the
 //! signed-distance-field glyph atlas and smoothsteps the edge (see
-//! `sdf_text.wgsl`). Swapped in for `StandardMaterial` so text stays crisp when
+//! `sdf_text.wesl`). Swapped in for `StandardMaterial` so text stays crisp when
 //! the camera moves close, instead of magnifying a bitmap.
 
 use bevy::prelude::*;
@@ -25,7 +25,7 @@ impl Material for SdfTextMaterial {
         // under `src/` — this moved from `renzora_text_mesh/src/` into
         // `renzora/src/text_mesh/`, so both halves changed. Nothing checks this
         // at compile time; a stale path here is a missing shader at runtime.
-        ShaderRef::Path("embedded://renzora/text_mesh/sdf_text.wgsl".into())
+        ShaderRef::Path("embedded://renzora/text_mesh/sdf_text.wesl".into())
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -47,6 +47,6 @@ pub fn ensure_sdf_material(app: &mut App) {
     if app.is_plugin_added::<MaterialPlugin<SdfTextMaterial>>() {
         return;
     }
-    bevy::asset::embedded_asset!(app, "sdf_text.wgsl");
+    bevy::asset::embedded_asset!(app, "sdf_text.wesl");
     app.add_plugins(MaterialPlugin::<SdfTextMaterial>::default());
 }

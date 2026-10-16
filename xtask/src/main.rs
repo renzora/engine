@@ -115,8 +115,30 @@ fn main() -> ExitCode {
         .expect("xtask lives at <repo>/xtask")
         .to_path_buf();
 
-    let cmd = std::env::args().nth(1).unwrap_or_else(|| "run".to_string());
+    // A leading flag (`cargo renzora --dlss`) means the default command, not an
+    // unknown one.
+    let cmd = std::env::args()
+        .nth(1)
+        .filter(|a| !a.starts_with("--"))
+        .unwrap_or_else(|| "run".to_string());
     let plat = platform();
+    // NVIDIA DLSS Ray Reconstruction, for Solari. On by itself whenever this
+    // machine has what the build needs (see `dlss_available`), so a machine set
+    // up for it never needs a flag; `--dlss` insists on it and fails loudly if
+    // something is missing, `--no-dlss` leaves it out. Never a cargo default:
+    // CI and the cross-compile containers have no SDK, and a default feature
+    // would break every one of their builds.
+    let dlss = if std::env::args().any(|a| a == "--no-dlss") {
+        false
+    } else if std::env::args().any(|a| a == "--dlss") {
+        true
+    } else {
+        let found = dlss_available();
+        if found {
+            println!("[xtask] DLSS SDK found: building with DLSS Ray Reconstruction (--no-dlss to skip)");
+        }
+        found
+    };
 
     // `sync` and `remove` REPAIR a workspace (they prune the dangling generated
     // dependency that stops it loading), so they have to keep working on a
@@ -134,7 +156,7 @@ fn main() -> ExitCode {
         // when asked with `--xr`. Editing in VR is `cargo renzora xr`; shipping a
         // VR game is unaffected (the runtime binary's `--vr` path is separate).
         "run" => {
-            let out = match build_and_stage(&repo, &plat, &[]) {
+            let out = match build_and_stage(&repo, &plat, &dlss_features(dlss, &[])) {
                 Ok(out) => out,
                 Err(code) => return code,
             };
@@ -162,7 +184,7 @@ fn main() -> ExitCode {
         // the binary out from under the launch step and makes every local build
         // pay for `mksquashfs`; the CI desktop lanes ask for it, a contributor
         // iterating does not. See `bundle.rs` for why it has to exist at all.
-        "dist" => match build_and_stage(&repo, &plat, &[]) {
+        "dist" => match build_and_stage(&repo, &plat, &dlss_features(dlss, &[])) {
             Ok(out) => {
                 if std::env::args().any(|a| a == "--bundle") {
                     if let Err(e) = bundle::wrap(&repo, &out, &plat) {
@@ -217,7 +239,7 @@ fn main() -> ExitCode {
         // sub-app running inline on the main thread (~11.6 ms of a 27 ms frame),
         // which is inherent to that boot rather than something to optimise.
         "profile" => {
-            let out = match build_and_stage(&repo, &plat, &["profiling"]) {
+            let out = match build_and_stage(&repo, &plat, &dlss_features(dlss, &["profiling"])) {
                 Ok(out) => out,
                 Err(code) => return code,
             };
@@ -291,7 +313,72 @@ fn main() -> ExitCode {
     }
 }
 
+/// `base`, plus the `dlss` feature when `--dlss` was given.
+fn dlss_features<'a>(dlss: bool, base: &[&'a str]) -> Vec<&'a str> {
+    let mut features = base.to_vec();
+    if dlss {
+        features.push("dlss");
+    }
+    features
+}
+
+/// The NVIDIA DLLs a DLSS build needs beside the executable, inside the DLSS
+/// SDK. The `d` one is Ray Reconstruction, which is what Solari uses; the other
+/// is Super Resolution, which Bevy loads alongside it.
+fn dlss_runtime_libs(plat: &Platform) -> &'static [&'static str] {
+    if plat.exe_suffix == ".exe" {
+        &[
+            "lib/Windows_x86_64/rel/nvngx_dlss.dll",
+            "lib/Windows_x86_64/rel/nvngx_dlssd.dll",
+        ]
+    } else {
+        &[
+            "lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.310.5.3",
+            "lib/Linux_x86_64/rel/libnvidia-ngx-dlssd.so.310.5.3",
+        ]
+    }
+}
+
+/// Whether this machine can build DLSS without being asked: both SDK variables
+/// point at folders that exist, and `clang` runs. Silent either way, because
+/// most machines never have the SDK and that is not worth a line.
+fn dlss_available() -> bool {
+    let dir_set = |var: &str| std::env::var_os(var).is_some_and(|p| Path::new(&p).is_dir());
+    dir_set("DLSS_SDK")
+        && dir_set("VULKAN_SDK")
+        && Command::new("clang")
+            .arg("--version")
+            .output()
+            .is_ok_and(|o| o.status.success())
+}
+
+/// Fail before a long compile, with the fix in the message, when a DLSS build
+/// is missing what `dlss_wgpu`'s build script needs. Without this the build
+/// dies minutes in with a panic from inside a dependency.
+fn check_dlss_env() -> Result<PathBuf, ExitCode> {
+    let missing: Vec<&str> = ["DLSS_SDK", "VULKAN_SDK"]
+        .into_iter()
+        .filter(|var| std::env::var_os(var).is_none())
+        .collect();
+    if !missing.is_empty() {
+        eprintln!(
+            "[xtask] --dlss needs {} set.\n\
+             [xtask]   DLSS_SDK: a clone of https://github.com/NVIDIA/DLSS at tag v310.5.3\n\
+             [xtask]   VULKAN_SDK: the LunarG Vulkan SDK install folder\n\
+             [xtask] clang must be on PATH as well (dlss_wgpu generates its bindings with it).",
+            missing.join(" and ")
+        );
+        return Err(ExitCode::FAILURE);
+    }
+    Ok(PathBuf::from(std::env::var_os("DLSS_SDK").unwrap_or_default()))
+}
+
 fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
+    let dlss_sdk = if features.contains(&"dlss") {
+        Some(check_dlss_env()?)
+    } else {
+        None
+    };
     // Wire in any plugin crate whose `renzora::add!` declaration isn't reflected
     // in the generated lists yet — this is what makes "drop a crate into
     // `crates/`" the whole job. Cheap (a source scan) and a no-op when nothing
@@ -313,6 +400,22 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
             // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
             sdk::build(repo, plat, &out)?;
+            // The DLSS DLLs, only in a DLSS build. `clean_artifacts` sweeps
+            // every shared library on the next ordinary build, which is right:
+            // a build without DLSS has no use for them.
+            if let Some(sdk) = dlss_sdk {
+                for lib in dlss_runtime_libs(plat) {
+                    let from = sdk.join(lib);
+                    let Some(name) = from.file_name() else { continue };
+                    if let Err(e) = std::fs::copy(&from, out.join(name)) {
+                        eprintln!(
+                            "[xtask] could not copy {} from the DLSS SDK: {e}",
+                            from.display()
+                        );
+                        return Err(ExitCode::FAILURE);
+                    }
+                }
+            }
             Ok(out)
         }
         Err(e) => {

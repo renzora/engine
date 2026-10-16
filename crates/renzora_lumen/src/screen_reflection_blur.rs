@@ -102,7 +102,7 @@ impl FromWorld for ScreenReflectionBlurPipeline {
         });
 
         let asset_server = world.resource::<AssetServer>();
-        let shader = asset_server.load("embedded://renzora_lumen/screen_reflection_blur.wgsl");
+        let shader = asset_server.load("embedded://renzora_lumen/screen_reflection_blur.wesl");
 
         let pipeline_cache = world.resource::<PipelineCache>();
         let horizontal_pipeline =
@@ -112,6 +112,7 @@ impl FromWorld for ScreenReflectionBlurPipeline {
                 shader: shader.clone(),
                 shader_defs: vec![ShaderDefVal::Bool("HORIZONTAL".into(), true)],
                 entry_point: Some("blur".into()),
+                constants: vec![],
                 immediate_size: 0,
                 zero_initialize_workgroup_memory: false,
             });
@@ -121,6 +122,7 @@ impl FromWorld for ScreenReflectionBlurPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("blur".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -277,7 +279,7 @@ pub struct ScreenReflectionBlurPlugin;
 
 impl Plugin for ScreenReflectionBlurPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "screen_reflection_blur.wgsl");
+        bevy::asset::embedded_asset!(app, "screen_reflection_blur.wesl");
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app

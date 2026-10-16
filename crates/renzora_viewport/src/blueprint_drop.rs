@@ -63,9 +63,6 @@ fn named_ancestor(world: &World, entity: Entity) -> Option<Entity> {
         if world.get::<Name>(current).is_some() {
             return Some(current);
         }
-        match world.get::<ChildOf>(current) {
-            Some(parent) => current = parent.parent(),
-            None => return None,
-        }
+        current = world.get::<ChildOf>(current)?.parent();
     }
 }

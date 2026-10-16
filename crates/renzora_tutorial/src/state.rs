@@ -849,7 +849,7 @@ fn count_assets(project: &CurrentProject) -> usize {
     const ASSET_EXTS: &[&str] = &[
         "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend", "png",
         "jpg", "jpeg", "tga", "exr", "hdr", "ktx2", "basis", "rmip", "wav", "ogg", "mp3", "flac",
-        "material", "particle", "anim", "lua", "wgsl", "toml",
+        "material", "particle", "anim", "lua", "wgsl", "wesl", "toml",
     ];
     count_files(&project.path, |ext| ASSET_EXTS.contains(&ext))
 }

@@ -562,6 +562,13 @@ fn spawn_shell(
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
+                // Zero minimum, or the root grows to fit its content instead of
+                // the window. Bevy 0.20's layout gives a root's automatic
+                // minimum height its content height, so a tall panel made the
+                // shell twice the window's height and pushed the status bar off
+                // the bottom.
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },

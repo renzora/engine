@@ -50,11 +50,11 @@ pub struct ViewportDebugMaterial {
 
 impl Material for ViewportDebugMaterial {
     fn vertex_shader() -> ShaderRef {
-        "embedded://renzora_viewport/viewport_debug.wgsl".into()
+        "embedded://renzora_viewport/viewport_debug.wesl".into()
     }
 
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_viewport/viewport_debug.wgsl".into()
+        "embedded://renzora_viewport/viewport_debug.wesl".into()
     }
 
     // No `specialize`: Bevy's mesh pipeline already builds the vertex layout from

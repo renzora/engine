@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        rust-toolchain:
+          - nightly
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup ${{ matrix.rust-toolchain }} rust toolchain with caching
+      uses: brndnmtthws/rust-action@v1
+      with:
+        toolchain: ${{ matrix.rust-toolchain }}
+
+    - name: lint
+      run: cargo clippy -- -Dwarnings
+
+    - name: build
+      run: cargo build
+
+    - name: test
+      run: cargo test
+
+    # - name: build (web)
+    #   run: cargo build --example=minimal --target wasm32-unknown-unknown --release

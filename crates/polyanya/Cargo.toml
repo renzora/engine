@@ -137,14 +137,14 @@ path = "benches/triangulation.rs"
 harness = false
 
 [dependencies.bvh2d]
-# Vendored alongside polyanya with glam bumped to 0.32.
+# Vendored alongside polyanya with glam bumped to 0.33 (Bevy 0.20's).
 path = "../bvh2d"
 
 [dependencies.geo]
 version = "0.32.0"
 
 [dependencies.glam]
-version = "0.32"
+version = "0.33"
 features = ["approx"]
 
 [dependencies.hashbrown]

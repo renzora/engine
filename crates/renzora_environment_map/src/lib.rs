@@ -27,6 +27,7 @@ use bevy::light::{
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+mod filter_gate;
 mod probe;
 
 /// User-authored settings for sky-driven image-based lighting. Attach to
@@ -109,8 +110,7 @@ fn sync_environment_map(
         Ref<EnvironmentMapComponentSettings>,
         Option<Ref<renzora_lighting::Sun>>,
     )>,
-    mut env_lights: Query<&mut EnvironmentMapLight>,
-    probe_holders: Query<Entity, With<AtmosphereEnvironmentMapLight>>,
+    mut probe_holders: Query<ProbeHolder>,
     routing: Res<renzora::EffectRouting>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
 ) {
@@ -164,20 +164,69 @@ fn sync_environment_map(
         return;
     }
 
-    for entity in &probe_holders {
+    for holder in &mut probe_holders {
+        set_probe_intensity(&mut commands, holder, intensity, ibl_size);
+    }
+}
+
+/// A camera carrying the atmosphere probe, with the two components Bevy derives
+/// from it.
+type ProbeHolder = (
+    Entity,
+    &'static mut AtmosphereEnvironmentMapLight,
+    Option<&'static mut GeneratedEnvironmentMapLight>,
+    Option<&'static mut EnvironmentMapLight>,
+);
+
+/// Write `intensity` onto a probe holder without re-inserting the probe.
+///
+/// Bevy 0.20 treats inserting `AtmosphereEnvironmentMapLight` on an entity that
+/// already has one as a rebuild: its observer strips the derived
+/// `GeneratedEnvironmentMapLight` and `EnvironmentMapLight` and starts again
+/// from a black cubemap. Re-inserting here on every routing change also re-added
+/// `GeneratedEnvironmentMapLight`, which `kick_routing_on_environment_load` reads
+/// as a fresh probe and answers by changing the routing again, so the sky
+/// lighting was rebuilt from black on every frame: about 5 ms of CPU, new GPU
+/// images each frame, and black patches in the environment.
+///
+/// So the intensity is written in place on all three components (each copies it
+/// only when created), and the probe is re-inserted only when its cubemap size
+/// really changes, which does need new textures.
+fn set_probe_intensity(
+    commands: &mut Commands,
+    (entity, mut probe, generated, derived): (
+        Entity,
+        Mut<AtmosphereEnvironmentMapLight>,
+        Option<Mut<GeneratedEnvironmentMapLight>>,
+        Option<Mut<EnvironmentMapLight>>,
+    ),
+    intensity: f32,
+    size: UVec2,
+) {
+    if probe.size != size {
         commands
             .entity(entity)
             .insert(AtmosphereEnvironmentMapLight {
                 intensity,
-                size: ibl_size,
+                size,
                 ..default()
             });
-        // The PBR shader reads from `EnvironmentMapLight`, fed by the bake chain
-        // (AtmosphereEnvironmentMapLight → GeneratedEnvironmentMapLight →
-        // EnvironmentMapLight). Write it directly too so the editor case works,
-        // where the camera is spawned long before any WE exists.
-        if let Ok(mut env) = env_lights.get_mut(entity) {
-            env.intensity = intensity;
+        return;
+    }
+    if probe.intensity != intensity {
+        probe.intensity = intensity;
+    }
+    if let Some(mut generated) = generated {
+        if generated.intensity != intensity {
+            generated.intensity = intensity;
+        }
+    }
+    // The PBR shader reads from `EnvironmentMapLight`. Written directly too so
+    // the editor case works, where the camera is spawned long before any World
+    // Environment exists.
+    if let Some(mut derived) = derived {
+        if derived.intensity != intensity {
+            derived.intensity = intensity;
         }
     }
 }
@@ -190,25 +239,15 @@ fn sync_environment_map(
 fn cleanup_environment_map(
     mut commands: Commands,
     mut removed: RemovedComponents<EnvironmentMapComponentSettings>,
-    mut env_lights: Query<&mut EnvironmentMapLight>,
-    probe_holders: Query<Entity, With<AtmosphereEnvironmentMapLight>>,
+    mut probe_holders: Query<ProbeHolder>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
 ) {
     if removed.read().next().is_some() {
-        // Keep the face size identical to the spawn/sync value — re-inserting with
-        // a different `size` would re-allocate the cubemap.
+        // Keep the face size identical to the spawn/sync value; a different
+        // `size` would re-allocate the cubemap.
         let ibl_size = UVec2::splat(quality.as_ref().map(|q| q.0.ibl_face_size()).unwrap_or(128));
-        for entity in &probe_holders {
-            commands
-                .entity(entity)
-                .insert(AtmosphereEnvironmentMapLight {
-                    intensity: 0.0,
-                    size: ibl_size,
-                    ..default()
-                });
-            if let Ok(mut env) = env_lights.get_mut(entity) {
-                env.intensity = 0.0;
-            }
+        for holder in &mut probe_holders {
+            set_probe_intensity(&mut commands, holder, 0.0, ibl_size);
         }
     }
 }
@@ -219,9 +258,9 @@ fn cleanup_environment_map(
 /// routing kick; a static sky then freezes.
 const SKY_SETTLE_FRAMES: u32 = 8;
 
-/// Countdown that keeps the per-frame IBL prefilter running for a settle window
-/// after the sky last changed, then lets [`gate_environment_generation`] freeze
-/// it for a static sky.
+/// Countdown that keeps the sky probe's IBL prefilter running for a settle
+/// window after the sky last changed, then lets the filter gate
+/// ([`filter_gate`]) freeze it for a static sky.
 #[derive(Resource, Default)]
 struct SkyBakeDirty {
     frames: u32,
@@ -242,84 +281,34 @@ fn mark_sky_dirty(
     changed_sun: Query<(), Changed<renzora_lighting::Sun>>,
     changed_env: Query<(), Changed<EnvironmentMapComponentSettings>>,
     changed_atmosphere: Query<(), Changed<Atmosphere>>,
+    mut last_reasons: Local<Vec<&'static str>>,
 ) {
-    let sky_changed = routing.is_changed()
-        || !changed_sun.is_empty()
-        || !changed_env.is_empty()
-        || !changed_atmosphere.is_empty();
+    let mut reasons = Vec::new();
+    if routing.is_changed() {
+        reasons.push("effect routing");
+    }
+    if !changed_sun.is_empty() {
+        reasons.push("sun");
+    }
+    if !changed_env.is_empty() {
+        reasons.push("environment settings");
+    }
+    if !changed_atmosphere.is_empty() {
+        reasons.push("atmosphere");
+    }
+    // A sky that is "changing" on every frame never freezes, and costs the sky
+    // probe's full re-filter each frame. Name the signal whenever the set of
+    // signals changes, so a writer that touches one of these every frame is
+    // visible in the log instead of only in a profile.
+    if *last_reasons != reasons {
+        info!("[env-map] sky re-bake triggered by: {:?}", reasons);
+        *last_reasons = reasons.clone();
+    }
+    let sky_changed = !reasons.is_empty();
     if sky_changed {
         dirty.frames = SKY_SETTLE_FRAMES;
     } else {
         dirty.frames = dirty.frames.saturating_sub(1);
-    }
-}
-
-/// Holds a removed [`GeneratedEnvironmentMapLight`] while the environment is
-/// inactive, so it can be restored verbatim when IBL switches back on.
-#[derive(Component)]
-struct DormantGeneratedEnvMap(GeneratedEnvironmentMapLight);
-
-/// Stop the per-frame environment-map (IBL) filtering when it isn't earning its
-/// cost — when no environment is active **OR the sky is static** — and resume it
-/// while the environment is active and the sky is changing.
-///
-/// Bevy re-filters the atmosphere cubemap into radiance + irradiance maps EVERY
-/// frame for any camera carrying a `GeneratedEnvironmentMapLight`, with no
-/// bake-once / dirty mode (`bevy_pbr::light_probe::generate`; bevyengine/bevy#24517).
-/// That's the dominant per-frame IBL cost, and for a static sky it recomputes an
-/// identical map forever. Two independent triggers pause it:
-/// - **environment inactive** (`intensity ~ 0`): scaling the lit result to zero
-///   doesn't gate the generation, so we do — stash + remove the generator.
-/// - **sky static** ([`SkyBakeDirty`]`.frames == 0`, i.e. nothing that determines
-///   the baked sky has changed for `SKY_SETTLE_FRAMES` — see [`mark_sky_dirty`]):
-///   the last-baked map is already correct, so freeze it. This is the win for a
-///   normal scene at full intensity, where the old intensity-only gate never fired.
-///
-/// Restore (re-bake) as soon as the environment is active AND the sky is settling
-/// again after a change.
-///
-/// Safe w.r.t. the bind-group-layout lock that forces the probe to exist from
-/// spawn: the view's IBL *binding* comes from `EnvironmentMapLight` (left
-/// untouched, so the layout never changes) — `GeneratedEnvironmentMapLight` only
-/// drives the filtering that writes into it. While dormant the filtered maps just
-/// freeze at their last-baked (correct-for-a-static-sky) state.
-fn gate_environment_generation(
-    mut commands: Commands,
-    dirty: Res<SkyBakeDirty>,
-    active: Query<
-        (Entity, &AtmosphereEnvironmentMapLight, &GeneratedEnvironmentMapLight),
-        Without<DormantGeneratedEnvMap>,
-    >,
-    dormant: Query<
-        (Entity, &AtmosphereEnvironmentMapLight, &DormantGeneratedEnvMap),
-        Without<GeneratedEnvironmentMapLight>,
-    >,
-) {
-    const ACTIVE_EPS: f32 = 1e-4;
-    // Generate only while the environment is on AND the sky is still settling
-    // after a change; an off or static sky freezes the prefilter.
-    let settling = dirty.frames > 0;
-
-    // Active → dormant: pause generation when off or static.
-    for (entity, probe, generated) in &active {
-        if probe.intensity <= ACTIVE_EPS || !settling {
-            commands
-                .entity(entity)
-                .insert(DormantGeneratedEnvMap(generated.clone()))
-                .remove::<GeneratedEnvironmentMapLight>();
-        }
-    }
-
-    // Dormant → active: resume generation with the current intensity.
-    for (entity, probe, stash) in &dormant {
-        if probe.intensity > ACTIVE_EPS && settling {
-            let mut generated = stash.0.clone();
-            generated.intensity = probe.intensity;
-            commands
-                .entity(entity)
-                .insert(generated)
-                .remove::<DormantGeneratedEnvMap>();
-        }
     }
 }
 
@@ -331,7 +320,9 @@ impl Plugin for EnvironmentMapPlugin {
         info!("[runtime] EnvironmentMapPlugin");
         app.register_type::<EnvironmentMapComponentSettings>();
         app.init_resource::<SkyBakeDirty>();
-        // `gate_environment_generation` runs after `sync_environment_map` so it
+        app.init_resource::<filter_gate::EnvMapFilterGate>();
+        filter_gate::register_render(app);
+        // `update_env_map_filter_gate` runs after `sync_environment_map` so it
         // sees the intensity that was just resolved this frame, and after
         // `mark_sky_dirty` so it sees this frame's sky-dirty countdown.
         app.add_systems(
@@ -344,7 +335,7 @@ impl Plugin for EnvironmentMapPlugin {
                 sync_environment_map,
                 cleanup_environment_map,
                 mark_sky_dirty,
-                gate_environment_generation,
+                filter_gate::update_env_map_filter_gate,
             )
                 .chain(),
         );

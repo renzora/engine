@@ -43,6 +43,7 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::HtmlTemplatePath>();
         app.register_type::<components::HuiBuildOnSelf>();
         app.register_type::<components::UiWidgetPart>();
+        app.register_type::<components::UiButton>();
         // Single-entity primitive (replaces ProgressBar / HealthBar / LoadingScreen)
         app.register_type::<components::UiBarFill>();
         // The textured counterpart — crops its image instead of resizing it.
@@ -262,7 +263,7 @@ fn apply_canvas_visibility_to(in_play: bool, canvas: &UiCanvas, vis: &mut Visibi
 /// until the user touched it. The observer fires on insert and applies
 /// the same logic.
 fn on_canvas_inserted(
-    trigger: On<Insert, UiCanvas>,
+    trigger: On<Insert<UiCanvas>>,
     play_mode: Option<Res<renzora::PlayModeState>>,
     mut canvases: Query<(&UiCanvas, &mut Visibility)>,
 ) {
@@ -284,7 +285,7 @@ fn on_canvas_inserted(
 /// the small, controlled population that actually wants the component, so it
 /// opts in here rather than waiting for a blanket insert that no longer comes.
 fn on_game_ui_node_inserted(
-    trigger: On<Insert, (UiWidget, UiCanvas)>,
+    trigger: On<Insert<(UiWidget, UiCanvas)>>,
     mut commands: Commands,
     missing: Query<(), Without<renzora_scripting::ScriptComponent>>,
 ) {
@@ -304,7 +305,7 @@ fn on_game_ui_node_inserted(
 // widget switches between Absolute (canvas root) and Relative (Container)
 // automatically.
 //
-// Originally written as an `On<Insert, ChildOf>` observer, which missed
+// Originally written as an `On<Insert<ChildOf>>` observer, which missed
 // the drag-in-hierarchy case because that fires `Replace` not `Insert`.
 // `Changed` filter catches both.
 
@@ -326,7 +327,7 @@ fn on_widget_reparented(
 /// (Container parent → Relative, Canvas root → Absolute) until the user
 /// touched them.
 fn on_childof_inserted(
-    trigger: On<Insert, ChildOf>,
+    trigger: On<Insert<ChildOf>>,
     mut commands: Commands,
     widgets: Query<(), With<UiWidget>>,
 ) {
@@ -355,7 +356,7 @@ fn on_childof_inserted(
 // wrapped in a fresh root canvas (having a second canvas is fine), and a canvas
 // that got nested under a widget is popped back to the root.
 //
-// These run as deferred systems, NOT `On<Remove, ChildOf>` observers: recursive
+// These run as deferred systems, NOT `On<Remove<ChildOf>>` observers: recursive
 // despawn removes `ChildOf` from every child in a deleted subtree, and an
 // observer would try to re-home entities that are about to vanish. A system sees
 // the world only after despawn commands have flushed, so doomed widgets are

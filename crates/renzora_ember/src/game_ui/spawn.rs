@@ -71,10 +71,7 @@ pub(crate) fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<
         if world.get::<UiCanvas>(entity).is_some() {
             return Some(entity);
         }
-        match world.get::<ChildOf>(entity) {
-            Some(co) => entity = co.parent(),
-            None => return None,
-        }
+        entity = world.get::<ChildOf>(entity)?.parent();
     }
 }
 
@@ -570,7 +567,7 @@ fn spawn_button(world: &mut World, r: &Ref) -> Entity {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiFill::solid(Color::srgba(0.25, 0.25, 0.8, 1.0)),
             UiStroke::new(Color::srgba(0.4, 0.4, 0.9, 1.0), 1.0),
@@ -683,7 +680,7 @@ fn spawn_checkbox(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data.clone(),
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiCursor::Pointer,
             UiTextStyle {
@@ -771,7 +768,7 @@ fn spawn_toggle(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data.clone(),
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiCursor::Pointer,
             UiTextStyle {
@@ -875,7 +872,7 @@ fn spawn_radio_button(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data.clone(),
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiCursor::Pointer,
             UiTextStyle {
@@ -966,7 +963,7 @@ fn spawn_dropdown(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data,
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiFill::solid(Color::srgba(0.18, 0.18, 0.22, 1.0)),
             UiStroke::new(Color::srgba(0.35, 0.35, 0.4, 1.0), 1.0),
@@ -1028,7 +1025,7 @@ fn spawn_text_input(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data.clone(),
-            Button,
+            super::components::UiButton,
             Interaction::default(),
             UiFill::solid(Color::srgba(0.12, 0.12, 0.15, 1.0)),
             UiStroke::new(Color::srgba(0.35, 0.35, 0.4, 1.0), 1.0),

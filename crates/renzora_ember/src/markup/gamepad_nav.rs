@@ -179,7 +179,7 @@ pub fn gamepad_ui_nav(
     mut nav: ResMut<UiGamepadNav>,
     mut focusables: Query<
         (Entity, &ComputedNode, &UiGlobalTransform, &mut Interaction),
-        With<Button>,
+        With<crate::game_ui::components::UiButton>,
     >,
 ) {
     // Release last frame's synthetic press before anything else, so a held

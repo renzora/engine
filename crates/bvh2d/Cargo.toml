@@ -36,7 +36,7 @@ name = "bvh2d"
 path = "src/lib.rs"
 
 [dependencies.glam]
-version = "0.32"
+version = "0.33"
 
 [dependencies.serde]
 version = "1.0"

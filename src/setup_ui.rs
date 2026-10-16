@@ -507,7 +507,10 @@ fn spawn_ui(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         .id();
     let install = commands
         .spawn((
-            Button,
+            // What `bevy_ui`'s `Button` marker required, before Bevy 0.20 made
+            // it impossible to insert from outside Bevy.
+            FocusPolicy::Block,
+            Interaction::default(),
             Node {
                 // A row wrapping this button would keep its place in the column
                 // gap even while empty, which is the band of space that used to

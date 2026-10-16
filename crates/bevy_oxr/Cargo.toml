@@ -6,5 +6,12 @@
 # A standalone Cargo.toml needs at least a [package] or [workspace]
 # section. We give it a trivial [workspace] with itself as the only
 # member so cargo can parse it on the off-chance it gets traversed.
+#
+# 0.20 port (bevy_xr, bevy_openxr, bevy_xr_utils): Bevy 0.20 / wgpu 30;
+# extracted components and resources name `#[extract_app(RenderApp)]` (so the
+# crates depend on `bevy_extract` directly); `RenderQueue` and friends are
+# built with `::new` now that `WgpuWrapper` is gone; and
+# `create_texture_from_hal` takes the swapchain image's initial state, which is
+# `UNINITIALIZED` because OpenXR hands out a fresh image every frame.
 [workspace]
 members = []

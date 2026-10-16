@@ -162,7 +162,7 @@ impl FromWorld for ScreenReflectionPipeline {
         });
 
         let asset_server = world.resource::<AssetServer>();
-        let shader = asset_server.load("embedded://renzora_lumen/screen_reflection.wgsl");
+        let shader = asset_server.load("embedded://renzora_lumen/screen_reflection.wesl");
 
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipeline_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -171,6 +171,7 @@ impl FromWorld for ScreenReflectionPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("trace".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -319,7 +320,7 @@ pub fn screen_reflection_trace_pass(
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
             return;
         };
-        let Some(depth_view) = prepass.depth_view() else {
+        let Some(depth_view) = prepass.depth_only_view() else {
             return;
         };
         let Some(normal_view) = prepass.normal_view() else {
@@ -384,7 +385,7 @@ pub struct ScreenReflectionPlugin;
 
 impl Plugin for ScreenReflectionPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "screen_reflection.wgsl");
+        bevy::asset::embedded_asset!(app, "screen_reflection.wesl");
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app

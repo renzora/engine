@@ -290,10 +290,12 @@ impl OxrSwapchain {
 
 /// Stores the generated swapchain images.
 #[derive(Debug, Deref, Resource, Clone, Copy, ExtractResource)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrSwapchainImages(pub &'static [wgpu::Texture]);
 
 /// Stores the latest generated [OxrViews]
 #[derive(Clone, Resource, ExtractResource, Deref, DerefMut, Default)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrViews(pub Vec<openxr::View>);
 
 /// Wrapper around [openxr::SystemId] to allow it to be stored as a resource.
@@ -333,6 +335,7 @@ pub struct OxrRenderLayers(pub Vec<Box<dyn LayerProvider + Send + Sync>>);
 
 /// Resource storing graphics info for the currently running session.
 #[derive(Clone, Copy, Resource, ExtractResource)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrCurrentSessionConfig {
     pub resolution: UVec2,
     pub format: wgpu::TextureFormat,
@@ -368,10 +371,12 @@ impl GraphicsType for SessionGraphicsCreateInfo {
 }
 
 #[derive(ExtractResource, Resource, Clone, Default)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrSessionStarted(pub bool);
 
 /// The frame state returned from [FrameWaiter::wait_frame](openxr::FrameWaiter::wait)
 #[derive(Clone, Deref, DerefMut, Resource, ExtractResource)]
+#[extract_app(bevy_render::RenderApp)]
 pub struct OxrFrameState(pub openxr::FrameState);
 
 /// Tracks whether the current render frame's `begin_frame` and `acquire_image`

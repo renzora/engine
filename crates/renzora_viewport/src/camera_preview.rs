@@ -140,15 +140,25 @@ pub fn camera_preview_panel_mounted(
 /// the preview camera entity when the panel closes.
 pub fn sync_camera_preview_activation(
     dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     mut preview_cameras: Query<&mut Camera, With<CameraPreviewMarker>>,
     preview_entities: Query<Entity, With<CameraPreviewMarker>>,
     mut preview_state: Option<ResMut<CameraPreviewState>>,
     mut commands: Commands,
 ) {
-    let mounted = dock.is_some_and(|d| d.tree.contains_panel("camera_preview"));
+    let mounted = dock.as_ref().is_some_and(|d| d.tree.contains_panel("camera_preview"));
+    // Render only while the panel is the visible tab somewhere; a background tab
+    // still counts as mounted, and kept a second full scene render going.
+    let visible = renzora_ember::dock::panel_visible_anywhere(
+        "camera_preview",
+        dock.as_deref(),
+        fixed.as_deref(),
+        wins.as_deref(),
+    );
     for mut camera in preview_cameras.iter_mut() {
-        if camera.is_active != mounted {
-            camera.is_active = mounted;
+        if camera.is_active != visible {
+            camera.is_active = visible;
         }
     }
     if !mounted {

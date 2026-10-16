@@ -384,9 +384,11 @@ pub(crate) fn dropdown_toggle(
                 let est = (dd.options.len() as f32 * 24.0 + 4.0).min(DROPDOWN_MAX_HEIGHT)
                     * w.scale_factor();
                 let win_bottom = w.physical_height() as f32;
-                let (top_edge, bottom_edge) = clips.get(box_e).map_or((0.0, win_bottom), |c| {
-                    (c.clip.min.y.max(0.0), c.clip.max.y.min(win_bottom))
-                });
+                let (top_edge, bottom_edge) = clips
+                    .get(box_e)
+                    .ok()
+                    .and_then(crate::clip_window_rect)
+                    .map_or((0.0, win_bottom), |c| (c.min.y.max(0.0), c.max.y.min(win_bottom)));
                 flips_up(box_top, box_bottom, est, top_edge, bottom_edge)
             })
             .unwrap_or(false);

@@ -4,7 +4,7 @@ use std::{borrow::Cow, hash::Hash, num::NonZero};
 use bevy::render::render_resource::TextureFormat;
 use bevy::shader::ShaderDefVal;
 use bevy::{
-    asset::{AssetEvent, AssetId, load_internal_asset, uuid_handle},
+    asset::{AssetEvent, AssetId, uuid_handle},
     camera::primitives::Aabb,
     core_pipeline::{
         core_3d::{Transparent3d, TransparentSortingInfo3d},
@@ -143,65 +143,16 @@ where
             return;
         }
 
-        load_internal_asset!(
-            app,
-            BINDINGS_SHADER_HANDLE,
-            "bindings.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            GAUSSIAN_SHADER_HANDLE,
-            "gaussian.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            GAUSSIAN_2D_SHADER_HANDLE,
-            "gaussian_2d.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            GAUSSIAN_3D_SHADER_HANDLE,
-            "gaussian_3d.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            GAUSSIAN_4D_SHADER_HANDLE,
-            "gaussian_4d.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            HELPERS_SHADER_HANDLE,
-            "helpers.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(app, PACKED_SHADER_HANDLE, "packed.wgsl", Shader::from_wgsl);
-
-        load_internal_asset!(app, PLANAR_SHADER_HANDLE, "planar.wgsl", Shader::from_wgsl);
-
-        load_internal_asset!(
-            app,
-            TEXTURE_SHADER_HANDLE,
-            "texture.wgsl",
-            Shader::from_wgsl
-        );
-
-        load_internal_asset!(
-            app,
-            TRANSFORM_SHADER_HANDLE,
-            "transform.wgsl",
-            Shader::from_wgsl
-        );
+        crate::load_wesl!(app, BINDINGS_SHADER_HANDLE, "bindings.wesl", "render/bindings");
+        crate::load_wesl!(app, GAUSSIAN_SHADER_HANDLE, "gaussian.wesl", "render/gaussian");
+        crate::load_wesl!(app, GAUSSIAN_2D_SHADER_HANDLE, "gaussian_2d.wesl", "render/gaussian_2d");
+        crate::load_wesl!(app, GAUSSIAN_3D_SHADER_HANDLE, "gaussian_3d.wesl", "render/gaussian_3d");
+        crate::load_wesl!(app, GAUSSIAN_4D_SHADER_HANDLE, "gaussian_4d.wesl", "render/gaussian_4d");
+        crate::load_wesl!(app, HELPERS_SHADER_HANDLE, "helpers.wesl", "render/helpers");
+        crate::load_wesl!(app, PACKED_SHADER_HANDLE, "packed.wesl", "render/packed");
+        crate::load_wesl!(app, PLANAR_SHADER_HANDLE, "planar.wesl", "render/planar");
+        crate::load_wesl!(app, TEXTURE_SHADER_HANDLE, "texture.wesl", "render/texture");
+        crate::load_wesl!(app, TRANSFORM_SHADER_HANDLE, "transform.wesl", "render/transform");
 
         app.add_plugins(UniformComponentPlugin::<CloudUniform>::default());
 
@@ -838,6 +789,24 @@ pub fn shader_defs_with_defines(
         ),
     ];
 
+    // The shaders used to compare these numbers with `#if SH_DEGREE > 1` and
+    // the like. WESL conditions only test flags, so every comparison the
+    // shaders make is precomputed here as a flag named after it
+    // (`SH_DEGREE__GT_1`).
+    let compare = |name: &str, op: &str, n: usize, holds: bool| {
+        ShaderDefVal::Bool(format!("{name}__{op}_{n}").into(), holds)
+    };
+    for n in [11, 26, 47] {
+        shader_defs.push(compare("SH_COEFF_COUNT", "GT", n, SH_COEFF_COUNT > n));
+    }
+    for n in [0, 1, 2] {
+        shader_defs.push(compare("SH_DEGREE", "GT", n, SH_DEGREE > n));
+    }
+    for n in [0, 1] {
+        shader_defs.push(compare("SH_DEGREE_TIME", "GT", n, SH_4D_DEGREE_TIME > n));
+    }
+    shader_defs.push(compare("SH_VEC4_PLANES", "EQ", 1, SH_VEC4_PLANES == 1));
+
     if key.aabb {
         shader_defs.push("USE_AABB".into());
     }
@@ -984,11 +953,13 @@ impl<R: PlanarSync> SpecializedRenderPipeline for CloudPipeline<R> {
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("vs_points".into()),
                 buffers: vec![],
+                constants: Vec::new(),
             },
             fragment: Some(FragmentState {
                 shader: self.shader.clone(),
                 shader_defs,
                 entry_point: Some("fs_main".into()),
+                constants: Vec::new(),
                 targets: vec![Some(ColorTargetState {
                     format,
                     // renzora patch(depth-write): the depth-only variant masks

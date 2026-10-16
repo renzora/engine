@@ -41,15 +41,15 @@ pub struct ShapesPlugin;
 impl Plugin for ShapesPlugin {
     fn build(&self, app: &mut App) {
         // Register embedded shaders
-        bevy::asset::embedded_asset!(app, "circle.wgsl");
-        bevy::asset::embedded_asset!(app, "arc.wgsl");
-        bevy::asset::embedded_asset!(app, "radial_progress.wgsl");
-        bevy::asset::embedded_asset!(app, "line.wgsl");
-        bevy::asset::embedded_asset!(app, "triangle.wgsl");
-        bevy::asset::embedded_asset!(app, "polygon.wgsl");
-        bevy::asset::embedded_asset!(app, "rectangle.wgsl");
-        bevy::asset::embedded_asset!(app, "wedge.wgsl");
-        bevy::asset::embedded_asset!(app, "tri3.wgsl");
+        bevy::asset::embedded_asset!(app, "circle.wesl");
+        bevy::asset::embedded_asset!(app, "arc.wesl");
+        bevy::asset::embedded_asset!(app, "radial_progress.wesl");
+        bevy::asset::embedded_asset!(app, "line.wesl");
+        bevy::asset::embedded_asset!(app, "triangle.wesl");
+        bevy::asset::embedded_asset!(app, "polygon.wesl");
+        bevy::asset::embedded_asset!(app, "rectangle.wesl");
+        bevy::asset::embedded_asset!(app, "wedge.wesl");
+        bevy::asset::embedded_asset!(app, "tri3.wesl");
 
         app.add_plugins((
             UiMaterialPlugin::<CircleMaterial>::default(),

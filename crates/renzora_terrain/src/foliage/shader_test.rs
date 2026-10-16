@@ -1,7 +1,7 @@
-//! Compile-checks `grass.wgsl`.
+//! Compile-checks `grass.wesl`.
 //!
-//! The grass pipeline is hand-written, and Bevy compiles its shaders at run time
-//! — so a typo in the WGSL is not a build failure, it is grass that silently
+//! The grass pipeline is hand-written, and Bevy compiles its shaders at run time,
+//! so a typo in the shader is not a build failure: it is grass that silently
 //! doesn't render with one line in the log. That is a bad failure mode for a
 //! shader nobody can eyeball without a GPU, so the source is parsed and
 //! validated here instead, by the same front end (naga) that will compile it for
@@ -12,13 +12,14 @@
 //! a mismatch between the WGSL's bindings and the Rust pipeline's bind group
 //! layout, since only the driver sees both.
 
-/// Bevy's `bevy_render::view::View`, cut down to the fields `grass.wgsl` uses.
+/// Bevy's `bevy_render::view::View`, cut down to the fields `grass.wesl` uses.
 ///
-/// The shader's `#import` is Bevy preprocessor syntax that naga doesn't speak,
-/// so the import line is stripped and this is prepended in its place. Field
-/// names are copied from `bevy_render`'s `view.wgsl` — if Bevy renames one, the
-/// real shader breaks and this stub happily keeps compiling, so treat this as a
-/// check on *our* code rather than on the import.
+/// The shader's `import` is WESL that naga doesn't speak, so the import line is
+/// stripped and this is prepended in its place. Its only WESL is that one line:
+/// everything else is plain WGSL. Field names are copied from `bevy_render`'s
+/// `view.wesl`; if Bevy renames one, the real shader breaks and this stub
+/// happily keeps compiling, so treat this as a check on *our* code rather than
+/// on the import.
 const VIEW_STUB: &str = "
 struct View {
     clip_from_world: mat4x4<f32>,
@@ -27,10 +28,10 @@ struct View {
 ";
 
 fn preprocessed_grass_shader() -> String {
-    let source = include_str!("grass.wgsl");
+    let source = include_str!("grass.wesl");
     let body: String = source
         .lines()
-        .filter(|line| !line.trim_start().starts_with("#import"))
+        .filter(|line| !line.trim_start().starts_with("import "))
         .collect::<Vec<_>>()
         .join("\n");
     format!("{VIEW_STUB}\n{body}")
@@ -39,7 +40,7 @@ fn preprocessed_grass_shader() -> String {
 #[test]
 fn grass_shader_parses_and_validates() {
     let source = preprocessed_grass_shader();
-    renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("grass.wgsl: {err}"));
+    renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("grass.wesl: {err}"));
 }
 
 /// The pipeline names these entry points explicitly, so a rename in either place
@@ -47,7 +48,7 @@ fn grass_shader_parses_and_validates() {
 #[test]
 fn grass_shader_has_the_entry_points_the_pipeline_asks_for() {
     let source = preprocessed_grass_shader();
-    let module = renzora::wgsl::parse(&source).expect("grass.wgsl should parse");
+    let module = renzora::wgsl::parse(&source).expect("grass.wesl should parse");
     let names: Vec<&str> = module
         .entry_points
         .iter()
@@ -63,7 +64,7 @@ fn grass_shader_has_the_entry_points_the_pipeline_asks_for() {
 /// them.
 #[test]
 fn shader_segment_count_matches_the_rust_constant() {
-    let source = include_str!("grass.wgsl");
+    let source = include_str!("grass.wesl");
     let declared = source
         .lines()
         .find_map(|line| {
@@ -73,7 +74,7 @@ fn shader_segment_count_matches_the_rust_constant() {
                 .parse::<u32>()
                 .ok()
         })
-        .expect("grass.wgsl should declare BLADE_SEGMENTS");
+        .expect("grass.wesl should declare BLADE_SEGMENTS");
     assert_eq!(declared, super::instance::BLADE_SEGMENTS);
 }
 
@@ -82,7 +83,7 @@ fn shader_segment_count_matches_the_rust_constant() {
 /// them — three `Float32x4`s at locations 0, 1 and 2.
 #[test]
 fn shader_declares_the_three_instance_attributes() {
-    let source = include_str!("grass.wgsl");
+    let source = include_str!("grass.wesl");
     for (location, name) in [
         (0, "position_height"),
         (1, "width_phase_bend_var"),
@@ -91,7 +92,7 @@ fn shader_declares_the_three_instance_attributes() {
         let expected = format!("@location({location}) {name}: vec4<f32>");
         assert!(
             source.contains(&expected),
-            "grass.wgsl is missing `{expected}`"
+            "grass.wesl is missing `{expected}`"
         );
     }
 }

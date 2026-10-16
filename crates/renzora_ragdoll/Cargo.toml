@@ -34,9 +34,9 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false, o
 renzora_animation = { path = "../renzora_animation", default-features = false }
 
 [dependencies.avian3d]
-version = "0.7"
+workspace = true
 default-features = false
-features = ["3d", "f32", "default-collider", "parry-f32"]
+features = ["3d","default-collider", "parry-f32"]
 
 # Lua types referenced in the RagdollScriptExtension trait impl.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

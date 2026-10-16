@@ -97,8 +97,8 @@ ron = "0.8"
 serde = "1"
 thiserror = "2"
 toml = "0.8"
-avian3d = { version = "0.7", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"], optional = true }
-avian2d = { version = "0.7", default-features = false, features = ["2d", "f32", "default-collider", "parry-f32"], optional = true }
+avian3d = { workspace = true, features = ["3d","default-collider", "parry-f32"], optional = true }
+avian2d = { workspace = true, features = ["2d","default-collider", "parry-f32"], optional = true }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))'.dependencies]
 arboard = { version = "3", optional = true }

@@ -111,6 +111,7 @@ pub mod pipelines;
 pub mod prepare;
 pub mod sprites;
 
+mod texture_slice;
 mod utils;
 
 pub(crate) use phases::*;

@@ -593,11 +593,24 @@ fn sync_preview_backdrop(
 
 // ── Camera sync ─────────────────────────────────────────────────────────────
 
+/// Render the preview only while there is a compiled material AND the panel that
+/// shows it is a visible tab. `compiled_wgsl` alone stays set for the rest of
+/// the session once any material has loaded, so this camera kept rendering a
+/// full HDRI-lit scene every frame after the Materials workspace was left.
 fn sync_preview_camera_active(
     editor_state: Res<MaterialEditorState>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     mut camera: Query<&mut Camera, With<MaterialPreviewCamera>>,
 ) {
-    let should_be_active = editor_state.compiled_wgsl.is_some();
+    let visible = renzora_ember::dock::panel_visible_anywhere(
+        "material_preview",
+        dock.as_deref(),
+        fixed.as_deref(),
+        wins.as_deref(),
+    );
+    let should_be_active = visible && editor_state.compiled_wgsl.is_some();
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;
@@ -776,7 +789,7 @@ fn swap_preview_shape(
                 // mesh's own centroid — an imported mesh can be authored at any
                 // scale and pivoted anywhere, and the orbit camera's distance
                 // range (1.5–10) assumes a ~1-unit subject.
-                let fitted = match meshes.get(handle).and_then(|m| m.compute_aabb()) {
+                let fitted = match meshes.get(handle).and_then(|m| m.get_aabb()) {
                     Some(aabb) => {
                         let extent = Vec3::from(aabb.half_extents).max_element().max(1e-6);
                         let scale = SELECTED_FIT_RADIUS / extent;
@@ -999,7 +1012,7 @@ fn update_preview_material(
     // it into the fragment stage.
     let preview_uuid = Uuid::new_v4();
     let preview_handle: Handle<Shader> = Handle::Uuid(preview_uuid, PhantomData);
-    let shader = Shader::from_wgsl(result.fragment_shader.clone(), "graph_material://preview");
+    let shader = renzora::shader_source::shader(result.fragment_shader.clone(), "graph_material/preview.wgsl");
     let _ = shaders.insert(&preview_handle, shader);
 
     // Seed the parameter UBO from the graph's authored defaults. Without the

@@ -23,7 +23,7 @@ impl Plugin for WaveformPlugin {
         if app.is_plugin_added::<UiMaterialPlugin<WaveMaterial>>() {
             return;
         }
-        bevy::asset::embedded_asset!(app, "waveform.wgsl");
+        bevy::asset::embedded_asset!(app, "waveform.wesl");
         app.add_plugins(UiMaterialPlugin::<WaveMaterial>::default());
         app.add_systems(Update, (waveform_attach, waveform_sync));
     }
@@ -41,7 +41,7 @@ pub(crate) struct WaveMaterial {
 
 impl UiMaterial for WaveMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/waveform/waveform.wgsl".into()
+        "embedded://renzora_ember/widgets/waveform/waveform.wesl".into()
     }
 }
 

@@ -22,7 +22,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-bevy = "0.19"
+bevy = "0.20"
 renzora = "0.1"
 ```
 
@@ -70,7 +70,7 @@ renzora::plugin!(AsciiPlugin, Runtime);
 
 | Attribute argument | Meaning |
 |---|---|
-| `shader` | The `.wgsl` beside `lib.rs`, loaded through `embedded_asset!` |
+| `shader` | The `.wgsl` or `.wesl` beside `lib.rs`, loaded through `embedded_asset!` |
 | `name` | What the inspector calls the effect |
 | `icon` | Its glyph in the add-component list |
 | `order` | Optional sort key within the render phase; lower runs first |
@@ -117,6 +117,7 @@ fn fragment(@builtin(position) pos: vec4<f32>, @location(0) in_uv: vec2<f32>) ->
 - **All bindings are `@group(0)`**: 0 is the source colour texture, 1 its sampler, 2 the settings uniform. Bindings 3 and 4 are an optional extra texture and its sampler; a shader that declares either without the effect asking for one is a wgpu validation crash at the moment it first renders, not a compile error.
 - **The WGSL struct mirrors the generated Rust struct exactly**: your fields in declaration order, then padding, then `enabled` last. The padding count is `max(8, ceil((fields + 1) / 4) * 4) - fields - 1`. Field names are arbitrary; order and size are not.
 - **Respect `enabled`.** It is `0.0` when the effect is switched off in the inspector. Return the sampled colour unchanged rather than running the effect.
+- **Plain WGSL, or WESL when you need imports.** The example above imports nothing, so it is valid as either. Name the file `.wesl` to use `import bevy_render::maths::PI;` and `@if(FLAG)`. An effect written for the old `#import`/`#ifdef` dialect still loads, because the engine translates it to WESL as it loads; see [Shaders](../rendering/shaders.md).
 
 ## Render phases
 

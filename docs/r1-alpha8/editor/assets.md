@@ -20,6 +20,12 @@ Tiles show the asset rather than a generic icon. Textures show themselves, mater
 
 File names are shown without their extension, because the icon and its colour already tell you the type. When you rename, the extension is put back for you, so renaming `rock.png` to `boulder` gives you `boulder.png`. Type an extension explicitly to change the type, or end the name with a dot to drop it.
 
+Moving or renaming something here keeps everything that uses it working. The project's materials, scenes, particle effects, UI templates, animations and blueprints are updated to the new path, and the Console says how many files changed. So if a model lands in the wrong folder on import, drag its folder to where it belongs and its materials follow their textures. Scripts are left alone, because a path in code may be built or compared in ways the editor can't safely rewrite.
+
+Do your moving in this panel rather than in Explorer or Finder. A file moved outside the editor looks like a deletion followed by a new file, so the references to it are not updated.
+
+A `.material` changed on disk by anything other than the Material Editor, whether a text editor, a `git pull` or a move, reloads in the viewport straight away.
+
 ## Making new assets
 
 The **Add** button on the toolbar, and the right-click menu in empty space, both create a new file in the current folder.

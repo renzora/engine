@@ -17,7 +17,7 @@ pub(crate) struct CurveEditorPlugin;
 
 impl Plugin for CurveEditorPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "curve.wgsl");
+        bevy::asset::embedded_asset!(app, "curve.wesl");
         app.add_plugins(UiMaterialPlugin::<CurveMaterial>::default());
         app.add_systems(Update, (curve_attach, curve_sync, curve_drag).chain());
     }
@@ -37,7 +37,7 @@ pub(crate) struct CurveMaterial {
 
 impl UiMaterial for CurveMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/curve/curve.wgsl".into()
+        "embedded://renzora_ember/widgets/curve/curve.wesl".into()
     }
 }
 

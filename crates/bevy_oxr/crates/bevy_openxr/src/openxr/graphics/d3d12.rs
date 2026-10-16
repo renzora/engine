@@ -62,6 +62,9 @@ unsafe impl GraphicsExt for openxr::D3D12 {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
+            // wgpu 30: the runtime hands out a fresh swapchain image each
+            // frame, so its old contents are never read.
+            wgpu::TextureUses::UNINITIALIZED,
         );
         Ok(texture)
     }

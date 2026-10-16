@@ -101,6 +101,7 @@ pub(crate) use property::{
 };
 use property::{CachedEffectProperties, PropertyBindGroupKey};
 pub use shader_cache::ShaderCache;
+pub(crate) use shader_cache::{translated_shader, VFX_COMMON_MODULE};
 pub(crate) use sort::SortBindGroups;
 
 use self::batch::EffectBatch;
@@ -1046,6 +1047,7 @@ impl SpecializedComputePipeline for DispatchIndirectPipeline {
             },
             shader_defs,
             entry_point: Some("main".into()),
+            constants: vec![],
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -1114,6 +1116,7 @@ impl PrefixSumPipeline {
             shader: self.compute_shader.clone(),
             shader_defs: vec![],
             entry_point: Some("main".into()),
+            constants: vec![],
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -1820,6 +1823,7 @@ impl SpecializedComputePipeline for ParticlesInitPipeline {
             shader: key.shader,
             shader_defs,
             entry_point: Some("main".into()),
+            constants: vec![],
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -1920,6 +1924,7 @@ impl SpecializedComputePipeline for ParticlesUpdatePipeline {
             shader: key.shader,
             shader_defs,
             entry_point: Some("main".into()),
+            constants: vec![],
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -2229,11 +2234,13 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
                 shader: key.shader.clone(),
                 entry_point: Some("vertex".into()),
                 shader_defs: shader_defs.clone(),
+                constants: vec![],
                 buffers: vec![vertex_buffer_layout.expect("Vertex buffer layout not present")],
             },
             fragment: Some(FragmentState {
                 shader: key.shader,
                 shader_defs,
+                constants: vec![],
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format,
@@ -3151,7 +3158,7 @@ impl Default for LayoutFlags {
 /// Observer raised when the [`CachedEffect`] component is removed, which
 /// indicates that the effect instance was despawned.
 pub(crate) fn on_remove_cached_effect(
-    trigger: On<Remove, CachedEffect>,
+    trigger: On<Remove<CachedEffect>>,
     query: Query<(
         Entity,
         &MainEntity,
@@ -3226,7 +3233,7 @@ pub(crate) fn on_remove_cached_effect(
 /// Observer raised when the [`CachedEffectMetadata`] component is removed, to
 /// deallocate the GPU resources associated with the indirect draw args.
 pub(crate) fn on_remove_cached_metadata(
-    trigger: On<Remove, CachedEffectMetadata>,
+    trigger: On<Remove<CachedEffectMetadata>>,
     query: Query<&CachedEffectMetadata>,
     mut effects_meta: ResMut<EffectsMeta>,
 ) {
@@ -3245,7 +3252,7 @@ pub(crate) fn on_remove_cached_metadata(
 /// Observer raised when the [`CachedDrawIndirectArgs`] component is removed, to
 /// deallocate the GPU resources associated with the indirect draw args.
 pub(crate) fn on_remove_cached_draw_indirect_args(
-    trigger: On<Remove, CachedDrawIndirectArgs>,
+    trigger: On<Remove<CachedDrawIndirectArgs>>,
     query: Query<&CachedDrawIndirectArgs>,
     mut effects_meta: ResMut<EffectsMeta>,
 ) {
@@ -4254,7 +4261,7 @@ pub(crate) fn propagate_ready_state(
 
             // Recursively update the ready state of its descendants
             if let Some(children) = maybe_children {
-                for (child, child_of) in q_child_effects.iter_many(children) {
+                for (child, child_of) in q_child_effects.iter_many(children).matched() {
                     assert_eq!(
                         child_of.parent, entity,
                         "Malformed hierarchy. This probably means that your hierarchy has been improperly maintained, or contains a cycle"
@@ -4337,7 +4344,7 @@ unsafe fn propagate_ready_state_recursive(
     let Some(children) = maybe_children else {
         return;
     };
-    for (child, child_of) in q_child_of.iter_many(children) {
+    for (child, child_of) in q_child_of.iter_many(children).matched() {
         assert_eq!(
         child_of.parent, entity,
         "Malformed hierarchy. This probably means that your hierarchy has been improperly maintained, or contains a cycle"
@@ -4742,7 +4749,7 @@ pub(crate) fn batch_effects(
                 translation,
                 main_entity: *main_entity,
             })
-            .insert(TemporaryRenderEntity);
+            .insert(TemporaryRenderEntity::default());
     }
 
     // Begin the GpuBufferOperations frame here; the matching submit()s happen in
@@ -5873,7 +5880,9 @@ pub(crate) fn queue_effects(
                 },
                 // Unused for now
                 || OpaqueNoLightmap3dBinKey {
-                    asset_id: AssetId::<Mesh>::invalid().untyped(),
+                    // The key is never read; `default()` replaces the
+                    // deprecated `invalid()` placeholder.
+                    asset_id: AssetId::<Mesh>::default().untyped(),
                 },
                 #[cfg(feature = "2d")]
                 PipelineMode::Camera3d,
@@ -5915,7 +5924,7 @@ pub(crate) fn queue_effects(
                 },
                 // Unused for now
                 || Opaque3dBinKey {
-                    asset_id: AssetId::<Mesh>::invalid().untyped(),
+                    asset_id: AssetId::<Mesh>::default().untyped(),
                 },
                 #[cfg(feature = "2d")]
                 PipelineMode::Camera3d,

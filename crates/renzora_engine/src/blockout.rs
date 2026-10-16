@@ -239,7 +239,7 @@ fn project_vertex(world: Vec3, normal: Vec3) -> [f32; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::math::primitives::Cuboid;
+    use bevy::shape::Cuboid;
 
     fn uvs_of(mesh: &Mesh) -> Vec<[f32; 2]> {
         match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {

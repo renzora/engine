@@ -182,11 +182,25 @@ fn setup_shader_preview(
 
 // ---- Camera sync ------------------------------------------------------------
 
+/// Render the preview only while a compatible shader is compiled AND its panel
+/// is a visible tab. Nothing clears `compiled_wgsl`, so without the panel check
+/// this camera rendered every frame for the rest of the session after the first
+/// compile.
 fn sync_shader_preview_camera(
     editor_state: Res<ShaderEditorState>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     mut camera: Query<&mut Camera, With<ShaderPreviewCamera>>,
 ) {
-    let should_be_active = editor_state.compiled_wgsl.is_some() && editor_state.preview_compatible;
+    let visible = renzora_ember::dock::panel_visible_anywhere(
+        "shader_preview",
+        dock.as_deref(),
+        fixed.as_deref(),
+        wins.as_deref(),
+    );
+    let should_be_active =
+        visible && editor_state.compiled_wgsl.is_some() && editor_state.preview_compatible;
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;
@@ -198,6 +212,8 @@ fn sync_shader_preview_camera(
 
 fn update_shader_preview(
     editor_state: Res<ShaderEditorState>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    asset_server: Res<AssetServer>,
     mut shaders: ResMut<Assets<Shader>>,
     mut shader_cache: ResMut<ShaderCache>,
     mut materials: ResMut<Assets<CodeShaderMaterial>>,
@@ -214,7 +230,24 @@ fn update_shader_preview(
     }
 
     if let Some(ref wgsl) = editor_state.compiled_wgsl {
-        let handle = shader_cache.get_or_insert(wgsl, "code_shader://preview", &mut shaders);
+        // Registered beside the file being edited, so a WESL shader's relative
+        // imports (`import super::noise::fbm;`) find the files next to it. The
+        // name is the preview's own: under the file's real name it would
+        // replace the copy a mesh in the scene is already using.
+        let label = match (editor_state.file_path.as_deref(), project.as_deref()) {
+            (Some(path), Some(project)) => {
+                let rel = project.make_asset_relative(std::path::Path::new(path)).replace('\\', "/");
+                match rel.rsplit_once('/') {
+                    Some((dir, file)) => format!("{dir}/__preview_{file}"),
+                    None => format!("__preview_{rel}"),
+                }
+            }
+            _ => "code_shader/preview.wgsl".to_string(),
+        };
+        let handle = shader_cache.get_or_insert_with_imports(wgsl, &label, &mut shaders, |file| {
+            let on_disk = project.as_deref().map(|p| p.resolve_path(file));
+            on_disk.is_some_and(|p| p.is_file()).then(|| asset_server.load::<Shader>(file.to_string()))
+        });
 
         // Update the preview quad's material with the new shader handle
         for mat_handle in preview_quad.iter() {

@@ -235,12 +235,25 @@ pub use wasm_prefs::*;
 
 /// Load the persisted renderer backend preference, defaulting to
 /// [`RendererBackend::Auto`] when the file is absent or unreadable.
+///
+/// Matched case-insensitively. The Settings panel saves this field through
+/// serde, whose `snake_case` rename writes `"dx12"`, while this reader used to
+/// accept only `"Dx12"`: every backend picked in Settings was read back as
+/// `Auto` at boot, so the choice silently did nothing.
 pub fn load_renderer_backend() -> RendererBackend {
-    match editor_field("renderer_backend").and_then(|v| v.as_str().map(str::to_string)) {
-        Some(s) if s == "Vulkan" => RendererBackend::Vulkan,
-        Some(s) if s == "Dx12" => RendererBackend::Dx12,
-        Some(s) if s == "Metal" => RendererBackend::Metal,
-        Some(s) if s == "Gl" => RendererBackend::Gl,
+    parse_renderer_backend(
+        editor_field("renderer_backend")
+            .as_ref()
+            .and_then(|v| v.as_str()),
+    )
+}
+
+fn parse_renderer_backend(value: Option<&str>) -> RendererBackend {
+    match value.map(str::to_ascii_lowercase).as_deref() {
+        Some("vulkan") => RendererBackend::Vulkan,
+        Some("dx12") => RendererBackend::Dx12,
+        Some("metal") => RendererBackend::Metal,
+        Some("gl") => RendererBackend::Gl,
         _ => RendererBackend::Auto,
     }
 }
@@ -1566,6 +1579,25 @@ impl CurrentProject {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// Every backend the Settings panel can save must read back as itself.
+    /// The writer is serde and the reader is hand-written, so this is the one
+    /// place the two are held to the same spelling.
+    #[test]
+    fn renderer_backend_reads_back_what_serde_writes() {
+        for backend in [
+            RendererBackend::Auto,
+            RendererBackend::Dx12,
+            RendererBackend::Vulkan,
+            RendererBackend::Metal,
+            RendererBackend::Gl,
+        ] {
+            let written = toml::Value::try_from(backend).expect("serialize backend");
+            assert_eq!(parse_renderer_backend(written.as_str()), backend);
+        }
+        assert_eq!(parse_renderer_backend(Some("Dx12")), RendererBackend::Dx12);
+        assert_eq!(parse_renderer_backend(None), RendererBackend::Auto);
+    }
 
     // ── ProjectConfig TOML round-trip ──────────────────────────────────────
 

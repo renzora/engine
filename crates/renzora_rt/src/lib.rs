@@ -27,7 +27,7 @@ pub struct RtPlugin;
 
 impl Plugin for RtPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "ssgi.wgsl");
+        bevy::asset::embedded_asset!(app, "ssgi.wesl");
 
         app.register_type::<RtLighting>();
         app.add_systems(Update, (sync_rt_lighting, cleanup_rt_lighting));

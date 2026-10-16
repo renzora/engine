@@ -17,7 +17,7 @@ window_support = ["dep:bevy_winit", "dep:bevy_window"]
 raw_vulkan_init = []
 
 [dev-dependencies]
-bevy = { version = "0.19" }
+bevy = { version = "0.20" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-context = "0.1"
@@ -26,32 +26,34 @@ android_system_properties = { version = "0.1.5", optional = true }
 
 # bevy can't be placed behind target or proc macros won't work properly
 [dependencies]
-bevy_ecs = { version = "0.19", default-features = false }
-bevy_math = { version = "0.19", default-features = false }
-bevy_render = { version = "0.19", default-features = false }
-bevy_app = { version = "0.19", default-features = false }
-bevy_reflect = { version = "0.19", default-features = false, optional = true }
-bevy_log = { version = "0.19", default-features = false }
-bevy_transform = { version = "0.19", default-features = false }
-bevy_camera = { version = "0.19", default-features = false }
-bevy_derive = { version = "0.19", default-features = false }
-bevy_platform = { version = "0.19", default-features = false }
-bevy_winit = { version = "0.19", default-features = false, optional = true }
-bevy_window = { version = "0.19", default-features = false, optional = true }
+bevy_ecs = { version = "0.20", default-features = false }
+bevy_math = { version = "0.20", default-features = false }
+bevy_render = { version = "0.20", default-features = false }
+# 0.20 port: the `ExtractResource` derive expands to paths in `bevy_extract`.
+bevy_extract = { version = "0.20", default-features = false }
+bevy_app = { version = "0.20", default-features = false }
+bevy_reflect = { version = "0.20", default-features = false, optional = true }
+bevy_log = { version = "0.20", default-features = false }
+bevy_transform = { version = "0.20", default-features = false }
+bevy_camera = { version = "0.20", default-features = false }
+bevy_derive = { version = "0.20", default-features = false }
+bevy_platform = { version = "0.20", default-features = false }
+bevy_winit = { version = "0.20", default-features = false, optional = true }
+bevy_window = { version = "0.20", default-features = false, optional = true }
 
 # all other dependencies are placed under this since on wasm, this crate is completely empty
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 bevy_mod_xr = { path = "../bevy_xr", version = "0.5.0" }
 openxr = "0.21.1"
 thiserror = "2.0.3"
-# Must match bevy 0.19's wgpu (29.x) — `raw_vulkan_init` hands raw wgpu objects
+# Must match bevy 0.20's wgpu (30.x): `raw_vulkan_init` hands raw wgpu objects
 # to bevy's RenderDevice/RenderQueue, so a version skew makes them distinct types.
-wgpu = "29"
-wgpu-hal = "29"
+wgpu = "30"
+wgpu-hal = "30"
 ash = { version = "0.38", optional = true }
 
 [target.'cfg(target_family = "unix")'.dependencies]
-wgpu = { version = "29", features = ["vulkan-portability"] }
+wgpu = { version = "30", features = ["vulkan-portability"] }
 
 [target.'cfg(target_family = "windows")'.dependencies]
 openxr = { version = "0.21.1", features = ["mint", "loaded"] }

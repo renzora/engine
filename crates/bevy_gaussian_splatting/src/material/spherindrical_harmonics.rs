@@ -2,7 +2,7 @@
 use std::marker::Copy;
 
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     prelude::*,
     render::render_resource::ShaderType,
 };
@@ -42,11 +42,11 @@ const SPHERINDRICAL_HARMONICS_SHADER_HANDLE: Handle<Shader> =
 pub struct SpherindricalHarmonicCoefficientsPlugin;
 impl Plugin for SpherindricalHarmonicCoefficientsPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             SPHERINDRICAL_HARMONICS_SHADER_HANDLE,
-            "spherindrical_harmonics.wgsl",
-            Shader::from_wgsl
+            "spherindrical_harmonics.wesl",
+            "material/spherindrical_harmonics"
         );
     }
 }

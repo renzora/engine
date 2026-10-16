@@ -16,7 +16,10 @@ use renzora_shader::material::resolver::MaterialResolved;
 
 use crate::ViewportState;
 
-pub(crate) const MATERIAL_EXTENSIONS: &[&str] = &["material"];
+/// A hand-written `.wgsl` or `.wesl` is a material in its own right: the
+/// resolver turns one into a `CodeShaderMaterial`, so it drops onto a mesh
+/// like a `.material`.
+pub(crate) const MATERIAL_EXTENSIONS: &[&str] = &["material", "wgsl", "wesl"];
 
 /// Commit a material drop — raycast for the mesh under `screen_pos` and apply the
 /// `.material`. Shared by the egui drop check and the native bevy_ui drop

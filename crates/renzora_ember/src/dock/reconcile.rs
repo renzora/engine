@@ -546,10 +546,10 @@ pub(crate) fn apply_dock_style(
                 // corner. Rounding all four would put a curve halfway down the
                 // panel where the bar meets its content.
                 node.border_radius = BorderRadius {
-                    top_left: Val::Px(d.header_radius),
-                    top_right: Val::Px(d.header_radius),
-                    bottom_left: Val::Px(0.0),
-                    bottom_right: Val::Px(0.0),
+                    top_left: Val::Px(d.header_radius).into(),
+                    top_right: Val::Px(d.header_radius).into(),
+                    bottom_left: Val::Px(0.0).into(),
+                    bottom_right: Val::Px(0.0).into(),
                 };
                 node.padding = UiRect::axes(Val::Px(d.header_pad_x), Val::Px(d.header_pad_y));
                 if let Some(mut bc) = border {

@@ -223,10 +223,10 @@ fn round_scene_corners(
 ) {
     let r = Val::Px(theme.dock.leaf_radius);
     let want = BorderRadius {
-        top_left: Val::Px(0.0),
-        top_right: Val::Px(0.0),
-        bottom_left: r,
-        bottom_right: r,
+        top_left: Val::Px(0.0).into(),
+        top_right: Val::Px(0.0).into(),
+        bottom_left: r.into(),
+        bottom_right: r.into(),
     };
     for mut node in &mut q {
         if node.border_radius != want {

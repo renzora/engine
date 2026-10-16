@@ -88,6 +88,7 @@ impl FromWorld for ScreenReflectionResolvePipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("resolve".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
@@ -122,7 +123,7 @@ pub fn screen_reflection_resolve_pass(
         let Some(compute) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
             return;
         };
-        let Some(depth_view) = prepass.depth_view() else {
+        let Some(depth_view) = prepass.depth_only_view() else {
             return;
         };
         let Some(normal_view) = prepass.normal_view() else {

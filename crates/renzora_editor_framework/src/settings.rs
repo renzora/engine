@@ -305,6 +305,9 @@ pub struct EditorSettings {
     /// only in this resource) because the renderer is created before this
     /// resource exists; changing it requires an editor restart to take effect.
     pub renderer_backend: renzora::RendererBackend,
+    /// Launcher cinematic and loading-screen haze: on, off, or decided by the
+    /// display (see [`renzora::SplashEffects`]).
+    pub splash_effects: renzora::SplashEffects,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
     /// New scripts and UI templates are created with commented boilerplate
@@ -433,6 +436,7 @@ impl Default for EditorSettings {
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
             renderer_backend: renzora::RendererBackend::default(),
+            splash_effects: renzora::SplashEffects::default(),
             // Off: the backdrop needs a viewport panel on screen to have
             // anything to show — an undocked viewport slot renders at 64×64 —
             // and the UI workspace ships without one.

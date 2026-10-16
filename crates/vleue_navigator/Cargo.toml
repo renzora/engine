@@ -1,3 +1,6 @@
+# Vendored vleue_navigator. 0.20 port: avian comes from the workspace (its
+# Bevy 0.20 branch), whose parry 0.31 returns glam points instead of nalgebra
+# ones, and the sleeping observers take `On<Insert<Sleeping>>`.
 [package]
 name = "vleue_navigator"
 version = "0.15.0"
@@ -18,14 +21,14 @@ tracing = { version = "0.1", optional = true }
 log = "0.4.27"
 
 [dependencies.avian2d]
-version = "0.7"
-features = ["2d", "f32", "parry-f32"]
+workspace = true
+features = ["2d","parry-f32"]
 default-features = false
 optional = true
 
 [dependencies.avian3d]
-version = "0.7"
-features = ["3d", "f32", "parry-f32"]
+workspace = true
+features = ["3d","parry-f32"]
 default-features = false
 optional = true
 

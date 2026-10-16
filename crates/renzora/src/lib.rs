@@ -247,6 +247,10 @@ pub mod content_problems;
 // The one WGSL↔naga seam (parse/validate) for self-contained shaders.
 pub mod wgsl;
 
+// Shader text in any dialect (plain WGSL, WESL, or the pre-0.20 naga_oil one)
+// to a Bevy `Shader`, translating the old dialect so it keeps working.
+pub mod shader_source;
+
 // ── Editor contract (Operation Merge fold) ───────────────────────────────
 // The thin editor types shared across the binary↔bundle boundary live here in
 // the one shared `renzora` dylib (so `EditorSelection` et al. unify to one
@@ -355,6 +359,48 @@ pub enum SplashState {
     Splash,
     Loading,
     Editor,
+}
+
+/// Whether the launcher and loading screen run their decorative effects: the
+/// launcher's 3D Light Chamber cinematic and the loading screen's animated haze.
+///
+/// Both are full-window and both scale with the window's pixel count, so on a
+/// very large or ultrawide display they cost the most for the least: a 49"
+/// 5120x1440 panel has 3.5x the pixels of 1080p. `Auto` resolves to reduced on
+/// such displays and to full elsewhere; the resolved answer is
+/// [`SplashEffectsSetting::reduced`].
+#[derive(
+    serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SplashEffects {
+    #[default]
+    Auto,
+    Full,
+    Reduced,
+}
+
+/// The [`SplashEffects`] choice, mirrored from the editor's settings so the
+/// splash crate can read it without linking the editor framework.
+#[derive(bevy::prelude::Resource, Default, Clone, Copy)]
+pub struct SplashEffectsSetting(pub SplashEffects);
+
+impl SplashEffectsSetting {
+    /// Resolve against the display the launcher is on. `monitor` is its
+    /// physical size, when known.
+    ///
+    /// "Large" is wider than 21:9 or more pixels than 4K: the displays where a
+    /// full-window shader is the most expensive thing on screen.
+    pub fn reduced(&self, monitor: Option<(u32, u32)>) -> bool {
+        match self.0 {
+            SplashEffects::Full => false,
+            SplashEffects::Reduced => true,
+            SplashEffects::Auto => monitor.is_some_and(|(w, h)| {
+                let h = h.max(1);
+                w as f32 / h as f32 > 2.4 || (w as u64) * (h as u64) > 3840 * 2160
+            }),
+        }
+    }
 }
 
 /// Marker request: open a different project. Inserted by the editor's File

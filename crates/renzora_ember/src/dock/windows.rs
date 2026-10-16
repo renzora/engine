@@ -267,6 +267,10 @@ pub(crate) fn spawn_dock_windows(
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Percent(100.0),
+                    // Zero minimum so tall panel content can't grow the root
+                    // past the window (see the shell root in `renzora_shell`).
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
                     flex_direction: FlexDirection::Column,
                     border: UiRect::all(Val::Px(1.0)),
                     ..default()

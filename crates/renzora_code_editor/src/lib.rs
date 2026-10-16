@@ -379,10 +379,13 @@ fn compile_shader_click(
     commands.trigger(renzora::core::ShaderCompileRequested { path });
 }
 
-/// `.wgsl` and nothing else. A `.material` carries its compiled shader inside
-/// it and writes no `.wgsl` to edit — see `renzora_shader_editor::hot_reload`.
+/// `.wgsl` or `.wesl` and nothing else. A `.material` carries its compiled
+/// shader inside it and writes no shader file to edit; see
+/// `renzora_shader_editor::hot_reload`.
 fn is_shader(path: &std::path::Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("wgsl"))
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("wgsl") || e.eq_ignore_ascii_case("wesl"))
 }
 
 /// Which way a zoom button steps.
@@ -609,7 +612,7 @@ fn sync_asset_filter_for_scripting(
     let desired: Option<Vec<String>> = if is_scripting {
         Some(
             [
-                "lua", "wgsl", "glsl", "json", "ron", "toml", "txt", "md",
+                "lua", "wgsl", "wesl", "glsl", "json", "ron", "toml", "txt", "md",
             ]
             .iter()
             .map(|s| s.to_string())

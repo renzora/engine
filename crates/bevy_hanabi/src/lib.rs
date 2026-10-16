@@ -185,7 +185,7 @@ use bevy::{
     camera::visibility::VisibilityClass,
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    render::{extract_component::ExtractComponent, sync_world::SyncToRenderWorld},
+    render::{extract_component::ExtractComponent, sync_world::SyncToRenderWorld, RenderApp},
 };
 use rand::{RngExt as _, SeedableRng as _};
 use serde::{Deserialize, Serialize};
@@ -579,6 +579,7 @@ impl From<&PropertyInstance> for PropertyValue {
 
 /// The [`VisibilityClass`] used for all particle effects.
 #[derive(Default, Clone, Copy, Component, ExtractComponent)]
+#[extract_app(RenderApp)]
 pub struct EffectVisibilityClass;
 
 /// Particle-based visual effect instance.

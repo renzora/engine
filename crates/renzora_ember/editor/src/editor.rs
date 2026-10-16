@@ -97,7 +97,7 @@ fn register_editor_entries(app: &mut App) {
         dynamic_icon_fn: None,
     });
     app.register_component_icon(ComponentIconEntry {
-        type_id: std::any::TypeId::of::<Button>(),
+        type_id: std::any::TypeId::of::<renzora_ember::game_ui::components::UiButton>(),
         name: "UI Button",
         icon: "cursor-click",
         color: [180, 200, 255],

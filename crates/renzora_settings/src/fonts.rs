@@ -20,7 +20,7 @@ fn ui_font_source(
 ) -> bevy::text::FontSource {
     use bevy::text::FontSource;
     match choice {
-        UiFont::System => FontSource::SystemUi,
+        UiFont::System => FontSource::system_ui(),
         UiFont::NotoSans => fonts.default_ui.clone(),
         UiFont::Roboto => FontSource::Family("Roboto".into()),
         UiFont::OpenSans => FontSource::Family("Open Sans".into()),

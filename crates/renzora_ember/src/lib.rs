@@ -181,7 +181,7 @@ fn correct_pointer_state(
         if !active {
             continue;
         }
-        let clipped = clip.is_some_and(|c| !c.clip.contains(cursor));
+        let clipped = clip.is_some_and(|c| !c.contains_point(cursor));
         let occluded = top_blocker.is_some_and(|(b, bsi)| {
             e != b && si.0 < bsi && !is_descendant_of(e, b, &parents)
         });
@@ -201,6 +201,25 @@ fn correct_pointer_state(
             }
         }
     }
+}
+
+/// The window-space (physical pixel) rectangle a node's clip leaves visible:
+/// the intersection of every clip it inherits. `None` when it is fully clipped.
+///
+/// Bevy 0.20 stores a clip as a list of rects, each in its clipping ancestor's
+/// local space, so rotated and scaled nodes clip correctly. Ember never
+/// rotates a clipping container, so mapping each rect's corners back to window
+/// space and intersecting the boxes gives the one rectangle 0.19 stored.
+pub(crate) fn clip_window_rect(clip: &CalculatedClip) -> Option<Rect> {
+    let rects = clip.rects()?;
+    let mut out = Rect::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::INFINITY);
+    for r in rects {
+        let to_window = r.world_to_clip_local.inverse();
+        let a = to_window.transform_point2(r.rect.min);
+        let b = to_window.transform_point2(r.rect.max);
+        out = out.intersect(Rect::from_corners(a, b));
+    }
+    Some(out)
 }
 
 /// Is `e` a descendant of `ancestor` in the UI tree?

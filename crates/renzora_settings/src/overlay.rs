@@ -234,7 +234,7 @@ fn spawn_overlay(
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
                 border_radius: BorderRadius {
-                    top_left: Val::Px(6.0),
+                    top_left: Val::Px(6.0).into(),
                     ..default()
                 },
                 ..default()

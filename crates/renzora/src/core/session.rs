@@ -314,15 +314,42 @@ pub struct OpenUiTemplateFile {
 #[derive(Resource)]
 pub struct ToggleCommandPaletteRequested;
 
-/// One-shot: request a viewport camera operation from the View menu.
+/// One-shot: request a viewport camera operation.
 ///
 /// Consumed by the camera controller in `renzora_camera`.
+///
+/// The View menu inserts the first four. The last three exist for everything
+/// that is not a person at a menu: a plugin, a test, or an agent driving the
+/// editor over MCP. Writing the camera's `Transform` looks like it should work
+/// and silently does not, because the controller recomputes that transform from
+/// its orbit state every frame; this request is the supported way in, and it is
+/// the same one the F key takes.
 #[derive(Resource, Clone, Copy, Debug)]
 pub enum CameraViewRequest {
     ZoomIn,
     ZoomOut,
     ResetZoom,
     FrameAll,
+    /// Frame one entity and its descendants, exactly as the F key does: centred,
+    /// fitted to the viewport's own vertical fov, and seen near its horizon.
+    Frame(Entity),
+    /// Put the camera at `eye` looking at `target`.
+    ///
+    /// The orbit focus lands on `target`, so the orbit and zoom the user does
+    /// next are about the thing they were just shown rather than about whatever
+    /// the pivot happened to be before.
+    LookAt { eye: Vec3, target: Vec3 },
+    /// Set the orbit parameters directly, in radians.
+    ///
+    /// The raw form, for a caller that already thinks in orbit terms (restoring
+    /// a saved view, stepping a turntable). Prefer [`LookAt`](Self::LookAt) when
+    /// the intent is "show me this from there".
+    SetOrbit {
+        focus: Vec3,
+        yaw: f32,
+        pitch: f32,
+        distance: f32,
+    },
 }
 
 /// Toggle: when active, only the selected entity (and its ancestors/descendants)

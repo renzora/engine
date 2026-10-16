@@ -32,7 +32,7 @@ impl Plugin for ChartPlugin {
         if app.is_plugin_added::<UiMaterialPlugin<ChartMaterial>>() {
             return;
         }
-        bevy::asset::embedded_asset!(app, "chart.wgsl");
+        bevy::asset::embedded_asset!(app, "chart.wesl");
         app.add_plugins(UiMaterialPlugin::<ChartMaterial>::default());
         app.add_systems(Update, (chart_attach, chart_sync));
     }
@@ -50,7 +50,7 @@ pub(crate) struct ChartMaterial {
 
 impl UiMaterial for ChartMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/chart/chart.wgsl".into()
+        "embedded://renzora_ember/widgets/chart/chart.wesl".into()
     }
 }
 

@@ -92,11 +92,15 @@ jobs:
       - name: Run tests
         run: |
           cargo test --workspace \
+            --exclude bevy_args \
             --exclude bevy_firefly \
             --exclude bevy_gauge \
             --exclude bevy_gaussian_splatting \
             --exclude bevy_hanabi \
             --exclude bevy_hui \
+            --exclude bevy_interleave \
+            --exclude bevy_interleave_interface \
+            --exclude bevy_interleave_macros \
             --exclude bevy_mod_outline \
             --exclude bevy_procedural_tree \
             --exclude bevy_silk \
@@ -237,10 +241,14 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy --workspace --no-deps \
+            --exclude bevy_args \
             --exclude bevy_firefly \
             --exclude bevy_gaussian_splatting \
             --exclude bevy_hanabi \
             --exclude bevy_hui \
+            --exclude bevy_interleave \
+            --exclude bevy_interleave_interface \
+            --exclude bevy_interleave_macros \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
             --exclude vleue_navigator \

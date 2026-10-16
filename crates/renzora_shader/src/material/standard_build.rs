@@ -80,10 +80,17 @@ pub fn try_build_standard_material(
     // accepted by the editor and then silently dropped. Hand the graph to
     // codegen instead, where the constant compiles in like any other
     // expression; slower to build, but it actually renders what was typed.
+    //
+    // A `Vec3` whose three components are equal is a scalar in all but type,
+    // and it is what every import writes (`pbr_build` broadcasts glTF's single
+    // specular factor), so it stays on this path. Rejecting it sent every
+    // imported model through codegen, which costs a shader compile per material
+    // and takes it out of ray tracing, since Solari only traces
+    // `StandardMaterial`.
     if output.input_values.contains_key("ao")
         || matches!(
             output.input_values.get("reflectance"),
-            Some(PinValue::Vec3(_))
+            Some(v @ PinValue::Vec3(_)) if uniform_reflectance(v).is_none()
         )
     {
         return None;
@@ -320,8 +327,8 @@ pub fn try_build_standard_material(
     if let Some(PinValue::Float(v)) = output.input_values.get("anisotropy_rotation") {
         mat.anisotropy_rotation = *v;
     }
-    if let Some(PinValue::Float(v)) = output.input_values.get("reflectance") {
-        mat.reflectance = *v;
+    if let Some(v) = output.input_values.get("reflectance").and_then(uniform_reflectance) {
+        mat.reflectance = v;
     }
 
     // Any of these pins being *connected* to a non-param node (i.e. the user
@@ -447,6 +454,19 @@ fn param_default(graph: &MaterialGraph, output_id: NodeId, pin_name: &str) -> Op
 fn texture_path(node: &MaterialNode) -> Option<String> {
     match node.input_values.get("texture")? {
         PinValue::TexturePath(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// The output node's `reflectance` as the scalar `StandardMaterial` stores, or
+/// `None` when it is a genuinely coloured `Vec3` that only codegen can render.
+///
+/// The pin is a `Vec3` to match the GPU uniform, but importers write the same
+/// value into all three components, so a uniform one loses nothing here.
+fn uniform_reflectance(value: &PinValue) -> Option<f32> {
+    match value {
+        PinValue::Float(v) => Some(*v),
+        PinValue::Vec3([r, g, b]) if r == g && g == b => Some(*r),
         _ => None,
     }
 }
@@ -736,6 +756,11 @@ mod tests {
                 .insert("emissive".into(), PinValue::Vec3([8.0, 0.0, 0.0]));
             out.input_values
                 .insert("alpha".into(), PinValue::Float(1.0));
+            // `pbr_build` broadcasts glTF's scalar specular factor into the
+            // Vec3 pin. Leaving this out of the test is how every imported
+            // model silently fell off the fast path.
+            out.input_values
+                .insert("reflectance".into(), PinValue::Vec3([0.4, 0.4, 0.4]));
         }
 
         let app = asset_app();
@@ -746,6 +771,22 @@ mod tests {
         assert!(mat.normal_map_texture.is_some());
         // HDR emissive lands as a LinearRgba > 1.0 — what bloom needs.
         assert_eq!(mat.emissive.red, 8.0);
+        assert_eq!(mat.reflectance, 0.4);
+    }
+
+    #[test]
+    fn coloured_reflectance_goes_to_codegen() {
+        // A per-channel reflectance has no StandardMaterial field to land in,
+        // so it must not be flattened to one channel here.
+        let mut graph = MaterialGraph::new("Tinted", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        if let Some(out) = graph.get_node_mut(output_id) {
+            out.input_values
+                .insert("reflectance".into(), PinValue::Vec3([0.5, 0.2, 0.2]));
+        }
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(try_build_standard_material(&graph, asset_server).is_none());
     }
 
     #[test]

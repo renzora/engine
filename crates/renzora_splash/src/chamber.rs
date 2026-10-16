@@ -186,7 +186,7 @@ struct ChamberScene {
     built: bool,
 }
 
-/// UI material that runs the chamber render through `chamber.wgsl` (the spectral
+/// UI material that runs the chamber render through `chamber.wesl` (the spectral
 /// finishing pass).
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 struct ChamberMaterial {
@@ -200,12 +200,12 @@ struct ChamberMaterial {
 
 impl UiMaterial for ChamberMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/chamber.wgsl".into()
+        "embedded://renzora_splash/chamber.wesl".into()
     }
 }
 
 pub(crate) fn register(app: &mut App) {
-    bevy::asset::embedded_asset!(app, "chamber.wgsl");
+    bevy::asset::embedded_asset!(app, "chamber.wesl");
     app.init_resource::<ChamberScene>()
         .add_plugins(UiMaterialPlugin::<ChamberMaterial>::default())
         .add_systems(
@@ -236,13 +236,14 @@ fn manage_chamber(
     mut commands: Commands,
     state: Res<State<SplashState>>,
     integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    effects: crate::effects::SplashEffects,
     mut scene: ResMut<ChamberScene>,
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     owned: Query<Entity, With<ChamberEntity>>,
 ) {
-    let cinematic_ok = !integrated.is_some_and(|g| g.yes);
+    let cinematic_ok = !integrated.is_some_and(|g| g.yes) && !effects.reduced();
     let want = matches!(state.get(), SplashState::Splash) && cinematic_ok;
 
     if want && !scene.built {
@@ -330,7 +331,7 @@ fn spawn_camera(commands: &mut Commands, layer: &RenderLayers, image: Handle<Ima
         // `jitter` is deliberately 0. Bevy's jitter is keyed on `frame_count`, so it
         // resamples every frame — with TAA that resolves to smooth fog, but there is
         // no TAA on this camera and it would show as crawling noise. The step count
-        // is doing that job instead; the grain in `post.wgsl` covers what's left.
+        // is doing that job instead; the grain in `post.wesl` covers what's left.
         VolumetricFog { ambient_color: Color::BLACK, ambient_intensity: 0.0, step_count: 56, jitter: 0.0 },
         Camera { clear_color: ClearColorConfig::Custom(Color::BLACK), order: -50, ..default() },
         RenderTarget::Image(image.into()),

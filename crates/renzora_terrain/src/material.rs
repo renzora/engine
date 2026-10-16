@@ -9,7 +9,7 @@ pub struct TerrainMaterialPlugin;
 
 impl Plugin for TerrainMaterialPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "shaders/terrain_checkerboard.wgsl");
+        bevy::asset::embedded_asset!(app, "shaders/terrain_checkerboard.wesl");
         app.add_plugins(MaterialPlugin::<TerrainCheckerboardMaterial>::default());
     }
 }
@@ -39,7 +39,7 @@ impl Default for TerrainCheckerboardMaterial {
 
 impl Material for TerrainCheckerboardMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_terrain/shaders/terrain_checkerboard.wgsl".into()
+        "embedded://renzora_terrain/shaders/terrain_checkerboard.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {

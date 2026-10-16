@@ -54,6 +54,11 @@ pub(super) fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.shading.wireframe"), render_toggles.wireframe));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.lighting"), render_toggles.lighting));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.shadows"), render_toggles.shadows));
+    // Off renders the viewport only when the scene changes, so a heavy scene
+    // stops dragging the editor UI down to its frame rate while nothing moves.
+    // On is for things that move without the scene changing: shader animation,
+    // GPU particles. See `crate::redraw`.
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.realtime"), realtime));
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")));

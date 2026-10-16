@@ -4,7 +4,7 @@ use std::fmt;
 
 use bevy::animation::animation_curves::AnimatableCurve;
 use bevy::asset::{io::Reader, AssetLoader, LoadContext};
-use bevy::math::curve::UnevenSampleAutoCurve;
+use bevy::curve::UnevenSampleAutoCurve;
 use bevy::prelude::*;
 
 use crate::clip::AnimClip;

@@ -81,7 +81,7 @@ pub struct GrassRenderPlugin;
 
 impl Plugin for GrassRenderPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "grass.wgsl");
+        bevy::asset::embedded_asset!(app, "grass.wesl");
     }
 
     fn finish(&self, app: &mut App) {
@@ -505,7 +505,7 @@ impl FromWorld for GrassPipeline {
             ),
         );
         let shader =
-            bevy::asset::load_embedded_asset!(world.resource::<AssetServer>(), "grass.wgsl");
+            bevy::asset::load_embedded_asset!(world.resource::<AssetServer>(), "grass.wesl");
         Self {
             view_layout,
             params_layout,

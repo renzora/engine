@@ -610,7 +610,7 @@ fn sync_tilesets(
 /// `Image` asset itself.
 ///
 /// The per-load sampler override in [`load_tileset_nearest`] only takes effect
-/// when the tileset is the FIRST loader of its path — `load_with_settings` on
+/// when the tileset is the FIRST loader of its path: loading with settings on
 /// an already-loaded path returns the existing asset with the existing
 /// (possibly linear) sampler. In practice an asset-browser thumbnail or a
 /// plain sprite often loads the image first, so tiles rendered blurry and bled
@@ -642,18 +642,16 @@ fn force_nearest_tileset_sampler(
 
 /// Load a tileset atlas with **nearest** filtering. Pixel-art tiles must not be
 /// linearly filtered — it blurs them and bleeds neighbouring atlas cells across
-/// tile seams. (`load_with_settings` is deprecated upstream but is still the
-/// per-load sampler override the engine uses; silenced locally. See
+/// tile seams. (A per-load sampler override through the load builder. See
 /// [`force_nearest_tileset_sampler`] for why this alone isn't enough.)
-#[allow(deprecated)]
 fn load_tileset_nearest(asset_server: &AssetServer, path: String) -> Handle<Image> {
     use bevy::image::ImageLoaderSettings;
-    asset_server.load_with_settings::<Image, ImageLoaderSettings>(
-        path,
-        |settings: &mut ImageLoaderSettings| {
+    asset_server
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
             settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::nearest());
-        },
-    )
+        })
+        .load::<Image>(path)
 }
 
 #[cfg(test)]

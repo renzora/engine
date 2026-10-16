@@ -13,7 +13,8 @@ use renzora_tonemapping::{DebandDitherSettings, TonemappingSettings};
 
 fn tonemapping_to_mode(t: &Tonemapping) -> u32 {
     match t {
-        Tonemapping::None => 0,
+        // Both read as "no curve" in the inspector; see `mode_to_tonemapping`.
+        Tonemapping::None | Tonemapping::Linear => 0,
         Tonemapping::Reinhard => 1,
         Tonemapping::ReinhardLuminance => 2,
         Tonemapping::AcesFitted => 3,

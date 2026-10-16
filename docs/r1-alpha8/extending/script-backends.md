@@ -25,7 +25,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-bevy = "0.19"
+bevy = "0.20"
 renzora = "0.1"
 wren-sys = "..."   # whatever your interpreter needs
 ```

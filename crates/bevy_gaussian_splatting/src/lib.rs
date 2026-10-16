@@ -30,6 +30,26 @@ pub use material::spherical_harmonics::SphericalHarmonicCoefficients;
 
 use io::IoPlugin;
 
+/// Load one of this crate's WESL shaders into its fixed handle.
+///
+/// Bevy 0.20 dropped naga_oil for WESL, which has no `#define_import_path`: a
+/// shader is importable at the module path it is registered under. Naming each
+/// one `embedded://bevy_gaussian_splatting/<module>.wesl` makes it importable
+/// as `bevy_gaussian_splatting::<module>`, the file's own path in this crate,
+/// so `import bevy_gaussian_splatting::render::bindings::view;` resolves while
+/// the pipelines keep using the uuid handles they always had.
+macro_rules! load_wesl {
+    ($app:ident, $handle:expr, $file:literal, $module:literal) => {
+        bevy::asset::load_internal_asset!($app, $handle, $file, |source, _path| {
+            bevy::shader::Shader::from_wesl(
+                source,
+                concat!("embedded://bevy_gaussian_splatting/", $module, ".wesl"),
+            )
+        })
+    };
+}
+pub(crate) use load_wesl;
+
 pub mod camera;
 pub mod gaussian;
 pub mod io;

@@ -35,7 +35,8 @@ use super::scene_drop::HierRoot;
 
 const SCRIPT_EXTENSIONS: &[&str] = &["lua"];
 const BLUEPRINT_EXTENSIONS: &[&str] = &["blueprint", "bp"];
-const MATERIAL_EXTENSIONS: &[&str] = &["material"];
+/// `.wgsl` and `.wesl` too: the resolver builds a code shader material from one.
+const MATERIAL_EXTENSIONS: &[&str] = &["material", "wgsl", "wesl"];
 
 /// What a hovering payload would do to the row under it.
 #[derive(Clone, Copy, PartialEq, Eq)]

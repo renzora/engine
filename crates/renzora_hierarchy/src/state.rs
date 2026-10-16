@@ -172,7 +172,7 @@ fn markup_label(world: &World, entity: Entity) -> String {
         }
         return "text".to_string();
     }
-    if has(|w, e| w.get::<bevy::ui::widget::Button>(e).is_some()) {
+    if has(|w, e| w.get::<renzora_ember::game_ui::components::UiButton>(e).is_some()) {
         return "button".to_string();
     }
     if has(|w, e| w.get::<bevy::ui::widget::ImageNode>(e).is_some()) {

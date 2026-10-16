@@ -419,8 +419,8 @@ menu saved hundreds of them into its scenes. What the toggle actually controls i
 settings component instead. UI hit-testing is a separate bevy feature that rides
 the UI capability and is unaffected.
 
-**Tonemapping lookup tables** follow the curve your scene names. Five of Bevy's
-eight tone curves need no tables at all; only AgX, TonyMcMapface and
+**Tonemapping lookup tables** follow the curve your scene names. Most of Bevy's
+tone curves need no tables at all; only AgX, TonyMcMapface and
 BlenderFilmic sample them. If the tables turn out to be wanted after all, the
 engine substitutes a table-free curve rather than failing — so the worst case
 here is a slightly different picture, not a broken build.

@@ -504,9 +504,9 @@ fn arm_one_capture(
 
             let uuid = Uuid::new_v4();
             let shader_handle: Handle<Shader> = Handle::Uuid(uuid, PhantomData);
-            let shader = Shader::from_wgsl(
+            let shader = renzora::shader_source::shader(
                 compile.fragment_shader.clone(),
-                "graph_material://thumbnail",
+                "graph_material/thumbnail.wgsl",
             );
             let _ = shaders.insert(&shader_handle, shader);
             mat.extension.shader_uuid = Some(uuid);

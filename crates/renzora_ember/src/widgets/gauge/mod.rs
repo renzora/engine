@@ -31,7 +31,7 @@ impl Plugin for GaugePlugin {
         if app.is_plugin_added::<UiMaterialPlugin<ArcMaterial>>() {
             return;
         }
-        bevy::asset::embedded_asset!(app, "gauge.wgsl");
+        bevy::asset::embedded_asset!(app, "gauge.wesl");
         app.add_plugins(UiMaterialPlugin::<ArcMaterial>::default());
         app.add_systems(Update, (gauge_attach, arc_sync));
     }
@@ -53,7 +53,7 @@ pub(crate) struct ArcMaterial {
 
 impl UiMaterial for ArcMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/gauge/gauge.wgsl".into()
+        "embedded://renzora_ember/widgets/gauge/gauge.wesl".into()
     }
 }
 

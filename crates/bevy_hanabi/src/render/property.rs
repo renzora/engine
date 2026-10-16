@@ -933,7 +933,7 @@ pub(crate) fn allocate_properties(
 /// which indicates that the effect doesn't use properties anymore (including,
 /// when the effect itself is despawned).
 pub(crate) fn on_remove_cached_properties(
-    trigger: On<Remove, CachedEffectProperties>,
+    trigger: On<Remove<CachedEffectProperties>>,
     query: Query<(Entity, &CachedEffectProperties)>,
     mut property_cache: ResMut<PropertyCache>,
     mut property_bind_groups: ResMut<PropertyBindGroups>,

@@ -1,0 +1,24 @@
+
+name: 'todo tracker'
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    permissions:
+      issues: write
+
+    name: todo_tracker
+    runs-on: [ubuntu-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: "TODO to Issue"
+      uses: "alstr/todo-to-issue-action@v4"
+      id: "todo"
+      with:
+        AUTO_ASSIGN: true

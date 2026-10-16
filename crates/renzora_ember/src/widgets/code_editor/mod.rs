@@ -431,7 +431,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             Text::new(PROBE_TEXT),
             // Seeded with the generic monospace family; `code_probe` swaps in the
             // editor's actual mono font (and size) before reading the advance.
-            mono(&bevy::text::FontSource::Monospace, DEFAULT_FONT_SIZE),
+            mono(&bevy::text::FontSource::monospace(), DEFAULT_FONT_SIZE),
             TextLayout::no_wrap(),
             Visibility::Hidden,
             bevy::ui::FocusPolicy::Pass,

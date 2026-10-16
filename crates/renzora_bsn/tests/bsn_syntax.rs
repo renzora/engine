@@ -52,6 +52,8 @@ fn test_world() -> World {
             Layout::new::<Spinner>().pad_to_align(),
             None,
             true,
+            // `summary_tick`, new in Bevy 0.20: off, as for any ordinary component.
+            false,
             bevy::ecs::component::ComponentCloneBehavior::Default,
             None,
         )

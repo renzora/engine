@@ -72,36 +72,6 @@ pub struct ScriptWatcher {
     scanned_root: Option<PathBuf>,
 }
 
-impl ScriptWatcher {
-    /// Record that the script at `path`, modified at `mtime`, has already been
-    /// dealt with.
-    ///
-    /// Called by the project-open build so the watcher does not immediately
-    /// rebuild everything it just compiled. Without it the first poll after a
-    /// project opens sees a tree full of files it has never heard of and starts
-    /// a second rustc for every one.
-    pub fn mark_seen(&mut self, path: PathBuf, mtime: SystemTime) {
-        self.seen.insert(path, mtime);
-    }
-
-    /// Record that `root` has already been walked, so [`scan_on_project_open`]
-    /// does not walk it again.
-    ///
-    /// Called by the project-open build, which does that walk itself. Without
-    /// it the two raced: the opening scan runs in `Update` and fires as soon as
-    /// `CurrentProject` exists, which is during `Loading`, while the build runs
-    /// on `OnEnter(SplashState::Editor)` and is therefore later. The scan
-    /// finished first, found a `seen` map the build had not filled yet, and
-    /// started a second rustc for every script in the project.
-    ///
-    /// That showed up as `loaded spinner.rs` and `reloaded spinner.rs` eight
-    /// milliseconds apart at every launch: two concurrent compiles of the same
-    /// file, and a leaked image for the one that lost.
-    pub fn mark_scanned(&mut self, root: PathBuf) {
-        self.scanned_root = Some(root);
-    }
-}
-
 /// Start a full walk when the project ROOT changes, and only then.
 ///
 /// Steady-state change detection is [`watch`], driven by the project watcher.
@@ -275,9 +245,18 @@ pub fn finish(world: &mut World) {
         match result.and_then(|lib_path| load_library(&lib_path)) {
             Ok((f, hook, lib)) => {
                 let mut loaded = world.resource_mut::<LoadedScripts>();
+                // The project-open build comes through here too, so say which:
+                // "reloaded" for a script that was never loaded reads as a
+                // second build.
+                let first = !loaded.is_loaded(&name);
                 loaded.insert(name.clone(), f, hook, lib);
-                info!("[rust-script] reloaded {name}");
-                console_success("Script", format!("recompiled {name}"));
+                if first {
+                    info!("[rust-script] loaded {name}");
+                    console_success("Script", format!("compiled {name}"));
+                } else {
+                    info!("[rust-script] reloaded {name}");
+                    console_success("Script", format!("recompiled {name}"));
+                }
                 report_problem(world, &src, None);
             }
             Err(e) => {

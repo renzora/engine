@@ -235,7 +235,7 @@ fn spawn_splash(
         .id();
 
     // The cinematic (the Light Chamber render, through its spectral finishing pass)
-    // is drawn into the offscreen post camera via its own UI root, so `post.wgsl`
+    // is drawn into the offscreen post camera via its own UI root, so `post.wesl`
     // can sample it as a whole frame. It carries `SplashRoot` too, so it's torn down
     // with the rest of the splash.
     let bg_host = commands

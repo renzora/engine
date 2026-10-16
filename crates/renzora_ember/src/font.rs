@@ -217,22 +217,22 @@ impl FontRegistry {
             },
             FontEntry {
                 name: "System UI".into(),
-                source: FontSource::SystemUi,
+                source: FontSource::system_ui(),
                 origin: FontOrigin::Generic,
             },
             FontEntry {
                 name: "Sans Serif".into(),
-                source: FontSource::SansSerif,
+                source: FontSource::sans_serif(),
                 origin: FontOrigin::Generic,
             },
             FontEntry {
                 name: "Serif".into(),
-                source: FontSource::Serif,
+                source: FontSource::serif(),
                 origin: FontOrigin::Generic,
             },
             FontEntry {
                 name: "Monospace".into(),
-                source: FontSource::Monospace,
+                source: FontSource::monospace(),
                 origin: FontOrigin::Generic,
             },
         ]

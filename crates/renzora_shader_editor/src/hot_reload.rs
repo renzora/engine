@@ -198,7 +198,7 @@ fn invalidate_for_wgsl(
     commands: &mut Commands,
     resolved: &Query<(Entity, &MaterialResolved)>,
 ) {
-    if path.extension().and_then(|e| e.to_str()) != Some("wgsl") {
+    if !matches!(path.extension().and_then(|e| e.to_str()), Some("wgsl" | "wesl")) {
         return;
     }
     let wgsl_key = project_relative(project_root, path);

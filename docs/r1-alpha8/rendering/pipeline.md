@@ -4,26 +4,28 @@ How Renzora turns a scene into a frame: Bevy's PBR/HDR core, three families of c
 
 ## How a frame renders
 
-Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.19's built-in PBR pipeline** — physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render-graph nodes and a large family of effect plugins.
+Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.20's built-in PBR pipeline**: physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render passes and a large family of effect plugins. Every shader in that pipeline is WESL, the shader language Bevy 0.20 compiles; shaders still written in the old `#import` dialect are translated as they load (see [Shaders](./shaders.md)).
 
 Each viewport camera is a `Camera3d`. Cameras are spawned with **`DepthPrepass` + `NormalPrepass`** attached, because the screen-space GI pass needs depth and normals.
 
-> Bevy 0.19 specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.
+> Bevy (0.19 and 0.20) specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.
 
-### What the engine adds to the `Core3d` graph
+### What the engine adds to the `Core3d` schedule
 
-The two Renzora-owned insertions into Bevy's `Core3d` sub-graph are:
+Bevy renders a 3D view as systems in the render app's `Core3d` schedule, not as a graph of nodes. Renzora's passes join it through the `RenderPhase` system sets, which the framework anchors against Bevy's own passes:
 
 ```
-… → Node3d::EndMainPass
-        → RtLabel                 (renzora_rt SSGI — linear HDR, pre-tonemap)
-    → Node3d::Tonemapping
-        → UnifiedPostProcess      (every active post-process effect)
-    → Node3d::EndMainPassPostProcessing → …
+… main 3D pass
+    → RenderPhase::Gi        (renzora_rt SSGI, Lumen: linear HDR, pre-tonemap)
+    → temporal AA
+    → RenderPhase::HdrPost   (bloom-like HDR effects)
+    → tonemapping
+    → RenderPhase::LdrPost   (most post-process effects)
+    → RenderPhase::Overlay → …
 ```
 
-- **SSGI** (the `renzora_rt` node, label `RtLabel`) runs **between `EndMainPass` and `Tonemapping`**, so it operates on the linear, lit HDR image before tone mapping.
-- The **unified post-process node** runs **between `Tonemapping` and `EndMainPassPostProcessing`**, so every fullscreen effect sees the already-tonemapped image.
+- **SSGI** (`renzora_rt`'s `rt_pass`) runs in `Gi`, so it operates on the linear, lit HDR image before tone mapping.
+- The **unified post-process pass** runs each effect in the phase it asks for, most of them after tonemapping, so they see the already-tonemapped image.
 
 `WgpuSettings` requests `POLYGON_MODE_LINE` (skipped on the GL backend, never requested on web) — which is what enables wireframe debug views — and, **when the GPU supports it**, Bevy Solari's hardware ray-tracing features. The host probes the adapter once at startup (`raytracing_supported()`); on an RT-capable GPU it requests the ray-tracing features and records `renzora::GpuRaytracing { enabled: true }` so the optional `renzora_solari` plugin can activate. On a non-RT GPU nothing extra is requested and the engine boots unchanged. See [Solari ray-traced GI](./solari.md).
 
@@ -134,7 +136,7 @@ Beyond the `ScreenSpace` SSGI backend (`RtPlugin`), the voxel/trace/reflection t
 ## Reflection probes — parallax-corrected cubemaps
 
 For local reflections that screen-space reflections can't supply (off-screen
-geometry, interiors), the engine exposes Bevy 0.19's **parallax-corrected
+geometry, interiors), the engine exposes Bevy's **parallax-corrected
 reflection probes**. Add one from **Add Entity → Lighting → Reflection Probe**;
 it spawns an entity with:
 
@@ -160,6 +162,28 @@ The editor draws the correction box as a teal wireframe gizmo (bright when the
 probe is selected) so you can size it against the room. The authored source path
 persists with the scene and the cube is regenerated on load.
 
+### When environment maps are filtered
+
+Bevy filters every `GeneratedEnvironmentMapLight` into its radiance and
+irradiance maps on every frame, for every entity carrying one, with no way to
+bake once. The GPU part is cheap; the render-thread part is not, because each
+filter rebuilds its buffers, views and bind groups from scratch. With the sky
+probe, the material preview and any reflection probes all present, that was the
+largest single cost of an idle editor frame.
+
+`renzora_environment_map` therefore filters a map only while its input is
+changing, and freezes it otherwise. A map filters for a few frames after:
+
+- the component is added or edited (new source, new intensity),
+- its source image asset loads or changes,
+- the camera carrying it turns active,
+- for the sky probe, the sun, the atmosphere or the environment settings change.
+
+A map on an inactive camera, or at zero intensity, never filters. A frozen map
+keeps its last result, which for an unchanged input is the correct one. The
+freeze happens in the render world, so the component itself stays on the camera
+and nothing that reads or writes it needs to know.
+
 ## Order-independent transparency — `renzora_oit`
 
 `renzora_oit` wraps Bevy's `OrderIndependentTransparencySettings` and is routed onto cameras via `EffectRouting` like any other effect:
@@ -175,28 +199,33 @@ OitSettings {
 
 When enabled it inserts `OrderIndependentTransparencySettings` on the camera and **forces `Msaa::Off`** (OIT and MSAA are incompatible); when disabled or its source is removed, it strips the component again.
 
-## Adding a render-graph node
+## Adding a render pass
 
-If a unified post-process pass isn't enough (you need a compute pass, an extra render target, or to slot before tonemapping), add a Bevy render-graph node yourself. This is the same pattern `renzora_rt` uses:
+If a unified post-process pass isn't enough (you need a compute pass, an extra render target, or to slot before tonemapping), add a render pass yourself. There is no render graph any more: a pass is a system in the `Core3d` schedule of the render app, ordered by system sets. Put it in the [`RenderPhase`](../extending/post-processing.md#render-phases) it belongs to and the framework anchors it for you. This is the pattern `renzora_rt` uses:
 
 ```rust
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy::render::render_graph::{RenderGraphExt, RenderLabel, ViewNodeRunner};
+use bevy::core_pipeline::Core3d;
+use bevy::render::renderer::{RenderContext, ViewQuery};
+use bevy::render::view::ViewTarget;
 use bevy::render::RenderApp;
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct MyLabel;
+fn my_pass(
+    world: &World,
+    // Views that lack any of these components are skipped.
+    view: ViewQuery<(&'static ViewTarget, &'static MySettings)>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, settings) = view.into_inner();
+    // ...record your passes on render_context...
+}
 
 // in Plugin::build:
 if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-    render_app
-        .add_render_graph_node::<ViewNodeRunner<MyNode>>(Core3d, MyLabel)
-        // slot the node into the graph between two existing nodes:
-        .add_render_graph_edges(Core3d, (Node3d::EndMainPass, MyLabel, Node3d::Tonemapping));
+    render_app.add_systems(Core3d, my_pass.in_set(renzora::RenderPhase::Gi));
 }
 ```
 
-> Edges are resolved when you add them — Bevy does no lazy lookup. If your node references another crate's label (e.g. `LumenTraceLabel`), that plugin must register **before** yours, or the edge panics with "node does not exist". Register custom GI/reflection nodes in dependency order.
+`MySettings` reaches the render world through `ExtractComponentPlugin`. Since Bevy 0.20 extraction names its target app: implement `ExtractComponent<RenderApp>` and `SyncComponent<RenderApp>`, or derive `ExtractComponent` with `#[extract_app(RenderApp)]`. Pipeline descriptors also gained a `constants` field (`constants: vec![]` when you override nothing), and a prepass depth texture is read with `ViewPrepassTextures::depth_only_view()`.
 
 ## Ambient occlusion — the SSAO section
 
@@ -228,6 +257,8 @@ WorldEnvironment {
     ..default()
 }
 ```
+
+Bevy 0.20 added a sample **radius** to SSAO; the section does not expose it yet, so it stays at Bevy's default and SSAO looks as it did on 0.19.
 
 Values are clamped on the way to Bevy (`slice_count` 1–16, `samples_per_slice_side` 1–8, thickness ≥ 0), so a hand-edited scene file cannot produce a zero-sample pass or stall the GPU with a huge one. Scenes saved before these fields existed load with the defaults above rather than zeros.
 

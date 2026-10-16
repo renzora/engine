@@ -29,8 +29,6 @@
 //! backend that may not exist, would make audio mandatory in a build system
 //! whose entire point is that it is not.
 
-use std::panic::AssertUnwindSafe;
-
 use bevy::prelude::*;
 
 use crate::audio_backend::{
@@ -160,10 +158,12 @@ impl AudioLink {
             .get_mut()
             .unwrap_or_else(|p| p.into_inner())
             .as_mut();
-        match std::panic::catch_unwind(AssertUnwindSafe(|| f(backend))) {
+        // `recoverable::catch`, so the crash reporter does not announce a crash
+        // that this line recovers from.
+        match crate::core::recoverable::catch(|| f(backend)) {
             Ok(v) => Some(v),
-            Err(_) => {
-                error!("[audio] backend panicked in {what} and has been disabled");
+            Err(caught) => {
+                error!("[audio] backend panicked in {what} and has been disabled: {caught}");
                 self.poisoned = true;
                 self.info = None;
                 None

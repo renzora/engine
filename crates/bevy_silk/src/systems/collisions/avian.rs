@@ -54,14 +54,14 @@ pub fn handle_collisions(
             });
             cloth.solve_collisions(|point| {
                 let other_transform = other_transform.compute_transform();
-                // TODO: Remove Nalgebra type conversions once avian has
-                //       a `Collider::project_point` method that uses Glam.
+                // Parry 0.31 (avian on Bevy 0.20) works in glam types
+                // directly, so the old nalgebra conversions are gone.
                 let projection = other_collider.shape_scaled().project_point(
-                    &avian3d::parry::math::Isometry::new(
-                        other_transform.translation.into(),
-                        other_transform.rotation.to_scaled_axis().into(),
+                    &avian3d::parry::math::Pose::from_parts(
+                        other_transform.translation,
+                        other_transform.rotation,
                     ),
-                    &(*point).into(),
+                    *point,
                     false,
                 );
                 let projected_point = Vec3::from(projection.point);

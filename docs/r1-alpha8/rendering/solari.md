@@ -48,9 +48,10 @@ underlying GPU capability a one-time, plugin-agnostic enablement.
 
 ## What the plugin does when active
 
-- **Settings.** `SolariGi` has three fields: `enabled`; `suppress_shadow_maps`
-  (**Suppress Shadow Maps**, on by default — see [Performance](#performance));
-  and `light_proxies` (**Point/Spot Light Proxies**, on by default — see
+- **Settings.** `SolariGi` has four fields: `enabled`; `quality` (**Quality**,
+  `High` by default, see [Quality](#quality)); `suppress_shadow_maps`
+  (**Suppress Shadow Maps**, on by default, see [Performance](#performance));
+  and `light_proxies` (**Point/Spot Light Proxies**, on by default, see
   [Light proxies](#light-proxies)).
 - **Camera.** `SolariGi` is routed from the World Environment onto each active
   camera via `EffectRouting` (the same path Lumen uses). On a routed camera the
@@ -104,20 +105,60 @@ underlying GPU capability a one-time, plugin-agnostic enablement.
 - **Idle.** When no camera has Solari enabled, the ray-tracing mirror is dropped
   so BLAS resources are freed.
 
+## Quality
+
+**Quality** on the Solari component picks how much work Solari does per frame.
+It trades frame rate against noise, and you can change it while the scene is
+running.
+
+| Preset | ReSTIR | Bounces | Light samples (primary / bounce) | Use it for |
+|---|---|---|---|---|
+| Low | Off | 1 | 2 / 1 | Moving around a scene. Fastest, and visibly grainy. |
+| Medium | On | 2 | 4 / 2 | Everyday editing. |
+| High (default) | On | 3 | 8 / 4 | Judging lighting. These are Bevy's own defaults. |
+| Ultra | On | 4 | 16 / 8 | Stills and close-ups. |
+
+The world cache that stores bounce light scales with the preset too.
+
+**ReSTIR is the setting that matters most.** It reuses light samples across
+neighbouring pixels and earlier frames, and in Renzora it is the only thing
+cleaning up Solari's noise (see [Limitations](#limitations)). `Low` turns it
+off, which is why `Low` is the grainiest preset and not just the cheapest one.
+
+Solari's cost also scales with the number of pixels it lights, so lowering the
+camera's **Resolution** is often a bigger saving than dropping a preset.
+
 ## Lights Solari can see
 
 This is the single most surprising thing about Solari, and the usual reason a
-scene comes out darker than the raster pipeline. `bevy_solari` 0.19 samples
-**exactly two** kinds of light source:
+scene comes out darker than the raster pipeline. `bevy_solari` 0.20 samples
+**three** kinds of light source:
 
 | Source | Supported |
 |---|---|
 | `DirectionalLight` (the sun) | Yes |
-| Emissive meshes | Yes — sampled as real area lights |
-| `PointLight` | Not natively — Renzora stands one up as an emissive sphere (below) |
-| `SpotLight` | Not natively — same, but the cone is lost |
+| Emissive meshes | Yes, sampled as real area lights |
+| Sky (the environment map) | Yes, at the Environment Map's intensity. See [Sky light](#sky-light). |
+| `PointLight` | Not natively. Renzora stands one up as an emissive sphere (below). |
+| `SpotLight` | Not natively. Same, but the cone is lost. |
 | `AmbientLight` | **No**, and there is no workaround |
-| Sky / atmosphere / environment map | **No.** There is no ambient term. |
+
+### Sky light
+
+A ray that leaves the scene samples the camera's environment map, so the sky
+lights everything the sun doesn't reach. In Renzora that is the **Environment
+Map** section of the World Environment, which bakes the atmosphere into a
+cubemap.
+
+Two settings decide how much sky Solari gets:
+
+- **Environment Map switched off** means no sky light at all. Everything not
+  facing the sun is then lit by bounce alone, and shadowed facades go close to
+  black while the sunlit ground looks right. The plugin warns about this in the
+  Console.
+- **Intensity** scales the sky directly. `1.0` is the physically correct sky.
+  Lower values that looked fine under raster lighting make a Solari scene
+  noticeably darker in shadow.
 
 Point and spot lights aren't dimmed or approximated by Solari — its binder never
 looks at them — and because a Solari camera carries `SkipDeferredLighting`,
@@ -159,21 +200,13 @@ Two things it does not solve:
   a sphere can't carry the mask and the light spills outside the cone. For a
   downlight that means some illumination where there shouldn't be any. Author
   real emissive geometry if that matters, or turn the toggle off.
-- **Ambient and sky lighting cannot be represented this way at all.** That means
-  `AmbientLight` *and* the environment map — including the procedural atmosphere
-  the World Environment bakes into one by default. The only shape either could
-  take in a traced scene is an enclosing emissive dome, which would then sit
-  between every surface and the sun.
+- **`AmbientLight` cannot be represented this way at all.** The only shape it
+  could take in a traced scene is an enclosing emissive dome, which would then
+  sit between every surface and the sun. Use the environment map for sky and
+  fill light instead (see [Sky light](#sky-light)); the plugin warns once if it
+  finds an `AmbientLight` on a Solari camera.
 
-  **This is usually the single biggest reason a scene looks darker under
-  Solari**, and it is invisible in the scene tree. An outdoor daylight scene
-  draws a large share of its light from the sky: the baked atmosphere IBL is
-  what fills in every surface not facing the sun. Losing it takes facades and
-  shadowed ground close to black while the sunlit ground stays correct. The
-  plugin warns when it finds an `EnvironmentMapLight` or `AmbientLight` on a
-  Solari camera.
-
-  Watch out for auto-exposure making this worse rather than better.
+  Watch out for auto-exposure making a dim Solari scene worse rather than better.
   `AutoExposureSettings.keep_dark_strength` deliberately *stops* metering from
   lifting a dark scene — at the defaults it applies up to several stops of extra
   negative compensation once the metered scene falls below `keep_dark_pivot_ev`.
@@ -195,8 +228,8 @@ that the scene got darker rather than that bloom broke:
 - Point and spot lights contribute nothing unless
   [light proxies](#light-proxies) are on. Those lamps are usually what was
   blooming.
-- There is no ambient or sky term, so everything in shadow sits lower than it
-  did under the raster pipeline.
+- With the Environment Map off or turned down, everything in shadow sits lower
+  than it did under the raster pipeline (see [Sky light](#sky-light)).
 - Emissive surfaces still bloom normally — Solari adds `material.emissive` and
   applies view exposure exactly as the raster path does.
 
@@ -275,19 +308,66 @@ signature.
 - `StandardMaterial` only; custom-WGSL materials are not traced.
 - Meshes without UVs, or with non-triangle-list/non-indexed geometry, are not lit
   by Solari.
-- **No sky or ambient term, and no native point/spot lights.** Solari lights from
-  directional lights and emissive meshes only; point and spot lights work solely
-  through [light proxies](#light-proxies), and `AmbientLight` not at all — see
-  [Lights Solari can see](#lights-solari-can-see). Surfaces facing away from the sun are lit by
-  bounce alone, so the image is inherently darker and higher-contrast than the
-  forward pipeline. This is most visible with the sun near the horizon (little
-  reaches street level) or directly overhead (vertical facades get no direct
-  light at all).
-- **No denoiser.** Bevy's only Solari denoiser is DLSS Ray Reconstruction, which
-  needs a compile-time cargo feature plus the NVIDIA DLSS SDK at build time and is
-  not enabled in Renzora. Without it the image relies on Solari's own ReSTIR
-  temporal accumulation and stays visibly noisy — give it a couple of seconds to
-  converge after a change.
+- **No ambient light, and no native point/spot lights.** Solari lights from
+  directional lights, emissive meshes and the [sky](#sky-light); point and spot
+  lights work solely through [light proxies](#light-proxies), and `AmbientLight`
+  not at all (see [Lights Solari can see](#lights-solari-can-see)). The image is
+  higher-contrast than the forward pipeline, most visibly with the sun near the
+  horizon (little reaches street level) or directly overhead (vertical facades
+  get no direct light at all).
+- **No DLSS denoiser in a normal build.** The image relies on Solari's ReSTIR
+  sample reuse, which every [Quality](#quality) preset above `Low` turns on. It
+  stays somewhat noisy, so give it a couple of seconds to converge after a
+  change. An opt-in build adds DLSS; see [DLSS Ray Reconstruction](#dlss-ray-reconstruction).
+
+## DLSS Ray Reconstruction
+
+DLSS Ray Reconstruction is NVIDIA's denoiser for ray-traced images, and the one
+Bevy designs Solari around. It also renders at a lower resolution and upscales,
+so it is faster as well as cleaner. It is not in the normal build, because
+building it needs NVIDIA's SDK on your machine, and the SDK's licence does not
+allow it to be bundled.
+
+It is not a DLL you can drop in. The DLLs are only what ships beside the
+executable; compiling it links NVIDIA's library and reads its headers.
+
+**Requirements**
+
+- An NVIDIA RTX GPU.
+- The **Vulkan** renderer backend (Settings > Renderer). DLSS does not work on
+  DX12 or Metal.
+- Windows or Linux.
+
+**Building it**
+
+1. Clone the [NVIDIA DLSS SDK](https://github.com/NVIDIA/DLSS) at tag
+   `v310.5.3`, and set the `DLSS_SDK` environment variable to that folder.
+2. Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) and check that
+   `VULKAN_SDK` is set.
+3. Make sure `clang` is on your `PATH`.
+4. Build with `cargo renzora` as usual, from a new terminal so it sees the
+   variables.
+
+Once all three are present, every `cargo renzora` build includes DLSS by
+itself and says so in its output; `--no-dlss` leaves it out. `--dlss` insists
+on it, and stops straight away, naming what is missing, if either variable is
+unset. A DLSS build copies `nvngx_dlss.dll` and `nvngx_dlssd.dll` from the SDK beside the
+executable. Like any change to the engine's Bevy features, the first launch
+rebuilds your installed plugins.
+
+**What it does**
+
+While Solari is on, the camera gets DLSS Ray Reconstruction. The camera's TAA is
+set aside, because the two are both temporal passes and would stack, and it
+comes back when Solari is switched off.
+
+The Console says at startup whether Ray Reconstruction is available. If it is
+not (wrong backend, no RTX card, missing DLL), Solari carries on with ReSTIR
+alone.
+
+If you ship a game built this way, the two DLLs have to ship beside it, along
+with NVIDIA's licence text from section 9.5 of the SDK's
+`DLSS_Programming_Guide_Release.pdf`.
 - **Cutout geometry over-shadows.** `Mask` materials are traced as solid quads
   (Solari has no alpha-tested any-hit shading), so foliage cards cast fuller
   shadows than they should.

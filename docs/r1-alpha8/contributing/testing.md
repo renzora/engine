@@ -13,7 +13,7 @@ cargo test --profile dist -p renzora_ember parse_templates   # one test by subst
 
 > **Always pass `--profile dist`.** A bare `cargo test` builds the `dev` profile and creates a second full artefact tree; this workspace is far too large for two of them.
 
-> **`cargo test --workspace` does not pass natively**, and that is expected rather than something to fix. It builds *example* targets, and two vendored XR crates ship examples that never got a Bevy 0.19 rename. CI never sees this because it excludes those crates. Test per-crate, or use `renzora test` below.
+> **`cargo test --workspace` does not pass natively**, and that is expected rather than something to fix. It builds *example* targets, and two vendored XR crates ship examples that were never updated for current Bevy APIs (they still use the pre-0.19 `shadows_enabled`). CI never sees this because it excludes those crates. Test per-crate, or use `renzora test` below.
 
 ## Running tests the way CI does
 
@@ -46,6 +46,10 @@ renzora test \
   --exclude bevy_mod_outline \
   --exclude bevy_silk \
   --exclude vleue_navigator \
+  --exclude bevy_args \
+  --exclude bevy_interleave \
+  --exclude bevy_interleave_interface \
+  --exclude bevy_interleave_macros \
   --exclude bevy_mod_openxr \
   --exclude bevy_mod_xr \
   --exclude bevy_xr_utils
@@ -218,7 +222,7 @@ fn pump_until_loaded(app: &mut App, handle: &Handle<HtmlTemplate>) {
 
 ## What CI runs
 
-`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the shared base toolchain image** `ghcr.io/renzora/base:latest` — native Linux `cargo test`/`clippy` need only rustc 1.95 and the Linux dev libs, which the base carries (the per-platform cross toolchains aren't needed to test first-party crates). There is nothing to install on the runner.
+`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the shared base toolchain image** `ghcr.io/renzora/base:latest`: native Linux `cargo test`/`clippy` need only rustc 1.97 and the Linux dev libs, which the base carries (the per-platform cross toolchains aren't needed to test first-party crates). There is nothing to install on the runner.
 
 Two jobs:
 
@@ -227,12 +231,16 @@ Two jobs:
 cargo test --workspace \
   --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
+  --exclude bevy_args --exclude bevy_interleave \
+  --exclude bevy_interleave_interface --exclude bevy_interleave_macros \
   --exclude bevy_mod_openxr --exclude bevy_mod_xr --exclude bevy_xr_utils
 
 # job: clippy — lints, warnings are errors
 cargo clippy --workspace --no-deps \
   --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
+  --exclude bevy_args --exclude bevy_interleave \
+  --exclude bevy_interleave_interface --exclude bevy_interleave_macros \
   --exclude bevy_mod_openxr --exclude bevy_mod_xr --exclude bevy_xr_utils \
   -- -D warnings \
   -A clippy::too_many_arguments \
@@ -245,7 +253,7 @@ Notes on the clippy lane:
 - `too_many_arguments` and `type_complexity` are allowed because they are inherent to Bevy systems and queries (Bevy allows them too).
 - The image deliberately ships without the `clippy` component (it would race the parallel docker build lanes on the rustup download), so the job adds it with `rustup component add clippy`.
 
-> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps — only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the pinned Rust version — `docker/base/Dockerfile` (`rust:1.95.0-bookworm`) for the container, mirrored by `rust-toolchain.toml` for native `cargo renzora` builds.
+> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps; only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the pinned Rust version: `docker/base/Dockerfile` (`rust:1.97.1-bookworm`) for the container, mirrored by `rust-toolchain.toml` for native `cargo renzora` builds.
 
 ## The test harness — start here
 

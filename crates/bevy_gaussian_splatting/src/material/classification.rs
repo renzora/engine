@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     prelude::*,
 };
 
@@ -10,11 +10,11 @@ pub struct ClassificationMaterialPlugin;
 
 impl Plugin for ClassificationMaterialPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(
+        crate::load_wesl!(
             app,
             CLASSIFICATION_SHADER_HANDLE,
-            "classification.wgsl",
-            Shader::from_wgsl
+            "classification.wesl",
+            "material/classification"
         );
     }
 }

@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Segments along a blade. Four gives a smooth enough curve; the vertex shader
-/// reconstructs the strip from this, so it is shared with `grass.wgsl` and the
+/// reconstructs the strip from this, so it is shared with `grass.wesl` and the
 /// two must agree.
 pub const BLADE_SEGMENTS: u32 = 4;
 /// Vertices emitted per blade: six per segment, as a non-indexed triangle list.

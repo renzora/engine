@@ -245,7 +245,7 @@ Add them to your plugin's `Cargo.toml` like any Rust project:
 
 ```toml
 [dependencies]
-bevy = "0.19"
+bevy = "0.20"
 renzora = { path = "../../crates/renzora" }
 
 noise = "0.9"        # ← an ordinary crates.io dependency

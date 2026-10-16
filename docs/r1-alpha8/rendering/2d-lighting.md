@@ -83,9 +83,10 @@ flicker, or toggling `Occluder2dEnabled`. No dedicated script functions yet.
   `<exe>/plugins/` — delete the file and the feature is gone; the engine still
   boots and scenes still load (unknown components are skipped).
 - **Vendored engine:** `crates/bevy_firefly` (upstream `0.19.0`, pinned by
-  commit in its `Cargo.toml` header) with one local patch:
+  commit in its `Cargo.toml` header) with local patches:
   `#[reflect(Component, Default)]` on the public components so the inspector
-  and the reflection-driven scene serializer can see them.
+  and the reflection-driven scene serializer can see them, and a port to Bevy
+  0.20 (upstream has no 0.20 release yet), including its shaders, now WESL.
 - **Renderer:** firefly renders lightmaps inside Bevy's `Core2d` graph after
   the transparent pass — it composes with the sprite/tilemap renderers and
   works against any render target, including the editor's offscreen viewport.

@@ -5,10 +5,11 @@ use bevy::{
     color::palettes::css::WHITE,
     prelude::*,
     reflect::std_traits::ReflectDefault,
-    render::{extract_component::ExtractComponent, render_resource::ShaderType},
+    render::{RenderApp, extract_component::ExtractComponent, render_resource::ShaderType},
 };
 
 #[derive(Component, Default, Clone, ExtractComponent, Reflect)]
+#[extract_app(RenderApp)]
 pub(crate) struct ExtractedWorldData {
     pub camera_pos: Vec2,
 }
@@ -18,6 +19,7 @@ pub(crate) struct ExtractedWorldData {
 /// # Panics
 /// Panics if added to multiple cameras at once.
 #[derive(Debug, Component, ExtractComponent, Clone, Reflect)]
+#[extract_app(RenderApp)]
 // renzora: registered reflection data so the editor inspector and the
 // reflection-driven scene serializer can insert/round-trip this component.
 #[reflect(Component, Default)]

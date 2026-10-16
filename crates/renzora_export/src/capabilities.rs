@@ -715,7 +715,7 @@ pub const CAPABILITIES: &[Capability] = &[
         section: "systems",
         label: "Picking (mesh & sprite raycasts)",
         help: "Bevy's pointer-picking framework and its mesh/sprite backends — the machinery behind \
-               `Pointer<Click>` hit-testing in the world. Nothing in the runtime uses it unless your \
+               `PointerClick` hit-testing in the world. Nothing in the runtime uses it unless your \
                game does; the editor's viewport picking is separate and never ships. Note the UI \
                keeps its own picking backend, so the full saving only lands when the UI layer is \
                off too.",
@@ -1037,7 +1037,11 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         // the answer to that is an observer on a `Pointer<…>` event or a
         // deliberate settings component. UI hit-testing is unaffected either
         // way — it is `ui_picking`, which rides the UI capability.
-        "picking" => &["Pointer<", "MeshPickingSettings", "MeshRayCastSettings"],
+        //
+        // Bevy 0.20 flattened the events (`Pointer<Click>` is `PointerClick`),
+        // so a current script spells the observer `On<PointerClick>`; both
+        // spellings count.
+        "picking" => &["Pointer<", "On<Pointer", "MeshPickingSettings", "MeshRayCastSettings"],
         // The three LUT-sampling tone curves, by the names a scene spells them.
         // `TonemappingSettings` counts too: an entity that carries one has
         // chosen a curve deliberately, and five of the eight need no tables —
@@ -1904,6 +1908,16 @@ mod tests {
             ],
         );
         assert!(q.state()["picking"]);
+
+        // ...and so is one written against Bevy 0.20's flat pointer events.
+        let r = TempProject::new(
+            "picking_yes_flat",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora::core::components::Node2d: (),\n}\n"),
+                ("scripts/click.rs", "fn on(_t: On<PointerClick>) {}\n"),
+            ],
+        );
+        assert!(r.state()["picking"]);
     }
 
     /// The tonemapping lookup textures follow the curve the scene actually asks

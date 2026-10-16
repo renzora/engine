@@ -310,9 +310,11 @@ fn frand4() -> vec4<f32> {
     var r2 = pcg_hash(r1);
     seed = r2;
     var x = to_float01(r0);
-    var r01 = (r0 & 0xff000000u) >> 8u | (r1 & 0x0000ffffu);
+    // WGSL forbids mixing `>>` and `|` without parentheses. naga 29 let it
+    // through (grouping the shift first); the WESL parser in Bevy 0.20 does not.
+    var r01 = ((r0 & 0xff000000u) >> 8u) | (r1 & 0x0000ffffu);
     var y = to_float01(r01);
-    var r12 = (r1 & 0xffff0000u) >> 8u | (r2 & 0x000000ffu);
+    var r12 = ((r1 & 0xffff0000u) >> 8u) | (r2 & 0x000000ffu);
     var z = to_float01(r12);
     var r22 = r2 >> 8u;
     var w = to_float01(r22);

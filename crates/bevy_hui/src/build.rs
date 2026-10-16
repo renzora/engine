@@ -578,7 +578,16 @@ impl<'w, 's> TemplateBuilder<'w, 's> {
             // --------------------------------
             // spawn button
             NodeType::Button => {
-                self.cmd.entity(entity).insert((Button, styles));
+                // Bevy 0.20 deprecated `bevy_ui`'s `Button` and made its type
+                // private, so it can no longer be inserted. What it did was
+                // require a blocking `FocusPolicy` and an `Interaction`, which
+                // the template's hover/press styling and bindings read; insert
+                // those two directly so a button behaves exactly as before.
+                #[allow(deprecated)]
+                let interaction = Interaction::default();
+                self.cmd
+                    .entity(entity)
+                    .insert((bevy::ui::FocusPolicy::Block, interaction, styles));
             }
             NodeType::Custom(custom) => {
                 // mark children

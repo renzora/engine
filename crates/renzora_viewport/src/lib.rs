@@ -15,6 +15,8 @@ mod gaussian_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
+/// Render the viewport only when the scene changes.
+pub mod redraw;
 mod axis_gizmo;
 mod camera_preview_panel;
 mod drop_target;
@@ -70,7 +72,7 @@ pub struct ViewportPlugin;
 impl Plugin for ViewportPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ViewportPlugin");
-        embedded_asset!(app, "viewport_debug.wgsl");
+        embedded_asset!(app, "viewport_debug.wesl");
         app.add_plugins(WireframePlugin::default())
             .add_plugins(MaterialPlugin::<debug_material::ViewportDebugMaterial>::default())
             // Post-tonemap debug visualization for normals + linear depth.
@@ -82,11 +84,14 @@ impl Plugin for ViewportPlugin {
                 // 0.19: new fields.
                 default_line_width: 2.0,
                 default_topology: bevy::pbr::wireframe::WireframeTopology::default(),
+                // 0.20: wireframes drawn through geometry. Off, as before.
+                xray_mode: false,
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
+            .init_resource::<redraw::ViewportRedraw>()
             // Owned here because the shading modes are what set it; the sky
             // crates only read it, and take it as absent when nothing does.
             .register_type::<renzora::core::EnvironmentSuppressed>()
@@ -230,6 +235,9 @@ impl Plugin for ViewportPlugin {
                 // agreed on which scene view it had come from. There is no UI
                 // view to flip to now, so there is nothing to agree about.
                 (
+                    // Decides whether this frame renders, from what changed
+                    // since the last one; activation then applies it.
+                    redraw::detect_viewport_changes,
                     sync_viewport_camera_activation,
                     park_primary_3d_target,
                 )
@@ -239,6 +247,7 @@ impl Plugin for ViewportPlugin {
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
+        app.add_systems(PostUpdate, log_active_cameras);
 
         // Camera-preview spawn/update logic only when its panel is mounted.
         app.add_systems(
@@ -739,6 +748,44 @@ pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the res
 // exists any more — the canvas is its own panel and samples whatever the
 // viewport is currently rendering, so there is no "came from" to remember.
 
+/// Log the active cameras whenever that set changes.
+///
+/// Every active camera runs its whole render schedule each frame, and a camera
+/// left on by a panel that is no longer visible is otherwise invisible: an idle
+/// editor was measured rendering seven 3D views that no reading of the code could
+/// account for. One line per change, never per frame.
+fn log_active_cameras(
+    cameras: Query<(
+        Entity,
+        &Camera,
+        Option<&Name>,
+        Has<Camera3d>,
+        Has<renzora::core::ViewportRedrawIdle>,
+    )>,
+    mut last: Local<Vec<Entity>>,
+) {
+    // A camera idled by render-on-change still counts as on: it wakes the
+    // moment anything changes, and listing it as off would log twice per touch.
+    let mut active: Vec<(Entity, String, bool)> = cameras
+        .iter()
+        .filter(|(_, cam, .., idle)| cam.is_active || *idle)
+        .map(|(e, _, name, is_3d, _)| {
+            (e, name.map_or_else(|| format!("{e}"), |n| n.to_string()), is_3d)
+        })
+        .collect();
+    active.sort_unstable_by_key(|(e, ..)| e.to_bits());
+    let entities: Vec<Entity> = active.iter().map(|(e, ..)| *e).collect();
+    if *last == entities {
+        return;
+    }
+    *last = entities;
+    let names: Vec<String> = active
+        .into_iter()
+        .map(|(_, name, is_3d)| if is_3d { format!("{name} (3D)") } else { name })
+        .collect();
+    info!("[viewport] {} active cameras: {:?}", names.len(), names);
+}
+
 /// Toggles each viewport camera's `is_active` based on whether its panel is
 /// docked. The primary (slot 0) camera additionally follows the shared 3D / 2D
 /// / UI mode — it backs UI authoring and steps aside for the 2D camera — while
@@ -751,14 +798,24 @@ fn sync_viewport_camera_activation(
     settings: Option<Res<ViewportSettings>>,
     viewports: Res<renzora::core::viewport_types::Viewports>,
     mut cameras_3d: Query<
-        (&mut Camera, &renzora::core::ViewportCamera),
+        (
+            Entity,
+            &mut Camera,
+            &renzora::core::ViewportCamera,
+            Has<renzora::core::ViewportRedrawIdle>,
+        ),
         (
             Without<renzora::core::ViewportCamera2d>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
         ),
     >,
     mut cameras_2d: Query<
-        (&mut Camera, &renzora::core::ViewportCamera2d),
+        (
+            Entity,
+            &mut Camera,
+            &renzora::core::ViewportCamera2d,
+            Has<renzora::core::ViewportRedrawIdle>,
+        ),
         (
             Without<renzora::core::ViewportCamera>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
@@ -779,8 +836,15 @@ fn sync_viewport_camera_activation(
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed_dock: Option<Res<renzora_ember::dock::FixedDock>>,
     dock_windows: Option<Res<renzora_ember::dock::DockWindows>>,
+    redraw: Option<Res<redraw::ViewportRedraw>>,
+    mut commands: Commands,
 ) {
     use renzora::core::viewport_types::ViewportView;
+
+    // Render-on-change (see `redraw`): with Realtime off, a camera that would
+    // render sits out the frames where nothing in the scene changed.
+    let realtime = settings.as_ref().is_some_and(|s| s.realtime);
+    let render_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render());
 
     let ui_canvas_visible = renzora_ember::dock::panel_visible_anywhere(
         "ui_canvas",
@@ -797,7 +861,8 @@ fn sync_viewport_camera_activation(
         .as_ref()
         .is_some_and(|r| r.phase() != external_runtime::RuntimePhase::Idle);
     if runtime_active {
-        for (mut camera, vc) in cameras_3d.iter_mut() {
+        for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
+            clear_redraw_idle(&mut commands, entity, idle);
             if camera.is_active {
                 info!(
                     "[viewport] 3D camera slot {} -> inactive (an external runtime owns the screen)",
@@ -806,7 +871,8 @@ fn sync_viewport_camera_activation(
                 camera.is_active = false;
             }
         }
-        for (mut camera, vc) in cameras_2d.iter_mut() {
+        for (entity, mut camera, vc, idle) in cameras_2d.iter_mut() {
+            clear_redraw_idle(&mut commands, entity, idle);
             if camera.is_active {
                 info!(
                     "[viewport] 2D camera slot {} -> inactive (an external runtime owns the screen)",
@@ -831,7 +897,8 @@ fn sync_viewport_camera_activation(
     // goes quiet, same as the external-runtime pause above.
     let vr_active = vr_play.as_ref().is_some_and(|v| v.active);
     if vr_active {
-        for (mut camera, vc) in cameras_3d.iter_mut() {
+        for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
+            clear_redraw_idle(&mut commands, entity, idle);
             let want = vc.0 == 0;
             if camera.is_active != want {
                 info!(
@@ -847,7 +914,8 @@ fn sync_viewport_camera_activation(
                 camera.is_active = want;
             }
         }
-        for (mut camera, vc) in cameras_2d.iter_mut() {
+        for (entity, mut camera, vc, idle) in cameras_2d.iter_mut() {
+            clear_redraw_idle(&mut commands, entity, idle);
             if camera.is_active {
                 info!(
                     "[viewport] 2D camera slot {} -> inactive (VR play: the headset owns the GPU)",
@@ -885,7 +953,7 @@ fn sync_viewport_camera_activation(
             .is_some_and(|e| kind_2d.get(e).is_ok());
     let two_d_active = view == ViewportView::Two || playing_2d_game;
 
-    for (mut camera, vc) in cameras_3d.iter_mut() {
+    for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
         let want = if vc.0 == 0 {
             // The primary camera owns the atmosphere + IBL probe. Bevy's
@@ -898,6 +966,12 @@ fn sync_viewport_camera_activation(
             // docked or the 2D view is selected. While undocked (or parked in
             // 2D view) that image is shrunk to `UNDOCKED_TARGET_SIZE`, so the
             // always-on pass costs almost nothing per-pixel.
+            //
+            // The render-on-change gate below is the one exception. Idling the
+            // primary is safe in Bevy 0.20 because the probe's bind group only
+            // needs buffers that outlive a frame with no atmosphere view: the
+            // atmosphere is extracted for every 3D camera, active or not, and a
+            // zero-count write leaves last frame's per-view buffer in place.
             true
         } else {
             // Secondary 3D views render only when their panel is docked AND we're
@@ -906,7 +980,15 @@ fn sync_viewport_camera_activation(
             // render the 2D camera immediately clears over.
             docked && !two_d_active
         };
+        let would_render = want;
+        let want = gate_redraw(&mut commands, entity, idle, want, render_ok);
         if camera.is_active != want {
+            camera.is_active = want;
+            // Idling and waking for render-on-change is not news: it happens
+            // on every touch, and a line each time would bury the log.
+            if idle || (would_render && !want) {
+                continue;
+            }
             // Logged on the TRANSITION, never per frame: a line every frame
             // here would itself cost frames, which is the bug this is meant to
             // help find. The reason is spelled out because "4 cameras were
@@ -926,17 +1008,21 @@ fn sync_viewport_camera_activation(
                     "its panel is docked"
                 }
             );
-            camera.is_active = want;
         }
     }
 
     // Each slot's 2D camera activates when its panel is docked and 2D owns the
     // image — so viewports 2/3/4 render the 2D scene from their own framing,
     // just as their 3D cameras render it from their own angle.
-    for (mut camera, vc) in cameras_2d.iter_mut() {
+    for (entity, mut camera, vc, idle) in cameras_2d.iter_mut() {
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
-        let want = docked && two_d_active;
+        let would_render = docked && two_d_active;
+        let want = gate_redraw(&mut commands, entity, idle, would_render, render_ok);
         if camera.is_active != want {
+            camera.is_active = want;
+            if idle || (would_render && !want) {
+                continue;
+            }
             info!(
                 "[viewport] 2D camera slot {} -> {} ({})",
                 vc.0,
@@ -949,7 +1035,6 @@ fn sync_viewport_camera_activation(
                     "its panel is docked and 2D owns the slot image"
                 }
             );
-            camera.is_active = want;
         }
     }
 
@@ -974,6 +1059,32 @@ fn sync_viewport_camera_activation(
             );
             camera.is_active = want_ui;
         }
+    }
+}
+
+/// Apply the render-on-change gate to a camera that `would_render`: returns
+/// whether it renders, and keeps the [`renzora::core::ViewportRedrawIdle`]
+/// marker on exactly the cameras the gate is holding back.
+fn gate_redraw(
+    commands: &mut Commands,
+    entity: Entity,
+    idle: bool,
+    would_render: bool,
+    render_ok: bool,
+) -> bool {
+    let held_back = would_render && !render_ok;
+    if held_back && !idle {
+        commands.entity(entity).insert(renzora::core::ViewportRedrawIdle);
+    } else if !held_back && idle {
+        commands.entity(entity).remove::<renzora::core::ViewportRedrawIdle>();
+    }
+    would_render && render_ok
+}
+
+/// Drop the idle marker on a path that decides activation by other rules.
+fn clear_redraw_idle(commands: &mut Commands, entity: Entity, idle: bool) {
+    if idle {
+        commands.entity(entity).remove::<renzora::core::ViewportRedrawIdle>();
     }
 }
 

@@ -26,7 +26,8 @@ struct VertexOutput {
     @location(2) normal: vec3<f32>,
 #endif
 #ifdef NEEDS_PARTICLE_FRAGMENT
-    @location(3) slab_particle_index: u32,
+    // Integer varyings must be flat; naga 30 (Bevy 0.20) enforces it.
+    @location(3) @interpolate(flat) slab_particle_index: u32,
 #endif
 }
 

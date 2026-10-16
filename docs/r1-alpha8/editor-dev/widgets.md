@@ -57,7 +57,7 @@ Key conventions, matching every built-in widget:
 - Colors come from the theme palette in `renzora_ember::theme`: accessor functions like `accent()`, `border()`, `card_bg()`, `window_bg()`, `text_primary()`, `text_muted()`, `tab_active()` each return an `(u8, u8, u8)` triple; `rgb(...)` turns one into a bevy `Color`. Don't hard-code hex.
 - Text needs a font handle. `EmberFonts` carries three: `fonts.ui`, `fonts.phosphor` (icons), `fonts.mono`. `ui_font(&handle, size)` builds a `TextFont`; `icon_text(commands, &fonts.phosphor, name, color, size)` spawns a Phosphor glyph.
 - Give every node a `Name` — it's how markup bindings, the dock, and debug tooling find it.
-- For interactivity, add `Interaction::default()` and either a marker component your own system reads, or one of ember's existing markers (e.g. `EmberButton`).
+- For interactivity, add `Interaction::default()` and either a marker component your own system reads, or one of ember's existing markers (e.g. `EmberButton`). `Interaction` is deprecated in Bevy 0.20 but still works. Don't reach for `bevy_ui`'s `Button`: 0.20 deprecated it and made its type private, so it can't be inserted. Game UI marks its buttons with ember's `UiButton` instead.
 
 To call a builder from an editor panel, use the `build` closure of `register_panel_content` (see *Building Editor Panels*), which hands you exactly `(&mut Commands, &EmberFonts)`:
 
@@ -230,7 +230,7 @@ Three rules worth knowing when you touch this machinery:
 
 - **Never order a system against `screen_menu_dismiss`.** Any `.before`/`.after` on it makes bevy insert an `ApplyDeferred` in front of it, which flushes *every* pending command — including the menu a panel just spawned for the very press being handled. Dismiss would then see a brand-new menu while the opening click is still `just_pressed` and close it on the frame it appeared.
 - **A submenu panel is a parentless root node**, positioned in window pixels and despawned by an `on_remove` hook on its row. It can't be a child of the row: a `screen_menu` keeps its items in a height-capped scroll area, and a scroll area clips its children, so the panel would be sliced off at the menu's edge. Same clipping trap tooltips avoid — and the reason `GlobalZIndex` alone never fixes a vanishing popup.
-- **Read a UI node's placement from `UiGlobalTransform`, never `GlobalTransform`.** Bevy 0.19's layout writes the former (an `Affine2` whose `translation` is the node's **centre**, in *physical* px — multiply by `ComputedNode::inverse_scale_factor()` for the logical px that `Val::Px` speaks). A UI node's `GlobalTransform` is left at the origin, so anything positioned from it lands in the window's top-left corner.
+- **Read a UI node's placement from `UiGlobalTransform`, never `GlobalTransform`.** Bevy's layout (since 0.19) writes the former (an `Affine2` whose `translation` is the node's **centre**, in *physical* px; multiply by `ComputedNode::inverse_scale_factor()` for the logical px that `Val::Px` speaks). A UI node's `GlobalTransform` is left at the origin, so anything positioned from it lands in the window's top-left corner.
 
 ### Capped tab strips (`overflow_strip`)
 
@@ -359,7 +359,7 @@ The `code_editor` widget is a monospace, syntax-highlighted, editable text view.
 
 **Advance is measured, not assumed.** Rather than hardcoding a 0.6em advance, a hidden probe (`code_probe`) reads the active mono font's real laid-out width from its `TextLayoutInfo` and feeds the per-font advance ratio back, so Fira Code / Source Code Pro / custom mono fonts get pixel-correct carets. The measurement is scale-invariant and tightly guarded — a bad/early reading falls back to 0.6 with no regression.
 
-**Monospace is intentional.** Bevy 0.19's `PositionedGlyph` exposes a glyph's pixel position but *not* its source character/cluster index, so an arbitrary glyph can't be mapped back to a column — which is what proportional-font click/caret hit-testing would need across our multi-token text. Monospace keeps column ↔ pixel math exact and matches every real code editor; ligature mono fonts still work, since a ligature keeps the combined cell advance.
+**Monospace is intentional.** Bevy's `PositionedGlyph` (0.19 and 0.20 alike) exposes a glyph's pixel position but *not* its source character/cluster index, so an arbitrary glyph can't be mapped back to a column, which is what proportional-font click/caret hit-testing would need across our multi-token text. Monospace keeps column ↔ pixel math exact and matches every real code editor; ligature mono fonts still work, since a ligature keeps the combined cell advance.
 
 ### Text inputs & forms (`text_input`, `textarea`, `EmberForm`)
 
@@ -525,7 +525,7 @@ pub struct RingMaterial {
 
 impl UiMaterial for RingMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://my_plugin/ring.wgsl".into()
+        "embedded://my_plugin/ring.wesl".into()
     }
 }
 
@@ -536,15 +536,15 @@ impl Plugin for RingPlugin {
         if app.is_plugin_added::<UiMaterialPlugin<RingMaterial>>() {
             return;
         }
-        embedded_asset!(app, "ring.wgsl");
+        embedded_asset!(app, "ring.wesl");
         app.add_plugins(UiMaterialPlugin::<RingMaterial>::default());
     }
 }
 ```
 
 ```wgsl
-// ring.wgsl — a UiMaterial fragment shader.
-#import bevy_ui::ui_vertex_output::UiVertexOutput
+// ring.wesl: a UiMaterial fragment shader, in WESL like every shader since Bevy 0.20.
+import bevy_ui_render::ui_vertex_output::UiVertexOutput;
 
 struct Ring { color: vec4<f32>, params: vec4<f32> };
 @group(1) @binding(0) var<uniform> u: Ring;
@@ -577,6 +577,8 @@ fn spawn_ring(mut commands: Commands, mut mats: ResMut<Assets<RingMaterial>>) {
 ```
 
 Update the value by mutating the material via its handle in a system (`materials.get_mut(&node.0)`), exactly as `arc_sync`/`chart_sync` do — that's the cheapest way to animate, since it touches only the uniform buffer.
+
+A `.wgsl` written in the old `#import` dialect still loads, because the engine translates it to WESL as it loads; see [Shaders](../rendering/shaders.md).
 
 ## Where widgets live
 

@@ -316,6 +316,65 @@ renzora::lang::register_pack_str(include_str!("../locales/en.toml"))?;
 
 **Spawn on `OnEnter(SplashState::Editor)`, not `Startup`.** The project-load teardown despawns everything carrying a `Name` and it runs *after* `Startup`, so a named entity spawned in `Startup` appears and then vanishes.
 
+## Making a plugin's edits undoable
+
+Implement `UndoCommand` and hand it to `execute`. The trait, the stacks and the
+entry points are in the contract crate for exactly this reason, so a plugin
+pushes onto the same history Ctrl+Z reads.
+
+```rust
+use renzora::undo::{execute, UndoCommand, UndoContext};
+
+struct TintEdit { entity: Entity, before: Color, after: Color }
+
+impl UndoCommand for TintEdit {
+    fn label(&self) -> &str { "tint" }
+    fn execute(&mut self, world: &mut World) { write_tint(world, self.entity, self.after); }
+    fn undo(&mut self, world: &mut World) { write_tint(world, self.entity, self.before); }
+}
+
+execute(world, UndoContext::Scene, Box::new(TintEdit { entity, before, after }));
+```
+
+`execute` applies the command and records it. Use `record` instead when the
+mutation has already happened and you only want it on the stack.
+
+**Do not define your own copy of the trait or the stacks.** They are shared
+through `renzora_dylib` so the `TypeId`s are singular; a private copy pushes onto
+a stack the editor's Ctrl+Z never reads, which is worse than recording nothing,
+because the edit then *looks* undoable.
+
+## Moving the viewport camera
+
+Insert a `CameraViewRequest`. It is a one-shot resource: the camera controller in
+`renzora_camera` applies it and removes it on the same frame.
+
+```rust
+use renzora::CameraViewRequest;
+
+// Put the camera somewhere and aim it. The orbit pivot lands on the target, so
+// the drag the user does next is about the thing they were just shown.
+world.insert_resource(CameraViewRequest::LookAt {
+    eye: Vec3::new(15.0, 11.0, 15.0),
+    target: Vec3::ZERO,
+});
+
+// Or frame an entity and its descendants, exactly as the F key does.
+world.insert_resource(CameraViewRequest::Frame(entity));
+```
+
+The full set is `ZoomIn`, `ZoomOut`, `ResetZoom`, `FrameAll`, `Frame(Entity)`,
+`LookAt { eye, target }` and `SetOrbit { focus, yaw, pitch, distance }`. The last
+three exist for callers that are not a person at a menu: a plugin, a test, or an
+agent driving the editor.
+
+**Do not write the camera's `Transform`.** It looks like it should work, it
+reports success, and nothing happens: the controller recomputes that transform
+from its orbit state every frame, so the write is gone before the next render.
+There is no warning, because from the ECS's point of view nothing went wrong.
+
+Requests are ignored during play mode, where the game owns the camera.
+
 ## GPU pass attribution
 
 If your plugin adds its own render pass, tell the GPU Pass Breakdown what drives it, so a user profiling a slow frame sees *your entities* rather than an unexplained pass name:
@@ -338,7 +397,7 @@ See [Post-Processing Effects](post-processing.md) for the whole of that path, in
 
 ## What a plugin still cannot do
 
-- **Push onto the undo stack.** Undo lives in `renzora_undo`, which is not one of the three crates a plugin can link. A plugin can mutate the world freely; the user cannot undo it. This is the largest gap in the plugin API today.
+- **Reach the editor's concrete undo commands.** The undo *core* is in the contract crate, so a plugin's edits can be undoable: see [Making Edits Undoable](../editor-dev/undo.md) and the section below. What stays out of reach is `renzora_undo`'s own command types (`SpawnShapeCmd`, `ReparentCmd`, …), because those need crates a plugin cannot link. Implement `UndoCommand` for your own edit instead.
 - **Unregister anything.** Registries are append-only for the life of the `App`, because Bevy cannot withdraw a system and unmapping a plugin's image would dangle every function pointer it left behind.
 - **Reach another `renzora_*` crate.** Only `bevy`, `renzora` and `renzora_ember` are linkable. If you need a type from elsewhere, that type belongs in the contract crate — which is the rule the engine's own crates follow, and the reason this list is as short as it is.
 

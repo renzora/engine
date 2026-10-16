@@ -101,8 +101,8 @@ impl ScriptBackend for RustScriptBackend {
     }
 
     /// Always false. Reloading a Rust script means recompiling and mapping a new
-    /// library, which this backend does not own — [`crate::compile_and_load`]
-    /// does, and only when the project opens. Answering `true` would invite the
+    /// library, which this backend does not own: [`crate::watch`] does, when the
+    /// project opens and whenever a script is saved. Answering `true` would invite the
     /// engine to call [`reload`](Self::reload), which cannot do anything useful.
     fn needs_reload(&self, _path: &Path) -> bool {
         false

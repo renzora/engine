@@ -1,0 +1,25 @@
+# Vendored from crates.io `bevy_interleave_macros` 0.10.0 (MIT) with
+# `bevy_interleave`; see that crate's manifest for why and what changed.
+[package]
+edition = "2024"
+name = "bevy_interleave_macros"
+version = "0.10.0"
+description = "macros for e2e packed to planar bind groups"
+license = "MIT"
+repository = "https://github.com/mosure/bevy_interleave"
+
+[lib]
+name = "bevy_interleave_macros"
+path = "src/lib.rs"
+proc-macro = true
+
+[dependencies]
+bevy = { workspace = true }
+bevy_interleave_interface = { path = "../bevy_interleave_interface" }
+bytemuck = "1.14"
+convert_case = "0.10"
+proc-macro2 = "1.0"
+quote = "1.0"
+sha1 = "0.10"
+syn = "2.0"
+wgpu = "30"

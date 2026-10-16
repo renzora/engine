@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     prelude::*,
 };
 
@@ -10,6 +10,6 @@ pub struct NoisePlugin;
 
 impl Plugin for NoisePlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(app, NOISE_SHADER_HANDLE, "noise.wgsl", Shader::from_wgsl);
+        crate::load_wesl!(app, NOISE_SHADER_HANDLE, "noise.wesl", "noise/noise");
     }
 }

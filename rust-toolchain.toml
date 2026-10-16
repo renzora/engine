@@ -8,4 +8,4 @@
 # describe the same pinned compiler from the two angles (native vs container).
 # rustup auto-installs/selects this channel on the first cargo invocation.
 [toolchain]
-channel = "1.95.0"
+channel = "1.97.1"

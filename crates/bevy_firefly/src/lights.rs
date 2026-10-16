@@ -25,7 +25,10 @@ use bevy::{
             BindGroup, PipelineCache, ShaderType, SpecializedRenderPipelines, StorageBuffer,
         },
         sync_world::SyncToRenderWorld,
-        view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity, ViewUniformOffset},
+        view::{
+            ExtractedView, RenderVisibleEntities, ResolvedCompositingSpace, RetainedViewEntity,
+            ViewUniformOffset,
+        },
     },
 };
 use bytemuck::NoUninit;
@@ -376,12 +379,26 @@ fn queue_lights(
         Option<&Tonemapping>,
         Option<&DebandDither>,
         Option<&ExtractedCombineLightmapTo>,
+        // 0.20: the compositing space left `ExtractedCamera` for this
+        // per-view component, resolved across every camera on the target.
+        Option<&ResolvedCompositingSpace>,
     )>,
     pipeline_cache: Res<PipelineCache>,
 ) {
     let draw_lightmap_function = light_draw_functions.read().id::<DrawLightmap>();
 
-    for (view, camera, visible_entities, msaa, tonemapping, dither, combined_lightmap) in &views {
+    for (
+        view,
+        camera,
+        visible_entities,
+        msaa,
+        tonemapping,
+        dither,
+        combined_lightmap,
+        resolved_space,
+    ) in &views
+    {
+        let compositing_space = ResolvedCompositingSpace::space(resolved_space);
         let Some(lightmap_phase) = lightmap_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -396,16 +413,10 @@ fn queue_lights(
         let msaa_key = LightPipelineKey::from_msaa_samples(msaa.samples());
         let mut view_key = LightPipelineKey::from_target_format(target_format) | msaa_key;
 
-        if camera
-            .compositing_space
-            .is_some_and(|s| s == CompositingSpace::Srgb)
-        {
+        if compositing_space.is_some_and(|s| s == CompositingSpace::Srgb) {
             view_key |= LightPipelineKey::SRGB_COMPOSITING;
         }
-        if camera
-            .compositing_space
-            .is_some_and(|s| s == CompositingSpace::Oklab)
-        {
+        if compositing_space.is_some_and(|s| s == CompositingSpace::Oklab) {
             view_key |= LightPipelineKey::OKLAB_COMPOSITING;
         }
 
@@ -413,7 +424,11 @@ fn queue_lights(
             if let Some(tonemapping) = tonemapping {
                 view_key |= LightPipelineKey::TONEMAP_IN_SHADER;
                 view_key |= match tonemapping {
-                    Tonemapping::None => LightPipelineKey::TONEMAP_METHOD_NONE,
+                    // 0.20 added `Linear` (no curve, keeps dither); Bevy's own
+                    // 2D pipelines key both onto the same no-curve path.
+                    Tonemapping::None | Tonemapping::Linear => {
+                        LightPipelineKey::TONEMAP_METHOD_NONE
+                    }
                     Tonemapping::Reinhard => LightPipelineKey::TONEMAP_METHOD_REINHARD,
                     Tonemapping::ReinhardLuminance => {
                         LightPipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE

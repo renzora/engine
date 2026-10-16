@@ -32,11 +32,13 @@ use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 fn wait_for_shader_libraries(app: &mut App) {
     // `pbr_fragment` specifically, not just any library: it is the one the
     // generated surface shaders import and the one CI reported missing.
-    const REQUIRED: [&str; 2] = ["bevy_pbr::pbr_functions", "bevy_pbr::pbr_fragment"];
+    const REQUIRED: [&str; 2] = ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"];
     let present = |app: &App| {
         let shaders = app.world().resource::<Assets<Shader>>();
         REQUIRED.iter().all(|want| {
-            shaders.iter().any(|(_, s)| s.import_path.module_name().as_ref() == *want)
+            shaders.iter().any(|(_, s)| {
+                matches!(&s.import_path, bevy::shader::ShaderImport::Custom(name) if name == want)
+            })
         })
     };
     for _ in 0..500 {
@@ -172,10 +174,25 @@ impl Fixture {
     }
 
     /// The validator is built from shader libraries that arrive as assets, so a
-    /// single frame is not always enough for the first resolve.
+    /// single frame is not always enough for the first resolve. Validation then
+    /// waits for the library set to settle and runs on a background task, so
+    /// after the fixed frames this waits until no material is still owed a
+    /// verdict.
     fn pump(&mut self) {
         for _ in 0..8 {
             self.app.update();
+        }
+        for _ in 0..2000 {
+            let pending = self
+                .app
+                .world()
+                .get_resource::<renzora_shader::material::resolver::MaterialValidationPending>()
+                .map_or(0, |p| p.0);
+            if pending == 0 {
+                return;
+            }
+            self.app.update();
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
 

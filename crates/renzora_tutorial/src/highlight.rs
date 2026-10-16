@@ -27,7 +27,7 @@ use renzora_ember::theme::{accent, play_green};
 use crate::state::TutorialState;
 use crate::steps::highlight_for;
 
-/// The arrowhead's box. **Square on purpose**: `triangle.wgsl` evaluates its SDF
+/// The arrowhead's box. **Square on purpose**: `triangle.wesl` evaluates its SDF
 /// in normalised `uv * 2 - 1` space, so the triangle stretches with the node's
 /// aspect ratio — a wide, short node renders a squashed sliver rather than an
 /// arrowhead.
@@ -40,7 +40,7 @@ const HEAD_SIZE: f32 = 44.0;
 /// Where the drawn triangle sits inside that box, as fractions of node height,
 /// when rotated to point up.
 ///
-/// Derived from `triangle.wgsl`: it evaluates iq's unit equilateral SDF — apex at
+/// Derived from `triangle.wesl`: it evaluates iq's unit equilateral SDF, apex at
 /// `y = 1/√3`, base at `y = -1/(2√3)` — on `(uv * 2 - 1) * 1.15`. Dividing by
 /// 1.15 and mapping `uv.y ∈ [-1, 1]` onto the node gives base at 37.4% and apex
 /// at 75.1% from the top; rotating 180° to point up mirrors those to 24.9% and
@@ -394,14 +394,10 @@ fn target_rect(
         // rather than moving or culling it — so without this the highlight
         // happily framed a "Demo Panel" row that had scrolled off the Add Panel
         // list, drawing a box and an arrow in empty space below the overlay.
-        // `CalculatedClip` is physical, window-global px, the same basis as
-        // `UiGlobalTransform.translation`.
-        if let Some(clip) = clip {
-            let c = clip.clip;
-            let p = ugt.translation;
-            if p.x < c.min.x || p.x > c.max.x || p.y < c.min.y || p.y > c.max.y {
-                continue;
-            }
+        // `CalculatedClip` tests in physical, window-global px, the same basis
+        // as `UiGlobalTransform.translation`.
+        if clip.is_some_and(|clip| !clip.contains_point(ugt.translation)) {
+            continue;
         }
         let parent_area = parents
             .get(entity)

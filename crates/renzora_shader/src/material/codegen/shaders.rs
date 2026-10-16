@@ -20,6 +20,11 @@ use super::wgsl::{
     texture_bindings_wgsl, PARALLAX_FRAGMENT_WGSL,
 };
 
+/// Bevy's own alpha step before lighting, called the way `bevy_pbr`'s
+/// `pbr.wesl` calls it. Bevy 0.20 takes the material's flags and cutoff
+/// rather than the whole material.
+const ALPHA_DISCARD: &str = "    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material.flags, pbr_input.material.alpha_cutoff, pbr_input.material.base_color);\n";
+
 /// Merge the per-line spans recorded during emission into per-node absolute
 /// ranges. `prelude_base` / `body_base` are the 1-based absolute lines the
 /// first prelude / body line lands on in the assembled shader; `extra`
@@ -287,7 +292,7 @@ pub(crate) fn build_pbr_shader(
     // emissive.rgb * output_color.a`, so a glTF material authored with
     // baseColorFactor.a = 0 (common for emissive-only string lights) would
     // otherwise render with no glow.
-    shader.push_str("    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material, pbr_input.material.base_color);\n");
+    shader.push_str(ALPHA_DISCARD);
 
     shader.push_str("\n    var out: FragmentOutput;\n");
     shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
@@ -421,7 +426,7 @@ pub(crate) fn build_unlit_shader(
     }
 
     // Match bevy_pbr::pbr.wgsl — alpha_discard handles OPAQUE/MASK before lighting.
-    shader.push_str("    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material, pbr_input.material.base_color);\n");
+    shader.push_str(ALPHA_DISCARD);
 
     shader.push_str("\n    var out: FragmentOutput;\n");
     shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");

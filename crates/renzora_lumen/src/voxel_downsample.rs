@@ -6,7 +6,7 @@
 //! a widening cone picks a coarser mip per step, which means each
 //! distant tap pulls a pre-averaged 2³ neighbourhood instead of a
 //! single voxel. Replaces the `DISTANCE_FALLOFF` magic constant
-//! `lumen_trace.wgsl` used to fake this attenuation.
+//! `lumen_trace.wesl` used to fake this attenuation.
 //!
 //! Cascade boundary safety: voxels are stacked along Z so cascade C
 //! at mip M occupies Z ∈ [C × (RES >> M), (C+1) × (RES >> M)). Since
@@ -83,6 +83,7 @@ impl FromWorld for VoxelDownsamplePipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("downsample".into()),
+            constants: vec![],
             immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });

@@ -76,7 +76,7 @@ fn spawn_observers(mut commands: Commands) {
 
 // handles buffer when the light gets despawned or the component is removed
 fn on_light_removed(
-    trigger: On<Remove, ExtractedPointLight>,
+    trigger: On<Remove<ExtractedPointLight>>,
     mut lights: Query<&mut LightIndex>,
     mut light_manager: ResMut<BufferManager<UniformPointLight>>,
 ) {
@@ -90,7 +90,7 @@ fn on_light_removed(
 
 // handles buffer when the occluder gets despawned or the component is removed
 fn on_occluder_removed(
-    trigger: On<Remove, ExtractedOccluder>,
+    trigger: On<Remove<ExtractedOccluder>>,
     mut occluders: Query<
         (
             &ExtractedOccluder,

@@ -18,7 +18,7 @@ pub(crate) struct ColorPickerPlugin;
 
 impl Plugin for ColorPickerPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "colorpicker.wgsl");
+        bevy::asset::embedded_asset!(app, "colorpicker.wesl");
         app.add_plugins(UiMaterialPlugin::<PickerMaterial>::default());
         app.add_systems(Update, (picker_attach, picker_sync, hsv_drag));
     }
@@ -32,7 +32,7 @@ pub(crate) struct PickerMaterial {
 
 impl UiMaterial for PickerMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/widgets/colorpicker/colorpicker.wgsl".into()
+        "embedded://renzora_ember/widgets/colorpicker/colorpicker.wesl".into()
     }
 }
 

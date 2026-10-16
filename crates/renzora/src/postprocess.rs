@@ -57,7 +57,7 @@ use bevy::utils::default;
 /// Only `fragment_shader()` is required. The other methods are kept for
 /// backwards compatibility but are no longer used by the unified pipeline.
 pub trait PostProcessEffect:
-    Component + ExtractComponent + Clone + Copy + ShaderType + WriteInto + Default + 'static
+    Component + ExtractComponent<RenderApp> + Clone + Copy + ShaderType + WriteInto + Default + 'static
 {
     fn fragment_shader() -> ShaderRef;
 
@@ -254,7 +254,7 @@ fn init_snapshot_blit_pipeline(
         ),
     );
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-    let shader = asset_server.load("embedded://renzora/postprocess_copy.wgsl");
+    let shader = asset_server.load("embedded://renzora/postprocess_copy.wesl");
     let pipeline_id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
         label: Some("snapshot_blit_pipeline".into()),
         layout: vec![layout.clone()],
@@ -705,7 +705,7 @@ impl Plugin for PostProcessCorePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] PostProcessCorePlugin");
         // Passthrough shader used to blit the live frame into snapshot textures.
-        bevy::asset::embedded_asset!(app, "postprocess_copy.wgsl");
+        bevy::asset::embedded_asset!(app, "postprocess_copy.wesl");
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;

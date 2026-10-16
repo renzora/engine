@@ -37,6 +37,14 @@
 #     overran the binding for the last camera (wgpu validation error, fatal in
 #     VR: 2 eyes + mirror = 3 chunks). The draw also skips views whose chunk
 #     the buffer hasn't grown to cover yet (SortBindGroup::chunk_capacity).
+#   - 0.20 port: wgpu 30, `#[extract_app(RenderApp)]` on the extracted
+#     components, `bevy::shape` for bounding volumes, the new empty
+#     `constants` list on pipeline descriptors, and the vendored
+#     `bevy_interleave`/`bevy_args`. The shaders are WESL (`.wesl`) instead of
+#     naga_oil `.wgsl`: each is registered at its file path
+#     (`bevy_gaussian_splatting::render::bindings`, see `load_wesl!` in
+#     lib.rs), and the numeric `#if SH_DEGREE > N` comparisons are flags that
+#     `shader_defs_with_defines` sets (`SH_DEGREE__GT_N`).
 # Consumed by `renzora_gaussian_splatting`; excluded from CI test/clippy like
 # the other vendored ecosystem crates.
 [package]
@@ -116,8 +124,9 @@ webgpu = ["bevy/webgpu"]
 
 [dependencies]
 base64 = "0.22"
-bevy_args = "4.0.0"
-bevy_interleave = "0.10.0"
+# Both vendored for Bevy 0.20 (no published release supports it yet).
+bevy_args = { path = "../bevy_args" }
+bevy_interleave = { path = "../bevy_interleave" }
 bincode2 = { version = "2.0", optional = true }
 bytemuck = "1.23"
 clap = { version = "4.5", features = ["derive"] }
@@ -134,7 +143,7 @@ serde = "1.0"
 serde_json = "1.0"
 static_assertions = "1.1"
 typenum = "1.18"
-wgpu = "29"
+wgpu = "30"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"

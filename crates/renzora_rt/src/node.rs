@@ -24,7 +24,8 @@ pub fn rt_pass(
 ) {
     let (view_target, view_offset, prepass, resources, settings) = view.into_inner();
 
-    if !settings.enabled || settings.intensity <= 0.0 {
+    // Also sat out for a few frames after a resize; see `settle_frames`.
+    if !settings.enabled || settings.intensity <= 0.0 || resources.settle_frames > 0 {
         return;
     }
 
@@ -38,7 +39,7 @@ pub fn rt_pass(
     let Some(view_binding) = view_uniforms.uniforms.binding() else {
         return;
     };
-    let Some(depth_view) = prepass.depth_view() else {
+    let Some(depth_view) = prepass.depth_only_view() else {
         return;
     };
     let Some(normal_view) = prepass.normal_view() else {

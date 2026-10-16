@@ -507,13 +507,23 @@ pub fn particle_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock
 fn sync_preview_camera_active(
     editor_state: Res<ParticleEditorState>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
     mut camera: Query<&mut Camera, With<ParticlePreviewCamera>>,
     preview_effects: Query<Entity, With<ParticlePreviewEffect>>,
     mut tracker: ResMut<ParticlePreviewTracker>,
     mut commands: Commands,
 ) {
-    let panel_mounted = dock.is_some_and(|d| d.tree.contains_panel("particle_preview"));
-    let should_be_active = panel_mounted && editor_state.current_effect.is_some();
+    let panel_mounted = dock.as_ref().is_some_and(|d| d.tree.contains_panel("particle_preview"));
+    // Render only while the panel is the visible tab somewhere; a background tab
+    // still counts as mounted, and kept the effect rendering behind other tabs.
+    let visible = renzora_ember::dock::panel_visible_anywhere(
+        "particle_preview",
+        dock.as_deref(),
+        fixed.as_deref(),
+        wins.as_deref(),
+    );
+    let should_be_active = visible && editor_state.current_effect.is_some();
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;

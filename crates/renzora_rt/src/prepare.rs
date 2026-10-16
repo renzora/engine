@@ -50,7 +50,19 @@ pub struct RtViewResources {
     /// Cached size to detect view-target resizes; we recreate the history
     /// textures when this drifts.
     pub history_size: Extent3d,
+    /// Frames the pass still sits out after the history was (re)allocated.
+    ///
+    /// Running straight through a resize left the sky black until the camera
+    /// moved: with SSGI on, every viewport resize lost the sky and it stayed
+    /// lost, while with SSGI off no resize ever did. Skipping the pass for a
+    /// moment always brought the sky back for good, so a fresh allocation
+    /// starts with that pause instead of waiting for someone to orbit.
+    pub settle_frames: u32,
 }
+
+/// Frames [`RtViewResources::settle_frames`] starts at. A few frames of no
+/// bounce light after a resize are invisible; the black sky was not.
+const SETTLE_FRAMES: u32 = 4;
 
 impl FromWorld for RtPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -88,7 +100,7 @@ impl FromWorld for RtPipeline {
         });
 
         let asset_server = world.resource::<AssetServer>();
-        let shader = asset_server.load("embedded://renzora_rt/ssgi.wgsl");
+        let shader = asset_server.load("embedded://renzora_rt/ssgi.wesl");
 
         let fullscreen = world.resource::<bevy::core_pipeline::FullscreenShader>();
 
@@ -116,6 +128,7 @@ impl FromWorld for RtPipeline {
                         write_mask: ColorWrites::ALL,
                     }),
                 ],
+                constants: vec![],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
@@ -140,11 +153,11 @@ pub fn prepare_rt_uniforms(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     pipeline: Res<RtPipeline>,
-    views: Query<(Entity, &RtLighting, &ViewTarget, Option<&RtViewResources>)>,
+    mut views: Query<(Entity, &RtLighting, &ViewTarget, Option<&mut RtViewResources>)>,
 ) {
     let frame_count = pipeline.frame_count.fetch_add(1, Ordering::Relaxed);
 
-    for (entity, settings, view_target, existing) in &views {
+    for (entity, settings, view_target, existing) in &mut views {
         let target_size = view_target.main_texture().size();
 
         let config = RtConfig {
@@ -156,12 +169,17 @@ pub fn prepare_rt_uniforms(
 
         // Reuse existing resources if size still matches; otherwise
         // (re)allocate history textures + config buffer.
-        let needs_alloc = match existing {
-            Some(res) => res.history_size != target_size,
-            None => true,
+        let config_buffer = match existing {
+            Some(mut res) if res.history_size == target_size => {
+                res.settle_frames = res.settle_frames.saturating_sub(1);
+                render_queue.write_buffer(&res.config_buffer, 0, bytemuck::bytes_of(&config));
+                continue;
+            }
+            Some(res) => Some(res.config_buffer.clone()),
+            None => None,
         };
 
-        let res = if needs_alloc {
+        {
             let history_a = render_device.create_texture(&TextureDescriptor {
                 label: Some("rt_history_a"),
                 size: target_size,
@@ -182,41 +200,22 @@ pub fn prepare_rt_uniforms(
                 usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
-            let config_buffer = if let Some(prev) = existing {
-                prev.config_buffer.clone()
-            } else {
+            let config_buffer = config_buffer.unwrap_or_else(|| {
                 render_device.create_buffer(&BufferDescriptor {
                     label: Some("rt_config_buffer"),
                     size: std::mem::size_of::<RtConfig>() as u64,
                     usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 })
-            };
-            let res = RtViewResources {
+            });
+            render_queue.write_buffer(&config_buffer, 0, bytemuck::bytes_of(&config));
+            commands.entity(entity).insert(RtViewResources {
                 config_buffer,
                 history_a: history_a.create_view(&TextureViewDescriptor::default()),
                 history_b: history_b.create_view(&TextureViewDescriptor::default()),
                 history_size: target_size,
-            };
-            commands.entity(entity).insert(res.clone());
-            res
-        } else {
-            existing.unwrap().clone()
-        };
-
-        render_queue.write_buffer(&res.config_buffer, 0, bytemuck::bytes_of(&config));
-    }
-}
-
-// `RtViewResources` needs Clone for the reuse-or-alloc path above. The
-// inner `Buffer`/`TextureView` are Arc-wrapped by wgpu so this is cheap.
-impl Clone for RtViewResources {
-    fn clone(&self) -> Self {
-        Self {
-            config_buffer: self.config_buffer.clone(),
-            history_a: self.history_a.clone(),
-            history_b: self.history_b.clone(),
-            history_size: self.history_size,
+                settle_frames: SETTLE_FRAMES,
+            });
         }
     }
 }

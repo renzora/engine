@@ -138,10 +138,11 @@ fn manage_loading_screen(world: &mut World) {
         }
         let fonts = world.resource::<EmberFonts>().clone();
         let (pname, ppath) = project_info(&Rx::new(&*world));
+        let haze = !crate::effects::reduced_in_world(world);
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_loading(&mut commands, &fonts, false, &pname, &ppath);
+            spawn_loading(&mut commands, &fonts, false, haze, &pname, &ppath);
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -185,7 +186,7 @@ fn manage_editor_overlay(world: &mut World) {
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_loading(&mut commands, &fonts, true, "", "");
+            spawn_loading(&mut commands, &fonts, true, false, "", "");
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -199,6 +200,10 @@ fn spawn_loading(
     commands: &mut Commands,
     fonts: &EmberFonts,
     modal: bool,
+    // The animated haze behind the terminal. Off under reduced splash effects,
+    // which leaves the backdrop's flat colour: a full-window shader is the one
+    // part of this screen whose cost grows with the display.
+    haze: bool,
     project_name: &str,
     project_path: &str,
 ) {
@@ -236,23 +241,26 @@ fn spawn_loading(
         let panel = build_letterbox(commands, fonts);
         commands.entity(backdrop).add_child(panel);
     } else {
-        let haze = commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    right: Val::Px(0.0),
-                    bottom: Val::Px(0.0),
-                    ..default()
-                },
-                FocusPolicy::Pass,
-                crate::post::HazeView,
-                Name::new("loading-haze"),
-            ))
-            .id();
+        if haze {
+            let haze = commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        top: Val::Px(0.0),
+                        right: Val::Px(0.0),
+                        bottom: Val::Px(0.0),
+                        ..default()
+                    },
+                    FocusPolicy::Pass,
+                    crate::post::HazeView,
+                    Name::new("loading-haze"),
+                ))
+                .id();
+            commands.entity(backdrop).add_child(haze);
+        }
         let panel = build_terminal(commands, fonts, project_name, project_path);
-        commands.entity(backdrop).add_children(&[haze, panel]);
+        commands.entity(backdrop).add_child(panel);
     }
 }
 

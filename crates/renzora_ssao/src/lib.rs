@@ -73,6 +73,9 @@ fn reconcile_ssao(
                 // Negative thickness would push the occlusion test in front of
                 // the surface; the inspector clamps, but scenes are hand-editable.
                 constant_object_thickness: env.ssao.constant_object_thickness.max(0.0),
+                // New in Bevy 0.20 (the sample distance was fixed before). Not
+                // exposed yet, so it keeps Bevy's default and looks as it did.
+                ..default()
             });
         } else {
             ec.remove::<ScreenSpaceAmbientOcclusion>();

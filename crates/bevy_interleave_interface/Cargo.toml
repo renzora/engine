@@ -1,0 +1,16 @@
+# Vendored from crates.io `bevy_interleave_interface` 0.10.0 (MIT) with
+# `bevy_interleave`; see that crate's manifest for why and what changed.
+[package]
+edition = "2024"
+name = "bevy_interleave_interface"
+version = "0.10.0"
+description = "interface for e2e packed to planar bind groups"
+license = "MIT"
+repository = "https://github.com/mosure/bevy_interleave"
+
+[lib]
+name = "bevy_interleave_interface"
+path = "src/lib.rs"
+
+[dependencies]
+bevy = { workspace = true }

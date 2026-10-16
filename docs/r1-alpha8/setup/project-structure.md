@@ -2,7 +2,7 @@
 
 How the Renzora engine repository is organized — one Cargo workspace, ~187 crates auto-included by globs, and the "one binary, editor-as-removable-cdylib" layout.
 
-Renzora is a single large Cargo workspace built on **Bevy 0.19**, where almost every feature is its own crate that registers a Bevy `Plugin`. The defining structural fact is **one engine binary** (`renzora`) that is always runtime-shaped; the editor ships as a removable cdylib bundle beside it. This page maps the repository so you can find your way around the source.
+Renzora is a single large Cargo workspace built on **Bevy 0.20**, where almost every feature is its own crate that registers a Bevy `Plugin`. The defining structural fact is **one engine binary** (`renzora`) that is always runtime-shaped; the editor ships as a removable cdylib bundle beside it. This page maps the repository so you can find your way around the source.
 
 ## Repository layout
 
@@ -24,7 +24,8 @@ engine/
 │   ├── renzora_<feature>/  # one crate per feature (physics, scripting, ember, …)
 │   │   └── editor/         # optional editor-only half (= renzora_<feature>_editor)
 │   ├── renzora_<effect>/   # one crate per post-process effect (bloom, crt, …)
-│   ├── bevy_hanabi/  bevy_hui/  bevy_mod_outline/  bevy_silk/  vleue_navigator/
+│   ├── bevy_hanabi/  bevy_hui/  bevy_firefly/  bevy_silk/  vleue_navigator/
+│   ├── bevy_gaussian_splatting/  bevy_args/  bevy_interleave*/  polyanya/  bvh2d/
 │   └── bevy_oxr/           # vendored — its OWN nested workspace (not globbed in)
 ├── docker/                 # Dockerfile + build/add/remove/upx shell scripts
 ├── .cargo/
@@ -36,7 +37,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.95.0`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Building from Source](/docs/r1-alpha8/setup/building-from-source)).
+> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.97.1`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Building from Source](/docs/r1-alpha8/setup/building-from-source)).
 
 ## The workspace member globs
 
@@ -52,11 +53,20 @@ members = [
     "crates/renzora_*/editor",    # nested editor halves of dual-mode crates
     # Vendored Bevy ecosystem crates, listed explicitly (NOT via a bevy_* glob)
     # so bevy_oxr — its own nested workspace — is not accidentally pulled in.
+    "crates/bevy_args",
+    "crates/bevy_firefly",
+    "crates/bevy_gaussian_splatting",
+    "crates/bevy_interleave",
+    "crates/bevy_interleave_interface",
+    "crates/bevy_interleave_macros",
     "crates/bevy_hanabi",
     "crates/bevy_hui",
-    "crates/bevy_mod_outline",
     "crates/bevy_silk",
     "crates/vleue_navigator",
+    # vleue_navigator's pathfinding deps, vendored to bump their glam to 0.33
+    # (Bevy 0.20's).
+    "crates/polyanya",
+    "crates/bvh2d",
 ]
 ```
 
@@ -141,7 +151,7 @@ Two directories hold nearly all of it, and the split is the plugin table above:
 
 | Directory | Contents |
 |-----------|----------|
-| `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_mod_outline`, `bevy_silk`, `bevy_oxr`, `vleue_navigator`). Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
+| `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_firefly`, `bevy_silk`, `bevy_oxr`, `bevy_gaussian_splatting` with its `bevy_args` and `bevy_interleave*` dependencies, and `vleue_navigator` with `polyanya` and `bvh2d`). Most were ported to Bevy 0.20 here, ahead of upstream releases. Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
 | `plugins/` | Installed plugins, most of them post-process effects. Empty in a fresh checkout: plugins are distributed through the marketplace and built where they land. |
 
 Those counts move every release; treat them as a sense of scale, not an

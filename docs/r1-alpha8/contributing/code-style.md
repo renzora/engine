@@ -43,6 +43,10 @@ cargo clippy --workspace --no-deps \
     --exclude bevy_mod_outline \
     --exclude bevy_silk \
     --exclude vleue_navigator \
+    --exclude bevy_args \
+    --exclude bevy_interleave \
+    --exclude bevy_interleave_interface \
+    --exclude bevy_interleave_macros \
     --exclude bevy_mod_openxr \
     --exclude bevy_mod_xr \
     --exclude bevy_xr_utils \
@@ -63,6 +67,8 @@ Tests run with the same first-party scope as Clippy, excluding the vendored crat
 cargo test --workspace \
     --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
     --exclude bevy_silk --exclude vleue_navigator \
+    --exclude bevy_args --exclude bevy_interleave \
+    --exclude bevy_interleave_interface --exclude bevy_interleave_macros \
     --exclude bevy_mod_openxr --exclude bevy_mod_xr --exclude bevy_xr_utils
 ```
 

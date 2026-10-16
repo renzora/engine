@@ -16,7 +16,7 @@ use bevy::image::ImageLoaderSettings;
 use bevy::reflect::std_traits::ReflectDefault;
 use bevy::render::RenderSystems;
 use bevy::render::camera::ExtractedCamera;
-use bevy::sprite_render::{SpriteSystems, queue_material2d_meshes};
+use bevy::sprite_render::queue_material2d_meshes;
 use bevy::{
     core_pipeline::{
         core_2d::{AlphaMask2d, Opaque2d},
@@ -246,13 +246,15 @@ impl NormalMap {
 pub struct SpritesPlugin;
 impl Plugin for SpritesPlugin {
     fn build(&self, app: &mut App) {
+        // Bevy 0.20 removed `SpriteSystems` along with its CPU slicing (sprites
+        // render through `Mesh2d` now), so there is no set to join; nothing
+        // else reads `ComputedTextureSlices`, which is firefly's own.
         app.add_systems(
             PostUpdate,
-            ((
+            (
                 compute_slices_on_asset_event.before(AssetEventSystems),
                 compute_slices_on_sprite_change,
-            )
-                .in_set(SpriteSystems::ComputeSlices),),
+            ),
         );
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -271,7 +273,7 @@ impl Plugin for SpritesPlugin {
                         sort_phase_system::<SpritePhase>.in_set(RenderSystems::PhaseSort),
                         queue_sprites
                             .in_set(RenderSystems::Queue)
-                            .ambiguous_with(queue_material2d_meshes::<ColorMaterial>),
+                            .ambiguous_with(queue_material2d_meshes),
                         sort_binned_render_phase::<Opaque2d>.in_set(RenderSystems::PhaseSort),
                         sort_binned_render_phase::<AlphaMask2d>.in_set(RenderSystems::PhaseSort),
                     ),
@@ -318,7 +320,9 @@ fn queue_sprites(
             if let Some(tonemapping) = tonemapping {
                 view_key |= SpritePipelineKey::TONEMAP_IN_SHADER;
                 view_key |= match tonemapping {
-                    Tonemapping::None => SpritePipelineKey::TONEMAP_METHOD_NONE,
+                    Tonemapping::None | Tonemapping::Linear => {
+                        SpritePipelineKey::TONEMAP_METHOD_NONE
+                    }
                     Tonemapping::Reinhard => SpritePipelineKey::TONEMAP_METHOD_REINHARD,
                     Tonemapping::ReinhardLuminance => {
                         SpritePipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE

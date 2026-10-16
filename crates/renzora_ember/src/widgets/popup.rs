@@ -842,9 +842,11 @@ pub(crate) fn popup_position(
         }
         let half = trigger_cn.size().y * 0.5;
         let center = xf.translation.y;
-        let (top_edge, bottom_edge) = clips.get(trigger).map_or((0.0, win_h), |c| {
-            (c.clip.min.y.max(0.0), c.clip.max.y.min(win_h))
-        });
+        let (top_edge, bottom_edge) = clips
+            .get(trigger)
+            .ok()
+            .and_then(crate::clip_window_rect)
+            .map_or((0.0, win_h), |c| (c.min.y.max(0.0), c.max.y.min(win_h)));
         // Flip up only when opening below overflows AND there's more room above
         // — cramped both ways, it stays down rather than flipping into *less*
         // space.

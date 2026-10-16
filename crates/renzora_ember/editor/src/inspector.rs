@@ -125,6 +125,8 @@ fn val_to_string(v: Val) -> String {
         Val::Vh(n) => format!("{}vh", trim_float(n)),
         Val::VMin(n) => format!("{}vmin", trim_float(n)),
         Val::VMax(n) => format!("{}vmax", trim_float(n)),
+        Val::Em(n) => format!("{}em", trim_float(n)),
+        Val::Rem(n) => format!("{}rem", trim_float(n)),
     }
 }
 
@@ -145,6 +147,11 @@ fn string_to_val(s: &str) -> Option<Val> {
         (rest, "vmin")
     } else if let Some(rest) = s.strip_suffix("vmax") {
         (rest, "vmax")
+    } else if let Some(rest) = s.strip_suffix("rem") {
+        // Before `em`, which `rem` also ends with.
+        (rest, "rem")
+    } else if let Some(rest) = s.strip_suffix("em") {
+        (rest, "em")
     } else {
         // Bare number → pixels (parser convention).
         (s, "px")
@@ -157,6 +164,8 @@ fn string_to_val(s: &str) -> Option<Val> {
         "vh" => Val::Vh(n),
         "vmin" => Val::VMin(n),
         "vmax" => Val::VMax(n),
+        "em" => Val::Em(n),
+        "rem" => Val::Rem(n),
         _ => unreachable!(),
     })
 }
@@ -208,22 +217,26 @@ fn string_to_ui_rect(s: &str) -> Option<UiRect> {
 
 /// Same border-radius corner mapping the loader uses (see `loader::apply_xnode_to`),
 /// expressed back out as a `UiRect` shape so we can reuse `ui_rect_to_string`.
+///
+/// Since Bevy 0.20 a corner has a horizontal and a vertical radius. Markup
+/// only writes circular corners, which keep the radius in `x`, so that is the
+/// one shown.
 fn border_radius_to_string(br: BorderRadius) -> String {
     ui_rect_to_string(UiRect {
-        top: br.top_left,
-        right: br.top_right,
-        bottom: br.bottom_right,
-        left: br.bottom_left,
+        top: br.top_left.x,
+        right: br.top_right.x,
+        bottom: br.bottom_right.x,
+        left: br.bottom_left.x,
     })
 }
 
 fn string_to_border_radius(s: &str) -> Option<BorderRadius> {
     let r = string_to_ui_rect(s)?;
     Some(BorderRadius {
-        top_left: r.top,
-        top_right: r.right,
-        bottom_right: r.bottom,
-        bottom_left: r.left,
+        top_left: r.top.into(),
+        top_right: r.right.into(),
+        bottom_right: r.bottom.into(),
+        bottom_left: r.left.into(),
     })
 }
 
@@ -303,6 +316,13 @@ fn align_items_to_str(a: AlignItems) -> &'static str {
         AlignItems::Center => "center",
         AlignItems::Stretch => "stretch",
         AlignItems::Baseline => "baseline",
+        // Bevy 0.20's overflow-safe variants. Markup has no syntax for them,
+        // so they read as the alignment they fall back from.
+        AlignItems::StartSafe => "start",
+        AlignItems::EndSafe => "end",
+        AlignItems::FlexStartSafe => "flex_start",
+        AlignItems::FlexEndSafe => "flex_end",
+        AlignItems::CenterSafe => "center",
     }
 }
 fn str_to_align_items(s: &str) -> Option<AlignItems> {
@@ -342,6 +362,12 @@ fn justify_content_to_str(j: JustifyContent) -> &'static str {
         JustifyContent::SpaceAround => "space_around",
         JustifyContent::SpaceEvenly => "space_evenly",
         JustifyContent::Default => "start",
+        // Overflow-safe variants; see `align_items_to_str`.
+        JustifyContent::StartSafe => "start",
+        JustifyContent::EndSafe => "end",
+        JustifyContent::FlexStartSafe => "flex_start",
+        JustifyContent::FlexEndSafe => "flex_end",
+        JustifyContent::CenterSafe => "center",
     }
 }
 fn str_to_justify_content(s: &str) -> Option<JustifyContent> {

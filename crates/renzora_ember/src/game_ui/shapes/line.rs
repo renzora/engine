@@ -46,7 +46,7 @@ impl LineMaterial {
 
 impl UiMaterial for LineMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_ember/game_ui/shapes/line.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/line.wesl".into()
     }
 }
 

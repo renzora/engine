@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{load_internal_asset, uuid_handle},
+    asset::uuid_handle,
     prelude::*,
 };
 
@@ -9,6 +9,6 @@ pub struct DepthMaterialPlugin;
 
 impl Plugin for DepthMaterialPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(app, DEPTH_SHADER_HANDLE, "depth.wgsl", Shader::from_wgsl);
+        crate::load_wesl!(app, DEPTH_SHADER_HANDLE, "depth.wesl", "material/depth");
     }
 }
