@@ -27,12 +27,10 @@ pub mod core;
 pub use core::*;
 
 // ── Global illumination contract ─────────────────────────────────────────
-// GI settings components (`RtLighting`, `LumenLighting`) + the Lumen
-// diagnostics snapshot. Shared here so the GI plugin
-// (`renzora_lumen`), the editor inspectors, `renzora_level_presets`, and the
-// debugger's Lumen panel all resolve one `TypeId` across the dlopen boundary —
-// the plugin can't be statically linked by those consumers (it's a cdylib), so
-// the boundary-crossing types must live in this shared dylib instead.
+// Solari's settings component and the GPU capability flags. Shared here so the
+// host, the Solari plugin and the editor all resolve one `TypeId` across the
+// dlopen boundary: the plugin is installed beside the engine, not linked into
+// it, so the boundary-crossing types must live in this shared dylib.
 pub mod gi;
 pub use gi::*;
 

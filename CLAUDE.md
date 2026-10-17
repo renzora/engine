@@ -454,7 +454,7 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
 
 **Before creating or modifying a plugin, ALWAYS research the plugin API first.**
 Read `docs/r1-alpha8/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
-and look at an existing in-workspace plugin (`renzora_lumen`, `renzora_cloth`)
+and look at an existing in-workspace plugin (`renzora_cloth`, `renzora_oit`)
 as a template. Use `renzora add <name>` to scaffold.
 
 Principles (in priority order):
@@ -468,8 +468,8 @@ Principles (in priority order):
 3. **Refrain from linking crates as much as possible.** Minimize a plugin's
    dependency on other `renzora_*` crates. When a type must cross a crate
    boundary, **move it into the `renzora` contract crate** rather than depending
-   on the crate that defines it. This is the established pattern (GI settings,
-   etc. live in `renzora`, not in their plugin).
+   on the crate that defines it. This is the established pattern (Solari's
+   settings, etc. live in `renzora`, not in their plugin).
 4. **Multiple `add!` lines per crate are fine** (`renzora_ember` has four) — the
    old one-per-crate rule died with the FFI exports. Keep each on one line at the
    top level of its file so the generator's text parse sees it.
@@ -651,7 +651,7 @@ Several may be registered, and two languages coexist in one project. See
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
-| `crates/renzora_lumen`, `crates/renzora_cloth` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
+| `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
 | `docker/build-all.sh` | In-container build orchestrator (run once per platform container) |

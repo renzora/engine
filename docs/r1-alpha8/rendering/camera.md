@@ -136,7 +136,7 @@ Presets are scriptable: a script on the camera calls `goto_camera_preset("name")
 
 ## Post-process effects on cameras
 
-Renzora does **not** ask you to insert Bevy's effect components (`Bloom`, `DepthOfField`, …) directly. Instead you author an effect's **settings component** (e.g. `BloomSettings`, `AsciiSettings`, or the GI types `RtLighting` / `LumenLighting`), and the engine proxies it onto the active camera through the `EffectRouting` table.
+Renzora does **not** ask you to insert Bevy's effect components (`Bloom`, `DepthOfField`, …) directly. Instead you author an effect's **settings component** (e.g. `BloomSettings`, `AsciiSettings`, or Solari's `SolariGi`), and the engine proxies it onto the active camera through the `EffectRouting` table.
 
 ```rust
 use bevy::prelude::*;

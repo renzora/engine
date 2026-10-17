@@ -5,7 +5,7 @@
 //!
 //! The editor's tier enforcement is `Editor`-scoped and only touches
 //! `ViewportCamera`s, so a **shipped game had no quality tier at all** — it
-//! always ran the full fullscreen-pass stack (SSGI + SSAO + raymarched
+//! always ran the full fullscreen-pass stack (SSAO + raymarched
 //! atmosphere + a 512² per-frame IBL bake + bloom + TAA + auto-exposure),
 //! whatever the machine. On a weak / integrated GPU (or a high-DPI display,
 //! where the pixel count is ~2–4×) that stack is scene-independent and drops the
@@ -23,8 +23,6 @@
 //! Every mutation here is one a router already performs dynamically, so none of
 //! it grows a camera's bind-group layout after first render (the spawn-locked
 //! atmosphere/prepass bundle is left resident at every tier):
-//! - GI: flip `RtLighting.enabled` / `LumenLighting.quality` (same switch the
-//!   Render-Toggles panel uses).
 //! - Bloom / TAA / auto-exposure / SSAO: remove the routed component (each
 //!   router re-adds it from the untouched scene source when routing changes).
 //! - Atmosphere: assign `AtmosphereSettings.rendering_method`, which
@@ -44,9 +42,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
 use renzora::core::viewport_types::GraphicsQuality;
-use renzora::{
-    CurrentProject, EffectRouting, LumenLighting, LumenQuality, ResolvedGraphicsQuality, RtLighting,
-};
+use renzora::{CurrentProject, EffectRouting, ResolvedGraphicsQuality};
 
 /// Seed [`ResolvedGraphicsQuality`] from the loaded project's `[rendering]`
 /// tier. Idempotent and cheap — assigns only when the value actually differs,
@@ -79,8 +75,6 @@ pub fn enforce_runtime_graphics_quality(
     mut last: Local<Option<GraphicsQuality>>,
     routing: Option<ResMut<EffectRouting>>,
     mut commands: Commands,
-    mut gi_rt: Query<&mut RtLighting, With<Camera3d>>,
-    mut gi_lumen: Query<&mut LumenLighting, With<Camera3d>>,
     bloom_cams: Query<Entity, (With<Camera3d>, With<Bloom>)>,
     taa_cams: Query<Entity, (With<Camera3d>, With<TemporalAntiAliasing>)>,
     ae_cams: Query<Entity, (With<Camera3d>, With<AutoExposure>)>,
@@ -98,21 +92,6 @@ pub fn enforce_runtime_graphics_quality(
             routing.set_changed();
         }
         *last = Some(q);
-    }
-
-    // Screen-space GI (the heaviest, most pixel-bound pass). Reads go through
-    // Deref; only the assignment hits DerefMut, so we don't re-flag every frame.
-    if !q.gi() {
-        for mut r in &mut gi_rt {
-            if r.enabled {
-                r.enabled = false;
-            }
-        }
-        for mut l in &mut gi_lumen {
-            if l.quality != LumenQuality::Off {
-                l.quality = LumenQuality::Off;
-            }
-        }
     }
 
     // Post-process passes — remove the routed component. The `With<…>` filters

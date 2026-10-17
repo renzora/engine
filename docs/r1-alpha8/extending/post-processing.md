@@ -217,6 +217,6 @@ Two families stay in the engine, and the line between them and a plugin effect i
 | Family | Examples | Why |
 |---|---|---|
 | **Bevy built-in wrappers** | bloom, DOF, SSAO, SSR, motion blur, auto-exposure, atmosphere, skybox, vignette, fog, FXAA/SMAA/TAA/CAS | They author user-facing settings and route a **stock Bevy component** onto the camera. There is no custom WGSL pass to write. |
-| **Multi-pass render-graph crates** | `renzora_lumen`, `renzora_rt`, `renzora_oit`, `renzora_solari` | Their own graph nodes, multiple passes, custom bind groups and extra textures. |
+| **Multi-pass render-graph crates** | `renzora_oit`, `renzora_solari` | Their own graph nodes, multiple passes, custom bind groups and extra textures. |
 
 If your effect needs its own bind-group layout or more than one pass, it is the second kind and wants a crate rather than the macro.

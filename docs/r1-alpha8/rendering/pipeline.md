@@ -1,12 +1,12 @@
 # Render Pipeline
 
-How Renzora turns a scene into a frame: Bevy's PBR/HDR core, three families of camera effects routed through one unified post-process node, and the Lumen GI and OIT render-graph crates layered on top.
+How Renzora turns a scene into a frame: Bevy's PBR/HDR core, three families of camera effects routed through one unified post-process node, the OIT render pass layered on top, and Solari for global illumination.
 
 ## How a frame renders
 
 Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.20's built-in PBR pipeline**: physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render passes and a large family of effect plugins. Every shader in that pipeline is WESL, the shader language Bevy 0.20 compiles; shaders still written in the old `#import` dialect are translated as they load (see [Shaders](./shaders.md)).
 
-Each viewport camera is a `Camera3d`. Cameras are spawned with **`DepthPrepass` + `NormalPrepass`** attached, because the screen-space GI pass needs depth and normals.
+Each viewport camera is a `Camera3d`. Cameras are spawned with **`DepthPrepass` + `NormalPrepass`** attached (plus `MotionVectorPrepass` for temporal reprojection), because masked materials need normals in the prepass and screen-space effects read depth and normals.
 
 > Bevy (0.19 and 0.20) specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.
 
@@ -16,7 +16,7 @@ Bevy renders a 3D view as systems in the render app's `Core3d` schedule, not as 
 
 ```
 … main 3D pass
-    → RenderPhase::Gi        (renzora_rt SSGI, Lumen: linear HDR, pre-tonemap)
+    → RenderPhase::Gi        (linear HDR, pre-tonemap)
     → temporal AA
     → RenderPhase::HdrPost   (bloom-like HDR effects)
     → tonemapping
@@ -24,7 +24,7 @@ Bevy renders a 3D view as systems in the render app's `Core3d` schedule, not as 
     → RenderPhase::Overlay → …
 ```
 
-- **SSGI** (`renzora_rt`'s `rt_pass`) runs in `Gi`, so it operates on the linear, lit HDR image before tone mapping.
+- A pass in `Gi` operates on the linear, lit HDR image before tone mapping and temporal AA.
 - The **unified post-process pass** runs each effect in the phase it asks for, most of them after tonemapping, so they see the already-tonemapped image.
 
 `WgpuSettings` requests `POLYGON_MODE_LINE` (skipped on the GL backend, never requested on web) — which is what enables wireframe debug views — and, **when the GPU supports it**, Bevy Solari's hardware ray-tracing features. The host probes the adapter once at startup (`raytracing_supported()`); on an RT-capable GPU it requests the ray-tracing features and records `renzora::GpuRaytracing { enabled: true }` so the optional `renzora_solari` plugin can activate. On a non-RT GPU nothing extra is requested and the engine boots unchanged. See [Solari ray-traced GI](./solari.md).
@@ -37,7 +37,7 @@ Not everything called a "camera effect" is the same kind of thing. There are thr
 |---|---|---|
 | **Unified post-process** | [installed plugins](../extending/post-processing.md) under `plugins/` (`ascii`, `crt`, `sepia`, …) | A fullscreen fragment pass, declared with `#[post_process]` and installed by `PostProcessPlugin<T>`. These hot-reload, shader included. |
 | **Bevy built-in wrappers** | `renzora_bloom_effect`, `renzora_dof`, `renzora_ssao`, `renzora_ssr`, `renzora_vignette`, `renzora_motion_blur`, `renzora_auto_exposure`, `renzora_atmosphere`, `renzora_skybox`, `renzora_environment_map`, `renzora_forward_decal`, `renzora_distance_fog`, `renzora_volumetric_fog`, `renzora_antialiasing` | Author user-facing settings, then route a **stock Bevy component** onto the camera (`Bloom`, `DepthOfField`, `ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflections`, `Atmosphere`, `Skybox`, `EnvironmentMapLight`, `ForwardDecal`, FXAA/SMAA/TAA/CAS, …). No custom WGSL pass of their own. |
-| **Custom multi-pass render-graph crates** | `renzora_lumen` + `renzora_rt` (GI), `renzora_oit` (transparency); plus material/mesh sky & water (`renzora_clouds`, `renzora_night_stars`, [`renzora_water`](water.md), `renzora_pool_water`, `renzora_lighting`) | Their own render-graph nodes/passes, outside the unified node. `renzora_water` is the one that runs *before* the camera driver — its FFT wave simulation is view-independent, so it would be pure waste per view. |
+| **Custom multi-pass render-graph crates** | `renzora_oit` (transparency); plus material/mesh sky & water (`renzora_clouds`, `renzora_night_stars`, [`renzora_water`](water.md), `renzora_pool_water`, `renzora_lighting`) | Their own render-graph nodes/passes, outside the unified node. `renzora_water` is the one that runs *before* the camera driver: its FFT wave simulation is view-independent, so it would be pure waste per view. |
 
 The **wrappers** get their settings onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes. Unified effects need neither: their settings component sits on any entity and the pass uploads its bytes each frame.
 
@@ -83,55 +83,11 @@ pub struct EffectRouting {
 }
 ```
 
-The table is rebuilt every frame (by the viewport crate in the editor, by `renzora_engine` at runtime). Each effect plugin runs a small sync system that copies its component from a routed source onto the target camera and removes it again when the source disappears. The Bevy-wrapper family and the GI/OIT crates all consume the same table, so the editor inspector can drive viewport effects without you touching the camera entity.
+The table is rebuilt every frame (by the viewport crate in the editor, by `renzora_engine` at runtime). Each effect plugin runs a small sync system that copies its component from a routed source onto the target camera and removes it again when the source disappears. The Bevy-wrapper family, OIT and Solari all consume the same table, so the editor inspector can drive viewport effects without you touching the camera entity.
 
-## Global illumination — `renzora_lumen`
+## Global illumination: Solari
 
-GI is delivered by **`renzora_lumen`**, an in-workspace plugin (`renzora::add!(LumenPlugin)`) that the lean exporter can strip per game. It also statically links **`renzora_rt`** and installs `RtPlugin`, so the `RtLighting` type has a single definition shared across the main and render worlds.
-
-The GI settings types — `RtLighting`, `LumenLighting`, `LumenQuality`, `LumenDebug`, `LumenDiagState` — live in the shared contract (`crates/renzora/src/gi.rs`) so editor inspectors, `renzora_level_presets`, and the debugger's Lumen panel all share one `TypeId` across the dlopen boundary. `LumenLighting` is authored on a non-camera entity (typically the **World Environment**) and is mutually exclusive with a hand-attached `RtLighting`:
-
-```rust
-// renzora::LumenLighting (defaults)
-LumenLighting {
-    quality: LumenQuality::ScreenSpace,
-    intensity: 0.4,
-    specular_intensity: 1.0,   // multiplier on the voxel-cone specular trace
-    debug: LumenDebug::None,
-}
-```
-
-### Quality tiers
-
-`LumenLighting.quality` selects how indirect light is computed:
-
-| `LumenQuality` | What runs | Status |
-|---|---|---|
-| `Off` | Strips `RtLighting`; no GI | Working |
-| `ScreenSpace` | Delegates to `RtLighting` — the single-pass SSGI node in `renzora_rt` | Working (default) |
-| `SdfLow` | Voxel-cone diffuse trace at low voxel-cache resolution (SSGI stripped) | Working |
-| `SdfHigh` | Voxel-cone diffuse trace at full voxel-cache resolution | Working |
-| `Hwrt` | Reserved Lumen HWRT tier | **Renders nothing** today |
-
-> Lumen's own `Hwrt` tier parses and can be selected, but **produces no GI** — it is a placeholder for a future Lumen hardware backend. Treat it as equivalent to `Off`. Some in-source comments still read "only `Off` and `ScreenSpace` are implemented" — that is stale; `SdfLow`/`SdfHigh` are live.
->
-> Hardware ray-traced GI **does** ship — as a separate backend, not a Lumen tier: the optional **`renzora_solari`** plugin wraps Bevy Solari. It is independent of `LumenLighting` (authored via its own `SolariGi` component) and the two are mutually exclusive per camera. See [Solari ray-traced GI](./solari.md).
-
-### What `LumenPlugin` installs
-
-Beyond the `ScreenSpace` SSGI backend (`RtPlugin`), the voxel/trace/reflection tiers are built from:
-
-- `VoxelCachePlugin` — a 4-cascade voxel radiance clipmap.
-- `VoxelDownsamplePlugin` — the mip pyramid over the voxel radiance texture.
-- `GeometryVoxelizePlugin` — **runtime CPU voxelization** of scene meshes into the cache.
-- `LumenTracePlugin` — voxel-cone diffuse GI with **inlined** temporal accumulation and a sky-cubemap fallback when a cone misses.
-- `ScreenReflectionPlugin` + `ScreenReflectionBlurPlugin` + `ScreenReflectionResolvePlugin` — a three-stage half-res screen-space reflection pyramid (trace → blur → bilateral upsample).
-
-`renzora_rt` itself is the cheap tier: a **single-pass**, depth+normal-aware SSGI node. (Despite the crate name, it is *not* the historical "9-pass ray-tracing beast" — that design is gone. It is a library linked into `renzora_lumen`, never registered as a plugin of its own.)
-
-> The originally planned mesh-SDF architecture (`.msdf` bakes, a global SDF clipmap, emissive injection) was **abandoned** and replaced by the CPU geometry-voxelization path above. If you find references to `MeshSdfLoader`, `sdf/`, `bake.rs`, or `voxel_emissive_inject.wgsl`, they describe code that was never built.
-
-`LumenDebug` offers `None`, `IndirectOnly` (show only the indirect contribution), and `VoxelCache` (visualize the radiance cache). The live bake stats feed `LumenDiagState`, which the debugger's Lumen panel renders.
+The engine's only global illumination is **Solari**: hardware ray-traced GI delivered by the optional **`renzora_solari`** plugin, which wraps Bevy Solari. It is authored with a `SolariGi` component on the **World Environment**, routed onto cameras through `EffectRouting`, and activates only on an RT-capable GPU; elsewhere the scene renders with direct lighting, IBL and SSAO as usual. See [Solari ray-traced GI](./solari.md).
 
 ## Reflection probes — parallax-corrected cubemaps
 
@@ -201,7 +157,7 @@ When enabled it inserts `OrderIndependentTransparencySettings` on the camera and
 
 ## Adding a render pass
 
-If a unified post-process pass isn't enough (you need a compute pass, an extra render target, or to slot before tonemapping), add a render pass yourself. There is no render graph any more: a pass is a system in the `Core3d` schedule of the render app, ordered by system sets. Put it in the [`RenderPhase`](../extending/post-processing.md#render-phases) it belongs to and the framework anchors it for you. This is the pattern `renzora_rt` uses:
+If a unified post-process pass isn't enough (you need a compute pass, an extra render target, or to slot before tonemapping), add a render pass yourself. There is no render graph any more: a pass is a system in the `Core3d` schedule of the render app, ordered by system sets. Put it in the [`RenderPhase`](../extending/post-processing.md#render-phases) it belongs to and the framework anchors it for you. The pattern looks like this:
 
 ```rust
 use bevy::core_pipeline::Core3d;
@@ -266,28 +222,28 @@ Values are clamped on the way to Bevy (`slice_count` 1–16, `samples_per_slice_
 
 Most of the cost of an idle scene is **fullscreen, resolution-bound** work on the
 active camera — the per-frame atmosphere→IBL cubemap bake, the volumetric
-cloud raymarch, a raymarched sky, screen-space GI, SSAO, the auto-exposure
+cloud raymarch, a raymarched sky, SSAO, the auto-exposure
 histogram, bloom, and TAA — **not geometry**. That cost is scene-independent (one cube costs the same
 as a full level) and scales with pixel count, so it dominates on weak GPUs and
 high-DPI displays where the physical framebuffer is 2–4× the logical size. The
 quality tier is the single switch that trades those passes for frame rate:
 
-| Tier | IBL bake | Shadows | Clouds | Atmosphere | Screen-space GI | SSAO | Auto-exp | Bloom | TAA |
-|---|---|---|---|---|---|---|---|---|---|
-| **High** | 256² | 2048² | full march | Raymarched | on | on | on | on | on |
-| **Medium** *(default)* | **128²** | **1024²** | **capped steps** | **LookupTexture** | **off** | **off** | on | on | on |
-| **Low** | **64²** | **512²** | **off** | LookupTexture | off | off | **off** | **off** | **off** |
+| Tier | IBL bake | Shadows | Clouds | Atmosphere | SSAO | Auto-exp | Bloom | TAA |
+|---|---|---|---|---|---|---|---|---|
+| **High** | 256² | 2048² | full march | Raymarched | on | on | on | on |
+| **Medium** *(default)* | **128²** | **1024²** | **capped steps** | **LookupTexture** | **off** | on | on | on |
+| **Low** | **64²** | **512²** | **off** | LookupTexture | off | **off** | **off** | **off** |
 
 (Shadows = per-cascade `DirectionalLightShadowMap` resolution; each of the up-to-4
 cascades clears a depth target that size every frame regardless of geometry, so
 halving it quarters the per-cascade depth bandwidth.)
 
 `Medium` is the shipping default: it sheds the heaviest fullscreen passes
-(screen-space GI, SSAO, the ~40×-cheaper lookup sky instead of the raymarch, and a
+(SSAO, the ~40×-cheaper lookup sky instead of the raymarch, and a
 16× smaller IBL bake) while preserving the tonemapped look, so the engine runs
 acceptably on older / integrated GPUs. `Low` is a compatibility floor.
 
-SSAO sits with screen-space GI at `High`-only rather than with bloom/TAA at
+SSAO is `High`-only rather than sitting with bloom/TAA at
 `Medium` because its three full-res compute passes are exactly the cost class
 `Medium` exists to shed. Profiling put it **second only to the deferred prepass**
 among GPU passes (0.46 ms of a 2.63 ms GPU frame on a discrete card, proportionally
@@ -336,8 +292,8 @@ Mechanically the tier is a **ceiling, not an authority**: it only ever forces an
 effect *off*, and remembers the last tier so raising it re-applies effects from
 their untouched scene sources. Where a tier leaves an effect on, the inspector
 still fully owns it. Every mutation is one a router already performs dynamically,
-so nothing grows a camera's bind-group layout after first render: GI flips an
-`enabled` flag; bloom / TAA / auto-exposure / SSAO remove the routed component; the
+so nothing grows a camera's bind-group layout after first render: bloom / TAA /
+auto-exposure / SSAO remove the routed component; the
 atmosphere switches `rendering_method` (a field, not an add/remove); clouds cap
 their march step counts, then despawn their separate dome entity outright; and
 the IBL probe's *face size* is chosen at camera spawn. The spawn-locked **prepass bundle** and the atmosphere/IBL *components*
@@ -392,7 +348,6 @@ true, `AutoNoVsync` when false). Defaults to `true`.
 `renzora_debugger` ships several render-focused editor panels:
 
 - **Render Stats** — draw counts and per-pass information.
-- **Lumen** — the GI diagnostics view (`LumenDiagState`: bake timings, voxel-sample counts, sky-cubemap presence).
 - **Culling Debug** / **Camera Debug** — frustum and camera state.
 - **Material Resolver** — how a material graph resolved to its final shader.
 

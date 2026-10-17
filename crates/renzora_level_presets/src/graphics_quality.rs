@@ -3,14 +3,14 @@
 //!
 //! Why this exists: on an empty scene the editor still spends ~30 ms of GPU per
 //! frame, because the cost is **fullscreen, resolution-bound** passes on the
-//! active camera (screen-space GI + auto-exposure + bloom + TAA), not geometry.
+//! active camera (SSAO + auto-exposure + bloom + TAA), not geometry.
 //! On a weak GPU or a high-DPI (Retina) display — where the pixel count is ~4× —
 //! that stack drops to single-digit FPS regardless of what's in the scene. The
 //! tier lets a user trade those passes for frame rate.
 //!
 //! ## Why it touches the *camera*, not the scene source
 //!
-//! Each effect is authored on a scene entity (GI on the "World Environment",
+//! Each effect is authored on a scene entity (SSAO on the "World Environment",
 //! bloom/AE/TAA on the scene camera) and **`EffectRouting` fans it onto the
 //! editor's viewport cameras**, which is where the pass actually runs. We force
 //! the tier on those *routed copies* — the viewport cameras — and deliberately
@@ -19,12 +19,11 @@
 //! 1. **No save bleed.** The authored components serialize into the scene file;
 //!    the viewport cameras carry `HideInHierarchy` and are excluded from saves
 //!    (`renzora_engine::scene_io::save_scene`). Mutating the source would bake
-//!    "GI off" into every scene saved on the default (Medium) tier — and silently
+//!    "bloom off" into every scene saved on the default (Medium) tier, and silently
 //!    strip it for anyone who later opens that scene at High. Mutating only the
 //!    viewport copies can never reach disk.
-//! 2. **Crash-safe.** We flip `RtLighting.enabled` (the same switch the Render
-//!    Toggles debug panel uses) and add/remove the post-process components exactly
-//!    as the routers themselves do. We never touch the atmosphere or the prepass
+//! 2. **Crash-safe.** We add/remove the post-process components exactly as the
+//!    routers themselves do. We never touch the atmosphere or the prepass
 //!    bundle — their attachment layout is fixed at camera spawn and toggling them
 //!    at runtime trips a wgpu validation crash (see `renzora_engine::camera`), so
 //!    they stay resident at every tier.
@@ -32,8 +31,7 @@
 //! ## Restoring on a tier change
 //!
 //! Each router re-applies its effect from the source only when the source or
-//! [`EffectRouting`] *changes* (e.g. `sync_lumen_lighting`'s `routing.is_changed()`
-//! gate). So to bring an effect back when the tier is raised, we just bump
+//! [`EffectRouting`] *changes* (a `routing.is_changed()` gate). So to bring an effect back when the tier is raised, we just bump
 //! `EffectRouting` on any tier transition; every router then re-syncs from the
 //! untouched source, and the per-frame force below immediately re-disables
 //! whatever the new tier still forbids.
@@ -47,9 +45,7 @@ use bevy::prelude::*;
 
 use renzora::core::viewport_types::ViewportSettings;
 use renzora::core::ViewportCamera;
-use renzora::{
-    EffectRouting, LumenLighting, LumenQuality, ResolvedGraphicsQuality, RtLighting, SplashState,
-};
+use renzora::{EffectRouting, ResolvedGraphicsQuality, SplashState};
 
 /// Remembers the last tier so we can re-poke `EffectRouting` exactly once per
 /// change rather than every frame.
@@ -118,8 +114,6 @@ fn enforce_graphics_quality(
     mut resolved: ResMut<ResolvedGraphicsQuality>,
     routing: Option<ResMut<EffectRouting>>,
     mut commands: Commands,
-    mut gi_rt: Query<&mut RtLighting, With<ViewportCamera>>,
-    mut gi_lumen: Query<&mut LumenLighting, With<ViewportCamera>>,
     bloom_cams: Query<Entity, (With<ViewportCamera>, With<Bloom>)>,
     taa_cams: Query<Entity, (With<ViewportCamera>, With<TemporalAntiAliasing>)>,
     ae_cams: Query<Entity, (With<ViewportCamera>, With<AutoExposure>)>,
@@ -148,24 +142,6 @@ fn enforce_graphics_quality(
             routing.set_changed();
         }
         state.last = Some(q);
-    }
-
-    // ── Screen-space GI (Lumen + RT) — the heaviest, most pixel-bound pass ──
-    if !q.gi() {
-        // SSGI renders off the camera's `RtLighting.enabled`; the reserved SDF
-        // path reads `LumenLighting.quality`. Clear both so the GI channel is off
-        // however it's routed. Reads go through `Deref` and only the assignment
-        // hits `DerefMut`, so we don't re-flag the component every frame.
-        for mut r in &mut gi_rt {
-            if r.enabled {
-                r.enabled = false;
-            }
-        }
-        for mut l in &mut gi_lumen {
-            if l.quality != LumenQuality::Off {
-                l.quality = LumenQuality::Off;
-            }
-        }
     }
 
     // ── The post-process passes — remove the routed component on the camera ──
@@ -203,7 +179,7 @@ fn enforce_graphics_quality(
         }
     }
     // SSAO — three full-res compute passes; dropped below `High` (the same
-    // fullscreen, resolution-bound cost class as SSGI).
+    // fullscreen, resolution-bound cost class `Medium` exists to shed).
     if !q.ssao() {
         for e in &ssao_cams {
             commands.entity(e).remove::<ScreenSpaceAmbientOcclusion>();
@@ -266,14 +242,10 @@ mod tests {
                     AutoExposure::default(),
                     ScreenSpaceAmbientOcclusion::default(),
                 ),
-                (
-                    AtmosphereSettings {
-                        rendering_method: AtmosphereMode::Raymarched,
-                        ..default()
-                    },
-                    RtLighting { enabled: true, ..default() },
-                    LumenLighting { quality: LumenQuality::ScreenSpace, ..default() },
-                ),
+                AtmosphereSettings {
+                    rendering_method: AtmosphereMode::Raymarched,
+                    ..default()
+                },
             ))
             .id();
 
@@ -294,25 +266,21 @@ mod tests {
         assert!(e.get::<TemporalAntiAliasing>().is_some());
         assert!(e.get::<AutoExposure>().is_some());
         assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_some());
-        assert!(e.get::<RtLighting>().unwrap().enabled);
-        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::ScreenSpace);
         assert!(matches!(
             e.get::<AtmosphereSettings>().unwrap().rendering_method,
             AtmosphereMode::Raymarched
         ));
     }
 
-    /// Medium's whole purpose is killing the heaviest pixel-bound passes (SSGI,
-    /// SSAO, the raymarched sky) while keeping the tonemapped look.
+    /// Medium's whole purpose is killing the heaviest pixel-bound passes (SSAO,
+    /// the raymarched sky) while keeping the tonemapped look.
     #[test]
     fn medium_drops_the_screen_space_passes_but_keeps_the_look() {
         let (mut world, cam) = world_at(GraphicsQuality::Medium);
         enforce(&mut world);
 
         let e = world.entity(cam);
-        assert!(!e.get::<RtLighting>().unwrap().enabled, "SSGI must be off below High");
-        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::Off);
-        assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_none());
+        assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_none(), "SSAO must be off below High");
         assert!(matches!(
             e.get::<AtmosphereSettings>().unwrap().rendering_method,
             AtmosphereMode::LookupTexture
@@ -334,8 +302,6 @@ mod tests {
         assert!(e.get::<TemporalAntiAliasing>().is_none());
         assert!(e.get::<AutoExposure>().is_none());
         assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_none());
-        assert!(!e.get::<RtLighting>().unwrap().enabled);
-        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::Off);
     }
 
     /// The atmosphere and prepass bundles must stay *resident* at every tier —
@@ -410,16 +376,12 @@ mod tests {
 
     /// Scene-authored effects are what get serialized. The tier must only ever
     /// touch the routed copies on viewport cameras, or saving a scene on the
-    /// default tier would bake "GI off" into the file for everyone.
+    /// default tier would bake "bloom off" into the file for everyone.
     #[test]
     fn effects_on_non_viewport_entities_are_left_alone() {
         let (mut world, _) = world_at(GraphicsQuality::Low);
         let authored = world
-            .spawn((
-                Bloom::default(),
-                AutoExposure::default(),
-                RtLighting { enabled: true, ..default() },
-            ))
+            .spawn((Bloom::default(), AutoExposure::default()))
             .id();
 
         enforce(&mut world);
@@ -427,7 +389,6 @@ mod tests {
         let e = world.entity(authored);
         assert!(e.get::<Bloom>().is_some(), "an authored source was mutated");
         assert!(e.get::<AutoExposure>().is_some());
-        assert!(e.get::<RtLighting>().unwrap().enabled);
     }
 
     #[test]

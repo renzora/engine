@@ -1370,10 +1370,6 @@ fn spawn_terrain(
 /// are still attached so the inspector lists them for a quick toggle.
 ///
 /// Conflict notes:
-/// - `LumenLighting` and `RtLighting` are mutually exclusive — Lumen
-///   takes ownership of the RT channel via `RtLightingExternallyManaged`
-///   when present. RT is included disabled so the inspector shows it,
-///   but flipping it on while Lumen is present has no visible effect.
 /// - `SsrSettings` is included disabled because Bevy 0.18's
 ///   `ScreenSpaceReflections` requires `DeferredPrepass`; the editor
 ///   camera uses forward rendering. Toggling SSR on currently does
@@ -1388,24 +1384,6 @@ fn spawn_terrain(
 fn spawn_world_environment(world: &mut World) -> Entity {
     let sun = renzora_lighting::Sun::default();
     let dir = sun.direction();
-
-    // SSGI (screen-space) is the shipping default GI tier — the SDF voxel path
-    // is reserved/unverified, so the default uses the screen-space backend.
-    let lumen = renzora::LumenLighting {
-        quality: renzora::LumenQuality::ScreenSpace,
-        intensity: 0.4,
-        specular_intensity: 1.0,
-        debug: renzora::LumenDebug::None,
-    };
-
-    // RT (SSGI) — disabled by default; Lumen owns the GI channel when
-    // both are present, but the inspector entry should still appear so
-    // users can experiment with screen-space-only GI.
-    let rt = renzora::RtLighting {
-        enabled: false,
-        intensity: 1.0,
-        debug: renzora::RtDebugMode::Composite,
-    };
 
     // SSR disabled — requires DeferredPrepass which we don't currently
     // attach to the editor camera. Inspector shows it; toggling on
@@ -1447,12 +1425,8 @@ fn spawn_world_environment(world: &mut World) -> Entity {
                 // through any `VolumetricFog` camera.
                 bevy::light::VolumetricLight,
             ),
-            // ── Lighting / GI ────────────────────────────────────────
-            (
-                renzora_environment_map::EnvironmentMapComponentSettings::default(),
-                rt,
-                lumen,
-            ),
+            // ── Lighting ─────────────────────────────────────────────
+            (renzora_environment_map::EnvironmentMapComponentSettings::default(),),
             // ── Atmosphere / sky ─────────────────────────────────────
             (
                 renzora_atmosphere::AtmosphereComponentSettings::default(),

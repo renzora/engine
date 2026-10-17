@@ -116,8 +116,7 @@ pub fn spawn_editor_camera(
             // Force the prepass to carry world normals, depth, and motion
             // vectors. NormalPrepass is required for `pbr_input_from_vertex_output`
             // to compile against `alpha_mode = Mask` materials. DepthPrepass +
-            // MotionVectorPrepass are required for SSGI / Lumen `ScreenSpace`
-            // temporal reprojection. Bevy 0.18 specializes the prepass pipeline
+            // MotionVectorPrepass are required for temporal reprojection. Bevy 0.18 specializes the prepass pipeline
             // once on first render; all three must be present at spawn — adding
             // any later trips a wgpu validation crash on the prepass attachment
             // list. (TAA also auto-attaches MotionVectorPrepass; doing it here

@@ -88,7 +88,7 @@ Standard Rust naming, plus the `renzora_` crate prefix:
 | Modules, files | `snake_case` | `scene_io.rs` |
 | First-party crates | `snake_case`, `renzora_` prefix | `renzora_physics` |
 
-- Plugin types end in `Plugin` (`PhysicsPlugin`, `MarkupPlugin`, `LumenPlugin`).
+- Plugin types end in `Plugin` (`PhysicsPlugin`, `MarkupPlugin`, `ClothPlugin`).
 - The editor half of a dual-mode crate is named `renzora_<name>_editor` and its plugin is `<Name>EditorPlugin` (e.g. `renzora_physics_editor` / `PhysicsEditorPlugin`).
 - Vendored crates keep their upstream names (`bevy_hui`, `bevy_silk`, `vleue_navigator`) — don't rename them to fit the prefix.
 

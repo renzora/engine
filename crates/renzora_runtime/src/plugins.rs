@@ -55,8 +55,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());
-    #[cfg(feature = "lumen")]
-    app.add_plugins(renzora_lumen::LumenPlugin::default());
     #[cfg(feature = "motion_blur")]
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
     #[cfg(feature = "navmesh")]

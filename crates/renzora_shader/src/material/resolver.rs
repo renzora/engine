@@ -1337,7 +1337,7 @@ fn assemble_graph_material(
     // The graph this material came from, when the caller has it. Used to fill
     // the base `StandardMaterial` with an approximation of the graph — see
     // `standard_build::apply_base_approximation` for why the base being empty
-    // broke prepass cutouts, shadows, deferred and Lumen at once. `None` only
+    // broke prepass cutouts, shadows and deferred at once. `None` only
     // for the legacy `.wgsl` + `.meta` layout, which has no graph beside it.
     graph: Option<&MaterialGraph>,
     materials: &mut Assets<GraphMaterial>,
@@ -1372,7 +1372,7 @@ fn assemble_graph_material(
     // Fill the base with as much of the graph as a StandardMaterial can hold,
     // before the authoritative per-material state below overwrites the fields
     // it owns. Every pass except the forward one — prepass, shadow, deferred —
-    // shades from this, and Lumen reads its `base_color` on the CPU.
+    // shades from this.
     if let Some(graph) = graph {
         super::standard_build::apply_base_approximation(&mut mat.base, graph, asset_server);
     }

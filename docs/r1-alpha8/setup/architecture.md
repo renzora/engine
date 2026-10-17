@@ -133,7 +133,7 @@ Renzora builds on Bevy's PBR/HDR pipeline plus a large family of plugin crates. 
 
 1. **The unified post-process family** — one `RenderComposition` registry (`crates/renzora/src/postprocess.rs`) that runs every active effect as a fullscreen fragment pass, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing.
 2. **Bevy built-in wrappers** that author user-facing settings and route a stock Bevy component onto the camera (bloom → `Bloom`, dof → `DepthOfField`, ssao → `ScreenSpaceAmbientOcclusion`, ssr → `ScreenSpaceReflections`, motion blur, auto-exposure, fog, atmosphere → `Atmosphere`, skybox → `Skybox`, etc.).
-3. **Custom multi-pass render-graph crates** for global illumination and transparency (`renzora_lumen`, `renzora_rt`, `renzora_oit`) and for material/mesh sky & water (clouds, night stars, water, lighting).
+3. **Custom multi-pass render-graph crates** for transparency (`renzora_oit`) and for material/mesh sky & water (clouds, night stars, water, lighting).
 
 ### The unified post-process pipeline
 
@@ -173,7 +173,7 @@ renzora::plugin!(AsciiPlugin, Runtime);
 
 > `renzora_postprocess` is a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so every effect shares one `RenderComposition` and matching `TypeId`s across the dlopen boundary.
 
-What stays in-tree: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component rather than running a pass of their own, and the **multi-pass graph crates** (`renzora_lumen`, `renzora_rt`, `renzora_oit`, `renzora_solari`).
+What stays in-tree: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component rather than running a pass of their own, and the **multi-pass graph crates** (`renzora_oit`, `renzora_solari`).
 
 ## Scene serialization
 

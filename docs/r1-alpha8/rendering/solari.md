@@ -1,9 +1,9 @@
 # Solari — hardware ray-traced global illumination
 
-Solari is Renzora's **hardware ray-traced** GI backend. It wraps Bevy's
-experimental `bevy_solari` (`SolariPlugins`) and ships as an optional drop-in
-plugin, **`renzora_solari`**. Unlike Lumen (screen-space / voxel-cone GI), Solari
-traces against a real BVH of the scene: fully dynamic direct **and** indirect
+Solari is Renzora's global illumination: the engine's only GI, and it is
+**hardware ray-traced**. It wraps Bevy's experimental `bevy_solari`
+(`SolariPlugins`) and ships as an optional drop-in plugin, **`renzora_solari`**.
+Solari traces against a real BVH of the scene: fully dynamic direct **and** indirect
 lighting from emissive meshes and directional lights, with no baking.
 
 > **Experimental.** Solari requires a recent ray-tracing-capable GPU and is still
@@ -54,7 +54,7 @@ underlying GPU capability a one-time, plugin-agnostic enablement.
   and `light_proxies` (**Point/Spot Light Proxies**, on by default, see
   [Light proxies](#light-proxies)).
 - **Camera.** `SolariGi` is routed from the World Environment onto each active
-  camera via `EffectRouting` (the same path Lumen uses). On a routed camera the
+  camera via `EffectRouting` (the same path every camera effect uses). On a routed camera the
   plugin inserts Bevy's `SolariLighting` — whose `#[require]`s pull in HDR and the
   deferred/depth/motion-vector prepasses — and forces **`Msaa::Off`** (Solari
   mandates no MSAA). Disabling it removes `SolariLighting` and restores the
@@ -238,7 +238,7 @@ rather than raising light intensities.
 
 ## Performance
 
-Solari is substantially more expensive than the raster pipeline or Lumen, and
+Solari is substantially more expensive than the raster pipeline, and
 most of that cost is inherent to `bevy_solari` today rather than to how Renzora
 drives it. Per frame it rebuilds the whole TLAS (`AccelerationStructureUpdateMode::Build`,
 not a refit), clones every `StandardMaterial` into the render world, and rebuilds
@@ -258,8 +258,7 @@ Two things are worth knowing:
   The suppression is applied in the **render world**, to the extracted lights.
   Your `PointLight` / `DirectionalLight` components are never written, so a scene
   saved while Solari happens to be on doesn't silently persist shadows-off. Turn
-  the toggle off if you want to keep raster shadows — for instance to compare
-  against Lumen. Like Solari's deferred renderer method, it is global rather than
+  the toggle off if you want to keep raster shadows. Like Solari's deferred renderer method, it is global rather than
   per-camera: while it is on, no camera renders shadow maps.
 - **Measure before tuning.** Use the debugger's render diagnostics for real GPU
   timings rather than inferring from the frame counter; the Graphics Quality
@@ -374,8 +373,6 @@ with NVIDIA's licence text from section 9.5 of the SDK's
 - **Transparent materials don't render while Solari is on.** The global renderer
   method is deferred, which can't draw blended materials, so glass and
   transmissive surfaces read as fully transparent until Solari is switched off.
-- Solari and Lumen are **mutually exclusive per camera** — don't author both
-  `SolariGi` and `LumenLighting` on the same World Environment.
 
 ## Note on installed plugins
 

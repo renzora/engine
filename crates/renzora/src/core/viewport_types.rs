@@ -425,7 +425,7 @@ impl EditorCameraSource {
 /// Render-resolution scale for a camera. The camera's render target is sized at
 /// this fraction of the on-screen panel size; the displayed image is upscaled to
 /// fill the panel. Lower resolutions trade sharpness for a large fill-rate win on
-/// the fullscreen-bound passes (GI / atmosphere / prepass / auto-exposure).
+/// the fullscreen-bound passes (atmosphere / prepass / auto-exposure).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Reflect, Serialize, Deserialize,
 )]
@@ -473,7 +473,7 @@ impl RenderResolution {
 /// (Retina) displays even on an empty scene.
 ///
 /// Each tier maps to a set of crash-safe `enabled` toggles on the routed effect
-/// sources (screen-space GI, auto-exposure, bloom, TAA); see
+/// sources (SSAO, auto-exposure, bloom, TAA); see
 /// `renzora_level_presets::graphics_quality`. It deliberately does **not** touch
 /// passes whose attachment layout is fixed at camera spawn (atmosphere / the
 /// prepass bundle) — toggling those at runtime trips a wgpu validation crash, so
@@ -481,17 +481,17 @@ impl RenderResolution {
 ///
 /// The ladder removes the next-most-expensive pass at each step down:
 /// - `High`   — everything on (the full authored look).
-/// - `Medium` — screen-space GI off (the single biggest GPU cost); the tonemapped
-///   look — auto-exposure, bloom, TAA — is kept. **Default**: it's the best
+/// - `Medium`: SSAO off and the cheaper sky; the tonemapped look
+///   (auto-exposure, bloom, TAA) is kept. **Default**: it's the best
 ///   out-of-box trade for the low-end / Retina machines that motivated this.
-/// - `Low`    — GI, auto-exposure, bloom, and TAA all off; the lightest path,
+/// - `Low`: auto-exposure, bloom, TAA and clouds off too; the lightest path,
 ///   roughly a "compatibility" renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Serialize, Deserialize)]
 pub enum GraphicsQuality {
     Low,
-    /// The shipping default: it kills the heaviest pass (SSGI) while keeping the
-    /// tonemapped look, so the engine runs acceptably on the kind of older /
+    /// The shipping default: it sheds the heaviest fullscreen passes while
+    /// keeping the tonemapped look, so the engine runs acceptably on the kind of older /
     /// integrated GPUs where the full stack drops to single-digit FPS. Capable
     /// machines can raise it to `High` in Settings → Viewport → Performance.
     #[default]
@@ -521,12 +521,6 @@ impl GraphicsQuality {
         }
     }
 
-    /// Screen-space global illumination (Lumen / RT) — on only at `High`. This is
-    /// the costliest, most resolution-bound pass, so it's the first thing dropped.
-    pub fn gi(&self) -> bool {
-        matches!(self, Self::High)
-    }
-
     /// Auto-exposure histogram pass — on at `Medium` and `High`.
     pub fn auto_exposure(&self) -> bool {
         !matches!(self, Self::Low)
@@ -551,7 +545,7 @@ impl GraphicsQuality {
     /// It was previously ungated, so picking `Low` explicitly for frame rate
     /// still paid for it.
     ///
-    /// It sits with SSGI at `High`-only rather than with bloom/TAA at `Medium`
+    /// It is `High`-only rather than sitting with bloom/TAA at `Medium`
     /// because its three full-res compute passes are exactly the
     /// "fullscreen, resolution-bound" cost class `Medium` — the weak-machine
     /// default — exists to shed.
@@ -616,7 +610,7 @@ impl GraphicsQuality {
     ///
     /// The mapping is a table here rather than a field on `InspectorEntry`
     /// because a component does not get to decide this: the gates are already one
-    /// central list on this enum (`gi`, `bloom`, `taa`, `ssao`, `clouds`,
+    /// central list on this enum (`bloom`, `taa`, `ssao`, `clouds`,
     /// `auto_exposure`, `atmosphere_raymarched`), and a second copy spread across
     /// 180-odd registration sites would drift from it the first time a tier moved.
     /// Anything not listed is ungated and returns `None`.
@@ -629,7 +623,6 @@ impl GraphicsQuality {
             "taa" => self.taa(),
             "auto_exposure" => self.auto_exposure(),
             "world_env_ssao" => self.ssao(),
-            "lumen_lighting" | "rt_lighting" => self.gi(),
             // The one that survives in reduced form rather than going away.
             "atmosphere" => {
                 return (!self.atmosphere_raymarched()).then_some(QualityGate::Downgraded)
@@ -1143,7 +1136,7 @@ pub struct ViewportSettings {
     /// the drag. `1.0` keeps the gizmo fully opaque (no fade).
     pub gizmo_drag_opacity: f32,
     /// Overall graphics-quality tier — gates the expensive fullscreen passes
-    /// (GI / auto-exposure / bloom / TAA). Enforced by
+    /// (SSAO / auto-exposure / bloom / TAA). Enforced by
     /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
     /// editor stays responsive on weak / high-DPI hardware out of the box.
     pub graphics_quality: GraphicsQuality,

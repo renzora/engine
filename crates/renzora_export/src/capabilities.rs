@@ -382,16 +382,6 @@ pub const CAPABILITIES: &[Capability] = &[
         group: Some("postfx"),
     },
     Capability {
-        id: "lumen",
-        section: "render_3d",
-        label: "Lumen global illumination",
-        help: "Software-traced GI with its own render graph and compute passes.",
-        bevy_features: &[],
-        runtime_features: &["lumen"],
-        default_on: true,
-        group: None,
-    },
-    Capability {
         id: "cloth",
         section: "simulation",
         label: "Cloth simulation",
@@ -938,7 +928,6 @@ fn detection_types(id: &str) -> &'static [&'static str] {
 
         // ── 3D subsystems ────────────────────────────────────────────────────
         "terrain" => &["renzora_terrain::"],
-        "lumen" => &["renzora_lumen::", "LumenLighting"],
         "gaussian_splatting" => &[
             "bevy_gaussian_splatting::",
             "renzora_gaussian_splatting::",
@@ -1463,7 +1452,6 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "oit",
     "antialiasing",
     // 3D-only extras that build on bevy_pbr
-    "lumen",
     "cloth",
     "ragdoll",
     "parkour",
@@ -1677,7 +1665,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_2d"], "the scene is plainly 2D");
         assert!(!s["render_3d"]);
-        for id in ["terrain", "skybox", "atmosphere", "lumen", "gltf"] {
+        for id in ["terrain", "skybox", "atmosphere", "cloth", "gltf"] {
             assert!(!s[id], "`{id}` has nothing in this project");
         }
     }
@@ -1700,7 +1688,7 @@ mod tests {
         let s = p.state();
         assert!(s["render_3d"]);
         assert!(s["terrain"]);
-        assert!(!s["lumen"], "one 3D subsystem must not imply the rest");
+        assert!(!s["cloth"], "one 3D subsystem must not imply the rest");
     }
 
     /// A subsystem reached only from a script survives, because the scan reads

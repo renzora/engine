@@ -62,7 +62,7 @@ renzora test                     # the full suite, exactly as CI runs it (contai
 - Linux uses `mold` and Windows uses `rust-lld` (MSVC `link.exe` hits the 65535-object limit). `.cargo/config.toml` sets that up for native builds as well as the container, so a native link succeeds.
 - **`cargo test --profile dist -p <crate>` links and runs natively**, including on Windows, and it is the fastest way to iterate. `cargo test --workspace` is the one that doesn't: it builds *example* targets, and two vendored XR crates have examples that were never updated for current Bevy APIs (they still use the pre-0.19 `shadows_enabled`). CI never hits this because it excludes those crates: test per-crate, or use `renzora test`.
 
-> Heads-up: hardware ray-traced GI ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs — see [Solari ray-traced GI](../rendering/solari.md). There is still no `--features solari` *build* flag; Solari is a drop-in plugin, not a build variant. Lumen's separate `LumenQuality::Hwrt` tier remains an unimplemented placeholder and renders nothing.
+> Heads-up: global illumination is hardware ray-traced and ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs; see [Solari ray-traced GI](../rendering/solari.md). There is no `--features solari` *build* flag: Solari is a drop-in plugin, not a build variant.
 
 ## What to contribute
 
@@ -86,7 +86,7 @@ Use default `rustfmt`. Run `cargo fmt` before committing, and don't hand-format 
 
 ### Naming
 
-- **Types:** `PascalCase` — `BlueprintGraph`, `ScriptComponent`, `LumenLighting`, `DockTree`.
+- **Types:** `PascalCase`: `BlueprintGraph`, `ScriptComponent`, `SolariGi`, `DockTree`.
 - **Functions / variables:** `snake_case` — `spawn_entity`, `handle_input`.
 - **Constants:** `SCREAMING_SNAKE_CASE`.
 - **Modules:** `snake_case`, matching the file name.

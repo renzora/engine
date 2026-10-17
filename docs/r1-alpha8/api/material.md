@@ -19,7 +19,7 @@ Compiled results are cached per file path in the `MaterialCache` resource, so ed
 
 A `GraphMaterial`'s generated shader is **forward-only**. Bevy's prepass, shadow
 pass and deferred G-buffer pass all shade from the *base* `StandardMaterial`
-instead, and `renzora_lumen` reads its `base_color` on the CPU to tint GI voxels.
+instead.
 
 So the resolver fills that base in with as much of the graph as a plain
 `StandardMaterial` can express — albedo and its alpha, normal map,

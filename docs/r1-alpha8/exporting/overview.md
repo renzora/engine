@@ -447,7 +447,7 @@ pipeline back in and undo the saving. Current groups:
 
 Turning a parent off switches its children off **in the list**, not just at build
 time. So does turning **3D rendering** off, which takes terrain, water, the sky
-set, every post-process effect, Lumen, cloth, ragdolls, parkour, gaussian
+set, every post-process effect, cloth, ragdolls, parkour, gaussian
 splatting, forward decals and raytraced lighting with it — all of them are
 `bevy_pbr` underneath, so keeping one is not a bigger binary, it is a build that
 does not compile. The build has always enforced that; the list now shows it,

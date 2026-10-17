@@ -14,10 +14,8 @@ serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_lighting = { path = "../renzora_lighting" }
 # Effects bundled into the "World Environment" spawn preset. Most use
-# the EffectRouting pattern; the GI channel uses the `LumenLighting` /
-# `RtLighting` contract components (the GI plugin renders them; Lumen
-# takes precedence when both are present); SSR is included disabled
-# (forward renderer, no DeferredPrepass).
+# the EffectRouting pattern; SSR is included disabled (forward renderer,
+# no DeferredPrepass).
 renzora_bloom_effect = { path = "../renzora_bloom_effect" }
 renzora_atmosphere = { path = "../renzora_atmosphere" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }

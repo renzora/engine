@@ -1110,7 +1110,7 @@ impl RenderingMode {
     ///
     /// Currently `Auto` always resolves to `Forward` — the Deferred
     /// path works in Bevy 0.18 but enabling it surfaces breakage in
-    /// custom material extensions (Lumen / SSGI normals corrupted,
+    /// custom material extensions (corrupted normals,
     /// custom forward shaders without deferred output, etc.). Users
     /// opt into Deferred explicitly via `project.toml`:
     /// `[rendering] mode = "deferred"`.

@@ -8253,18 +8253,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_lumen"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bytemuck",
- "renzora",
- "renzora_rt",
- "renzora_shader",
- "serde",
-]
-
-[[package]]
 name = "renzora_macros"
 version = "0.1.0"
 dependencies = [
@@ -8590,16 +8578,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_rt"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bytemuck",
- "renzora",
- "serde",
-]
-
-[[package]]
 name = "renzora_runtime"
 version = "0.1.0"
 dependencies = [
@@ -8629,7 +8607,6 @@ dependencies = [
  "renzora_lang",
  "renzora_light2d",
  "renzora_lighting",
- "renzora_lumen",
  "renzora_motion_blur",
  "renzora_native_plugin",
  "renzora_navmesh",

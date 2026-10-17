@@ -84,9 +84,9 @@ pub enum ReflectInspectorMode {
     /// **The default, deliberately.** `FillGaps` looked additive and safe, and
     /// is not: "has no hand-written entry" turns out to correlate strongly with
     /// "is not authored state". Generating sections for those produced rows that
-    /// cannot be edited — `renzora_lumen` re-`try_insert`s `RtLighting` from its
-    /// routing system every time settings change, so deleting the component or
-    /// flipping its toggle silently reverts within a frame.
+    /// cannot be edited: a component a routing system re-`try_insert`s onto a
+    /// camera every time settings change reverts silently within a frame, so
+    /// deleting it or flipping its toggle appears to do nothing.
     ///
     /// Reflection cannot distinguish an authored component from a derived one.
     /// Until that is declared somewhere, generating by default does more harm
