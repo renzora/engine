@@ -13,6 +13,7 @@ pub mod material_drop;
 pub mod blueprint_drop;
 mod gaussian_drop;
 pub mod html_drop;
+pub mod model_cameras;
 pub mod model_drop;
 pub mod model_flatten;
 /// Render the viewport only when the scene changes.
@@ -166,6 +167,7 @@ impl Plugin for ViewportPlugin {
                         .after(model_flatten::flatten_pending_scenes),
                     model_drop::bind_material_refs,
                     model_drop::auto_discover_animations,
+                    model_cameras::add_imported_cameras,
                     model_drop::mark_models_selectable_as_unit,
                     model_drop::align_models_to_ground,
                 ),

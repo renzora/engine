@@ -340,6 +340,30 @@ collect in a final primitive with no material. Previously everything was merged
 into a single primitive pointing at material 0, so a scene with a hundred
 materials rendered entirely in the first one.
 
+**Moving parts keep their nodes.** A transcoded scene is normally merged into
+one node, and a clip addresses nodes by name, so merging an FBX whose doors are
+animated leaves the clip nothing to move. When an FBX has node animation and no
+skeleton (and animation extraction is on), `fbx_ufbx::moving_parts` keeps every
+animated node and its ancestors, and `glb_build::build_glb_hierarchy` writes
+them as a node tree. Geometry is sorted by its nearest animated ancestor and
+written in that node's space; geometry with no animated ancestor still merges
+into the static mesh at the root. `convert` and `extract_animations` build the
+same `MovingParts` from the same scene, so the node names and the clip's track
+names agree by construction. Every FBX camera also gets a `<name>_view` child
+turned a quarter turn about Y, from FBX's +X-forward camera convention to the
+engine's -Z-forward one, which is what a `FollowNode` camera targets. The view
+node's glTF `extras` carry `{"renzora_camera": {"name", "yfov"}}`
+(`renzora::IMPORTED_CAMERA_EXTRAS_KEY`), and `renzora_viewport::model_cameras`
+reads them on a drop to add a default scene camera already following that node
+with the source's field of view. It is extras rather than a glTF `camera`
+because Bevy spawns an active camera for every glTF camera it loads.
+
+**Material names are made unique.** The editor writes one `.material` per
+material name and binds meshes back by glTF material name, so two FBX materials
+sharing a name would share a file and one would render with the other's look.
+After the FBX bundle is built, a repeat takes a `_2`, `_3` suffix, judged on the
+file name the writer will produce (non-alphanumerics become `_`, case ignored).
+
 The second half of that sentence — *each with its own vertices* — is the part
 that is easy to get wrong and expensive to get wrong. glTF lets several
 primitives share one attribute accessor, and nothing about the file looks

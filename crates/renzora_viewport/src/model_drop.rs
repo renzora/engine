@@ -44,6 +44,7 @@ use renzora_editor_framework::EditorSelection;
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::glb_compat;
+use crate::model_cameras::PendingImportedCameras;
 use crate::model_flatten::{ImportedRoot, PendingFlatten};
 use crate::ViewportState;
 
@@ -278,6 +279,7 @@ pub(crate) fn commit_model_drop(
                     model_path: Some(asset_path),
                 },
                 ImportedRoot,
+                PendingImportedCameras::new(gltf_handle.clone()),
                 PendingMaterialBinding { gltf_handle },
             ));
             // Only a drop onto geometry needs re-seating once the meshes
@@ -413,6 +415,7 @@ pub fn native_model_drop(
             model_path: Some(asset_path),
         },
         ImportedRoot,
+        PendingImportedCameras::new(gltf_handle.clone()),
         PendingMaterialBinding { gltf_handle },
     ));
 
@@ -579,6 +582,7 @@ pub fn spawn_loaded_gltfs(
                     model_path: Some(load.asset_path.clone()),
                 },
                 ImportedRoot,
+                PendingImportedCameras::new(load.handle.clone()),
                 PendingMaterialBinding {
                     gltf_handle: load.handle.clone(),
                 },

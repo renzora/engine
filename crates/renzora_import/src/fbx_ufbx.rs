@@ -13,7 +13,7 @@ use renzora::{write_anim_file, AnimClip, BoneTrack};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ConvertedGlb, ImportError};
-use crate::glb_build::{build_glb_grouped, build_skinned_glb};
+use crate::glb_build::{build_glb_grouped, build_glb_hierarchy, build_skinned_glb, SceneNode};
 use crate::settings::ImportSettings;
 
 // ─── Public API ────────────────────────────────────────────────────────────
@@ -80,6 +80,40 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         .collect();
     let unassigned_bucket = material_count;
     let mut bucket_indices: Vec<Vec<u32>> = vec![Vec::new(); material_count + 1];
+
+    // Node animation (doors, pistons, a fly-through camera) needs the nodes it
+    // moves to survive conversion. A skinned scene keeps its own path: its clips
+    // drive joints, which `build_skinned_glb` already writes as nodes.
+    let moving = if has_skin {
+        None
+    } else {
+        moving_parts(scene_ref, settings)
+    };
+    // One set of material buckets per moving part, filled exactly like the
+    // static buckets above but in the part's own space.
+    let mut part_buckets: Vec<Vec<Vec<u32>>> = match &moving {
+        Some(m) => vec![vec![Vec::new(); material_count + 1]; m.nodes.len()],
+        None => Vec::new(),
+    };
+    if let Some(m) = &moving {
+        log::info!(
+            "[import] {}: {} animated nodes kept as their own parts ({} nodes in the tree)",
+            file_name,
+            m.animated.iter().filter(|a| **a).count(),
+            m.nodes.len(),
+        );
+        for (node, view) in m.nodes.iter().zip(&m.view_names) {
+            if let (Some(camera), Some(view)) = (node.camera.as_ref(), view) {
+                log::info!(
+                    "[import] {}: camera '{}' kept as '{}', vertical field of view {:.1} degrees",
+                    file_name,
+                    node.element.name.as_ref(),
+                    view,
+                    camera.field_of_view_deg.y,
+                );
+            }
+        }
+    }
 
     for mesh in scene_ref.meshes.iter() {
         let vertex_count = mesh.num_vertices;
@@ -274,25 +308,37 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         // are `cluster.geometry_to_bone`, which is defined *from* geometry
         // space, so baking the node transform into the vertices would apply it
         // a second time the moment a clip plays.
-        let placements: Vec<Option<ufbx::Matrix>> = if is_skinned {
-            vec![None]
+        //
+        // An instance under a moving part is baked into that part's space
+        // instead, so it rides along when a clip moves the part.
+        let placements: Vec<(Option<ufbx::Matrix>, Option<usize>)> = if is_skinned {
+            vec![(None, None)]
         } else {
-            let instances: Vec<Option<ufbx::Matrix>> = mesh
+            let instances: Vec<(Option<ufbx::Matrix>, Option<usize>)> = mesh
                 .element
                 .instances
                 .iter()
-                .map(|node| Some(node.geometry_to_world))
+                .map(|node| match moving.as_ref().and_then(|m| m.anchor_of(node)) {
+                    Some(part) => {
+                        let to_part = moving.as_ref().map(|m| &m.world_inverse[part]);
+                        let m = to_part
+                            .map(|inv| ufbx::matrix_mul(inv, &node.geometry_to_world))
+                            .unwrap_or(node.geometry_to_world);
+                        (Some(m), Some(part))
+                    }
+                    None => (Some(node.geometry_to_world), None),
+                })
                 .collect();
             // A mesh no node references still carries geometry worth keeping;
             // emit it untransformed rather than dropping it silently.
             if instances.is_empty() {
-                vec![None]
+                vec![(None, None)]
             } else {
                 instances
             }
         };
 
-        for placement in placements {
+        for (placement, part) in placements {
             let base_vertex = (all_positions.len() / 3) as u32;
 
             match placement {
@@ -317,13 +363,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             let mirrored = placement
                 .map(|m| ufbx::matrix_determinant(&m) < 0.0)
                 .unwrap_or(false);
-            append_indices(
-                &tri_indices,
-                &tri_bucket,
-                base_vertex,
-                mirrored,
-                &mut bucket_indices,
-            );
+            let buckets = match part {
+                Some(part) => &mut part_buckets[part],
+                None => &mut bucket_indices,
+            };
+            append_indices(&tri_indices, &tri_bucket, base_vertex, mirrored, buckets);
 
             all_joints.extend_from_slice(&mesh_joints);
             all_weights.extend_from_slice(&mesh_weights);
@@ -369,15 +413,25 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
     // Turn the material buckets into primitives. The catch-all bucket sits at
     // `material_count`, past the end of the material list, so it filters down
     // to a primitive with no material — exactly what unassigned faces want.
-    let groups: Vec<crate::glb_build::MaterialGroup> = bucket_indices
-        .into_iter()
+    //
+    // Part 0 is the merged static geometry; a moving part `k` is part `k + 1`.
+    let mut groups: Vec<crate::glb_build::MaterialGroup> = Vec::new();
+    let mut group_part: Vec<usize> = Vec::new();
+    for (part, buckets) in std::iter::once(bucket_indices)
+        .chain(part_buckets)
         .enumerate()
-        .filter(|(_, indices)| !indices.is_empty())
-        .map(|(bucket, indices)| crate::glb_build::MaterialGroup {
-            material: (bucket < material_count).then_some(bucket),
-            indices,
-        })
-        .collect();
+    {
+        for (bucket, indices) in buckets.into_iter().enumerate() {
+            if indices.is_empty() {
+                continue;
+            }
+            groups.push(crate::glb_build::MaterialGroup {
+                material: (bucket < material_count).then_some(bucket),
+                indices,
+            });
+            group_part.push(part);
+        }
+    }
     let triangle_count: usize = groups.iter().map(|g| g.indices.len() / 3).sum();
 
     let glb_bytes = if has_skin {
@@ -408,6 +462,16 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             &all_joints,
             &all_weights,
             &joint_structs,
+            &material_bundle,
+        )?
+    } else if let Some(m) = &moving {
+        build_glb_hierarchy(
+            &all_positions,
+            &all_normals,
+            &all_texcoords,
+            &groups,
+            &group_part,
+            &m.scene_nodes(),
             &material_bundle,
         )?
     } else {
@@ -537,6 +601,7 @@ pub fn extract_animations(
     // blob the moment a clip plays. Rescale animated translations back into the
     // skeleton's unit space so the two agree.
     let unit_fixup = animation_unit_fixup(scene_ref);
+    let moving = moving_parts(scene_ref, settings);
     if (unit_fixup - 1.0).abs() > 1e-3 {
         log::info!(
             "[import] {}: scaling animation translations by {:.4} to match skeleton units",
@@ -579,48 +644,40 @@ pub fn extract_animations(
             if name.is_empty() {
                 continue;
             }
+            tracks.push(sample_node_track(
+                anim_ref,
+                node,
+                name,
+                stack_ref.time_begin,
+                dt,
+                n_samples,
+                unit_fixup,
+            ));
+        }
 
-            let mut track = BoneTrack {
-                bone_name: name.to_string(),
-                translations: Vec::new(),
-                rotations: Vec::new(),
-                scales: Vec::new(),
-            };
-
-            for i in 0..n_samples {
-                let t = stack_ref.time_begin + dt * i as f64;
-                let tr = ufbx::evaluate_transform(anim_ref, node, t);
-                let rel_t = t - stack_ref.time_begin;
-                track.translations.push((
-                    rel_t as f32,
-                    [
-                        tr.translation.x as f32 * unit_fixup,
-                        tr.translation.y as f32 * unit_fixup,
-                        tr.translation.z as f32 * unit_fixup,
-                    ],
-                ));
-                track.rotations.push((
-                    rel_t as f32,
-                    [
-                        tr.rotation.x as f32,
-                        tr.rotation.y as f32,
-                        tr.rotation.z as f32,
-                        tr.rotation.w as f32,
-                    ],
-                ));
-                track.scales.push((
-                    rel_t as f32,
-                    [tr.scale.x as f32, tr.scale.y as f32, tr.scale.z as f32],
-                ));
+        // The moving parts of a scene with no skeleton, under the names
+        // `convert` gave their nodes. No unit fixup: these are the same
+        // `local_transform`s the GLB was written from, in the same units.
+        if let Some(m) = &moving {
+            for (k, node) in m.nodes.iter().enumerate() {
+                if m.animated[k] {
+                    tracks.push(sample_node_track(
+                        anim_ref,
+                        node,
+                        &m.names[k],
+                        stack_ref.time_begin,
+                        dt,
+                        n_samples,
+                        1.0,
+                    ));
+                }
             }
-
-            tracks.push(track);
         }
 
         if tracks.is_empty() {
             result
                 .warnings
-                .push(format!("{}: animation stack has no bone tracks", clip_name));
+                .push(format!("{}: animation stack animates nothing", clip_name));
             continue;
         }
 
@@ -674,6 +731,281 @@ pub fn extract_animations(
 }
 
 // ─── Internals ─────────────────────────────────────────────────────────────
+
+/// Sample one node's local transform across a stack into a track.
+fn sample_node_track(
+    anim: &ufbx::Anim,
+    node: &ufbx::Node,
+    name: &str,
+    time_begin: f64,
+    dt: f64,
+    n_samples: usize,
+    unit_fixup: f32,
+) -> BoneTrack {
+    let mut track = BoneTrack {
+        bone_name: name.to_string(),
+        translations: Vec::with_capacity(n_samples),
+        rotations: Vec::with_capacity(n_samples),
+        scales: Vec::with_capacity(n_samples),
+    };
+    for i in 0..n_samples {
+        let t = time_begin + dt * i as f64;
+        let tr = ufbx::evaluate_transform(anim, node, t);
+        let rel_t = (t - time_begin) as f32;
+        track.translations.push((
+            rel_t,
+            [
+                tr.translation.x as f32 * unit_fixup,
+                tr.translation.y as f32 * unit_fixup,
+                tr.translation.z as f32 * unit_fixup,
+            ],
+        ));
+        track.rotations.push((
+            rel_t,
+            [
+                tr.rotation.x as f32,
+                tr.rotation.y as f32,
+                tr.rotation.z as f32,
+                tr.rotation.w as f32,
+            ],
+        ));
+        track.scales.push((
+            rel_t,
+            [tr.scale.x as f32, tr.scale.y as f32, tr.scale.z as f32],
+        ));
+    }
+    track
+}
+
+/// FBX cameras look down their local +X with +Y up; a Bevy camera looks down
+/// -Z. A quarter turn about Y takes one onto the other.
+const FBX_CAMERA_TO_VIEW: [f32; 4] = [0.0, -std::f32::consts::FRAC_1_SQRT_2, 0.0, std::f32::consts::FRAC_1_SQRT_2];
+
+/// The nodes of a scene that its animation moves, and the tree that holds them.
+///
+/// # Why this exists
+///
+/// A transcoded scene is merged into one mesh, which is right for a static
+/// building and fatal for one whose doors open: a clip addresses nodes by name,
+/// and merging leaves no node to address. A scene animated on its nodes rather
+/// than a skeleton (a fly-through camera, doors, pistons) therefore keeps every
+/// animated node, and the chain of ancestors above it, as named glTF nodes.
+/// Everything else still merges, so the draw count grows by the moving parts
+/// and not by the whole scene.
+///
+/// [`convert`] and [`extract_animations`] each build this from the same scene
+/// and settings, so the node names the GLB is written with are, by
+/// construction, the names the clip's tracks address.
+struct MovingParts<'a> {
+    /// The kept nodes, parents before children.
+    nodes: Vec<&'a ufbx::Node>,
+    /// Index into `nodes` of each node's parent, or `None` at the top.
+    parent: Vec<Option<usize>>,
+    /// Whether the node's own transform is animated. The others are ancestors,
+    /// kept only so the animated nodes have the parents their keys are
+    /// relative to.
+    animated: Vec<bool>,
+    /// Unique, already sanitized names. Two FBX nodes may share a name and a
+    /// clip binds by name alone, so a repeat takes a numeric suffix here
+    /// rather than leaving the engine to rename one and orphan its track.
+    names: Vec<String>,
+    /// For a node carrying a camera, the name of the child written under it
+    /// that faces the way a Bevy camera does. A scene camera follows that.
+    view_names: Vec<Option<String>>,
+    /// Inverse of each node's rest-pose world matrix: geometry under a moving
+    /// part is written in that part's space.
+    world_inverse: Vec<ufbx::Matrix>,
+    index_of: std::collections::HashMap<u32, usize>,
+}
+
+impl<'a> MovingParts<'a> {
+    /// The nearest animated node at or above `node`, which is the part its
+    /// geometry belongs to. `None` means nothing above it moves.
+    fn anchor_of(&self, node: &ufbx::Node) -> Option<usize> {
+        let mut current = Some(node);
+        while let Some(n) = current {
+            if let Some(&k) = self.index_of.get(&n.element.element_id) {
+                if self.animated[k] {
+                    return Some(k);
+                }
+            }
+            current = n.parent.as_ref().map(|p| -> &ufbx::Node { p });
+        }
+        None
+    }
+
+    /// The node list for [`build_glb_hierarchy`]: the merged static geometry as
+    /// part 0 at the root, then every kept node (drawing part `k + 1` when it is
+    /// animated), then the camera view nodes.
+    fn scene_nodes(&self) -> Vec<SceneNode> {
+        let mut out = Vec::with_capacity(1 + self.nodes.len());
+        out.push(SceneNode {
+            name: None,
+            parent: None,
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            scale: [1.0; 3],
+            part: Some(0),
+            extras: None,
+        });
+        for (k, node) in self.nodes.iter().enumerate() {
+            let t = &node.local_transform;
+            out.push(SceneNode {
+                name: Some(self.names[k].clone()),
+                parent: self.parent[k].map(|p| p + 1),
+                translation: [t.translation.x as f32, t.translation.y as f32, t.translation.z as f32],
+                rotation: [
+                    t.rotation.x as f32,
+                    t.rotation.y as f32,
+                    t.rotation.z as f32,
+                    t.rotation.w as f32,
+                ],
+                scale: [t.scale.x as f32, t.scale.y as f32, t.scale.z as f32],
+                part: self.animated[k].then_some(k + 1),
+                extras: None,
+            });
+        }
+        for (k, view) in self.view_names.iter().enumerate() {
+            if let Some(view) = view {
+                // The lens travels with the view node, so the editor can build
+                // a matching scene camera when the model is dropped in.
+                let extras = self.nodes[k].camera.as_ref().map(|camera| {
+                    serde_json::json!({
+                        renzora::IMPORTED_CAMERA_EXTRAS_KEY: {
+                            "name": self.names[k],
+                            "yfov": (camera.field_of_view_deg.y as f32).to_radians(),
+                        }
+                    })
+                });
+                out.push(SceneNode {
+                    name: Some(view.clone()),
+                    parent: Some(k + 1),
+                    translation: [0.0; 3],
+                    rotation: FBX_CAMERA_TO_VIEW,
+                    scale: [1.0; 3],
+                    part: None,
+                    extras,
+                });
+            }
+        }
+        out
+    }
+}
+
+/// Find the moving parts of a scene, or `None` when it should merge as before:
+/// animation extraction is off, the scene is skinned (its clips drive joints),
+/// or nothing in it is animated.
+fn moving_parts<'a>(scene: &'a ufbx::Scene, settings: &ImportSettings) -> Option<MovingParts<'a>> {
+    use std::collections::{HashMap, HashSet};
+
+    if !settings.extract_animations {
+        return None;
+    }
+    if settings.extract_skeleton && scene.nodes.iter().any(|n| n.bone.is_some()) {
+        return None;
+    }
+
+    let mut animated_ids: HashSet<u32> = HashSet::new();
+    for stack in &scene.anim_stacks {
+        for layer in &stack.layers {
+            for prop in &layer.anim_props {
+                if matches!(
+                    prop.prop_name.as_ref(),
+                    "Lcl Translation" | "Lcl Rotation" | "Lcl Scaling"
+                ) {
+                    animated_ids.insert(prop.element.element_id);
+                }
+            }
+        }
+    }
+
+    // Every animated node plus its ancestors. The scene root is left out: under
+    // `SpaceConversion::ModifyGeometry` it is the identity, so its children can
+    // sit at the glTF scene root unchanged.
+    let mut keep: HashSet<u32> = HashSet::new();
+    for node in &scene.nodes {
+        if node.is_root || !animated_ids.contains(&node.element.element_id) {
+            continue;
+        }
+        let mut current: Option<&ufbx::Node> = Some(node);
+        while let Some(n) = current {
+            if n.is_root || !keep.insert(n.element.element_id) {
+                break;
+            }
+            current = n.parent.as_ref().map(|p| -> &ufbx::Node { p });
+        }
+    }
+    if keep.is_empty() {
+        return None;
+    }
+
+    let mut nodes: Vec<&'a ufbx::Node> = scene
+        .nodes
+        .iter()
+        .map(|n| -> &'a ufbx::Node { n })
+        .filter(|n| keep.contains(&n.element.element_id))
+        .collect();
+    // Parents first; a stable sort keeps file order within a depth, which is
+    // what makes the suffixes below come out the same in both callers.
+    nodes.sort_by_key(|n| n.node_depth);
+
+    let index_of: HashMap<u32, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.element.element_id, i))
+        .collect();
+    let parent = nodes
+        .iter()
+        .map(|n| {
+            n.parent
+                .as_ref()
+                .and_then(|p| index_of.get(&p.element.element_id).copied())
+        })
+        .collect();
+    let animated = nodes
+        .iter()
+        .map(|n| animated_ids.contains(&n.element.element_id))
+        .collect();
+
+    let mut used: HashSet<String> = HashSet::new();
+    let mut unique = |raw: &str| -> String {
+        let mut base = renzora::sanitize_id(raw);
+        if base.is_empty() {
+            base = "node".to_string();
+        }
+        if used.insert(base.clone()) {
+            return base;
+        }
+        let mut i = 2;
+        loop {
+            let candidate = format!("{base}_{i}");
+            if used.insert(candidate.clone()) {
+                return candidate;
+            }
+            i += 1;
+        }
+    };
+    let names: Vec<String> = nodes.iter().map(|n| unique(n.element.name.as_ref())).collect();
+    let view_names = nodes
+        .iter()
+        .zip(&names)
+        .map(|(n, name)| n.camera.is_some().then(|| unique(&format!("{name}_view"))))
+        .collect();
+    let world_inverse = nodes
+        .iter()
+        .map(|n| ufbx::matrix_invert(&n.node_to_world))
+        .collect();
+
+    Some(MovingParts {
+        nodes,
+        parent,
+        animated,
+        names,
+        view_names,
+        world_inverse,
+        index_of,
+    })
+}
 
 struct JointOut {
     /// `Element::element_id` of this node — used to key cluster-to-joint lookups.
@@ -1193,7 +1525,50 @@ fn collect_materials(
         });
     }
 
+    make_material_names_unique(bundle.materials.iter_mut().map(|m| &mut m.name));
     bundle
+}
+
+/// Give every material a name no other material shares.
+///
+/// The editor writes one `.material` file per material name and binds each
+/// mesh back to its file by the glTF material name, so two materials sharing a
+/// name share one file, and every mesh using the second one quietly renders
+/// with the first. FBX does not require names to be unique; one scene with 166
+/// materials carried only 163 names.
+///
+/// Uniqueness is judged on the file the name becomes, not the name itself: the
+/// writer turns everything but letters, digits, `_` and `-` into `_`, and
+/// Windows file names ignore case, so `Metal.1` and `metal_1` collide too. The
+/// first material keeps its name; a later one gets `_2`, `_3`.
+fn make_material_names_unique<'a>(names: impl Iterator<Item = &'a mut String>) {
+    fn file_key(name: &str) -> String {
+        name.chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' || c == '-' {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    }
+
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for name in names {
+        if used.insert(file_key(name)) {
+            continue;
+        }
+        let mut i = 2;
+        let renamed = loop {
+            let candidate = format!("{name}_{i}");
+            if used.insert(file_key(&candidate)) {
+                break candidate;
+            }
+            i += 1;
+        };
+        *name = renamed;
+    }
 }
 
 /// Whether an image file *can* carry per-pixel alpha, judged from its container.
@@ -1392,5 +1767,21 @@ mod tests {
     fn fbx_uv_midpoint_is_stable_either_way() {
         assert!((fbx_uv([0.5, 0.5], false)[1] - 0.5).abs() < 1e-6);
         assert!((fbx_uv([0.5, 0.5], true)[1] - 0.5).abs() < 1e-6);
+    }
+
+    /// Names that would land in the same `.material` file get a suffix: exact
+    /// repeats, a case-only difference, and one the writer's `.` to `_`
+    /// rewrite makes equal. The first of each keeps its name.
+    #[test]
+    fn material_names_are_unique_per_material_file() {
+        let mut names: Vec<String> = ["metal", "glass", "metal", "Metal", "wood.1", "wood_1", "metal_2"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        make_material_names_unique(names.iter_mut());
+        assert_eq!(
+            names,
+            ["metal", "glass", "metal_2", "Metal_3", "wood.1", "wood_1_2", "metal_2_2"]
+        );
     }
 }

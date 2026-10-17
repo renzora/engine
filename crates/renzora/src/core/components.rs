@@ -568,6 +568,35 @@ pub struct SceneCamera;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DefaultCamera;
 
+/// Keeps this entity on a named node somewhere else in the scene.
+///
+/// Made for the camera of an imported fly-through. An FBX camera arrives as an
+/// animated node inside the model, and a node is not a camera the engine can
+/// render from, so a scene camera follows it instead. The import writes a
+/// `<camera>_view` child that faces the way a Bevy camera looks, and that is
+/// the node to name here.
+///
+/// Position and rotation are copied; scale is not. A model's top node often
+/// carries the file's unit conversion (0.01 for centimetres), and a camera
+/// scaled by it would scale its view along with it.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+pub struct FollowNode {
+    /// `Name` of the node to follow. Compared after [`crate::sanitize_id`], so
+    /// the spelling in the source file and the engine's renamed one both match.
+    pub target: String,
+}
+
+/// Key of the glTF node `extras` object that marks a node as an imported
+/// camera's view: `{"renzora_camera": {"name": "...", "yfov": <radians>}}`.
+///
+/// The importer writes it on each `<camera>_view` node, and dropping the model
+/// into a scene reads it back to add a camera already following that node.
+/// It is node extras rather than a glTF `camera` because Bevy spawns a live,
+/// active camera for every glTF camera it loads, which in the editor would
+/// render the whole scene a second time straight to the window.
+pub const IMPORTED_CAMERA_EXTRAS_KEY: &str = "renzora_camera";
+
 /// Per-camera render-resolution scale (Full / Half / Quarter).
 ///
 /// Sizes this camera's render target at a fraction of the display size and

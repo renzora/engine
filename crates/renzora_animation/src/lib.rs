@@ -16,6 +16,7 @@ pub mod clip;
 pub mod component;
 pub mod discovery;
 pub mod extract;
+pub mod follow;
 pub mod graph_builder;
 pub mod layers;
 pub mod loader;
@@ -144,6 +145,13 @@ impl Plugin for AnimationPlugin {
             property_playback::apply_runtime_property_animation
                 .after(systems::process_animation_commands)
                 .run_if(property_playback::property_animation_active),
+        );
+
+        app.register_type::<renzora::FollowNode>().add_systems(
+            PostUpdate,
+            follow::follow_nodes
+                .after(bevy::app::AnimationSystems)
+                .before(bevy::transform::TransformSystems::Propagate),
         );
 
         app.add_systems(

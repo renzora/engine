@@ -30,6 +30,10 @@ pub(crate) struct MaterialGroup {
 /// One group's geometry after compaction: its own vertices, and indices
 /// numbered from zero within them.
 struct CompactGroup {
+    /// Position of the [`MaterialGroup`] this came from in the slice handed to
+    /// [`compact_groups`]. Empty groups are skipped, so the output is not
+    /// parallel to the input; this is how a caller maps back.
+    source_group: usize,
     material: Option<usize>,
     /// Where this group's vertices start in the merged vertex buffer, and how
     /// many there are.
@@ -122,6 +126,7 @@ fn compact_groups(
             continue;
         }
         compacted.push(CompactGroup {
+            source_group: group_id as usize,
             material: group.material,
             vertex_start,
             vertex_count: out.positions.len() / 3 - vertex_start,
@@ -360,6 +365,65 @@ pub(crate) fn build_glb_grouped(
     groups: &[MaterialGroup],
     materials: &MaterialBundle,
 ) -> Result<Vec<u8>, ImportError> {
+    let root_node = SceneNode {
+        name: None,
+        parent: None,
+        translation: [0.0; 3],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+        scale: [1.0; 3],
+        part: Some(0),
+        extras: None,
+    };
+    build_glb_hierarchy(
+        positions,
+        normals,
+        texcoords,
+        groups,
+        &vec![0; groups.len()],
+        &[root_node],
+        materials,
+    )
+}
+
+/// One node of the tree [`build_glb_hierarchy`] writes.
+#[derive(Debug, Clone)]
+pub(crate) struct SceneNode {
+    pub name: Option<String>,
+    /// Index into the same node slice, or `None` for a scene root. A parent
+    /// must come before its children.
+    pub parent: Option<usize>,
+    pub translation: [f32; 3],
+    pub rotation: [f32; 4],
+    pub scale: [f32; 3],
+    /// The mesh part this node draws, if any: see `group_part` on
+    /// [`build_glb_hierarchy`].
+    pub part: Option<usize>,
+    /// Written as the node's glTF `extras`, which Bevy hands back on the
+    /// loaded `GltfNode`. Carries what glTF has no field for on a plain node,
+    /// such as the field of view of an imported camera.
+    pub extras: Option<serde_json::Value>,
+}
+
+/// Build a GLB with a node tree, where each node may draw one mesh.
+///
+/// The geometry still arrives as one shared vertex buffer and a flat list of
+/// [`MaterialGroup`]s, exactly as [`build_glb_grouped`] takes it; `group_part`
+/// is parallel to `groups` and says which mesh part each group belongs to.
+/// Every part becomes one glTF mesh with a primitive per group, and a node
+/// names the part it draws. Vertices are written in whatever space the caller
+/// put them in, which for a node's part is that node's local space.
+///
+/// It exists for scenes whose parts move: an animated door has to be its own
+/// node, carrying its own geometry, or there is nothing for a clip to move.
+pub(crate) fn build_glb_hierarchy(
+    positions: &[f32],
+    normals: &[f32],
+    texcoords: &[f32],
+    groups: &[MaterialGroup],
+    group_part: &[usize],
+    nodes: &[SceneNode],
+    materials: &MaterialBundle,
+) -> Result<Vec<u8>, ImportError> {
     let (vertices, groups) = compact_groups(positions, normals, texcoords, &[], &[], groups);
 
     let pos_bytes = cast_f32_to_bytes(&vertices.positions);
@@ -448,32 +512,69 @@ pub(crate) fn build_glb_grouped(
         ));
     }
 
-    root.meshes.push(Mesh {
-        primitives,
-        name: None,
-        weights: None,
-        extensions: None,
-        extras: Default::default(),
-    });
+    // Gather each part's primitives into its own mesh. A part whose groups
+    // were all empty gets no mesh, and the node drawing it draws nothing.
+    let part_count = group_part.iter().map(|p| p + 1).max().unwrap_or(0);
+    let mut part_primitives: Vec<Vec<mesh::Primitive>> =
+        (0..part_count).map(|_| Vec::new()).collect();
+    for (primitive, group) in primitives.into_iter().zip(&groups) {
+        if let Some(&part) = group_part.get(group.source_group) {
+            part_primitives[part].push(primitive);
+        }
+    }
+    let mut part_mesh: Vec<Option<u32>> = vec![None; part_count];
+    for (part, primitives) in part_primitives.into_iter().enumerate() {
+        if primitives.is_empty() {
+            continue;
+        }
+        part_mesh[part] = Some(root.meshes.len() as u32);
+        root.meshes.push(Mesh {
+            primitives,
+            name: None,
+            weights: None,
+            extensions: None,
+            extras: Default::default(),
+        });
+    }
 
-    root.nodes.push(Node {
-        mesh: Some(Index::new(0)),
-        name: None,
-        camera: None,
-        children: None,
-        skin: None,
-        matrix: None,
-        rotation: None,
-        scale: None,
-        translation: None,
-        weights: None,
-        extensions: None,
-        extras: Default::default(),
-    });
+    let mut children_of: Vec<Vec<u32>> = vec![Vec::new(); nodes.len()];
+    let mut scene_roots: Vec<Index<Node>> = Vec::new();
+    for (i, node) in nodes.iter().enumerate() {
+        match node.parent {
+            Some(p) if p < nodes.len() => children_of[p].push(i as u32),
+            _ => scene_roots.push(Index::new(i as u32)),
+        }
+    }
+    for (node, children) in nodes.iter().zip(children_of) {
+        let identity = node.translation == [0.0; 3]
+            && node.rotation == [0.0, 0.0, 0.0, 1.0]
+            && node.scale == [1.0; 3];
+        root.nodes.push(Node {
+            mesh: node
+                .part
+                .and_then(|p| part_mesh.get(p).copied().flatten())
+                .map(Index::new),
+            name: node.name.clone(),
+            camera: None,
+            children: (!children.is_empty())
+                .then(|| children.into_iter().map(Index::new).collect()),
+            skin: None,
+            matrix: None,
+            rotation: (!identity).then_some(scene::UnitQuaternion(node.rotation)),
+            scale: (!identity).then_some(node.scale),
+            translation: (!identity).then_some(node.translation),
+            weights: None,
+            extensions: None,
+            extras: node
+                .extras
+                .as_ref()
+                .and_then(|v| serde_json::value::RawValue::from_string(v.to_string()).ok()),
+        });
+    }
 
     root.scenes.push(Scene {
         name: None,
-        nodes: vec![Index::new(0)],
+        nodes: scene_roots,
         extensions: None,
         extras: Default::default(),
     });
@@ -1377,6 +1478,69 @@ mod tests {
         let second_indices = &accessors[primitives[1]["indices"].as_u64().unwrap() as usize];
         assert_eq!(second_indices["byteOffset"], 12);
         assert_eq!(second_indices["count"], 3);
+    }
+
+    #[test]
+    fn hierarchy_glb_gives_each_part_its_own_mesh_and_node() {
+        // Static part 0 at the root, and a named moving part 1 under a named
+        // parent that draws nothing. A clip addresses the moving node by name,
+        // so the name and the parent chain are the whole point.
+        let positions: Vec<f32> = (0..6).flat_map(|i| [i as f32, 0.0, 0.0]).collect();
+        let normals: Vec<f32> = (0..6).flat_map(|_| [0.0f32, 0.0, 1.0]).collect();
+        let texcoords: Vec<f32> = (0..6).flat_map(|_| [0.0f32, 0.0]).collect();
+        let bundle = MaterialBundle {
+            materials: vec![plain_material("a")],
+            textures: Vec::new(),
+        };
+        let groups = vec![
+            MaterialGroup {
+                material: Some(0),
+                indices: vec![0, 1, 2],
+            },
+            MaterialGroup {
+                material: Some(0),
+                indices: vec![3, 4, 5],
+            },
+        ];
+        let node = |name: Option<&str>, parent, part| SceneNode {
+            name: name.map(str::to_string),
+            parent,
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            scale: [1.0; 3],
+            part,
+            extras: None,
+        };
+        let mut nodes = vec![
+            node(None, None, Some(0)),
+            node(Some("frame"), None, None),
+            node(Some("door"), Some(1), Some(1)),
+        ];
+        nodes[1].extras = Some(serde_json::json!({ "note": 1 }));
+
+        let glb = build_glb_hierarchy(
+            &positions,
+            &normals,
+            &texcoords,
+            &groups,
+            &[0, 1],
+            &nodes,
+            &bundle,
+        )
+        .unwrap();
+        let json_len = u32::from_le_bytes([glb[12], glb[13], glb[14], glb[15]]) as usize;
+        let json: serde_json::Value =
+            serde_json::from_slice(&glb[20..20 + json_len]).expect("valid GLTF JSON");
+
+        assert_eq!(json["meshes"].as_array().unwrap().len(), 2);
+        assert_eq!(json["scenes"][0]["nodes"], serde_json::json!([0, 1]));
+        assert_eq!(json["nodes"][0]["mesh"], 0);
+        assert!(json["nodes"][1].get("mesh").is_none());
+        assert_eq!(json["nodes"][1]["children"], serde_json::json!([2]));
+        assert_eq!(json["nodes"][2]["name"], "door");
+        assert_eq!(json["nodes"][2]["mesh"], 1);
+        assert_eq!(json["nodes"][1]["extras"]["note"], 1);
+        assert!(json["nodes"][2].get("extras").is_none());
     }
 
     #[test]

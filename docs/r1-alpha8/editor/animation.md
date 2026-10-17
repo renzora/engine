@@ -20,6 +20,32 @@ Clips are extracted when you import a model. The importer pulls embedded animati
 
 For characters that ship without embedded animations, which is the common Mixamo pattern of one mesh plus separate animation files, the runtime drives the side-loaded clips against the skeleton beneath the model.
 
+### Animated scenes: doors, machines and fly-through cameras
+
+An FBX can be animated on its **objects** rather than a skeleton: doors that swing, pistons that slide, a camera that flies down a corridor. These import as well.
+
+When an FBX has no skeleton but its nodes are animated, the importer keeps every animated node, and the chain of parents above it, as a named node in the model. Each one carries the geometry that moves with it. Everything that never moves is still merged into one mesh, so a mostly static building stays cheap to draw. The clip gets one track per animated node, under the same name as the node.
+
+Node names are cleaned up the same way the engine names entities (`DOOR_1` becomes `door_1`). Two nodes with the same name get a number on the second one (`sliding_3`, `sliding_3_2`), because a clip finds its node by name and two nodes with one name would leave one of them unanimated.
+
+Dropping the model into the scene adds an **Animator** with the clip as its default, so the scene starts playing straight away.
+
+### Riding an imported camera
+
+A camera in the FBX arrives as an animated node, not as a camera the engine can render from. Dropping the model into the viewport adds a scene camera that rides it, so to watch the fly-through you only press Play.
+
+The added camera is named after the FBX camera with `_camera` on the end (`dynamiccamera2_camera`), and it:
+
+- carries **Follow Node** with its **Target** set to the camera's view node, the FBX camera's name followed by `_view`;
+- has the field of view the FBX camera was authored with;
+- becomes the scene's **default camera**, taking over the effect settings (bloom, exposure, tonemapping and the rest) of the camera that was the default before, so the scene looks the same through it.
+
+To go back to your own camera, make it the default again from the Hierarchy. The camera is an ordinary scene entity and is saved with the scene. It is only added when the model is dropped, never when a scene loads, so deleting it keeps it deleted; dropping the same model again does not add a second one while the first still follows that node.
+
+The importer writes the `_view` node under every FBX camera, turned to face the way an engine camera looks (FBX cameras look down their own X axis), and records the camera's name and field of view on it. Follow Node copies that node's position and rotation onto its entity every frame, after the animation has been applied, so the camera never lags a frame behind the scene. Scale is not copied: a model's top node often holds the file's unit conversion, and a scaled camera would scale its view with it.
+
+Follow Node works on any entity, not only cameras: anything can ride a moving part by naming it. To set one up by hand, add **Follow Node** and type the node's name into **Target**.
+
 ## The Animator component
 
 Attach **Animator** to a model and it holds everything about how that model animates.

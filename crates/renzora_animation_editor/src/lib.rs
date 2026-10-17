@@ -330,6 +330,7 @@ impl Plugin for AnimationEditorPlugin {
         {
             use renzora::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
+            app.register_inspector(inspector::follow_node_inspector_entry());
         }
         inspector_ui::register(app);
 
