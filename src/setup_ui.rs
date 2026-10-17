@@ -26,7 +26,9 @@
 //!
 //! # Why the chrome is hand-drawn
 //!
-//! The window is borderless and carries the splash screen's title bar: the
+//! Under `renzora::EDITOR_OS_FRAME` the window wears the system frame like the
+//! splash and the editor, and none of what follows is built. Otherwise it is
+//! borderless and carries the splash screen's title bar: the
 //! product mark, the name, the version, and the window controls on the right. It
 //! is the first window of a launch that ends in the splash, so an OS title bar
 //! saying "setup" in the middle of it announced a utility rather than the thing
@@ -172,6 +174,20 @@ fn product_name() -> String {
         .unwrap_or_else(|| "Renzora".to_string())
 }
 
+/// The window's title. Under the OS frame it is the only place the name and
+/// version appear, so the engine's own launch reads like the editor's window
+/// ("Renzora Engine r1-alpha8 - Setup"); a game's keeps its own name and no
+/// engine version, which is nothing to its player.
+fn setup_title() -> String {
+    match product_name().as_str() {
+        "Renzora" => format!(
+            "Renzora Engine {} - Setup",
+            renzora_runtime::renzora::version::display()
+        ),
+        product => format!("{product} - Setup"),
+    }
+}
+
 /// How the setup window ended, which is the caller's whole decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -216,12 +232,14 @@ pub fn run() -> Outcome {
             primary_window: Some(Window {
                 // Not "first run": this window is also how an update and an
                 // edited plugin get rebuilt, and both are ordinary launches.
-                // Only the taskbar reads this, the bar being drawn below.
-                title: format!("{} setup", product_name()),
+                // Without the OS frame only the taskbar reads this, the bar
+                // being drawn below.
+                title: setup_title(),
                 resolution: WindowResolution::new(WINDOW_W, WINDOW_H),
                 resizable: false,
-                // The bar is ours, like the splash's. See the module docs.
-                decorations: false,
+                // Whichever frame the splash and the editor wear. See the
+                // module docs for why ours is drawn here rather than shared.
+                decorations: renzora_runtime::renzora::EDITOR_OS_FRAME,
                 // Centred and alone: this is a modal moment, not a workspace.
                 position: WindowPosition::Centered(MonitorSelection::Primary),
                 ..default()
@@ -233,6 +251,13 @@ pub fn run() -> Outcome {
         .insert_resource(Cancelled(cancelled.clone()))
         .add_systems(Startup, spawn_ui)
         .add_systems(Update, (tick, chrome_input, cancel_on_os_close))
+        // The OS frame's title bar shows the window icon, which nothing else
+        // sets; the drawn bar has the mark in it instead.
+        .add_systems(
+            Update,
+            renzora_runtime::apply_editor_window_icon
+                .run_if(|| renzora_runtime::renzora::EDITOR_OS_FRAME),
+        )
         .run();
 
     if cancelled.load(Ordering::Relaxed) {
@@ -382,7 +407,9 @@ fn spawn_ui(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         ))
         .id();
 
-    let bar = build_title_bar(&mut commands, &mut images);
+    // Under the OS frame the system title bar carries the name and the version.
+    let bar = (!renzora_runtime::renzora::EDITOR_OS_FRAME)
+        .then(|| build_title_bar(&mut commands, &mut images));
 
     // Everything under the bar, filling the rest of the window. The log grows
     // into whatever is left rather than the column being centred with a fixed
@@ -532,7 +559,10 @@ fn spawn_ui(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.entity(install).add_child(install_label);
 
     commands.entity(body).add_children(&[status, track, log, install]);
-    commands.entity(root).add_children(&[bar, body]);
+    if let Some(bar) = bar {
+        commands.entity(root).add_child(bar);
+    }
+    commands.entity(root).add_child(body);
 }
 
 /// The splash screen's title bar: the mark, the product name and the engine

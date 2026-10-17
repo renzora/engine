@@ -90,9 +90,19 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // viewport action. This bar is on screen in every workspace. The document
     // tabs used to fill the rest of this zone; they now sit at the top of the
     // viewport panel (see `build_doc_tabs`).
-    // The Renzora mark leads the bar, ahead of the menu — the spot every desktop
-    // application puts its identity, and a click on it opens About.
-    let brand = brand_mark(commands, fonts);
+    // The Renzora mark leads the bar, ahead of the menu: the spot every desktop
+    // application puts its identity, and a click on it opens About. Under the
+    // OS frame the mark is the window icon in the system title bar instead
+    // (About stays in Help); the web has no title bar, so it keeps ours.
+    let os_title_bar = renzora::EDITOR_OS_FRAME && !cfg!(target_arch = "wasm32");
+    let mut lead = Vec::new();
+    #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
+    if !renzora::EDITOR_OS_FRAME {
+        lead.push(build_traffic_lights(commands));
+    }
+    if !os_title_bar {
+        lead.push(brand_mark(commands, fonts));
+    }
     let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
@@ -102,21 +112,12 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // the strip under this bar is the one that's hidden instead.
     let docs = build_doc_tab_menu_group(commands, fonts, font);
     // macOS puts the window buttons at the LEADING edge, so on that platform
-    // they come before the mark; everywhere else they stay in the trailing zone
-    // where Windows and most Linux desktops put them. One bar, two conventions,
-    // chosen by the platform rather than by a setting — nobody wants Mac buttons
-    // on Windows.
-    #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
-    {
-        let lights = build_traffic_lights(commands);
-        commands
-            .entity(left)
-            .add_children(&[lights, brand, hamburger, session, settings, play, docs]);
-    }
-    #[cfg(not(all(target_os = "macos", not(target_arch = "wasm32"))))]
-    commands
-        .entity(left)
-        .add_children(&[brand, hamburger, session, settings, play, docs]);
+    // they come before the mark (see `lead` above); everywhere else they stay in
+    // the trailing zone where Windows and most Linux desktops put them. One bar,
+    // two conventions, chosen by the platform rather than by a setting: nobody
+    // wants Mac buttons on Windows.
+    lead.extend([hamburger, session, settings, play, docs]);
+    commands.entity(left).add_children(&lead);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
@@ -243,13 +244,16 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
 
     // Not on macOS: the same three actions are already in the leading zone as
     // traffic lights, and a window with controls at both ends is nobody's
-    // convention.
+    // convention. Nor under the OS frame, which has its own.
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
     for (name, action, is_close) in [
         ("minus", WindowAction::Minimize, false),
         ("square", WindowAction::ToggleMaximize, false),
         ("x", WindowAction::Close, true),
-    ] {
+    ]
+    .into_iter()
+    .filter(|_| !renzora::EDITOR_OS_FRAME)
+    {
         let btn = commands
             .spawn((
                 Node {

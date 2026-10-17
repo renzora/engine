@@ -438,8 +438,9 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
         .id();
     // Frame rate and nothing else.
     //
-    // The version moved to the title bar (`chrome::build_title_bar`) — it is
-    // identity, not telemetry. The ABI hash went entirely: it linked to the
+    // The version moved to the title bar (the OS window title, or
+    // `chrome::build_title_bar` without the OS frame): it is identity, not
+    // telemetry. The ABI hash went entirely: it linked to the
     // commit that froze it, which is a question one plugin author asks once, and
     // it was spending the strip's whole left side on a hex string that reads as
     // an error code to everyone else. `renzora::version::display()` in the title

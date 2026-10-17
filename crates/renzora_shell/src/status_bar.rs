@@ -150,21 +150,26 @@ pub(crate) fn build_status_bar(
     // `version::display()` rather than the bare constant: it says `r1-alpha7
     // (dev)` for a local build and the plain tag for a release, so a screenshot
     // of the bar answers "is this a build you shipped?" as well.
-    let version = commands
-        .spawn((
-            Text::new(format!("Renzora {}", renzora::version::display())),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::no_wrap(),
-            Node { flex_shrink: 0.0, ..default() },
-            renzora_ember::widgets::HoverTooltip::new(renzora::version::display()),
-            Name::new("status-version"),
-        ))
-        .id();
-
+    //
+    // Under the OS frame the window title says it, and that is always on screen
+    // too. The web has no title bar, so it keeps this one.
     commands
         .entity(bar)
-        .add_children(&[left_content, lang_picker, dropup, right_content, version]);
+        .add_children(&[left_content, lang_picker, dropup, right_content]);
+    if !renzora::EDITOR_OS_FRAME || cfg!(target_arch = "wasm32") {
+        let version = commands
+            .spawn((
+                Text::new(format!("Renzora {}", renzora::version::display())),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_muted())),
+                bevy::text::TextLayout::no_wrap(),
+                Node { flex_shrink: 0.0, ..default() },
+                renzora_ember::widgets::HoverTooltip::new(renzora::version::display()),
+                Name::new("status-version"),
+            ))
+            .id();
+        commands.entity(bar).add_child(version);
+    }
     bar
 }
 

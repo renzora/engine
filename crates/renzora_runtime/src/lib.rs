@@ -487,12 +487,13 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Renzora".into(),
+                    title: if is_editor { editor_title(None) } else { "Renzora".into() },
                     name: launcher_app_id(is_editor),
                     // Initial values — `apply_window_config` overwrites these
                     // from `CurrentProject` once the project is loaded. The
-                    // editor draws its own title bar so it wants
-                    // `decorations: false`; the runtime uses the OS title
+                    // editor wears the OS frame unless
+                    // `renzora::EDITOR_OS_FRAME` says it draws its own; the
+                    // runtime uses the OS title
                     // bar and needs decorations on **at creation time** so
                     // winit sizes the inner (renderable) area correctly.
                     // Flipping decorations on after the window exists makes
@@ -500,9 +501,10 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // outer size, shrinking the render surface and causing
                     // sprites authored against window.width/height to clip
                     // off the right/bottom.
-                    // Editor: false (it draws its own chrome). Runtime: true
-                    // (OS title bar). Decided at runtime via `is_editor`.
-                    decorations: !is_editor,
+                    // Runtime: true (OS title bar). Editor: whatever
+                    // `EDITOR_OS_FRAME` asks for. Decided at runtime via
+                    // `is_editor`.
+                    decorations: !is_editor || renzora::EDITOR_OS_FRAME,
                     resizable: true,
                     // The editor opens on the splash dashboard, which is a
                     // launcher and not a workspace: it wants a window you can
@@ -769,11 +771,17 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         app.insert_resource(RenderErrorHandler(render_error_policy));
     }
     if is_editor {
-        // Nothing to do. The editor used to maximize here, from back when the
-        // first thing it showed was the editor. It now opens on the splash
-        // dashboard at [`SPLASH_WINDOW`], and the maximize moved to the moment
-        // that stops being true — `renzora_splash`'s
-        // `OnEnter(SplashState::Loading)`, i.e. a project is being opened.
+        // The editor used to maximize here, from back when the first thing it
+        // showed was the editor. It now opens on the splash dashboard at
+        // [`SPLASH_WINDOW`], and the maximize moved to the moment that stops
+        // being true: `renzora_splash`'s `OnEnter(SplashState::Loading)`, i.e. a
+        // project is being opened.
+        app.add_systems(
+            Update,
+            sync_editor_title.run_if(resource_changed_or_removed::<renzora::CurrentProject>),
+        );
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Update, apply_editor_window_icon);
     } else {
         // `apply_window_config` only touches the `Window` component, so it can
         // run on Startup. `apply_window_icon` needs `WinitWindows`, which is
@@ -1146,26 +1154,24 @@ pub fn attach_console() {
 
 /// Apply the icon referenced by `project.config.icon` to the primary window.
 ///
-/// Bevy 0.18 has no public window-icon API on `Window`, so we drop down to
-/// winit via `WinitWindows`. The icon is read from the VFS (rpak) so it
+/// Bevy has no window-icon API on `Window`, so we drop down to winit (see
+/// [`set_native_window_icon`]). The icon is read from the VFS (rpak) so it
 /// works the same whether the project ships single-binary or split.
 ///
-/// `WinitWindows` is created lazily by `bevy_winit` after the winit `resumed`
-/// event, which is past `Startup`. The system therefore runs on `Update`,
-/// wraps the resource in `Option`, and a `Local<bool>` flag short-circuits
-/// once the icon has been applied (or once we've decided there's nothing to
-/// apply).
+/// The winit window is created after the winit `resumed` event, which is past
+/// `Startup`. The system therefore runs on `Update`, and a `Local<bool>` flag
+/// short-circuits once the icon has been applied (or once we've decided there's
+/// nothing to apply).
 fn apply_window_icon(
     mut applied: Local<bool>,
     project: Option<Res<renzora::CurrentProject>>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
-    windows: Option<NonSend<bevy::winit::WinitWindows>>,
     vfs: Option<Res<renzora_engine::vfs::Vfs>>,
+    _main_thread: bevy::ecs::system::NonSendMarker,
 ) {
     if *applied {
         return;
     }
-    let Some(windows) = windows else { return };
     let Some(project) = project else { return };
     let Some(icon_rel) = project.config.icon.as_deref() else {
         // No icon configured — nothing to do, but mark as applied so we stop
@@ -1204,15 +1210,123 @@ fn apply_window_icon(
     };
 
     let Ok(entity) = primary.single() else {
-        // Window entity not yet spawned — try again next frame.
+        // Window entity not yet spawned: try again next frame.
         return;
     };
-    let Some(window) = windows.get_window(entity) else {
-        // WinitWindow not yet bound to entity — try again next frame.
+    // False until the winit window is bound to the entity: try again next frame.
+    *applied = set_native_window_icon(entity, icon);
+}
+
+/// Hand `icon` to the winit window behind `entity`. False if that window does
+/// not exist yet.
+///
+/// Bevy 0.20 keeps the winit windows in the `WINIT_WINDOWS` thread-local
+/// rather than the `NonSend<WinitWindows>` resource it used to be. A system
+/// still asking for the resource gets `None` every frame and gives up
+/// silently, which is how the editor and every exported game lost their window
+/// icon. The thread-local belongs to the main thread, so every caller takes a
+/// `NonSendMarker` to be scheduled there.
+#[cfg(not(target_arch = "wasm32"))]
+fn set_native_window_icon(entity: Entity, icon: winit::window::Icon) -> bool {
+    bevy::winit::WINIT_WINDOWS.with_borrow(|windows| match windows.get_window(entity) {
+        Some(window) => {
+            window.set_window_icon(Some(icon));
+            true
+        }
+        None => false,
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn set_native_window_icon(_entity: Entity, _icon: winit::window::Icon) -> bool {
+    true
+}
+
+/// The editor's window title: the engine and its version, then the open
+/// project's directory once there is one.
+///
+/// The directory rather than the project's name, because two projects can share
+/// a name and the folder is what tells them apart. The project trails rather
+/// than leads because the title bar is where the engine identifies itself now
+/// that the status bar no longer carries the version. Windows left-aligns title
+/// text and offers no way to centre it, so the order is the only placement
+/// there is.
+fn editor_title(project: Option<&std::path::Path>) -> String {
+    let base = format!("Renzora Engine {}", renzora::version::display());
+    match project {
+        Some(dir) if !dir.as_os_str().is_empty() => format!("{base} - {}", dir.display()),
+        _ => base,
+    }
+}
+
+/// Keep the editor's window title naming the open project's directory.
+///
+/// Runs on `CurrentProject` changing (or going away on a return to the
+/// launcher) rather than every frame, and writes only on a real difference, so
+/// a save that touches the project without moving it does not re-title the
+/// window.
+fn sync_editor_title(
+    project: Option<Res<renzora::CurrentProject>>,
+    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    let want = editor_title(project.as_deref().map(|p| p.path.as_path()));
+    let Ok(mut window) = windows.single_mut() else {
         return;
     };
-    window.set_window_icon(Some(icon));
+    if window.title != want {
+        window.title = want;
+    }
+}
+
+/// Put the Renzora mark in the editor's OS title bar and taskbar entry.
+///
+/// The executable carries no icon resource, so without this Windows shows its
+/// generic one. The mark is `resources/icon.png` beside the binary, the same
+/// file the editor's own chrome draws. Like [`apply_window_icon`] it waits for
+/// the winit window, which exists only after winit's `resumed` event.
+///
+/// Public for the setup window, a separate `App` that runs before this one.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn apply_editor_window_icon(
+    mut applied: Local<bool>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    _main_thread: bevy::ecs::system::NonSendMarker,
+) {
+    if *applied {
+        return;
+    }
+    let Ok(entity) = primary.single() else { return };
+    let ready = bevy::winit::WINIT_WINDOWS
+        .with_borrow(|windows| windows.get_window(entity).is_some());
+    if !ready {
+        return;
+    }
+    // From here on there is one attempt: a missing or broken file will not fix
+    // itself next frame.
     *applied = true;
+
+    let Some(path) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("resources").join("icon.png")))
+    else {
+        return;
+    };
+    let img = match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
+        image::load_from_memory(&bytes).map_err(|e| e.to_string())
+    }) {
+        Ok(img) => img.into_rgba8(),
+        Err(e) => {
+            warn!("[editor] No window icon from {}: {}", path.display(), e);
+            return;
+        }
+    };
+    let (w, h) = img.dimensions();
+    match winit::window::Icon::from_rgba(img.into_raw(), w, h) {
+        Ok(icon) => {
+            set_native_window_icon(entity, icon);
+        }
+        Err(e) => warn!("[editor] Invalid window icon {}x{}: {}", w, h, e),
+    }
 }
 
 /// Adds every engine plugin to the App.

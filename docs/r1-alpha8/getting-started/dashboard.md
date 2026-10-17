@@ -4,7 +4,7 @@ Start Renzora without a project and you land on the dashboard. It is where you p
 
 <!-- screenshot: dashboard_projects.png - the dashboard on its Projects page, recent project cards in a grid, rail on the left -->
 
-The window has a rail down the left with one row per page, your account and language picker pinned at the bottom, and a status strip along the bottom with links to the website, YouTube, Discord and GitHub. Drag the window by its title bar.
+The window has a rail down the left with one row per page, your account and language picker pinned at the bottom, and a status strip along the bottom with links to the website, YouTube, Discord and GitHub. The window has your operating system's own frame, so it moves and resizes like any other window.
 
 ## Projects
 

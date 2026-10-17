@@ -490,6 +490,10 @@ pub(crate) fn drag_handle(
     queue: Option<ResMut<WindowActionQueue>>,
 ) {
     let Some(mut queue) = queue else { return };
+    // The OS frame's own title bar moves the window.
+    if renzora::EDITOR_OS_FRAME {
+        return;
+    }
     if q.iter().any(|i| *i == Interaction::Pressed) {
         queue.push(WindowAction::StartDrag);
     }

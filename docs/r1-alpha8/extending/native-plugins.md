@@ -83,7 +83,7 @@ Every plugin is a **directory** under `plugins/`, named by its id.
 
 The editor compiles a plugin the first time it sees one, and again whenever the engine moves under it. That is the only build path, and it is the same from a source checkout as from a downloaded editor: `cargo renzora` stages the engine and the SDK but deliberately does not touch `plugins/`, which belongs to the editor rather than to this repository (see the note at the top of `xtask/src/main.rs`). Drop a plugin directory in and launch.
 
-That build happens before the editor exists, so it gets a window of its own: the setup window, which carries the same title bar as the splash screen (the mark, the product name, the version, and the window controls), a progress bar, and the build log underneath it. It says which plugin is compiling and what the compiler said, and it closes into the editor on its own when the work is done — a plugin that failed to compile is skipped rather than holding the window open, and is waiting for you in **Settings ▸ Editor ▸ Plugins**. The one thing it stops for is a missing Rust toolchain, which it offers to install.
+That build happens before the editor exists, so it gets a window of its own: the setup window, titled with the engine's name and version like the editor's own window, with a progress bar and the build log underneath it. It says which plugin is compiling and what the compiler said, and it closes into the editor on its own when the work is done. A plugin that failed to compile is skipped rather than holding the window open, and is waiting for you in **Settings ▸ Editor ▸ Plugins**. The one thing it stops for is a missing Rust toolchain, which it offers to install.
 
 Closing that window ends the launch. Nothing is lost — the plugins it had not reached are simply still unbuilt, so the next launch opens it again and picks up where it left off — but it does mean × is a way out of a long build, not a way to skip it.
 
@@ -327,7 +327,7 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 That leaves the engine's own crates as the reference, and they are a good one: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it — the systems, the resources, the `&mut World` access, the contract-crate calls — is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
 
-- `crates/renzora_lumen` and `crates/renzora_cloth` are small, self-contained feature plugins.
+- `crates/renzora_cloth` is a small, self-contained feature plugin.
 - The built-in panels are the model for [panel code](panels.md); `crates/renzora_ember/src/widgets/gallery.rs` is the shortest complete example of building a large ember tree from one `build` function.
 - `crates/renzora_rust_script` is the same loading mechanism used a second way, if you want to see the host side.
 

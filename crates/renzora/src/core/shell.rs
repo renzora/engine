@@ -8,6 +8,21 @@
 
 use bevy::prelude::*;
 
+/// Whether the editor window wears the operating system's own frame: its title
+/// bar, its minimize/maximize/close buttons, its edges to resize by.
+///
+/// Off, the editor is borderless and draws all of that itself (the top bar's
+/// window buttons and drag area, the launcher's title bar, eight resize zones
+/// round the edge). The custom frame only answers a press once Bevy has run a
+/// frame and seen it, so under a heavy scene a grab can land late or not at
+/// all, and its edges are thinner than the system's. The OS frame responds
+/// even while the editor is busy, at the cost of a title strip of its own.
+///
+/// Read when the window is created, so changing it takes a restart: switching
+/// decorations on afterwards makes Windows take the title bar's height out of
+/// the existing size and shrinks the render surface.
+pub const EDITOR_OS_FRAME: bool = true;
+
 /// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.
 ///
 /// `renzora_shell` seeds this with each panel's title/icon at startup (its

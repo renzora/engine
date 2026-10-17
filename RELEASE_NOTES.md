@@ -1,5 +1,24 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-17 19:03
+- feat(editor): the window title reads "Renzora Engine" with the version and the open project's folder, replacing the version in the status bar
+- feat(editor): the editor, launcher and setup windows show the Renzora icon in their title bar and taskbar entry
+- fix(runtime): an exported game shows the window icon set in its project again
+
+## 2026-10-17 17:21
+- feat(editor): the editor and launcher windows use the operating system's own frame again, so they move, snap and resize like any other window
+
+## 2026-10-17 16:08
+- refactor(rendering): Lumen and screen-space GI are removed, leaving Solari as the engine's global illumination
+
+## 2026-10-16 18:28
+- feat(viewport): dropping a model that brought its own camera adds a default scene camera that rides it with the source's field of view, so Play shows the imported shot
+- fix(import): FBX materials that share a name each keep their own material instead of rendering with the other's
+
+## 2026-10-16 16:30
+- feat(import): an FBX animated on its objects (doors, machines, a fly-through camera) imports with its moving parts intact and a clip that plays them
+- feat(animation): a Follow Node component keeps an entity on a named node, so a scene camera can ride an imported camera
+
 ## 2026-10-16 13:35
 - perf(viewport): the viewport renders only when the scene changes, so a heavy scene no longer slows the rest of the editor while nothing moves; Display > Render > Realtime renders every frame
 

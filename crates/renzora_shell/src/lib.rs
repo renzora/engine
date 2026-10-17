@@ -857,8 +857,11 @@ fn spawn_shell(
         .add_children(&[top_bar, doc_tabs, dock_wrap, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
-    let grips = build_resize_zones(commands);
-    commands.entity(root).add_children(&grips);
+    // The OS frame brings its own edges.
+    if !renzora::EDITOR_OS_FRAME {
+        let grips = build_resize_zones(commands);
+        commands.entity(root).add_children(&grips);
+    }
 }
 
 /// Narrow the hierarchy — and Add Entity — to UI canvases while the UI editor is

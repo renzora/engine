@@ -270,7 +270,10 @@ fn spawn_splash(
     let shell = build_shell(commands, fonts, rail);
 
     commands.entity(root).add_children(&[post_view, shell]);
-    chrome::build_resize_zones(commands, root);
+    // The OS frame brings its own edges.
+    if !renzora::EDITOR_OS_FRAME {
+        chrome::build_resize_zones(commands, root);
+    }
 }
 
 fn fullscreen_abs() -> Node {
@@ -308,7 +311,9 @@ fn build_shell(
         ))
         .id();
 
-    let title_bar = chrome::build_title_bar(commands, fonts);
+    // Under the OS frame the system title bar carries the mark, the name and the
+    // version, so ours would only repeat it.
+    let title_bar = (!renzora::EDITOR_OS_FRAME).then(|| chrome::build_title_bar(commands, fonts));
 
     let body = commands
         .spawn((
@@ -328,7 +333,10 @@ fn build_shell(
 
     let status = account::build_status_bar(commands, fonts);
 
-    commands.entity(shell).add_children(&[title_bar, body, status]);
+    if let Some(title_bar) = title_bar {
+        commands.entity(shell).add_child(title_bar);
+    }
+    commands.entity(shell).add_children(&[body, status]);
     shell
 }
 
