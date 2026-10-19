@@ -10,6 +10,8 @@ The effects published on the marketplace (CRT, film grain, pixelation, toon and 
 2. **Add Component ▸ Post Process**.
 3. Drag the effect's `.wesl` from the Assets panel onto the drop zone at the top of the component.
 
+Two shortcuts do the same: drop the `.wesl` on the **viewport** and it joins the scene's Post Process list (an existing one first, else the World Environment's, else the default camera's), or drop it on a **Hierarchy** row to add it to that entity's list. Either way the entity is selected so the inspector shows the effect. An effect file never goes on a mesh as a material: it is a different kind of shader, and the drop targets refuse it as one.
+
 Each effect becomes a section with its sliders, an on switch, move up and move down, and remove. Effects run in list order, each one reading what the one above it wrote, so a blur above a pixelation is a different picture from the same two the other way round.
 
 A file that is not a usable effect still appears in the list, with a red message saying why, so a typo in a shader you are writing shows up where you are looking. The same message goes to the Console.

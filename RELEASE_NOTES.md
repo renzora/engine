@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 05:38
+- fix(editor): dropping a post-process effect file on the viewport no longer crashes the editor; it adds the effect to the scene's Post Process list
+- feat(editor): dropping an effect file on a Hierarchy row adds it to that entity's Post Process list
+- fix(materials): a scene that names an effect file as a mesh's material loads with a Console warning instead of crashing
+
 ## 2026-10-19 05:02
 - feat(rendering): a post-process effect is a single `.wesl` file that declares its own sliders, and a Post Process component runs an ordered list of them on a camera
 - feat(editor): drag an effect file onto the Post Process inspector to add it, then reorder, switch off or tune it there

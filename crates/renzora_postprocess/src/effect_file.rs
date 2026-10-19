@@ -109,9 +109,10 @@ pub enum CompareOp {
 }
 
 /// Whether a shader file is meant as an effect: it carries the `@effect`
-/// header. Cheap enough for a drop target to call on every hover.
+/// header. The contract crate's test, so the editor's drop targets and the
+/// renderer agree on what is an effect.
 pub fn is_effect(source: &str) -> bool {
-    header(source).is_some()
+    renzora::is_effect_source(source)
 }
 
 /// Parse an effect. `fallback_name` names it when the header does not, and

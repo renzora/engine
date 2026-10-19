@@ -21,7 +21,8 @@ pub struct MaterialRef(pub String);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MaterialTarget {
     /// A 3D mesh (`Mesh3d`): every `.material` domain but Sprite, and a
-    /// hand-written `.wgsl` / `.wesl` code shader.
+    /// hand-written `.wgsl` / `.wesl` code shader that is not a post-process
+    /// effect.
     Mesh,
     /// A 2D sprite: a Sprite-domain `.material`.
     Sprite,
@@ -38,6 +39,11 @@ impl MaterialTarget {
     pub fn of_file(path: &std::path::Path) -> Option<Self> {
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
+            // A post-process effect is a shader too, but compiled as a mesh's
+            // surface it binds the screen texture where the mesh pipeline puts
+            // the view uniform, and wgpu aborts the process. It is not a
+            // material at all.
+            "wgsl" | "wesl" if crate::post_effects::is_effect_file(path) => None,
             "wgsl" | "wesl" => Some(Self::Mesh),
             "material" => {
                 #[derive(serde::Deserialize)]
@@ -138,6 +144,11 @@ mod tests {
         assert_eq!(MaterialTarget::of_file(&surface), Some(MaterialTarget::Mesh));
         assert_eq!(MaterialTarget::of_file(&old), Some(MaterialTarget::Mesh));
         assert_eq!(MaterialTarget::of_file(&dir.join("code.wesl")), Some(MaterialTarget::Mesh));
+        // A post-process effect is not a material: compiled as one it crashes
+        // wgpu, so nothing may offer to put it on a mesh.
+        let effect = dir.join("crt.wesl");
+        std::fs::write(&effect, "// @effect(name = \"CRT\")\n").unwrap();
+        assert_eq!(MaterialTarget::of_file(&effect), None);
         assert_eq!(MaterialTarget::of_file(&dir.join("missing.material")), None);
         assert_eq!(MaterialTarget::of_file(&dir.join("tree.png")), None);
         let _ = std::fs::remove_dir_all(&dir);

@@ -129,7 +129,7 @@ pub(crate) fn arm_hier_asset_drop(
     over_overlay: Option<Res<PointerOverOverlay>>,
     wearers: Query<(Has<Mesh3d>, Has<Sprite>)>,
     children: Query<&Children>,
-    mut target_of: Local<Option<(PathBuf, Option<MaterialTarget>)>>,
+    mut target_of: Local<Option<(PathBuf, Option<MaterialTarget>, bool)>>,
     mut refusing: Local<bool>,
     mut cursor: ResMut<DropCursorRequest>,
     mut armed: ResMut<ArmedHierAssetDrop>,
@@ -175,15 +175,29 @@ pub(crate) fn arm_hier_asset_drop(
             .cloned()
             .collect();
         // A material only arms over a row it can be worn by: a Sprite
-        // material over a sprite, any other over a mesh. Read once per drag,
-        // not per frame.
+        // material over a sprite, any other over a mesh. A post-process effect
+        // shares the shader extensions but is not a material; it goes on the
+        // row's Post Process list, whatever the row is. Anything else with a
+        // material extension that is neither (an unreadable file) is refused
+        // rather than guessed at. Read once per drag, not per frame.
         if kind == AttachKind::Material {
             let first = paths.first()?;
-            if target_of.as_ref().map(|(p, _)| p) != Some(first) {
-                *target_of = Some((first.clone(), MaterialTarget::of_file(first)));
+            if target_of.as_ref().map(|(p, _, _)| p) != Some(first) {
+                *target_of = Some((
+                    first.clone(),
+                    MaterialTarget::of_file(first),
+                    renzora::is_effect_file(first),
+                ));
             }
-            if let Some((_, Some(material))) = target_of.as_ref() {
-                if !subtree_fits(target, *material, &wearers, &children) {
+            match target_of.as_ref() {
+                Some((_, Some(material), _)) => {
+                    if !subtree_fits(target, *material, &wearers, &children) {
+                        refuse = true;
+                        return None;
+                    }
+                }
+                Some((_, None, true)) => {}
+                _ => {
                     refuse = true;
                     return None;
                 }
@@ -272,12 +286,13 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
 
     let applied = match kind {
         AttachKind::Script | AttachKind::Blueprint => attach_scripts(world, target, kind, &rel),
-        AttachKind::Material => assign_material(
-            world,
-            target,
-            &rel[0],
-            MaterialTarget::of_file(&paths[0]).unwrap_or(MaterialTarget::Mesh),
-        ),
+        AttachKind::Material => match MaterialTarget::of_file(&paths[0]) {
+            Some(material) => assign_material(world, target, &rel[0], material),
+            None if renzora::is_effect_file(&paths[0]) => add_effect(world, target, &rel[0]),
+            // Not a material and not an effect. Compiling an unknown shader
+            // as a mesh's surface is what used to crash wgpu.
+            None => false,
+        },
     };
     if !applied {
         return;
@@ -301,6 +316,20 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
                 .replace("{entity}", &entity_name),
         );
     }
+}
+
+/// Append a post-process effect to `target`'s Post Process list, adding the
+/// list if the entity has none.
+fn add_effect(world: &mut World, target: Entity, rel: &str) -> bool {
+    match world.get_mut::<renzora::PostEffects>(target) {
+        Some(mut list) => list.push(rel),
+        None => {
+            let mut list = renzora::PostEffects::default();
+            list.push(rel);
+            world.entity_mut(target).insert(list);
+        }
+    }
+    true
 }
 
 fn file_name(path: &std::path::Path) -> String {

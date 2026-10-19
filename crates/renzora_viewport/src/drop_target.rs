@@ -34,6 +34,8 @@ use crate::ViewportState;
 /// Which native commit a hovering payload routes to.
 #[derive(Clone, Copy)]
 enum DropKind {
+    /// A post-process effect shader, which joins the scene's Post Process list.
+    Effect,
     Material,
     Scene,
     Sprite,
@@ -57,8 +59,15 @@ pub(crate) struct ArmedViewportDrop(Option<Armed>);
 
 /// Classify a payload extension into a [`DropKind`]. `None` if the payload isn't
 /// a material/scene/sprite drop (or is a sprite drop outside 2D view).
-fn classify(payload: &AssetDragPayload, view: ViewportView) -> Option<DropKind> {
-    if payload.matches_extensions(crate::material_drop::MATERIAL_EXTENSIONS) {
+///
+/// `is_effect` says whether the payload is a post-process effect shader. It is
+/// read from the file, so the caller caches it per drag rather than this
+/// reading the disk every hovered frame. Checked before materials: an effect is
+/// a `.wesl` too, and taken for a material it crashes wgpu.
+fn classify(payload: &AssetDragPayload, view: ViewportView, is_effect: bool) -> Option<DropKind> {
+    if is_effect {
+        Some(DropKind::Effect)
+    } else if payload.matches_extensions(crate::material_drop::MATERIAL_EXTENSIONS) {
         Some(DropKind::Material)
     } else if payload.matches_extensions(crate::particle_drop::PARTICLE_EXTENSIONS) {
         Some(DropKind::Particle)
@@ -94,6 +103,7 @@ pub fn arm_viewport_drop(
     viewport: Option<Res<ViewportState>>,
     window: Query<&Window, With<PrimaryWindow>>,
     mut target_of: Local<Option<(PathBuf, Option<MaterialTarget>)>>,
+    mut effect_of: Local<Option<(PathBuf, bool)>>,
     mut refusing: Local<bool>,
     mut cursor: ResMut<DropCursorRequest>,
     mut armed: ResMut<ArmedViewportDrop>,
@@ -139,7 +149,11 @@ pub fn arm_viewport_drop(
         armed.0 = None;
         return;
     }
-    let Some(kind) = classify(&payload, view) else {
+    if effect_of.as_ref().map(|(p, _)| p) != Some(&payload.path) {
+        *effect_of = Some((payload.path.clone(), renzora::is_effect_file(&payload.path)));
+    }
+    let is_effect = effect_of.as_ref().is_some_and(|(_, e)| *e);
+    let Some(kind) = classify(&payload, view, is_effect) else {
         set_refusing(false, &mut cursor);
         armed.0 = None;
         return;
@@ -199,6 +213,7 @@ pub fn commit_viewport_drop(
         return;
     };
     cmds.push(move |world: &mut World| match kind {
+        DropKind::Effect => crate::effect_drop::commit_effect_drop(world, path),
         DropKind::Material => crate::material_drop::commit_material_drop(world, cursor, vp_rect, path),
         DropKind::Scene => crate::scene_drop::commit_scene_drop(world, cursor, vp_rect, path),
         DropKind::Sprite => crate::sprite_drop::commit_sprite_drop(world, cursor, vp_rect, path),

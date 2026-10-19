@@ -52,6 +52,37 @@ fn default_true() -> bool {
     true
 }
 
+/// Whether shader text is a post-process effect: it carries the `// @effect`
+/// header.
+///
+/// Here rather than beside the effect parser so the editor's drop targets can
+/// tell an effect from a material shader without linking the renderer. That
+/// distinction is not cosmetic: an effect compiled as a mesh's surface shader
+/// binds the screen texture where the mesh pipeline puts the view uniform, and
+/// wgpu aborts the process at pipeline creation.
+pub fn is_effect_source(source: &str) -> bool {
+    source.lines().any(|line| {
+        let Some(comment) = line.trim_start().strip_prefix("//") else {
+            return false;
+        };
+        let Some(rest) = comment.trim_start().strip_prefix("@effect") else {
+            return false;
+        };
+        // `@effect` alone or `@effect(...)`, not `@effects`.
+        rest.chars().next().is_none_or(|c| c == '(' || c.is_whitespace())
+    })
+}
+
+/// [`is_effect_source`] for a file on disk. False for anything but a readable
+/// `.wesl` or `.wgsl`.
+pub fn is_effect_file(path: &std::path::Path) -> bool {
+    let is_shader = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("wesl") || e.eq_ignore_ascii_case("wgsl"));
+    is_shader && std::fs::read_to_string(path).is_ok_and(|s| is_effect_source(&s))
+}
+
 impl PostEffect {
     /// A newly added effect: on, with every field at its shader default.
     pub fn new(shader: impl Into<String>) -> Self {
@@ -89,6 +120,15 @@ impl PostEffects {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_effect_header_marks_a_shader_as_an_effect() {
+        assert!(is_effect_source("// @effect(name = \"CRT\")\nfn f() {}"));
+        assert!(is_effect_source("  //   @effect\n"));
+        assert!(!is_effect_source("// @effects are nice\n"));
+        assert!(!is_effect_source("fn f() {} // mentions @effect later\n"));
+        assert!(!is_effect_source("@fragment fn fragment() {}"));
+    }
 
     #[test]
     fn a_value_is_set_by_name_and_read_back() {

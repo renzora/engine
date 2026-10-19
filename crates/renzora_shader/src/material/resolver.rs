@@ -882,6 +882,18 @@ fn resolve_raw_shader(
         }
     };
 
+    // A post-process effect binds the screen texture where a mesh pipeline
+    // puts the view uniform, so building a mesh material from one aborts the
+    // process in wgpu at pipeline creation. The drop targets refuse it; this
+    // covers a scene that already names one as a mesh's material.
+    if renzora::is_effect_source(&source) {
+        renzora::console_log::console_warn(
+            "Material",
+            format!("{asset_path} is a post-process effect, not a material. Add it to a Post Process component instead."),
+        );
+        return None;
+    }
+
     let language = if path.ends_with(".wesl") {
         "WESL".to_string()
     } else {

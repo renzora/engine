@@ -31,6 +31,13 @@ pub(crate) fn commit_material_drop(
     vp_rect: Rect,
     path: PathBuf,
 ) {
+    // An effect shader shares the `.wesl` extension but is not a material:
+    // put on a mesh it crashes wgpu. Whatever routed it here, it goes to the
+    // Post Process list instead.
+    if renzora::is_effect_file(&path) {
+        crate::effect_drop::commit_effect_drop(world, path);
+        return;
+    }
     // A Sprite material lands on the sprite under the pointer, which only the
     // 2D view arms a drop for; anything else on the mesh a ray hits.
     let picked = match MaterialTarget::of_file(&path) {
