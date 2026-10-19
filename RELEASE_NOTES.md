@@ -1,5 +1,22 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 20:59
+- fix(rendering): scenes with many point lights no longer flash wrong lighting for a few frames on load
+- fix(rendering): Solari no longer warns about a missing sky light at night
+- fix(editor): the striped loading bar's lighter bands are a darker blue
+
+## 2026-10-19 14:18
+- fix(editor): pressing Play opens the Game panel with the running game in it, instead of turning the viewport into a blurry square
+- fix(editor): an embedded game keeps its place in the Game panel if its window is restyled
+
+## 2026-10-19 14:02
+- fix(rendering): the night sky is dark again instead of a flat grey overcast
+
+## 2026-10-19 13:26
+- fix(rendering): Solari's Suppress Shadow Maps works again, so lights no longer render shadow maps nothing reads while Solari is on
+- perf(rendering): the Solari denoiser's blur passes read a compact per-pixel guide instead of decoding the G-buffer for every tap
+- feat(rendering): Solari reports separate GPU timings for each lighting and denoiser stage
+
 ## 2026-10-19 12:23
 - refactor(rendering): the opt-in DLSS Ray Reconstruction build is gone, since Solari has its own denoiser
 

@@ -6,6 +6,8 @@ How Renzora turns a scene into a frame: Bevy's PBR/HDR core, three families of c
 
 Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.20's built-in PBR pipeline**: physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render passes and a large family of effect plugins. Every shader in that pipeline is WESL, the shader language Bevy 0.20 compiles; shaders still written in the old `#import` dialect are translated as they load (see [Shaders](./shaders.md)).
 
+Clustered lighting's GPU light lists start at 4096 Z slices and 262,144 light indices (`renzora_lighting`), four times Bevy's default, so a scene with dozens of point lights does not render a few frames of wrong lighting while Bevy grows them.
+
 Each viewport camera is a `Camera3d`. Cameras are spawned with **`DepthPrepass` + `NormalPrepass`** attached (plus `MotionVectorPrepass` for temporal reprojection), because masked materials need normals in the prepass and screen-space effects read depth and normals.
 
 > Bevy (0.19 and 0.20) specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.

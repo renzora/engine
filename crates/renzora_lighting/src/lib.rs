@@ -95,9 +95,30 @@ fn handle_sun_script_actions(trigger: On<renzora::ScriptAction>, mut sun_query: 
     }
 }
 
+/// Start Bevy's GPU light-clustering lists big enough for a scene with many
+/// point lights.
+///
+/// Bevy sizes them small (1024 Z slices, 65536 light indices), and only grows
+/// them after the GPU has overflowed one and the overflow was read back, so a
+/// scene with dozens of lamps (the Bistro has 90) rendered a few frames of
+/// wrong lighting on load and again whenever the camera turned to face more of
+/// them, each time with a warning. A view's lists are created at these sizes
+/// the first time it renders, so this has to run before then. At four bytes an
+/// index the larger list is 1 MiB per active view.
+fn size_light_clusters(settings: Option<ResMut<bevy::light::cluster::GlobalClusterSettings>>) {
+    const Z_SLICES: usize = 4096;
+    const INDICES: usize = 262_144;
+    let Some(gpu) = settings.and_then(|s| s.into_inner().gpu_clustering.as_mut()) else {
+        return;
+    };
+    gpu.initial_z_slice_list_capacity = gpu.initial_z_slice_list_capacity.max(Z_SLICES);
+    gpu.initial_index_list_capacity = gpu.initial_index_list_capacity.max(INDICES);
+}
+
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] LightingPlugin");
+        app.add_systems(Startup, size_light_clusters);
         app.add_systems(Update, sync_sun);
         app.add_observer(handle_sun_script_actions);
     }
