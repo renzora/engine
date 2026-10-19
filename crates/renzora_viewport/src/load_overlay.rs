@@ -169,13 +169,17 @@ pub(crate) fn striped_bar(commands: &mut Commands) -> Entity {
 /// logical pixel of the stripe layer, so nothing is stretched. Bands run
 /// along `x + y`, which makes the pattern repeat every [`STRIPE_PERIOD`]
 /// pixels across.
+///
+/// The alpha is kept low so a band is only a shade lighter than the track: at
+/// 70 the bands read as a separate pale blue that glared on a dark panel.
 fn stripe_image() -> Image {
+    const BAND_ALPHA: u8 = 32;
     let width = BAR_WIDTH + STRIPE_PERIOD;
     let mut data = Vec::with_capacity((width * BAR_HEIGHT * 4) as usize);
     for y in 0..BAR_HEIGHT {
         for x in 0..width {
             let lit = (x + y) % STRIPE_PERIOD < STRIPE_PERIOD / 2;
-            data.extend_from_slice(&[255, 255, 255, if lit { 70 } else { 0 }]);
+            data.extend_from_slice(&[255, 255, 255, if lit { BAND_ALPHA } else { 0 }]);
         }
     }
     Image::new(

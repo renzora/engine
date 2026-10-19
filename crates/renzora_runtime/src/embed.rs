@@ -50,37 +50,59 @@ pub(crate) fn register(app: &mut App) {
     let _ = app;
 }
 
-/// Make the game's window a child of the editor's, once the native window
-/// exists. One attempt per frame until it does, then never again.
+/// Keep the game's window a child of the editor's.
+///
+/// Checked every frame rather than done once, because it does not stay done:
+/// winit holds its own record of the window's style and writes the whole style
+/// back from it whenever it applies a window change, which drops `WS_CHILD` and
+/// turns the window top-level again. The editor finds the game's window by its
+/// parent, so a game that lost it was never found, never shown, and Play
+/// looked like it did nothing. Two reads a frame cost nothing next to that.
+///
+/// **Main thread only** (`NonSendMarker`). Changing a window's style or parent
+/// from a thread that does not own it sends the owner synchronous messages and
+/// waits for the answer. Run on a worker, this waited on the main thread, which
+/// was itself inside the frame waiting on the worker: the game deadlocked on
+/// its first frame with its window still hidden, and the Game panel never got
+/// anything to show.
 #[cfg(target_os = "windows")]
 fn adopt_embed_parent(
-    mut done: Local<bool>,
+    _main_thread: bevy::ecs::system::NonSendMarker,
+    mut adoptions: Local<u32>,
+    mut warned: Local<bool>,
     windows: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
 ) {
     use winit::raw_window_handle::RawWindowHandle;
 
-    if *done {
-        return;
-    }
     let (Some(parent), Ok(handle)) = (embed_parent(), windows.single()) else {
         return;
     };
     let RawWindowHandle::Win32(win) = handle.get_window_handle() else {
-        *done = true;
         return;
     };
-    *done = true;
     let hwnd = win.hwnd.get();
     // SAFETY: `hwnd` is this process's own live window, and `parent` is a
     // window handle; Win32 validates it and fails the call if it is stale.
     unsafe {
         // A window style is a 32-bit DWORD, whatever the pointer-sized API.
         let style = win32::GetWindowLongPtrW(hwnd, win32::GWL_STYLE) as u32;
+        if style & win32::WS_CHILD != 0 && win32::GetParent(hwnd) == parent {
+            return;
+        }
         let style = (style & !win32::TOP_LEVEL_STYLES) | win32::WS_CHILD | win32::WS_CLIPSIBLINGS;
         win32::SetWindowLongPtrW(hwnd, win32::GWL_STYLE, style as i32 as isize);
         if win32::SetParent(hwnd, parent) == 0 {
-            warn!("[embed] could not place the game inside the editor; it stays hidden");
+            // Once: this is retried every frame, and a line per frame is
+            // enough log traffic to stall the game.
+            if !std::mem::replace(&mut *warned, true) {
+                warn!("[embed] could not place the game inside the editor; it stays hidden");
+            }
+            return;
         }
+    }
+    *adoptions += 1;
+    if *adoptions == 2 {
+        info!("[embed] the game's window lost its place in the editor and was put back");
     }
 }
 
@@ -99,5 +121,6 @@ mod win32 {
         pub fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
         pub fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
         pub fn SetParent(child: isize, parent: isize) -> isize;
+        pub fn GetParent(hwnd: isize) -> isize;
     }
 }

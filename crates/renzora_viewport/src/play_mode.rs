@@ -100,9 +100,15 @@ pub fn sync_game_launched(runtime: Res<ExternalRuntime>, mut play_mode: ResMut<P
 
 /// Bring the Game panel to the front, adding it beside the viewport when the
 /// layout doesn't have one, so the game is on screen when it starts.
+///
+/// Adding the tab must also arm [`DockDirty`](renzora_ember::dock::DockDirty).
+/// Without it the tree said the Game tab was the active one while the UI was
+/// never rebuilt: the viewport, no longer its leaf's active tab, dropped to the
+/// small stub target a hidden viewport renders at and showed as a blurry
+/// square, and the Game panel the game's window is placed over never existed.
 fn show_game_panel(world: &mut World) {
     use crate::game_panel::GAME_PANEL_ID;
-    use renzora_ember::dock::{Dock, FixedDock, FocusPanelRequest};
+    use renzora_ember::dock::{Dock, DockDirty, FixedDock, FocusPanelRequest};
 
     let present = world
         .get_resource::<Dock>()
@@ -120,5 +126,8 @@ fn show_game_panel(world: &mut World) {
         if !dock.tree.add_tab("viewport", GAME_PANEL_ID.to_string()) {
             dock.tree.focus_or_add_panel(GAME_PANEL_ID);
         }
+    }
+    if let Some(mut dirty) = world.get_resource_mut::<DockDirty>() {
+        dirty.0 = true;
     }
 }
