@@ -68,9 +68,6 @@ pub mod editor_image;
 pub mod embed;
 /// Dedicated-server / host-server startup, behind the `networking` feature.
 pub mod server;
-/// DLSS Ray Reconstruction for Solari, only in a `--dlss` build.
-#[cfg(feature = "dlss")]
-mod dlss;
 mod plugins;
 mod render_scale;
 /// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.
@@ -452,8 +449,6 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // Must run before `DefaultPlugins` so we win the `IoTaskPool::get_or_init`
     // race — see the function doc for why the IO workers need a larger stack.
     init_io_task_pool_with_large_stack();
-    #[cfg(feature = "dlss")]
-    dlss::insert_project_id(app);
     let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
@@ -698,8 +693,6 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     };
 
     app.add_plugins(plugins);
-    #[cfg(feature = "dlss")]
-    app.add_plugins(dlss::DlssSolariPlugin);
 
     // From here the subscriber exists, so these lines actually appear.
     #[cfg(feature = "xr")]
@@ -944,10 +937,6 @@ fn is_transient_surface_error(description: &str) -> bool {
 pub fn add_xr_rendering(app: &mut App) {
     use bevy::window::{PresentMode, Window, WindowPlugin};
     init_io_task_pool_with_large_stack();
-    // `DefaultPlugins` carries DLSS's init plugin in a `--dlss` build, which
-    // panics without the id even though VR never runs Solari.
-    #[cfg(feature = "dlss")]
-    dlss::insert_project_id(app);
     let base = DefaultPlugins
         .build()
         .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
@@ -1008,9 +997,6 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     // scene fans out many concurrent GLTF loads onto the IO pool, so its
     // workers need the larger stack too. Must precede `DefaultPlugins`.
     init_io_task_pool_with_large_stack();
-    // Same reason as the VR path: DLSS's init plugin needs the id to exist.
-    #[cfg(feature = "dlss")]
-    dlss::insert_project_id(app);
 
     app.add_plugins(
         DefaultPlugins

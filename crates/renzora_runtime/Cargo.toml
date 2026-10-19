@@ -81,12 +81,6 @@ static_scripts = ["renzora_rust_script/static_scripts"]
 # it's paired with an ABI-moving Bevy feature set (CLAUDE.md §3) and only ever
 # built explicitly for profiling.
 profiling = []
-# NVIDIA DLSS Ray Reconstruction as Solari's denoiser (`cargo renzora --dlss`).
-# NOT in default, and never in CI: building it needs NVIDIA's DLSS SDK
-# (`DLSS_SDK`), the Vulkan SDK (`VULKAN_SDK`) and clang, and the SDK's licence
-# forbids bundling it. Like `profiling` it moves the shared Bevy's feature set,
-# so installed plugins rebuild on the next launch. See `src/dlss.rs`.
-dlss = ["bevy/dlss"]
 # The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped

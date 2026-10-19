@@ -88,8 +88,8 @@ members = [
 #   meshlet, meshlet_processor                    ENABLED below (experimental
 #                                                   virtual geometry)
 #   (bevy_solari IS enabled below — it backs the renzora_solari plugin.)
-#   dlss, force_disable_dlss                      NVIDIA proprietary SDK; opt-in
-#                                                   via the `dlss` feature below
+#   dlss, force_disable_dlss                      NVIDIA proprietary SDK; never
+#                                                   built: Solari has its own denoiser
 #   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
 #     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
 #     bevy_ci_testing, bevy_debug_stepping,         all OFF — `trace_tracy` too
@@ -417,12 +417,6 @@ static_scripts = ["renzora_runtime?/static_scripts"]
 # Bevy already frame-marks, and the `plugins/tracy` bridge marking too would
 # double-count every frame.
 profiling = ["bevy/trace", "bevy/trace_tracy", "renzora_runtime?/profiling"]
-# NVIDIA DLSS Ray Reconstruction, which denoises Solari (`cargo renzora --dlss`).
-# Out of `default` because building it needs NVIDIA's DLSS SDK, the Vulkan SDK
-# and clang on the machine (see `crates/renzora_runtime/src/dlss.rs`). It moves
-# the shared Bevy's feature set like `profiling` does, so installed plugins
-# rebuild on the next launch.
-dlss = ["bevy/dlss", "renzora_runtime?/dlss"]
 # The web lane's entry point: `--no-default-features --features wasm`, which is
 # how it drops `dynamic_linking` and `xr` (neither exists on wasm).
 #

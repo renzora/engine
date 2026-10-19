@@ -342,8 +342,7 @@ How it works, in order:
 4. **Composite.** The material factors are multiplied back in and emissive is
    added.
 
-It steps aside on a camera that has DLSS Ray Reconstruction, which denoises the
-raw image itself. It is written from the published research (SVGF and the
+It is written from the published research (SVGF and the
 edge-avoiding a-trous filter); no code comes from any vendor's denoiser SDK.
 
 Known limits of this first version: lighting changes catch up over up to 32
@@ -385,59 +384,10 @@ places, each marked `RENZORA PATCH` in the source:
   higher-contrast than the forward pipeline, most visibly with the sun near the
   horizon (little reaches street level) or directly overhead (vertical facades
   get no direct light at all).
-- **No DLSS denoiser in a normal build.** The image relies on Solari's ReSTIR
-  sample reuse, which every [Quality](#quality) preset above `Low` turns on. It
-  stays somewhat noisy, so give it a couple of seconds to converge after a
-  change. An opt-in build adds DLSS; see [DLSS Ray Reconstruction](#dlss-ray-reconstruction).
-
-## DLSS Ray Reconstruction
-
-DLSS Ray Reconstruction is NVIDIA's denoiser for ray-traced images, and the one
-Bevy designs Solari around. It also renders at a lower resolution and upscales,
-so it is faster as well as cleaner. It is not in the normal build, because
-building it needs NVIDIA's SDK on your machine, and the SDK's licence does not
-allow it to be bundled.
-
-It is not a DLL you can drop in. The DLLs are only what ships beside the
-executable; compiling it links NVIDIA's library and reads its headers.
-
-**Requirements**
-
-- An NVIDIA RTX GPU.
-- The **Vulkan** renderer backend (Settings > Renderer). DLSS does not work on
-  DX12 or Metal.
-- Windows or Linux.
-
-**Building it**
-
-1. Clone the [NVIDIA DLSS SDK](https://github.com/NVIDIA/DLSS) at tag
-   `v310.5.3`, and set the `DLSS_SDK` environment variable to that folder.
-2. Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) and check that
-   `VULKAN_SDK` is set.
-3. Make sure `clang` is on your `PATH`.
-4. Build with `cargo renzora` as usual, from a new terminal so it sees the
-   variables.
-
-Once all three are present, every `cargo renzora` build includes DLSS by
-itself and says so in its output; `--no-dlss` leaves it out. `--dlss` insists
-on it, and stops straight away, naming what is missing, if either variable is
-unset. A DLSS build copies `nvngx_dlss.dll` and `nvngx_dlssd.dll` from the SDK beside the
-executable. Like any change to the engine's Bevy features, the first launch
-rebuilds your installed plugins.
-
-**What it does**
-
-While Solari is on, the camera gets DLSS Ray Reconstruction. The camera's TAA is
-set aside, because the two are both temporal passes and would stack, and it
-comes back when Solari is switched off.
-
-The Console says at startup whether Ray Reconstruction is available. If it is
-not (wrong backend, no RTX card, missing DLL), Solari carries on with ReSTIR
-alone.
-
-If you ship a game built this way, the two DLLs have to ship beside it, along
-with NVIDIA's licence text from section 9.5 of the SDK's
-`DLSS_Programming_Guide_Release.pdf`.
+- **No DLSS.** Renzora does not build NVIDIA's DLSS Ray Reconstruction; the
+  [denoiser](#denoiser) does its job on every vendor's hardware. There is
+  therefore no upscaling either: Solari traces at the viewport's full
+  resolution.
 - **Cutout geometry over-shadows.** `Mask` materials are traced as solid quads
   (Solari has no alpha-tested any-hit shading), so foliage cards cast fuller
   shadows than they should.

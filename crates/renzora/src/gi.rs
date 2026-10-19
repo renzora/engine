@@ -121,11 +121,10 @@ fn denoise_default() -> bool {
 /// counts and bounce depth of Bevy's `SolariLighting`.
 ///
 /// The step that matters most is ReSTIR, which `Low` turns off. It reuses
-/// samples across neighbouring pixels and past frames, and it is the only
-/// denoising this build has: Bevy's other one is DLSS Ray Reconstruction, which
-/// needs NVIDIA's SDK at build time and is not enabled. So `Low` is the fastest
-/// and visibly the grainiest; it is meant for moving around a scene, not for
-/// judging lighting.
+/// samples across neighbouring pixels and past frames, so the denoiser
+/// (`SolariGi::denoise`) starts from far fewer missing samples. Without it the
+/// denoiser has to blur much harder, so `Low` is the fastest and visibly the
+/// softest; it is meant for moving around a scene, not for judging lighting.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 #[reflect(Default)]
 pub enum SolariQuality {

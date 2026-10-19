@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 12:23
+- refactor(rendering): the opt-in DLSS Ray Reconstruction build is gone, since Solari has its own denoiser
+
 ## 2026-10-19 12:01
 - fix(scene): a scene saved at night no longer loads with the sun shining at full strength from below the horizon
 
