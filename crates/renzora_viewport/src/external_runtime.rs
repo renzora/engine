@@ -1,35 +1,38 @@
-//! External-runtime play mode — spawns the exported `renzora-runtime`
-//! binary as a child process pointed at the current project, instead of
-//! doing the in-editor camera switch. Gives a "real exported game"
-//! experience while the editor stays in editing mode.
+//! Play: the game runs as its own process, never inside the editor.
 //!
+//! Pressing Play saves the scene and starts this same executable again with
+//! `--no-editor --project <dir>`, which boots it as the shipped game would.
 //! The child handle lives in [`ExternalRuntime`]; [`poll_external_runtime`]
-//! reaps it when the runtime window closes so the play button flips back
-//! to "Play" on its own. Pressing Play again while a child is alive sends
-//! [`PlayModeState::request_stop`], which kills the child.
+//! reaps it when the game window closes so the Play button flips back on its
+//! own, and Stop kills it.
+//!
+//! **Why a process and not the viewport.** In-process play rendered the game
+//! through the editor's own frame, so a game running at 10 FPS took the whole
+//! editor down to 10 FPS with it, and a crash in the game was a crash in the
+//! editor. As a separate process it has its own window, GPU device and frame
+//! loop, and the editor stays fully usable while it runs. The two still share
+//! one GPU, so a game that saturates it slows the editor's drawing, but no
+//! longer its frame rate one-for-one.
 
 use bevy::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 
-/// How long the "Preparing export runtime" overlay stays up after we spawn
-/// the child, before flipping to the "runtime running / editor paused"
-/// overlay. We can't observe when the child actually opens its OS window
-/// from the parent process, so this grace period covers the typical
-/// window-open delay so the user sees "preparing…" first.
+/// How long after the spawn the game counts as still starting. The editor
+/// cannot see from here when the child's window actually opens, and a cold
+/// boot loads every plugin before it does, so this only covers the usual
+/// delay before treating the game as up.
 const PREPARE_GRACE_SECS: f32 = 2.0;
 
-/// Which stage of the external-runtime lifecycle we're in. Drives the
-/// full-screen overlay that pauses the editor while the runtime owns the
-/// screen.
+/// Which stage of the game process's life we're in.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePhase {
-    /// No external runtime — editor behaves normally.
+    /// No game running.
     #[default]
     Idle,
-    /// Child spawned, window not up yet. Shows "Preparing export runtime".
+    /// Child spawned, its window probably not up yet.
     Preparing,
-    /// Runtime window is up; editor is paused until the child exits.
+    /// The game is running.
     Running,
 }
 
@@ -56,8 +59,21 @@ impl ExternalRuntime {
         self.phase
     }
 
-    /// Mark the runtime as just-spawned: show the "preparing" overlay and
-    /// start the grace timer. Called right after a successful spawn.
+    /// The running game's process id, which is how the editor finds the
+    /// game's window to place in the Game panel.
+    pub fn pid(&self) -> Option<u32> {
+        self.child.as_ref().map(Child::id)
+    }
+
+    /// The game's window has been found, so it is up whatever the timer says.
+    pub fn mark_running(&mut self) {
+        if self.child.is_some() {
+            self.phase = RuntimePhase::Running;
+        }
+    }
+
+    /// Mark the runtime as just-spawned and start the grace timer. Called
+    /// right after a successful spawn.
     pub fn begin_preparing(&mut self) {
         self.phase = RuntimePhase::Preparing;
         self.prepare_elapsed = 0.0;
@@ -124,8 +140,8 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 ///
 /// `--no-editor` is always passed: it's what makes the self-relaunch fallback
 /// boot as a game, and a harmless no-op for a dedicated runtime binary (which
-/// has no editor bundle to suppress in the first place). `vr` adds `--vr`, the
-/// OpenXR boot flag — the "VR Headset" play target.
+/// has no editor bundle to suppress in the first place). `embed_parent` is
+/// the editor's window handle when the game should go in the Game panel.
 ///
 /// Its output is piped into the editor console (category `Runtime`) rather than
 /// inherited. On Windows the runtime is a GUI-subsystem binary launched from
@@ -133,12 +149,18 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 /// every `[audio]`, `[autoload]` and `[plugin]` line, every panic — went
 /// nowhere. Debugging a game that behaves differently outside the editor meant
 /// running it by hand from a terminal to find out why.
-pub fn spawn_runtime(binary: &Path, project_path: &Path, vr: bool) -> std::io::Result<Child> {
+pub fn spawn_runtime(
+    binary: &Path,
+    project_path: &Path,
+    embed_parent: Option<isize>,
+) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
     command.arg("--no-editor").arg("--project").arg(project_path);
-    if vr {
-        command.arg("--vr");
+    // The editor window the game makes its own window a child of, so it can
+    // sit in the Game panel; see `renzora_runtime::embed`.
+    if let Some(parent) = embed_parent {
+        command.arg("--embed-parent").arg(parent.to_string());
     }
     // Piped, and therefore *must* be drained: a pipe nobody reads fills up and
     // then blocks the child on its next log line. The reader threads below are
@@ -286,8 +308,8 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
                     format!("Runtime exited with code {code}"),
                 ),
             }
-            // Runtime window closed (or it crashed) — drop the handle and
-            // lift the pause overlay so the editor is usable again.
+            // Game window closed (or it crashed): drop the handle so the
+            // Play button reads Play again.
             runtime.child = None;
             runtime.phase = RuntimePhase::Idle;
             runtime.prepare_elapsed = 0.0;
@@ -304,9 +326,7 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
 }
 
 /// Tick the "preparing" grace timer and flip to [`RuntimePhase::Running`]
-/// once it elapses, so the overlay transitions from "Preparing export
-/// runtime" to the "editor paused" message after the window has had time to
-/// appear.
+/// once it elapses.
 pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntime>) {
     if runtime.phase != RuntimePhase::Preparing {
         return;
@@ -368,58 +388,6 @@ pub fn kill_on_app_exit(
     };
     info!("[exit] fast exit (code {code})");
     renzora::exit_now(code);
-}
-
-/// How long winit waits between forced wakeups while the editor is paused.
-/// Each wakeup runs one update — enough to repaint the (static) pause
-/// overlay and let [`poll_external_runtime`] notice the runtime window
-/// closing — but slow enough that the editor stops continuously rendering
-/// and hands the GPU to the running game.
-const PAUSED_WAKE_INTERVAL_MS: u64 = 250;
-
-/// Stashes the editor's normal [`WinitSettings`] while it's paused so we can
-/// restore the exact cadence it had before the runtime took over.
-#[derive(Resource, Default)]
-pub struct PausedRenderState {
-    saved: Option<bevy::winit::WinitSettings>,
-}
-
-/// Throttle the editor's update/render loop while the external runtime is
-/// active, and restore it when the runtime window closes.
-///
-/// The throttle engages the moment Play is pressed (during `Preparing`, not
-/// just `Running`) so the editor stops rendering immediately rather than
-/// ramping down. While throttled, winit only wakes every
-/// [`PAUSED_WAKE_INTERVAL_MS`]; together with the deactivated editor cameras
-/// and the static overlay, the editor sits on a frozen dark screen instead
-/// of doing per-frame rendering until the runtime exits.
-pub fn apply_runtime_pause_render(
-    runtime: Res<ExternalRuntime>,
-    mut winit: ResMut<bevy::winit::WinitSettings>,
-    mut state: ResMut<PausedRenderState>,
-) {
-    use bevy::winit::UpdateMode;
-    use std::time::Duration;
-
-    let paused = runtime.phase != RuntimePhase::Idle;
-    match (paused, state.saved.is_some()) {
-        // Entering the paused state — stash the live settings, then drop both
-        // focused and unfocused cadence to the slow wakeup interval.
-        (true, false) => {
-            state.saved = Some(winit.clone());
-            let low =
-                UpdateMode::reactive_low_power(Duration::from_millis(PAUSED_WAKE_INTERVAL_MS));
-            winit.focused_mode = low;
-            winit.unfocused_mode = low;
-        }
-        // Leaving the paused state — restore the editor's normal cadence.
-        (false, true) => {
-            if let Some(prev) = state.saved.take() {
-                *winit = prev;
-            }
-        }
-        _ => {}
-    }
 }
 
 #[cfg(test)]

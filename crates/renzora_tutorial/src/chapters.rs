@@ -255,18 +255,11 @@ const SCRIPTING_STEPS: &[Step] = &[
         hint: Hint { icons: &["floppy-disk"], keys: &["Ctrl", "S"], anim: HintAnim::Pulse },
     },
     Step {
-        kind: StepKind::Simulate,
-        badge: "flask",
+        kind: StepKind::Play,
+        badge: "play",
         title: "Run it",
-        body: "Open the play-target menu (the caret next to *Play*), choose *Simulate*, then press *Play*. *Simulate* runs your scripts while the editor stays fully live — camera, gizmos and *Inspector* all keep working.",
-        hint: Hint { icons: &["mouse-left-click", "flask"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::ScriptedMotion,
-        badge: "arrows-clockwise",
-        title: "Watch it turn",
-        body: "Your entity should be spinning. Tweak the number in the script and save — the change takes effect without leaving *Simulate*.",
-        hint: Hint { icons: &["eye"], keys: &[], anim: HintAnim::Pulse },
+        body: "Press *Play* in the top bar. Your game starts in the *Game* panel, and your entity should be spinning. The game is its own program, so the editor stays usable while it runs.",
+        hint: Hint { icons: &["mouse-left-click", "play"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {
         kind: StepKind::Info,
@@ -278,8 +271,8 @@ const SCRIPTING_STEPS: &[Step] = &[
     Step {
         kind: StepKind::StopPlay,
         badge: "stop",
-        title: "Stop the simulation",
-        body: "Press *Stop*. *Simulate* snapshots the scene on entry and restores it on exit, so your spinning entity snaps back to where it started — nothing you simulate is permanent.",
+        title: "Stop the game",
+        body: "Press *Stop*. The game ran from your saved scene, so nothing it did changed what you are editing.",
         hint: Hint { icons: &["stop"], keys: &[], anim: HintAnim::Pulse },
     },
 ];
@@ -443,8 +436,8 @@ const PLAY_MODE: Chapter = Chapter {
     id: "play-mode",
     icon: "play",
     title: "Play Mode",
-    summary: "Test your game in the viewport, in its own window, or in a headset",
-    outro: "Play, Simulate and Stop are the whole test loop. When you're ready to ship, \
+    summary: "Run your game from the editor",
+    outro: "Play and Stop are the whole test loop. When you're ready to ship, \
             Export builds the same thing as a standalone binary.",
     steps: PLAY_MODE_STEPS,
 };
@@ -453,29 +446,29 @@ const PLAY_MODE_STEPS: &[Step] = &[
     Step {
         kind: StepKind::Info,
         badge: "play",
-        title: "Play vs Simulate",
-        body: "*Play* runs your game for real: the game camera takes over and the editor chrome hides. *Simulate* ticks scripts and physics while the editor stays live, so you can keep selecting and inspecting things as they move.",
+        title: "Your game, its own program",
+        body: "*Play* saves the scene and runs your game as a separate program. A slow or crashing game can't slow down or crash the editor, and nothing the game does changes your scene.",
         hint: NO_HINT,
     },
     Step {
         kind: StepKind::Play,
         badge: "play",
         title: "Press Play",
-        body: "Hit *Play* in the top bar. You need a camera in the scene to play through — add one from *Add Entity* if the button looks dimmed.",
+        body: "Hit *Play* in the top bar. You need a camera in the scene to play through; add one from *Add Entity* if the button looks dimmed. The game appears in the *Game* panel.",
         hint: Hint { icons: &["mouse-left-click", "play"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {
         kind: StepKind::StopPlay,
         badge: "stop",
         title: "And Stop",
-        body: "*Stop* returns you to editing and restores your layout. Nothing that happened during play is kept — the scene goes back exactly as it was.",
+        body: "*Stop* closes the game. Its output stays in the *Console* under Runtime.",
         hint: Hint { icons: &["stop"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {
         kind: StepKind::Info,
         badge: "monitor",
         title: "Where it plays",
-        body: "The caret next to *Play* chooses the target: Viewport (in the panel), Window (its own OS window, using your project's window settings), VR (an OpenXR headset), or *Simulate*.",
+        body: "Turn off *Embed Game in Editor* in *Settings > Scripting* to have the game open in its own window instead, using your project's window settings.",
         hint: Hint { icons: &["monitor"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {

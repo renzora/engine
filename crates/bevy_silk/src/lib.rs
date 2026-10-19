@@ -327,9 +327,16 @@ pub mod prelude {
         stick::{StickGeneration, StickLen, StickMode},
         vertex_anchor::VertexAnchor,
         wind::{Wind, Winds},
-        ClothPlugin,
+        ClothPlugin, ClothSimulationSet,
     };
 }
+
+/// The step that advances cloth points. Renzora-local addition: a host can
+/// pause the simulation (an editor while editing) by putting a run condition
+/// on this set, without the cloth disappearing, since init and render are
+/// outside it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ClothSimulationSet;
 
 /// Plugin for cloth physics
 #[derive(Copy, Clone, Default)]
@@ -346,7 +353,11 @@ impl Plugin for ClothPlugin {
             Update,
             (
                 systems::cloth::init,
-                (systems::cloth::update, systems::cloth::render).chain(),
+                (
+                    systems::cloth::update.in_set(ClothSimulationSet),
+                    systems::cloth::render,
+                )
+                    .chain(),
             ),
         );
 

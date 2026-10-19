@@ -45,7 +45,6 @@ use crate::{confetti, demo, persistence};
 const ANGLE_EPS: f32 = 0.06; // ~3.4° of orbit/look
 const MOVE_EPS: f32 = 0.08; // world units the target mesh slid
 const SCALE_EPS: f32 = 0.05; // relative change in the mesh's scale
-const SPIN_EPS: f32 = 0.12; // radians the mesh turned under a script
 
 /// The tutorial's whole runtime state. `current == steps().len()` is the final
 /// "chapter complete" card; `show_picker` replaces the body with the chapter list.
@@ -90,12 +89,6 @@ pub struct Baseline {
     pub orbit: OrbitCameraState,
     pub cube_pos: Vec3,
     pub cube_scale: Vec3,
-    /// Order-independent sum of every entity's rotation components. The
-    /// "a script moved something" signal can't key off the demo cube — the user
-    /// attaches their script to an entity of their own — so this is deliberately
-    /// scene-wide: if anything at all turned while the simulation ran, the sum
-    /// moved.
-    pub rot_sum: f32,
     // Editor-shell baselines (only the current step's field is consulted — see
     // `detect_step_done`).
     pub panel_set: Vec<String>,              // SwitchLayout (panels in the dock tree)
@@ -176,7 +169,6 @@ impl Signals<'_, '_> {
             orbit: self.orbit.as_deref().cloned().unwrap_or_default(),
             cube_pos: cube.map(|t| t.translation).unwrap_or(prev.cube_pos),
             cube_scale: cube.map(|t| t.scale).unwrap_or(Vec3::ONE),
-            rot_sum: rot_sum(&self.transforms),
             panel_set: self.dock.as_ref().map(|d| panel_set(&d.tree)).unwrap_or_default(),
             demo_neighbors: self
                 .dock
@@ -219,10 +211,7 @@ impl Signals<'_, '_> {
                 .dock
                 .as_ref()
                 .is_some_and(|d| tree_contains(&d.tree, "ui_canvas")),
-            was_playing: self
-                .play
-                .as_ref()
-                .is_some_and(|p| p.is_in_play_mode() || p.is_simulating()),
+            was_playing: self.play.as_ref().is_some_and(|p| p.game_launched),
         }
     }
 }
@@ -342,10 +331,7 @@ pub fn detect_step_done(mut state: ResMut<TutorialState>, signals: Signals) {
     };
     let b = &state.baseline;
     let cube = state.demo_cube.and_then(|c| signals.transforms.get(c).ok());
-    let playing = signals
-        .play
-        .as_ref()
-        .is_some_and(|p| p.is_in_play_mode() || p.is_simulating());
+    let playing = signals.play.as_ref().is_some_and(|p| p.game_launched);
 
     let done = match step.kind {
         // Nothing to detect: Continue is offered as soon as the step appears.
@@ -378,11 +364,6 @@ pub fn detect_step_done(mut state: ResMut<TutorialState>, signals: Signals) {
         StepKind::Scale => cube
             .map(|t| (t.scale - b.cube_scale).length() / b.cube_scale.length().max(0.001) > SCALE_EPS)
             .unwrap_or(false),
-        // Only counts while the simulation is actually ticking — otherwise the
-        // user dragging the rotate gizmo would satisfy "your script spun it".
-        StepKind::ScriptedMotion => {
-            playing && (rot_sum(&signals.transforms) - b.rot_sum).abs() > SPIN_EPS
-        }
 
         StepKind::AddShape => signals.meshes.iter().count() > b.mesh_count,
         StepKind::AddLight => signals.lights.iter().count() > b.light_count,
@@ -479,8 +460,7 @@ pub fn detect_step_done(mut state: ResMut<TutorialState>, signals: Signals) {
             .map(|c| c.open_files.len() > b.open_files_len && active_is_script(c))
             .unwrap_or(false),
 
-        StepKind::Simulate => signals.play.as_ref().is_some_and(|p| p.is_simulating()),
-        StepKind::Play => signals.play.as_ref().is_some_and(|p| p.is_in_play_mode()),
+        StepKind::Play => playing,
         // Was running when the step began, isn't now.
         StepKind::StopPlay => b.was_playing && !playing,
 
@@ -800,19 +780,6 @@ fn leaf_tabs_of(tree: &DockTree, id: &str) -> Option<Vec<String>> {
         DockTree::Leaf { tabs, .. } => tabs.iter().any(|t| t == id).then(|| tabs.clone()),
         DockTree::Empty => None,
     }
-}
-
-/// Order-independent fingerprint of every entity's rotation. Summing rather than
-/// collecting keeps this allocation-free per step, and it only has to answer
-/// "did anything turn?", not "what turned".
-fn rot_sum(transforms: &Query<&'static Transform>) -> f32 {
-    transforms
-        .iter()
-        .map(|t| {
-            let r = t.rotation;
-            r.x + r.y + r.z + r.w
-        })
-        .sum()
 }
 
 /// Shortest absolute angular distance between two angles (radians).

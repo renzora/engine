@@ -88,17 +88,11 @@ pub enum StepKind {
     CreateScript,
     /// A `.lua` script file exists under the project's `scripts/`.
     ScriptFile,
-    /// Something in the scene turned *while the simulation ran* — i.e. a script
-    /// actually drove it. Scene-wide on purpose: the user attaches their script
-    /// to an entity of their own, not to the tutorial's demo mesh.
-    ScriptedMotion,
 
     // ── Play ─────────────────────────────────────────────────────────────────
-    /// Entered in-editor Simulate.
-    Simulate,
-    /// Entered full Play mode.
+    /// Started the game with Play.
     Play,
-    /// Returned to editing from Play/Simulate.
+    /// Stopped the game again.
     StopPlay,
 
     // ── Authoring ────────────────────────────────────────────────────────────

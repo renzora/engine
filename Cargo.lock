@@ -9075,6 +9075,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
+ "raw-window-handle",
  "renzora",
  "renzora_animation",
  "renzora_blueprint",

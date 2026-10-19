@@ -23,19 +23,10 @@ pub(crate) fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: En
     settings_row(commands, fonts, body, 0, &tr("settings.row.hot_reload"), t);
     let t = ctl_toggle(
         commands, true,
-        |w| w.resource::<EditorSettings>().hide_cursor_in_play_mode,
-        |w, &v| w.resource_mut::<EditorSettings>().hide_cursor_in_play_mode = v,
+        |w| w.resource::<EditorSettings>().embed_game,
+        |w, &v| w.resource_mut::<EditorSettings>().embed_game = v,
     );
-    settings_row(commands, fonts, body, 1, &tr("settings.row.cursor"), t);
-    let t = ctl_toggle(
-        commands, true,
-        |w| w.resource::<EditorSettings>().external_play_window,
-        // Persisted like the Play dropdown's choice — both edit the same flag.
-        |w, &v| {
-            w.resource_mut::<EditorSettings>().external_play_window = v;
-        },
-    );
-    settings_row(commands, fonts, body, 2, &tr("settings.row.external_window"), t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.embed_game"), t);
 
     let (sec, body) = section(commands, fonts, "code", &tr("settings.cat.code_editor"), A_GREEN);
     commands.entity(col).add_child(sec);

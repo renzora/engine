@@ -49,6 +49,12 @@ impl Plugin for ClothPlugin {
         info!("[runtime] ClothPlugin (bevy_silk verlet cloth)");
         app.add_plugins(bevy_silk::prelude::ClothPlugin)
             .init_resource::<Winds>()
+            // Cloth hangs still while editing, like physics, which is paused
+            // then too; its collisions run against that paused physics world.
+            .configure_sets(
+                Update,
+                bevy_silk::prelude::ClothSimulationSet.run_if(renzora::core::game_running),
+            )
             .add_systems(Update, sync_cloth_wind);
     }
 }

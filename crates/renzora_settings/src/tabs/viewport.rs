@@ -239,14 +239,6 @@ pub(crate) fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 7, &tr("settings.row.editor_camera"), dd);
-    // Editor-level (not per-viewport) play behaviour, but it's about the viewport,
-    // so it lives here rather than under Scripting.
-    let t = ctl_toggle(
-        commands, true,
-        |w| w.resource::<EditorSettings>().maximize_viewport_on_play,
-        |w, &v| w.resource_mut::<EditorSettings>().maximize_viewport_on_play = v,
-    );
-    settings_row(commands, fonts, body, 8, &tr("settings.row.maximize_on_play"), t);
 
     let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.gizmos"), A_TEAL);
     commands.entity(col).add_child(sec);

@@ -128,7 +128,10 @@ impl Plugin for AnimationPlugin {
                 systems::rehydrate_animators,
                 systems::initialize_animation_graphs,
                 systems::ensure_animation_targets,
-                systems::auto_play_default,
+                // Not while editing: the default clip used to start looping the
+                // moment a model was dropped. The animation editor's preview
+                // starts its own playback, so previewing still works.
+                systems::auto_play_default.run_if(renzora::core::game_running),
                 systems::process_animation_commands,
                 systems::update_state_machines,
                 systems::update_layer_weights,

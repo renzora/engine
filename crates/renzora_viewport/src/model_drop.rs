@@ -8,6 +8,15 @@
 //! committed entity is spawned fresh through the normal pipeline so it picks
 //! up the import-pipeline-generated `.material` files via the resolver.
 //!
+//! # Dropping before the model has loaded
+//!
+//! A large GLB can take seconds to decode, and the drop must not wait for it.
+//! Releasing over the viewport while the load is still running hands it to
+//! [`PendingGltfLoads`] with the placement under the cursor, leaves a
+//! [`ModelLoadPlaceholder`] box standing on that spot, and the viewport's
+//! loading overlay (`load_overlay`) names what is on its way. The model spawns
+//! where it was dropped the frame it finishes, and the box goes with it.
+//!
 //! # Where a dropped model lands
 //!
 //! There are two placement rules, and which one applies depends on whether the
@@ -65,6 +74,9 @@ pub struct PendingLoad {
     /// World Y the model's *bottom* should settle at, or `None` when the drop
     /// placed the origin directly and must not be re-seated by its bounds.
     pub bottom_align_target: Option<f32>,
+    /// The box standing at the drop point until the model replaces it, for a
+    /// drop made before the GLB had finished loading.
+    pub placeholder: Option<Entity>,
 }
 
 /// Marker component — entity needs its Y adjusted so the bottom sits on the
@@ -192,6 +204,49 @@ impl ModelDragPreviewState {
 /// queryable from anywhere and cannot be orphaned by a `clear()` that forgot it.
 #[derive(Component)]
 pub struct ModelDragPlaceholder;
+
+/// The same box once the mouse has been released: it stays on the drop point
+/// until the model it stands in for has loaded, then [`spawn_loaded_gltfs`]
+/// removes it.
+///
+/// A separate marker from [`ModelDragPlaceholder`] because the drag's cleanup
+/// despawns every one of those the moment the drag ends, which is exactly the
+/// moment this one has to start living on its own.
+#[derive(Component)]
+pub struct ModelLoadPlaceholder;
+
+/// Either kind of placeholder box: the one following a drag, or one standing
+/// on a drop point.
+type AnyPlaceholder = Or<(With<ModelDragPlaceholder>, With<ModelLoadPlaceholder>)>;
+
+/// The placeholder box's mesh and material, made once and shared by the drag
+/// box and every drop-point box, so a drag does not add two assets per frame.
+#[derive(Resource, Default)]
+pub struct ModelPlaceholderAssets(Option<(Handle<Mesh>, Handle<StandardMaterial>)>);
+
+impl ModelPlaceholderAssets {
+    fn handles(
+        &mut self,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+    ) -> (Handle<Mesh>, Handle<StandardMaterial>) {
+        self.0
+            .get_or_insert_with(|| {
+                (
+                    meshes.add(Cuboid::from_length(PLACEHOLDER_SIZE)),
+                    materials.add(StandardMaterial {
+                        base_color: Color::srgba(0.35, 0.62, 0.95, 0.35),
+                        alpha_mode: AlphaMode::Blend,
+                        // Unlit and translucent so it reads as "something is
+                        // coming", not as a grey box someone dropped.
+                        unlit: true,
+                        ..default()
+                    }),
+                )
+            })
+            .clone()
+    }
+}
 
 /// Side of the placeholder box, in metres. One metre is a guess — the model's
 /// real size is inside the file we are still waiting for — but it is the guess
@@ -342,6 +397,9 @@ pub fn native_model_drop(
     children_query: Query<&Children>,
     scene_root_query: Query<(), With<WorldAssetRoot>>,
     selection: Option<Res<EditorSelection>>,
+    mut placeholder_assets: ResMut<ModelPlaceholderAssets>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
         return;
@@ -388,16 +446,26 @@ pub fn native_model_drop(
         return;
     };
 
-    // Dropped while the GLB was still decoding — there is no entity to promote,
-    // only the placeholder box, which `cleanup_model_drag_ghost` is about to
-    // remove. Hand the load off to the pending queue with the position the box
-    // was standing at, so the model arrives where it was dropped.
-    //
-    // Before the placeholder existed this case looked like nothing happening,
-    // and it was: the drop returned early on a missing ghost and the drag was
-    // silently thrown away. Showing a box you can drop made that visible.
+    // Dropped while the GLB was still decoding: there is no entity to promote,
+    // only the drag's placeholder box, which `cleanup_model_drag_ghost` is about
+    // to remove. Hand the load off to the pending queue with the position the
+    // box was standing at, so the model arrives where it was dropped, and leave
+    // a box of its own on that spot until it does. Without the box the drop
+    // looked like it had been ignored for however long the decode took, which
+    // taught people to hold the mouse down over the viewport and wait.
     let Some(entity) = ghost_root else {
         let name = name.unwrap_or_else(|| "Model".to_string());
+        let (mesh, material) = placeholder_assets.handles(&mut meshes, &mut materials);
+        let placeholder = commands
+            .spawn((
+                Name::new("Model Loading"),
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_translation(placement + Vec3::Y * PLACEHOLDER_SIZE * 0.5),
+                ModelLoadPlaceholder,
+                renzora::core::HideInHierarchy,
+            ))
+            .id();
         commands.queue(move |world: &mut World| {
             world.resource_mut::<PendingGltfLoads>().loads.push(PendingLoad {
                 handle: gltf_handle,
@@ -405,6 +473,7 @@ pub fn native_model_drop(
                 asset_path,
                 spawn_position: placement,
                 bottom_align_target,
+                placeholder: Some(placeholder),
             });
         });
         return;
@@ -540,6 +609,7 @@ fn initiate_model_load(
             asset_path,
             spawn_position,
             bottom_align_target,
+            placeholder: None,
         });
 }
 
@@ -550,13 +620,27 @@ pub fn spawn_loaded_gltfs(
     gltf_assets: Res<Assets<Gltf>>,
     selection: Res<EditorSelection>,
     project: Option<Res<CurrentProject>>,
+    asset_server: Res<AssetServer>,
 ) {
     let mut completed = Vec::new();
 
     for (index, load) in pending.loads.iter().enumerate() {
         let Some(gltf) = gltf_assets.get(&load.handle) else {
+            // A load that failed never produces an asset, so without this the
+            // drop-point box and the loading overlay would wait for it forever.
+            if let Some(LoadState::Failed(err)) = asset_server.get_load_state(load.handle.id()) {
+                warn!("Model '{}' failed to load: {}", load.name, err);
+                if let Some(placeholder) = load.placeholder {
+                    commands.entity(placeholder).try_despawn();
+                }
+                completed.push(index);
+            }
             continue;
         };
+        // Whatever happens to the model below, its stand-in is finished.
+        if let Some(placeholder) = load.placeholder {
+            commands.entity(placeholder).try_despawn();
+        }
 
         // Pick the default scene, or the first scene
         let scene_handle = gltf
@@ -814,7 +898,9 @@ pub fn track_model_drag_preview(
     camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
     parent_query: Query<&ChildOf>,
-    placeholders: Query<Entity, With<ModelDragPlaceholder>>,
+    // Drop-point boxes too: a second model dragged over one still loading
+    // should land on the scene, not on top of a stand-in about to vanish.
+    placeholders: Query<Entity, AnyPlaceholder>,
 ) {
     // No payload (or wrong kind) → leave any existing ghost alone; cleanup
     // runs in its own system once the resource is removed.
@@ -991,7 +1077,7 @@ pub fn update_model_drag_ghost(
     placeholders: Query<Entity, With<ModelDragPlaceholder>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut placeholder_assets: Local<Option<(Handle<Mesh>, Handle<StandardMaterial>)>>,
+    mut placeholder_assets: ResMut<ModelPlaceholderAssets>,
 ) {
     // Already spawned → just sync transform + visibility.
     if let Some(root) = state.ghost_root {
@@ -1049,21 +1135,7 @@ pub fn update_model_drag_ghost(
                 tf.translation = at;
             }
         } else {
-            let (mesh, material) = placeholder_assets
-                .get_or_insert_with(|| {
-                    (
-                        meshes.add(Cuboid::from_length(PLACEHOLDER_SIZE)),
-                        materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.35, 0.62, 0.95, 0.35),
-                            alpha_mode: AlphaMode::Blend,
-                            // Unlit and translucent so it reads as "something is
-                            // coming", not as a grey box someone dropped.
-                            unlit: true,
-                            ..default()
-                        }),
-                    )
-                })
-                .clone();
+            let (mesh, material) = placeholder_assets.handles(&mut meshes, &mut materials);
             commands.spawn((
                 Name::new("Model Preview"),
                 Mesh3d(mesh),
@@ -1139,41 +1211,6 @@ pub fn cleanup_model_drag_ghost(
         commands.entity(entity).despawn();
     }
     state.clear();
-}
-
-/// Lightweight read-only snapshot of all in-flight model loads for the
-/// viewport progress overlay. Returns `(name, fraction_or_none)` per load.
-/// Mesh-only and full loads both included.
-pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> {
-    let mut out = Vec::new();
-    let asset_server = world.get_resource::<AssetServer>();
-
-    if let Some(state) = world.get_resource::<ModelDragPreviewState>() {
-        if let (Some(handle), Some(server), Some(name)) = (
-            state.mesh_handle.as_ref(),
-            asset_server,
-            state.name.as_ref(),
-        ) {
-            let loaded = matches!(server.get_load_state(handle.id()), Some(LoadState::Loaded));
-            if !loaded {
-                out.push((format!("{} (mesh)", name), None));
-            }
-        }
-    }
-
-    if let (Some(pending), Some(server)) = (world.get_resource::<PendingGltfLoads>(), asset_server)
-    {
-        for load in &pending.loads {
-            let loaded = matches!(
-                server.get_load_state(load.handle.id()),
-                Some(LoadState::Loaded)
-            );
-            let frac = if loaded { Some(1.0) } else { None };
-            out.push((load.name.clone(), frac));
-        }
-    }
-
-    out
 }
 
 // ── Material binding ───────────────────────────────────────────────────────

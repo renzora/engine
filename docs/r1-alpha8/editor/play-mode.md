@@ -1,53 +1,47 @@
-# Playing and Simulating
+# Playing Your Game
 
-The Play controls sit in the top bar. They are how you run your game without leaving the editor.
+The **Play** button sits in the top bar. It runs your game without leaving the editor.
 
-<!-- screenshot: play_controls.png - the Play, Pause and Stop buttons with the play target dropdown open -->
+<!-- screenshot: play_controls.png - the Play button in the top bar, and the Game panel showing a running game -->
 
 ## Play
 
-**Play** (or `F5`) runs your game. The editor swaps to your game camera, hides its own gizmos, grid and overlays, and from that point you are playing rather than editing.
+**Play** (or `F5`) saves the scene and starts your game. Press it again, now reading **Stop**, to end the game.
 
-**Pause** freezes it with everything still on screen. **Stop** ends the run and puts the scene back exactly as it was.
+The game runs as **its own program**, separate from the editor. That has three consequences worth knowing:
 
-Nothing you do while playing is saved into your scene. Entering Play takes a snapshot, and Stop restores it. Move something in a running game and it snaps back when you stop.
+- **A slow game doesn't slow the editor.** The game renders at its own frame rate, and the editor stays fully usable while it runs. You can keep working while it plays. The two still share one graphics card, so a game that keeps it fully busy makes the editor's drawing slower too.
+- **A crash in the game doesn't take the editor down.** The game's window closes, the Console shows what went wrong, and you carry on.
+- **Nothing the game does changes your scene.** The game loads the scene from the saved file, so moving something in a running game never touches what you are editing. That is also why Play saves first.
 
-## Simulate
+Everything the game logs appears in the editor's **Console**, under **Runtime**.
 
-**Simulate** runs scripts, physics and animation while leaving the editor fully live. You keep your editor camera, your gizmos, your selection and the Inspector. You can select something mid-simulation and watch its values change.
+## The Game panel
 
-It is the right choice when you want to see behaviour rather than play the game: watching a ragdoll settle, checking a physics stack, tuning a script's numbers while it runs.
+With **Embed Game in Editor** on (the default), the running game appears in the **Game** panel. Pressing Play brings the panel to the front, adding it next to the viewport if your layout doesn't have one.
 
-Like Play, entering Simulate snapshots the scene and Stop restores it.
+It is the game's real window placed inside the editor, so click into it and the keyboard and mouse go to the game. Click anywhere else in the editor to take them back.
 
-| | Play | Simulate |
-|---|---|---|
-| Camera | Your game camera | The editor camera |
-| Editor gizmos and grid | Hidden | Visible |
-| Selection and Inspector | Unavailable | Live |
-| Scripts, physics, animation | Running | Running |
-| Scene restored on Stop | Yes | Yes |
+Turn the setting off in **Settings > Scripting > Embed Game in Editor** and the game opens in a window of its own instead, at the size your project's Window settings specify. That is the closest thing to what a player gets.
 
-## Where the game runs
+A few limits:
 
-The dropdown beside Play picks the target.
+- **Windows only for now.** On other platforms the game always opens in its own window.
+- **Docked panels only.** If you float the Game panel out into a window of its own, the game hides until you dock the panel again.
+- **Menus over the panel.** The game's window is drawn above the editor in that area, so a menu or popup the editor opens over the Game panel appears behind the running game.
 
-| Target | What happens |
-|---|---|
-| Viewport | The game plays inside the viewport panel. The default, and the fastest to get in and out of. |
-| Window | The game opens in its own window, at the size your project's Window settings specify. |
-| VR Headset | The game runs on a connected headset. |
+## Editing doesn't play anything
 
-The choice is remembered between sessions.
+While you are arranging the scene, nothing in it moves by itself. Physics is paused, scripts don't run, animated models hold their pose, cloth hangs still, and navigation agents stay where you put them. What you see is exactly what the scene file says.
 
-Playing in a **Window** is the closest thing to what a player gets, because the window is the one your project is configured to open. Playing in the **Viewport** is quicker and keeps the editor's panels around it.
+Particles are the exception: emitters keep running so you can see an effect without pressing Play.
 
-## Scripts only run while playing
+The other exception is a script's own play button in the Inspector. Switching it on runs that one script while you edit, which is how you test a script without running the whole game.
 
-A script attached to an entity does nothing while you are arranging the scene. It runs in Play, in Simulate, or when you switch on that specific script's play button in the Inspector.
+## VR
 
-That last one is how you test one script without running everything. Without it, dropping a script that spawns things onto an entity would start spawning them the moment you attached it.
+Playing into a VR headset from the editor has been removed. A game can still run in a headset with the `--vr` flag; see [VR](/docs/r1-alpha8/editor/vr).
 
 ## Testing multiplayer
 
-Running a server and a client at once needs two processes, so it does not happen inside one editor. See [Server Setup](/docs/r1-alpha8/multiplayer/server-setup).
+Running a server and a client at once needs two processes. See [Server Setup](/docs/r1-alpha8/multiplayer/server-setup).

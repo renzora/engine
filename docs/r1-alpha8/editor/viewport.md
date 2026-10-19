@@ -140,7 +140,6 @@ What wakes it:
 - Meshes, materials and textures changing or finishing loading
 - Changing the selection or a viewport setting
 - Resizing or docking a viewport
-- **Play** and **Simulate**, which render every frame
 
 Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. The same switch is **Settings > Viewport > Performance > Realtime Viewport**, and it is saved with the project.
 
@@ -211,6 +210,8 @@ New shapes arrive with a generated grid material on them, so you can see their f
 ## Dropping models in
 
 Drag a model from the **Assets** panel into the viewport and it spawns where you dropped it, sitting on whatever surface is under the cursor.
+
+You don't have to wait for a large model to load before letting go. While it loads, a translucent box follows the cursor; drop it and the box stays on that spot, a **Loading** card in the middle of the viewport names the model, and the model replaces the box the moment it is ready. You can keep working, or drop more models, in the meantime. If a model fails to load, the box and the card go away and the Console says why.
 
 ## Multiple viewports
 

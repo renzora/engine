@@ -1,8 +1,8 @@
 # Streaming
 
-Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels — scene loading, mesh detail (LOD), world content, and texture resolution — and they share one rule: **streaming is active in a running game and in editor Play/Simulate; editor edit mode always keeps the whole world resident** so you can see and edit everything. Dedicated servers never stream (there is no camera, and gameplay needs the full world).
+Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels (scene loading, mesh detail (LOD), world content, and texture resolution), and they share one rule: **streaming is active in a running game, including one started with the editor's Play button; the editor itself always keeps the whole world resident** so you can see and edit everything. Dedicated servers never stream (there is no camera, and gameplay needs the full world).
 
-All distance checks measure from the *streaming camera*: the active game camera in a running game or Play mode, and the editor camera in Simulate (streaming follows what you're looking at).
+All distance checks measure from the *streaming camera*: the active game camera.
 
 ## Async scene loading
 

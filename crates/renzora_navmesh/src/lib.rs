@@ -605,8 +605,9 @@ impl Plugin for NavMeshPlugin {
                 (
                     on_volume_added,
                     sync_volume_changes,
-                    update_agent_paths,
-                    advance_agents,
+                    // Agents only walk during Play; while editing, one with a
+                    // saved target used to set off across the scene.
+                    (update_agent_paths, advance_agents).run_if(renzora::core::game_running),
                     auto_init_nav_read_state,
                     update_nav_read_state,
                     draw_agent_paths,

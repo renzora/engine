@@ -31,6 +31,9 @@ serde_json = "1"
 # during migration — see `persistence::legacy_viewport_prefs`.
 toml = "0.8"
 bytemuck = { version = "1.5", features = ["derive"] }
+# The editor's own window handle, which the embedded game's window is parented
+# to; see `game_panel`. Same version Bevy's window types use.
+raw-window-handle = "0.6"
 
 [lints]
 workspace = true

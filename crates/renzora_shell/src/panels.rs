@@ -40,6 +40,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("viewport-3", "Viewport 3", "perspective", "Scene"),
     ("viewport-4", "Viewport 4", "perspective", "Scene"),
     ("camera_preview", "Camera Preview", "video-camera", "Scene"),
+    ("game", "Game", "game-controller", "Scene"),
     // Audio
     ("mixer", "Mixer", "faders", "Audio"),
     // Animation

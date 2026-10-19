@@ -95,9 +95,7 @@ Drag `new_script.rs` from the Assets panel onto your cube in the Hierarchy. Or s
 
 Hit **Play** in the top bar, or `F5`.
 
-The editor swaps to your game camera, hides its own gizmos and grid, and runs. Your cube spins. **Stop** puts everything back exactly as it was, so nothing you do while playing changes your scene.
-
-Try **Simulate** instead. That runs the script while leaving the editor live, so you can keep your camera, select the cube mid-spin, and watch its rotation change in the Inspector.
+Your game starts in the **Game** panel, seen through your game camera, and your cube spins. The game is its own program, so nothing it does changes your scene, and the editor stays usable while it runs. Press **Stop** to end it.
 
 ## Save
 

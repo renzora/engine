@@ -45,7 +45,7 @@ One entity can carry several scripts, and they can be in different languages. Ro
 
 ## When it runs
 
-A script does nothing while you are arranging the scene. It runs in **Play**, in **Simulate**, or when you switch on that one script's play button in the Inspector.
+A script does nothing while you are arranging the scene. It runs in the game you start with **Play**, or in the editor when you switch on that one script's play button in the Inspector.
 
 That last one is how you test a single script without running the whole game.
 

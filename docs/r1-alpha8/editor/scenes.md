@@ -126,7 +126,7 @@ A global scene loads before the boot scene and stays alive through every later s
 
 Set them under **Settings > Project > Global Scenes**.
 
-Everything a global scene spawns is marked persistent, so scene loads skip it and scene saves never bake it into the level you have open. Play and Simulate load them, and Stop unloads them, so you can test without exporting.
+Everything a global scene spawns is marked persistent, so scene loads skip it and scene saves never bake it into the level you have open. Play runs your game, which loads them exactly as an exported game does, so you can test without exporting.
 
 This is also the only place a loading screen can work, because everything in the outgoing scene is despawned partway through a scene change. Only a global scene's script is still running to show progress.
 

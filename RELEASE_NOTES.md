@@ -26,6 +26,15 @@
 - change(rendering): Solari ray-traced lighting is built into the engine and no longer a marketplace plugin; delete an installed `plugins/solari` copy
 - fix(export): an exported game keeps Solari whenever one of its scenes uses the Solari Ray-Traced GI component
 
+## 2026-10-19 08:12
+- change(editor): Play always runs the game as its own process, and the editor stays usable while it runs
+- feat(editor): a Game panel shows the running game inside the editor, with Embed Game in Editor to turn it off (Windows)
+- change(editor): the play target dropdown, VR Headset play, Scripts (Simulate) mode and in-viewport play are removed
+- fix(editor): animated models, cloth and navmesh agents no longer move while editing
+
+## 2026-10-19 06:52
+- feat(editor): a model can be dropped on the viewport before it has loaded; a box marks the spot and a loading card shows until it appears there
+
 ## 2026-10-19 06:25
 - change(plugins): the `#[post_process]` macro, `PostProcessPlugin<T>` and `add_post_process` are removed; a fullscreen effect is an effect file on a Post Process component, and a plugin's own pass uses `add_render_pass`
 - change(marketplace): the 53 post-process effects are shader assets in the Shaders category, published to their existing listings as 2.0.0

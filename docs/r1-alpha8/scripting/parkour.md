@@ -55,7 +55,7 @@ parkour_move(-sin * -y + cos * x, 0, -cos * -y - sin * x)
 
 `parkour_move()` is **consumed each frame**, not latched — the same contract as `move_controller()`. Call it every frame you want the character to move; stop calling it and they stop.
 
-> **Only in Play or Simulate.** Every parkour system is gated on the simulation running, so a character sits exactly where you placed them while editing. Use **Play**, or **[Simulate](/docs/r1-alpha8/editor/viewport#simulate-mode)** to watch them move with the editor still live.
+> **Only in a running game.** Every parkour system is gated on the game running, so a character sits exactly where you placed them while editing. Press **Play** to watch them move.
 
 ## The states
 

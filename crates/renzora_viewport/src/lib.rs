@@ -22,9 +22,11 @@ pub mod redraw;
 mod axis_gizmo;
 mod camera_preview_panel;
 mod drop_target;
+pub mod game_panel;
 mod game_view;
 mod height_ruler;
 mod lit_accent;
+mod load_overlay;
 mod modal_hud;
 mod nav;
 mod shading;
@@ -103,7 +105,6 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<external_runtime::ExternalRuntime>()
-            .init_resource::<external_runtime::PausedRenderState>()
             .init_resource::<bevy::winit::WinitSettings>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastToggleState>()
@@ -128,6 +129,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<model_drop::ModelDragPreviewState>()
+            .init_resource::<model_drop::ModelPlaceholderAssets>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .init_resource::<drop_target::ArmedViewportDrop>()
@@ -151,11 +153,12 @@ impl Plugin for ViewportPlugin {
                     // asset to swap for a debug view.
                 ),
                 render_systems::update_shadow_settings,
+                play_mode::handle_play_mode_transitions,
                 (
-                    play_mode::handle_play_mode_transitions,
-                    play_mode::sync_vr_play_request,
-                ),
-                external_runtime::poll_external_runtime,
+                    external_runtime::poll_external_runtime,
+                    play_mode::sync_game_launched,
+                )
+                    .chain(),
                 external_runtime::advance_runtime_phase,
                 effect_routing::update_effect_routing,
                 (
@@ -288,14 +291,12 @@ impl Plugin for ViewportPlugin {
                 .after(renzora_ui::window_chrome::WindowActionSet),
         );
 
-        // Throttle / restore the editor's render loop around external runs.
-        // Not gated on `SplashState` so the restore always runs.
-        app.add_systems(Update, external_runtime::apply_runtime_pause_render);
-
         panel::register(app);
         game_view::register(app);
+        game_panel::register(app);
         camera_preview_panel::register(app);
         modal_hud::register(app);
+        load_overlay::register(app);
         overlay_2d::register(app);
         stats_overlay::register(app);
     }
@@ -835,8 +836,6 @@ fn sync_viewport_camera_activation(
     >,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
-    runtime: Option<Res<external_runtime::ExternalRuntime>>,
-    vr_play: Option<Res<renzora::VrPlayState>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed_dock: Option<Res<renzora_ember::dock::FixedDock>>,
     dock_windows: Option<Res<renzora_ember::dock::DockWindows>>,
@@ -856,85 +855,6 @@ fn sync_viewport_camera_activation(
         fixed_dock.as_deref(),
         dock_windows.as_deref(),
     );
-
-    // While an external runtime owns the screen the editor is paused behind a
-    // full-screen overlay, so there's nothing to see through the offscreen
-    // viewport cameras. Force them all inactive to skip their (expensive)
-    // render passes and hand the GPU to the running game.
-    let runtime_active = runtime
-        .as_ref()
-        .is_some_and(|r| r.phase() != external_runtime::RuntimePhase::Idle);
-    if runtime_active {
-        for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
-            clear_redraw_idle(&mut commands, entity, idle);
-            if camera.is_active {
-                info!(
-                    "[viewport] 3D camera slot {} -> inactive (an external runtime owns the screen)",
-                    vc.0
-                );
-                camera.is_active = false;
-            }
-        }
-        for (entity, mut camera, vc, idle) in cameras_2d.iter_mut() {
-            clear_redraw_idle(&mut commands, entity, idle);
-            if camera.is_active {
-                info!(
-                    "[viewport] 2D camera slot {} -> inactive (an external runtime owns the screen)",
-                    vc.0
-                );
-                camera.is_active = false;
-            }
-        }
-        for mut camera in cameras_ui.iter_mut() {
-            if camera.is_active {
-                camera.is_active = false;
-            }
-        }
-        return;
-    }
-
-    // In-process VR play: the headset owns the GPU. The primary 3D camera must
-    // stay alive — it hosts the atmosphere/IBL probe (the bake panics on an
-    // inactive probe) and the XR eyes' environment is shared FROM it — but it
-    // renders into the token parking image (`park_primary_3d_target`), so its
-    // passes rasterize almost nothing. Every other offscreen editor camera
-    // goes quiet, same as the external-runtime pause above.
-    let vr_active = vr_play.as_ref().is_some_and(|v| v.active);
-    if vr_active {
-        for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
-            clear_redraw_idle(&mut commands, entity, idle);
-            let want = vc.0 == 0;
-            if camera.is_active != want {
-                info!(
-                    "[viewport] 3D camera slot {} -> {} (VR play: the headset owns the GPU{})",
-                    vc.0,
-                    if want { "ACTIVE" } else { "inactive" },
-                    if want {
-                        ", the primary stays up as the atmosphere/IBL source"
-                    } else {
-                        ""
-                    }
-                );
-                camera.is_active = want;
-            }
-        }
-        for (entity, mut camera, vc, idle) in cameras_2d.iter_mut() {
-            clear_redraw_idle(&mut commands, entity, idle);
-            if camera.is_active {
-                info!(
-                    "[viewport] 2D camera slot {} -> inactive (VR play: the headset owns the GPU)",
-                    vc.0
-                );
-                camera.is_active = false;
-            }
-        }
-        for mut camera in cameras_ui.iter_mut() {
-            if camera.is_active {
-                camera.is_active = false;
-            }
-        }
-        return;
-    }
 
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
 
@@ -1085,13 +1005,6 @@ fn gate_redraw(
     would_render && render_ok
 }
 
-/// Drop the idle marker on a path that decides activation by other rules.
-fn clear_redraw_idle(commands: &mut Commands, entity: Entity, idle: bool) {
-    if idle {
-        commands.entity(entity).remove::<renzora::core::ViewportRedrawIdle>();
-    }
-}
-
 /// While the 2D editor camera owns the primary panel image, point the primary
 /// 3D camera at a token-sized parking image instead — and back at the slot-0
 /// image when 3D view returns.
@@ -1116,7 +1029,6 @@ fn park_primary_3d_target(
         &mut bevy::camera::RenderTarget,
         With<renzora::core::PrimaryViewportCamera>,
     >,
-    vr_play: Option<Res<renzora::VrPlayState>>,
 ) {
     use renzora::core::viewport_types::ViewportView;
 
@@ -1129,11 +1041,7 @@ fn park_primary_3d_target(
             .as_ref()
             .and_then(|pm| pm.active_game_camera)
             .is_some_and(|e| kind_2d.get(e).is_ok());
-    // During in-process VR play the primary keeps rendering only as the
-    // atmosphere/IBL probe — park it on the token image so those passes cost
-    // nothing while the headset owns the GPU.
-    let vr_active = vr_play.as_ref().is_some_and(|v| v.active);
-    let two_d_owns_image = view == ViewportView::Two || playing_2d_game || vr_active;
+    let two_d_owns_image = view == ViewportView::Two || playing_2d_game;
 
     // `RenderTarget` only exists once `sync_viewport_camera_targets` has bound
     // the startup images, so this query is empty until then — fine, there is

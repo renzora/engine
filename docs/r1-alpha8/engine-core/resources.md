@@ -117,7 +117,7 @@ set_on("music_player", "AudioSink.volume", 0.5)
 Three things to know:
 
 - **A global scene's script is the only thing still running during a scene swap.** Everything in the outgoing scene is despawned partway through the load, which is why `on_scene_loaded` / `scene_load_state()` (see [Scripting API](../api/scripting#assets)) are only useful from here. A loading screen has to live in a global scene.
-- **They run in the editor too.** A game build loads them at `Startup`; in the editor, Play (and Simulate) loads them and Stop despawns them again, so you can test a global HUD or loading screen without an export. Teardown removes exactly what Play spawned — a `Persistent` marker you applied by hand in the inspector is left alone.
+- **You can test them from the editor.** A game loads them at `Startup`, and Play runs your game, so a global HUD or loading screen shows up there without an export.
 - **They are excluded from scene saves.** `Persistent` entities are live in the world but belong to another scene file, so saving the open scene skips them — otherwise every save would bake in a duplicate copy and the next load would spawn two music players.
 
 ## Project & play-mode state

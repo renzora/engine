@@ -106,15 +106,10 @@ pub fn migrate_legacy_prefs() {
     let mut editor = toml::Table::new();
     let mut app = toml::Table::new();
     for (k, v) in old {
-        // Two were renamed on the way across: the file called them by the play
-        // target they set, the resource calls them by what it does.
         match k.as_str() {
-            "play_runtime_window" => {
-                editor.insert("external_play_window".into(), v);
-            }
-            "play_vr" => {
-                editor.insert("play_launch_vr".into(), v);
-            }
+            // The old play-target choices. There is one way to play now, so
+            // they carry nothing worth keeping.
+            "play_runtime_window" | "play_vr" => {}
             k if EDITOR_KEYS.contains(&k) => {
                 editor.insert(k.into(), v);
             }

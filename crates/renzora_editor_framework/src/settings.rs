@@ -273,29 +273,10 @@ pub struct EditorSettings {
     pub dev_mode: bool,
     /// Re-run on_ready when a script is hot-reloaded
     pub script_rerun_on_ready_on_reload: bool,
-    /// Hide and lock the cursor when entering play mode
-    pub hide_cursor_in_play_mode: bool,
-    /// Spawn the runtime as a child process when entering play mode, instead
-    /// of doing the in-editor camera switch. Gives a "real exported game"
-    /// experience — its own window with the project's configured title /
-    /// resolution / window mode / icon, and full insulation from editor state.
-    /// Uses the packaged `renzora-runtime` sibling when one exists, otherwise
-    /// relaunches this same binary with `--no-editor` (the engine is one
-    /// binary either way). Chosen from the Play button's target dropdown (or
-    /// Settings → Scripting).
-    pub external_play_window: bool,
-    /// The Play button launches Simulate (scripts + physics with the editor
-    /// live) instead of full play. Chosen in the Play dropdown; session-only —
-    /// deliberately NOT persisted, so a fresh editor always Plays. When false,
-    /// `external_play_window` (which IS persisted) picks viewport vs window.
-    pub play_launch_simulate: bool,
-    /// The Play button launches the scene into a VR headset: the external
-    /// runtime process with `--vr` (OpenXR stereo). Sits above
-    /// `external_play_window` in precedence and is persisted per-user like it.
-    pub play_launch_vr: bool,
-    /// When entering play mode, maximize the viewport (collapse the rest of the
-    /// dock to a single viewport leaf) for a clean game view; restored on Stop.
-    pub maximize_viewport_on_play: bool,
+    /// Show the running game inside the editor's Game panel rather than in a
+    /// window of its own. Either way the game is a separate process; this only
+    /// decides where its window sits.
+    pub embed_game: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
     /// Numeric drag fields: a press on the bottom slider rail sets the value
@@ -428,11 +409,7 @@ impl Default for EditorSettings {
             mono_font: MonoFont::default(),
             dev_mode: false,
             script_rerun_on_ready_on_reload: true,
-            hide_cursor_in_play_mode: true,
-            external_play_window: true,
-            play_launch_simulate: false,
-            play_launch_vr: false,
-            maximize_viewport_on_play: true,
+            embed_game: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
             renderer_backend: renzora::RendererBackend::default(),

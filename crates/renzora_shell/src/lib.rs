@@ -75,8 +75,7 @@ use panel_sets::{
 };
 use panels::{apply_panel_meta, content_dispatch, seed_panel_meta};
 use play_controls::{
-    play_btn_click, play_target_option_click, track_global_scene_cameras, update_play_button,
-    update_play_target_menu, vr_active_overlay, GlobalSceneHasCamera,
+    play_btn_click, track_global_scene_cameras, update_play_button, GlobalSceneHasCamera,
 };
 use ribbon::{
     ribbon_context_menu, ribbon_focus_rename, ribbon_interact, ribbon_rename_commit,
@@ -271,7 +270,7 @@ impl Plugin for ShellPlugin {
                 ribbon_focus_rename,
                 ribbon_rename_commit,
                 content_dispatch,
-                (play_btn_click, update_play_button, vr_active_overlay),
+                (play_btn_click, update_play_button),
                 plugin_install::install_buttons,
                 top_menu::reset_defaults_buttons,
                 palette_btn_click,
@@ -329,7 +328,6 @@ impl Plugin for ShellPlugin {
                 relocalize_on_language_change,
                 (settings_btn_click, shell_action_press),
                 sync_hierarchy_filter_to_workspace,
-                (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
                     // First: the one-shot load cap settles the restored height

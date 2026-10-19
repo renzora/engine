@@ -24,7 +24,7 @@ Which languages a project can be written in is decided by which backends are ins
 
 ## When scripts run
 
-Nothing runs while you are arranging the scene. Scripts run in **Play**, in **Simulate**, or when you switch on one script's play button in the Inspector.
+Nothing runs while you are arranging the scene. Scripts run in the game you start with **Play**, or in the editor when you switch on one script's play button in the Inspector.
 
 See [Playing and Simulating](/docs/r1-alpha8/editor/play-mode).
 

@@ -65,6 +65,7 @@ pub use renzora_native_plugin;
 /// Loading the editor image beside the executable — see the module docs for why
 /// one binary can be both the editor and the game.
 pub mod editor_image;
+pub mod embed;
 /// Dedicated-server / host-server startup, behind the `networking` feature.
 pub mod server;
 /// DLSS Ray Reconstruction for Solari, only in a `--dlss` build.
@@ -506,8 +507,13 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // Runtime: true (OS title bar). Editor: whatever
                     // `EDITOR_OS_FRAME` asks for. Decided at runtime via
                     // `is_editor`.
-                    decorations: !is_editor || renzora::EDITOR_OS_FRAME,
+                    decorations: (!is_editor || renzora::EDITOR_OS_FRAME)
+                        && embed::embed_parent().is_none(),
                     resizable: true,
+                    // A game going into the editor's Game panel starts hidden,
+                    // so it never flashes up as a window of its own before
+                    // `embed` makes it a child; the editor shows it.
+                    visible: embed::embed_parent().is_none(),
                     // The editor opens on the splash dashboard, which is a
                     // launcher and not a workspace: it wants a window you can
                     // see your desktop around, not the whole screen. So the
@@ -795,6 +801,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         // the editor's own window.
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
+        embed::register(app);
     }
 }
 
@@ -1087,6 +1094,13 @@ fn apply_window_config(
     // Fullscreen is not merely inapplicable but impossible from here:
     // `requestFullscreen` is gated on a user gesture, so a game that wants it on
     // the web has to ask for it from an input handler.
+    // Inside the editor's Game panel the editor owns the window's size and
+    // shape, and any change here would make winit restyle it back into a
+    // top-level window; see `embed`.
+    #[cfg(not(target_arch = "wasm32"))]
+    if embed::embed_parent().is_some() {
+        return;
+    }
     #[cfg(not(target_arch = "wasm32"))]
     {
         window.resizable = cfg.resizable;

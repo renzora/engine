@@ -43,6 +43,10 @@ pub struct PlayModeState {
     pub request_stop: bool,
     /// Set to `true` to toggle pause.
     pub request_pause: bool,
+    /// The game is running in its own process, started with Play. The editor
+    /// itself stays `Editing` throughout; this is for editor features that
+    /// react to a game being up, which can't see the process from here.
+    pub game_launched: bool,
 }
 
 impl PlayModeState {
@@ -77,6 +81,15 @@ impl PlayModeState {
 /// Use as `.run_if(not_in_play_mode)` on editor systems that should be disabled during play.
 pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
     !play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())
+}
+
+/// Run condition: the game is running, so gameplay simulation (animation,
+/// cloth, agents) should advance. True in a shipped game, which has no
+/// `PlayModeState` at all, and in the editor only while scripts run. While you
+/// edit, a model holds its pose and a cloth hangs still, the same way physics
+/// is already paused, so what you place is what the scene file says.
+pub fn game_running(play_mode: Option<Res<PlayModeState>>) -> bool {
+    play_mode.is_none_or(|pm| pm.is_scripts_running())
 }
 
 /// Run condition: returns true when the viewport is in 3D view. Use on

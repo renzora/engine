@@ -162,6 +162,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         // the same thing four times.
         let stats = crate::stats_overlay::build(commands, fonts);
         commands.entity(content).add_child(stats);
+
+        // Loading card, centred, while a dropped model is still loading.
+        let loading = crate::load_overlay::build(commands, fonts);
+        commands.entity(content).add_child(loading);
     }
 
     // The primary viewport (slot 0) owns the shared header; the extra slots are
