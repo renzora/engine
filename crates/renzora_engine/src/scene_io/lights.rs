@@ -10,11 +10,17 @@ use bevy::prelude::*;
 use renzora_lighting::Sun;
 
 /// Rehydrate sun entities — syncs `DirectionalLight` + `Transform` from `Sun` on newly added entities.
+///
+/// The horizon fade is applied here exactly as `renzora_lighting`'s live sync
+/// applies it. Without it a scene saved at night loaded with the sun at full
+/// strength shining up from below the horizon, and stayed that way until the
+/// sun was next edited, since nothing else rewrites the light until then.
 pub fn rehydrate_suns(mut query: Query<(&Sun, &mut DirectionalLight, &mut Transform), Added<Sun>>) {
     for (sun, mut light, mut transform) in &mut query {
+        let factor = renzora_lighting::sun_horizon_factor(sun.elevation);
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
-        light.illuminance = sun.illuminance;
-        light.shadow_maps_enabled = sun.shadows_enabled;
+        light.illuminance = sun.illuminance * factor;
+        light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
     }

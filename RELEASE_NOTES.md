@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 12:07
+- fix(scene): a scene saved at night no longer loads with the sun shining at full strength from below the horizon
+
 ## 2026-10-19 11:19
 - feat(rendering): Solari has a built-in denoiser that works on any ray-tracing GPU, with a Denoiser toggle in its inspector
 
