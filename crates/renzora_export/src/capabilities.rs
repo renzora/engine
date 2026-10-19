@@ -86,7 +86,7 @@ pub const CAPABILITIES: &[Capability] = &[
         id: "solari",
         section: "render_3d",
         label: "Raytraced Lighting (Solari)",
-        help: "Bevy Solari hardware ray-traced direct + indirect lighting (DI + GI). On only when the Solari plugin is used.",
+        help: "Bevy Solari hardware ray-traced direct + indirect lighting (DI + GI). On when a scene uses the Solari Ray-Traced GI component.",
         bevy_features: &["bevy_solari"],
         runtime_features: &["solari"],
         default_on: false,
@@ -935,6 +935,9 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         ],
         "forward_decal" => &["renzora_forward_decal::", "DecalSettings"],
         "cloth" => &["renzora_cloth::", "bevy_silk::"],
+        // Its settings component is the only trace Solari leaves in a scene: a
+        // lit scene looks the same either way, so nothing else can tell.
+        "solari" => &["SolariGi", "bevy_solari::"],
 
         // ── Sky ──────────────────────────────────────────────────────────────
         "atmosphere" => &["renzora_atmosphere::", "set_sun_angles"],
@@ -1267,21 +1270,12 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
 /// * **Physics** — the two backends share their serialized components and their
 ///   script API, so the scan can see *that* physics is used and never *which*.
 ///   It follows the pipeline instead.
-pub fn defaults_from_scan(
-    selected_plugins: &[String],
-    scan: Option<&ProjectScan>,
-) -> HashMap<String, bool> {
+pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
     let Some(scan) = scan.filter(|s| s.saw_scene) else {
         // Nothing to go on: reproduce the pre-scan behaviour exactly.
         return CAPABILITIES
             .iter()
-            .map(|c| {
-                let on = match c.id {
-                    "solari" => selected_plugins.iter().any(|p| p == "solari"),
-                    _ => c.default_on,
-                };
-                (c.id.to_string(), on)
-            })
+            .map(|c| (c.id.to_string(), c.default_on))
             .collect();
     };
 
@@ -1317,10 +1311,6 @@ pub fn defaults_from_scan(
         .iter()
         .map(|c| {
             let on = match c.id {
-                // Follows its plugin, not the content: Solari is hardware
-                // ray-tracing, and a scene that would use it looks like any
-                // other lit scene.
-                "solari" => selected_plugins.iter().any(|p| p == "solari"),
                 "render_3d" => three_d,
                 "render_2d" => two_d,
                 "postfx" => any_postfx,
@@ -1600,7 +1590,7 @@ mod tests {
     /// binary it always did.
     #[test]
     fn a_default_state_asks_for_no_profile_changes() {
-        let state = defaults_from_scan(&[], None);
+        let state = defaults_from_scan(None);
         assert_eq!(lean_profile(&state), crate::build::LeanProfile::default());
 
         let mut smaller = state.clone();
@@ -1635,7 +1625,7 @@ mod tests {
         }
 
         fn state(&self) -> HashMap<String, bool> {
-            defaults_from_scan(&[], Some(&scan_project(&self.0, &[])))
+            defaults_from_scan(Some(&scan_project(&self.0, &[])))
         }
     }
 
@@ -1765,11 +1755,8 @@ mod tests {
         let p = TempProject::new("empty", &[("readme.txt", "nothing here")]);
         let scan = scan_project(&p.0, &[]);
         assert!(!scan.saw_scene);
-        let s = defaults_from_scan(&[], Some(&scan));
+        let s = defaults_from_scan(Some(&scan));
         for c in CAPABILITIES {
-            if c.id == "solari" {
-                continue; // follows its plugin, never the content
-            }
             assert_eq!(s[c.id], c.default_on, "`{}` must fall back", c.id);
         }
     }

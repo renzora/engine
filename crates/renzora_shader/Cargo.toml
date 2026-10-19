@@ -16,7 +16,7 @@ uuid = { version = "1", features = ["v4"] }
 # debug panels reading them can be a native plugin. This crate populates
 # them; enabling the feature here is what keeps them out of a build that
 # does not carry this crate at all.
-renzora = { path = "../renzora", default-features = false, features = ["diagnostics"] }
+renzora = { path = "../renzora", default-features = false, features = ["diagnostics", "render_3d"] }
 # The compiler Bevy 0.20 builds every shader with. Same version and features as
 # `bevy_shader` links, so the validator accepts exactly what the pipeline will.
 wesl = { version = "0.6", features = ["naga-ext"] }

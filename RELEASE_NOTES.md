@@ -1,5 +1,28 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 11:19
+- feat(rendering): Solari has a built-in denoiser that works on any ray-tracing GPU, with a Denoiser toggle in its inspector
+
+## 2026-10-19 10:42
+- fix(rendering): mirror-smooth surfaces such as puddles no longer render black under Solari
+- fix(rendering): emissive surfaces are as bright under Solari as without it, so they bloom again
+
+## 2026-10-19 10:21
+- fix(rendering): moving the sun under Solari updates the lighting straight away instead of keeping the old sunlight until Solari is toggled
+
+## 2026-10-19 09:33
+- feat(import): spec-gloss models bake their glossiness into a roughness texture, so their materials import as plain StandardMaterials
+- fix(import): spec-gloss surfaces with no specular, such as brick and plaster, import matte instead of shiny
+
+## 2026-10-19 09:21
+- fix(materials): node-graph materials render correctly under deferred rendering and Solari instead of falling back to an approximation
+- fix(materials): imported spec-gloss materials no longer turn into mirrors in the deferred and shadow passes
+- fix(rendering): Solari now traces meshes with node-graph materials, so they cast shadows, bounce light and appear in reflections
+
+## 2026-10-19 08:38
+- change(rendering): Solari ray-traced lighting is built into the engine and no longer a marketplace plugin; delete an installed `plugins/solari` copy
+- fix(export): an exported game keeps Solari whenever one of its scenes uses the Solari Ray-Traced GI component
+
 ## 2026-10-19 06:25
 - change(plugins): the `#[post_process]` macro, `PostProcessPlugin<T>` and `add_post_process` are removed; a fullscreen effect is an effect file on a Post Process component, and a plugin's own pass uses `add_render_pass`
 - change(marketplace): the 53 post-process effects are shader assets in the Shaders category, published to their existing listings as 2.0.0

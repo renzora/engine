@@ -543,7 +543,14 @@ pub(crate) fn texture_bindings_at(ctx: &Ctx, group: &str, base: u32) -> String {
 /// Emit the common import block shared by the Surface and Unlit shader
 /// templates. Kept as a helper so both code paths stay in sync when we add /
 /// remove imports based on which nodes the graph uses.
-pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
+///
+/// `deferred` emits the header for a shader that also compiles as the deferred
+/// G-buffer pass, the way `bevy_pbr`'s own `pbr.wesl` does: the vertex input
+/// and output types come from `prepass::io` under `PREPASS_PIPELINE`, and
+/// `globals` is declared at the prepass view layout's binding 1 there, because
+/// `mesh_view_bindings` puts it at 11 (where the prepass layout has nothing).
+/// `view` sits at binding 0 in both layouts, so it imports the same either way.
+pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String, deferred: bool) {
     // The extension-hook pattern: import StandardMaterial's PbrInput builder +
     // the full lighting pipeline. This is the seam documented in the Bevy PBR
     // source (`extended_material.rs` + example usage).
@@ -554,8 +561,17 @@ pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
     // `pbr_functions::apply_pbr_lighting` and friends by their short names.
     shader.push_str("import bevy_pbr::render::pbr_fragment::pbr_input_from_standard_material;\n");
     shader.push_str("import bevy_pbr::render::pbr_functions;\n");
-    shader.push_str("import bevy_pbr::render::forward_io::{VertexOutput, FragmentOutput};\n");
-    shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view, globals};\n");
+    if deferred {
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_pbr::prepass::io::{VertexOutput, FragmentOutput};\n");
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_pbr::deferred::functions::deferred_output;\n");
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_render::globals::Globals;\n");
+        shader.push_str("@if(!PREPASS_PIPELINE) import bevy_pbr::render::forward_io::{VertexOutput, FragmentOutput};\n");
+        shader.push_str("@if(!PREPASS_PIPELINE) import bevy_pbr::render::mesh_view_bindings::globals;\n");
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::view;\n");
+    } else {
+        shader.push_str("import bevy_pbr::render::forward_io::{VertexOutput, FragmentOutput};\n");
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view, globals};\n");
+    }
     shader.push_str("import bevy_pbr::render::mesh_functions;\n");
     if ctx.uses_scene_depth || ctx.uses_scene_normal || ctx.uses_motion_vector {
         shader.push_str("import bevy_pbr::prepass::utils as prepass_utils;\n");
@@ -570,6 +586,10 @@ pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
         shader.push_str("@if(ENVIRONMENT_MAP && MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_maps;\n");
         shader.push_str("@if(ENVIRONMENT_MAP && !MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_map;\n");
         shader.push_str("@if(ENVIRONMENT_MAP) import bevy_pbr::render::mesh_view_bindings::environment_map_sampler;\n");
+    }
+    // After every import: WESL rejects an import that follows a declaration.
+    if deferred {
+        shader.push_str("@if(PREPASS_PIPELINE) @group(0) @binding(1) var<uniform> globals: Globals;\n");
     }
     shader.push('\n');
 }

@@ -1004,7 +1004,9 @@ fn resolve_material_file(
 
     // Compiled shader baked into the `.material` on save — the normal path.
     // Everything the renderer needs is right here, so codegen never runs.
-    if let Some(compiled) = graph.compiled.as_ref() {
+    // An artifact from an older codegen falls through to live codegen below,
+    // which is what carries a codegen change to materials saved before it.
+    if let Some(compiled) = graph.compiled.as_ref().filter(|c| c.is_current()) {
         let meta = &compiled.meta;
         let node_lines = meta.node_line_map.clone();
         let (handle, parameters) = assemble_graph_material(
@@ -1226,8 +1228,9 @@ fn resolve_material_instance_file(
     if !cache.graph_materials.contains_key(&master_key) {
         // Embedded artifact first, then the legacy `.wgsl` + sidecar for a
         // master an older editor wrote. Either way every instance reuses the
-        // master's compiled shader; only the parameter UBO differs.
-        let from_precompiled = match master_graph.compiled.as_ref() {
+        // master's compiled shader; only the parameter UBO differs. An
+        // artifact from an older codegen is skipped, as in the plain case.
+        let from_precompiled = match master_graph.compiled.as_ref().filter(|c| c.is_current()) {
             Some(compiled) => Some((
                 master_key.clone(),
                 (compiled.wgsl.clone(), compiled.meta.clone()),
@@ -1402,6 +1405,7 @@ fn assemble_graph_material(
     // so the path's extension does not decide the dialect.
     #[cfg(feature = "editor")]
     authored_sources().insert(shader_uuid, fragment_shader.clone());
+    let writes_gbuffer = super::codegen::supports_deferred(&fragment_shader);
     let shader = renzora::shader_source::shader(
         fragment_shader,
         format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
@@ -1414,6 +1418,7 @@ fn assemble_graph_material(
         new_graph_material(&FallbackTexture(Handle::default()))
     };
     mat.extension.shader_uuid = Some(shader_uuid);
+    mat.extension.writes_gbuffer = writes_gbuffer;
 
     // Fill the base with as much of the graph as a StandardMaterial can hold,
     // before the authoritative per-material state below overwrites the fields

@@ -1,0 +1,28 @@
+[package]
+name = "renzora_solari"
+version = "0.1.0"
+edition = "2021"
+description = "Hardware ray-traced global illumination. Wraps Bevy's experimental bevy_solari."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list and the linker pulls straight
+# into the binary. Linked by `renzora_runtime`'s `solari` feature, which the
+# exporter strips together with `bevy/bevy_solari`.
+#
+# No `editor` feature: lean runtime crate. The inspector lives in the nested
+# renzora_solari_editor crate (crates/renzora_solari/editor).
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
+
+[dev-dependencies]
+# tests/shaders.rs compiles the forked bevy_solari's WESL against Bevy's own
+# shader libraries, with the material validator's compiler (editor-gated).
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
+renzora_test_harness = { path = "../renzora_test_harness" }
+
+[lints]
+workspace = true

@@ -32,7 +32,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{
     AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
 };
-use bevy::shader::ShaderRef;
+use bevy::shader::{ShaderDefVal, ShaderRef};
 use uuid::Uuid;
 
 /// Number of parameter slots exposed in the per-material uniform buffer.
@@ -156,6 +156,14 @@ pub struct SurfaceGraphExt {
     /// materials (default factory) have no compiled shader yet and must fall
     /// back to `SURFACE_GRAPH_EXT_DEFAULT_FRAG`.
     pub shader_uuid: Option<Uuid>,
+
+    /// Whether the compiled shader can also write the deferred G-buffer
+    /// (`codegen::supports_deferred`). When it can, `specialize()` swaps it
+    /// into the deferred prepass too, so a node graph looks the same under
+    /// deferred rendering (and Solari, which shades from the G-buffer) as it
+    /// does forward. When it can't, that pass falls back to the base
+    /// `StandardMaterial` approximation.
+    pub writes_gbuffer: bool,
 }
 
 /// Parameter buffer mirrored 1:1 in WGSL (see codegen for the matching
@@ -184,14 +192,27 @@ impl Default for SurfaceGraphParams {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct SurfaceGraphExtKey {
     pub shader_uuid: Option<Uuid>,
+    pub writes_gbuffer: bool,
 }
 
 impl From<&SurfaceGraphExt> for SurfaceGraphExtKey {
     fn from(ext: &SurfaceGraphExt) -> Self {
         Self {
             shader_uuid: ext.shader_uuid,
+            writes_gbuffer: ext.writes_gbuffer,
         }
     }
+}
+
+/// Whether `descriptor` is the deferred G-buffer pass: the prepass pipeline
+/// with `DEFERRED_PREPASS` set, which Bevy only sets for a camera that has a
+/// `DeferredPrepass` and a material that renders deferred.
+fn is_deferred_prepass(descriptor: &RenderPipelineDescriptor) -> bool {
+    descriptor.fragment.as_ref().is_some_and(|frag| {
+        frag.shader_defs
+            .iter()
+            .any(|def| matches!(def, ShaderDefVal::Bool(name, true) if name == "DEFERRED_PREPASS"))
+    })
 }
 
 impl MaterialExtension for SurfaceGraphExt {
@@ -207,16 +228,20 @@ impl MaterialExtension for SurfaceGraphExt {
         _layout: &MeshVertexBufferLayoutRef,
         key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // Skip the swap on prepass / shadow pipelines. Our generated shader is
-        // forward-only — it imports `apply_pbr_lighting`, which is gated on
-        // `#ifndef PREPASS_FRAGMENT`, and reads `forward_io::VertexOutput`
-        // which differs from `prepass_io::VertexOutput`. Forcing our shader
-        // into the prepass triggers naga errors. Letting Bevy keep
-        // StandardMaterial's prepass shader handles alpha cutout for `Mask`
-        // materials and depth correctly.
+        // Prepass and shadow pipelines keep StandardMaterial's own shader,
+        // which handles depth and `Mask` alpha cutout from the base
+        // approximation. The one exception is the deferred G-buffer pass for a
+        // shader that can write it: that pass decides what the surface looks
+        // like (deferred lighting and Solari both read only the G-buffer), so
+        // leaving the base there drew every node graph as its approximation.
+        // A shader without a deferred branch would fail to compile in that
+        // pipeline (different vertex input, different view bindings), so it
+        // still gets the base.
         let label = descriptor.label.as_deref().unwrap_or("");
         let is_prepass_or_shadow = label.contains("prepass") || label.contains("shadow");
-        if is_prepass_or_shadow {
+        if is_prepass_or_shadow
+            && !(key.bind_group_data.writes_gbuffer && is_deferred_prepass(descriptor))
+        {
             return Ok(());
         }
         if let Some(uuid) = key.bind_group_data.shader_uuid {
@@ -256,6 +281,7 @@ pub fn new_graph_material(fallback: &super::runtime::FallbackTexture) -> GraphMa
             volume_0: None,
             params: SurfaceGraphParams::default(),
             shader_uuid: None,
+            writes_gbuffer: false,
         },
     }
 }

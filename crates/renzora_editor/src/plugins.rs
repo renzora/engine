@@ -65,6 +65,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin::default());
     app.add_plugins(renzora_shell::ShellPlugin::default());
     app.add_plugins(renzora_skybox_editor::SkyboxEditorPlugin::default());
+    app.add_plugins(renzora_solari_editor::SolariEditorPlugin::default());
     app.add_plugins(renzora_splash::SplashPlugin::default());
     app.add_plugins(renzora_sprite_anim_editor::SpriteAnimEditorPlugin::default());
     app.add_plugins(renzora_ssao_editor::SsaoEditorPlugin::default());

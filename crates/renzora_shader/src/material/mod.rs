@@ -18,6 +18,7 @@ pub mod standard_build;
 pub mod sprite_material;
 pub mod surface_ext;
 pub mod texture_slots;
+pub mod traced_stand_in;
 // Problems-panel validation: a naga_oil composer over all of bevy_pbr's
 // modules plus a naga pass per material. A shipped game has no Problems
 // panel, so it never pays for this.
@@ -39,6 +40,7 @@ impl Plugin for MaterialPlugin {
         app.add_plugins(runtime::GraphMaterialPlugin);
         app.add_plugins(resolver::MaterialResolverPlugin);
         app.add_plugins(sprite_material::SpriteGraphMaterialPlugin);
+        app.add_plugins(traced_stand_in::TracedStandInPlugin);
         // Authoring-only, so it follows `validate.rs` behind the same feature:
         // nothing in a shipped game asks what nodes exist, and the catalogue is
         // 159 entries of strings built at startup to answer that question.

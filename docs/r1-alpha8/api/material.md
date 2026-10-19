@@ -17,9 +17,21 @@ Compiled results are cached per file path in the `MaterialCache` resource, so ed
 
 ### The base material a `GraphMaterial` carries
 
-A `GraphMaterial`'s generated shader is **forward-only**. Bevy's prepass, shadow
-pass and deferred G-buffer pass all shade from the *base* `StandardMaterial`
-instead.
+A `GraphMaterial`'s generated shader runs in the forward pass and, for most
+Surface graphs, in the **deferred G-buffer pass** as well: it carries a second
+branch, under `@if(PREPASS_PIPELINE)`, that writes the graph's result to the
+G-buffer with Bevy's `deferred_output` instead of lighting it. So a node graph
+looks the same in a project set to `deferred` (and under Solari, which shades
+from the G-buffer) as it does forward.
+
+A graph keeps the forward-only shader when it reads something the G-buffer pass
+doesn't have: scene depth, scene normal or motion vectors (the targets that pass
+is writing), the scene-colour/transmission texture, or the environment map.
+Vegetation keeps it too, since that domain has its own vertex stage. Those
+graphs' G-buffer pass falls back to the base below.
+
+Bevy's depth prepass and shadow pass always shade from the *base*
+`StandardMaterial`.
 
 So the resolver fills that base in with as much of the graph as a plain
 `StandardMaterial` can express — albedo and its alpha, normal map,
@@ -40,6 +52,22 @@ white light off every imported surface.
 > `StandardMaterial`'s single `metallic_roughness_texture`, so the base keeps the
 > factors in that case. Pack them into one glTF-style texture (G = roughness,
 > B = metallic) if you want the other passes to see them.
+
+> When Roughness is wired to something the base can't hold (a maths node, a
+> second texture, noise), the base uses a roughness of 0.5 rather than the pin's
+> own constant, which the generated shader never reads. The spec-gloss importer
+> leaves that constant at `1 - glossinessFactor`, usually 0.0, and taking it made
+> those surfaces perfect mirrors in every pass that reads the base.
+
+The base is also what a ray tracer sees. While Solari is on, every mesh drawn
+with a `GraphMaterial` carries a `TracedStandIn` component holding a copy of its
+base, and Solari traces the mesh with that, so it casts shadows, bounces light
+and shows up in reflections. See [Solari](../rendering/solari.md).
+
+The generated shader is baked into the `.material` with the codegen version that
+wrote it. A shader baked by an older codegen is ignored and the graph compiled
+live instead, so a codegen change reaches materials saved before it without
+re-saving them.
 
 ## Attaching a material to an entity
 

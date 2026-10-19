@@ -59,6 +59,20 @@ pub struct CompiledMaterialMeta {
     /// for artifacts written before this field existed.
     #[serde(default)]
     pub node_line_map: Vec<(u64, u32, u32)>,
+    /// The [`codegen::CODEGEN_VERSION`] that wrote `wgsl`. An artifact from an
+    /// older codegen is ignored and the graph compiled live instead, so a
+    /// change to what codegen emits reaches every saved material without the
+    /// user having to open and re-save each one. Zero for artifacts written
+    /// before this field existed.
+    #[serde(default)]
+    pub codegen_version: u32,
+}
+
+impl CompiledArtifact {
+    /// Whether this artifact was written by the codegen running now.
+    pub fn is_current(&self) -> bool {
+        self.meta.codegen_version == codegen::CODEGEN_VERSION
+    }
 }
 
 /// Filesystem path of the legacy `.wgsl` for a `.material` at
@@ -136,6 +150,7 @@ pub fn save_compiled(
             texture_bindings: result.texture_bindings,
             parameters: result.parameters,
             node_line_map: result.node_lines,
+            codegen_version: codegen::CODEGEN_VERSION,
         },
     });
     graph.wgsl_path = None;

@@ -1,0 +1,12 @@
+[package]
+name = "renzora_solari_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only inspector for renzora_solari. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+
+[lints]
+workspace = true

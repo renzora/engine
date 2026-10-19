@@ -164,17 +164,17 @@ scripting = [
     "renzora_parkour?/scripting",
     "renzora_lang?/scripting",
 ]
-# Code gate for the runtime's `bevy::solari` GPU ray-tracing probe. Paired with
-# the root `bevy/bevy_solari` feature by the exporter's Solari capability — both
-# are stripped together, so this stays consistent with whether Solari is built.
+# Solari ray-traced lighting: the `renzora_solari` plugin plus the runtime's
+# GPU ray-tracing probe. Paired with the root `bevy/bevy_solari` feature by the
+# exporter's Solari capability; both are stripped together, so this stays
+# consistent with whether Solari is built.
 #
-# No `dep:` entry: Solari itself is an installed plugin now. What stays here is
-# the half a plugin cannot do — the wgpu device is created with its feature set
-# frozen BEFORE any plugin loads, so the host has to probe the adapter and
-# request the ray-tracing features itself. It records the verdict in
-# `renzora::GpuRaytracing`, which is what the plugin reads to decide whether to
-# build its pipelines at all.
-solari = []
+# The probe has to live here rather than in the plugin: the wgpu device is
+# created with its feature set frozen BEFORE any plugin builds, so the host
+# probes the adapter and requests the ray-tracing features itself. It records
+# the verdict in `renzora::GpuRaytracing`, which is what the plugin reads to
+# decide whether to build its pipelines at all.
+solari = ["dep:renzora_solari"]
 cloth = ["dep:renzora_cloth"]
 gaussian_splatting = ["dep:renzora_gaussian_splatting"]
 ragdoll = ["dep:renzora_ragdoll"]
@@ -264,6 +264,7 @@ skybox = ["dep:renzora_skybox"]
 # `renzora_export::capabilities`) — which is what keeps a shipped title from
 # carrying cloth or gaussian splatting it never uses.
 renzora_cloth = { path = "../renzora_cloth", optional = true }
+renzora_solari = { path = "../renzora_solari", optional = true }
 renzora_gaussian_splatting = { path = "../renzora_gaussian_splatting", optional = true }
 renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }

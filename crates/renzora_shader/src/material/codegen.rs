@@ -42,6 +42,23 @@ pub type FunctionRegistry = HashMap<String, MaterialFunction>;
 /// all three locations together.
 pub const MAX_PARAMETER_SLOTS: usize = 32;
 
+/// Bumped whenever codegen's output changes in a way a saved material should
+/// pick up. A `.material` embeds the shader it was compiled to, and the
+/// resolver ignores an embedded shader stamped with an older version (see
+/// `precompiled::CompiledArtifact::is_current`), compiling the graph live
+/// instead.
+///
+/// 1: Surface shaders gained a deferred G-buffer branch.
+pub const CODEGEN_VERSION: u32 = 1;
+
+/// Whether a generated Surface shader can also run as the deferred G-buffer
+/// pass. Read from the source rather than carried beside it, so it holds for a
+/// shader embedded in a saved `.material` as well as one compiled just now;
+/// the call only appears in the branch `shaders::build_pbr_shader` emits for it.
+pub fn supports_deferred(fragment_shader: &str) -> bool {
+    fragment_shader.contains("deferred_output(in, pbr_input)")
+}
+
 /// Sanitize a function name into a WGSL-identifier-safe string.
 pub(crate) fn safe_fn_ident(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
@@ -501,6 +518,50 @@ mod tests {
         let result = compile(&g);
         assert_eq!(result.errors.len(), 1, "{:?}", result.errors);
         assert!(result.errors[0].contains("3D view"), "{:?}", result.errors);
+    }
+
+    /// What the spec-gloss importer writes: gloss inverted into roughness by a
+    /// maths node. That node keeps it off the plain StandardMaterial path, and
+    /// before the deferred branch existed its G-buffer pass drew the base
+    /// approximation instead of the graph.
+    #[test]
+    fn a_procedural_surface_writes_the_gbuffer() {
+        let mut graph = MaterialGraph::new("Wet stone", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let sg = graph.add_node("texture/sample", [0.0, 0.0]);
+        let invert = graph.add_node("math/one_minus", [0.0, 0.0]);
+        graph.connect(sg, "a", invert, "value");
+        graph.connect(invert, "result", output_id, "roughness");
+        let shader = compile(&graph).fragment_shader;
+        assert!(supports_deferred(&shader), "{shader}");
+    }
+
+    /// A graph reading a prepass target, or a binding only the forward view
+    /// has, can't run in the G-buffer pass and must not claim it can: the
+    /// pipeline would fail to build and the mesh would vanish.
+    #[test]
+    fn forward_only_reads_keep_the_forward_only_shader() {
+        for ty in [
+            "scene/scene_depth",
+            "scene/scene_normal",
+            "scene/motion_vector",
+            "scene/scene_color",
+            "scene/env_map_sample",
+        ] {
+            let mut graph = MaterialGraph::new("Forward", MaterialDomain::Surface);
+            let n = graph.add_node(ty, [0.0, 0.0]);
+            let pin = (nodes::node_def(ty).unwrap().pins)()
+                .into_iter()
+                .find(|p| p.direction == PinDir::Output)
+                .unwrap()
+                .name;
+            let output_id = graph.output_node().unwrap().id;
+            graph.connect(n, &pin, output_id, "base_color");
+            let shader = compile(&graph).fragment_shader;
+            assert!(!supports_deferred(&shader), "{ty}:\n{shader}");
+        }
+        let vegetation = MaterialGraph::new("Grass", MaterialDomain::Vegetation);
+        assert!(!supports_deferred(&compile(&vegetation).fragment_shader));
     }
 
     /// Bevy 0.20 dropped `mesh_functions::mesh_position_world_to_clip`, so a

@@ -1,9 +1,9 @@
 //! Global-illumination contract types.
 //!
 //! Solari (Bevy's hardware-raytraced lighting) is the engine's only GI. Its
-//! settings component and the GPU capability flags live here in the shared
-//! `renzora` dylib so the host, the Solari plugin and the editor all share ONE
-//! `TypeId` across the dlopen boundary.
+//! settings component and the GPU capability flags live here in the contract
+//! crate so the host (`renzora_runtime`), `renzora_solari`, its editor half and
+//! the exporter all agree on one definition without depending on each other.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 /// GPU ray-tracing capability flag, decided ONCE by the host at startup.
 ///
 /// Bevy's `bevy_solari` needs ray-tracing wgpu features (`EXPERIMENTAL_RAY_QUERY`
-/// plus acceleration structures) enabled on the `RenderDevice` *at creation time* —
-/// which is frozen before any dlopen plugin's `build()` runs. So the host
+/// plus acceleration structures) enabled on the `RenderDevice` *at creation time*,
+/// and that is decided before any plugin's `build()` runs. So the host
 /// (`renzora_runtime`) probes the GPU adapter at boot, requests those features
 /// when supported, and records the verdict here. The `renzora_solari` plugin
 /// reads it in `build()` (before the device exists) to decide whether installing
@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 /// create them would crash the engine, so when this is absent/`false` the plugin
 /// stays inert and the engine boots normally on non-RT GPUs.
 ///
-/// Lives in the contract dylib so the host (producer) and the plugin (consumer)
-/// share one `TypeId` across the dlopen boundary.
+/// Lives in the contract crate so the host (producer) and the plugin (consumer)
+/// share one definition.
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct GpuRaytracing {
     pub enabled: bool,
@@ -102,6 +102,19 @@ pub struct SolariGi {
     #[serde(default)]
     #[reflect(default)]
     pub quality: SolariQuality,
+    /// Run Renzora's built-in denoiser over Solari's lighting, which makes the
+    /// image clean on any GPU that can ray trace, without DLSS. Off shows the
+    /// raw estimate, which is what to compare against when judging it. On in a
+    /// scene saved before this existed.
+    #[serde(default = "denoise_default")]
+    #[reflect(default = "denoise_default")]
+    pub denoise: bool,
+}
+
+/// Default for [`SolariGi::denoise`]: on, so a scene saved before the denoiser
+/// existed gets it.
+fn denoise_default() -> bool {
+    true
 }
 
 /// Solari's cost/noise preset, mapped by the Solari plugin onto the sample
@@ -165,6 +178,36 @@ impl Default for SolariGi {
             suppress_shadow_maps: shadow_map_suppression_default(),
             light_proxies: light_proxies_default(),
             quality: SolariQuality::default(),
+            denoise: denoise_default(),
         }
     }
 }
+
+// ── Stand-in materials for the ray tracer ──────────────────────────────────
+
+/// A plain `StandardMaterial` standing in for a mesh's real material, on a mesh
+/// whose material the ray tracer cannot read.
+///
+/// Solari shades a ray hit from `StandardMaterial` data alone: it cannot run a
+/// per-material shader at a hit point, and it only takes a mesh into its scene
+/// when that mesh carries `MeshMaterial3d<StandardMaterial>`. A node-graph
+/// material is an extended material with a generated shader, so without this
+/// such a mesh is simply absent from the traced scene: no shadow, no bounce, a
+/// hole in every reflection.
+///
+/// The material crate (`renzora_shader`) attaches this to its meshes, holding
+/// its best `StandardMaterial` approximation of the graph, and keeps the asset
+/// in step with the graph. The ray tracer (`renzora_solari`) traces the mesh
+/// with it. Neither crate depends on the other; this type is the whole contract.
+///
+/// Maintained only while [`TracedStandInsWanted`] exists, so a project that
+/// never turns Solari on never pays for the extra assets.
+#[cfg(feature = "render_3d")]
+#[derive(Component, Clone, Debug)]
+pub struct TracedStandIn(pub Handle<bevy::pbr::StandardMaterial>);
+
+/// Present while a ray tracer wants [`TracedStandIn`] kept on meshes. Inserted
+/// and removed by `renzora_solari` as Solari turns on and off; the material
+/// crate attaches stand-ins while it exists and strips them once it is gone.
+#[derive(Resource, Default, Debug)]
+pub struct TracedStandInsWanted;

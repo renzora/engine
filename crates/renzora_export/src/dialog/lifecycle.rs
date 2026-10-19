@@ -300,8 +300,7 @@ fn scan_plugins(world: &mut World) {
                 s.selected_plugins.insert(id.clone());
             }
         }
-        let selected: Vec<String> = s.selected_plugins.iter().cloned().collect();
-        s.capabilities = crate::capabilities::defaults_from_scan(&selected, scan.as_ref());
+        s.capabilities = crate::capabilities::defaults_from_scan(scan.as_ref());
     }
     s.available_plugins = plugins;
     s.plugins_scanned = true;

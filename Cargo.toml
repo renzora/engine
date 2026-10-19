@@ -32,6 +32,8 @@ members = [
     "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_silk",
+    # Patched over Bevy's own copy; see `[patch.crates-io]` below.
+    "crates/bevy_solari",
     "crates/vleue_navigator",
     # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.33
     # (bevy 0.20's glam). Upstream polyanya 0.16.1 is the latest and still pins
@@ -699,6 +701,12 @@ inherits = "dist"
 lto = "thin"
 opt-level = "s"
 strip = "symbols"
+
+# Bevy depends on `bevy_solari` itself (through its `bevy_solari` feature), so
+# the fork has to replace that copy rather than sit beside it: two would mean two
+# `SolariLighting` types. See crates/bevy_solari/Cargo.toml for what it changes.
+[patch.crates-io]
+bevy_solari = { path = "crates/bevy_solari" }
 
 
 [lints]

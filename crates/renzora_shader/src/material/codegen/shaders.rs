@@ -75,7 +75,7 @@ pub(crate) fn node_line_ranges(
 pub(crate) fn build_pbr_shader(
     ctx: &Ctx,
     resolved: &HashMap<String, String>,
-    _domain: MaterialDomain,
+    domain: MaterialDomain,
 ) -> (String, Vec<(u64, u32, u32)>) {
     let output_node = ctx.graph.output_node().unwrap();
     let output_id = output_node.id;
@@ -130,8 +130,9 @@ pub(crate) fn build_pbr_shader(
         }
     };
 
+    let deferred = writes_gbuffer(ctx, domain);
     let mut shader = String::new();
-    emit_ext_shader_header(ctx, &mut shader);
+    emit_ext_shader_header(ctx, &mut shader, deferred);
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
     let prelude_base = shader.matches('\n').count() as u32 + 1;
@@ -294,13 +295,41 @@ pub(crate) fn build_pbr_shader(
     // otherwise render with no glow.
     shader.push_str(ALPHA_DISCARD);
 
-    shader.push_str("\n    var out: FragmentOutput;\n");
-    shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
-    shader.push_str("    out.color = pbr_functions::main_pass_post_lighting_processing(pbr_input, out.color);\n");
+    if deferred {
+        // In the G-buffer pass the surface is written out, not lit: deferred
+        // lighting (or Solari) shades it later from what lands here. Same
+        // split as `bevy_pbr`'s `pbr.wesl`.
+        shader.push_str("\n    @if(PREPASS_PIPELINE) let out = deferred_output(in, pbr_input);\n");
+        shader.push_str("    @if(!PREPASS_PIPELINE) var out: FragmentOutput;\n");
+        shader.push_str("    @if(!PREPASS_PIPELINE) out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
+        shader.push_str("    @if(!PREPASS_PIPELINE) out.color = pbr_functions::main_pass_post_lighting_processing(pbr_input, out.color);\n");
+    } else {
+        shader.push_str("\n    var out: FragmentOutput;\n");
+        shader.push_str("    out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n");
+        shader.push_str("    out.color = pbr_functions::main_pass_post_lighting_processing(pbr_input, out.color);\n");
+    }
     shader.push_str("    return out;\n");
     shader.push_str("}\n");
 
     (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
+}
+
+/// Whether a Surface shader gets a deferred G-buffer branch.
+///
+/// Everything the graph reads has to exist in the prepass pipeline. The nodes
+/// that read the depth, normal or motion-vector prepass would be reading the
+/// very targets that pass is writing; the transmission texture and environment
+/// maps are bound only in the forward view layout. A graph using any of them
+/// keeps the forward-only shader, and its G-buffer pass falls back to the base
+/// approximation. Vegetation is left out because its vertex stage is its own,
+/// and the deferred prepass would run Bevy's in its place.
+fn writes_gbuffer(ctx: &Ctx, domain: MaterialDomain) -> bool {
+    domain == MaterialDomain::Surface
+        && !ctx.uses_scene_depth
+        && !ctx.uses_scene_normal
+        && !ctx.uses_motion_vector
+        && !ctx.uses_transmission
+        && !ctx.uses_env_map
 }
 
 pub(crate) fn build_terrain_layer_shader(
@@ -382,7 +411,7 @@ pub(crate) fn build_unlit_shader(
     let alpha_connected = pin_set("alpha");
 
     let mut shader = String::new();
-    emit_ext_shader_header(ctx, &mut shader);
+    emit_ext_shader_header(ctx, &mut shader, false);
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
     let prelude_base = shader.matches('\n').count() as u32 + 1;

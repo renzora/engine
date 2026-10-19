@@ -121,6 +121,35 @@ impl wesl::Resolver for WithGenerated<'_> {
     }
 }
 
+/// The libraries plus one whole module being checked, with its own pipeline
+/// constants. See [`ShaderValidator::check_module`].
+struct WithModule<'a> {
+    libraries: &'a ShaderValidator,
+    main: &'a ModulePath,
+    source: &'a str,
+    constants: &'a str,
+}
+
+impl wesl::Resolver for WithModule<'_> {
+    fn resolve_source<'a>(
+        &'a self,
+        path: &ModulePath,
+    ) -> Result<Cow<'a, str>, wesl::error::ResolveError> {
+        if path == self.main {
+            return Ok(Cow::Borrowed(self.source));
+        }
+        let canonical = self.libraries.canonical_path(path);
+        if canonical.origin == PathOrigin::Package("constants".into()) && canonical.components.is_empty() {
+            return Ok(Cow::Borrowed(self.constants));
+        }
+        self.libraries.resolve_source(path)
+    }
+
+    fn canonical_path(&self, path: &ModulePath) -> ModulePath {
+        self.libraries.canonical_path(path)
+    }
+}
+
 impl ShaderValidator {
     /// Snapshot the shader *libraries* in `shaders`.
     pub fn new(shaders: &Assets<Shader>) -> Self {
@@ -188,6 +217,69 @@ impl ShaderValidator {
         module_path(module).is_some_and(|p| self.modules.contains_key(&p))
     }
 
+    /// This validator plus more libraries, keyed by WESL module path
+    /// (`bevy_solari::realtime::bindings`).
+    ///
+    /// For checking shaders from a crate whose libraries a headless app cannot
+    /// register: `bevy_solari`'s plugin needs a GPU that can ray trace, so a
+    /// test reads its `.wesl` files from disk and adds them here instead.
+    pub fn with_extra_modules(&self, extra: impl IntoIterator<Item = (String, String)>) -> Self {
+        let mut modules = (*self.modules).clone();
+        for (module, source) in extra {
+            if let Some(path) = module_path(&module) {
+                modules.insert(path, source);
+            }
+        }
+        Self {
+            library_count: modules.len(),
+            modules: Arc::new(modules),
+            ..self.clone()
+        }
+    }
+
+    /// Compile a whole shader module the way a pipeline would: the WESL
+    /// compiler with `flags` on and `numeric` served as `constants::NAME`, then
+    /// naga. `module` is the path the source is compiled under, which is what
+    /// its `package::` imports resolve against.
+    ///
+    /// For engine shaders rather than materials, so the error is the
+    /// compiler's own rendering, with no node or line mapping.
+    pub fn check_module(
+        &self,
+        module: &str,
+        source: &str,
+        flags: &[&str],
+        numeric: &[(&str, u32)],
+    ) -> Result<(), String> {
+        let main = module_path(module).ok_or_else(|| format!("not a module path: {module}"))?;
+        let mut options = wesl::CompileOptions {
+            imports: true,
+            condcomp: true,
+            visibility: false,
+            ..Default::default()
+        };
+        for flag in self.flags.iter().map(String::as_str).chain(flags.iter().copied()) {
+            options.features.flags.insert(flag.to_string(), true.into());
+        }
+        for (name, _) in numeric {
+            options.features.flags.insert(name.to_string(), true.into());
+        }
+        let mut constants = self.constants.clone();
+        for (name, value) in numeric {
+            constants.push_str(&format!("const {name} = {value};\n"));
+        }
+        let resolver = WithModule {
+            libraries: self,
+            main: &main,
+            source,
+            constants: &constants,
+        };
+        let wgsl = wesl::compile(&main, &options, &resolver)
+            .map_err(|err| err.diagnostic().render_plain())?
+            .to_string();
+        renzora::wgsl::check(&wgsl).map(|_| ())
+    }
+
     /// Libraries that could not be registered, each as `module: reason`.
     ///
     /// Always empty now: WESL resolves imports at compile time, so a library
@@ -213,7 +305,7 @@ impl ShaderValidator {
 
         let mut errors = Vec::new();
         let prepared = Prepared::new(&result.fragment_shader);
-        for defines in FRAGMENT_CONFIGS {
+        for defines in configs_for(&result.fragment_shader) {
             self.compile_one(&prepared, defines, &mut errors);
         }
 
@@ -248,7 +340,8 @@ impl ShaderValidator {
     ) -> Vec<ContentProblem> {
         let mut errors = Vec::new();
         let prepared = Prepared::new(source);
-        for defines in FRAGMENT_CONFIGS {
+        let configs = configs_for(source);
+        for defines in &configs {
             self.compile_one(&prepared, defines, &mut errors);
         }
 
@@ -266,7 +359,7 @@ impl ShaderValidator {
             .into_iter()
             .map(|message| {
                 let (seen, line) = &configs[&message];
-                let message = if seen.len() == FRAGMENT_CONFIGS.len() {
+                let message = if seen.len() == configs.len() {
                     message
                 } else {
                     format!("[defines: {}] {message}", seen.join(" | "))
@@ -450,6 +543,51 @@ const FRAGMENT_CONFIGS: [&[&str]; 3] = [
     &["VERTEX_UVS_A", "VERTEX_COLORS"],
     &["VERTEX_UVS_A", "VERTEX_COLORS", "ENVIRONMENT_MAP"],
 ];
+
+/// The deferred G-buffer pass, which a shader with a deferred branch
+/// ([`super::codegen::supports_deferred`]) is also bound in. These are the
+/// defines `bevy_pbr`'s prepass sets for a camera with a `DeferredPrepass`:
+/// bare, with the optional mesh attributes, and with the normal and
+/// motion-vector prepasses a Solari camera also carries.
+const DEFERRED_CONFIGS: [&[&str]; 3] = [
+    &[
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS",
+    ],
+    &[
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS",
+        "VERTEX_UVS_A",
+        "VERTEX_COLORS",
+        "VERTEX_TANGENTS",
+    ],
+    &[
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS",
+        "MOTION_VECTOR_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS",
+        "VERTEX_UVS_A",
+        "VERTEX_TANGENTS",
+    ],
+];
+
+/// Every configuration `source` is bound in.
+fn configs_for(source: &str) -> Vec<&'static [&'static str]> {
+    let mut configs: Vec<&[&str]> = FRAGMENT_CONFIGS.to_vec();
+    if super::codegen::supports_deferred(source) {
+        configs.extend(DEFERRED_CONFIGS);
+    }
+    configs
+}
 
 /// The importable WESL libraries in `shaders`, keyed by module path.
 ///

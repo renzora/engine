@@ -36,6 +36,10 @@ use super::graph::{
     AlphaMode as GraphAlphaMode, MaterialDomain, MaterialGraph, MaterialNode, NodeId, PinValue,
 };
 
+/// The base's roughness when the graph computes it in a way a
+/// `StandardMaterial` cannot hold. See [`apply_base_approximation`].
+const UNREPRESENTABLE_ROUGHNESS: f32 = 0.5;
+
 /// Try to compile `graph` to a plain [`StandardMaterial`]. Returns `None` if
 /// any reachable node falls outside the trivial subset, in which case the
 /// caller should fall back to full codegen (`ExtendedMaterial` path).
@@ -566,6 +570,22 @@ pub fn apply_base_approximation(
             }
         }
     }
+    if let Some(PinValue::Float(r)) = param_default(graph, output.id, "roughness") {
+        mat.perceptual_roughness = r;
+    } else if graph.connection_to(output.id, "roughness").is_some()
+        && mat.metallic_roughness_texture.is_none()
+    {
+        // Roughness is wired to something the base can't hold (a maths node, a
+        // second texture, noise). The pin's own constant is then a leftover the
+        // generated shader never reads: the spec-gloss importer writes
+        // `1 - glossinessFactor` there, which is 0.0 for the common factor of
+        // 1.0. Kept as-is, every pass that shades from the base (the deferred
+        // G-buffer, and Solari's ray hits) drew those surfaces as perfect
+        // mirrors. A middling value is the honest answer when the real one is
+        // per-pixel and out of reach, the same call `glb_compat` makes for a
+        // spec-gloss texture it cannot convert.
+        mat.perceptual_roughness = UNREPRESENTABLE_ROUGHNESS;
+    }
 
     // ── normal map ──────────────────────────────────────────────────────
     if let Some(conn) = graph.connection_to(output.id, "normal") {
@@ -1021,5 +1041,49 @@ mod tests {
         let mut mat = StandardMaterial::default();
         apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
         assert!(mat.metallic_roughness_texture.is_none());
+    }
+
+    /// What the spec-gloss importer writes: per-pixel gloss inverted into the
+    /// roughness pin, with the pin's own constant left at `1 - glossinessFactor`
+    /// = 0.0. Taking that constant made the base a perfect mirror, which the
+    /// deferred G-buffer and Solari both shade from.
+    #[test]
+    fn roughness_from_a_maths_node_does_not_leave_the_base_a_mirror() {
+        let mut graph = MaterialGraph::new("Wet stone", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        if let Some(n) = graph.get_node_mut(output_id) {
+            n.input_values
+                .insert("roughness".into(), PinValue::Float(0.0));
+        }
+
+        let sg = graph.add_node("texture/sample", [-400.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(sg) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("sg.rmip".into()));
+        }
+        let invert = graph.add_node("math/one_minus", [-200.0, 0.0]);
+        graph.connect(sg, "a", invert, "value");
+        graph.connect(invert, "result", output_id, "roughness");
+
+        let app = asset_app();
+        let mut mat = StandardMaterial::default();
+        apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
+        assert_eq!(mat.perceptual_roughness, UNREPRESENTABLE_ROUGHNESS);
+    }
+
+    /// An unwired roughness pin is a real authored value and is kept.
+    #[test]
+    fn a_constant_roughness_is_kept() {
+        let mut graph = MaterialGraph::new("Mirror", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        if let Some(n) = graph.get_node_mut(output_id) {
+            n.input_values
+                .insert("roughness".into(), PinValue::Float(0.0));
+        }
+
+        let app = asset_app();
+        let mut mat = StandardMaterial::default();
+        apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
+        assert_eq!(mat.perceptual_roughness, 0.0);
     }
 }

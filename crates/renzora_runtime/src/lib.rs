@@ -164,9 +164,9 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         };
 
         // Request Solari's hardware ray-tracing features when the adapter
-        // supports them, so the `renzora_solari` plugin (if present) can build
-        // its RT pipelines. Probed once (cached). On a non-RT GPU this is a
-        // no-op and the engine boots exactly as before — requesting an
+        // supports them, so the `renzora_solari` plugin can build its RT
+        // pipelines. Probed once (cached). On a non-RT GPU this is a no-op and
+        // the engine boots exactly as before; requesting an
         // unsupported feature here would otherwise fail device creation, since
         // Bevy ORs `features` into `required_features` without intersecting.
         #[cfg(feature = "solari")]
@@ -186,8 +186,8 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
 /// `bevy_solari` (Solari) needs. Probed ONCE at startup and cached.
 ///
 /// Why a standalone probe instead of reading the live `RenderDevice`: the device
-/// is created — with its feature set frozen — *before* any dlopen plugin loads,
-/// so the only way the `renzora_solari` plugin can know in time to gate
+/// is created, with its feature set frozen, *before* any plugin builds, so the
+/// only way the `renzora_solari` plugin can know in time to gate
 /// `SolariPlugins` in its `build()` is for the host to find out first and stash
 /// it in [`renzora::GpuRaytracing`]. We spin up a throwaway wgpu adapter on the
 /// same backend the renderer will use and check it reports
@@ -753,10 +753,11 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     app.insert_resource(renzora::GpuIsIntegrated {
         yes: gpu_is_integrated(),
     });
-    // Record GPU ray-tracing capability so the `renzora_solari` distribution
-    // plugin can gate `SolariPlugins` in its `build()`. The `RenderDevice`'s
-    // feature set is frozen here (before dlopen plugins load), so the plugin
-    // can't probe the device itself in time — see `renzora::GpuRaytracing`.
+    // Record GPU ray-tracing capability so the `renzora_solari` plugin can gate
+    // `SolariPlugins` in its `build()`. This runs before the plugin list is
+    // installed (`add_engine_plugins`), and the `RenderDevice`'s feature set is
+    // frozen by then, so the plugin can't probe the device itself in time. See
+    // `renzora::GpuRaytracing`.
     app.insert_resource(renzora::GpuRaytracing {
         enabled: raytracing_supported(),
     });

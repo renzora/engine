@@ -15,12 +15,14 @@
 //! Linux. Anywhere else Bevy simply never inserts
 //! [`DlssRayReconstructionSupported`], and everything here stays idle.
 //!
-//! # Why it lives in the runtime and not in the Solari plugin
+//! # Why it lives in the runtime and not in `renzora_solari`
 //!
-//! A native plugin is compiled against the staged SDK with no cargo features, so
-//! it cannot `cfg` on whether the shared Bevy was built with DLSS, and naming the
-//! `Dlss` types in a non-DLSS build is a compile error. This crate can, so the
-//! attach/detach lives here, keyed only on Bevy's own `SolariLighting`.
+//! The `dlss` feature, and the `DlssInitPlugin` that must be registered before
+//! `RenderPlugin`, both belong to this crate, and naming the `Dlss` types in a
+//! non-DLSS build is a compile error. Keeping the attach/detach beside them means
+//! one crate owns the whole `cfg`, keyed only on Bevy's own `SolariLighting`.
+//! (This also dates from when Solari was a native plugin, compiled with no cargo
+//! features at all and so unable to `cfg` on DLSS.)
 //!
 //! # TAA
 //!

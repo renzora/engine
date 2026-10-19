@@ -108,6 +108,7 @@ editor = [
     "dep:renzora_ssr_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
+    "dep:renzora_solari_editor",
     "dep:renzora_forward_decal_editor",
     "renzora_network/editor",
     "dep:renzora_ember_editor",
@@ -209,6 +210,7 @@ renzora_oit             = { path = "../renzora_oit" }
 renzora_oit_editor      = { path = "../renzora_oit/editor", optional = true }
 renzora_skybox          = { path = "../renzora_skybox" }
 renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
+renzora_solari_editor   = { path = "../renzora_solari/editor", optional = true }
 # Procedural tree is a NATIVE plugin (`plugins/procedural_tree/`) — generator,
 # runtime glue and editor integration all live there, so neither half is linked.
 renzora_forward_decal_editor = { path = "../renzora_forward_decal/editor", optional = true }

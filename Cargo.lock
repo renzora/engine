@@ -2199,8 +2199,6 @@ dependencies = [
 [[package]]
 name = "bevy_solari"
 version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6884816ec199c45499cc33bb5a992a89662b87dffb797e54e627dbd2d9bba618"
 dependencies = [
  "bevy_anti_alias",
  "bevy_app",
@@ -7820,6 +7818,7 @@ dependencies = [
  "renzora_shell",
  "renzora_skybox",
  "renzora_skybox_editor",
+ "renzora_solari_editor",
  "renzora_splash",
  "renzora_sprite_anim_editor",
  "renzora_ssao",
@@ -8124,6 +8123,7 @@ dependencies = [
  "gltf",
  "gltf-json",
  "half",
+ "image",
  "log",
  "lz4_flex",
  "meshopt",
@@ -8634,6 +8634,7 @@ dependencies = [
  "renzora_scripting",
  "renzora_shader",
  "renzora_skybox",
+ "renzora_solari",
  "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
@@ -8798,6 +8799,24 @@ dependencies = [
  "renzora_inspector",
  "renzora_skybox",
  "rfd",
+]
+
+[[package]]
+name = "renzora_solari"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_shader",
+ "renzora_test_harness",
+]
+
+[[package]]
+name = "renzora_solari_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
 ]
 
 [[package]]

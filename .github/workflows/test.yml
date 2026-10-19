@@ -104,6 +104,7 @@ jobs:
             --exclude bevy_mod_outline \
             --exclude bevy_procedural_tree \
             --exclude bevy_silk \
+            --exclude bevy_solari \
             --exclude vleue_navigator \
             --exclude bevy_mod_openxr \
             --exclude bevy_mod_xr \
@@ -251,6 +252,7 @@ jobs:
             --exclude bevy_interleave_macros \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
+            --exclude bevy_solari \
             --exclude vleue_navigator \
             --exclude polyanya \
             --exclude bevy_mod_openxr \
