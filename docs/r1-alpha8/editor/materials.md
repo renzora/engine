@@ -173,6 +173,8 @@ The model file itself holds no reference to them. The link is rebuilt each time 
 
 This matters most for models exported from the older specular-glossiness workflow, common on asset sites. The engine converts those on import, and the converted result lives only in the `.material`. Re-import a model if its look ever regresses to flat white.
 
+A spec-gloss model imported before 2026-10-19 has its glossiness routed through a maths node in each graph, which renders correctly but costs a generated shader per material. Re-importing it bakes the glossiness into a real roughness texture instead, so its materials become plain StandardMaterials, and surfaces whose specular is black (brick, plaster) come out matte as authored.
+
 ## Supported image formats
 
 `png`, `jpg`, `jpeg`, `bmp`, `tga`, `webp`, `hdr`, `exr`, `ktx2` and `dds`.

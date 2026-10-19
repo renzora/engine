@@ -285,10 +285,24 @@ is exported by Blender to a GLB out-of-process and enters the same way.
   exports carry no metal-rough data at all: every texture and colour lives
   inside the extension and `pbrMetallicRoughness` is either absent or written
   out at its defaults. Bevy ignores the extension, so the model loaded as
-  untextured **white** — in the import preview and in the project alike. The
-  per-pixel glossiness in `specularGlossinessTexture`'s alpha is not converted
-  here (that needs a channel repack); material extraction already routes it into
-  the `.material` graph's roughness pin.
+  untextured **white**, in the import preview and in the project alike.
+
+- **Per-pixel glossiness is repacked into a real metal-rough texture**, before
+  textures are extracted (`glb_compat::bake_spec_gloss_textures`). For each
+  spec-gloss material with a `specularGlossinessTexture` and a default
+  metal-rough block, the importer decodes that texture and embeds a new PNG with
+  roughness in G (`1 - glossinessFactor × alpha`) and metallic 0 in B, then
+  points `metallicRoughnessTexture` at it. The role scan marks it linear and it
+  is baked to `.rmip` like any other texture, so the `.material` comes out as a
+  plain `StandardMaterial`: exact in the forward, deferred and shadow passes and
+  under ray tracing, and cheaper than the generated shader the importer used to
+  need for a `1 - alpha` maths node.
+
+  A material with black `specularFactor` gets no texture. It has no specular
+  lobe, so its gloss describes nothing and it imports fully rough; following the
+  gloss anyway is what made brick walls shine. A texture that can't be read or
+  decoded falls back to the factor-only conversion above, and its gloss is then
+  routed into the `.material` graph's roughness pin as before.
 
 A converter is responsible for exactly two things beyond geometry:
 

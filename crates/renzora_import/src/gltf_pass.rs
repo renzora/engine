@@ -150,6 +150,10 @@ pub fn convert_glb(
         });
     }
 
+    // Before the role scan, so the metal-rough texture this writes is classified,
+    // extracted and baked like any other. See `bake_spec_gloss_textures`.
+    let bytes = crate::glb_compat::bake_spec_gloss_textures(&bytes);
+
     // Pre-scan materials so the texture extractor knows each image's role
     // (color vs normal vs linear data) before baking. The role drives both
     // the sRGB/linear choice and the GPU compression format — getting it
@@ -223,6 +227,11 @@ pub(crate) fn finish_converted_glb(
             extracted_materials,
         };
     }
+
+    // As in `convert_glb`: before the role scan, so the texture it writes is
+    // treated like every other. A converter points images at absolute paths,
+    // which the bake reads from disk.
+    let glb_bytes = crate::glb_compat::bake_spec_gloss_textures(&glb_bytes);
 
     let roles = gltf::Glb::from_slice(&glb_bytes)
         .ok()
@@ -412,13 +421,22 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
         let mut roughness = roughness;
         let mut metallic = metallic;
         let mut base_color = base_color;
-        // Always pull the spec-gloss texture path when the extension is
-        // present so the graph builder can route per-pixel glossiness into
-        // the roughness pin. Without this, every spec-gloss material gets
-        // one uniform roughness and reflective surfaces (wet stone, glass)
-        // render as flat matte.
-        let specular_glossiness_texture =
-            spec_gloss.and_then(|sg| texture_info_uri(sg.get("specularGlossinessTexture")));
+        // Pull the spec-gloss texture path so the graph builder can route
+        // per-pixel glossiness into the roughness pin. Without this, every
+        // spec-gloss material gets one uniform roughness and reflective
+        // surfaces (wet stone, glass) render as flat matte.
+        //
+        // Not when `glb_compat::bake_spec_gloss_textures` already repacked it
+        // into `metallicRoughnessTexture`: that is the same data as a texture
+        // a plain `StandardMaterial` reads, and routing it again would put the
+        // inverting maths node back. Not with black specular either: that
+        // surface has no specular lobe, so its gloss describes nothing, and
+        // following it made brick walls shine.
+        let specular_is_black =
+            spec_gloss.is_some_and(crate::glb_compat::specular_is_black);
+        let specular_glossiness_texture = spec_gloss
+            .filter(|_| metallic_roughness_texture.is_none() && !specular_is_black)
+            .and_then(|sg| texture_info_uri(sg.get("specularGlossinessTexture")));
         if let Some(sg) = spec_gloss {
             if base_color_texture.is_none() {
                 base_color_texture = texture_info_uri(sg.get("diffuseTexture"));
@@ -455,7 +473,10 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             // roughnessFactor is 1.0 — `pbr_block_empty` lets us tell apart
             // "explicitly default" from "missing entirely".
             if pbr_block_empty {
-                if let Some(g) = sg.get("glossinessFactor").and_then(|v| v.as_f64()) {
+                if specular_is_black {
+                    // No specular lobe: fully rough, whatever the gloss says.
+                    roughness = 1.0;
+                } else if let Some(g) = sg.get("glossinessFactor").and_then(|v| v.as_f64()) {
                     roughness = 1.0 - (g as f32);
                 }
                 // Spec-gloss materials don't carry a metallic concept — almost

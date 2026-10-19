@@ -86,10 +86,11 @@ fn strip_unsupported_required(root: &mut Value) -> bool {
 /// * `glossinessFactor` → `roughnessFactor` as `1 - g`, with `metallicFactor` 0
 ///
 /// The per-pixel glossiness in `specularGlossinessTexture`'s alpha is *not*
-/// converted: that needs a channel repack, and the import pipeline's material
-/// extraction already routes it into the `.material` graph's roughness pin
-/// (see `gltf_pass`). What is left here is the GLB, whose job is to look right
-/// in the preview and in the viewport.
+/// converted here: that needs a channel repack, which
+/// [`bake_spec_gloss_textures`] does earlier in the import, before textures are
+/// extracted. A material it repacked arrives here with an authored metal-rough
+/// block and is skipped. What is left is the material whose texture could not
+/// be read, which gets the factors alone.
 ///
 /// Only materials whose metal-rough block says nothing beyond the glTF defaults
 /// are touched. A file that carries both workflows properly has an authored
@@ -157,17 +158,11 @@ fn bake_spec_gloss(root: &mut Value) -> bool {
 /// * **A `specularGlossinessTexture` is present.** Then the factor is a
 ///   *multiplier* over per-pixel glossiness in that texture's alpha, and the
 ///   common value for a multiplier is 1.0 — which says nothing about the
-///   surface. Since the texture is not converted, the factor is floored to a
-///   middling roughness rather than believed.
+///   surface. A material that reaches this point has a texture that could not
+///   be repacked (see [`bake_spec_gloss_textures`]), so the factor is floored
+///   to a middling roughness rather than believed.
 fn roughness_from(sg: &Value) -> f64 {
-    let specular_is_black = sg
-        .get("specularFactor")
-        .and_then(|v| v.as_array())
-        .is_some_and(|a| {
-            a.iter()
-                .all(|c| c.as_f64().is_some_and(|f| f <= 1.0 / 255.0))
-        });
-    if specular_is_black {
+    if specular_is_black(sg) {
         return 1.0;
     }
     // glTF's default glossiness is 1.0 (a mirror), so an absent factor has to
@@ -181,6 +176,249 @@ fn roughness_from(sg: &Value) -> f64 {
         roughness.max(0.5)
     } else {
         roughness
+    }
+}
+
+/// Whether a spec-gloss material declares no specular at all. Its glossiness,
+/// factor and texture alike, then describes a lobe that does not exist, and the
+/// surface is fully rough. See [`roughness_from`].
+pub(crate) fn specular_is_black(sg: &Value) -> bool {
+    sg.get("specularFactor")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| {
+            a.iter()
+                .all(|c| c.as_f64().is_some_and(|f| f <= 1.0 / 255.0))
+        })
+}
+
+/// Bake each spec-gloss material's per-pixel glossiness into a real
+/// metallic-roughness texture, embedded in the GLB.
+///
+/// [`bake_spec_gloss`] maps only the scalar factors, because the per-pixel
+/// gloss lives in the alpha of `specularGlossinessTexture` and needs a channel
+/// repack. Without one, the importer had to invert that alpha with a maths node
+/// in the `.material` graph, and the maths node is what made every such
+/// material a generated-shader `GraphMaterial`: slower, approximated in every
+/// pass but the forward one, and only approximated by a ray tracer.
+///
+/// This does the repack. For each spec-gloss material whose metal-rough block
+/// is still at the glTF defaults, it writes a new PNG with roughness in G
+/// (`1 - glossinessFactor * alpha`) and metallic in B (0, a dielectric, as
+/// [`bake_spec_gloss`] decides), and points `metallicRoughnessTexture` at it.
+/// The rest of the import then treats the material like any metal-rough one:
+/// the role scan marks the texture linear, it is baked to `.rmip` with the
+/// others, and the `.material` comes out as a plain `StandardMaterial`.
+///
+/// A material with black `specularFactor` gets no texture: it has no specular
+/// lobe, so it is fully rough whatever its gloss says, and [`bake_spec_gloss`]
+/// writes exactly that.
+///
+/// Images referenced by an absolute `uri` (the format converters' output) are
+/// read from disk; a texture that can't be read or decoded is left alone, and
+/// that material keeps the factors-only conversion. Returns `bytes` unchanged
+/// when nothing qualifies.
+pub fn bake_spec_gloss_textures(bytes: &[u8]) -> Vec<u8> {
+    let Ok((json_bytes, bin_chunk)) = split_glb(bytes) else {
+        return bytes.to_vec();
+    };
+    let Ok(mut root) = serde_json::from_slice::<Value>(json_bytes) else {
+        return bytes.to_vec();
+    };
+    let mut bin = bin_chunk.map(<[u8]>::to_vec).unwrap_or_default();
+
+    // One baked texture per (source image, gloss factor), shared by every
+    // material that names the same pair.
+    let mut baked: std::collections::HashMap<(usize, u64), usize> =
+        std::collections::HashMap::new();
+    let material_count = root
+        .get("materials")
+        .and_then(|m| m.as_array())
+        .map_or(0, Vec::len);
+    let mut changed = false;
+    for m in 0..material_count {
+        let Some((info, gloss)) = repack_candidate(&root, m) else {
+            continue;
+        };
+        let Some(texture) = info.get("index").and_then(Value::as_u64) else {
+            continue;
+        };
+        let Some(image) = root
+            .pointer(&format!("/textures/{texture}/source"))
+            .and_then(Value::as_u64)
+        else {
+            continue;
+        };
+        let key = (image as usize, gloss.to_bits());
+        let new_texture = match baked.get(&key) {
+            Some(&t) => t,
+            None => {
+                let Some(png) = image_bytes(&root, image as usize, &bin)
+                    .and_then(|src| roughness_png(&src, gloss))
+                else {
+                    continue;
+                };
+                let Some(t) = append_png(&mut root, &mut bin, texture as usize, image as usize, png)
+                else {
+                    continue;
+                };
+                baked.insert(key, t);
+                t
+            }
+        };
+
+        let mut mr_info = info.clone();
+        if let Some(obj) = mr_info.as_object_mut() {
+            obj.insert("index".into(), Value::from(new_texture));
+        }
+        let sg = root
+            .pointer(&format!("/materials/{m}/extensions/{SPEC_GLOSS}"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let mut pbr = Map::new();
+        if let Some(tex) = sg.get("diffuseTexture") {
+            pbr.insert("baseColorTexture".into(), tex.clone());
+        }
+        if let Some(factor) = sg.get("diffuseFactor") {
+            pbr.insert("baseColorFactor".into(), factor.clone());
+        }
+        // The texture carries the whole value: gloss factor folded into G, and
+        // B written as 0. Factors of 1 pass it through unscaled.
+        pbr.insert("metallicFactor".into(), Value::from(1.0));
+        pbr.insert("roughnessFactor".into(), Value::from(1.0));
+        pbr.insert("metallicRoughnessTexture".into(), mr_info);
+        if let Some(obj) = root
+            .pointer_mut(&format!("/materials/{m}"))
+            .and_then(Value::as_object_mut)
+        {
+            obj.insert("pbrMetallicRoughness".into(), Value::Object(pbr));
+            changed = true;
+        }
+    }
+    if !changed {
+        return bytes.to_vec();
+    }
+    if let Some(buffer) = root
+        .pointer_mut("/buffers/0")
+        .and_then(Value::as_object_mut)
+    {
+        buffer.insert("byteLength".into(), Value::from(bin.len()));
+    }
+    let Ok(new_json) = serde_json::to_vec(&root) else {
+        return bytes.to_vec();
+    };
+    repack_glb(&new_json, Some(&bin))
+}
+
+/// Material `m`'s `specularGlossinessTexture` info and glossiness factor, if it
+/// is a spec-gloss material this pass should bake.
+fn repack_candidate(root: &Value, m: usize) -> Option<(Value, f64)> {
+    let mat = root.pointer(&format!("/materials/{m}"))?;
+    let sg = mat.get("extensions")?.get(SPEC_GLOSS)?;
+    let has_authored_pbr = mat
+        .get("pbrMetallicRoughness")
+        .is_some_and(|p| !crate::gltf_pass::pbr_block_is_default(p));
+    if has_authored_pbr || specular_is_black(sg) {
+        return None;
+    }
+    let info = sg.get("specularGlossinessTexture")?.clone();
+    let gloss = sg
+        .get("glossinessFactor")
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0);
+    Some((info, gloss))
+}
+
+/// The encoded bytes of image `image`: from the BIN chunk for an embedded one,
+/// from disk for one a converter pointed at an absolute path.
+fn image_bytes(root: &Value, image: usize, bin: &[u8]) -> Option<Vec<u8>> {
+    let img = root.pointer(&format!("/images/{image}"))?;
+    if let Some(view) = img.get("bufferView").and_then(Value::as_u64) {
+        let view = root.pointer(&format!("/bufferViews/{view}"))?;
+        let offset = view.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let length = view.get("byteLength")?.as_u64()? as usize;
+        return bin.get(offset..offset.checked_add(length)?).map(<[u8]>::to_vec);
+    }
+    let path = std::path::Path::new(img.get("uri")?.as_str()?);
+    if !path.is_absolute() {
+        return None;
+    }
+    std::fs::read(path).ok()
+}
+
+/// A metal-rough PNG from a spec-gloss texture: G = `1 - gloss * alpha`, B = 0.
+fn roughness_png(source: &[u8], gloss: f64) -> Option<Vec<u8>> {
+    let rgba = image::load_from_memory(source).ok()?.to_rgba8();
+    let out = image::RgbaImage::from_fn(rgba.width(), rgba.height(), |x, y| {
+        let alpha = f64::from(rgba.get_pixel(x, y)[3]) / 255.0;
+        let roughness = (1.0 - gloss * alpha).clamp(0.0, 1.0);
+        image::Rgba([255, (roughness * 255.0).round() as u8, 0, 255])
+    });
+    let mut png = Vec::new();
+    out.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .ok()?;
+    Some(png)
+}
+
+/// Embed `png` in the BIN chunk as a new image and texture, sampled like the
+/// texture it was derived from, and return the new texture's index. `None`
+/// only for a document too malformed to extend, which is left untouched.
+fn append_png(
+    root: &mut Value,
+    bin: &mut Vec<u8>,
+    from_texture: usize,
+    from_image: usize,
+    png: Vec<u8>,
+) -> Option<usize> {
+    let name = root
+        .pointer(&format!("/images/{from_image}/name"))
+        .and_then(Value::as_str)
+        .map_or_else(|| format!("image_{from_image}_roughness"), |n| format!("{n}_roughness"));
+    let sampler = root
+        .pointer(&format!("/textures/{from_texture}/sampler"))
+        .cloned();
+    let obj = root.as_object_mut()?;
+    for key in ["bufferViews", "images", "textures"] {
+        if obj.get(key).is_some_and(|v| !v.is_array()) {
+            return None;
+        }
+    }
+
+    // Every bufferView starts 4-aligned.
+    bin.resize(bin.len().next_multiple_of(4), 0);
+    let offset = bin.len();
+    let length = png.len();
+    bin.extend_from_slice(&png);
+
+    if obj.get("buffers").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+        obj.insert("buffers".into(), serde_json::json!([{ "byteLength": 0 }]));
+    }
+    let view = push(obj, "bufferViews", serde_json::json!({
+        "buffer": 0,
+        "byteOffset": offset,
+        "byteLength": length,
+    }));
+    let image = push(obj, "images", serde_json::json!({
+        "bufferView": view,
+        "mimeType": "image/png",
+        "name": name,
+    }));
+    let mut texture = serde_json::json!({ "source": image });
+    if let Some(sampler) = sampler {
+        texture["sampler"] = sampler;
+    }
+    Some(push(obj, "textures", texture))
+}
+
+/// Append `value` to the array at `key`, creating it, and return its index.
+/// The caller has checked that an existing `key` holds an array.
+fn push(obj: &mut Map<String, Value>, key: &str, value: Value) -> usize {
+    let entry = obj.entry(key).or_insert_with(|| Value::Array(Vec::new()));
+    match entry.as_array_mut() {
+        Some(array) => {
+            array.push(value);
+            array.len() - 1
+        }
+        None => 0,
     }
 }
 
@@ -356,5 +594,122 @@ mod spec_gloss_tests {
             doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"]["index"],
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod spec_gloss_texture_tests {
+    use super::{bake_spec_gloss_textures, repack_glb, split_glb};
+    use serde_json::{json, Value};
+
+    /// A 2x1 spec-gloss texture: one pixel fully glossy, one fully rough.
+    fn gloss_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_raw(2, 1, vec![200, 200, 200, 255, 200, 200, 200, 0])
+            .unwrap();
+        let mut png = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        png
+    }
+
+    /// A GLB with that texture embedded and two spec-gloss materials using it:
+    /// `wet` with white specular, `brick` with black.
+    fn spec_gloss_glb(gloss_factor: f64) -> Vec<u8> {
+        let png = gloss_png();
+        let doc = json!({
+            "asset": { "version": "2.0" },
+            "buffers": [{ "byteLength": png.len() }],
+            "bufferViews": [{ "buffer": 0, "byteOffset": 0, "byteLength": png.len() }],
+            "images": [{ "bufferView": 0, "mimeType": "image/png", "name": "sg" }],
+            "samplers": [{}],
+            "textures": [{ "source": 0, "sampler": 0 }],
+            "materials": [
+                {
+                    "name": "wet",
+                    "extensions": { "KHR_materials_pbrSpecularGlossiness": {
+                        "diffuseTexture": { "index": 0 },
+                        "specularFactor": [1.0, 1.0, 1.0],
+                        "glossinessFactor": gloss_factor,
+                        "specularGlossinessTexture": { "index": 0, "texCoord": 0 }
+                    }}
+                },
+                {
+                    "name": "brick",
+                    "extensions": { "KHR_materials_pbrSpecularGlossiness": {
+                        "specularFactor": [0.0, 0.0, 0.0],
+                        "glossinessFactor": 1.0,
+                        "specularGlossinessTexture": { "index": 0 }
+                    }}
+                }
+            ]
+        });
+        repack_glb(&serde_json::to_vec(&doc).unwrap(), Some(&png))
+    }
+
+    fn parse(glb: &[u8]) -> (Value, Vec<u8>) {
+        let (json, bin) = split_glb(glb).unwrap();
+        (serde_json::from_slice(json).unwrap(), bin.unwrap_or_default().to_vec())
+    }
+
+    /// The repacked texture `material` points at, decoded.
+    fn metal_rough(doc: &Value, bin: &[u8], material: usize) -> image::RgbaImage {
+        let tex = doc["materials"][material]["pbrMetallicRoughness"]["metallicRoughnessTexture"]
+            ["index"]
+            .as_u64()
+            .unwrap() as usize;
+        let img = doc["textures"][tex]["source"].as_u64().unwrap() as usize;
+        let view = &doc["bufferViews"][doc["images"][img]["bufferView"].as_u64().unwrap() as usize];
+        let start = view["byteOffset"].as_u64().unwrap() as usize;
+        let len = view["byteLength"].as_u64().unwrap() as usize;
+        image::load_from_memory(&bin[start..start + len]).unwrap().to_rgba8()
+    }
+
+    #[test]
+    fn gloss_becomes_a_metal_rough_texture() {
+        let (doc, bin) = parse(&bake_spec_gloss_textures(&spec_gloss_glb(1.0)));
+        let pbr = &doc["materials"][0]["pbrMetallicRoughness"];
+        assert_eq!(pbr["baseColorTexture"]["index"], 0);
+        assert_eq!(pbr["roughnessFactor"], 1.0);
+        assert_eq!(pbr["metallicFactor"], 1.0);
+        // The texture info is carried over, only re-pointed.
+        assert_eq!(pbr["metallicRoughnessTexture"]["texCoord"], 0);
+        let mr = metal_rough(&doc, &bin, 0);
+        // Fully glossy pixel → roughness 0; fully rough pixel → 1. Metallic 0.
+        assert_eq!(mr.get_pixel(0, 0).0[1..3], [0, 0]);
+        assert_eq!(mr.get_pixel(1, 0).0[1..3], [255, 0]);
+        // The new texture samples like the one it came from.
+        let tex = pbr["metallicRoughnessTexture"]["index"].as_u64().unwrap() as usize;
+        assert_eq!(doc["textures"][tex]["sampler"], 0);
+        // The buffer covers every view; the GLB chunk may pad past it by up to
+        // three bytes, as the spec allows.
+        let byte_length = doc["buffers"][0]["byteLength"].as_u64().unwrap() as usize;
+        let view = &doc["bufferViews"][1];
+        let end = (view["byteOffset"].as_u64().unwrap() + view["byteLength"].as_u64().unwrap())
+            as usize;
+        assert_eq!(byte_length, end);
+        assert!(bin.len() >= byte_length && bin.len() - byte_length < 4);
+    }
+
+    /// The factor multiplies the texture's gloss, and is folded into the bake.
+    #[test]
+    fn the_gloss_factor_is_folded_in() {
+        let (doc, bin) = parse(&bake_spec_gloss_textures(&spec_gloss_glb(0.5)));
+        let mr = metal_rough(&doc, &bin, 0);
+        assert_eq!(mr.get_pixel(0, 0)[1], 128);
+    }
+
+    /// No specular lobe, nothing to bake: the gloss texture describes nothing.
+    #[test]
+    fn black_specular_gets_no_texture() {
+        let (doc, _) = parse(&bake_spec_gloss_textures(&spec_gloss_glb(1.0)));
+        assert!(doc["materials"][1].get("pbrMetallicRoughness").is_none());
+    }
+
+    /// The result is still a GLB the importer's own parser accepts.
+    #[test]
+    fn the_baked_glb_still_parses() {
+        let baked = bake_spec_gloss_textures(&spec_gloss_glb(1.0));
+        let glb = gltf::Glb::from_slice(&baked).unwrap();
+        let _: gltf_json::Root = serde_json::from_slice(&glb.json).unwrap();
     }
 }

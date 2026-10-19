@@ -62,6 +62,10 @@ serde_json = { version = "1", features = ["raw_value"] }
 # downsample. Loader-only consumers (editor, runtime) skip this feature
 # and stay light.
 renzora_rmip = { path = "../renzora_rmip", features = ["bake"] }
+# Decoding a spec-gloss texture and writing its metal-rough repack
+# (`glb_compat::bake_spec_gloss_textures`). Same version and features as
+# renzora_rmip's `bake` already compiles, so it adds nothing to the build.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
 
 # ── Native-only importers ────────────────────────────────────────────────────
 # Both compile vendored C through cc-rs and neither has a wasm build, so they
