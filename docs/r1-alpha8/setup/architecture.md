@@ -131,45 +131,15 @@ The export UI reads the same directory through `renzora_native_plugin::installed
 
 Renzora builds on Bevy's PBR/HDR pipeline plus a large family of plugin crates. Camera effects fall into three structural families:
 
-1. **The unified post-process family** — one `RenderComposition` registry (`crates/renzora/src/postprocess.rs`) that runs every active effect as a fullscreen fragment pass, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing.
+1. **Shader-file effects and render passes**: one `RenderComposition` registry (`crates/renzora/src/postprocess.rs`) of passes, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing. The Post Process component's effects run as one of those passes.
 2. **Bevy built-in wrappers** that author user-facing settings and route a stock Bevy component onto the camera (bloom → `Bloom`, dof → `DepthOfField`, ssao → `ScreenSpaceAmbientOcclusion`, ssr → `ScreenSpaceReflections`, motion blur, auto-exposure, fog, atmosphere → `Atmosphere`, skybox → `Skybox`, etc.).
 3. **Custom multi-pass render-graph crates** for transparency (`renzora_oit`) and for material/mesh sky & water (clouds, night stars, water, lighting).
 
-### The unified post-process pipeline
+### Render passes and shader-file effects
 
-Each effect registers a type-erased pass into `RenderComposition` under a `(phase, order)` key, and **only runs when its settings component is present**, so inactive effects have zero render-graph overhead.
+Each pass registers into `RenderComposition` under a `(phase, order)` key and skips any view without its own component, so an inactive one costs nothing.
 
-These effects are [installed plugins](../extending/post-processing.md) under `plugins/`, not engine crates — an effect hot-reloads with its shader while the editor runs. Here is the complete `ascii`:
-
-```rust
-use bevy::prelude::*;
-use renzora::{post_process, AppEditorExt};
-
-#[post_process(shader = "ascii.wgsl", name = "ASCII", icon = "text-aa")]
-pub struct Ascii {
-    #[field(min = 2.0, max = 32.0, speed = 0.5, default = 8.0)]
-    pub char_size: f32,
-    #[field(min = 0.0, max = 1.0, speed = 0.01, default = 0.5)]
-    pub color_mix: f32,
-    #[field(min = 0.5, max = 3.0, speed = 0.01, default = 1.2)]
-    pub contrast: f32,
-}
-
-#[derive(Default)]
-pub struct AsciiPlugin;
-
-impl Plugin for AsciiPlugin {
-    fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "ascii.wgsl");
-        app.add_plugins(renzora::postprocess::PostProcessPlugin::<Ascii>::default());
-        app.register_inspectable::<Ascii>();
-    }
-}
-
-renzora::plugin!(AsciiPlugin, Runtime);
-```
-
-`#[post_process]` writes the derives, the `Default` from the `default =` values, the `enabled` field and the padding before it, the `PostProcessEffect` impl, and the inspector section. `PostProcessPlugin<T>` turns that into a real `RenderPassEntry`, sizes the uniform buffer from the component and uploads its bytes each frame.
+A fullscreen effect is not a pass of its own: it is a `.wesl` file that declares its sliders in comments, added to a **Post Process** component. `renzora_postprocess` reads each file's settings struct with naga, packs the buffer to match, and runs the whole list as one pass in `LdrPost`, so adding an effect to a project compiles nothing. See [Post-Processing Effects](../extending/post-processing.md) for the file format.
 
 > The framework lives **inside `renzora.dll`** (`renzora::postprocess`), so every effect shares one `RenderComposition` and matching `TypeId`s across the dlopen boundary. The `renzora_postprocess` crate is the shader-file effects that run in one of its phases.
 

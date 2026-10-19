@@ -217,14 +217,12 @@ pub use component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
-// ── Post-process framework ───────────────────────────────────────────────
-// `PostProcessPlugin<T>`, `PostProcessEffect`, the unified render-graph node
-// and the shared `PostProcessRegistry`. Folded in from the old standalone
-// `renzora_postprocess` dylib so its symbols ship inside `renzora.dll`
-// instead of a separate file — the ~50 effect plugins still resolve one
-// shared copy (and one `PostProcessRegistry` TypeId) across the dlopen
-// boundary, just from `renzora` now. The `renzora_postprocess` crate is
-// the shader-file effects that run in one of these phases, not a copy of it.
+// ── Render phases ────────────────────────────────────────────────────────
+// `RenderComposition`: the ordered slots (GI, HDR post, LDR post, overlay)
+// a render pass registers into, anchored to Bevy's TAA, tonemapping and AA.
+// In `renzora.dll` so an installed plugin's pass and an engine pass sort in
+// one list across the dlopen boundary. The `renzora_postprocess` crate is
+// the shader-file effects that run in one of these phases.
 //
 // Gated so non-rendering targets (mobile staticlib, wasm, headless server)
 // don't pull the render-graph surface into the lean base crate.
@@ -265,11 +263,11 @@ mod editor_contract;
 #[cfg(feature = "editor")]
 pub use editor_contract::*;
 
-// Editor derive/attribute macros, re-exported from core so consumers write
-// `renzora::Inspectable` / `renzora::post_process` and the macros they generate
-// emit `renzora::FieldDef` etc. (single shared contract, no `renzora_editor_framework`).
+// The editor derive macro, re-exported from core so consumers write
+// `renzora::Inspectable` and what it generates emits `renzora::FieldDef` etc.
+// (single shared contract, no `renzora_editor_framework`).
 #[cfg(feature = "editor")]
-pub use renzora_macros::{post_process, Inspectable};
+pub use renzora_macros::Inspectable;
 
 /// The engine's `serde`, re-exported so a plugin derives against **this** copy.
 ///

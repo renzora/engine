@@ -35,13 +35,13 @@ Not everything called a "camera effect" is the same kind of thing. There are thr
 
 | Family | Example crates | How it renders |
 |---|---|---|
-| **Unified post-process** | [installed plugins](../extending/post-processing.md) under `plugins/` (`ascii`, `crt`, `sepia`, …) | A fullscreen fragment pass, declared with `#[post_process]` and installed by `PostProcessPlugin<T>`. These hot-reload, shader included. |
+| **Shader-file effects** | [effect files](../extending/post-processing.md) on a Post Process component (`crt.wesl`, `sepia.wesl`, …), run by `renzora_postprocess` | Fullscreen fragment shaders, run in list order as one pass in `LdrPost`. A file declares its own sliders; nothing is compiled per effect, and an edit hot-reloads. |
 | **Bevy built-in wrappers** | `renzora_bloom_effect`, `renzora_dof`, `renzora_ssao`, `renzora_ssr`, `renzora_vignette`, `renzora_motion_blur`, `renzora_auto_exposure`, `renzora_atmosphere`, `renzora_skybox`, `renzora_environment_map`, `renzora_forward_decal`, `renzora_distance_fog`, `renzora_volumetric_fog`, `renzora_antialiasing` | Author user-facing settings, then route a **stock Bevy component** onto the camera (`Bloom`, `DepthOfField`, `ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflections`, `Atmosphere`, `Skybox`, `EnvironmentMapLight`, `ForwardDecal`, FXAA/SMAA/TAA/CAS, …). No custom WGSL pass of their own. |
 | **Custom multi-pass render-graph crates** | `renzora_oit` (transparency); plus material/mesh sky & water (`renzora_clouds`, `renzora_night_stars`, [`renzora_water`](water.md), `renzora_pool_water`, `renzora_lighting`) | Their own render-graph nodes/passes, outside the unified node. `renzora_water` is the one that runs *before* the camera driver: its FFT wave simulation is view-independent, so it would be pure waste per view. |
 
-The **wrappers** get their settings onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes. Unified effects need neither: their settings component sits on any entity and the pass uploads its bytes each frame.
+The **wrappers** and the **Post Process** component get onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes.
 
-For authoring a unified effect (the three files, the WGSL contract, and where the line falls between a plugin effect and an in-tree one), see **[Post-Processing Effects](../extending/post-processing.md)**. This page covers the pipeline-level picture.
+For writing an effect file (the header, the slider comments and the shader contract), see **[Post-Processing Effects](../extending/post-processing.md)**. This page covers the pipeline-level picture.
 
 ### Render composition — one registry, four phases
 
@@ -68,7 +68,7 @@ This file is the **only** place that imports `tonemapping`, `temporal_anti_alias
 
 A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and the `add!` priority does not affect render order.
 
-The framework lives inside `renzora.dll` (`renzora::postprocess`) so every effect shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's effect registers through the same `PostProcessPlugin<T>` an in-tree one does, so a plugin effect and an engine pass sort against each other in one list.
+The framework lives inside `renzora.dll` (`renzora::postprocess`) so every pass shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's pass registers through the same `add_render_pass` an engine one does, so the two sort against each other in one list.
 
 ## EffectRouting — getting settings onto the camera
 

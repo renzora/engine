@@ -205,7 +205,7 @@ Open a shader file to author and preview it. The editor (`renzora_shader_editor`
 
 Auto-compile is on by default, so edits recompile as you go. A WESL shader's imports only resolve against the running app, so its errors come from the pipeline (the log) rather than from the Compiler Log's up-front check.
 
-> Only **Fragment**-type shaders preview on the mesh. **Material** shaders (custom bind groups, textures and samplers) and **Post-Process** shaders can't use the mesh preview; the panel shows an explanation instead. Author fullscreen effects with the `#[post_process]` macro (see [Post-Processing Effects](../extending/post-processing.md)).
+> Only **Fragment**-type shaders preview on the mesh. **Material** shaders (custom bind groups, textures and samplers) and **Post-Process** shaders can't use the mesh preview; the panel shows an explanation instead. Write fullscreen effects as effect files for a Post Process component (see [Post-Processing Effects](../extending/post-processing.md)).
 
 ## The `.shader` file format
 
@@ -239,6 +239,6 @@ A `.shader` file is JSON. Its key fields:
 
 ## Related
 
-- [Post-Processing Effects](../extending/post-processing.md): fullscreen camera shaders via `#[post_process]`.
+- [Post-Processing Effects](../extending/post-processing.md): fullscreen camera shaders as effect files on a Post Process component.
 - [Material Editor](../editor/materials.md): visual PBR node-graph materials (`.material`).
 - [Render Pipeline](pipeline.md): where these passes sit in the frame.

@@ -136,8 +136,7 @@ fn init_pipelines(
         "post_effect_blit_layout",
         &BindGroupLayoutEntries::sequential(ShaderStages::FRAGMENT, (texture(), filtering())),
     );
-    // The pass-through shader `PostProcessCorePlugin` embeds for its own
-    // snapshots.
+    // The pass-through shader `PostProcessCorePlugin` embeds.
     let blit = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
         label: Some("post_effect_blit".into()),
         layout: vec![blit_layout.clone()],

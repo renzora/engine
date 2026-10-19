@@ -81,7 +81,7 @@ All optional; each has a sensible default derived from the struct name.
 | `readonly` | any field | Force a non-editable `{:?}` debug display |
 | `default = <num>` | (see note) | Parsed but **ignored** by `#[derive(Inspectable)]` |
 
-> ⚠️ `#[field(default = ...)]` is recognised by the attribute parser but **has no effect under `#[derive(Inspectable)]`** — initial values come from your type's own `Default` impl (the generated "Add Component" action inserts `T::default()`). `default` is only consumed by the `#[post_process]` attribute macro, which no longer has any users in the tree. Don't rely on it to seed inspector fields.
+> ⚠️ `#[field(default = ...)]` is recognised by the attribute parser but **has no effect under `#[derive(Inspectable)]`** — initial values come from your type's own `Default` impl (the generated "Add Component" action inserts `T::default()`). Don't rely on it to seed inspector fields.
 
 ### Supported field types
 

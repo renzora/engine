@@ -38,7 +38,7 @@ pub use material_thumbnail_registry::{
 };
 pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
 pub use scene_thumbnail_registry::{scene_thumb_path, SceneThumbnailRegistry};
-pub use renzora_macros::{post_process, Inspectable};
+pub use renzora_macros::Inspectable;
 
 /// Late-bound hooks for actions that live in downstream crates the editor
 /// framework can't depend on directly (avoids a cycle with `renzora_undo`).

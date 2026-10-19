@@ -156,7 +156,7 @@ workspace = true
 
 - `bevy` (and `log`) come from `[workspace.dependencies]` — use `{ workspace = true }`, don't pin your own version.
 - All first-party crates are `edition = "2021"`.
-- Add `features = ["editor"]` to the `renzora` dependency **only** when you derive `Inspectable`, use `#[renzora::post_process(...)]`, or touch the inspector/toolbar/shortcut registries — those live behind the SDK's `editor` feature (default features are empty).
+- Add `features = ["editor"]` to the `renzora` dependency **only** when you derive `Inspectable`, or touch the inspector/toolbar/shortcut registries — those live behind the SDK's `editor` feature (default features are empty).
 - Import the SDK with `use renzora::*;` (or pull individual items like `use renzora::Inspectable;`). **There is no `renzora::prelude`** — it does not exist and will not compile. For ECS types use Bevy's own `use bevy::prelude::*;`.
 
 ## Registering a plugin

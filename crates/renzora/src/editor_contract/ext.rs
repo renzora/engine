@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
 ///
-/// Derived via `#[derive(Inspectable)]` or `#[post_process]`.
+/// Derived via `#[derive(Inspectable)]`.
 pub trait InspectableComponent: Component + Default + 'static {
     fn inspector_entry() -> InspectorEntry;
 }
@@ -60,13 +60,6 @@ pub trait AppEditorExt {
         pass_prefix: impl Into<std::borrow::Cow<'static, str>>,
         noun: impl Into<std::borrow::Cow<'static, str>>,
     ) -> &mut Self;
-
-    /// Convenience: register a post-process effect's type, plugin, and inspector entry.
-    fn add_post_process<T>(&mut self) -> &mut Self
-    where
-        T: crate::postprocess::PostProcessEffect
-            + InspectableComponent
-            + bevy::reflect::GetTypeRegistration;
 }
 
 impl AppEditorExt for App {
@@ -170,18 +163,6 @@ impl AppEditorExt for App {
                 component,
                 noun: noun.into(),
             });
-        self
-    }
-
-    fn add_post_process<T>(&mut self) -> &mut Self
-    where
-        T: crate::postprocess::PostProcessEffect
-            + InspectableComponent
-            + bevy::reflect::GetTypeRegistration,
-    {
-        self.register_type::<T>();
-        self.add_plugins(crate::postprocess::PostProcessPlugin::<T>::default());
-        self.register_inspectable::<T>();
         self
     }
 }

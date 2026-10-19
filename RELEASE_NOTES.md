@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 06:25
+- change(plugins): the `#[post_process]` macro, `PostProcessPlugin<T>` and `add_post_process` are removed; a fullscreen effect is an effect file on a Post Process component, and a plugin's own pass uses `add_render_pass`
+- change(marketplace): the 53 post-process effects are shader assets in the Shaders category, published to their existing listings as 2.0.0
+
 ## 2026-10-19 05:38
 - fix(editor): dropping a post-process effect file on the viewport no longer crashes the editor; it adds the effect to the scene's Post Process list
 - feat(editor): dropping an effect file on a Hierarchy row adds it to that entity's Post Process list
