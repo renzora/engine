@@ -287,7 +287,8 @@ impl ParticleSlab {
             {
                 let mut mapped = particle_buffer
                     .slice(..particle_capacity_bytes)
-                    .get_mapped_range_mut();
+                    .get_mapped_range_mut()
+                    .expect("buffer created mapped_at_creation");
                 let particle_count_u32 = (particle_capacity_bytes / 4) as usize;
                 let values = vec![0xFFFF_FFFFu32; particle_count_u32];
                 mapped.copy_from_slice(cast_slice(values.as_slice()));

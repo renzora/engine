@@ -499,6 +499,21 @@ mod tests {
     use crate::material::nodes;
     use std::path::PathBuf;
 
+    /// The libraries every generated material imports, which the shared
+    /// validator waits for.
+    ///
+    /// `mesh_bindings` is listed on its own account: Bevy 0.20 loads it in
+    /// `MeshRenderPlugin::finish` with settings, so it arrives through the asset
+    /// server some frames after the embedded libraries. Waiting only on the
+    /// other two let a slow CI runner build the validator before it landed, and
+    /// every material then failed with `module not found:
+    /// bevy_pbr::render::mesh_bindings`.
+    const REQUIRED_LIBRARIES: [&str; 3] = [
+        "bevy_pbr::render::pbr_functions",
+        "bevy_pbr::render::pbr_fragment",
+        "bevy_pbr::render::mesh_bindings",
+    ];
+
     fn materials_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../assets/materials")
@@ -545,7 +560,7 @@ mod tests {
             // on: the module is *in the composer*. That is only knowable by
             // building one, hence the rebuild — throttled to at most one per three
             // stable frames, and in practice satisfied on the first attempt.
-            let required = ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"];
+            let required = REQUIRED_LIBRARIES;
             let mut last = 0usize;
             let mut stable = 0;
             let mut built: Option<ShaderValidator> = None;
@@ -615,7 +630,7 @@ mod tests {
     #[test]
     fn required_libraries_reach_the_composer() {
         let validator = validator();
-        for module in ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"] {
+        for module in REQUIRED_LIBRARIES {
             assert!(
                 validator.has_module(module),
                 "{module} is not in the composer, so every material importing \

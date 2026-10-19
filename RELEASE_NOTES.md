@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 04:01
+- fix(build): the engine compiles in a debug build again, which the particle system's Bevy 0.20 update had broken
+
 ## 2026-10-19 01:55
 - feat(materials): the Material Preview shows a Sprite material live on a sample sprite instead of a sphere
 - feat(materials): the add-node menu only offers nodes the material's domain can use, and a node it cannot use is marked red and takes no wires
