@@ -221,6 +221,54 @@ fn sync_atmosphere(
     }
 }
 
+/// Marks a camera whose clear colour [`sync_space_backdrop`] set to black, so
+/// it is only ever handed back what it had.
+#[derive(Component)]
+struct SpaceBackdrop;
+
+/// Clear the cameras an enabled sky renders for to black.
+///
+/// `render_sky` composites `framebuffer * transmittance + inscattering`, so
+/// whatever the camera cleared to shows through the sky wherever the air
+/// scatters little. By day that is invisible under the inscattering. At night
+/// there is almost none, and Bevy's default `ClearColor`, an editor grey,
+/// came through as a flat brown-grey overcast that no sun angle, cloud or
+/// exposure setting changed. Behind a real sky is space, so black is right.
+///
+/// Only a camera on `ClearColorConfig::Default` is changed, and it is marked,
+/// so a colour the user chose is never touched and turning the sky off (or
+/// deleting it) hands back exactly the default it had.
+fn sync_space_backdrop(
+    mut commands: Commands,
+    routing: Res<renzora::EffectRouting>,
+    sources: Query<&AtmosphereComponentSettings>,
+    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    mut cameras: Query<(Entity, &mut Camera, Has<SpaceBackdrop>)>,
+) {
+    let sky_hidden = suppressed.as_deref().is_some_and(|s| s.active);
+    for (entity, mut camera, marked) in &mut cameras {
+        let has_sky = !sky_hidden
+            && routing.iter().any(|(target, source_list)| {
+                *target == entity
+                    && source_list
+                        .iter()
+                        .find_map(|&src| sources.get(src).ok())
+                        .is_some_and(|settings| settings.enabled)
+            });
+        match (has_sky, marked) {
+            (true, false) if matches!(camera.clear_color, ClearColorConfig::Default) => {
+                camera.clear_color = ClearColorConfig::Custom(Color::BLACK);
+                commands.entity(entity).insert(SpaceBackdrop);
+            }
+            (false, true) => {
+                camera.clear_color = ClearColorConfig::Default;
+                commands.entity(entity).remove::<SpaceBackdrop>();
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct AtmospherePlugin;
 
@@ -228,7 +276,7 @@ impl Plugin for AtmospherePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] AtmospherePlugin");
         app.register_type::<AtmosphereComponentSettings>();
-        app.add_systems(Update, sync_atmosphere);
+        app.add_systems(Update, (sync_atmosphere, sync_space_backdrop));
     }
 }
 

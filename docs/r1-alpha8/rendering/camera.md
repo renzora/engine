@@ -157,6 +157,7 @@ How routing works:
 - **At runtime**, the active camera is the resolved `SceneCamera`, and the sources are that camera entity plus every non-camera entity. So a `*Settings` component placed on the camera **or** on any other entity (a "World Environment" entity, say) is applied to the active camera.
 - **In the editor**, the same settings are routed to every viewport camera while editing, and to the play camera during play mode.
 - For Bevy built-in effects, a per-effect sync system inserts/removes the stock component (`BloomSettings` → `Bloom`, and similarly for DoF, SSAO, SSR, tonemapping, fog, atmosphere, skybox, etc.).
+- A camera with an enabled atmosphere routed to it clears to **black**, because the sky is drawn over the camera's clear colour and whatever is behind it shows through where the air scatters little, which at night is almost everywhere. Left on the default grey, a night sky rendered as a flat grey overcast. Only a camera on `ClearColorConfig::Default` is changed; a clear colour you set yourself is kept, and turning the sky off gives the default back.
 - All the custom shader effects run inside a **single unified fullscreen pass** placed between tonemapping and the end of main-pass post-processing. Each effect only runs when its component is present, so an inactive effect costs nothing.
 
 See [Post-Processing Effects](../extending/post-processing.md) for how the 53 shipped effects are authored, and [Render Pipeline](./pipeline.md) for how they compose.
