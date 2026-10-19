@@ -185,6 +185,15 @@ Users can turn off the startup reminder, but not the marks: the four views answe
 
 What this means for you is that a patch reaches installed users without them going looking, so a small fix is worth publishing rather than saving up. See [Browsing & Installing](/docs/r1-alpha8/marketplace/browsing) for what they see.
 
+## Moving a listing to another category
+
+A listing's category is set when it is created, and publishing a release never changes it. A marketplace admin can move one, keeping its page, downloads and reviews:
+
+- **From the CLI**, in the same run as the release that matches the new category: set the new `category` in the manifest and run `renzora publish --move-category`. The listing moves first, then the release uploads; if the upload fails the listing is moved back. Without the flag, a manifest whose category differs from its listing's is refused, so it cannot happen by accident.
+- **From the website**, with the Category dropdown on the admin panel's Assets tab. Publish a matching release straight after.
+
+How a download installs follows the listing's category, not the release: a plugin is kept as a zip and built, most other categories are unpacked into their folder. So after a move, every release installs the new way, the older ones included. When a set of plugins became shader files, for example, an editor too old for the shader release still sees the newest plugin release it can run, and installing it now unpacks that plugin's source into `shaders/`, where nothing loads it. Give the release in the new category a newer engine floor and accept that older editors lose the listing, or keep the old listing and publish to a new one.
+
 ## Tracking performance
 
 Your [Dashboard](/dashboard) is where you manage published content. The header shows four totals — **Assets**, **Downloads**, **Earnings** (credits), and **Balance** (credits) — and the tabs below let you:
