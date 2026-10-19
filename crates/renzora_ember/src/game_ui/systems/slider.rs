@@ -4,16 +4,17 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use crate::game_ui::components::{SliderData, UiWidgetPart};
+use crate::UiInteraction;
 
 /// Updates the slider value when the track is dragged, and positions the thumb.
 pub fn slider_system(
-    mut sliders: Query<(&mut SliderData, &Interaction, &Children, &ComputedNode)>,
+    mut sliders: Query<(&mut SliderData, &UiInteraction, &Children, &ComputedNode)>,
     mut parts: Query<(&UiWidgetPart, &mut Node, &mut BackgroundColor)>,
     relative_cursor: Query<&RelativeCursorPosition>,
 ) {
     for (mut data, interaction, children, _computed) in &mut sliders {
         // Handle drag on slider track
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(cursor) = relative_cursor.get(children[0]) {
                 if let Some(pos) = cursor.normalized {
                     // pos.x is -0.5..0.5, map to 0..1

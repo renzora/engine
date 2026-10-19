@@ -13,6 +13,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_text, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::section;
+use renzora_ember::UiInteraction;
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 
 use crate::lang::tr;
@@ -65,7 +66,7 @@ pub(crate) fn tab_shortcuts(commands: &mut Commands, fonts: &EmberFonts, col: En
                 ..default()
             },
             BackgroundColor(rgb((60, 40, 40))),
-            Interaction::default(),
+            UiInteraction::default(),
             ResetBindingsBtn,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("reset-bindings"),
@@ -114,7 +115,7 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             RebindBtn(action),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("rebind-btn"),
@@ -125,11 +126,11 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
 }
 
 pub(crate) fn rebind_btn_click(
-    btns: Query<(&Interaction, &RebindBtn), Changed<Interaction>>,
+    btns: Query<(&UiInteraction, &RebindBtn), Changed<UiInteraction>>,
     mut kb: ResMut<KeyBindings>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             kb.rebinding = Some(btn.0);
             kb.plugin_rebinding = None;
         }
@@ -137,11 +138,11 @@ pub(crate) fn rebind_btn_click(
 }
 
 pub(crate) fn reset_bindings_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<ResetBindingsBtn>)>,
+    btns: Query<&UiInteraction, (Changed<UiInteraction>, With<ResetBindingsBtn>)>,
     mut kb: ResMut<KeyBindings>,
 ) {
     for interaction in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             *kb = KeyBindings::default();
         }
     }

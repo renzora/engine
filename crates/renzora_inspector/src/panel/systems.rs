@@ -8,6 +8,7 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{set_section_open, Section};
+use renzora_ember::UiInteraction;
 
 use super::rebuild::AddButton;
 use super::section::{AddKeyframeBtn, FieldButton, LockBtn, RemoveBtn, ResetBtn};
@@ -18,12 +19,12 @@ use super::{
 };
 
 pub(super) fn remove_click(
-    q: Query<(&Interaction, &RemoveBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RemoveBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (remove_fn, entity, type_id) = (btn.remove_fn.clone(), btn.entity, btn.type_id);
@@ -44,11 +45,11 @@ pub(super) fn remove_click(
 }
 
 pub(super) fn lock_click(
-    q: Query<(&Interaction, &LockBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &LockBtn), Changed<UiInteraction>>,
     mut state: ResMut<InspectorState>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         state.locked = if state.locked == Some(btn.entity) {
@@ -63,12 +64,12 @@ pub(super) fn lock_click(
 /// rebuild, so it's instant and can't flicker). Smart toggle — if *any* section
 /// is collapsed, open them all; otherwise collapse them all.
 pub(super) fn expand_all_click(
-    q: Query<&Interaction, (With<super::ExpandAllButton>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<super::ExpandAllButton>, Changed<UiInteraction>)>,
     mut sections: Query<&mut Section, With<InspectorSectionHeader>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let target_open = sections.iter().any(|s| !s.is_open());
@@ -196,11 +197,11 @@ pub(super) fn sync_expand_glyph(
 }
 
 pub(super) fn add_button_click(
-    q: Query<&Interaction, (With<AddButton>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddButton>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         cmds.push(open_add_component);
     }
 }
@@ -208,12 +209,12 @@ pub(super) fn add_button_click(
 /// Run a `FieldType::Button`'s action when its widget is pressed. The set_fn is
 /// invoked with `FieldValue::Bool(true)` as the "pressed" signal.
 pub(super) fn field_button_click(
-    q: Query<(&Interaction, &FieldButton), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FieldButton), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (set_fn, entity) = (btn.set_fn.clone(), btn.entity);
@@ -225,12 +226,12 @@ pub(super) fn field_button_click(
 /// current value first only to recover the `FieldValue` variant, then write the
 /// matching `type_default()` back through the field's own `set_fn`.
 pub(super) fn reset_click(
-    q: Query<(&Interaction, &ResetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ResetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (get_fn, set_fn, entity, name) = (btn.get_fn.clone(), btn.set_fn.clone(), btn.entity, btn.field_name);
@@ -246,12 +247,12 @@ pub(super) fn reset_click(
 /// editor drains [`renzora::KeyframeRequests`] and keys the entity's live value
 /// at the playhead onto the matching track (the undo is recorded there).
 pub(super) fn add_keyframe_click(
-    q: Query<(&Interaction, &AddKeyframeBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AddKeyframeBtn), Changed<UiInteraction>>,
     reqs: Option<ResMut<renzora::KeyframeRequests>>,
 ) {
     let Some(mut reqs) = reqs else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         reqs.push(btn.entity, btn.component.clone(), btn.field.clone());

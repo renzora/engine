@@ -11,7 +11,9 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
+use renzora_ember::UiInteraction;
 
 use renzora_ui::window_chrome::WindowAction;
 
@@ -69,7 +71,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
             },
             // The bar is the window drag handle; empty areas (zones pass through)
             // reach it, while interactive children (menus/buttons) block it.
-            Interaction::default(),
+            UiInteraction::default(),
             WindowDragHandle,
             Name::new("top-bar"),
         ))
@@ -130,7 +132,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
             border_radius: BorderRadius::all(Val::Px(4.0)),
             ..default()
         },
-        Interaction::default(),
+        UiInteraction::default(),
         CommandPaletteBtn,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
@@ -156,7 +158,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             WorkspaceAddBtn,
             WorkspaceDropZone,
             RelativeCursorPosition::default(),
@@ -215,27 +217,27 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 WebFullscreenBtn,
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
             .id();
         let g = glyph(commands, "corners-out", text_muted(), 14.0);
-        commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(g).insert(PASS_THROUGH);
         commands.entity(btn).add_child(g);
         // Same hover treatment as the desktop minimize/maximize buttons — a
         // faint wash, no red (nothing here is destructive).
         renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
-            match w.get::<Interaction>(btn) {
-                Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+            match w.get::<UiInteraction>(btn) {
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                     Color::srgba(1.0, 1.0, 1.0, 0.09)
                 }
                 _ => Color::NONE,
             }
         });
         renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
-            match w.get::<Interaction>(btn) {
-                Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(text_primary()),
+            match w.get::<UiInteraction>(btn) {
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(text_primary()),
                 _ => rgb(text_muted()),
             }
         });
@@ -265,15 +267,15 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 WindowBtn(action),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
             .id();
-        // The glyph is a child; `FocusPolicy::Pass` lets the hover/click land on
-        // the button (so the bindings below see the parent's `Interaction`).
+        // The glyph is a child; `PASS_THROUGH` lets the hover/click land on
+        // the button (so the bindings below see the parent's `UiInteraction`).
         let g = glyph(commands, name, text_muted(), 14.0);
-        commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(g).insert(PASS_THROUGH);
         if matches!(action, WindowAction::ToggleMaximize) {
             // The maximize glyph reflects window state (square ↔ restore).
             commands.entity(g).insert(MaximizeIcon);
@@ -282,8 +284,8 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
 
         // Hover fill on the button: minimize/maximize get a faint wash; close
         // goes the standard Windows close-red.
-        renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| match w.get::<UiInteraction>(btn) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 if is_close {
                     Color::srgb_u8(232, 17, 35)
                 } else {
@@ -295,8 +297,8 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
         // Glyph color tracks the parent button's hover: the close × turns white
         // on its red fill; the other two brighten from muted to primary.
         renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
-            match w.get::<Interaction>(btn) {
-                Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+            match w.get::<UiInteraction>(btn) {
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                     if is_close {
                         Color::WHITE
                     } else {
@@ -346,7 +348,7 @@ fn settings_button(commands: &mut Commands) -> Entity {
             border_radius: BorderRadius::all(Val::Px(4.0)),
             ..default()
         },
-        Interaction::default(),
+        UiInteraction::default(),
         SettingsBtn,
         renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("common.settings")),
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -454,7 +456,7 @@ fn shell_action_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             ShellActionBtn(id),
             renzora_ember::widgets::HoverTooltip::new(tooltip),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -463,8 +465,8 @@ fn shell_action_button(
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
         let hot = matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         match hue {
             Some((r, g, b)) => Color::srgba(
@@ -485,7 +487,7 @@ fn shell_action_button(
         hue.unwrap_or_else(text_muted),
         14.0,
     );
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let mut kids = vec![ic];
     if let Some(label) = label {
         kids.push(
@@ -494,7 +496,7 @@ fn shell_action_button(
                     Text::new(label),
                     ui_font(&fonts.ui, 11.0),
                     TextColor(rgb(text_primary())),
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     bevy::text::TextLayout::no_wrap(),
                 ))
                 .id(),
@@ -507,11 +509,11 @@ fn shell_action_button(
 /// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered
 /// the id.
 pub(crate) fn shell_action_press(
-    q: Query<(&Interaction, &ShellActionBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShellActionBtn), Changed<UiInteraction>>,
     mut invoked: MessageWriter<renzora::ShellActionInvoked>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             invoked.write(renzora::ShellActionInvoked(btn.0));
         }
     }
@@ -520,11 +522,11 @@ pub(crate) fn shell_action_press(
 /// Gear → toggle the Settings panel. Same toggle the hamburger's Settings row
 /// runs, so clicking either while it's open closes it.
 pub(crate) fn settings_btn_click(
-    q: Query<&Interaction, (With<SettingsBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SettingsBtn>, Changed<UiInteraction>)>,
     settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
 ) {
     let Some(mut settings) = settings else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         settings.show_settings = !settings.show_settings;
     }
 }
@@ -532,10 +534,10 @@ pub(crate) fn settings_btn_click(
 /// The top-bar magnifier → toggle the command palette (consumed by
 /// `renzora_command_palette`).
 pub(crate) fn palette_btn_click(
-    q: Query<&Interaction, (With<CommandPaletteBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CommandPaletteBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::ToggleCommandPaletteRequested);
     }
 }
@@ -577,8 +579,6 @@ pub(crate) fn palette_btn_click(
 /// see what you are about to hit before you commit to which.
 #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
 fn build_traffic_lights(commands: &mut Commands) -> Entity {
-    use bevy::ui::FocusPolicy;
-
     // Apple's own values, so the window reads as a Mac window rather than as an
     // approximation of one.
     const CLOSE: (u8, u8, u8) = (255, 95, 87);
@@ -599,9 +599,9 @@ fn build_traffic_lights(commands: &mut Commands) -> Entity {
                 ..default()
             },
             // The group is what hover is read from, so all three glyphs appear
-            // together. Without an `Interaction` here the children would each
+            // together. Without an `UiInteraction` here the children would each
             // answer only for themselves.
-            Interaction::default(),
+            UiInteraction::default(),
             Name::new("traffic-lights"),
         ))
         .id();
@@ -625,7 +625,7 @@ fn build_traffic_lights(commands: &mut Commands) -> Entity {
                     ..default()
                 },
                 BackgroundColor(rgb(color)),
-                Interaction::default(),
+                UiInteraction::default(),
                 WindowBtn(action),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
@@ -641,11 +641,11 @@ fn build_traffic_lights(commands: &mut Commands) -> Entity {
         );
         let g = glyph(commands, name, ink, GLYPH);
         // Pass, or the glyph would eat the hover the button needs to answer.
-        commands.entity(g).insert(FocusPolicy::Pass);
+        commands.entity(g).insert(PASS_THROUGH);
         renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
             let showing = matches!(
-                w.get::<Interaction>(group),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(group),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             );
             if showing {
                 rgb(ink)
@@ -685,7 +685,7 @@ fn zone(
             },
             // Structural container — let clicks fall through to the bar's drag
             // handle behind it (interactive children still block on their own).
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new(name.to_string()),
         ))
         .id()

@@ -19,10 +19,12 @@ use bevy::prelude::*;
 use renzora_editor_framework::{ActiveTool, EditorCommands};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::toggle_switch;
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::{NoiseMode, StampBlendMode};
 use renzora_terrain::generate::{next_seed, GenSource, HeightmapFit, TerrainGenSettings};
@@ -443,10 +445,10 @@ fn heightmap_label(path: &str) -> String {
 /// queries. Nothing is written to the terrain here — loading only arms the
 /// preview, and Generate is still the button that commits.
 fn heightmap_load_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<HeightmapLoadBtn>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<HeightmapLoadBtn>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(cmds) = cmds.as_ref() else { return };
@@ -487,10 +489,10 @@ fn heightmap_load_click(
 }
 
 fn heightmap_clear_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<HeightmapClearBtn>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<HeightmapClearBtn>)>,
     mut settings: ResMut<TerrainGenSettings>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         settings.clear_heightmap();
     }
 }
@@ -498,23 +500,23 @@ fn heightmap_clear_click(
 /// Re-rolling only moves the seed — the preview updates and nothing is written,
 /// so you can walk through landscapes until one looks right before committing.
 fn reroll_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<RerollBtn>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<RerollBtn>)>,
     mut settings: ResMut<TerrainGenSettings>,
 ) {
     for interaction in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.seed = next_seed(settings.seed);
         }
     }
 }
 
 fn generate_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<GenerateBtn>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<GenerateBtn>)>,
     hover: Res<crate::generate_tool::GenerateHover>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     for interaction in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (Some(cmds), Some(terrain)) = (cmds.as_ref(), hover.terrain) else {
@@ -527,12 +529,12 @@ fn generate_click(
 }
 
 fn reset_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<ResetBtn>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<ResetBtn>)>,
     hover: Res<crate::generate_tool::GenerateHover>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     for interaction in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (Some(cmds), Some(terrain)) = (cmds.as_ref(), hover.terrain) else {
@@ -569,15 +571,15 @@ fn action_button_parts(
                 ..default()
             },
             BackgroundColor(if primary { rgb(accent()) } else { rgb(card_bg()) }),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("terrain-generate-{label}")),
         ))
         .id();
     bind_bg(commands, btn, move |w| {
         let hovered = matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         match (primary, hovered) {
             (true, _) => rgb(accent()),
@@ -594,7 +596,7 @@ fn action_button_parts(
             } else {
                 rgb(text_primary())
             }),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_child(text);

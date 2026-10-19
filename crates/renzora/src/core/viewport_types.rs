@@ -69,6 +69,14 @@ pub struct ModalToolActive(pub bool);
 #[derive(Resource, Default)]
 pub struct ViewportCursorRequest(pub Option<bevy::window::SystemCursorIcon>);
 
+/// The cursor an asset drag wants over what it is hovering, which beats every
+/// widget's own: a `NotAllowed` over a hierarchy row or a viewport the dragged
+/// asset cannot be dropped on, even though that row's own cursor is a pointer.
+/// `None` = no opinion. Each drop target sets it while it is the one hovered
+/// and clears it otherwise, so a target only ever clears what it set.
+#[derive(Resource, Default)]
+pub struct DropCursorRequest(pub Option<bevy::window::SystemCursorIcon>);
+
 /// Active 2D rubber-band selection: `(start, current)` in WINDOW pixels.
 /// Written by the 2D picker while a left-drag that started on empty space is
 /// in flight; drawn by the 2D viewport overlay. `None` when no band is
@@ -149,6 +157,10 @@ pub const MATERIAL_VIEWER_LAYER: usize = 14;
 pub const IMPORT_PREVIEW_LAYER: usize = 16;
 /// The import dialog's material preview.
 pub const IMPORT_MATERIAL_PREVIEW_LAYER: usize = 17;
+/// The material editor's live preview of a Sprite material (2D camera, sample
+/// sprite, checkerboard). Separate from [`MATERIAL_PREVIEW_LAYER`] so the 3D
+/// rig's lights and sphere never reach the 2D camera.
+pub const MATERIAL_PREVIEW_2D_LAYER: usize = 18;
 /// The runtime's render-scale upscale blit (sprite + present camera).
 pub const RENDER_SCALE_BLIT_LAYER: usize = 30;
 /// The runtime's viewport-stretch blit (sprite + present camera). Distinct from

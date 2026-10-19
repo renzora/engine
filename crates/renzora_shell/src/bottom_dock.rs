@@ -13,6 +13,7 @@ use bevy::ui::{ComputedNode, UiGlobalTransform};
 use renzora_ember::dock::DockTab;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{placeholder, rgb, tab_active, text_muted};
+use renzora_ember::UiInteraction;
 
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 
@@ -348,10 +349,10 @@ pub(crate) struct BottomDockBtn;
 
 /// Click the open panel's collapse button → close it.
 pub(crate) fn bottom_dock_close_click(
-    btns: Query<&Interaction, (With<BottomDockCloseBtn>, Changed<Interaction>)>,
+    btns: Query<&UiInteraction, (With<BottomDockCloseBtn>, Changed<UiInteraction>)>,
     mut bottom: ResMut<BottomDock>,
 ) {
-    if btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
+    if btns.iter().any(|i| matches!(i, UiInteraction::Pressed)) {
         bottom.open = false;
     }
 }
@@ -371,11 +372,11 @@ pub(crate) struct BottomDockModeBtn;
 /// therefore pull the height down to what layout mode can hold, which is the
 /// part of "dock into the workspace" the user is actually asking for.
 pub(crate) fn bottom_dock_mode_click(
-    btns: Query<&Interaction, (With<BottomDockModeBtn>, Changed<Interaction>)>,
+    btns: Query<&UiInteraction, (With<BottomDockModeBtn>, Changed<UiInteraction>)>,
     wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
 ) {
-    if !btns.iter().any(|i| matches!(i, Interaction::Pressed)) {
+    if !btns.iter().any(|i| matches!(i, UiInteraction::Pressed)) {
         return;
     }
     let avail = dock_region_height(&wraps).unwrap_or(f32::INFINITY);
@@ -529,19 +530,18 @@ pub(crate) fn sync_bottom_dock_node(
     >,
     mut grips: Query<&mut Node, (With<BottomDockGrip>, Without<BottomDockBtn>)>,
     mut btns: Query<&mut Node, With<BottomDockBtn>>,
-    // Every interactive node that this system can hide. Hiding one while the
-    // cursor is on it strands its `Interaction` at `Hovered`, because Bevy's
-    // focus pass skips hidden entities and never writes the reset — and
-    // `apply_cursor_icon` picks the *first* hovered node carrying a
-    // `HoverCursor`, so one stranded entry owns the cursor for the whole app.
-    // Closing the panel by clicking its own toggle hits this every time.
+    // Every interactive node that this system can hide. Under the old focus
+    // system, hiding one while the cursor was on it stranded its state at
+    // `Hovered` (hidden entities were skipped and never reset), and one
+    // stranded entry with a `HoverCursor` owned the cursor for the whole app.
+    // Closing the panel by clicking its own toggle hit this every time.
     //
-    // Filtering on a zero `ComputedNode` size did not fix it, so the computed
-    // size evidently goes stale the same way. Clearing the state explicitly is
-    // the only version that doesn't depend on what Bevy updates for a hidden
-    // node.
+    // Picking no longer hovers a hidden node, and ember resets hidden nodes
+    // when it derives `UiInteraction`, so this explicit reset is now a
+    // belt-and-braces guard that does not depend on what gets updated for a
+    // hidden node.
     mut hidden_interactions: Query<
-        &mut Interaction,
+        &mut UiInteraction,
         Or<(
             With<BottomDockGrip>,
             With<BottomDockBtn>,
@@ -667,8 +667,8 @@ pub(crate) fn sync_bottom_dock_node(
     // and mid-slide they are hidden while the panel itself is still up.
     if !show_controls {
         for mut interaction in &mut hidden_interactions {
-            if *interaction != Interaction::None {
-                *interaction = Interaction::None;
+            if *interaction != UiInteraction::None {
+                *interaction = UiInteraction::None;
             }
         }
     }
@@ -677,15 +677,17 @@ pub(crate) fn sync_bottom_dock_node(
 /// Reset the hover/press state of everything *inside* the bottom panel on the
 /// frame the panel is hidden.
 ///
-/// Same hazard [`sync_bottom_dock_node`] handles for its own corner controls,
-/// but for the panel's contents, and with teeth: Bevy's focus pass skips hidden
-/// entities, so an asset tile or a folder row that was under the cursor when
-/// the panel went away keeps reading `Hovered` forever. The asset browser's
-/// drop handler treats a hovered *folder* as "move the dragged files in here",
-/// so a stranded one turns a drop into the viewport into a file move — and
+/// Same hazard [`sync_bottom_dock_node`] guards against for its own corner
+/// controls, but for the panel's contents, and with teeth: under the old focus
+/// system an asset tile or a folder row that was under the cursor when the
+/// panel went away kept reading `Hovered` forever. The asset browser's drop
+/// handler treats a hovered *folder* as "move the dragged files in here", so a
+/// stranded one turns a drop into the viewport into a file move, and
 /// [`bottom_dock_drag_reveal`] hides the panel mid-drag as a matter of course,
 /// which is exactly the moment a folder row is likely to be the last thing the
-/// cursor touched.
+/// cursor touched. Picking no longer hovers hidden nodes and ember resets them,
+/// so this is now a belt-and-braces guard, kept because the cost of a stranded
+/// hover here is a file move.
 ///
 /// Only on the transition, so closing the panel doesn't cost a subtree walk
 /// every frame it stays closed.
@@ -693,7 +695,7 @@ pub(crate) fn clear_bottom_dock_hover_on_hide(
     bottom: Res<BottomDock>,
     areas: Query<Entity, With<renzora_ember::dock::FixedDockArea>>,
     children: Query<&Children>,
-    mut interactions: Query<&mut Interaction>,
+    mut interactions: Query<&mut UiInteraction>,
     mut was_shown: Local<bool>,
 ) {
     let shown = bottom.open || bottom.slide > 0.0;
@@ -708,8 +710,8 @@ pub(crate) fn clear_bottom_dock_hover_on_hide(
     let mut stack = vec![area];
     while let Some(entity) = stack.pop() {
         if let Ok(mut interaction) = interactions.get_mut(entity) {
-            if *interaction != Interaction::None {
-                *interaction = Interaction::None;
+            if *interaction != UiInteraction::None {
+                *interaction = UiInteraction::None;
             }
         }
         if let Ok(kids) = children.get(entity) {
@@ -721,16 +723,16 @@ pub(crate) fn clear_bottom_dock_hover_on_hide(
 /// Press the grip → start a resize, recording where the cursor was and how
 /// tall the panel was at that moment.
 ///
-/// Reads the *current* `Interaction` on the `just_pressed` frame rather than
-/// filtering on `Changed<Interaction>`. That mirrors ember's `divider_drag`,
+/// Reads the *current* `UiInteraction` on the `just_pressed` frame rather than
+/// filtering on `Changed<UiInteraction>`. That mirrors ember's `divider_drag`,
 /// which drives the identical gesture: a `Changed` filter only sees the frame
-/// the transition is written, so any frame where the press and the focus update
+/// the transition is written, so any frame where the press and the state update
 /// don't line up drops the gesture entirely and the handle reads as dead.
 pub(crate) fn bottom_dock_grip_press(
     mouse: Res<ButtonInput<MouseButton>>,
-    grips: Query<&Interaction, With<BottomDockGrip>>,
-    headers: Query<&Interaction, With<renzora_ember::dock::FixedAreaHeader>>,
-    tabs: Query<&Interaction, With<DockTab>>,
+    grips: Query<&UiInteraction, With<BottomDockGrip>>,
+    headers: Query<&UiInteraction, With<renzora_ember::dock::FixedAreaHeader>>,
+    tabs: Query<&UiInteraction, With<DockTab>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     bottom: Res<BottomDock>,
     mut resize: ResMut<BottomDockResize>,
@@ -738,19 +740,19 @@ pub(crate) fn bottom_dock_grip_press(
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
-    let on_grip = grips.iter().any(|i| matches!(i, Interaction::Pressed));
+    let on_grip = grips.iter().any(|i| matches!(i, UiInteraction::Pressed));
     // The panel also resizes by dragging its header's empty space, which is a
     // bigger and more obvious target than a 10px edge band. The marker sits on
     // the tab bar's filler, so it spans only the gap after the tabs.
     //
-    // The tab check is belt and braces: `FocusPolicy` defaults to `Pass` in
-    // Bevy 0.19, so a press can be seen by more than one node, and a resize
+    // The tab check is belt and braces: UI nodes start as `PASS_THROUGH`, so a
+    // press can be seen by more than one node, and a resize
     // starting because someone clicked a tab would be worse than a resize that
     // occasionally needs a second try.
-    let on_header = headers.iter().any(|i| matches!(i, Interaction::Pressed))
+    let on_header = headers.iter().any(|i| matches!(i, UiInteraction::Pressed))
         && !tabs
             .iter()
-            .any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
+            .any(|i| matches!(i, UiInteraction::Pressed | UiInteraction::Hovered));
     if !on_grip && !on_header {
         return;
     }
@@ -967,7 +969,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 CollapsedBottomTab(id.clone()),
                 Name::new(format!("closed-bottom-tab:{id}")),
@@ -993,7 +995,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
     // resolution, so a cursor on the bar competes with the tabs and the chevron
     // nested inside it — which is why hovering a closed-strip tab showed the
     // resize cursor. On the filler it can only be hovered over empty space.
-    // The bar keeps its `Interaction` so `collapsed_bottom_bar_drag` still sees
+    // The bar keeps its `UiInteraction` so `collapsed_bottom_bar_drag` still sees
     // the press anywhere along it.
     let strip_filler = commands
         .spawn((
@@ -1002,7 +1004,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
                 height: Val::Percent(100.0),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
             Name::new("closed-bottom-filler"),
         ))
@@ -1025,7 +1027,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             CollapsedBottomOpenBtn,
             Name::new("closed-bottom-open"),
@@ -1068,13 +1070,13 @@ pub(crate) fn sync_collapsed_bottom_bar(
 /// Click a collapsed-strip tab → open the bottom panel with the clicked panel
 /// as the active tab.
 pub(crate) fn collapsed_bottom_tab_click(
-    tabs: Query<(&Interaction, &CollapsedBottomTab), Changed<Interaction>>,
+    tabs: Query<(&UiInteraction, &CollapsedBottomTab), Changed<UiInteraction>>,
     wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
     mut fixed: ResMut<renzora_ember::dock::FixedDock>,
 ) {
     for (interaction, tab) in &tabs {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         bottom.open = true;
@@ -1099,11 +1101,11 @@ pub(crate) fn collapsed_bottom_tab_click(
 /// default back on the way out, so this can restore unconditionally without
 /// having to know which of them ran.
 pub(crate) fn collapsed_bottom_open_click(
-    btns: Query<&Interaction, (With<CollapsedBottomOpenBtn>, Changed<Interaction>)>,
+    btns: Query<&UiInteraction, (With<CollapsedBottomOpenBtn>, Changed<UiInteraction>)>,
     mut bottom: ResMut<BottomDock>,
 ) {
     for interaction in &btns {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         bottom.open = true;
@@ -1123,7 +1125,7 @@ pub(crate) fn collapsed_bottom_open_click(
 /// which is also what keeps the resize from touching the workspace layout.
 pub(crate) fn collapsed_bottom_bar_drag(
     mouse: Res<ButtonInput<MouseButton>>,
-    bars: Query<&Interaction, With<CollapsedBottomBar>>,
+    bars: Query<&UiInteraction, With<CollapsedBottomBar>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut bottom: ResMut<BottomDock>,
     mut resize: ResMut<BottomDockResize>,
@@ -1142,7 +1144,7 @@ pub(crate) fn collapsed_bottom_bar_drag(
         return;
     };
     if mouse.just_pressed(MouseButton::Left) {
-        if bars.iter().any(|i| matches!(i, Interaction::Pressed)) {
+        if bars.iter().any(|i| matches!(i, UiInteraction::Pressed)) {
             *press_y = Some(cursor_y);
         }
         return;
@@ -1170,12 +1172,12 @@ pub(crate) fn collapsed_bottom_bar_drag(
 /// reading as closed, not active).
 pub(crate) fn collapsed_bottom_tab_hover(
     mut tabs: Query<
-        (&Interaction, &mut BackgroundColor),
+        (&UiInteraction, &mut BackgroundColor),
         Or<(With<CollapsedBottomTab>, With<CollapsedBottomOpenBtn>)>,
     >,
 ) {
     for (interaction, mut bg) in &mut tabs {
-        let want = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+        let want = if matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed) {
             rgb(tab_active())
         } else {
             Color::NONE

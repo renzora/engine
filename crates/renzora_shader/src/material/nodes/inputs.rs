@@ -171,6 +171,22 @@ pub static CAMERA_POSITION: MaterialNodeDef = MaterialNodeDef {
     color: CLR_INPUT,
 };
 
+pub static SPRITE_COLOR: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/sprite_color",
+    display_name: "Sprite Color",
+    category: CAT_INPUT,
+    description: "The sprite's own texture at a UV (the sprite's UV when unwired), with its flip, tiling and slicing applied. Sprite materials only",
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2),
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+            PinTemplate::output("a", "A", PinType::Float),
+        ]
+    },
+    color: CLR_INPUT,
+};
+
 pub static OBJECT_POSITION: MaterialNodeDef = MaterialNodeDef {
     node_type: "input/object_position",
     display_name: "Object Position",

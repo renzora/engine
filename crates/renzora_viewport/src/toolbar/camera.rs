@@ -14,6 +14,7 @@ use renzora_ember::theme::value_text;
 use renzora_ember::widgets::{
     drag_value, icon_popup_trigger, popup_anchor, popup_panel, DragRange, Popup,
 };
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::rows::{
@@ -207,7 +208,7 @@ fn snap_dist_row(
 }
 
 pub(super) fn header_click(
-    q: Query<(&Interaction, &HeaderClick), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HeaderClick), Changed<UiInteraction>>,
     mut angle_triggers: Query<(&ViewAngleTrigger, &mut Popup)>,
     mut texts: Query<&mut Text>,
     mut nodes: Query<&mut Node>,
@@ -215,7 +216,7 @@ pub(super) fn header_click(
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, click) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match *click {
@@ -286,11 +287,11 @@ pub(super) fn update_camera_snap_triggers(
     settings: Option<Res<ViewportSettings>>,
     theme: Option<Res<ThemeManager>>,
     mut cam: Query<
-        (&Interaction, &Popup, &mut BackgroundColor),
+        (&UiInteraction, &Popup, &mut BackgroundColor),
         (With<CameraTrigger>, Without<SnapTrigger>),
     >,
     mut snap: Query<
-        (&Interaction, &Popup, &mut BackgroundColor, &Children),
+        (&UiInteraction, &Popup, &mut BackgroundColor, &Children),
         (With<SnapTrigger>, Without<CameraTrigger>),
     >,
     mut glyphs: Query<&mut TextColor>,
@@ -303,7 +304,7 @@ pub(super) fn update_camera_snap_triggers(
     let hovered = col(t.widgets.hovered_bg);
 
     for (interaction, toggle, mut bg) in &mut cam {
-        let want = if toggle.open || *interaction == Interaction::Hovered {
+        let want = if toggle.open || *interaction == UiInteraction::Hovered {
             hovered
         } else {
             inactive
@@ -329,7 +330,7 @@ pub(super) fn update_camera_snap_triggers(
     for (interaction, toggle, mut bg, children) in &mut snap {
         // Hover and the open panel still outrank the lit wash, so the trigger
         // keeps answering the cursor while snapping is on.
-        let want = if toggle.open || *interaction == Interaction::Hovered {
+        let want = if toggle.open || *interaction == UiInteraction::Hovered {
             hovered
         } else if any_snap {
             wash

@@ -9,8 +9,10 @@ use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Rx;
 use crate::font::ui_font;
+use crate::interaction::{BLOCK, PASS_THROUGH};
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Horizontal padding inside the input box (matches the box's `padding` x), so
 /// the caret/click math measures from where the text actually starts.
@@ -129,7 +131,7 @@ pub(crate) fn caret(commands: &mut Commands) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("caret"),
         ))
         .id()
@@ -179,7 +181,7 @@ fn build_input(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             // Needed to map a click's x to a caret index (code-editor technique).
             RelativeCursorPosition::default(),
             SingleLineInput,
@@ -212,7 +214,7 @@ fn build_input(
                 ..default()
             },
             BackgroundColor(rgb(accent()).with_alpha(0.45)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             SelectionHighlight(box_e),
             Name::new("selection"),
         ))
@@ -231,7 +233,7 @@ fn build_input(
                 ..default()
             },
             BackgroundColor(Color::WHITE),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("caret"),
         ))
         .id();
@@ -313,7 +315,7 @@ pub(crate) fn text_input_focus(
     time: Res<Time>,
     mut inputs: Query<(
         Entity,
-        &Interaction,
+        &UiInteraction,
         &mut EmberTextInput,
         &mut Styled,
         &ComputedNode,
@@ -330,7 +332,7 @@ pub(crate) fn text_input_focus(
     }
     let clicked = inputs
         .iter()
-        .find(|(_, i, _, _, _, _)| matches!(i, Interaction::Pressed))
+        .find(|(_, i, _, _, _, _)| matches!(i, UiInteraction::Pressed))
         .map(|(e, _, _, _, _, _)| e);
 
     // A second press on the same input within the threshold → double-click.
@@ -435,7 +437,7 @@ pub(crate) fn text_input_drag_select(
     mut inputs: Query<
         (
             Entity,
-            &Interaction,
+            &UiInteraction,
             &mut EmberTextInput,
             &ComputedNode,
             &RelativeCursorPosition,
@@ -450,7 +452,7 @@ pub(crate) fn text_input_drag_select(
             .iter()
             // A double-click just select-all'd — don't fight it with a drag.
             .find(|(_, i, inp, _, _)| {
-                matches!(i, Interaction::Pressed) && inp.focused && !inp.select_all
+                matches!(i, UiInteraction::Pressed) && inp.focused && !inp.select_all
             })
             .map(|(e, _, _, _, _)| e);
         if let Some(e) = *dragging {
@@ -938,7 +940,7 @@ pub(crate) fn text_input_context_open(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut menu: ResMut<InputContextMenu>,
-    inputs: Query<(Entity, &Interaction), With<EmberTextInput>>,
+    inputs: Query<(Entity, &UiInteraction), With<EmberTextInput>>,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
         return;
@@ -949,7 +951,7 @@ pub(crate) fn text_input_context_open(
     }
     let Some((target, _)) = inputs
         .iter()
-        .find(|(_, i)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+        .find(|(_, i)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
     else {
         return;
     };
@@ -970,7 +972,7 @@ pub(crate) fn text_input_context_open(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::NoAutoCursor,
             InputCtxBackdrop,
             GlobalZIndex(980),
@@ -993,7 +995,7 @@ pub(crate) fn text_input_context_open(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     for (label, action) in [
@@ -1011,7 +1013,7 @@ pub(crate) fn text_input_context_open(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 InputCtxBtn(action),
             ))
             .id();
@@ -1029,8 +1031,8 @@ pub(crate) fn text_input_context_open(
 pub(crate) fn text_input_context_clicks(
     mut commands: Commands,
     mut menu: ResMut<InputContextMenu>,
-    mut rows: Query<(&Interaction, &InputCtxBtn, &mut BackgroundColor), Changed<Interaction>>,
-    backdrops: Query<&Interaction, (With<InputCtxBackdrop>, Changed<Interaction>)>,
+    mut rows: Query<(&UiInteraction, &InputCtxBtn, &mut BackgroundColor), Changed<UiInteraction>>,
+    backdrops: Query<&UiInteraction, (With<InputCtxBackdrop>, Changed<UiInteraction>)>,
     mut inputs: Query<&mut EmberTextInput>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {
@@ -1038,9 +1040,9 @@ pub(crate) fn text_input_context_clicks(
     let mut close = false;
     for (i, btn, mut bg) in &mut rows {
         match i {
-            Interaction::Hovered => bg.0 = rgb(hover_bg()),
-            Interaction::None => bg.0 = Color::NONE,
-            Interaction::Pressed => {
+            UiInteraction::Hovered => bg.0 = rgb(hover_bg()),
+            UiInteraction::None => bg.0 = Color::NONE,
+            UiInteraction::Pressed => {
                 if let Ok(mut inp) = inputs.get_mut(target) {
                     match btn.0 {
                         InputCtxAction::Copy => match inp.selection_range() {
@@ -1101,7 +1103,7 @@ pub(crate) fn text_input_context_clicks(
         }
     }
     for i in &backdrops {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             close = true;
         }
     }

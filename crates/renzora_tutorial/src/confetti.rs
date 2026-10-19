@@ -3,13 +3,13 @@
 //! ember has no particle primitive (the `cinder` particle-UI is "migrating in
 //! next"), so this is hand-built from animated `bevy_ui` nodes — the same
 //! read-`Time`-write-`Node`/`BackgroundColor` pattern ember's own `spinner` /
-//! `vu_meter` widgets use. The layer is click-through (`FocusPolicy::Pass`,
+//! `vu_meter` widgets use. The layer is click-through (`PASS_THROUGH`,
 //! never an `OverlaySurface`) so it can never swallow a viewport click the user
 //! is mid-task on.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use renzora::core::{EditorLocked, HideInHierarchy};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{accent, play_green, rgb, warn_amber};
 
 /// Full-window, pointer-transparent layer that hosts the live pieces.
@@ -43,7 +43,7 @@ pub fn spawn_root(commands: &mut Commands) -> Entity {
             },
             // Critically pointer-transparent: the user is still clicking the
             // viewport underneath while pieces rain down.
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             GlobalZIndex(8200),
             HideInHierarchy,
             EditorLocked,
@@ -76,7 +76,7 @@ pub fn burst(commands: &mut Commands, root: Entity, origin: Vec2, count: usize, 
                     ..default()
                 },
                 BackgroundColor(color),
-                FocusPolicy::Pass,
+                PASS_THROUGH,
                 Confetti {
                     vel,
                     pos: origin,

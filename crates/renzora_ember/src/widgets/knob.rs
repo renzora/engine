@@ -7,6 +7,7 @@ use bevy::window::SystemCursorIcon;
 
 use super::gauge::ArcData;
 use crate::reactive::Bound;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberKnob;
@@ -35,7 +36,7 @@ pub fn knob_pivoted(commands: &mut Commands, value: f32, pivot: f32) -> Entity {
             ArcData { value: v, pivot: pivot.clamp(0.0, 1.0) },
             EmberKnob,
             Bound::<f32>(v),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
             Name::new("knob"),
@@ -45,10 +46,10 @@ pub fn knob_pivoted(commands: &mut Commands, value: f32, pivot: f32) -> Entity {
 
 /// User drag → write the model (`Bound<f32>`). The arc follows via [`knob_apply`].
 pub(crate) fn knob_drag(
-    mut knobs: Query<(&Interaction, &RelativeCursorPosition, &mut Bound<f32>), With<EmberKnob>>,
+    mut knobs: Query<(&UiInteraction, &RelativeCursorPosition, &mut Bound<f32>), With<EmberKnob>>,
 ) {
     for (interaction, rcp, mut b) in &mut knobs {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {

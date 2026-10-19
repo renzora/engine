@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::Bound;
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Max height of an open dropdown list before it scrolls (≈ 8 rows).
 const DROPDOWN_MAX_HEIGHT: f32 = 220.0;
@@ -133,7 +134,7 @@ fn build_dropdown(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("dropdown"),
         ))
@@ -213,7 +214,7 @@ fn build_dropdown(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberDropdownOption {
                     dropdown: box_e,
                     value: i,
@@ -329,12 +330,12 @@ pub(crate) fn dropdown_toggle(
     mut dropdowns: Query<
         (
             Entity,
-            &Interaction,
+            &UiInteraction,
             &mut EmberDropdown,
             &bevy::ui::ComputedNode,
             &bevy::ui::UiGlobalTransform,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
     mut nodes: Query<&mut Node>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -343,7 +344,7 @@ pub(crate) fn dropdown_toggle(
     clips: Query<&bevy::ui::CalculatedClip>,
 ) {
     for (box_e, interaction, mut dd, cn, xf) in &mut dropdowns {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         dd.open = !dd.open;
@@ -408,13 +409,13 @@ pub(crate) fn dropdown_toggle(
 }
 
 pub(crate) fn dropdown_select(
-    options: Query<(&Interaction, &EmberDropdownOption), Changed<Interaction>>,
+    options: Query<(&UiInteraction, &EmberDropdownOption), Changed<UiInteraction>>,
     mut dropdowns: Query<(&mut EmberDropdown, &mut Bound<usize>)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, opt) in &options {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Ok((mut dd, mut bound)) = dropdowns.get_mut(opt.dropdown) {
@@ -474,8 +475,8 @@ pub(crate) fn dropdown_apply(
 /// them share a toolbar strip.
 pub(crate) fn dropdown_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
-    mut dropdowns: Query<(Entity, &Interaction, &mut EmberDropdown)>,
-    options: Query<(&Interaction, &EmberDropdownOption)>,
+    mut dropdowns: Query<(Entity, &UiInteraction, &mut EmberDropdown)>,
+    options: Query<(&UiInteraction, &EmberDropdownOption)>,
     mut nodes: Query<&mut Node>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
@@ -485,12 +486,12 @@ pub(crate) fn dropdown_dismiss(
     // (which points back at its box).
     let pressed = dropdowns
         .iter()
-        .find(|(_, i, _)| **i != Interaction::None)
+        .find(|(_, i, _)| **i != UiInteraction::None)
         .map(|(e, _, _)| e)
         .or_else(|| {
             options
                 .iter()
-                .find(|(i, _)| **i != Interaction::None)
+                .find(|(i, _)| **i != UiInteraction::None)
                 .map(|(_, opt)| opt.dropdown)
         });
     for (e, _, mut dd) in &mut dropdowns {
@@ -509,9 +510,9 @@ pub(crate) fn dropdown_dismiss(
 /// The box painted `tab_active()` once at spawn, which left it the only control
 /// in a toolbar row that didn't react to the pointer — and left it stale after a
 /// theme switch. Repainting from the live theme each frame fixes both.
-pub(crate) fn dropdown_box_hover(mut q: Query<(&Interaction, &EmberDropdown, &mut BackgroundColor)>) {
+pub(crate) fn dropdown_box_hover(mut q: Query<(&UiInteraction, &EmberDropdown, &mut BackgroundColor)>) {
     for (interaction, dd, mut bg) in &mut q {
-        let want = if dd.open || *interaction != Interaction::None {
+        let want = if dd.open || *interaction != UiInteraction::None {
             rgb(tab_hover())
         } else {
             rgb(tab_active())
@@ -524,14 +525,14 @@ pub(crate) fn dropdown_box_hover(mut q: Query<(&Interaction, &EmberDropdown, &mu
 
 pub(crate) fn dropdown_option_hover(
     mut options: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<EmberDropdownOption>),
+        (&UiInteraction, &mut BackgroundColor),
+        (Changed<UiInteraction>, With<EmberDropdownOption>),
     >,
 ) {
     for (interaction, mut bg) in &mut options {
         bg.0 = match *interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb(tab_hover()),
-            Interaction::None => Color::NONE,
+            UiInteraction::Hovered | UiInteraction::Pressed => rgb(tab_hover()),
+            UiInteraction::None => Color::NONE,
         };
     }
 }
@@ -576,7 +577,7 @@ mod tests {
             .find(|(_, o)| o.dropdown == box_e && o.value == 2)
             .map(|(e, _)| e)
             .expect("option row");
-        *world.get_mut::<Interaction>(row).unwrap() = Interaction::Pressed;
+        *world.get_mut::<UiInteraction>(row).unwrap() = UiInteraction::Pressed;
 
         let mut sys = bevy::ecs::system::IntoSystem::into_system(dropdown_select);
         sys.initialize(&mut world);
@@ -691,7 +692,7 @@ mod tests {
         let menu_b = world.get::<EmberDropdown>(b).unwrap().menu;
         world.get_mut::<EmberDropdown>(a).unwrap().open = true;
         world.get_mut::<Node>(menu_a).unwrap().display = Display::Flex;
-        *world.get_mut::<Interaction>(b).unwrap() = Interaction::Pressed;
+        *world.get_mut::<UiInteraction>(b).unwrap() = UiInteraction::Pressed;
         world
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Left);
@@ -729,7 +730,7 @@ mod tests {
         world.get_mut::<Node>(menu).unwrap().display = Display::Flex;
         let mut q = world.query::<(Entity, &EmberDropdownOption)>();
         let row = q.iter(&world).next().map(|(e, _)| e).unwrap();
-        *world.get_mut::<Interaction>(row).unwrap() = Interaction::Pressed;
+        *world.get_mut::<UiInteraction>(row).unwrap() = UiInteraction::Pressed;
         world
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Left);

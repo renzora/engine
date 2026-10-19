@@ -8,6 +8,7 @@ use renzora_editor_framework::EditorCommands;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, icon_text, EmberFonts};
 use renzora_ember::theme::text_primary;
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::col;
@@ -52,7 +53,7 @@ pub(super) fn action_btn(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             action,
             HeaderIcon(glyph),
             HoverCursor(SystemCursorIcon::Pointer),
@@ -121,7 +122,7 @@ pub(super) fn update_header_visuals(
     actions: Query<(
         &HeaderAction,
         &HeaderIcon,
-        &Interaction,
+        &UiInteraction,
         Option<&MaximizeSlot>,
         &mut BackgroundColor,
     )>,
@@ -176,7 +177,7 @@ pub(super) fn update_header_visuals(
         // light up on hover. Disabled buttons never show a hover fill.
         let want = if this_maximized {
             model.accent
-        } else if enabled && *interaction == Interaction::Hovered {
+        } else if enabled && *interaction == UiInteraction::Hovered {
             model.hovered_bg
         } else {
             Color::NONE
@@ -230,12 +231,12 @@ fn action_appearance(
 }
 
 pub(super) fn header_action_click(
-    q: Query<(&Interaction, &HeaderAction, Option<&MaximizeSlot>), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HeaderAction, Option<&MaximizeSlot>), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, action, max_slot) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match action {

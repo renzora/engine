@@ -5,15 +5,16 @@
 //! compile for the browser, so on wasm the player renders and stays silent.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use crate::auth::marketplace::MediaItem;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{audio_player, tint};
+use renzora_ember::UiInteraction;
 
 use super::gallery::media_by_type;
 use super::{empty_snapshot, section_label, AudioTrackBtn, HubAudioPlayer, ItemOverlay, HUE_STORE};
@@ -139,7 +140,7 @@ fn audio_track_row(
             } else {
                 Color::NONE
             }),
-            Interaction::default(),
+            UiInteraction::default(),
             AudioTrackBtn(index),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
@@ -149,7 +150,7 @@ fn audio_track_row(
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(if selected { text_primary() } else { text_muted() })),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(row).add_child(text);

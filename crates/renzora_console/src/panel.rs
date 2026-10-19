@@ -23,6 +23,7 @@ use renzora_ember::theme::{
     text_primary, warn_amber,
 };
 use renzora_ember::widgets::{scroll_view_pinned, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 
 use crate::state::{ConsoleState, LogEntry, LogLevel};
 
@@ -154,7 +155,7 @@ fn text_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &
                 ..default()
             },
             BackgroundColor(rgb(tab_hover())),
-            Interaction::default(),
+            UiInteraction::default(),
             btn,
             Name::new(format!("console-btn:{label}")),
         ))
@@ -203,7 +204,7 @@ fn toggle_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, btn: C
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             btn,
             Name::new("console-toggle"),
         ))
@@ -306,7 +307,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             ConsoleBtn::AutoScroll,
             Name::new("console-autoscroll"),
         ))
@@ -555,7 +556,7 @@ fn build_chip(commands: &mut Commands, fonts: &EmberFonts, cat: &str, hidden: bo
                 ..default()
             },
             BackgroundColor(bg),
-            Interaction::default(),
+            UiInteraction::default(),
             ConsoleChip(cat.to_string()),
             Name::new("console-chip"),
         ))
@@ -624,11 +625,11 @@ pub fn register(app: &mut App) {
 
 /// Toolbar button clicks → mutate `ConsoleState`.
 pub(crate) fn console_buttons(
-    q: Query<(&Interaction, &ConsoleBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ConsoleBtn), Changed<UiInteraction>>,
     mut state: ResMut<ConsoleState>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match btn {
@@ -674,11 +675,11 @@ pub(crate) fn console_buttons(
 
 /// Category chip clicks → toggle that category's hidden state.
 pub(crate) fn console_chips(
-    q: Query<(&Interaction, &ConsoleChip), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ConsoleChip), Changed<UiInteraction>>,
     mut state: ResMut<ConsoleState>,
 ) {
     for (interaction, chip) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if state.hidden_categories.contains(&chip.0) {

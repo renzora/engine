@@ -13,6 +13,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::{card_bg, hover_bg, placeholder, rgb, rgba, text_muted, text_primary};
+use crate::UiInteraction;
 
 /// An accent hue at `alpha` (0-255) — the family's tinting primitive.
 pub fn tint((r, g, b): (u8, u8, u8), alpha: u8) -> Color {
@@ -21,7 +22,7 @@ pub fn tint((r, g, b): (u8, u8, u8), alpha: u8) -> Color {
 
 // ── Hover feedback for free-colored elements ─────────────────────────────────
 
-/// Live background feedback for any `Interaction` entity whose colors are
+/// Live background feedback for any `UiInteraction` entity whose colors are
 /// chosen by the caller (accent-tinted cards/buttons) rather than by a
 /// stylesheet role. Driven by [`hover_tint`].
 #[derive(Component)]
@@ -48,13 +49,13 @@ impl HoverTint {
 }
 
 pub(crate) fn hover_tint(
-    mut q: Query<(&Interaction, &HoverTint, &mut BackgroundColor), Changed<Interaction>>,
+    mut q: Query<(&UiInteraction, &HoverTint, &mut BackgroundColor), Changed<UiInteraction>>,
 ) {
     for (interaction, h, mut bg) in &mut q {
         bg.0 = match interaction {
-            Interaction::None => h.base,
-            Interaction::Hovered => h.hover,
-            Interaction::Pressed => h.pressed,
+            UiInteraction::None => h.base,
+            UiInteraction::Hovered => h.hover,
+            UiInteraction::Pressed => h.pressed,
         };
     }
 }
@@ -191,7 +192,7 @@ pub fn accent_banner(
 }
 
 /// A content card row: theme surface, rounded, hairline border. `interactive`
-/// adds pointer cursor + hover feedback + `Interaction` (insert your own
+/// adds pointer cursor + hover feedback + `UiInteraction` (insert your own
 /// marker to catch clicks).
 pub fn accent_card(commands: &mut Commands, interactive: bool) -> Entity {
     let base = rgb(card_bg());
@@ -212,7 +213,7 @@ pub fn accent_card(commands: &mut Commands, interactive: bool) -> Entity {
     ));
     if interactive {
         e.insert((
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTint::solid(base, rgb(hover_bg()), rgb(hover_bg())),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
         ));
@@ -238,7 +239,7 @@ pub fn accent_button(
                 ..default()
             },
             BackgroundColor(tint(hue, 210)),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTint { base: tint(hue, 210), hover: tint(hue, 255), pressed: tint(hue, 170) },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("accent-button"),
@@ -272,7 +273,7 @@ pub fn accent_ghost(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgba([255, 255, 255, 26])),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTint { base: Color::NONE, hover: tint(hue, 34), pressed: tint(hue, 60) },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("accent-ghost"),
@@ -304,7 +305,7 @@ pub fn accent_icon_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTint { base: Color::NONE, hover: tint(hue, 40), pressed: tint(hue, 70) },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("accent-icon-button"),

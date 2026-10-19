@@ -203,7 +203,8 @@ as `.wesl` (`import bevy_pbr::render::forward_io::VertexOutput;`, `@if(FLAG)`,
 from a string with `renzora::shader_source::shader(source, path)` (never
 `Shader::from_wgsl` on text that might carry directives), and `.wgsl` files load
 through `renzora_shader`'s `LegacyWgslLoader`. Both run `renzora_legacy_shaders`.
-Material codegen still emits the old dialect and relies on that translation. The base image is the foundation every platform image builds
+Material codegen writes WESL; only `.material` files saved before 0.20 still need
+the translation. The base image is the foundation every platform image builds
 `FROM`, so a container bump cascades to all platforms — see §3. CI
 (`.github/workflows/test.yml`) runs `cargo test` + `cargo clippy -D warnings` in
 the `base` image, excluding the vendored `bevy_*` / `vleue_navigator` crates. Keep

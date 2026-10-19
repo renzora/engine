@@ -2,12 +2,13 @@
 //! the splitters between the three regions.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_with};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use super::lifecycle::Init;
 use super::panes::{build_centre, build_left_pane, build_right_rail};
@@ -50,11 +51,11 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &In
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
             GlobalZIndex(900),
-            FocusPolicy::Block,
+            BLOCK,
             OverlaySurface,
             renzora_ember::widgets::ModalSurface,
             bevy::ui::RelativeCursorPosition::default(),
-            Interaction::default(),
+            UiInteraction::default(),
             ImportRoot,
             Name::new("import-scrim"),
         ))
@@ -75,7 +76,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &In
             },
             BackgroundColor(rgb(panel_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("import-window"),
         ))
         .id();
@@ -121,10 +122,10 @@ fn splitter(commands: &mut Commands, side: Side) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             // Without this the press falls through to the 3D viewport behind
             // and starts a selection while you are dragging the column.
-            FocusPolicy::Block,
+            BLOCK,
             Splitter(side),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::ColResize),
         ))
@@ -138,13 +139,13 @@ fn splitter(commands: &mut Commands, side: Side) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(border())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_bg(commands, line, move |w| {
         if matches!(
-            w.get::<Interaction>(bar),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(bar),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(accent())
         } else {
@@ -167,7 +168,7 @@ fn splitter(commands: &mut Commands, side: Side) -> Entity {
 /// handle sit exactly under the pointer for the whole drag, however fast it
 /// moves, and it self-corrects rather than accumulating error.
 pub(super) fn splitter_drag(
-    q: Query<(&Interaction, &Splitter)>,
+    q: Query<(&UiInteraction, &Splitter)>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut columns: ResMut<ImportColumns>,
@@ -177,7 +178,7 @@ pub(super) fn splitter_drag(
     if held.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(pos) = cursor {
             for (i, sp) in &q {
-                if *i == Interaction::Hovered || *i == Interaction::Pressed {
+                if *i == UiInteraction::Hovered || *i == UiInteraction::Pressed {
                     *held = Some(Drag {
                         side: sp.0,
                         start_x: pos.x,
@@ -309,7 +310,7 @@ fn build_header_close(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             CancelBtn,
             hover_cursor(),
             renzora_ember::widgets::HoverTooltip::new("Close without importing"),
@@ -317,8 +318,8 @@ fn build_header_close(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     bind_bg(commands, btn, move |w| {
         if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(super::RED).with_alpha(0.25)
         } else {
@@ -326,7 +327,7 @@ fn build_header_close(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
     let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 15.0);
-    commands.entity(x).insert(FocusPolicy::Pass);
+    commands.entity(x).insert(PASS_THROUGH);
     commands.entity(btn).add_child(x);
     btn
 }
@@ -386,13 +387,13 @@ fn tab_button(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             TabBtn(tab),
             hover_cursor(),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 15.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     bind_with(
         commands,
         ic,
@@ -422,7 +423,7 @@ fn tab_button(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 14.0),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_with(
@@ -465,18 +466,18 @@ pub(super) fn action_button(
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             hover_cursor(),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, fg, 14.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let tx = commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(fg)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, tx]);

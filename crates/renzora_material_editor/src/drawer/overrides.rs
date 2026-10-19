@@ -12,6 +12,7 @@ use renzora_ember::inspector::{color_field_rgba, inspector_row};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{checkbox, drag_value};
+use renzora_ember::UiInteraction;
 
 use renzora_shader::material::codegen::{MaterialParam, ParamKind};
 use renzora_shader::material::material_ref::{MaterialRef, ParamValue};
@@ -147,9 +148,9 @@ fn set_vec_component(mut v: ParamValue, kind: ParamKind, i: usize, val: f32) -> 
     v
 }
 
-pub(super) fn mat_revert_click(q: Query<(&Interaction, &MatRevertBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn mat_revert_click(q: Query<(&UiInteraction, &MatRevertBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let name = b.name.clone();

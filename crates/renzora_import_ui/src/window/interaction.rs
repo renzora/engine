@@ -1,6 +1,7 @@
 //! Every click the window answers, and the verdict the worker is waiting on.
 
 use bevy::prelude::*;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::{close_overlay, ImportOverlayState, ImportProgress};
 
@@ -40,12 +41,12 @@ pub(super) fn dest_folder_sync(
 }
 
 pub(super) fn tab_click(
-    q: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TabBtn), Changed<UiInteraction>>,
     mut nav: Option<ResMut<ImportNav>>,
 ) {
     let Some(nav) = nav.as_mut() else { return };
     for (i, t) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             nav.tab = t.0;
         }
     }
@@ -55,7 +56,7 @@ pub(super) fn tab_click(
 /// which is what a single-column tree in a narrow pane wants — a 9px caret is
 /// too small to be the only way to expand.
 pub(super) fn tree_row_click(
-    q: Query<(&Interaction, &TreeRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TreeRow), Changed<UiInteraction>>,
     mut nav: Option<ResMut<ImportNav>>,
     state: Option<Res<ImportOverlayState>>,
 ) {
@@ -64,7 +65,7 @@ pub(super) fn tree_row_click(
     };
     let stats = state.current().and_then(|s| s.stats.as_ref());
     for (i, r) in &q {
-        if *i != Interaction::Pressed {
+        if *i != UiInteraction::Pressed {
             continue;
         }
         nav.sel_item = Some(r.0);
@@ -97,13 +98,13 @@ pub(super) fn tree_row_click(
 /// which is what "check the parent, check the children" has to mean for the box
 /// to be worth having.
 pub(super) fn tree_check_click(
-    q: Query<(&Interaction, &TreeCheck), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TreeCheck), Changed<UiInteraction>>,
     mut state: Option<ResMut<ImportOverlayState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     let Some(item) = q
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, c)| c.0)
     else {
         return;
@@ -149,24 +150,24 @@ pub(super) fn tree_check_click(
 }
 
 pub(super) fn mesh_row_click(
-    q: Query<(&Interaction, &MeshRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &MeshRow), Changed<UiInteraction>>,
     mut nav: Option<ResMut<ImportNav>>,
 ) {
     let Some(nav) = nav.as_mut() else { return };
     for (i, r) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             nav.sel_mesh = Some(r.0);
         }
     }
 }
 
 pub(super) fn mat_row_click(
-    q: Query<(&Interaction, &MatRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &MatRow), Changed<UiInteraction>>,
     mut nav: Option<ResMut<ImportNav>>,
 ) {
     let Some(nav) = nav.as_mut() else { return };
     for (i, r) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             nav.sel_material = Some(r.0);
         }
     }
@@ -180,13 +181,13 @@ pub(super) fn mat_row_click(
 /// the next file out of it — the row's own highlight and the preview changing
 /// are the feedback that the click landed.
 pub(super) fn staged_row_click(
-    q: Query<(&Interaction, &StagedRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StagedRow), Changed<UiInteraction>>,
     mut state: Option<ResMut<ImportOverlayState>>,
     mut nav: Option<ResMut<ImportNav>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     for (i, r) in &q {
-        if *i == Interaction::Pressed && r.0 < state.staged.len() && state.active != r.0 {
+        if *i == UiInteraction::Pressed && r.0 < state.staged.len() && state.active != r.0 {
             state.active = r.0;
             if let Some(nav) = nav.as_mut() {
                 nav.reset_selection();
@@ -215,10 +216,10 @@ fn decide(world: &mut World, decision: crate::staged::PreviewDecision) {
 /// left is per-file *rejection* (the trash on each row), which is the choice
 /// that actually differs between them.
 pub(super) fn commit_click(
-    q: Query<&Interaction, (With<CommitBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CommitBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             // Always commit index 0: `apply_decision` removes what it takes, so
             // the set shortens under the loop rather than being walked.
@@ -232,12 +233,12 @@ pub(super) fn commit_click(
 
 /// The trash on a staged row: delete that one converted tree, leave the rest.
 pub(super) fn discard_staged_click(
-    q: Query<(&Interaction, &DiscardStagedBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &DiscardStagedBtn), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     let Some(index) = q
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, b)| b.0)
     else {
         return;
@@ -253,10 +254,10 @@ pub(super) fn discard_staged_click(
 
 /// Rebuild every staged file with the settings as they now stand.
 pub(super) fn reconvert_click(
-    q: Query<&Interaction, (With<ReconvertBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ReconvertBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             crate::overlay::request_reimport(w);
             if let Some(mut nav) = w.get_resource_mut::<ImportNav>() {
@@ -267,40 +268,40 @@ pub(super) fn reconvert_click(
 }
 
 pub(super) fn cancel_click(
-    q: Query<&Interaction, (With<CancelBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CancelBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| close_overlay(w));
     }
 }
 
 pub(super) fn remove_file_click(
-    q: Query<(&Interaction, &RemoveFileBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RemoveFileBtn), Changed<UiInteraction>>,
     mut state: Option<ResMut<ImportOverlayState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     for (i, rm) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             state.pending_files.retain(|q| q.path != rm.0);
         }
     }
 }
 
 pub(super) fn file_browse_click(
-    q: Query<&Interaction, (With<FileBrowseBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<FileBrowseBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| { pick_and_queue_files(w); });
     }
 }
 
 pub(super) fn folder_browse_click(
-    q: Query<&Interaction, (With<FolderBrowseBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<FolderBrowseBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| { pick_and_queue_folder(w); });
     }
 }

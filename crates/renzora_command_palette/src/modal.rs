@@ -7,11 +7,12 @@ use std::sync::Arc;
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora::core::keybindings::KeyBindings;
 use renzora_editor_framework::{EditorCommands, ShortcutRegistry, SplashState, ToolbarRegistry};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
+use renzora_ember::UiInteraction;
 use renzora_ember::reactive::tracked::bind_bg;
 use renzora_ember::theme::{accent, border, hover_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, scroll_area, text_input, EmberTextInput, OverlaySurface};
@@ -109,8 +110,8 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.47)),
             GlobalZIndex(9500),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             OverlaySurface,
             PaletteOverlay { sig: None },
@@ -134,7 +135,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("command-palette-panel"),
         ))
         .id();
@@ -188,7 +189,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 PaletteTabBtn(tab),
                 Name::new("palette-tab"),
             ))
@@ -205,7 +206,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
             }
         });
         let t = commands
-            .spawn((Text::new(tab.label()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_primary())), FocusPolicy::Pass))
+            .spawn((Text::new(tab.label()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_primary())), PASS_THROUGH))
             .id();
         commands.entity(btn).add_child(t);
         commands.entity(tabs).add_child(btn);
@@ -222,12 +223,12 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
 
 /// Click a scope tab → switch the palette's corpus.
 fn palette_tab_click(
-    q: Query<(&Interaction, &PaletteTabBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PaletteTabBtn), Changed<UiInteraction>>,
     mut state: Option<ResMut<CommandPaletteState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed && state.tab != btn.0 {
+        if *interaction == UiInteraction::Pressed && state.tab != btn.0 {
             state.tab = btn.0;
             state.selected = 0;
         }
@@ -348,7 +349,7 @@ fn build_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, kind: &s
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             PaletteRow { index },
             Name::new("palette-row"),
         ))
@@ -363,16 +364,16 @@ fn build_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, kind: &s
     });
 
     let tag = commands
-        .spawn((Text::new(kind.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), FocusPolicy::Pass))
+        .spawn((Text::new(kind.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), PASS_THROUGH))
         .id();
     let name = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), FocusPolicy::Pass))
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), PASS_THROUGH))
         .id();
     let spacer = commands.spawn(Node { flex_grow: 1.0, min_width: Val::Px(8.0), ..default() }).id();
     let mut kids = vec![tag, name, spacer];
     if let Some(detail) = detail {
         let d = commands
-            .spawn((Text::new(detail.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass))
+            .spawn((Text::new(detail.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH))
             .id();
         kids.push(d);
     }
@@ -412,27 +413,27 @@ fn palette_keys(world: &mut World) {
     }
 }
 
-fn palette_row_hover(q: Query<(&Interaction, &PaletteRow), Changed<Interaction>>, mut state: Option<ResMut<CommandPaletteState>>) {
+fn palette_row_hover(q: Query<(&UiInteraction, &PaletteRow), Changed<UiInteraction>>, mut state: Option<ResMut<CommandPaletteState>>) {
     let Some(state) = state.as_mut() else { return };
     for (interaction, row) in &q {
-        if *interaction == Interaction::Hovered {
+        if *interaction == UiInteraction::Hovered {
             state.selected = row.index;
         }
     }
 }
 
-fn palette_row_click(q: Query<(&Interaction, &PaletteRow), Changed<Interaction>>, mut commands: Commands) {
+fn palette_row_click(q: Query<(&UiInteraction, &PaletteRow), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let idx = row.index;
             commands.queue(move |w: &mut World| run_palette_item(w, idx));
         }
     }
 }
 
-fn palette_backdrop_click(q: Query<&Interaction, (With<PaletteBackdrop>, Changed<Interaction>)>, mut state: Option<ResMut<CommandPaletteState>>) {
+fn palette_backdrop_click(q: Query<&UiInteraction, (With<PaletteBackdrop>, Changed<UiInteraction>)>, mut state: Option<ResMut<CommandPaletteState>>) {
     let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.open = false;
     }
 }

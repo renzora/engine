@@ -176,7 +176,7 @@ pub(crate) struct TabClose;
 
 /// The empty stretch of a tab bar in a non-movable area (see `movable` on
 /// `rebuild_area`) — the filler between the tabs and the bar's right-hand
-/// controls. Carries an `Interaction` so the consumer can use it as a drag
+/// controls. Carries an `UiInteraction` so the consumer can use it as a drag
 /// surface of its own.
 ///
 /// Public because the consumer, not the dock, decides what dragging a pinned

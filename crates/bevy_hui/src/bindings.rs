@@ -11,7 +11,8 @@ impl Plugin for BindingPlugin {
         app.init_resource::<FunctionBindings>()
             .init_resource::<ComponentBindings>()
             // .add_event::<UiChangedEvent>()
-            .add_systems(Update, (observe_interactions, observe_on_spawn))
+            .add_systems(Update, (observe_hover, observe_on_spawn))
+            .add_observer(observe_press)
             .add_observer(observe_node_changed);
     }
 }
@@ -150,40 +151,47 @@ fn observe_on_spawn(
     });
 }
 
-#[rustfmt::skip]
-fn observe_interactions(
+/// `on_press`: runs on the primary button going down, from picking's press
+/// event rather than a `Pressed` marker, because a click that goes down and
+/// up between two frames adds and removes the marker before any system could
+/// see it.
+fn observe_press(
+    press: On<bevy::picking::events::PointerPress>,
     mut cmd: Commands,
-    interactions: Query<(Entity, &Interaction), Changed<Interaction>>,
     function_bindings: Res<FunctionBindings>,
-    on_pressed : Query<&crate::prelude::OnUiPress>,
-    on_enter : Query<&crate::prelude::OnUiEnter>,
-    on_exit : Query<&crate::prelude::OnUiExit>,
-){
-    interactions.iter().for_each(|(entity, interaction)|{
-        match interaction {
-            Interaction::Pressed => {
-                if let Ok(crate::prelude::OnUiPress(funcs)) = on_pressed.get(entity){
-                    for fn_str in funcs.iter(){
-                        function_bindings.maybe_run(fn_str, entity, &mut cmd);
-                    }
-                }
-            }
-            Interaction::Hovered => {
-                if let Ok(crate::prelude::OnUiEnter(funcs)) = on_enter.get(entity){
-                    for fn_str in funcs.iter(){
-                        function_bindings.maybe_run(fn_str, entity, &mut cmd);
-                    }
-                }
-            },
-            Interaction::None => {
-                if let Ok(crate::prelude::OnUiExit(funcs)) = on_exit.get(entity){
-                    for fn_str in funcs.iter(){
-                        function_bindings.maybe_run(fn_str, entity, &mut cmd);
-                    }
-                }
-            },
+    on_pressed: Query<&crate::prelude::OnUiPress>,
+) {
+    if press.button != bevy::picking::pointer::PointerButton::Primary {
+        return;
+    }
+    if let Ok(crate::prelude::OnUiPress(funcs)) = on_pressed.get(press.entity) {
+        for fn_str in funcs.iter() {
+            function_bindings.maybe_run(fn_str, press.entity, &mut cmd);
         }
-    });
+    }
+}
+
+/// `on_enter` / `on_exit`, from picking's `Hovered` changing. A node that
+/// arrives not hovered is not an exit.
+fn observe_hover(
+    mut cmd: Commands,
+    hovers: Query<(Entity, Ref<bevy::picking::hover::Hovered>), Changed<bevy::picking::hover::Hovered>>,
+    function_bindings: Res<FunctionBindings>,
+    on_enter: Query<&crate::prelude::OnUiEnter>,
+    on_exit: Query<&crate::prelude::OnUiExit>,
+) {
+    for (entity, hovered) in &hovers {
+        let funcs = if hovered.get() {
+            on_enter.get(entity).ok().map(|f| &f.0)
+        } else if hovered.is_added() {
+            None
+        } else {
+            on_exit.get(entity).ok().map(|f| &f.0)
+        };
+        for fn_str in funcs.into_iter().flatten() {
+            function_bindings.maybe_run(fn_str, entity, &mut cmd);
+        }
+    }
 }
 
 /// runs any attached `on_change` function when the user

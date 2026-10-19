@@ -7,6 +7,7 @@ use crate::reactive::Rx;
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Marks a button so [`button_interact`] drives its `Styled.state`. Shared with
 /// other button-like widgets (e.g. the number stepper's `±` keys).
@@ -36,7 +37,7 @@ pub fn button_parts(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberButton,
             Styled::new(Role::Button),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -92,7 +93,7 @@ pub fn icon_label_button_parts(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberButton,
             Styled::new(Role::Button),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -197,7 +198,7 @@ pub fn icon_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> E
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberButton,
             Styled::new(Role::IconButton),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -210,13 +211,13 @@ pub fn icon_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> E
 }
 
 pub(crate) fn button_interact(
-    mut q: Query<(&Interaction, &mut Styled), (With<EmberButton>, Changed<Interaction>)>,
+    mut q: Query<(&UiInteraction, &mut Styled), (With<EmberButton>, Changed<UiInteraction>)>,
 ) {
     for (interaction, mut styled) in &mut q {
         styled.state = match interaction {
-            Interaction::Pressed => WidgetState::Pressed,
-            Interaction::Hovered => WidgetState::Hover,
-            Interaction::None => WidgetState::Normal,
+            UiInteraction::Pressed => WidgetState::Pressed,
+            UiInteraction::Hovered => WidgetState::Hover,
+            UiInteraction::None => WidgetState::Normal,
         };
     }
 }

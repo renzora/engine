@@ -1,12 +1,13 @@
 //! Small builders the dialog's panes share.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::toggle_switch;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ExportOverlayState;
 use crate::templates::Platform;
@@ -50,12 +51,12 @@ pub(super) fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
 /// behind it needed a fill to stay legible at all (see [`row_fill`]). A switch
 /// carries its own filled track and reads at a glance either way.
 ///
-/// The `Block` is not optional. Bevy 0.19 defaults `FocusPolicy` to `Pass`, so a
+/// The `BLOCK` is not optional. UI nodes pass the pointer through by default, so a
 /// control that does not block hands its press to every node behind it — and
 /// these sit inside rows and cards that have their own handlers.
 pub(super) fn switch_control(commands: &mut Commands, on: bool) -> Entity {
     let sw = toggle_switch(commands, on);
-    commands.entity(sw).insert(FocusPolicy::Block);
+    commands.entity(sw).insert(BLOCK);
     sw
 }
 
@@ -93,7 +94,7 @@ pub(super) fn labeled(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
 }
 
 pub(super) fn icon_title(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, FocusPolicy::Pass)).id();
+    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, PASS_THROUGH)).id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 16.0);
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())))).id();
     commands.entity(row).add_children(&[ic, t]);
@@ -126,10 +127,10 @@ pub(super) fn check_state(commands: &mut Commands, fonts: &EmberFonts, label: &s
 }
 
 pub(super) fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let btn = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(section_bg())), Interaction::default(), cursor())).id();
+    let btn = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(section_bg())), UiInteraction::default(), cursor())).id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 11.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     commands.entity(btn).add_children(&[ic, t]);
     btn
 }
@@ -148,21 +149,21 @@ pub(super) fn small_button<M: Component>(
             Node { flex_grow: 1.0, height: Val::Px(26.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
             cursor(),
         ))
         .id();
     bind_bg(commands, btn, move |w| {
-        if matches!(w.get::<Interaction>(btn), Some(Interaction::Hovered)) {
+        if matches!(w.get::<UiInteraction>(btn), Some(UiInteraction::Hovered)) {
             ca(255, 255, 255, 10)
         } else {
             Color::NONE
         }
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let tx = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass, bevy::text::TextLayout::no_wrap())).id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let tx = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH, bevy::text::TextLayout::no_wrap())).id();
     commands.entity(btn).add_children(&[ic, tx]);
     btn
 }

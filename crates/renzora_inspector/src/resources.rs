@@ -71,6 +71,7 @@ use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, scroll_view, text_input, toggle_switch, DragRange,
     DragSnap, EmberTextInput,
 };
+use renzora_ember::UiInteraction;
 
 use crate::reflect_source::{self, ReflectField};
 
@@ -521,7 +522,7 @@ fn build_list_row(
             } else {
                 inspector_stripe(index)
             }),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             ResourceRow(view.type_path),
             Name::new("resource-row"),
@@ -872,11 +873,11 @@ fn sync_search(
 
 /// Select the clicked row.
 fn select_row(
-    clicked: Query<(&Interaction, &ResourceRow), Changed<Interaction>>,
+    clicked: Query<(&UiInteraction, &ResourceRow), Changed<UiInteraction>>,
     mut browser: ResMut<ResourceBrowser>,
 ) {
     for (interaction, row) in &clicked {
-        if *interaction == Interaction::Pressed && browser.selected != Some(row.0) {
+        if *interaction == UiInteraction::Pressed && browser.selected != Some(row.0) {
             browser.selected = Some(row.0);
         }
     }

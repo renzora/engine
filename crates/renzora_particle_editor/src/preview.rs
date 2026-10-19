@@ -20,6 +20,7 @@ use renzora_hanabi::{
     ParticleSoftTexture,
 };
 use bevy_hanabi::EffectMaterial;
+use renzora_ember::UiInteraction;
 
 /// This preview's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
@@ -552,19 +553,19 @@ enum PreviewDrag {
 /// right/middle-drag = pan the focus point, scroll = zoom. Writes the shared
 /// `ParticlePreviewOrbit`, which `update_particle_preview_camera` applies.
 fn particle_preview_input(
-    hover: Query<&Interaction, With<ParticlePreviewViewport>>,
+    hover: Query<&UiInteraction, With<ParticlePreviewViewport>>,
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
     mut orbit: ResMut<ParticlePreviewOrbit>,
     mut drag: Local<Option<PreviewDrag>>,
 ) {
-    // Use the image node's `Interaction` (picking-aware) rather than a geometric
+    // Use the image node's `UiInteraction` (picking-aware) rather than a geometric
     // cursor test, so dragging a dock splitter that overlaps the preview rect —
     // or clicking the floor toggle overlay — doesn't grab the camera.
     let over = hover
         .iter()
-        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        .any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
 
     if drag.is_none() && over {
         if mouse.just_pressed(MouseButton::Left) {

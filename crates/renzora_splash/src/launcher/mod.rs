@@ -20,9 +20,9 @@
 //!
 //! Renders while in [`SplashState::Splash`].
 //!
-//! **Every clickable node here carries an explicit [`FocusPolicy::Block`].** In
-//! Bevy 0.19 `Node` *requires* `FocusPolicy`, and its `Default` is `Pass` — so a
-//! node with no policy of its own no longer captures the pointer, it lets the
+//! **Every clickable node here carries an explicit [`BLOCK`].** Every UI node
+//! starts as `PASS_THROUGH`, so a node that does not say otherwise does not
+//! capture the pointer, it lets the
 //! press fall through to every node behind it that also contains the cursor,
 //! ancestors included. That is what made clicking the ✕ on a recents row both
 //! remove the entry *and* open the project (GH #82). It also used to hand the
@@ -34,9 +34,10 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::time::Real;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
+use renzora_ember::UiInteraction;
 
 use crate::github::GithubStats;
 use crate::releases::poll_releases;
@@ -227,8 +228,8 @@ fn spawn_splash(
             GlobalZIndex(500),
             // Blocks so a press on the dashboard cannot reach anything behind it,
             // but carries no drag handle any more — that is the title bar's.
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             SplashRoot,
             Name::new("splash-root"),
         ))
@@ -241,7 +242,7 @@ fn spawn_splash(
     let bg_host = commands
         .spawn((
             fullscreen_abs(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             bevy::ui::UiTargetCamera(post_cam),
             SplashRoot,
             Name::new("splash-bg-host"),
@@ -250,7 +251,7 @@ fn spawn_splash(
     let chamber = commands
         .spawn((
             fullscreen_abs(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             crate::chamber::ChamberView,
             Name::new("splash-chamber"),
         ))
@@ -261,7 +262,7 @@ fn spawn_splash(
     let post_view = commands
         .spawn((
             fullscreen_abs(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             crate::post::PostView,
             Name::new("splash-post"),
         ))
@@ -306,7 +307,7 @@ fn build_shell(
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-shell"),
         ))
         .id();
@@ -324,7 +325,7 @@ fn build_shell(
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let rail = sections::build_rail(commands, fonts, rail_entries);

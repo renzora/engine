@@ -20,6 +20,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::game_ui::ruler::RulerArea;
 use crate::game_ui::NativeCanvasState;
@@ -65,7 +66,6 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
                 height: Val::Percent(100.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             Name::new("ui-canvas-scrollbars"),
         ))
@@ -90,7 +90,7 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
                 Visibility::Hidden,
                 ScrollBar { horizontal },
                 RelativeCursorPosition::default(),
-                Interaction::default(),
+                UiInteraction::default(),
                 Name::new(if horizontal { "canvas-hscroll" } else { "canvas-vscroll" }),
             ))
             .id();
@@ -104,7 +104,7 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
                     ..default()
                 },
                 BackgroundColor(rgb(text_muted()).with_alpha(0.45)),
-                Interaction::default(),
+                UiInteraction::default(),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
                 ScrollThumb { horizontal },
                 Name::new("canvas-scroll-thumb"),
@@ -195,7 +195,7 @@ fn drag_thumbs(
     mut state: ResMut<NativeCanvasState>,
     area: Query<&ComputedNode, With<RulerArea>>,
     bars: Query<(&ScrollBar, &ComputedNode, &RelativeCursorPosition)>,
-    thumbs: Query<(&ScrollThumb, &Interaction)>,
+    thumbs: Query<(&ScrollThumb, &UiInteraction)>,
 ) {
     if !mouse.pressed(MouseButton::Left) {
         drag.0 = None;
@@ -208,7 +208,7 @@ fn drag_thumbs(
     // Begin: a press on a thumb latches that axis and remembers where from.
     if mouse.just_pressed(MouseButton::Left) && drag.0.is_none() {
         for (thumb, interaction) in &thumbs {
-            if *interaction != Interaction::Pressed {
+            if *interaction != UiInteraction::Pressed {
                 continue;
             }
             let at = bars.iter().find(|(b, _, _)| b.horizontal == thumb.horizontal).and_then(

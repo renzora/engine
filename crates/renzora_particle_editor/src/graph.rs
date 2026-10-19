@@ -18,6 +18,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
 use renzora_hanabi::{load_effect_from_file, ParticleEditorState};
@@ -121,7 +122,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str, color: (u8, u8, u8), marker: M) -> Entity {
     let btn = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), RelativeCursorPosition::default(), marker))
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), UiInteraction::default(), RelativeCursorPosition::default(), marker))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(color)))).id();
@@ -348,13 +349,13 @@ fn part_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
 
 /// Toolbar "Add Node" → open the searchable palette under the button.
 fn add_node_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<Interaction>)>,
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
@@ -379,13 +380,13 @@ fn part_context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands
 }
 
 fn presets_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<PresetsBtn>, Changed<Interaction>)>,
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<PresetsBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;

@@ -24,6 +24,7 @@ use renzora_ember::widgets::{
     accent_button, accent_ghost, accent_icon_button, checkbox, empty_state, markdown_view,
     scroll_area, tint,
 };
+use renzora_ember::UiInteraction;
 
 use crate::toasts::{ToastQueue, Tone};
 use crate::util::{self, hash64, session_clone};
@@ -275,13 +276,13 @@ fn clicks(
     mut toasts: ResMut<ToastQueue>,
     mut commands: Commands,
     checks: Query<&Bound<bool>, (With<PolicyCheckbox>, Changed<Bound<bool>>)>,
-    accepts: Query<&Interaction, (With<AcceptBtn>, Changed<Interaction>)>,
-    connects: Query<&Interaction, (With<ConnectBtn>, Changed<Interaction>)>,
-    skips: Query<&Interaction, (With<SkipBtn>, Changed<Interaction>)>,
-    uploads: Query<&Interaction, (With<UploadBtn>, Changed<Interaction>)>,
-    refreshes: Query<&Interaction, (With<RefreshBtn>, Changed<Interaction>)>,
+    accepts: Query<&UiInteraction, (With<AcceptBtn>, Changed<UiInteraction>)>,
+    connects: Query<&UiInteraction, (With<ConnectBtn>, Changed<UiInteraction>)>,
+    skips: Query<&UiInteraction, (With<SkipBtn>, Changed<UiInteraction>)>,
+    uploads: Query<&UiInteraction, (With<UploadBtn>, Changed<UiInteraction>)>,
+    refreshes: Query<&UiInteraction, (With<RefreshBtn>, Changed<UiInteraction>)>,
 ) {
-    let pressed = |i: &Interaction| *i == Interaction::Pressed;
+    let pressed = |i: &UiInteraction| *i == UiInteraction::Pressed;
 
     // Mirror the checkbox into resource state — but only on a genuine change, or
     // the freshly-spawned checkbox after each rebuild would re-fire `Changed`

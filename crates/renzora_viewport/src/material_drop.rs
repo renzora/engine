@@ -10,7 +10,7 @@ use bevy::ecs::system::SystemState;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, EditorCamera};
+use renzora::core::{CurrentProject, EditorCamera, MaterialTarget};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
 
@@ -31,8 +31,15 @@ pub(crate) fn commit_material_drop(
     vp_rect: Rect,
     path: PathBuf,
 ) {
-    let Some(entity) = pick_mesh_under_pointer(world, screen_pos, vp_rect) else {
-        info!("[material_drop] No mesh under pointer — ignoring drop");
+    // A Sprite material lands on the sprite under the pointer, which only the
+    // 2D view arms a drop for; anything else on the mesh a ray hits.
+    let picked = match MaterialTarget::of_file(&path) {
+        Some(MaterialTarget::Sprite) => crate::sprite_drop::cursor_to_world_2d(world, screen_pos, vp_rect)
+            .and_then(|p| crate::sprite_drop::sprite_at(world, p)),
+        _ => pick_mesh_under_pointer(world, screen_pos, vp_rect),
+    };
+    let Some(entity) = picked else {
+        info!("[material_drop] Nothing under the pointer can wear it; ignoring drop");
         return;
     };
     apply_material_to_entity(world, entity, path);

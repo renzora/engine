@@ -2,14 +2,15 @@
 //! right rail shows for whatever is selected.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font};
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_text};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{progress_indeterminate, HoverTooltip};
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ImportOverlayState;
 use crate::staged::{human_bytes, thousands};
@@ -200,7 +201,7 @@ pub(super) fn findings_snapshot(world: &Rx) -> KeyedSnapshot {
                         column_gap: Val::Px(5.0),
                         ..default()
                     },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             let colour = if *problem { AMBER } else { text_muted() };
@@ -211,14 +212,14 @@ pub(super) fn findings_snapshot(world: &Rx) -> KeyedSnapshot {
                 colour,
                 11.0,
             );
-            c.entity(ic).insert(FocusPolicy::Pass);
+            c.entity(ic).insert(PASS_THROUGH);
             let tx = c
                 .spawn((
                     Text::new(text.clone()),
                     ui_font(&f.ui, 10.5),
                     TextColor(rgb(if *problem { text_primary() } else { text_muted() })),
                     Node { flex_grow: 1.0, ..default() },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             c.entity(row).add_children(&[ic, tx]);
@@ -549,17 +550,17 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
             } else {
                 Color::NONE
             }),
-            Interaction::default(),
+            UiInteraction::default(),
             // A row is a click target (it picks which staged file is on show),
             // so the press must not also reach whatever is behind the window.
-            FocusPolicy::Block,
+            BLOCK,
             hover_cursor(),
         ))
         .id();
     if waiting {
         // Hovering a greyed row should say *why* it is grey rather than leaving
         // the user to work out that the list is ordered by progress. Inserted
-        // straight onto the row, which already tracks `Interaction`; the
+        // straight onto the row, which already tracks `UiInteraction`; the
         // wrapper form of the tooltip widget would add a node between the row
         // and the list and break the column's spacing.
         commands
@@ -577,12 +578,12 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
                 padding: UiRect::axes(Val::Px(9.0), Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let icon_color = if waiting { text_muted() } else { spec.icon_color };
     let icon = icon_text(commands, &fonts.phosphor, spec.icon, icon_color, 16.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
 
     // Name over detail. The name is given the row's spare width and allowed to
     // wrap to a second line rather than being clipped: which of two similarly
@@ -596,7 +597,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
                 row_gap: Val::Px(2.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let nm = commands
@@ -612,7 +613,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
                 linebreak: bevy::text::LineBreak::AnyCharacter,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let dt = commands
@@ -620,7 +621,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
             Text::new(spec.detail.clone()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // While the worker is on this file, the second line reports the phase it is
@@ -651,9 +652,9 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             // Without blocking, deleting a row would also select it.
-            FocusPolicy::Block,
+            BLOCK,
             hover_cursor(),
         ))
         .id();
@@ -667,8 +668,8 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
     }
     bind_bg(commands, rm, move |w| {
         if matches!(
-            w.get::<Interaction>(rm),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(rm),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(RED).with_alpha(0.22)
         } else {
@@ -676,7 +677,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
         }
     });
     let trash = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 13.0);
-    commands.entity(trash).insert(FocusPolicy::Pass);
+    commands.entity(trash).insert(PASS_THROUGH);
     commands.entity(rm).add_child(trash);
 
     commands.entity(row).add_children(&[icon, text_col, rm]);
@@ -693,7 +694,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, spec: &FileRow) -> Enti
         commands.entity(bar).entry::<Node>().and_modify(|mut n| {
             n.width = Val::Percent(100.0);
         });
-        commands.entity(bar).insert(FocusPolicy::Pass);
+        commands.entity(bar).insert(PASS_THROUGH);
         commands.entity(outer).add_child(bar);
     }
     outer
@@ -716,12 +717,12 @@ pub(super) fn log_snapshot(world: &Rx) -> KeyedSnapshot {
 
 fn log_row(commands: &mut Commands, fonts: &EmberFonts, e: &(String, bool, String)) -> Entity {
     let (name, ok, msg) = e;
-    let row = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, FocusPolicy::Pass)).id();
+    let row = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, PASS_THROUGH)).id();
     let icon = icon_text(commands, &fonts.phosphor, if *ok { "check-circle" } else { "warning" }, if *ok { GREEN } else { RED }, 11.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
-    let nm = commands.spawn((Text::new(name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    commands.entity(icon).insert(PASS_THROUGH);
+    let nm = commands.spawn((Text::new(name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     let mc = if *ok { text_muted() } else { RED };
-    let mg = commands.spawn((Text::new(msg.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(mc)), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() })).id();
+    let mg = commands.spawn((Text::new(msg.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(mc)), PASS_THROUGH, Node { flex_grow: 1.0, ..default() })).id();
     commands.entity(row).add_children(&[icon, nm, mg]);
     row
 }

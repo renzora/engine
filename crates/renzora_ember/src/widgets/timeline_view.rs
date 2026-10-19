@@ -24,6 +24,8 @@ use crate::reactive::{KeyedSnapshot, Rx};
 use crate::reactive::tracked::{bind_bg, keyed_list};
 use crate::style::{Rgba, Theme, TimelineStyle};
 use crate::theme::{border, header_bg, rgb, section_bg};
+use crate::interaction::PASS_THROUGH;
+use crate::UiInteraction;
 
 /// Left gutter (px) between the lane pane's edge and `t=0`, so the playhead and
 /// the `t=0` keyframe aren't flush against (and clipped by) the header column.
@@ -249,7 +251,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             },
             BackgroundColor(st.playhead.color()),
             TlPlayhead { root },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("timeline-view-playhead"),
         ))
         .id();
@@ -268,7 +270,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
                 ..default()
             },
             BackgroundColor(st.playhead.color()),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let point = commands
@@ -283,7 +285,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             },
             BackgroundColor(st.playhead.color()),
             UiTransform::from_rotation(Rot2::degrees(45.0)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_bg(commands, handle, |w| tl_style(w).playhead.color());
@@ -301,7 +303,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             // Grab cursor over the whole scrub surface (the needle + keys sit
             // beneath it, so hovering them shows the grab cursor too).
@@ -321,7 +323,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
                 height: Val::Percent(100.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("timeline-view-markers"),
         ))
         .id();
@@ -367,7 +369,7 @@ fn ruler_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
                         height: Val::Px(ruler_h),
                         ..default()
                     },
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             let mark = c
@@ -485,7 +487,7 @@ fn gridlines_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
                     ..default()
                 },
                 BackgroundColor(if is_major { major } else { minor }),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id()
         }),
@@ -543,11 +545,11 @@ fn timeline_view_playhead(
 
 /// Map cursor-x on the scrub layer → time, written to `scrub_out` for the caller.
 fn timeline_view_scrub(
-    scrubs: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode, &TlScrub)>,
+    scrubs: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TlScrub)>,
     mut views: Query<&mut TimelineView>,
 ) {
     for (interaction, rcp, cn, s) in &scrubs {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(norm) = rcp.normalized else { continue };

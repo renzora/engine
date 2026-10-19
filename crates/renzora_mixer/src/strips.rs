@@ -42,6 +42,7 @@ use renzora_ember::reactive::tracked::{
     bind_2way, bind_bg, bind_display, bind_text, bind_text_color, bind_with, keyed_list,
 };
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{
     fader, fader_horizontal, knob_pivoted, menu_header, menu_item, menu_item_styled, menu_sep,
     menu_submenu, mixer_button, screen_menu_flip, scroll_view, text_input, vu_meter_bound,
@@ -302,11 +303,11 @@ impl Plugin for MixerStrips {
 
 /// Create a custom bus, pre-named, when the `+` tile is clicked.
 fn bus_add(
-    buttons: Query<&Interaction, (With<BusAdd>, Changed<Interaction>)>,
+    buttons: Query<&UiInteraction, (With<BusAdd>, Changed<UiInteraction>)>,
     mut mixer: ResMut<MixerState>,
     mut rename: ResMut<MixerRename>,
 ) {
-    if buttons.iter().any(|i| *i == Interaction::Pressed) {
+    if buttons.iter().any(|i| *i == UiInteraction::Pressed) {
         // Drop any rename in flight: its index is about to mean a different bus
         // if the list shifts, and the user's attention is on the new strip.
         rename.0 = None;
@@ -316,12 +317,12 @@ fn bus_add(
 
 /// Delete a custom bus when its × button is clicked.
 fn bus_delete(
-    buttons: Query<(&Interaction, &BusDelete), Changed<Interaction>>,
+    buttons: Query<(&UiInteraction, &BusDelete), Changed<UiInteraction>>,
     mut mixer: ResMut<MixerState>,
     mut rename: ResMut<MixerRename>,
 ) {
     for (interaction, del) in &buttons {
-        if *interaction == Interaction::Pressed && del.0 < mixer.custom_buses.len() {
+        if *interaction == UiInteraction::Pressed && del.0 < mixer.custom_buses.len() {
             mixer.custom_buses.remove(del.0);
             rename.0 = None;
         }
@@ -334,12 +335,12 @@ fn bus_delete(
 /// change respawns every strip — including the field being typed into — and a
 /// half-typed name left pointing at a despawned entity is worse than no rename.
 fn density_click(
-    buttons: Query<(&Interaction, &DensityBtn), Changed<Interaction>>,
+    buttons: Query<(&UiInteraction, &DensityBtn), Changed<UiInteraction>>,
     mut layout: ResMut<MixerLayout>,
     mut rename: ResMut<MixerRename>,
 ) {
     for (interaction, btn) in &buttons {
-        if *interaction == Interaction::Pressed && layout.density != btn.0 {
+        if *interaction == UiInteraction::Pressed && layout.density != btn.0 {
             layout.density = btn.0;
             rename.0 = None;
         }
@@ -348,11 +349,11 @@ fn density_click(
 
 /// Flip the channels between columns and rows.
 fn orientation_click(
-    buttons: Query<&Interaction, (With<OrientationBtn>, Changed<Interaction>)>,
+    buttons: Query<&UiInteraction, (With<OrientationBtn>, Changed<UiInteraction>)>,
     mut layout: ResMut<MixerLayout>,
     mut rename: ResMut<MixerRename>,
 ) {
-    if buttons.iter().any(|i| *i == Interaction::Pressed) {
+    if buttons.iter().any(|i| *i == UiInteraction::Pressed) {
         layout.orientation = match layout.orientation {
             Orientation::Vertical => Orientation::Horizontal,
             Orientation::Horizontal => Orientation::Vertical,
@@ -686,7 +687,7 @@ fn bar_key(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             hover_pointer(),
             HoverTooltip::new(tip),
             Name::new("mixer-bar-key"),
@@ -712,8 +713,8 @@ fn density_button(
         if layout_of(rx).density == density {
             rgb(accent())
         } else {
-            match rx.get::<Interaction>(btn) {
-                Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+            match rx.get::<UiInteraction>(btn) {
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
                 _ => Color::NONE,
             }
         }
@@ -744,8 +745,8 @@ fn orientation_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands.entity(btn).insert(OrientationBtn);
 
-    bind_bg(commands, btn, move |rx| match rx.get::<Interaction>(btn) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, btn, move |rx| match rx.get::<UiInteraction>(btn) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
     bind_with(
@@ -815,7 +816,7 @@ fn add_bus_button(commands: &mut Commands, fonts: &EmberFonts, layout: MixerLayo
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             BusAdd,
             hover_pointer(),
             HoverTooltip::new("Add a bus"),
@@ -825,8 +826,8 @@ fn add_bus_button(commands: &mut Commands, fonts: &EmberFonts, layout: MixerLayo
     let glyph = icon_text(commands, &fonts.phosphor, "plus", text_muted(), 16.0);
     commands.entity(tile).add_child(glyph);
     // Light up on hover so a tile that does something on click looks like it.
-    bind_bg(commands, tile, move |rx| match rx.get::<Interaction>(tile) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, tile, move |rx| match rx.get::<UiInteraction>(tile) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
     tile
@@ -906,7 +907,7 @@ fn strip(
             BackgroundColor(rgb(if is_master { section_bg() } else { window_bg() })),
             BorderColor::all(rgb(border())),
             // Geometry-based hit test for the right-click menu: a strip is mostly
-            // covered by its own controls, so an `Interaction` on the root would
+            // covered by its own controls, so an `UiInteraction` on the root would
             // only ever fire on the gaps between them.
             RelativeCursorPosition::default(),
             bus,
@@ -1232,7 +1233,7 @@ fn strip_header(
                 // the box the user is typing into down to the label's width.
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             BusHeader(bus),
             Name::new("mixer-strip-name"),
         ))
@@ -1316,7 +1317,7 @@ fn strip_header(
                     ..default()
                 },
                 BackgroundColor(rgb(section_bg())),
-                Interaction::default(),
+                UiInteraction::default(),
                 BusDelete(index),
                 hover_pointer(),
                 Name::new("mixer-bus-delete"),
@@ -1344,7 +1345,7 @@ fn strip_header(
 fn header_double_click(
     mouse: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
-    headers: Query<(&Interaction, &BusHeader)>,
+    headers: Query<(&UiInteraction, &BusHeader)>,
     mut rename: ResMut<MixerRename>,
     mut last_click: Local<Option<(usize, f64)>>,
 ) {
@@ -1353,7 +1354,7 @@ fn header_double_click(
     }
     let Some(index) = headers
         .iter()
-        .find(|(i, _)| matches!(i, Interaction::Pressed))
+        .find(|(i, _)| matches!(i, UiInteraction::Pressed))
         .and_then(|(_, h)| h.0.custom())
     else {
         return;
@@ -1585,7 +1586,7 @@ fn swatch_grid(commands: &mut Commands, bus: BusRef, current: [u8; 3]) -> Entity
                     } else {
                         rgb(border())
                     }),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     hover_pointer(),
                     MenuAction(Box::new(move |w: &mut World| {
                         write(w, bus, move |s| s.color = color);

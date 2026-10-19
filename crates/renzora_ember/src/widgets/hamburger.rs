@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::{icon_text, EmberFonts};
 use crate::style::{Role, Styled};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::button::EmberButton;
 use super::menu::build_menu;
@@ -38,7 +39,7 @@ pub fn hamburger(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]) ->
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberButton,
             Styled::new(Role::Button),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -57,11 +58,11 @@ pub fn hamburger(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]) ->
 }
 
 pub(crate) fn hamburger_toggle(
-    mut buttons: Query<(&Interaction, &mut EmberHamburger), Changed<Interaction>>,
+    mut buttons: Query<(&UiInteraction, &mut EmberHamburger), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, mut h) in &mut buttons {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         h.open = !h.open;

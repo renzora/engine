@@ -17,7 +17,9 @@ use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::reactive::tracked::bind_bg;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
+use renzora_ember::UiInteraction;
 
 use crate::grid::{display_name, rename_field_for};
 use crate::ops::{asset_type_info, current_folder, folder_color, icon_for, project_root};
@@ -441,7 +443,7 @@ fn shortcut_row(
                 ..default()
             },
             BackgroundColor(stripe),
-            Interaction::default(),
+            UiInteraction::default(),
             ShortcutClick {
                 path: path.to_path_buf(),
                 is_dir,
@@ -453,8 +455,8 @@ fn shortcut_row(
         if let Some(tint) = crate::drag_drop::drop_target_tint(w, row, is_dir) {
             return tint;
         }
-        match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(row) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::border())
             }
             _ => stripe,
@@ -529,7 +531,7 @@ fn tree_row(
                 Pickable::IGNORE,
             ))
             .id();
-        commands.entity(caret).insert((Interaction::default(), TreeToggle(r.path.clone())));
+        commands.entity(caret).insert((UiInteraction::default(), TreeToggle(r.path.clone())));
         commands.entity(caret).add_child(g);
     }
 
@@ -548,7 +550,7 @@ fn tree_row(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             Name::new(if r.is_file { "tree-file" } else { "tree-nav" }),
         ))
         .id();
@@ -606,8 +608,8 @@ fn tree_row(
                     overflow: Overflow::clip(),
                     ..default()
                 },
-                Interaction::default(),
-                bevy::ui::FocusPolicy::Pass,
+                UiInteraction::default(),
+                PASS_THROUGH,
                 AssetNameLabel { path: r.path.clone(), surface: RenameSurface::Tree },
             ))
             .id()
@@ -650,8 +652,8 @@ fn tree_row(
             return rgb(accent()).with_alpha(0.30);
         }
         if matches!(
-            w.get::<Interaction>(nav),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(nav),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             return rgb(renzora_ember::theme::border());
         }

@@ -7,12 +7,13 @@
 //! declared anywhere lands in the right place.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::section;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ExportOverlayState;
 
@@ -55,7 +56,7 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
                 //
                 // The row itself is NOT interactive. The checkbox and the
                 // fold zone are separate siblings, each owning its own
-                // `Interaction` — an earlier version made the whole row the fold
+                // `UiInteraction` — an earlier version made the whole row the fold
                 // control with buttons inside it, and pressing a button folded
                 // the section as well as doing its job.
                 let hrow = commands.spawn((
@@ -103,7 +104,7 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
                         column_gap: Val::Px(6.0),
                         ..default()
                     },
-                    Interaction::default(),
+                    UiInteraction::default(),
                     SectionToggle(sid),
                     cursor(),
                 )).id();
@@ -112,12 +113,12 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
                     ui_font(&fonts.ui, 11.0),
                     TextColor(rgb(text_primary())),
                     Node { flex_grow: 1.0, ..default() },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 )).id();
                 // Chevron direction tracks the fold state, so the row reads as a
                 // control rather than decoration.
                 let chev = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 11.0);
-                commands.entity(chev).insert(FocusPolicy::Pass);
+                commands.entity(chev).insert(PASS_THROUGH);
                 bind_text(commands, chev, move |w| {
                     let collapsed = w
                         .get_resource::<ExportOverlayState>()
@@ -201,14 +202,14 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
             // Right-aligned via a spacer so the badges line up in a column
             // instead of trailing each label at a different x.
             let spacer = commands
-                .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+                .spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
                 .id();
             let info = icon_text(commands, &fonts.phosphor, "info", text_muted(), 13.0);
             commands.entity(info).insert((
-                // `hover_tooltip_system` reads `Interaction`, so the badge needs
-                // one. It stays on the default `Pass`: the badge owns no press,
-                // and hover is marked on every node under the cursor regardless.
-                Interaction::default(),
+                // `hover_tooltip_system` reads `UiInteraction`, so the badge needs
+                // one. It stays on the default `PASS_THROUGH`: the badge owns no
+                // press, and hover is marked on every node under the cursor regardless.
+                UiInteraction::default(),
                 renzora_ember::widgets::HoverTooltip::new(cap_help),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Help),
             ));

@@ -55,9 +55,9 @@ pub const SURFACE_GRAPH_EXT_DEFAULT_FRAG: Handle<Shader> =
 /// `AsBindGroup` derive on `SurfaceGraphExt`, otherwise wgpu rejects the
 /// pipeline at draw time.
 pub const DEFAULT_EXT_FRAG_SRC: &str = r#"
-#import bevy_pbr::pbr_fragment::pbr_input_from_standard_material
-#import bevy_pbr::pbr_functions
-#import bevy_pbr::forward_io::{VertexOutput, FragmentOutput}
+import bevy_pbr::render::pbr_fragment::pbr_input_from_standard_material;
+import bevy_pbr::render::pbr_functions;
+import bevy_pbr::render::forward_io::{VertexOutput, FragmentOutput};
 
 struct SurfaceGraphParams {
     slots: array<vec4<f32>, 32>,

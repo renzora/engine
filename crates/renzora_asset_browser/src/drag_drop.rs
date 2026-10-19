@@ -20,6 +20,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, popup_bg, rgb, text_primary};
 use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
+use renzora_ember::UiInteraction;
 
 use crate::ops::{asset_type_info, icon_for};
 use crate::state::{
@@ -48,8 +49,8 @@ pub(crate) fn drop_target_tint(w: &Rx, hover_on: Entity, is_dir: bool) -> Option
         return None;
     }
     matches!(
-        w.get::<Interaction>(hover_on),
-        Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        w.get::<UiInteraction>(hover_on),
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
     )
     .then(|| rgb(accent()).with_alpha(0.55))
 }
@@ -59,9 +60,9 @@ pub(crate) fn drop_target_tint(w: &Rx, hover_on: Entity, is_dir: bool) -> Option
 /// while it exists and commits the spawn when it's removed on release). Mirrors
 /// the egui drag lifecycle, which only runs in the egui pass.
 pub(crate) fn asset_drag(
-    tiles: Query<(&Interaction, &AssetTile)>,
-    tree: Query<(&Interaction, &TreeNav)>,
-    crumbs: Query<(&Interaction, &CrumbNav)>,
+    tiles: Query<(&UiInteraction, &AssetTile)>,
+    tree: Query<(&UiInteraction, &TreeNav)>,
+    crumbs: Query<(&UiInteraction, &CrumbNav)>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     scrollbar: Res<ScrollbarBusy>,
@@ -102,10 +103,10 @@ pub(crate) fn asset_drag(
     if mouse.just_pressed(MouseButton::Left) && !scrollbar.active() {
         if let Some(c) = cursor {
             // A pressed grid/list tile (file or folder)…
-            if let Some((_, tile)) = tiles.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
+            if let Some((_, tile)) = tiles.iter().find(|(i, _)| matches!(i, UiInteraction::Pressed)) {
                 state.drag_press = Some((tile.path.clone(), tile.is_dir, c));
             // …or a pressed tree folder row (TreeNav targets are always folders).
-            } else if let Some((_, nav)) = tree.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
+            } else if let Some((_, nav)) = tree.iter().find(|(i, _)| matches!(i, UiInteraction::Pressed)) {
                 state.drag_press = Some((nav.0.clone(), true, c));
             }
         }
@@ -215,13 +216,13 @@ const SPRING_DWELL_SECS: f32 = 0.35;
 /// obvious move -- take this file and put it one level up -- meant navigating
 /// away from the file first.
 fn drop_folder(
-    tiles: &Query<(&Interaction, &AssetTile)>,
-    tree: &Query<(&Interaction, &TreeNav)>,
-    crumbs: &Query<(&Interaction, &CrumbNav)>,
+    tiles: &Query<(&UiInteraction, &AssetTile)>,
+    tree: &Query<(&UiInteraction, &TreeNav)>,
+    crumbs: &Query<(&UiInteraction, &CrumbNav)>,
 ) -> Option<PathBuf> {
     // Accept Hovered *or* Pressed: on the release frame the folder under the
     // cursor may still read Pressed (the button was down through the drag).
-    let over = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    let over = |i: &UiInteraction| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed);
     if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && over(i)) {
         return Some(tile.path.clone());
     }

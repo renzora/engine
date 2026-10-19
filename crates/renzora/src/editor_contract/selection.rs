@@ -22,7 +22,7 @@ pub struct EditorSelection {
     /// therefore recomputed exactly once (its first run, when the dep set is
     /// still empty and everything counts as dirty) and then went permanently
     /// clean: selecting a different entity left the old row painted with the
-    /// selection accent until something *else* it read — its own `Interaction`,
+    /// selection accent until something *else* it read — its own `UiInteraction`,
     /// i.e. the mouse happening to pass over it — dirtied the binding.
     ///
     /// So writers bump this counter and one system per frame turns a change in

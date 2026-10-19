@@ -31,8 +31,10 @@ use bevy_hui::prelude::{
     OnUiEnter, OnUiExit, OnUiPress, OnUiSpawn, StyleAttr, TemplateProperties, XNode,
 };
 
+use crate::interaction::PASS_THROUGH;
 use crate::markup::drag::Draggable;
 use crate::markup::provenance::{MarkupImage, MarkupSource};
+use crate::UiInteraction;
 
 /// Spawn the template's root node onto `entity` (and its subtree as children).
 ///
@@ -364,7 +366,7 @@ fn apply_xnode_to(
         ));
     } else if is_input_node(node) {
         // `<input bind="Entity.var" placeholder=".." password="true">` — a
-        // focusable text field. Stamp TextInput + Button (for click focus);
+        // focusable text field. Stamp TextInput + UiButton (for click focus);
         // the `Text` is added in the node-type match below. Falls through to
         // node styling so its box/border/padding apply.
         let bind = node.defs.get("bind").cloned().unwrap_or_default();
@@ -487,8 +489,8 @@ fn apply_xnode_to(
         ));
     }
 
-    // Interactive widget behaviors (see `widgets.rs`). Each needs `Button` so
-    // bevy_ui delivers `Interaction`. Targets are plain paths (not `{{ }}`).
+    // Interactive widget behaviors (see `widgets.rs`). Each needs `UiButton` so
+    // it tracks `UiInteraction`. Targets are plain paths (not `{{ }}`).
     if let Some(target) = defs.get("toggle") {
         ec.insert(crate::markup::widgets::Toggle {
             target: target.clone(),
@@ -563,7 +565,7 @@ fn apply_xnode_to(
         });
         // A fill is decorative — let clicks pass through to the slider track
         // beneath it so dragging works across the filled portion.
-        ec.insert(bevy::ui::FocusPolicy::Pass);
+        ec.insert(PASS_THROUGH);
     }
     if let Some(target) = defs.get("toggles") {
         ec.insert(crate::markup::widgets::Disclose {
@@ -652,9 +654,9 @@ fn apply_xnode_to(
             if background.is_none() && (hover_bg.is_some() || pressed_bg.is_some()) {
                 ec.insert(BackgroundColor(Color::NONE));
             }
-            // Interaction must be present to detect hover/press. Buttons already
+            // UiInteraction must be present to detect hover/press. Buttons already
             // require it; insert for plain hover nodes too (harmless on buttons).
-            ec.insert(Interaction::default());
+            ec.insert(UiInteraction::default());
             ec.insert(crate::markup::transitions::Interactive {
                 base_bg: background,
                 hover_bg,
@@ -677,19 +679,19 @@ fn apply_xnode_to(
     }
 
     // `drag_item` — a drag-and-drop source. Payload is the binding host (the
-    // item entity inside a `<for>`). Needs Button for Interaction.
+    // item entity inside a `<for>`). Needs UiButton for UiInteraction.
     if defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
         ec.insert(crate::markup::dnd::DragItem { payload: ctx.host });
         ec.insert(crate::game_ui::components::UiButton);
-        // Pass so the item still receives Interaction (for pickup) but doesn't
+        // Pass so the item still receives UiInteraction (for pickup) but doesn't
         // block the drop zone beneath it from detecting the cursor.
-        ec.insert(bevy::ui::FocusPolicy::Pass);
+        ec.insert(PASS_THROUGH);
     }
     // `cursor="grab"` — OS cursor icon shown while this node is hovered.
     if let Some(name) = defs.get("cursor") {
         if let Some(icon) = crate::cursor_icon::parse_cursor(name) {
             ec.insert(crate::cursor_icon::HoverCursor(icon));
-            ec.insert(Interaction::default());
+            ec.insert(UiInteraction::default());
         }
     }
     // `dropzone drop_group="basket" on_drop="..."` — a drop target.
@@ -699,7 +701,7 @@ fn apply_xnode_to(
             on_drop: defs.get("on_drop").cloned(),
         });
         ec.insert(bevy::ui::RelativeCursorPosition::default());
-        ec.insert(Interaction::default());
+        ec.insert(UiInteraction::default());
     }
 
     // `vector="gauge|ring|bars|line|waveform|speedometer"` — a vector graphic
@@ -724,7 +726,7 @@ fn apply_xnode_to(
 
     // Event listeners (`on_press="..."`, `on_enter="..."`, `on_exit="..."`,
     // `on_spawn`, `on_change`) get attached as bevy_hui's prelude components.
-    // `interactions.rs` then watches `Changed<Interaction>` on these entities
+    // `interactions.rs` then watches `Changed<UiInteraction>` on these entities
     // and forwards the names into `renzora::ScriptUiInbox` so every script's
     // `on_ui(name, args, entity)` Lua hook fires.
     for action in &node.event_listener {

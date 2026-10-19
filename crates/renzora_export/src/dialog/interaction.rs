@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{text_muted, text_primary};
+use renzora_ember::UiInteraction;
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{run_export, ExportOverlayState, ExportProgress, ExportView};
@@ -22,19 +23,19 @@ use super::{
     SourceDownloadBtn,
 };
 
-pub(super) fn preset_click(q: Query<(&Interaction, &PresetBtn), Changed<Interaction>>, mut state: Option<ResMut<ExportOverlayState>>) {
+pub(super) fn preset_click(q: Query<(&UiInteraction, &PresetBtn), Changed<UiInteraction>>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
     for (i, b) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             // Carries the outgoing preset's edits across and persists them.
             state.select_preset(b.0);
         }
     }
 }
 
-pub(super) fn preset_dup_click(q: Query<&Interaction, (With<PresetDupBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+pub(super) fn preset_dup_click(q: Query<&UiInteraction, (With<PresetDupBtn>, Changed<UiInteraction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     // Duplicate what is on screen, not what was last saved — the edits made
@@ -48,9 +49,9 @@ pub(super) fn preset_dup_click(q: Query<&Interaction, (With<PresetDupBtn>, Chang
     state.save_presets();
 }
 
-pub(super) fn preset_del_click(q: Query<&Interaction, (With<PresetDelBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+pub(super) fn preset_del_click(q: Query<&UiInteraction, (With<PresetDelBtn>, Changed<UiInteraction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(i) = state.active_preset else { return };
@@ -72,9 +73,9 @@ pub(super) fn preset_del_click(q: Query<&Interaction, (With<PresetDelBtn>, Chang
     state.save_presets();
 }
 
-pub(super) fn close_click(q: Query<&Interaction, (With<CloseBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+pub(super) fn close_click(q: Query<&UiInteraction, (With<CloseBtn>, Changed<UiInteraction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         // Persist before hiding. Every field in the form writes to the flat
         // working state rather than into the preset, so without this an edit
         // made and then closed would look accepted and be gone at the next
@@ -98,11 +99,11 @@ pub(super) fn close_click(q: Query<&Interaction, (With<CloseBtn>, Changed<Intera
 /// Cancel the running build, or — once it has finished — return to the settings
 /// form. The button's label flips between "Cancel" and "Back" accordingly.
 pub(super) fn cancel_or_back_click(
-    q: Query<&Interaction, (With<CancelOrBackBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CancelOrBackBtn>, Changed<UiInteraction>)>,
     mut state: Option<ResMut<ExportOverlayState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     if let Some(task) = state.active_task.as_ref() {
@@ -118,11 +119,11 @@ pub(super) fn cancel_or_back_click(
 
 /// Copy the full build log to the system clipboard.
 pub(super) fn copy_log_click(
-    q: Query<&Interaction, (With<CopyLogBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CopyLogBtn>, Changed<UiInteraction>)>,
     state: Option<Res<ExportOverlayState>>,
 ) {
     let Some(state) = state else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         // See `crash_overlay`: the browser clipboard is async + gesture-gated,
         // so there is nothing to call from a sync system. No-op on wasm.
         #[cfg(not(target_arch = "wasm32"))]
@@ -134,20 +135,20 @@ pub(super) fn copy_log_click(
 
 /// Fold / unfold a Features-tab section.
 pub(super) fn section_toggle_click(
-    q: Query<(&Interaction, &SectionToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SectionToggle), Changed<UiInteraction>>,
     mut state: Option<ResMut<ExportOverlayState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     for (i, sec) in q.iter() {
-        if *i == Interaction::Pressed && !state.collapsed_sections.remove(sec.0) {
+        if *i == UiInteraction::Pressed && !state.collapsed_sections.remove(sec.0) {
             state.collapsed_sections.insert(sec.0.to_string());
         }
     }
 }
 
-pub(super) fn icon_clear_click(q: Query<&Interaction, (With<IconClearBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+pub(super) fn icon_clear_click(q: Query<&UiInteraction, (With<IconClearBtn>, Changed<UiInteraction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.icon_path = None;
     }
 }
@@ -251,12 +252,12 @@ fn start_export(w: &mut World) {
 
 /// Dismiss the prompt, then either save first or go straight to the build.
 pub(super) fn save_prompt_click(
-    save: Query<&Interaction, (With<SavePromptSaveBtn>, Changed<Interaction>)>,
-    skip: Query<&Interaction, (With<SavePromptSkipBtn>, Changed<Interaction>)>,
+    save: Query<&UiInteraction, (With<SavePromptSaveBtn>, Changed<UiInteraction>)>,
+    skip: Query<&UiInteraction, (With<SavePromptSkipBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    let pressed = |q: &Query<&Interaction, _>| q.iter().any(|i| *i == Interaction::Pressed);
-    let want_save = save.iter().any(|i| *i == Interaction::Pressed);
+    let pressed = |q: &Query<&UiInteraction, _>| q.iter().any(|i| *i == UiInteraction::Pressed);
+    let want_save = save.iter().any(|i| *i == UiInteraction::Pressed);
     let want_skip = pressed(&skip);
     if !want_save && !want_skip {
         return;
@@ -278,8 +279,8 @@ pub(super) fn save_prompt_click(
     });
 }
 
-pub(super) fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+pub(super) fn export_click(q: Query<&UiInteraction, (With<ExportBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             if can_export(&Rx::new(&*w)) {
                 spawn_save_prompt(w);
@@ -288,8 +289,8 @@ pub(super) fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Inte
     }
 }
 
-pub(super) fn output_browse_click(q: Query<&Interaction, (With<OutputBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+pub(super) fn output_browse_click(q: Query<&UiInteraction, (With<OutputBrowseBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             if let Some(dir) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_output")).pick_folder() {
                 w.resource_mut::<ExportOverlayState>().output_dir = dir.to_string_lossy().to_string();
@@ -298,8 +299,8 @@ pub(super) fn output_browse_click(q: Query<&Interaction, (With<OutputBrowseBtn>,
     }
 }
 
-pub(super) fn icon_browse_click(q: Query<&Interaction, (With<IconBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+pub(super) fn icon_browse_click(q: Query<&UiInteraction, (With<IconBrowseBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             // The list is `crate::icon::PICKABLE` rather than a literal so the
             // dialog can never offer a format the conversion then refuses. It
@@ -320,10 +321,10 @@ pub(super) fn icon_browse_click(q: Query<&Interaction, (With<IconBrowseBtn>, Cha
 /// next right-pane rebuild, once `resolve_engine_source` can see the extracted
 /// tree.
 pub(super) fn source_download_click(
-    q: Query<&Interaction, (With<SourceDownloadBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SourceDownloadBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             let p = w.resource::<ExportOverlayState>().platform;
             let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
@@ -345,8 +346,8 @@ pub(super) fn source_download_click(
     }
 }
 
-pub(super) fn download_click(q: Query<&Interaction, (With<DownloadBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+pub(super) fn download_click(q: Query<&UiInteraction, (With<DownloadBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             let p = w.resource::<ExportOverlayState>().platform;
             // The release is resolved as soon as the modal opens, so a click can
@@ -365,8 +366,8 @@ pub(super) fn download_click(q: Query<&Interaction, (With<DownloadBtn>, Changed<
     }
 }
 
-pub(super) fn install_click(q: Query<&Interaction, (With<InstallBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+pub(super) fn install_click(q: Query<&UiInteraction, (With<InstallBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
             let p = w.resource::<ExportOverlayState>().platform;

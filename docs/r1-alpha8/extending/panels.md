@@ -253,9 +253,11 @@ For per-widget styling beyond colour there is the stylesheet layer: `renzora_emb
 
 ## Handling interaction
 
-A click is handled the ordinary Bevy way — a marker component and `Changed<Interaction>`:
+A click is handled the ordinary Bevy way, a marker component and a change filter, on ember's `UiInteraction`:
 
 ```rust
+use renzora_ember::UiInteraction;
+
 #[derive(Component)]
 struct ResetButton;
 
@@ -267,20 +269,20 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn my_panel_system(q: Query<&Interaction, (With<ResetButton>, Changed<Interaction>)>) {
+fn my_panel_system(q: Query<&UiInteraction, (With<ResetButton>, Changed<UiInteraction>)>) {
     for interaction in &q {
-        if *interaction == Interaction::Pressed { /* … */ }
+        if *interaction == UiInteraction::Pressed { /* … */ }
     }
 }
 ```
 
-`Changed<Interaction>` matters: `Pressed` persists for as long as the mouse is held, so without it the action fires every frame of the click.
+`Changed<UiInteraction>` matters: `Pressed` persists for as long as the mouse is held, so without it the action fires every frame of the click.
 
-Bevy 0.20 deprecates `Interaction` in favour of the `Hovered` and `Pressed` components. It still works and the whole editor is built on it, so expect a deprecation warning rather than a break; ember will move over in one go.
+`UiInteraction` replaces Bevy's `Interaction`, which Bevy 0.20 deprecated along with the focus system behind it. It has the same three variants (`Pressed`, `Hovered`, `None`) and is derived each frame from picking's `Hovered` and `Pressed`. A node of your own opts in by carrying `UiInteraction::default()`; ember's widgets already do. Don't query Bevy's `Interaction` on them: they no longer carry it, so such a query never sees a press. `Hovered` counts descendants, so a row stays hovered while the pointer is on a button inside it. To press a button from the keyboard or a gamepad, write `UiInteraction::Pressed` yourself; the write stands for that frame and the pointer's state replaces it the next.
 
 Two things that will catch you once:
 
-**Give every interactive node a `FocusPolicy`.** In Bevy (0.19 and 0.20) the default is `Pass`, so an unmarked node lets a press fall through to whatever is behind it, including the viewport, which will interpret it as a click in the scene.
+**Give every node that owns a press `BLOCK`.** UI nodes start as `renzora_ember::interaction::PASS_THROUGH` (hit-testable, not blocking), so an unmarked node lets a press fall through to whatever is behind it, including the viewport, which will interpret it as a click in the scene. `renzora_ember::interaction::BLOCK` is a `bevy::picking::Pickable` that stops it, and replaces the old `FocusPolicy::Block`; `Pickable::IGNORE` takes a node out of picking entirely.
 
 **Gate empty-space actions on `ScrollbarBusy`.** If your panel does something on a click in its background, that fires while the user is dragging your scrollbar unless you check.
 

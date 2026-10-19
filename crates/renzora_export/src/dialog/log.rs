@@ -2,13 +2,14 @@
 //! live build output, and Copy log / Cancel.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color};
 use renzora_ember::reactive::{react, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{scroll_view_pinned, spinner};
+use renzora_ember::UiInteraction;
 
 use crate::overlay::{ExportOverlayState, ExportProgress};
 
@@ -94,7 +95,7 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     // build with empty space beneath it; `min_height` keeps it usable when the
     // window is short.
     let term = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(220.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
-    let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
+    let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH)).id();
     bind_text(commands, log_text, |w| {
         w.get_resource::<ExportOverlayState>().map(|s| s.build_log.join("\n")).unwrap_or_default()
     });
@@ -106,8 +107,8 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
     let copy_btn = pill_button(commands, fonts, "clipboard", &renzora::lang::t("export.btn.copy_log"));
     commands.entity(copy_btn).insert(CopyLogBtn);
-    let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), Interaction::default(), CancelOrBackBtn, cursor())).id();
-    let btn_label = commands.spawn((Text::new(renzora::lang::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), UiInteraction::default(), CancelOrBackBtn, cursor())).id();
+    let btn_label = commands.spawn((Text::new(renzora::lang::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     bind_text(commands, btn_label, |w| {
         if w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false) {
             renzora::lang::t("common.cancel")

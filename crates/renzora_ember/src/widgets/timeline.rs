@@ -14,7 +14,9 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 const HEADER_W: f32 = 110.0;
 const RULER_H: f32 = 22.0;
@@ -291,7 +293,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             },
             BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             TlRuler { root },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
@@ -311,7 +313,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                     ..default()
                 },
                 TlTick { time: s as f32 },
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("tl-tick"),
             ))
             .with_children(|p| {
@@ -352,7 +354,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                                 ..default()
                             },
                             BackgroundColor(rgb(track.color)),
-                            Interaction::default(),
+                            UiInteraction::default(),
                             RelativeCursorPosition::default(),
                             TlClip { root, start, len },
                             crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
@@ -383,7 +385,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                             },
                             BackgroundColor(rgb(track.color)),
                             UiTransform::from_rotation(Rot2::degrees(45.0)),
-                            Interaction::default(),
+                            UiInteraction::default(),
                             TlKey { root, time },
                             crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                             Name::new("tl-key"),
@@ -412,7 +414,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             // where the panel usually lives. See `crate::stacking`.
             crate::stacking::ZTier(10),
             GlobalZIndex(10),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             TlPlayhead { root },
             Name::new("tl-playhead"),
         ))
@@ -526,11 +528,11 @@ pub(crate) fn timeline_pan(
 }
 
 pub(crate) fn timeline_scrub(
-    rulers: Query<(&TlRuler, &Interaction, &RelativeCursorPosition)>,
+    rulers: Query<(&TlRuler, &UiInteraction, &RelativeCursorPosition)>,
     mut roots: Query<&mut TimelineRoot>,
 ) {
     for (ruler, interaction, rcp) in &rulers {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some(nrm) = rcp.normalized {
@@ -545,8 +547,8 @@ pub(crate) fn timeline_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut active: Local<Option<(Entity, Vec2, Drag)>>,
-    clip_press: Query<(Entity, &Interaction, &RelativeCursorPosition, &ComputedNode), With<TlClip>>,
-    key_press: Query<(Entity, &Interaction), With<TlKey>>,
+    clip_press: Query<(Entity, &UiInteraction, &RelativeCursorPosition, &ComputedNode), With<TlClip>>,
+    key_press: Query<(Entity, &UiInteraction), With<TlKey>>,
     mut clips: Query<&mut TlClip>,
     mut keys: Query<&mut TlKey>,
     roots: Query<&TimelineRoot>,
@@ -555,7 +557,7 @@ pub(crate) fn timeline_drag(
         if mouse.just_pressed(MouseButton::Left) {
             if let Some(c) = cursor(&windows) {
                 for (e, i, rcp, cn) in &clip_press {
-                    if *i == Interaction::Pressed {
+                    if *i == UiInteraction::Pressed {
                         // Grab near an edge → resize, otherwise move.
                         let w = cn.size().x * cn.inverse_scale_factor();
                         let gx = rcp.normalized.map(|n| (n.x + 0.5) * w).unwrap_or(w * 0.5);
@@ -571,7 +573,7 @@ pub(crate) fn timeline_drag(
                     }
                 }
                 for (e, i) in &key_press {
-                    if *i == Interaction::Pressed {
+                    if *i == UiInteraction::Pressed {
                         *active = Some((e, c, Drag::Key));
                         return;
                     }

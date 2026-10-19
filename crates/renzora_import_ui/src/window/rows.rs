@@ -7,11 +7,12 @@
 //! same thing.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ImportOverlayState;
 
@@ -158,10 +159,10 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
             } else {
                 Color::NONE
             }),
-            Interaction::default(),
+            UiInteraction::default(),
             // Rows are click targets; without blocking, the press also reaches
             // whatever is stacked behind the window.
-            FocusPolicy::Block,
+            BLOCK,
             hover_cursor(),
         ))
         .id();
@@ -193,7 +194,7 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
             );
             // The caret is its own click target so expanding does not also
             // change the selection.
-            commands.entity(c).insert((Interaction::default(), hover_cursor()));
+            commands.entity(c).insert((UiInteraction::default(), hover_cursor()));
             kids.push(c);
         }
         None => {
@@ -201,7 +202,7 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
         }
     }
     let ic = icon_text(commands, &fonts.phosphor, spec.icon, text_muted(), 11.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     kids.push(ic);
     let nm = commands
         .spawn((
@@ -213,7 +214,7 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
                 ..default()
             },
             Node { flex_shrink: 0.0, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     kids.push(nm);
@@ -228,7 +229,7 @@ pub(super) fn list_row(commands: &mut Commands, fonts: &EmberFonts, spec: RowSpe
                     ..default()
                 },
                 Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         kids.push(dt);
@@ -269,16 +270,16 @@ fn row_checkbox(commands: &mut Commands, fonts: &EmberFonts, state: RowCheck) ->
             } else {
                 rgb(border()).with_alpha(0.4)
             }),
-            Interaction::default(),
+            UiInteraction::default(),
             // Without blocking, the press also lands on the row behind it and
             // toggling a node would change the selection at the same time.
-            FocusPolicy::Block,
+            BLOCK,
             hover_cursor(),
         ))
         .id();
     if on {
         let mark = icon_text(commands, &fonts.phosphor, "check", on_accent(), 9.0);
-        commands.entity(mark).insert(FocusPolicy::Pass);
+        commands.entity(mark).insert(PASS_THROUGH);
         commands.entity(box_e).add_child(mark);
     }
     box_e

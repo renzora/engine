@@ -17,6 +17,7 @@ use renzora_ember::inspector::color_field;
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{section, toggle_switch};
+use renzora_ember::UiInteraction;
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 
 use crate::lang::tr;
@@ -71,7 +72,7 @@ pub(crate) fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             ThemeSaveBtn,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("theme-save"),
@@ -196,7 +197,7 @@ pub(crate) fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberThemeSaveBtn,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("ember-theme-save"),
@@ -391,11 +392,11 @@ fn theme_color_row(
 }
 
 pub(crate) fn theme_save_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<ThemeSaveBtn>)>,
+    btns: Query<&UiInteraction, (Changed<UiInteraction>, With<ThemeSaveBtn>)>,
     mut tm: ResMut<ThemeManager>,
 ) {
     for interaction in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let name = tm.active_theme_name.clone();
             tm.save_theme(&name);
         }
@@ -408,8 +409,8 @@ pub(crate) fn theme_save_click(
 pub(crate) fn ember_theme_save_click(world: &mut World) {
     let pressed = {
         let mut q = world
-            .query_filtered::<&Interaction, (Changed<Interaction>, With<EmberThemeSaveBtn>)>();
-        q.iter(world).any(|i| *i == Interaction::Pressed)
+            .query_filtered::<&UiInteraction, (Changed<UiInteraction>, With<EmberThemeSaveBtn>)>();
+        q.iter(world).any(|i| *i == UiInteraction::Pressed)
     };
     if !pressed {
         return;

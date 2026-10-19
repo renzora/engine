@@ -19,6 +19,7 @@ use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::widgets::{icon_label_button_parts, scroll_view, slider, text_input};
+use renzora_ember::UiInteraction;
 
 use crate::grid::{grid_snapshot, grid_token, list_entries};
 use crate::layout::{crumb_surface, header_surface, is_compact, toolbar_action};
@@ -149,7 +150,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 },
                 BackgroundColor(Color::NONE),
                 BorderColor::all(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 HoverCursor(SystemCursorIcon::Pointer),
                 TreeTabBtn(tab),
                 Name::new("assets-tree-tab"),
@@ -157,8 +158,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .id();
         bind_bg(commands, btn, move |w| {
             if matches!(
-                w.get::<Interaction>(btn),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(btn),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             ) {
                 return rgb(renzora_ember::theme::hover_bg());
             }
@@ -273,7 +274,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::border())),
-            Interaction::default(),
+            UiInteraction::default(),
             Splitter,
             Name::new("assets-splitter"),
         ))
@@ -281,8 +282,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_bg(commands, splitter, move |w| {
         let dragging = w.get_resource::<NativeAssets>().is_some_and(|s| s.divider_drag.is_some());
         let hovered = matches!(
-            w.get::<Interaction>(splitter),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(splitter),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         if dragging || hovered {
             rgb(accent())
@@ -336,7 +337,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             AssetBack,
             Name::new("assets-back"),
@@ -347,8 +348,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Bare on the crumb strip, lit only on hover. A constant `hover_bg` chip
     // would be all but invisible against the lightened strip, and a permanent
     // frame here is exactly the card the row just lost.
-    bind_bg(commands, back, move |w| match w.get::<Interaction>(back) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::selection()),
+    bind_bg(commands, back, move |w| match w.get::<UiInteraction>(back) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(renzora_ember::theme::selection()),
         _ => Color::NONE,
     });
     // Collapsed at the project root (nowhere to go up to) — fully removed from
@@ -399,7 +400,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             ViewToggleBtn,
             Name::new("assets-view-toggle"),
         ))
@@ -816,7 +817,7 @@ fn crumb_seg(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             CrumbNav(path.to_path_buf()),
             Name::new("crumb"),
@@ -832,8 +833,8 @@ fn crumb_seg(
         if is_current {
             return Color::NONE;
         }
-        match w.get::<Interaction>(chip) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(chip) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,

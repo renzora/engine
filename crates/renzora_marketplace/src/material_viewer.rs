@@ -30,11 +30,13 @@ use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora::SplashState;
 use crate::auth::marketplace::AssetSummary;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::slider;
+use renzora_ember::UiInteraction;
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 use renzora_shader::file::{self, ParamType, ParamValue, ShaderParam};
 use renzora_shader::registry::{self, ShaderBackendRegistry};
@@ -536,7 +538,7 @@ pub(crate) fn build_material_controls(commands: &mut Commands, fonts: &EmberFont
                     ..default()
                 },
                 BackgroundColor(rgb(card_bg())),
-                Interaction::default(),
+                UiInteraction::default(),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 ShapeBtn(shape),
                 Name::new("material-shape-btn"),
@@ -544,7 +546,7 @@ pub(crate) fn build_material_controls(commands: &mut Commands, fonts: &EmberFont
             .id();
         let t = commands
             .spawn((Text::new(shape.label()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())),
-                bevy::ui::FocusPolicy::Pass))
+                PASS_THROUGH))
             .id();
         commands.entity(btn).add_child(t);
         commands.entity(shape_row).add_child(btn);
@@ -710,7 +712,7 @@ fn param_range(param: &ShaderParam) -> (f32, f32) {
 // ── Controls systems ────────────────────────────────────────────────────────
 
 fn shape_button_click(
-    q: Query<(&Interaction, &ShapeBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShapeBtn), Changed<UiInteraction>>,
     mut preview: ResMut<MaterialPreview>,
     rig: Option<Res<MatViewerRig>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -718,7 +720,7 @@ fn shape_button_click(
 ) {
     let Some(rig) = rig else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed && preview.shape != btn.0 {
+        if *interaction == UiInteraction::Pressed && preview.shape != btn.0 {
             preview.shape = btn.0;
             if let Ok(mut m) = subjects.get_mut(rig.subject) {
                 m.0 = meshes.add(btn.0.mesh());

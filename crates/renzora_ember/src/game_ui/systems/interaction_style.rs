@@ -1,17 +1,18 @@
 //! Applies interaction-state-dependent style overrides (hover, press, disabled).
 //!
-//! When `Interaction` changes, merges the active state's `UiStateStyle` overrides
+//! When `UiInteraction` changes, merges the active state's `UiStateStyle` overrides
 //! onto the individual style components. The downstream `apply_widget_style_system`
 //! then syncs the result to bevy_ui components.
 
 use bevy::prelude::*;
 
 use crate::game_ui::components::*;
+use crate::UiInteraction;
 
 pub fn interaction_style_system(
     mut widgets: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &UiInteractionStyle,
             Option<&mut UiFill>,
             Option<&mut UiStroke>,
@@ -21,16 +22,16 @@ pub fn interaction_style_system(
             Option<&mut UiTextStyle>,
             Option<&mut UiPadding>,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
 ) {
     for (interaction, istyle, fill, stroke, opacity, border_radius, cursor, text, padding) in
         &mut widgets
     {
         let overrides = match interaction {
-            Interaction::None => &istyle.normal,
-            Interaction::Hovered => &istyle.hovered,
-            Interaction::Pressed => &istyle.pressed,
+            UiInteraction::None => &istyle.normal,
+            UiInteraction::Hovered => &istyle.hovered,
+            UiInteraction::Pressed => &istyle.pressed,
         };
 
         if let Some(ref f) = overrides.fill {

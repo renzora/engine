@@ -13,6 +13,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use bevy::window::SystemCursorIcon;
 
 use crate::theme::{border, rgb, text_muted, text_primary};
+use crate::UiInteraction;
 
 use std::collections::HashMap;
 
@@ -126,7 +127,7 @@ pub struct ScrollThumb {
 /// holds even when the cursor moves off the thumb, off the track, out of the
 /// panel, or out of the window entirely — like a real scrollbar.
 ///
-/// The old drag rode `Interaction::Pressed` on the thumb plus the track's
+/// The old drag rode `UiInteraction::Pressed` on the thumb plus the track's
 /// `RelativeCursorPosition`; both drop the moment the cursor leaves the node, so
 /// a quick flick or a drag that strayed out of the panel would let go of the
 /// thumb. Latching here and driving the offset from a [`GlobalCursor`] delta —
@@ -286,7 +287,7 @@ fn build_scroll(
                 ..default()
             },
             BackgroundColor(rgb(text_muted())),
-            Interaction::default(),
+            UiInteraction::default(),
             ScrollThumb {
                 viewport,
                 horizontal: false,
@@ -333,7 +334,7 @@ fn build_scroll(
                     ..default()
                 },
                 BackgroundColor(rgb(text_muted())),
-                Interaction::default(),
+                UiInteraction::default(),
                 ScrollThumb {
                     viewport,
                     horizontal: true,
@@ -847,10 +848,10 @@ pub(crate) fn scroll_thumb_drag(
     mut dragged: ResMut<DraggedThumb>,
     mouse: Res<ButtonInput<MouseButton>>,
     cursor: Res<crate::dock::GlobalCursor>,
-    thumbs: Query<(Entity, &Interaction, &ScrollThumb)>,
+    thumbs: Query<(Entity, &UiInteraction, &ScrollThumb)>,
     mut viewports: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode, &Children)>,
     computed: Query<&ComputedNode>,
-    mut tints: Query<(Entity, &Interaction, &mut BackgroundColor), With<ScrollThumb>>,
+    mut tints: Query<(Entity, &UiInteraction, &mut BackgroundColor), With<ScrollThumb>>,
 ) {
     if mouse.just_released(MouseButton::Left) {
         dragged.0 = None;
@@ -862,7 +863,7 @@ pub(crate) fn scroll_thumb_drag(
     if dragged.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(pos) = cursor.pos {
             for (entity, interaction, thumb) in &thumbs {
-                if *interaction != Interaction::Pressed {
+                if *interaction != UiInteraction::Pressed {
                     continue;
                 }
                 if let Ok((s, _, _, _)) = viewports.get(thumb.viewport) {
@@ -913,9 +914,9 @@ pub(crate) fn scroll_thumb_drag(
     }
 
     // Keep the dragged thumb lit even once the cursor leaves it, since its
-    // `Interaction` falls back to `None` off-node while the grip still holds.
+    // `UiInteraction` falls back to `None` off-node while the grip still holds.
     for (entity, interaction, mut bg) in &mut tints {
-        let active = matches!(interaction, Interaction::Hovered | Interaction::Pressed)
+        let active = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed)
             || dragged.0.as_ref().is_some_and(|d| d.thumb == entity);
         let target = if active { rgb(text_primary()) } else { rgb(text_muted()) };
         if bg.0 != target {

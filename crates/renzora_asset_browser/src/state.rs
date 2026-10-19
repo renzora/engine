@@ -459,7 +459,7 @@ pub(crate) struct AssetTile {
 pub(crate) struct AssetRenameInput(pub(crate) PathBuf);
 /// The clickable name label of a tile/row. Clicking it while its asset is already
 /// the sole selection arms an inline rename (OS-explorer "slow second click").
-/// Uses `FocusPolicy::Pass` so the click still reaches the tile beneath it
+/// Passes the pointer through (`PASS_THROUGH`) so the click still reaches the tile beneath it
 /// (selection / double-click-open keep working).
 ///
 /// The label is deliberately sized to the *text* rather than stretched across

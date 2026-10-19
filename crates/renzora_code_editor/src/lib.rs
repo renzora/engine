@@ -11,6 +11,8 @@ use renzora::core::CurrentProject;
 use renzora_ember::markup::MarkupSource;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::game_ui::HtmlTemplatePath;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
+use renzora_ember::UiInteraction;
 use renzora_scripting::ScriptComponent;
 
 // ---------------------------------------------------------------------------
@@ -310,20 +312,20 @@ fn compile_button(
                 ..default()
             },
             BackgroundColor(rgb(accent()).with_alpha(0.22)),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             CompileShaderBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, "play", text_primary(), 11.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(renzora::lang::t_or("code.compile", "Compile")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, label]);
@@ -356,11 +358,11 @@ fn sync_compile_button(
 
 /// Save the active shader and ask for it to be recompiled.
 fn compile_shader_click(
-    q: Query<&Interaction, (With<CompileShaderBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CompileShaderBtn>, Changed<UiInteraction>)>,
     mut state: Option<ResMut<CodeEditorState>>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(state) = state.as_mut() else { return };
@@ -416,16 +418,16 @@ fn zoom_button(
                 ..default()
             },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
-            // Blocks its own press: 0.19 defaults `FocusPolicy` to `Pass`, and
+            UiInteraction::default(),
+            // Blocks its own press: UI nodes pass the pointer through by default, and
             // this sits on a toolbar row inside a panel with its own handlers.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             dir,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 11.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(btn).add_child(ic);
     btn
 }
@@ -437,12 +439,12 @@ fn zoom_button(
 /// a code editor nobody is looking at. `panel_active` is the same gate the
 /// panel's other input uses.
 pub(crate) fn code_zoom_input(
-    buttons: Query<(&Interaction, &CodeZoom), Changed<Interaction>>,
+    buttons: Query<(&UiInteraction, &CodeZoom), Changed<UiInteraction>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<CodeEditorState>,
 ) {
     for (interaction, dir) in &buttons {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match dir {

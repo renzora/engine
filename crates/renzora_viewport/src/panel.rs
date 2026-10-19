@@ -19,6 +19,7 @@ use renzora::core::viewport_types::Viewports;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::bind_with;
+use renzora_ember::UiInteraction;
 
 use crate::ViewportResizeRequest;
 
@@ -100,7 +101,7 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             // while Simulate mode runs as the in-editor "this is live" indicator.
             BorderColor::all(Color::NONE),
             RelativeCursorPosition::default(),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Crosshair),
             NativeViewport(index),
             Name::new("native-viewport"),

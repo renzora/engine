@@ -98,6 +98,22 @@ pub static OUTPUT_VEGETATION: MaterialNodeDef = MaterialNodeDef {
     color: CLR_OUTPUT,
 };
 
+pub static OUTPUT_SPRITE: MaterialNodeDef = MaterialNodeDef {
+    node_type: "output/sprite",
+    display_name: "Sprite Output",
+    category: CAT_OUTPUT,
+    description: "A 2D sprite's color. Unwired, it is the sprite's own texture; the sprite's tint and alpha mode apply on top",
+    pins: || {
+        vec![
+            // No default: an unwired pin means "the sprite's texture", which
+            // codegen supplies, not a constant.
+            PinTemplate::input("color", "Color", PinType::Color),
+            PinTemplate::input("alpha", "Alpha", PinType::Float),
+        ]
+    },
+    color: CLR_OUTPUT,
+};
+
 pub static OUTPUT_UNLIT: MaterialNodeDef = MaterialNodeDef {
     node_type: "output/unlit",
     display_name: "Unlit Output",

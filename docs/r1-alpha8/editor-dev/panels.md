@@ -345,7 +345,7 @@ use renzora::core::resize::not_resizing;
 app.add_systems(Update, my_press_system.run_if(not_resizing));
 ```
 
-A panel that hit-tests with `Interaction` is safe from resize handles specifically, because `ResizeHandle` also forces `FocusPolicy::Block` onto the node it marks, so the press stops there. Don't assume that's the default: since Bevy 0.19 `FocusPolicy` defaults to `Pass`, and an unblocked node marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks carry no `Interaction` at all and so block nothing; `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `FocusPolicy::Block` (and `ResizeHandle`, if it resizes something).
+A panel that hit-tests with `UiInteraction` is safe from resize handles specifically, because `ResizeHandle` also inserts `renzora_ember::interaction::BLOCK` (a `Pickable` that blocks) on the node it marks, so the press stops there. Don't assume that's the default: every UI node starts as `PASS_THROUGH`, and an unblocked press marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks don't block, so `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `BLOCK` (and `ResizeHandle`, if it resizes something).
 
 ## A status-bar item
 
@@ -435,8 +435,8 @@ Three things to know before writing one:
   game binary. `renzora_marketplace`'s `splash_plugins` is the worked example.
 
 Two notes on the shell around your page. Every clickable node needs an explicit
-`FocusPolicy::Block` — the default is `Pass`, which hands the press to every
-ancestor under the cursor as well. And the splash draws before a project, and
+`renzora_ember::interaction::BLOCK`: UI nodes pass the pointer through by
+default, which hands the press to every ancestor under the cursor as well. And the splash draws before a project, and
 therefore before a theme, is loaded: it carries its own fixed palette
 (`renzora_splash::launcher::style`) rather than reading `ThemeManager`, so a page
 registered from elsewhere matches it by using the same values, not by importing

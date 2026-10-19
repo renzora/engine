@@ -17,6 +17,7 @@ use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{border, rgb, text_muted, text_primary, value_text};
 use renzora_ember::widgets::{drag_value, toggle_switch, DragRange};
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::camera::{HeaderClick, ProjOption, SnapBtnKind};
@@ -120,7 +121,7 @@ pub(super) fn option_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             opt,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("vp-display-option"),
@@ -193,7 +194,7 @@ pub(super) fn click_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             click,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("vp-click-row"),
@@ -241,7 +242,7 @@ pub(super) fn snap_button(
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             kind,
             click,
             HoverCursor(SystemCursorIcon::Pointer),
@@ -299,14 +300,14 @@ pub(super) fn drag_row_build(
 pub(super) fn update_click_rows(
     theme: Option<Res<ThemeManager>>,
     mut q: Query<
-        (&Interaction, &mut BackgroundColor),
+        (&UiInteraction, &mut BackgroundColor),
         (With<HeaderClick>, Without<ProjOption>, Without<SnapBtnKind>),
     >,
 ) {
     let Some(theme) = theme else { return };
     let hovered = col(theme.active_theme.widgets.hovered_bg);
     for (interaction, mut bg) in &mut q {
-        let want = if *interaction == Interaction::Hovered {
+        let want = if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             Color::NONE
@@ -320,8 +321,8 @@ pub(super) fn update_click_rows(
 pub(super) fn update_panel_buttons(
     settings: Option<Res<ViewportSettings>>,
     theme: Option<Res<ThemeManager>>,
-    mut proj: Query<(&ProjOption, &Interaction, &mut BackgroundColor), Without<SnapBtnKind>>,
-    mut snapbtns: Query<(&SnapBtnKind, &Interaction, &mut BackgroundColor), Without<ProjOption>>,
+    mut proj: Query<(&ProjOption, &UiInteraction, &mut BackgroundColor), Without<SnapBtnKind>>,
+    mut snapbtns: Query<(&SnapBtnKind, &UiInteraction, &mut BackgroundColor), Without<ProjOption>>,
 ) {
     let (Some(settings), Some(theme)) = (settings, theme) else {
         return;
@@ -334,7 +335,7 @@ pub(super) fn update_panel_buttons(
     for (opt, interaction, mut bg) in &mut proj {
         let want = if settings.projection_mode == opt.0 {
             accent
-        } else if *interaction == Interaction::Hovered {
+        } else if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             Color::NONE
@@ -350,7 +351,7 @@ pub(super) fn update_panel_buttons(
         };
         let want = if on {
             accent
-        } else if *interaction == Interaction::Hovered {
+        } else if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             inactive

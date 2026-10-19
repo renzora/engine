@@ -22,6 +22,54 @@ pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "kt
 /// the egui drop check and the native bevy_ui drop
 /// (`drop_target::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
 /// logical pixels.
+/// Project a window point over the viewport through the 2D editor camera to
+/// world space. Shared by the sprite and material drops.
+pub(crate) fn cursor_to_world_2d(world: &mut World, screen_pos: Vec2, vp_rect: Rect) -> Option<Vec2> {
+    let mut state: SystemState<(
+        Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
+        Res<ViewportState>,
+    )> = SystemState::new(world);
+    let (camera_q, vp_state) = state.get(world).ok()?;
+    let (camera, cam_gt) = camera_q.single().ok()?;
+    let vp_x = screen_pos.x - vp_rect.min.x;
+    let vp_y = screen_pos.y - vp_rect.min.y;
+    let image_size = vp_state.current_size.as_vec2();
+    if image_size.x <= 0.0 || image_size.y <= 0.0 || vp_rect.width() <= 0.0 {
+        return None;
+    }
+    let render_pos = Vec2::new(
+        vp_x * image_size.x / vp_rect.width(),
+        vp_y * image_size.y / vp_rect.height(),
+    );
+    camera.viewport_to_world_2d(cam_gt, render_pos).ok()
+}
+
+/// The sprite under a 2D world point: an AABB test on each sprite's size,
+/// topmost Z winning.
+pub(crate) fn sprite_at(world: &mut World, point: Vec2) -> Option<Entity> {
+    let mut state: SystemState<Query<(Entity, &Sprite, &GlobalTransform)>> = SystemState::new(world);
+    let sprites = state.get(world).ok()?;
+    let mut best: Option<(Entity, f32)> = None;
+    for (entity, sprite, gt) in &sprites {
+        let Some(size) = sprite.custom_size else {
+            continue;
+        };
+        if size.x <= 0.0 || size.y <= 0.0 {
+            continue;
+        }
+        let pos = gt.translation();
+        let half = size * 0.5;
+        if (point.x - pos.x).abs() <= half.x && (point.y - pos.y).abs() <= half.y {
+            match best {
+                None => best = Some((entity, pos.z)),
+                Some((_, z)) if pos.z > z => best = Some((entity, pos.z)),
+                _ => {}
+            }
+        }
+    }
+    best.map(|(e, _)| e)
+}
+
 pub(crate) fn commit_sprite_drop(
     world: &mut World,
     screen_pos: Vec2,
@@ -36,60 +84,10 @@ pub(crate) fn commit_sprite_drop(
         abs_path.to_string_lossy().to_string()
     };
 
-    // Project the drop point through the 2D editor camera to world space.
-    let world_pos_2d = {
-        let mut state: SystemState<(
-            Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
-            Res<ViewportState>,
-        )> = SystemState::new(world);
-        let (camera_q, vp_state) = state.get(world).unwrap();
-
-        let Ok((camera, cam_gt)) = camera_q.single() else {
-            return;
-        };
-        let vp_x = screen_pos.x - vp_rect.min.x;
-        let vp_y = screen_pos.y - vp_rect.min.y;
-        let image_size = vp_state.current_size.as_vec2();
-        if image_size.x <= 0.0 || image_size.y <= 0.0 || vp_rect.width() <= 0.0 {
-            return;
-        }
-        let render_pos = Vec2::new(
-            vp_x * image_size.x / vp_rect.width(),
-            vp_y * image_size.y / vp_rect.height(),
-        );
-        match camera.viewport_to_world_2d(cam_gt, render_pos) {
-            Ok(p) => p,
-            Err(_) => return,
-        }
+    let Some(world_pos_2d) = cursor_to_world_2d(world, screen_pos, vp_rect) else {
+        return;
     };
-
-    // AABB hit test against existing sprites — topmost-Z wins.
-    let hit_entity = {
-        let mut state: SystemState<Query<(Entity, &Sprite, &GlobalTransform)>> =
-            SystemState::new(world);
-        let sprites = state.get(world).unwrap();
-
-        let mut best: Option<(Entity, f32)> = None;
-        for (entity, sprite, gt) in &sprites {
-            let Some(size) = sprite.custom_size else {
-                continue;
-            };
-            if size.x <= 0.0 || size.y <= 0.0 {
-                continue;
-            }
-            let pos = gt.translation();
-            let half = size * 0.5;
-            if (world_pos_2d.x - pos.x).abs() <= half.x && (world_pos_2d.y - pos.y).abs() <= half.y
-            {
-                match best {
-                    None => best = Some((entity, pos.z)),
-                    Some((_, z)) if pos.z > z => best = Some((entity, pos.z)),
-                    _ => {}
-                }
-            }
-        }
-        best.map(|(e, _)| e)
-    };
+    let hit_entity = sprite_at(world, world_pos_2d);
 
     if let Some(entity) = hit_entity {
         // Retarget the existing sprite's image — keeps the user's

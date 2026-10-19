@@ -14,6 +14,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
@@ -199,7 +200,7 @@ fn shape_tile(
             },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             // The full name, for the ones the two-line label still can't hold.
             renzora_ember::widgets::HoverTooltip::new(name),
@@ -209,8 +210,8 @@ fn shape_tile(
         .id();
     bind_bg(commands, tile, move |w| {
         if matches!(
-            w.get::<Interaction>(tile),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(tile),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -226,8 +227,8 @@ fn shape_tile(
         tile,
         move |w| {
             matches!(
-                w.get::<Interaction>(tile),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(tile),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             )
         },
         |w, e, hot: &bool| {
@@ -280,12 +281,12 @@ fn shape_search_sync(input: Query<&EmberTextInput, With<ShapesSearch>>, mut stat
 
 /// Record a press on a tile (with the cursor position) as a pending drag/click.
 fn shape_press(
-    q: Query<(&Interaction, &ShapeTile), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShapeTile), Changed<UiInteraction>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut press: ResMut<ShapePress>,
 ) {
     for (interaction, tile) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let start = windows.single().ok().and_then(|w| w.cursor_position()).unwrap_or(Vec2::ZERO);

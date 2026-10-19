@@ -1,7 +1,7 @@
 //! Dropdown: click to open/close option list, select an option.
 //!
 //! Structure:
-//! - Root entity: DropdownData + Button + Interaction
+//! - Root entity: DropdownData + UiButton + UiInteraction
 //!   - Child "display": shows current selection text
 //!   - Child "options_panel": Visibility toggled, contains option children
 //!     - Child "option_N": clickable options
@@ -9,15 +9,16 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{DropdownData, UiWidgetPart};
+use crate::UiInteraction;
 
 pub fn dropdown_system(
-    mut dropdowns: Query<(&mut DropdownData, &Interaction, &Children), Changed<Interaction>>,
-    mut parts: Query<(&UiWidgetPart, &mut Visibility, Option<&Interaction>)>,
+    mut dropdowns: Query<(&mut DropdownData, &UiInteraction, &Children), Changed<UiInteraction>>,
+    mut parts: Query<(&UiWidgetPart, &mut Visibility, Option<&UiInteraction>)>,
     mut texts: Query<&mut bevy::ui::widget::Text>,
 ) {
     for (mut data, interaction, children) in &mut dropdowns {
         // Toggle open on click
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             data.open = !data.open;
         }
 
@@ -53,12 +54,12 @@ pub fn dropdown_system(
 
 /// Handles clicks on individual dropdown options.
 pub fn dropdown_option_system(
-    options: Query<(&UiWidgetPart, &Interaction, &ChildOf), Changed<Interaction>>,
+    options: Query<(&UiWidgetPart, &UiInteraction, &ChildOf), Changed<UiInteraction>>,
     panels: Query<(&UiWidgetPart, &ChildOf)>,
     mut dropdowns: Query<&mut DropdownData>,
 ) {
     for (part, interaction, child_of) in &options {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
 

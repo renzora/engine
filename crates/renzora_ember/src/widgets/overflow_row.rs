@@ -38,7 +38,9 @@ use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use crate::font::{icon_text, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::{accent, rgb, text_muted};
+use crate::UiInteraction;
 
 /// A group's stable name, for saving and restoring the toolbar's order.
 #[derive(Component, Clone)]
@@ -106,7 +108,7 @@ pub fn arrange_row(commands: &mut Commands, name: &str) -> Entity {
                 // dragged is absolutely positioned and travels outside this box.
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             ArrangeOrder::default(),
             Name::new(format!("{name}-arrange-row")),
         ))
@@ -167,7 +169,7 @@ pub fn arrange_row_items(
                         flex_shrink: 0.0,
                         ..default()
                     },
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
                     crate::widgets::HoverTooltip::new("Drag to move this group"),
                     RowGrip(holder),
@@ -175,7 +177,7 @@ pub fn arrange_row_items(
                 ))
                 .id();
             let dots = icon_text(commands, &fonts.phosphor, "dots-six-vertical", text_muted(), 11.0);
-            commands.entity(dots).insert(bevy::ui::FocusPolicy::Pass);
+            commands.entity(dots).insert(PASS_THROUGH);
             commands.entity(grip).add_child(dots);
             commands
                 .entity(holder)
@@ -234,14 +236,14 @@ pub(crate) fn hide_empty_group_grips(
 pub(crate) fn arrange_highlight(
     drag: Res<RowDrag>,
     holders: Query<(Entity, &RowHolder)>,
-    grips: Query<&Interaction>,
+    grips: Query<&UiInteraction>,
     mut backgrounds: Query<&mut BackgroundColor>,
 ) {
     for (holder, h) in &holders {
         let hot = drag.holder == Some(holder)
             || matches!(
                 grips.get(h.grip),
-                Ok(Interaction::Hovered) | Ok(Interaction::Pressed)
+                Ok(UiInteraction::Hovered) | Ok(UiInteraction::Pressed)
             );
         let Ok(mut bg) = backgrounds.get_mut(holder) else {
             continue;
@@ -268,7 +270,7 @@ pub(crate) fn arrange_drag(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut drag: ResMut<RowDrag>,
     rows: Query<&ArrangeRow>,
-    grips: Query<(&Interaction, &RowGrip)>,
+    grips: Query<(&UiInteraction, &RowGrip)>,
     holders: Query<&RowHolder>,
     keys: Query<&ArrangeKey>,
     geom: Query<(&UiGlobalTransform, &ComputedNode)>,
@@ -282,7 +284,7 @@ pub(crate) fn arrange_drag(
         if !mouse.just_pressed(MouseButton::Left) {
             return;
         }
-        let Some((_, grip)) = grips.iter().find(|(i, _)| **i == Interaction::Pressed) else {
+        let Some((_, grip)) = grips.iter().find(|(i, _)| **i == UiInteraction::Pressed) else {
             return;
         };
         let holder = grip.0;

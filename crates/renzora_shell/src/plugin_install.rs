@@ -22,6 +22,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_ember::widgets::{button, overlay_sized};
+use renzora_ember::UiInteraction;
 
 #[cfg(target_os = "windows")]
 const PLUGIN_EXT: &str = "dll";
@@ -175,20 +176,20 @@ fn confirm_overlay(world: &mut World, source: PathBuf) {
 /// Confirm / dismiss button handling. Runs every frame in the editor shell;
 /// the queries are empty unless an installer overlay is open.
 pub(crate) fn install_buttons(
-    confirm: Query<&Interaction, (With<InstallConfirmBtn>, Changed<Interaction>)>,
-    dismiss: Query<(&Interaction, &DismissOverlayBtn), Changed<Interaction>>,
+    confirm: Query<&UiInteraction, (With<InstallConfirmBtn>, Changed<UiInteraction>)>,
+    dismiss: Query<(&UiInteraction, &DismissOverlayBtn), Changed<UiInteraction>>,
     pending: Option<Res<PendingPluginInstall>>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             commands.entity(btn.0).despawn();
             commands.remove_resource::<PendingPluginInstall>();
         }
     }
 
-    if !confirm.iter().any(|i| *i == Interaction::Pressed) {
+    if !confirm.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let (Some(pending), Some(fonts)) = (pending, fonts) else {

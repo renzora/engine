@@ -5,8 +5,10 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
+use crate::interaction::PASS_THROUGH;
 use crate::style::{Role, Styled};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::format_num;
 
@@ -42,7 +44,7 @@ pub fn spin_slider(commands: &mut Commands, font: &bevy::text::FontSource, label
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             Styled::new(Role::Input),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("spin-slider"),
         ))
@@ -58,7 +60,7 @@ pub fn spin_slider(commands: &mut Commands, font: &bevy::text::FontSource, label
                 ..default()
             },
             BackgroundColor(rgb(accent()).with_alpha(0.30)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("spin-fill"),
         ))
         .id();
@@ -73,7 +75,7 @@ pub fn spin_slider(commands: &mut Commands, font: &bevy::text::FontSource, label
                 padding: UiRect::horizontal(Val::Px(8.0)),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("spin-content"),
         ))
         .id();
@@ -108,14 +110,14 @@ pub fn spin_slider(commands: &mut Commands, font: &bevy::text::FontSource, label
 
 pub(crate) fn spin_drag(
     windows: Query<&Window>,
-    mut spins: Query<(&Interaction, &mut EmberSpin)>,
+    mut spins: Query<(&UiInteraction, &mut EmberSpin)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     let cursor_x = windows.iter().find_map(|w| w.cursor_position())
         .map(|p| p.x);
     for (interaction, mut s) in &mut spins {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let (Some(cx), Some(last)) = (cursor_x, s.last_x) {
                 let d = cx - last;
                 if d != 0.0 {

@@ -17,6 +17,7 @@ use renzora_ember::widgets::{
     button, folder_new_button, folder_picker, overlay_sized, text_input, EmberForm, EmberTextInput,
     FolderPick,
 };
+use renzora_ember::UiInteraction;
 
 use super::drop::{create_material_at, default_material_stem, sanitize_stem};
 use super::MatCreateBtn;
@@ -45,9 +46,9 @@ pub(super) struct MatCreateConfirmBtn;
 pub(super) struct MatCreateCancelBtn;
 
 /// "New material" → ask where it should go.
-pub(super) fn mat_create_click(q: Query<(&Interaction, &MatCreateBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn mat_create_click(q: Query<(&UiInteraction, &MatCreateBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;
@@ -193,8 +194,8 @@ pub(super) fn mat_create_focus(pending: Option<ResMut<PendingMatCreate>>, mut in
 /// backdrop/Escape dismiss, which despawns the overlay out from under us) → drop
 /// the pending state and leave the mesh alone.
 pub(super) fn mat_create_overlay_buttons(
-    confirm: Query<&Interaction, (With<MatCreateConfirmBtn>, Changed<Interaction>)>,
-    cancel: Query<&Interaction, (With<MatCreateCancelBtn>, Changed<Interaction>)>,
+    confirm: Query<&UiInteraction, (With<MatCreateConfirmBtn>, Changed<UiInteraction>)>,
+    cancel: Query<&UiInteraction, (With<MatCreateCancelBtn>, Changed<UiInteraction>)>,
     pending: Option<Res<PendingMatCreate>>,
     inputs: Query<&EmberTextInput>,
     pick: Res<FolderPick>,
@@ -210,12 +211,12 @@ pub(super) fn mat_create_overlay_buttons(
         commands.remove_resource::<PendingMatCreate>();
         return;
     }
-    if cancel.iter().any(|i| *i == Interaction::Pressed) {
+    if cancel.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.entity(pending.overlay).despawn();
         commands.remove_resource::<PendingMatCreate>();
         return;
     }
-    if !confirm.iter().any(|i| *i == Interaction::Pressed) {
+    if !confirm.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
 

@@ -40,6 +40,10 @@ Position and size are saved with the scene.
 
 **Sprite Sheet** crops the texture into a grid. **H Frames** and **V Frames** slice the image into columns and rows, and **Frame** picks which cell shows, row-major. The Frame field is animatable, so you can key it to play a flipbook. See [Sprite Animation](/docs/r1-alpha8/editor/sprite-animation).
 
+## Sprite materials
+
+A sprite can wear a material graph: make one with **Add ▸ Sprite Material** in the Assets panel, then drag the file onto the sprite in the Hierarchy. An empty one draws the sprite unchanged, so the graph only has to describe the change, such as a scrolling distortion, a dissolve, a flash or a palette swap. The sprite's tint, flip and sheet frame still apply. See [Sprite materials](/docs/r1-alpha8/api/material#sprite-materials).
+
 ## Y-sorting
 
 For top-down scenes where a character should walk behind a tree when above it and in front when below it, switch on **Y Sort** on the Sprite Image component.

@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberListItem {
@@ -46,7 +47,7 @@ pub fn list_group(
                 } else {
                     Color::NONE
                 }),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberListItem { group },
                 Styled::with_state(
                     Role::Segment,
@@ -74,13 +75,13 @@ pub fn list_group(
 }
 
 pub(crate) fn list_select(
-    pressed: Query<(Entity, &Interaction, &EmberListItem), Changed<Interaction>>,
+    pressed: Query<(Entity, &UiInteraction, &EmberListItem), Changed<UiInteraction>>,
     items: Query<(Entity, &EmberListItem)>,
     mut styles: Query<&mut Styled>,
 ) {
     let mut chosen: Option<(Entity, Entity)> = None;
     for (entity, interaction, item) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             chosen = Some((item.group, entity));
             break;
         }

@@ -27,6 +27,7 @@ use renzora_ember::widgets::{
     checkbox, folder_new_button, folder_picker_files, menu_item_styled, menu_submenu_styled,
     overlay_sized, text_input, EmberForm, EmberTextInput, FolderPick, Overlay,
 };
+use renzora_ember::UiInteraction;
 use renzora_scripting::ScriptComponent;
 
 /// How deep the destination tree walks below the project root. Deep enough to
@@ -590,8 +591,8 @@ fn focus_name_field(pending: Option<ResMut<PendingCreate>>, mut inputs: Query<&m
 
 /// Confirm → write the file (and attach it); cancel → just close.
 fn create_overlay_buttons(
-    confirm: Query<&Interaction, (With<CreateConfirmBtn>, Changed<Interaction>)>,
-    cancel: Query<&Interaction, (With<CreateCancelBtn>, Changed<Interaction>)>,
+    confirm: Query<&UiInteraction, (With<CreateConfirmBtn>, Changed<UiInteraction>)>,
+    cancel: Query<&UiInteraction, (With<CreateCancelBtn>, Changed<UiInteraction>)>,
     pending: Option<Res<PendingCreate>>,
     inputs: Query<&EmberTextInput>,
     checks: Query<&Bound<bool>>,
@@ -602,12 +603,12 @@ fn create_overlay_buttons(
 ) {
     let Some(pending) = pending else { return };
 
-    if cancel.iter().any(|i| *i == Interaction::Pressed) {
+    if cancel.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.entity(pending.overlay).despawn();
         commands.remove_resource::<PendingCreate>();
         return;
     }
-    if !confirm.iter().any(|i| *i == Interaction::Pressed) {
+    if !confirm.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
 

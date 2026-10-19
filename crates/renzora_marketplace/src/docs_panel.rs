@@ -24,6 +24,7 @@ use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::tracked::keyed_list_tokened;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, markdown_view, text_input, EmberTextInput, HoverTint};
+use renzora_ember::UiInteraction;
 
 use crate::toasts::{ToastQueue, Tone};
 use crate::util::{self, hash64};
@@ -262,11 +263,11 @@ struct DocSearchInput;
 
 fn clicks(
     mut panel: ResMut<LearnPanel>,
-    pages: Query<(&Interaction, &DocPageBtn), Changed<Interaction>>,
+    pages: Query<(&UiInteraction, &DocPageBtn), Changed<UiInteraction>>,
     version_dropdowns: Query<(&Bound<usize>, &DocVersionDropdown), Changed<Bound<usize>>>,
 ) {
     for (i, b) in &pages {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             panel.results.clear();
             panel.open_page(b.0.clone());
         }
@@ -390,7 +391,7 @@ fn sidebar_snapshot(w: &Rx) -> KeyedSnapshot {
                 let row = commands
                     .spawn((
                         Node { width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), flex_direction: FlexDirection::Column, ..default() },
-                        Interaction::default(),
+                        UiInteraction::default(),
                         DocPageBtn(r.slug.clone()),
                     ))
                     .id();
@@ -512,7 +513,7 @@ fn sidebar_snapshot(w: &Rx) -> KeyedSnapshot {
                         } else {
                             rgb(stripe)
                         }),
-                        Interaction::default(),
+                        UiInteraction::default(),
                         HoverTint::solid(
                             if *active { renzora_ember::widgets::tint(HUE_LEARN, 50) } else { rgb(stripe) },
                             rgb(hover_bg()),

@@ -24,6 +24,7 @@ use renzora_ember::widgets::{
     category_color, menu_item, menu_item_styled, menu_sep, menu_submenu_styled, screen_menu,
     MenuAction, SearchEntry,
 };
+use renzora_ember::UiInteraction;
 use renzora_undo::{execute, GroupAsChildrenCmd, UndoContext};
 
 use crate::LABEL_COLORS;
@@ -70,7 +71,7 @@ pub(crate) fn hier_context_menu(
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     selection: Option<Res<EditorSelection>>,
-    rows: Query<(&Interaction, &HierRowClick)>,
+    rows: Query<(&UiInteraction, &HierRowClick)>,
     props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
     ui: Query<
         (),
@@ -94,7 +95,7 @@ pub(crate) fn hier_context_menu(
     };
     let Some(target) = rows
         .iter()
-        .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+        .find(|(i, _)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
         .map(|(_, r)| r.entity)
     else {
         // Not on a row: only the empty area below the tree gets a menu, and all
@@ -293,7 +294,7 @@ fn swatch_grid(commands: &mut Commands, target: Entity) -> Entity {
                     },
                     BackgroundColor(Color::srgb_u8(color[0], color[1], color[2])),
                     BorderColor::all(rgb(renzora_ember::theme::border())),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     MenuAction(Box::new(move |w: &mut World| {
                         w.entity_mut(target).insert(EntityLabelColor(color));
                     })),

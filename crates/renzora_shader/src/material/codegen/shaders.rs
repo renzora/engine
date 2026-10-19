@@ -17,7 +17,7 @@ use super::super::graph::{MaterialDomain, MaterialGraph, MaterialNode, NodeId};
 use super::ctx::Ctx;
 use super::wgsl::{
     emit_ext_shader_header, emit_module_prelude, fragment_input_aliases, noise_helpers,
-    texture_bindings_wgsl, PARALLAX_FRAGMENT_WGSL,
+    texture_bindings_at, texture_bindings_wgsl, PARALLAX_FRAGMENT_WGSL,
 };
 
 /// Bevy's own alpha step before lighting, called the way `bevy_pbr`'s
@@ -317,16 +317,20 @@ pub(crate) fn build_terrain_layer_shader(
 
     let mut shader = String::new();
     shader.push_str("// Auto-generated terrain layer shader\n");
-    shader.push_str("#import bevy_pbr::mesh_view_bindings::globals\n\n");
+    shader.push_str("import bevy_pbr::render::mesh_view_bindings::globals;\n\n");
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
     let prelude_base = shader.matches('\n').count() as u32 + 1;
     emit_module_prelude(ctx, &mut shader);
 
+    // The graph body reads `in.uv` and friends the way a fragment shader
+    // would; this stands in for the `VertexOutput` it does not have. At module
+    // scope because WGSL has no struct declarations inside a function.
+    shader.push_str("\nstruct FakeIn { uv: vec2<f32>, world_position: vec4<f32>, world_normal: vec3<f32> };\n");
+
     // layer_main: returns base color
     shader.push_str("\nfn layer_main(uv: vec2<f32>, world_pos: vec3<f32>, world_normal: vec3<f32>, time: f32) -> vec4<f32> {\n");
     shader.push_str("    // Alias inputs for compatibility\n");
-    shader.push_str("    struct FakeIn { uv: vec2<f32>, world_position: vec4<f32>, world_normal: vec3<f32> };\n");
     shader.push_str("    let in = FakeIn(uv, vec4<f32>(world_pos, 1.0), world_normal);\n");
     // Terrain has explicit UV; vertex_color isn't meaningful here so use white.
     shader.push_str("    let mat_uv = uv;\n");
@@ -437,6 +441,84 @@ pub(crate) fn build_unlit_shader(
     (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
 }
 
+/// A sprite's fragment shader, for Bevy's `SpriteMaterial`.
+///
+/// Nothing like the 3D builders: no `PbrInput`, no lighting. The graph
+/// produces a colour, and `sprite_fn::get_final_color` applies what the
+/// `Sprite` component says on top of it (its tint, and its alpha mode's
+/// discard), exactly as Bevy's own sprite shader does. An unwired colour pin is
+/// the sprite's texture, so an empty sprite material draws the sprite as it
+/// was and a graph only has to describe what it changes.
+///
+/// Bindings start at 20 in the 2D material group, past the sprite's own
+/// (texture, sampler and uniform at 0..2, the bindless table at 10); see
+/// `SpriteGraphExt`, which declares the same numbers.
+pub(crate) fn build_sprite_shader(
+    ctx: &Ctx,
+    resolved: &HashMap<String, String>,
+) -> (String, Vec<(u64, u32, u32)>) {
+    let output_node = ctx.graph.output_node().unwrap();
+    let output_id = output_node.id;
+    let pin_set = |pin: &str| {
+        ctx.graph.connection_to(output_id, pin).is_some()
+            || output_node.input_values.contains_key(pin)
+    };
+    let feeder = |pin: &str| {
+        ctx.graph
+            .connection_to(output_id, pin)
+            .map(|c| c.from_node)
+            .unwrap_or(output_id)
+    };
+
+    let mut shader = String::new();
+    shader.push_str("import bevy_sprite_render::mesh2d::vertex_output::VertexOutput;\n");
+    shader.push_str("import bevy_sprite_render::mesh2d::view_bindings::{view, globals};\n");
+    // `mesh_functions`, under the same name the 3D shaders give theirs, so a
+    // node that reads the object's transform emits one expression for both.
+    shader.push_str("import bevy_sprite_render::mesh2d::functions as mesh_functions;\n");
+    shader.push_str("import bevy_sprite_render::sprite_mesh::functions as sprite_fn;\n\n");
+    shader.push_str(&texture_bindings_at(ctx, "constants::MATERIAL_BIND_GROUP", 20));
+    shader.push_str(&noise_helpers(ctx));
+    let prelude_base = shader.matches('\n').count() as u32 + 1;
+    emit_module_prelude(ctx, &mut shader);
+
+    shader.push_str("\n@fragment\n");
+    shader.push_str("fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n");
+    // A 2D mesh always carries UVs, so unlike the 3D alias this needs no gate.
+    shader.push_str("    let mat_uv = in.uv;\n");
+    shader.push_str("    @if(VERTEX_COLORS) let mat_vertex_color = in.color;\n");
+    shader.push_str("    @if(!VERTEX_COLORS) let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n");
+
+    let body_base = shader.matches('\n').count() as u32 + 1;
+    for line in &ctx.lines {
+        shader.push_str(line);
+        shader.push('\n');
+    }
+
+    let mut extra: Vec<(NodeId, u32, u32)> = Vec::new();
+    let start = shader.matches('\n').count() as u32 + 1;
+    match pin_set("color").then(|| resolved.get("color")).flatten() {
+        Some(e) => {
+            shader.push_str(&format!("    var sprite_color = {e};\n"));
+            extra.push((feeder("color"), start, start));
+        }
+        None => shader.push_str(
+            "    var sprite_color = sprite_fn::sample_sprite_texture(mat_uv, in.instance_index);\n",
+        ),
+    }
+    if let Some(e) = pin_set("alpha").then(|| resolved.get("alpha")).flatten() {
+        let start = shader.matches('\n').count() as u32 + 1;
+        shader.push_str(&format!("    sprite_color.a = {e};\n"));
+        extra.push((feeder("alpha"), start, start));
+    }
+    // The sprite's tint and its alpha mode's discard, as Bevy's sprite shader
+    // applies them.
+    shader.push_str("    return sprite_fn::get_final_color(sprite_color, in.instance_index);\n");
+    shader.push_str("}\n");
+
+    (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
+}
+
 pub(crate) fn build_vegetation_vertex_shader(
     _ctx: &Ctx,
     resolved: &HashMap<String, String>,
@@ -447,9 +529,10 @@ pub(crate) fn build_vegetation_vertex_shader(
         .unwrap_or("vec3<f32>(0.0, 0.0, 0.0)".into());
 
     let mut shader = String::new();
-    shader.push_str("#import bevy_pbr::mesh_functions\n");
-    shader.push_str("#import bevy_pbr::forward_io::{Vertex, VertexOutput}\n");
-    shader.push_str("#import bevy_pbr::mesh_view_bindings::globals\n\n");
+    shader.push_str("import bevy_pbr::render::mesh_functions;\n");
+    shader.push_str("import bevy_pbr::render::view_transformations::position_world_to_clip;\n");
+    shader.push_str("import bevy_pbr::render::forward_io::{Vertex, VertexOutput};\n");
+    shader.push_str("import bevy_pbr::render::mesh_view_bindings::globals;\n\n");
 
     shader.push_str("@vertex\n");
     shader.push_str("fn vertex(in: Vertex) -> VertexOutput {\n");
@@ -466,13 +549,13 @@ pub(crate) fn build_vegetation_vertex_shader(
     ));
 
     shader.push_str("    out.world_position = world_pos;\n");
-    shader.push_str("    out.position = mesh_functions::mesh_position_world_to_clip(world_pos);\n");
+    // Bevy 0.20 dropped `mesh_functions::mesh_position_world_to_clip`; the
+    // world-to-clip step lives in `view_transformations` now.
+    shader.push_str("    out.position = position_world_to_clip(world_pos.xyz);\n");
     shader.push_str("    out.world_normal = mesh_functions::mesh_normal_local_to_world(in.normal, in.instance_index);\n");
-    // Both `Vertex.uv` and `VertexOutput.uv` are gated on `VERTEX_UVS_A` —
+    // Both `Vertex.uv` and `VertexOutput.uv` are gated on `VERTEX_UVS_A`:
     // omit the assignment when the mesh has no UV attribute.
-    shader.push_str("#ifdef VERTEX_UVS_A\n");
-    shader.push_str("    out.uv = in.uv;\n");
-    shader.push_str("#endif\n");
+    shader.push_str("    @if(VERTEX_UVS_A) out.uv = in.uv;\n");
     shader.push_str("    return out;\n");
     shader.push_str("}\n");
 

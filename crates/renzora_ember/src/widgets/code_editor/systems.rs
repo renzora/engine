@@ -13,7 +13,9 @@ use bevy::text::{FontSize, TextLayoutInfo};
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use crate::font::{icon_text, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::edit::{self, bracket_match, has_selection, sel_range};
 use super::highlight::tokenize;
@@ -151,11 +153,11 @@ pub(crate) fn code_measure(
 /// Toggle a fold when its gutter chevron is clicked. Runs before the text-click
 /// handler so a chevron press doesn't also reposition the caret.
 pub(crate) fn code_fold_click(
-    q: Query<(&Interaction, &CodeFoldToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &CodeFoldToggle), Changed<UiInteraction>>,
     mut editors: Query<&mut CodeEditor>,
 ) {
     for (interaction, toggle) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut ed) = editors.get_mut(toggle.editor) {
                 edit::toggle_fold(&mut ed, toggle.line);
             }
@@ -170,7 +172,7 @@ pub(crate) fn code_pointer(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    viewports: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode, &CodeViewport)>,
+    viewports: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CodeViewport)>,
     mut editors: Query<(Entity, &mut CodeEditor)>,
 ) {
     if !mouse.pressed(MouseButton::Left) {
@@ -180,7 +182,7 @@ pub(crate) fn code_pointer(
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let mut target: Option<(Entity, Vec2)> = None;
     for (interaction, rcp, cn, vp) in &viewports {
-        let hit = if just { *interaction == Interaction::Pressed } else { rcp.cursor_over };
+        let hit = if just { *interaction == UiInteraction::Pressed } else { rcp.cursor_over };
         if hit {
             if let Some(nrm) = rcp.normalized {
                 let size = cn.size() * cn.inverse_scale_factor();
@@ -735,7 +737,7 @@ fn row_children(
                     ..default()
                 },
                 BackgroundColor(color),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new(name),
             ))
             .id()
@@ -785,7 +787,7 @@ fn row_children(
             ),
             m.gutter_size,
         );
-        commands.entity(icon).insert((Interaction::default(), CodeFoldToggle { editor, line: r.line }));
+        commands.entity(icon).insert((UiInteraction::default(), CodeFoldToggle { editor, line: r.line }));
         commands.entity(chevron_slot).add_child(icon);
     }
     let number_box = commands
@@ -823,7 +825,7 @@ fn row_children(
                     mono(&fonts.mono, m.font_size),
                     TextColor(colors.guide),
                     TextLayout::no_wrap(),
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Name::new("code-whitespace"),
                 ))
                 .id(),

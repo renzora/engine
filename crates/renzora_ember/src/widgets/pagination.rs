@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberPage {
@@ -41,7 +42,7 @@ pub fn pagination(commands: &mut Commands, font: &bevy::text::FontSource, pages:
                 } else {
                     rgb(tab_active())
                 }),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberPage { group },
                 Styled::with_state(
                     Role::Button,
@@ -69,13 +70,13 @@ pub fn pagination(commands: &mut Commands, font: &bevy::text::FontSource, pages:
 }
 
 pub(crate) fn pagination_select(
-    pressed: Query<(Entity, &Interaction, &EmberPage), Changed<Interaction>>,
+    pressed: Query<(Entity, &UiInteraction, &EmberPage), Changed<UiInteraction>>,
     pages: Query<(Entity, &EmberPage)>,
     mut styles: Query<&mut Styled>,
 ) {
     let mut chosen: Option<(Entity, Entity)> = None;
     for (entity, interaction, page) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             chosen = Some((page.group, entity));
             break;
         }

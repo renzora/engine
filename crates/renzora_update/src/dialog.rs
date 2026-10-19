@@ -8,13 +8,14 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{overlay_sized, scroll_view};
+use renzora_ember::UiInteraction;
 
 use crate::UpdateState;
 
@@ -368,7 +369,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
     });
 
     let status_icon = icon_text(commands, &fonts.phosphor, "check-circle", GREEN, 20.0);
-    commands.entity(status_icon).insert(FocusPolicy::Pass);
+    commands.entity(status_icon).insert(PASS_THROUGH);
     bind_icon(commands, status_icon, |w| {
         if up_to_date(w) {
             "check-circle"
@@ -389,7 +390,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
             Text::new(String::new()),
             ui_font(&fonts.ui, 16.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, headline, |w| {
@@ -702,19 +703,19 @@ fn pill(
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 12.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);
@@ -751,8 +752,8 @@ fn channel_chip(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             ChannelBtn(pref),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
@@ -772,7 +773,7 @@ fn channel_chip(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(chip).add_child(t);
@@ -897,8 +898,8 @@ fn version_row(
             } else {
                 Color::NONE
             }),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             VersionRow(tag.to_string()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
@@ -909,14 +910,14 @@ fn version_row(
     let icon_name = if is_nightly { "moon-stars" } else { "seal-check" };
     let icon_colour = if is_nightly { text_muted() } else { GREEN };
     let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_colour, 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
 
     let label = commands
         .spawn((
             Text::new(tag.to_string()),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Node {
                 flex_grow: 1.0,
                 ..default()
@@ -939,7 +940,7 @@ fn version_row(
                 Text::new(text),
                 ui_font(&fonts.ui, 10.5),
                 TextColor(rgb(colour)),
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         kids.push(n);
@@ -949,12 +950,12 @@ fn version_row(
 }
 
 fn version_row_click(
-    q: Query<(&Interaction, &VersionRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &VersionRow), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     let Some(tag) = q
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, r)| r.0.clone())
     else {
         return;
@@ -1028,7 +1029,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(renzora::lang::t("settings.row.dev_mode")),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let hint = commands
@@ -1036,7 +1037,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(renzora::lang::t("update.dev_mode_hint")),
             ui_font(&fonts.ui, 10.5),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -1095,13 +1096,13 @@ fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         renzora::PLUGIN_UPDATE_AMBER,
         13.0,
     );
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let title = commands
         .spawn((
             Text::new(String::new()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
         ))
         .id();
@@ -1236,7 +1237,7 @@ fn rebuild_plugin_updates(world: &mut World) {
                         Text::new(format!("and {hidden} more")),
                         ui_font(&fonts.ui, 10.5),
                         TextColor(rgb(text_muted())),
-                        FocusPolicy::Pass,
+                        PASS_THROUGH,
                         Node { margin: UiRect::left(Val::Px(8.0)), ..default() },
                     ))
                     .id(),
@@ -1268,7 +1269,7 @@ fn plugin_update_row(
                 ..default()
             },
             BackgroundColor(ca(255, 255, 255, 8)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // A blocked update is a different kind of thing, not a dimmer one: it is
@@ -1280,13 +1281,13 @@ fn plugin_update_row(
         ("arrow-circle-up", renzora::PLUGIN_UPDATE_AMBER)
     };
     let ic = icon_text(commands, &fonts.phosphor, glyph, colour, 12.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             bevy::text::TextLayout::no_wrap(),
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
         ))
@@ -1303,7 +1304,7 @@ fn plugin_update_row(
             Text::new(note),
             ui_font(&fonts.ui, 10.5),
             TextColor(rgb(if blocked { text_muted() } else { renzora::PLUGIN_UPDATE_AMBER })),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             bevy::text::TextLayout::no_wrap(),
         ))
         .id();
@@ -1316,11 +1317,11 @@ fn plugin_update_row(
 /// A resource rather than a call, because this crate cannot link the
 /// marketplace. See [`renzora::PluginUpdatesRequested`].
 fn plugin_updates_click(
-    q: Query<&Interaction, (With<PluginUpdatesBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<PluginUpdatesBtn>, Changed<UiInteraction>)>,
     mut state: ResMut<UpdateState>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     commands.insert_resource(renzora::PluginUpdatesRequested);
@@ -1392,7 +1393,7 @@ fn install_path_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, path, |w| {
@@ -1428,10 +1429,10 @@ fn install_path_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// is fine for a modal the user just clicked a button in and is the reason none
 /// of them bother with a worker thread.
 fn browse_click(
-    q: Query<&Interaction, (With<BrowseBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<BrowseBtn>, Changed<UiInteraction>)>,
     mut state: ResMut<UpdateState>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let start = if state.install_path.trim().is_empty() {
@@ -1488,10 +1489,10 @@ fn overwrite_warning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn action_click(
-    q: Query<&Interaction, (With<ActionBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ActionBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     commands.queue(|w: &mut World| {
@@ -1513,12 +1514,12 @@ fn action_click(
 }
 
 fn channel_click(
-    q: Query<(&Interaction, &ChannelBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ChannelBtn), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     let Some(pref) = q
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, c)| c.0)
     else {
         return;
@@ -1535,8 +1536,8 @@ fn channel_click(
 /// Does not close the dialog: skipping is a decision about being *notified*, and
 /// closing on the click would hide the fact that the version is still listed and
 /// still installable if you change your mind in the next five seconds.
-fn skip_click(q: Query<&Interaction, (With<SkipBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+fn skip_click(q: Query<&UiInteraction, (With<SkipBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     commands.queue(|w: &mut World| {
@@ -1549,8 +1550,8 @@ fn skip_click(q: Query<&Interaction, (With<SkipBtn>, Changed<Interaction>)>, mut
     });
 }
 
-fn notes_link_click(q: Query<&Interaction, (With<NotesLinkBtn>, Changed<Interaction>)>, state: Res<UpdateState>) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+fn notes_link_click(q: Query<&UiInteraction, (With<NotesLinkBtn>, Changed<UiInteraction>)>, state: Res<UpdateState>) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     if let Some(url) = state.result.as_ref().and_then(|r| r.release_url.clone()) {
@@ -1558,8 +1559,8 @@ fn notes_link_click(q: Query<&Interaction, (With<NotesLinkBtn>, Changed<Interact
     }
 }
 
-fn close_click(q: Query<&Interaction, (With<CloseBtn>, Changed<Interaction>)>, mut state: ResMut<UpdateState>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn close_click(q: Query<&UiInteraction, (With<CloseBtn>, Changed<UiInteraction>)>, mut state: ResMut<UpdateState>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.visible = false;
     }
 }

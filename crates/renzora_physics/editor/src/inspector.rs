@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 use renzora::InspectorEntry;
 
 use renzora_physics::{
@@ -623,7 +624,7 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
             .spawn((
                 Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
                 BackgroundColor(rgb(card_bg())),
-                Interaction::default(),
+                UiInteraction::default(),
                 EditColliderBtn,
                 Name::new("edit-collider-btn"),
             ))
@@ -641,7 +642,7 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
                 .spawn((
                     Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
                     BackgroundColor(rgb(card_bg())),
-                    Interaction::default(),
+                    UiInteraction::default(),
                 ))
                 .id();
             let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
@@ -723,8 +724,8 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
     })
 }
 
-fn edit_collider_click(q: Query<&Interaction, (Changed<Interaction>, With<EditColliderBtn>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn edit_collider_click(q: Query<&UiInteraction, (Changed<UiInteraction>, With<EditColliderBtn>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
             if let Some(mut m) = w.get_resource_mut::<ColliderEditMode>() {
                 m.active = !m.active;
@@ -733,15 +734,15 @@ fn edit_collider_click(q: Query<&Interaction, (Changed<Interaction>, With<EditCo
     }
 }
 
-fn stamp_strip_click(stamp: Query<(&Interaction, &StampBtn), Changed<Interaction>>, strip: Query<(&Interaction, &StripBtn), Changed<Interaction>>, mut commands: Commands) {
+fn stamp_strip_click(stamp: Query<(&UiInteraction, &StampBtn), Changed<UiInteraction>>, strip: Query<(&UiInteraction, &StripBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (i, b) in &stamp {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             let e = b.entity;
             commands.queue(move |w: &mut World| stamp_mesh_colliders_on_descendants(w, e));
         }
     }
     for (i, b) in &strip {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             let e = b.entity;
             commands.queue(move |w: &mut World| strip_colliders_on_descendants(w, e));
         }

@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use renzora::PropertyKey;
 use renzora_animation::{AnimClip, AnimatorComponent};
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 
 use crate::AnimationEditorState;
 
@@ -278,10 +279,10 @@ pub(super) fn auto_save_clip(
 
 /// Save button → flush the edit buffer back to the `.anim` file on disk.
 pub(super) fn save_clip_click(
-    q: Query<&Interaction, (With<super::SaveClipBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<super::SaveClipBtn>, Changed<UiInteraction>)>,
     mut cache: ResMut<TimelineClip>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     if !cache.dirty {

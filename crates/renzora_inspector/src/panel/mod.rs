@@ -37,10 +37,10 @@
 //! | [`systems`] | Every click handler and the Add Component overlay |
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::{EditorSelection, FieldValue, InspectorExpandDefault};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::scroll_view;
@@ -200,7 +200,7 @@ pub(crate) fn phosphor_glyph(
     size: f32,
 ) -> Entity {
     let e = renzora_ember::font::icon_text(commands, &fonts.phosphor, name, color, size);
-    commands.entity(e).insert(FocusPolicy::Pass);
+    commands.entity(e).insert(PASS_THROUGH);
     e
 }
 

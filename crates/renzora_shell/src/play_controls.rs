@@ -11,7 +11,9 @@ use bevy::ui::RelativeCursorPosition;
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
 use renzora_ember::theme::{divider, play_green, rgb, text_muted, text_primary};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::widgets::Popup;
+use renzora_ember::UiInteraction;
 
 /// Play + its target caret as one tight split button, in the top bar's left
 /// zone. Kept as its own group so the zone's item spacing doesn't pull the caret
@@ -50,8 +52,8 @@ pub(crate) struct TopBarPlayIcon;
 pub(crate) struct TopBarPlayLabel;
 
 /// Build the top-bar Play button: a phosphor glyph + a "Play" label in one
-/// clickable pill. The glyph + label live as `FocusPolicy::Pass` children so the
-/// hover/click lands on the parent (where `Interaction` lives).
+/// clickable pill. The glyph + label live as `PASS_THROUGH` children so the
+/// hover/click lands on the parent (where `UiInteraction` lives).
 fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let btn = commands
         .spawn((
@@ -64,7 +66,7 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             TopBarPlayBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("top-bar-play"),
@@ -73,14 +75,14 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     let icon = glyph(commands, "play", play_green(), 13.0);
     commands
         .entity(icon)
-        .insert((TopBarPlayIcon, bevy::ui::FocusPolicy::Pass));
+        .insert((TopBarPlayIcon, PASS_THROUGH));
     let label = commands
         .spawn((
             Text::new(renzora::lang::t("common.play")),
             ui_font(font, 11.0),
             TextColor(rgb(play_green())),
             TopBarPlayLabel,
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[icon, label]);
@@ -128,7 +130,7 @@ pub(crate) fn track_global_scene_cameras(
 /// with a scene camera; or stop (while playing, simulating, or while an
 /// external runtime is alive).
 pub(crate) fn play_btn_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarPlayBtn>)>,
+    btns: Query<&UiInteraction, (Changed<UiInteraction>, With<TopBarPlayBtn>)>,
     play_mode: Option<ResMut<renzora::core::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
@@ -141,7 +143,7 @@ pub(crate) fn play_btn_click(
     let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
     let simulate = settings.is_some_and(|s| s.play_launch_simulate);
     for interaction in &btns {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         // `is_in_play_mode` deliberately EXCLUDES Simulating, so cover it too.
@@ -192,7 +194,7 @@ pub(crate) fn vr_active_overlay(
                     },
                     BackgroundColor(Color::srgba(0.02, 0.02, 0.03, 0.96)),
                     GlobalZIndex(5000),
-                    bevy::ui::FocusPolicy::Block,
+                    BLOCK,
                     // Registers with ember's pointer-blocking pass so clicks
                     // can't reach panels underneath (see overlay conventions).
                     renzora_ember::widgets::OverlaySurface,
@@ -243,7 +245,7 @@ pub(crate) fn update_play_button(
     global_cam: Option<Res<GlobalSceneHasCamera>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
-    mut fills: Query<(&mut BackgroundColor, &Interaction), With<TopBarPlayBtn>>,
+    mut fills: Query<(&mut BackgroundColor, &UiInteraction), With<TopBarPlayBtn>>,
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
@@ -309,9 +311,9 @@ pub(crate) fn update_play_button(
     // with them when there's no scene camera to play through.
     for (mut bg, interaction) in &mut fills {
         let alpha = match interaction {
-            Interaction::Pressed => 0.34,
-            Interaction::Hovered => 0.26,
-            Interaction::None => 0.16,
+            UiInteraction::Pressed => 0.34,
+            UiInteraction::Hovered => 0.26,
+            UiInteraction::None => 0.16,
         };
         let want = color.with_alpha(alpha);
         if bg.0 != want {
@@ -469,14 +471,14 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 PlayTargetOption { choice },
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new("play-target-option"),
             ))
             .id();
-        renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,
@@ -484,14 +486,14 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         let ic = glyph(commands, icon_name, text_muted(), 12.0);
         commands.entity(ic).insert((
             PlayTargetOptionIcon { choice },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ));
         let t = commands
             .spawn((
                 Text::new(label),
                 ui_font(font, 12.0),
                 TextColor(rgb(text_primary())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         commands.entity(row).add_children(&[ic, t]);
@@ -510,7 +512,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup { panel, open: false },
             PlayTargetCaret,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -518,15 +520,15 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
-        match w.get::<Interaction>(trigger) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(trigger) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, 0.09)
             }
             _ => Color::NONE,
         }
     });
     let caret = glyph(commands, "caret-down", text_muted(), 10.0);
-    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
     commands.entity(trigger).add_children(&[caret, panel]);
     trigger
 }
@@ -536,13 +538,13 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
 /// top: it doesn't touch the persisted viewport-vs-window preference, so
 /// dropping back out of Simulate restores whichever of the two was saved.
 pub(crate) fn play_target_option_click(
-    opts: Query<(&Interaction, &PlayTargetOption), Changed<Interaction>>,
+    opts: Query<(&UiInteraction, &PlayTargetOption), Changed<UiInteraction>>,
     mut settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
     carets: Query<Entity, (With<PlayTargetCaret>, With<Popup>)>,
     mut commands: Commands,
 ) {
     for (interaction, opt) in &opts {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some(s) = settings.as_mut() {

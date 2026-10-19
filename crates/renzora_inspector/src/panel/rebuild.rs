@@ -5,15 +5,16 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::{
     EditorSelection, EditorSettings, FieldType, InspectorRegistry, NativeInspectorDrawer,
 };
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::reactive::tracked::bind_display;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 
 use super::collect::collect_sections;
 use super::section::build_section;
@@ -53,8 +54,8 @@ pub(super) fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Enti
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ExpandAllButton,
             Name::new("inspector-expand-all"),

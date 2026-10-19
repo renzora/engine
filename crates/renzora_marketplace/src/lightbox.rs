@@ -4,11 +4,12 @@
 //! already on screen opens instantly.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
+use renzora_ember::UiInteraction;
 
 use crate::avatars::{absolute_url, AvatarCache, AvatarUrl};
 
-/// Put on any clickable image (with `Interaction`) to open it in the lightbox.
+/// Put on any clickable image (with `UiInteraction`) to open it in the lightbox.
 /// Holds the image URL (relative URLs resolve against the API base).
 #[derive(Component)]
 pub(crate) struct LightboxImage(pub String);
@@ -23,10 +24,10 @@ pub(crate) struct LightboxRoot;
 pub(crate) fn open_clicks(
     mut commands: Commands,
     mut lightbox: ResMut<Lightbox>,
-    clicks: Query<(&Interaction, &LightboxImage), Changed<Interaction>>,
+    clicks: Query<(&UiInteraction, &LightboxImage), Changed<UiInteraction>>,
 ) {
     for (i, img) in &clicks {
-        if *i != Interaction::Pressed {
+        if *i != UiInteraction::Pressed {
             continue;
         }
         if let Some(root) = lightbox.0.take() {
@@ -48,8 +49,8 @@ pub(crate) fn open_clicks(
                 },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
                 GlobalZIndex(9600),
-                FocusPolicy::Block,
-                Interaction::default(),
+                BLOCK,
+                UiInteraction::default(),
                 bevy::ui::RelativeCursorPosition::default(),
                 renzora_ember::widgets::OverlaySurface,
                 // `request_avatars` fetches every on-screen AvatarUrl, so the
@@ -70,7 +71,7 @@ pub(crate) fn open_clicks(
                     display: Display::None,
                     ..default()
                 },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         renzora_ember::reactive::tracked::bind_with(
@@ -101,10 +102,10 @@ pub(crate) fn close_clicks(
     mut commands: Commands,
     mut lightbox: ResMut<Lightbox>,
     keys: Res<ButtonInput<KeyCode>>,
-    backdrops: Query<&Interaction, (With<LightboxRoot>, Changed<Interaction>)>,
+    backdrops: Query<&UiInteraction, (With<LightboxRoot>, Changed<UiInteraction>)>,
 ) {
     let Some(root) = lightbox.0 else { return };
-    let clicked = backdrops.iter().any(|i| *i == Interaction::Pressed);
+    let clicked = backdrops.iter().any(|i| *i == UiInteraction::Pressed);
     if clicked || keys.just_pressed(KeyCode::Escape) {
         commands.entity(root).try_despawn();
         lightbox.0 = None;

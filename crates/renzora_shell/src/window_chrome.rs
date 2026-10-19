@@ -9,6 +9,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use renzora_ember::UiInteraction;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 
 use crate::save_prompts::ExitRequest;
@@ -49,9 +50,9 @@ fn toggle_web_fullscreen() {
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn web_fullscreen_click(
-    q: Query<&Interaction, (With<WebFullscreenBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<WebFullscreenBtn>, Changed<UiInteraction>)>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         toggle_web_fullscreen();
     }
 }
@@ -115,13 +116,13 @@ pub(crate) fn update_maximize_icon(
 }
 
 pub(crate) fn window_btn_click(
-    q: Query<(&Interaction, &WindowBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &WindowBtn), Changed<UiInteraction>>,
     queue: Option<ResMut<WindowActionQueue>>,
     mut commands: Commands,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         // Close is routed through the exit flow (which may prompt to save
@@ -147,8 +148,8 @@ pub(crate) struct DragClickState {
 /// Press an empty top-bar area → start an OS window-move; double-click → toggle
 /// maximize/restore (the OS then handles aero-snap when you drag to an edge).
 pub(crate) fn window_drag(
-    bar: Query<&Interaction, (With<WindowDragHandle>, Changed<Interaction>)>,
-    others: Query<&Interaction, Without<WindowDragHandle>>,
+    bar: Query<&UiInteraction, (With<WindowDragHandle>, Changed<UiInteraction>)>,
+    others: Query<&UiInteraction, Without<WindowDragHandle>>,
     queue: Option<ResMut<WindowActionQueue>>,
     time: Res<Time>,
     mut state: Local<DragClickState>,
@@ -159,12 +160,12 @@ pub(crate) fn window_drag(
     if renzora::EDITOR_OS_FRAME {
         return;
     }
-    if !bar.iter().any(|i| *i == Interaction::Pressed) {
+    if !bar.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     // If any other widget is hovered/pressed, the press landed on a menu/button —
     // not the empty bar — so don't drag (belt-and-braces over focus blocking).
-    if others.iter().any(|i| *i != Interaction::None) {
+    if others.iter().any(|i| *i != UiInteraction::None) {
         return;
     }
     let now = time.elapsed_secs();
@@ -183,12 +184,12 @@ pub(crate) fn window_drag(
 }
 
 pub(crate) fn window_resize_start(
-    q: Query<(&Interaction, &WindowResizeZone), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &WindowResizeZone), Changed<UiInteraction>>,
     queue: Option<ResMut<WindowActionQueue>>,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, zone) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             queue.push(WindowAction::StartResize(zone.0));
         }
     }
@@ -221,7 +222,7 @@ pub(crate) fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
                     node,
                     BackgroundColor(Color::NONE),
                     GlobalZIndex(60),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     // Overlaid on the window perimeter, so it covers the edge of
                     // whatever panel is docked against it: the press is this
                     // zone's alone, and panels can see the gesture is in flight

@@ -12,8 +12,9 @@ use bevy::prelude::*;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
-/// Attach to any entity that has `Interaction`: hovering it shows `0` in the
+/// Attach to any entity that has `UiInteraction`: hovering it shows `0` in the
 /// shared tooltip bubble after a short delay.
 #[derive(Component, Clone)]
 pub struct HoverTooltip(pub String);
@@ -31,7 +32,7 @@ pub struct TooltipAnchorAbove;
 
 /// Legacy wrapper API: wraps `target` in a hoverable node carrying a
 /// [`HoverTooltip`]. Prefer inserting `HoverTooltip` directly on widgets that
-/// already track `Interaction`.
+/// already track `UiInteraction`.
 pub fn tooltip(
     commands: &mut Commands,
     _font: &bevy::text::FontSource,
@@ -44,7 +45,7 @@ pub fn tooltip(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTooltip::new(label),
             Name::new("tooltip"),
         ))
@@ -75,11 +76,12 @@ pub(crate) fn hover_tooltip_system(
     fonts: Option<Res<EmberFonts>>,
     tips: Query<(
         Entity,
-        &Interaction,
+        &UiInteraction,
         &HoverTooltip,
         Option<&ComputedNode>,
         Option<&GlobalTransform>,
         Has<TooltipAnchorAbove>,
+        Option<&bevy::ui::ComputedStackIndex>,
     )>,
     mut root_q: Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>,
     mut text_q: Query<&mut Text, With<HoverTipText>>,
@@ -94,9 +96,14 @@ pub(crate) fn hover_tooltip_system(
         }
     };
 
+    // The frontmost hovered widget. Hover counts descendants, so a toolbar
+    // with a tooltip of its own is hovered too while the pointer is on one of
+    // its buttons; the button, drawn on top of it, is the one meant.
     let hovered = tips
         .iter()
-        .find(|(_, i, _, _, _, _)| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        .filter(|(_, i, _, _, _, _, _)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
+        .max_by_key(|(.., stack)| stack.map_or(0, |s| s.0))
+        .map(|(e, i, tip, cn, tf, above, _)| (e, i, tip, cn, tf, above));
     // The window the cursor is in — hover only fires there, so the tooltip's
     // coordinates and rendering target both follow it (a widget in a floating
     // dock window shows its tooltip in that window, not the primary).

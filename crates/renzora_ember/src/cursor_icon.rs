@@ -11,6 +11,8 @@
 use bevy::prelude::*;
 use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
+use crate::UiInteraction;
+
 // The auto "grabbing" cursor reads the markup drag state; without the `game_ui`
 // markup module (lean export) there is no drag, so the param is gated out.
 #[cfg(feature = "game_ui")]
@@ -20,19 +22,19 @@ use crate::markup::dnd::DragState;
 #[derive(Component)]
 pub struct HoverCursor(pub SystemCursorIcon);
 
-/// Opt-out marker for [`auto_pointer_cursor`] — for `Interaction` entities
+/// Opt-out marker for [`auto_pointer_cursor`] — for `UiInteraction` entities
 /// that track hover/press but aren't "clickable" (drag surfaces, etc.).
 #[derive(Component)]
 pub struct NoAutoCursor;
 
 /// Every interactive element gets a pointer cursor by default: any entity
-/// with `Interaction` that hasn't declared its own [`HoverCursor`] (text
+/// with `UiInteraction` that hasn't declared its own [`HoverCursor`] (text
 /// inputs use `Text`, drag handles use `Grab`, ...) is stamped `Pointer`.
 /// Runs continuously so late-spawned widgets are covered; `Without` keeps it
 /// a no-op after the first frame per entity.
 pub(crate) fn auto_pointer_cursor(
     mut commands: Commands,
-    q: Query<Entity, (With<Interaction>, Without<HoverCursor>, Without<NoAutoCursor>)>,
+    q: Query<Entity, (With<UiInteraction>, Without<HoverCursor>, Without<NoAutoCursor>)>,
 ) {
     for e in &q {
         commands.entity(e).insert(HoverCursor(SystemCursorIcon::Pointer));
@@ -79,12 +81,13 @@ fn topmost_hovered(
 fn apply_cursor_icon(
     #[cfg(feature = "game_ui")] drag: Res<DragState>,
     hovered: Query<(
-        &Interaction,
+        &UiInteraction,
         &HoverCursor,
         &bevy::ui::ComputedNode,
         &bevy::ui::ComputedStackIndex,
     )>,
     viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
+    drop_request: Res<renzora::core::viewport_types::DropCursorRequest>,
     windows: Query<(Entity, &Window)>,
     cursor_opts: Query<&bevy::window::CursorOptions>,
     primary: Query<Entity, With<PrimaryWindow>>,
@@ -96,7 +99,10 @@ fn apply_cursor_icon(
     #[cfg(not(feature = "game_ui"))]
     let dragging = false;
 
-    let target = if dragging {
+    let target = if let Some(icon) = drop_request.0 {
+        // An asset drag saying "not here" outranks the widget under it.
+        icon
+    } else if dragging {
         SystemCursorIcon::Grabbing
     } else {
         // The **topmost** hovered node wins, by `ComputedStackIndex` — the same
@@ -111,17 +117,17 @@ fn apply_cursor_icon(
         // because the dock header's filler underneath them is a resize surface,
         // and it kept winning a race it should never have been in.
         //
-        // The zero-size test stays, and is separate: `Interaction` is only
-        // updated for entities the focus pass can see, so a node hidden with
-        // `Display::None` keeps whatever value it held when it was hidden (hide
-        // one under the cursor — closing a panel by clicking its own toggle does
-        // exactly that — and it reads `Hovered` forever). A stale entry like
-        // that can carry a high stack index, so topmost alone wouldn't catch it.
-        // Zero computed size does, including via a hidden *ancestor*, which
-        // checking this node's own `display` would miss.
+        // The zero-size test stays, and is separate. It used to be essential:
+        // the old focus system never updated a node hidden with `Display::None`,
+        // so one hidden under the cursor (closing a panel by clicking its own
+        // toggle does exactly that) read `Hovered` forever. Picking skips
+        // zero-size nodes, so that no longer happens, and the test is now a
+        // guard against any stale entry, which can carry a high stack index
+        // that topmost alone wouldn't catch. Zero computed size covers a hidden
+        // *ancestor* too, which checking this node's own `display` would miss.
         let widget = topmost_hovered(hovered.iter().map(|(i, hc, cn, stack)| {
             (
-                matches!(i, Interaction::Hovered | Interaction::Pressed),
+                matches!(i, UiInteraction::Hovered | UiInteraction::Pressed),
                 cn.size(),
                 stack.0,
                 hc.0,
@@ -181,7 +187,8 @@ fn apply_cursor_icon(
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, apply_cursor_icon);
+    app.init_resource::<renzora::core::viewport_types::DropCursorRequest>()
+        .add_systems(Update, apply_cursor_icon);
 }
 
 #[cfg(test)]
@@ -212,9 +219,9 @@ mod tests {
         ));
     }
 
-    /// A node hidden under the cursor keeps `Interaction::Hovered` forever, and
-    /// can carry a *higher* stack index than anything real — so topmost alone
-    /// isn't enough. Its computed size collapses to zero, which is the test.
+    /// A stale `UiInteraction::Hovered` on a node hidden under the cursor can
+    /// carry a *higher* stack index than anything real, so topmost alone isn't
+    /// enough. Its computed size collapses to zero, which is the test.
     #[test]
     fn a_hidden_node_never_supplies_the_cursor() {
         let hidden = (true, Vec2::ZERO, 900, SystemCursorIcon::NsResize);

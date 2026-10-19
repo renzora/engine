@@ -1,11 +1,12 @@
 //! Compiles generated material shaders the way the engine does: the WESL
 //! compiler over the app's own `Assets<Shader>` libraries, then naga.
 //!
-//! Material codegen, and every `.material` saved before Bevy 0.20, writes the
-//! old naga_oil dialect. It reaches the GPU through
-//! [`renzora::shader_source`], which translates it to WESL, so this compiles
-//! the same translation and maps errors back to lines of the source codegen
-//! wrote, which is what the node source map indexes.
+//! Material codegen writes WESL; a `.material` saved before Bevy 0.20 embeds
+//! the old naga_oil dialect instead. Both reach the GPU through
+//! [`renzora::shader_source`], which passes WESL through and translates the
+//! old dialect, so this compiles what that produces and maps errors back to
+//! lines of the source the material holds, which is what the node source map
+//! indexes.
 
 use bevy::prelude::*;
 use bevy::shader::{Shader, ShaderDefVal, ShaderImport, Source};

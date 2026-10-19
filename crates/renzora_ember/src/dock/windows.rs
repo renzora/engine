@@ -11,7 +11,9 @@
 use bevy::prelude::*;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::BLOCK;
 use crate::theme::{border, divider, header_bg, rgb, text_muted, text_primary};
+use crate::UiInteraction;
 
 use crate::dock::components::{DockLeaf, GlobalCursor, RootDropOverlay, TabBarOf};
 use crate::dock::drag::{
@@ -298,7 +300,7 @@ pub(crate) fn spawn_dock_windows(
                 },
                 BackgroundColor(rgb(header_bg())),
                 BorderColor::all(rgb(divider())),
-                Interaction::default(),
+                UiInteraction::default(),
                 FloatWindowBar(window),
                 Name::new("dock-window-titlebar"),
             ))
@@ -319,10 +321,10 @@ pub(crate) fn spawn_dock_windows(
             .id();
         let close = icon_text(&mut commands, &fonts.phosphor, "x", text_muted(), 12.0);
         commands.entity(close).insert((
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             // Block so the press closes instead of starting a window drag.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             FloatWindowClose(window),
         ));
         commands.entity(bar).add_children(&[bar_title, bar_fill, close]);
@@ -408,7 +410,7 @@ fn spawn_float_resize_zones(commands: &mut Commands, window: Entity) -> Vec<Enti
                         height,
                         ..default()
                     },
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::resize::ResizeHandle,
                     crate::cursor_icon::HoverCursor(cursor),
                     FloatWindowResize { window, octant },
@@ -425,15 +427,15 @@ fn spawn_float_resize_zones(commands: &mut Commands, window: Entity) -> Vec<Enti
 /// the × queues the window's close (its panel returns to the main dock via
 /// [`process_dock_window_closes`]).
 pub(crate) fn float_window_controls(
-    bars: Query<(&Interaction, &FloatWindowBar), Changed<Interaction>>,
-    resizes: Query<(&Interaction, &FloatWindowResize), Changed<Interaction>>,
-    closes: Query<(&Interaction, &FloatWindowClose), Changed<Interaction>>,
+    bars: Query<(&UiInteraction, &FloatWindowBar), Changed<UiInteraction>>,
+    resizes: Query<(&UiInteraction, &FloatWindowResize), Changed<UiInteraction>>,
+    closes: Query<(&UiInteraction, &FloatWindowClose), Changed<UiInteraction>>,
     mut windows: Query<&mut Window>,
     mut drag: ResMut<FloatDrag>,
     mut close_queue: ResMut<DockWindowCloseRequests>,
 ) {
     for (i, bar) in &bars {
-        if *i == Interaction::Pressed && drag.0.is_none() {
+        if *i == UiInteraction::Pressed && drag.0.is_none() {
             if let Ok(w) = windows.get_mut(bar.0) {
                 // Grab offset = where inside the window the cursor pressed, so
                 // the window doesn't jump under the cursor.
@@ -449,14 +451,14 @@ pub(crate) fn float_window_controls(
         }
     }
     for (i, rz) in &resizes {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             if let Ok(mut w) = windows.get_mut(rz.window) {
                 w.start_drag_resize(rz.octant);
             }
         }
     }
     for (i, close) in &closes {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             close_queue.0.push(close.0);
         }
     }

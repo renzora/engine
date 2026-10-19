@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::Bound;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::fader::fader;
 use super::vu_meter::vu_meter;
@@ -31,7 +32,7 @@ pub fn mixer_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, on
                 ..default()
             },
             BackgroundColor(off),
-            Interaction::default(),
+            UiInteraction::default(),
             MixerButton { on, off },
             Bound::<bool>(false),
             Name::new("mixer-toggle"),
@@ -100,10 +101,10 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
 
 /// Click → flip the model (`Bound<bool>`); colour follows via [`mixer_button_apply`].
 pub(crate) fn mixer_toggle(
-    mut buttons: Query<(&Interaction, &mut Bound<bool>), (With<MixerButton>, Changed<Interaction>)>,
+    mut buttons: Query<(&UiInteraction, &mut Bound<bool>), (With<MixerButton>, Changed<UiInteraction>)>,
 ) {
     for (interaction, mut b) in &mut buttons {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             b.0 = !b.0;
         }
     }

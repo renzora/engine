@@ -193,7 +193,7 @@ pub(super) struct AnimTimeline;
 pub(super) struct SaveClipBtn;
 /// Marker + cursor tracking on the timeline's absolute clips layer. Keyframe
 /// picking is done by math against the clip data (cursor → time/track), NOT
-/// via per-diamond `Interaction` — the widget's scrub overlay sits above the
+/// via per-diamond `UiInteraction` —the widget's scrub overlay sits above the
 /// clips layer and would swallow per-node hits.
 #[derive(Component)]
 pub(super) struct KeyLane;

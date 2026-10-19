@@ -10,8 +10,10 @@ use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::AssetDragPayload;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::{accent, faint_bg, hover_bg, placeholder, rgb, text_muted, text_primary};
 use renzora_ember::widgets::HoverTint;
+use renzora_ember::UiInteraction;
 
 use renzora_shader::material::texture_slots::{self, TextureSlot};
 
@@ -91,8 +93,8 @@ pub(super) fn tex_slots_toggle_row(
             },
             BackgroundColor(Color::NONE),
             HoverTint::solid(Color::NONE, rgb(hover_bg()), rgb(hover_bg())),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             TexSlotsToggle { entity },
             Name::new("material-texture-slots-toggle"),
         ))
@@ -105,14 +107,14 @@ pub(super) fn tex_slots_toggle_row(
         text_muted(),
         11.0,
     );
-    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
     let text = commands
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(row).add_children(&[caret, text]);
@@ -123,10 +125,10 @@ pub(super) fn tex_slots_toggle_row(
 /// the whole implementation — the drawer rebuilds with (or without) the rest of
 /// the channels on the next frame.
 pub(super) fn tex_slots_expand(
-    q: Query<&Interaction, (Changed<Interaction>, With<TexSlotsToggle>)>,
+    q: Query<&UiInteraction, (Changed<UiInteraction>, With<TexSlotsToggle>)>,
     mut expanded: ResMut<TexSlotsExpanded>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         expanded.0 = !expanded.0;
     }
 }
@@ -156,8 +158,8 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
             HoverTint::solid(Color::NONE, rgb(hover_bg()), rgb(hover_bg())),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             RelativeCursorPosition::default(),
             TexSlotZone { entity, slot: state.slot },
             // No tooltip here: the row already spells out its channel in the
@@ -173,7 +175,7 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
         .spawn((
             Node { width: Val::Px(34.0), height: Val::Px(34.0), flex_shrink: 0.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
             BackgroundColor(rgb(faint_bg())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("material-texture-thumb"),
         ))
         .id();
@@ -188,14 +190,14 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
         commands.entity(preview).insert(image);
     } else {
         let ic = icon_text(commands, &fonts.phosphor, state.slot.icon, placeholder(), 14.0);
-        commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(ic).insert(PASS_THROUGH);
         commands.entity(preview).add_child(ic);
     }
 
     let text_col = commands
         .spawn((
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: Val::Px(1.0), overflow: Overflow::clip(), ..default() },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let label = commands
@@ -204,7 +206,7 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(if state.muted { placeholder() } else { text_primary() })),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let value = commands
@@ -213,7 +215,7 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(if filled && !state.muted { text_muted() } else { placeholder() })),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(text_col).add_children(&[label, value]);
@@ -292,7 +294,7 @@ pub(super) fn tex_slot_highlight(
 
 /// Click a row (with nothing being dragged) → pick a file for that channel.
 pub(super) fn tex_slot_browse(
-    q: Query<(&Interaction, &TexSlotZone), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TexSlotZone), Changed<UiInteraction>>,
     payload: Option<Res<AssetDragPayload>>,
     mut commands: Commands,
 ) {
@@ -300,7 +302,7 @@ pub(super) fn tex_slot_browse(
         return;
     }
     for (interaction, zone) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, slot) = (zone.entity, zone.slot);
@@ -322,9 +324,9 @@ pub(super) fn tex_slot_browse(
 /// Routed through `slot_edit` like every other slot change, so the graph is
 /// re-saved, recompiled and re-read: the mesh updates immediately and the row
 /// rebuilds with the icon the graph now justifies.
-pub(super) fn tex_slot_mute(q: Query<(&Interaction, &TexSlotMuteBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn tex_slot_mute(q: Query<(&UiInteraction, &TexSlotMuteBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, slot, muted) = (btn.entity, btn.slot, btn.muted);
@@ -334,9 +336,9 @@ pub(super) fn tex_slot_mute(q: Query<(&Interaction, &TexSlotMuteBtn), Changed<In
     }
 }
 
-pub(super) fn tex_slot_clear(q: Query<(&Interaction, &TexSlotClearBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn tex_slot_clear(q: Query<(&UiInteraction, &TexSlotClearBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, slot) = (btn.entity, btn.slot);

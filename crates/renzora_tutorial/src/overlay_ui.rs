@@ -14,14 +14,16 @@
 //! Skip off the top of the window.
 
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::{EditorLocked, HideInHierarchy};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::theme::{
     accent, border, header_bg, play_green, rgb, text_muted, text_primary, window_bg,
 };
 use renzora_ember::widgets::{rich_text_sized, scroll_area, DragHandle, OverlaySurface};
+use renzora_ember::UiInteraction;
 
 /// How tall the card's body may get before it scrolls. Sized so the tallest
 /// step still fits without a bar, and the seven-chapter picker scrolls.
@@ -91,7 +93,7 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
             GlobalZIndex(8100),
             // Block on the card itself (so its own clicks/scroll don't bleed),
             // but the card covers none of the viewport.
-            FocusPolicy::Block,
+            BLOCK,
             RelativeCursorPosition::default(),
             OverlaySurface,
             HideInHierarchy,
@@ -105,8 +107,8 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
     // The whole strip is the drag handle, not just the grip — a 16px glyph is a
     // fussy target for something you reach for precisely when the card is in
     // your way. Skip and the X therefore have to *capture* their press, which
-    // is what the `FocusPolicy::Block` below buys: since Bevy 0.19, `Node`
-    // requires `FocusPolicy` and its default is `Pass`, so an unmarked button
+    // is what the `BLOCK` below buys: every UI node starts as
+    // `PASS_THROUGH`, so an unmarked button
     // hands its press down to every node behind it — here the header — and
     // pressing Skip would start dragging the card as well.
     let header = commands
@@ -120,7 +122,7 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
                 ..default()
             },
             BackgroundColor(rgb(header_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             DragHandle::new(card),
             Name::new("tutorial-card-header"),
         ))
@@ -140,9 +142,9 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
     // (no model to import, no marketplace account). Closing the whole tutorial
     // is the X beside it, so neither action can be taken for the other.
     let skip = small_button(commands, fonts, "Skip", ButtonStyle::Outline);
-    commands.entity(skip).insert((TutorialSkipButton, FocusPolicy::Block));
+    commands.entity(skip).insert((TutorialSkipButton, BLOCK));
     let close = icon_button(commands, fonts, "x");
-    commands.entity(close).insert((TutorialCloseButton, FocusPolicy::Block));
+    commands.entity(close).insert((TutorialCloseButton, BLOCK));
     commands
         .entity(header)
         .add_children(&[grip, cap, title, spacer, skip, close]);
@@ -267,7 +269,7 @@ fn build_picker(commands: &mut Commands, fonts: &EmberFonts, body: Entity, done:
                 },
                 BackgroundColor(Color::NONE),
                 BorderColor::all(rgb(border())),
-                Interaction::default(),
+                UiInteraction::default(),
                 TutorialChapterButton(i),
             ))
             .id();
@@ -497,7 +499,7 @@ fn icon_button(commands: &mut Commands, fonts: &EmberFonts, glyph: &str) -> Enti
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
         ))
         .id();
     let icon = icon_text(commands, &fonts.phosphor, glyph, text_muted(), 13.0);
@@ -505,7 +507,7 @@ fn icon_button(commands: &mut Commands, fonts: &EmberFonts, glyph: &str) -> Enti
     btn
 }
 
-/// A compact button. Carries `Interaction` so a marker + change-detection query
+/// A compact button. Carries `UiInteraction` so a marker + change-detection query
 /// can read presses.
 fn small_button(
     commands: &mut Commands,
@@ -530,7 +532,7 @@ fn small_button(
             },
             BackgroundColor(bg),
             BorderColor::all(bc),
-            Interaction::default(),
+            UiInteraction::default(),
         ))
         .id();
     let t = commands

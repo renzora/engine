@@ -27,7 +27,7 @@ mod wgsl;
 
 use ctx::Ctx;
 use shaders::{
-    build_pbr_shader, build_terrain_layer_shader, build_unlit_shader,
+    build_pbr_shader, build_sprite_shader, build_terrain_layer_shader, build_unlit_shader,
     build_vegetation_vertex_shader,
 };
 use wgsl::parallax_helper_wgsl;
@@ -253,7 +253,9 @@ pub fn compile_with_functions(
         }
         MaterialDomain::TerrainLayer => build_terrain_layer_shader(&ctx, &resolved),
         MaterialDomain::Unlit => build_unlit_shader(&ctx, &resolved),
+        MaterialDomain::Sprite => build_sprite_shader(&ctx, &resolved),
     };
+    errors.extend(ctx.errors.iter().cloned());
 
     let vertex_shader = if graph.domain == MaterialDomain::Vegetation {
         if resolved.contains_key("vertex_offset") {
@@ -296,6 +298,262 @@ pub fn node_for_line(node_lines: &[(u64, u32, u32)], line: u32) -> Option<u64> {
 mod tests {
     use super::*;
     use graph::*;
+
+    /// One graph per node that reads something a pipeline may not provide
+    /// (a prepass, an environment map, tangents, vertex colours), plus the
+    /// vegetation and terrain domains: every place the generator emits a gate.
+    fn gated_graphs() -> Vec<(String, MaterialGraph)> {
+        let mut graphs = Vec::new();
+        for (domain, ty) in [
+            (MaterialDomain::Surface, "scene/scene_depth"),
+            (MaterialDomain::Surface, "scene/depth_fade"),
+            (MaterialDomain::Surface, "scene/scene_normal"),
+            (MaterialDomain::Surface, "scene/motion_vector"),
+            (MaterialDomain::Surface, "scene/scene_color"),
+            (MaterialDomain::Surface, "scene/env_map_sample"),
+            (MaterialDomain::Surface, "scene/env_map_reflect"),
+            (MaterialDomain::Surface, "input/vertex_color"),
+            (MaterialDomain::Surface, "texture/sample_normal"),
+            (MaterialDomain::Vegetation, "input/uv"),
+            (MaterialDomain::TerrainLayer, "input/uv"),
+        ] {
+            let mut graph = MaterialGraph::new("Dump", domain);
+            let n = graph.add_node(ty, [0.0, 0.0]);
+            let pin = (nodes::node_def(ty).unwrap().pins)()
+                .into_iter()
+                .find(|p| p.direction == PinDir::Output)
+                .unwrap()
+                .name;
+            let output_id = graph.output_node().unwrap().id;
+            graph.connect(n, &pin, output_id, "base_color");
+            if ty == "texture/sample_normal" {
+                // With displacement too, for the parallax block.
+                let h = graph.add_node("texture/sample", [0.0, 0.0]);
+                graph.connect(h, "r", output_id, "displacement");
+            }
+            graphs.push((format!("{domain:?} {ty}"), graph));
+        }
+        graphs
+    }
+
+    /// Codegen writes WESL, so a generated shader never goes through the
+    /// legacy translator. Proven equivalent when this changed: compiled
+    /// against Bevy 0.20's shader library under every combination of the flags
+    /// these shaders test, the new output produced the same modules as the
+    /// translated old output.
+    #[test]
+    fn generated_shaders_are_wesl() {
+        use renzora::shader_source::{dialect, Dialect};
+        for (name, graph) in gated_graphs() {
+            let result = compile(&graph);
+            assert!(result.errors.is_empty(), "{name}: {:?}", result.errors);
+            for src in std::iter::once(&result.fragment_shader).chain(result.vertex_shader.as_ref()) {
+                assert_eq!(dialect(src, "material/x.wesl"), Dialect::Wesl, "{name}:\n{src}");
+                for legacy in ["#import", "#ifdef", "#ifndef", "#else", "#endif", "#{"] {
+                    assert!(!src.contains(legacy), "{name} still writes `{legacy}`:\n{src}");
+                }
+            }
+        }
+    }
+
+    /// Sprite graphs: the empty one (the sprite as it is), and ones that
+    /// distort the sprite's own texture, tint it from a parameter, mix in a
+    /// texture and noise, and read time and the object's position.
+    fn sprite_graphs() -> Vec<(String, MaterialGraph)> {
+        let mut graphs = vec![("empty".to_string(), MaterialGraph::new("Sprite", MaterialDomain::Sprite))];
+
+        // The sprite scrolled through a panner, blended towards a parameter
+        // colour by animated noise.
+        let mut g = MaterialGraph::new("Wave", MaterialDomain::Sprite);
+        let uv = g.add_node("input/uv_panner", [0.0, 0.0]);
+        let sprite = g.add_node("input/sprite_color", [0.0, 0.0]);
+        let tint = g.add_node("param/color", [0.0, 0.0]);
+        let noise = g.add_node("procedural/noise_perlin", [0.0, 0.0]);
+        let lerp = g.add_node("color/lerp", [0.0, 0.0]);
+        let out = g.output_node().unwrap().id;
+        g.connect(uv, "uv", sprite, "uv");
+        g.connect(uv, "uv", noise, "uv");
+        g.connect(sprite, "color", lerp, "a");
+        g.connect(tint, "value", lerp, "b");
+        g.connect(noise, "value", lerp, "t");
+        g.connect(lerp, "color", out, "color");
+        graphs.push(("wave".to_string(), g));
+
+        // A texture in place of the sprite's, faded by noise seeded from the
+        // object's position (which reaches for `mesh_functions`).
+        let mut g = MaterialGraph::new("Mix", MaterialDomain::Sprite);
+        let tex = g.add_node("texture/sample", [0.0, 0.0]);
+        let pos = g.add_node("input/object_position", [0.0, 0.0]);
+        let noise = g.add_node("procedural/noise_perlin", [0.0, 0.0]);
+        let out = g.output_node().unwrap().id;
+        g.connect(tex, "color", out, "color");
+        g.connect(pos, "position", noise, "uv");
+        g.connect(noise, "value", out, "alpha");
+        graphs.push(("mix".to_string(), g));
+
+        graphs.push(("dissolve".to_string(), dissolve_sprite_graph()));
+        graphs
+    }
+
+    /// A looping burn-away: noise is cut at a threshold that sweeps with time,
+    /// and the band just above the cut glows a parameter colour. Exercises
+    /// step, sine, parameters and the sprite's own alpha together.
+    fn dissolve_sprite_graph() -> MaterialGraph {
+        fn set(g: &mut MaterialGraph, id: NodeId, pin: &str, v: PinValue) {
+            g.get_node_mut(id).unwrap().input_values.insert(pin.to_string(), v);
+        }
+        let mut g = MaterialGraph::new("Dissolve", MaterialDomain::Sprite);
+        let out = g.output_node().unwrap().id;
+        g.get_node_mut(out).unwrap().position = [900.0, 0.0];
+
+        let uv = g.add_node("input/uv", [0.0, -120.0]);
+        let noise = g.add_node("procedural/noise_perlin", [200.0, -120.0]);
+        set(&mut g, noise, "scale", PinValue::Float(8.0));
+
+        let speed = g.add_node("param/float", [0.0, 80.0]);
+        set(&mut g, speed, "name", PinValue::String("speed".into()));
+        set(&mut g, speed, "default", PinValue::Float(1.0));
+        let wave = g.add_node("animation/sine_wave", [200.0, 80.0]);
+        set(&mut g, wave, "amplitude", PinValue::Float(0.55));
+        let amount = g.add_node("math/add", [400.0, 80.0]);
+        set(&mut g, amount, "b", PinValue::Float(0.5));
+
+        let width = g.add_node("param/float", [400.0, 220.0]);
+        set(&mut g, width, "name", PinValue::String("edge_width".into()));
+        set(&mut g, width, "default", PinValue::Float(0.06));
+        let edge_at = g.add_node("math/add", [600.0, 200.0]);
+
+        let visible = g.add_node("math/step", [600.0, -60.0]);
+        let core = g.add_node("math/step", [600.0, 60.0]);
+        let band = g.add_node("math/subtract", [750.0, 0.0]);
+
+        let sprite = g.add_node("input/sprite_color", [400.0, -260.0]);
+        let glow = g.add_node("param/color", [400.0, -400.0]);
+        set(&mut g, glow, "name", PinValue::String("edge_color".into()));
+        set(&mut g, glow, "default", PinValue::Color([1.0, 0.45, 0.1, 1.0]));
+        let tint = g.add_node("color/lerp", [750.0, -260.0]);
+        let alpha = g.add_node("math/multiply", [750.0, 120.0]);
+
+        g.connect(uv, "uv", noise, "uv");
+        g.connect(speed, "value", wave, "frequency");
+        g.connect(wave, "value", amount, "a");
+        g.connect(amount, "result", edge_at, "a");
+        g.connect(width, "value", edge_at, "b");
+        g.connect(amount, "result", visible, "edge");
+        g.connect(noise, "value", visible, "value");
+        g.connect(edge_at, "result", core, "edge");
+        g.connect(noise, "value", core, "value");
+        g.connect(visible, "result", band, "a");
+        g.connect(core, "result", band, "b");
+        g.connect(sprite, "color", tint, "a");
+        g.connect(glow, "value", tint, "b");
+        g.connect(band, "result", tint, "t");
+        g.connect(visible, "result", alpha, "a");
+        g.connect(sprite, "a", alpha, "b");
+        g.connect(tint, "color", out, "color");
+        g.connect(alpha, "result", out, "alpha");
+        g
+    }
+
+    #[test]
+    fn sprite_shaders_compile_from_the_sprite_pipeline() {
+        for (name, graph) in sprite_graphs() {
+            let result = compile(&graph);
+            assert!(result.errors.is_empty(), "{name}: {:?}", result.errors);
+            let s = &result.fragment_shader;
+            assert!(!s.contains("Unknown node type"), "{name} names a node that does not exist:\n{s}");
+            assert!(s.contains("import bevy_sprite_render::sprite_mesh::functions as sprite_fn;"), "{s}");
+            assert!(s.contains("sprite_fn::get_final_color("), "{s}");
+            assert!(!s.contains("bevy_pbr"), "{name} reaches for the 3D pipeline:\n{s}");
+            // Past the sprite's own bindings (0..2, bindless at 10).
+            assert!(s.contains("@group(constants::MATERIAL_BIND_GROUP) @binding(20) var texture_0"), "{s}");
+        }
+    }
+
+    #[test]
+    fn an_empty_sprite_material_draws_the_sprite() {
+        let s = compile(&MaterialGraph::new("Sprite", MaterialDomain::Sprite)).fragment_shader;
+        assert!(
+            s.contains("var sprite_color = sprite_fn::sample_sprite_texture(mat_uv, in.instance_index);"),
+            "{s}"
+        );
+    }
+
+    /// The one rule the add-node menu, the wiring check and codegen share.
+    #[test]
+    fn each_domain_refuses_the_other_kinds_nodes() {
+        assert!(MaterialDomain::Sprite.refuses_node("scene/scene_depth").is_some());
+        assert!(MaterialDomain::Sprite.refuses_node("scene/env_map_sample").is_some());
+        assert!(MaterialDomain::Sprite.refuses_node("input/sprite_color").is_none());
+        assert!(MaterialDomain::Sprite.refuses_node("math/add").is_none());
+        assert!(MaterialDomain::Surface.refuses_node("input/sprite_color").is_some());
+        assert!(MaterialDomain::Surface.refuses_node("scene/scene_depth").is_none());
+        // Screen UV is plain arithmetic, so a sprite may use it.
+        assert!(MaterialDomain::Sprite.refuses_node("scene/screen_uv").is_none());
+    }
+
+    #[test]
+    fn a_sprite_material_refuses_nodes_that_need_a_3d_view() {
+        let mut g = MaterialGraph::new("Fog", MaterialDomain::Sprite);
+        let depth = g.add_node("scene/scene_depth", [0.0, 0.0]);
+        let out = g.output_node().unwrap().id;
+        g.connect(depth, "depth", out, "alpha");
+        let result = compile(&g);
+        assert_eq!(result.errors.len(), 1, "{:?}", result.errors);
+        assert!(result.errors[0].contains("3D view"), "{:?}", result.errors);
+    }
+
+    /// Bevy 0.20 dropped `mesh_functions::mesh_position_world_to_clip`, so a
+    /// vegetation vertex shader that called it could not compile.
+    #[test]
+    fn vegetation_projects_through_view_transformations() {
+        let graph = MaterialGraph::new("Grass", MaterialDomain::Vegetation);
+        let vertex = compile(&graph).vertex_shader.expect("vegetation has a vertex stage");
+        assert!(!vertex.contains("mesh_position_world_to_clip"), "{vertex}");
+        assert!(vertex.contains("position_world_to_clip(world_pos.xyz)"), "{vertex}");
+    }
+
+    /// WGSL has no struct declarations inside a function.
+    #[test]
+    fn terrain_layer_declares_its_input_struct_at_module_scope() {
+        let graph = MaterialGraph::new("Grass", MaterialDomain::TerrainLayer);
+        let shader = compile(&graph).fragment_shader;
+        let decl = shader.find("struct FakeIn").expect("FakeIn");
+        let main = shader.find("fn layer_main").expect("layer_main");
+        assert!(decl < main, "{shader}");
+    }
+
+    /// A Custom node may still hold old-dialect code (`#ifdef`), which makes
+    /// the whole shader legacy and sends it through the translator, WESL and
+    /// all. The translator has to leave the WESL it is handed working.
+    #[test]
+    fn a_legacy_custom_node_still_translates_cleanly() {
+        let mut graph = MaterialGraph::new("Mixed", MaterialDomain::Surface);
+        let depth = graph.add_node("scene/scene_depth", [0.0, 0.0]);
+        let code = graph.add_node("custom/code", [100.0, 0.0]);
+        graph.get_node_mut(code).unwrap().input_values.insert(
+            "code".to_string(),
+            PinValue::String(
+                "#ifdef VERTEX_COLORS\nresult = vec4<f32>(a.xyz, 1.0);\n#else\nresult = vec4<f32>(1.0);\n#endif"
+                    .to_string(),
+            ),
+        );
+        let output_id = graph.output_node().unwrap().id;
+        graph.connect(depth, "depth", code, "a");
+        graph.connect(code, "result", output_id, "base_color");
+
+        let src = compile(&graph).fragment_shader;
+        let t = renzora::shader_source::to_wesl(&src);
+        let errors: Vec<_> = t
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == renzora::shader_source::Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}\n{}", t.source);
+        assert!(t.source.contains("import bevy_pbr::render::pbr_functions;"), "{}", t.source);
+        assert!(t.source.contains("@if(DEPTH_PREPASS)"), "{}", t.source);
+        assert!(!t.source.contains("#ifdef"), "{}", t.source);
+    }
 
     #[test]
     fn compile_default_surface() {

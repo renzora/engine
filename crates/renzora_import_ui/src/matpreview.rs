@@ -24,6 +24,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_ember::UiInteraction;
 
 /// Its own layer. See the registry in the contract crate for what is already
 /// taken — sharing one with another preview means seeing its contents, because
@@ -36,7 +37,7 @@ use renzora::core::viewport_types::IMPORT_MATERIAL_PREVIEW_LAYER as MAT_LAYER;
 const RTT: u32 = 512;
 
 /// Marker for the UI node the material preview is drawn into. Orbit input is
-/// gated on its `Interaction`.
+/// gated on its `UiInteraction`.
 #[derive(Component)]
 pub struct MaterialPreviewViewport;
 
@@ -356,7 +357,7 @@ fn match_viewport_size(
 /// there is nothing else to do in here, so a modifier would only be a thing to
 /// remember.
 fn orbit_input(
-    hover: Query<&Interaction, With<MaterialPreviewViewport>>,
+    hover: Query<&UiInteraction, With<MaterialPreviewViewport>>,
     shown: Res<MaterialPreviewShown>,
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
@@ -370,7 +371,7 @@ fn orbit_input(
     }
     let over = hover
         .iter()
-        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        .any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
     if !*dragging
         && over
         && (mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right))

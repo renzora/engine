@@ -2,13 +2,14 @@
 //! settings binding goes through.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::toggle_switch;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ImportOverlayState;
 
@@ -60,11 +61,11 @@ pub(super) fn toggle_row(commands: &mut Commands, fonts: &EmberFonts, label: &st
 
 pub(super) fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
     let btn = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(accent())), Interaction::default(), hover_cursor()))
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(accent())), UiInteraction::default(), hover_cursor()))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, (255, 255, 255), 12.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(Color::WHITE), PASS_THROUGH)).id();
     commands.entity(btn).add_children(&[ic, t]);
     btn
 }

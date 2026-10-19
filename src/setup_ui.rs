@@ -58,7 +58,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, UiTransform};
+use bevy::picking::hover::{DirectlyHovered, Hovered};
+use bevy::picking::Pickable;
+use bevy::ui::UiTransform;
 use bevy::window::{PrimaryWindow, WindowPlugin, WindowResolution};
 // Reached through `renzora_runtime` rather than as a direct dependency: this
 // binary already depends on the runtime, and the re-export is what the editor
@@ -534,10 +536,9 @@ fn spawn_ui(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         .id();
     let install = commands
         .spawn((
-            // What `bevy_ui`'s `Button` marker required, before Bevy 0.20 made
-            // it impossible to insert from outside Bevy.
-            FocusPolicy::Block,
-            Interaction::default(),
+            // Picking reports the pointer over it (or its label); a node with
+            // no `Pickable` blocks, which is what a button should do.
+            Hovered::default(),
             Node {
                 // A row wrapping this button would keep its place in the column
                 // gap even while empty, which is the band of space that used to
@@ -582,10 +583,10 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
                 ..default()
             },
             BackgroundColor(BAR_BG),
-            // Blocks so the press starts a window drag here rather than falling
-            // through to whatever is behind the bar.
-            FocusPolicy::Block,
-            Interaction::default(),
+            // *Directly* hovered: over the bar itself or its pass-through
+            // brand, not over a window button sitting on it, so pressing a
+            // button does not also start a window drag.
+            DirectlyHovered::default(),
             DragHandle,
             Name::new("SetupTitleBar"),
         ))
@@ -599,7 +600,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
                 column_gap: px(8),
                 ..default()
             },
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
     let mark = build_mark(commands, images);
@@ -608,7 +609,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
             Text::new(product_name()),
             TextFont::from_font_size(13.0),
             TextColor(TEXT),
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
     // The separator the splash writes as "·". Drawn rather than typed: the only
@@ -623,7 +624,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
                 ..default()
             },
             BackgroundColor(MUTED),
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
     let version = commands
@@ -631,7 +632,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
             Text::new(renzora_runtime::renzora::version::display()),
             TextFont::from_font_size(11.0),
             TextColor(MUTED),
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
     commands.entity(brand).add_children(&[mark, name, dot, version]);
@@ -643,7 +644,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
     let minimize = win_button(commands, WinBtn::Minimize);
@@ -674,7 +675,7 @@ fn build_mark(commands: &mut Commands, images: &mut Assets<Image>) -> Entity {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
+            Pickable::IGNORE,
         ))
         .id();
 
@@ -683,7 +684,7 @@ fn build_mark(commands: &mut Commands, images: &mut Assets<Image>) -> Entity {
             .spawn((
                 ImageNode::new(images.add(image)),
                 Node { width: percent(100), height: percent(100), ..default() },
-                FocusPolicy::Pass,
+                Pickable::IGNORE,
             ))
             .id(),
         None => commands
@@ -695,7 +696,7 @@ fn build_mark(commands: &mut Commands, images: &mut Assets<Image>) -> Entity {
                     ..default()
                 },
                 BackgroundColor(ACCENT),
-                FocusPolicy::Pass,
+                Pickable::IGNORE,
             ))
             .id(),
     };
@@ -735,10 +736,9 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            // Blocks, or the press reaches the bar underneath and starts a
-            // window drag as well as pressing the button.
-            FocusPolicy::Block,
+            // No `Pickable`, so it blocks: the bar underneath is then not
+            // directly hovered and a press here does not start a window drag.
+            Hovered::default(),
             kind,
             Name::new("SetupWinBtn"),
         ))
@@ -750,7 +750,7 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
                 .spawn((
                     Node { width: px(11), height: px(1.0), ..default() },
                     BackgroundColor(TEXT),
-                    FocusPolicy::Pass,
+                    Pickable::IGNORE,
                 ))
                 .id();
             commands.entity(btn).add_child(dash);
@@ -761,7 +761,7 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
             let cross = commands
                 .spawn((
                     Node { width: px(11), height: px(11), ..default() },
-                    FocusPolicy::Pass,
+                    Pickable::IGNORE,
                 ))
                 .id();
             for angle in [std::f32::consts::FRAC_PI_4, -std::f32::consts::FRAC_PI_4] {
@@ -780,7 +780,7 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
                         },
                         UiTransform { rotation: Rot2::radians(angle), ..default() },
                         BackgroundColor(TEXT),
-                        FocusPolicy::Pass,
+                        Pickable::IGNORE,
                     ))
                     .id();
                 commands.entity(cross).add_child(bar);
@@ -797,30 +797,38 @@ fn win_button(commands: &mut Commands, kind: WinBtn) -> Entity {
 /// instead of relaunching. It used to only write `AppExit`, and `main` restarted
 /// either way — which, mid-build, meant the relaunched process found the work
 /// still outstanding and opened this window again. Pressing × spawned a window.
+///
+/// Read straight from picking: `Hovered` for the buttons, `DirectlyHovered`
+/// for the bar, and the press is the left button going down while hovered.
+/// Three controls in a window of its own need nothing more.
 fn chrome_input(
-    drag: Query<&Interaction, (Changed<Interaction>, With<DragHandle>)>,
-    mut buttons: Query<(&Interaction, &mut BackgroundColor, &WinBtn), Changed<Interaction>>,
+    drag: Query<&DirectlyHovered, With<DragHandle>>,
+    mut buttons: Query<(&Hovered, &mut BackgroundColor, &WinBtn)>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     cancelled: Res<Cancelled>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let mut handed_to_wm = false;
+    let pressed = mouse.just_pressed(MouseButton::Left);
 
-    if drag.iter().any(|i| *i == Interaction::Pressed) {
+    if pressed && drag.iter().any(|h| h.get()) {
         if let Ok(mut window) = windows.single_mut() {
             window.start_drag_move();
             handed_to_wm = true;
         }
     }
 
-    for (interaction, mut bg, kind) in &mut buttons {
-        bg.0 = match (interaction, kind) {
-            (Interaction::None, _) => Color::NONE,
-            (_, WinBtn::Close) => CLOSE_HOVER,
-            (_, WinBtn::Minimize) => BTN_HOVER,
+    for (hovered, mut bg, kind) in &mut buttons {
+        let want = match (hovered.get(), kind) {
+            (false, _) => Color::NONE,
+            (true, WinBtn::Close) => CLOSE_HOVER,
+            (true, WinBtn::Minimize) => BTN_HOVER,
         };
-        if *interaction != Interaction::Pressed {
+        if bg.0 != want {
+            bg.0 = want;
+        }
+        if !(pressed && hovered.get()) {
             continue;
         }
         match kind {
@@ -837,10 +845,10 @@ fn chrome_input(
     }
 
     // The window manager owns the button now and never hands back the release,
-    // so `Interaction` would stay `Pressed` and the next drag's
-    // `Changed<Interaction>` would never fire. `renzora_ui::window_chrome` has
-    // the long version of this; `reset` rather than `release` so no button under
-    // the cursor sees a synthetic click.
+    // so the button would read as held and the next `just_pressed` would never
+    // come. `renzora_ui::window_chrome` has the long version of this; `reset`
+    // rather than `release` so no button under the cursor sees a synthetic
+    // click.
     if handed_to_wm {
         mouse.reset(MouseButton::Left);
     }
@@ -858,7 +866,8 @@ fn tick(
         (With<BarFill>, Without<BarTrack>, Without<InstallBtn>),
     >,
     mut track: Query<&mut Node, (With<BarTrack>, Without<InstallBtn>)>,
-    mut install: Query<(&mut Node, &Interaction), With<InstallBtn>>,
+    mut install: Query<(&mut Node, &Hovered), With<InstallBtn>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut install_label: Query<&mut Text, (With<InstallLabel>, Without<StatusText>, Without<LogLine>)>,
     mut status: Query<&mut Text, (With<StatusText>, Without<LogLine>)>,
     mut log: Query<(&LogLine, &mut Text), Without<StatusText>>,
@@ -902,7 +911,7 @@ fn tick(
             Some(prebuild::ToolchainGap::Installable { version }) => Some(version.clone()),
             _ => None,
         };
-        if let Ok((mut node, interaction)) = install.single_mut() {
+        if let Ok((mut node, hovered)) = install.single_mut() {
             match &offer {
                 None => node.display = Display::None,
                 Some(version) => {
@@ -913,7 +922,7 @@ fn tick(
                             **text = want;
                         }
                     }
-                    if *interaction == Interaction::Pressed {
+                    if hovered.get() && mouse.just_pressed(MouseButton::Left) {
                         start_install(&work.0, version.clone());
                         return;
                     }

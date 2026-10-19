@@ -18,14 +18,15 @@
 //! in it, where a Sign In button would be a control that cannot do anything.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{menu_item, scroll_area_keyed, HoverTooltip, Popup};
+use renzora_ember::UiInteraction;
 
 use super::chrome::{SplashUrl, DISCORD_URL, GITHUB_URL, WEBSITE_URL, YOUTUBE_URL};
 use super::style::*;
@@ -57,7 +58,7 @@ pub(crate) fn build_account_row(commands: &mut Commands, fonts: &EmberFonts) -> 
                 margin: UiRect::bottom(Val::Px(4.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-account"),
         ))
         .id();
@@ -109,8 +110,8 @@ fn sign_in_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(btn_dark()),
             BorderColor::all(border_soft()),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             SignInBtn,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-sign-in"),
@@ -120,13 +121,13 @@ fn sign_in_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if is_hovered(w, btn) { btn_dark_hover() } else { btn_dark() }
     });
     let ic = icon_text(commands, &fonts.phosphor, "sign-in", ICON_ACCENT, 14.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(renzora::lang::t("splash.sign_in")),
             ui_font(&fonts.ui, 12.5),
             TextColor(text()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, label]);
@@ -149,7 +150,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(ca(16, 18, 28, 220)),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
 
@@ -177,7 +178,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(ca(110, 150, 255, 44)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let initial = commands
@@ -185,7 +186,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(String::new()),
             ui_font(&fonts.ui, 12.0),
             TextColor(accent()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, initial, |w| {
@@ -202,7 +203,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(BADGE / 2.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_with(commands, photo, avatar, |w, e, handle: &Option<Handle<Image>>| {
@@ -225,7 +226,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
         .spawn((
             Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name = commands
@@ -233,7 +234,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(String::new()),
             ui_font(&fonts.ui, 12.0),
             TextColor(text()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, name, |w| elide(&username(w), 16));
@@ -242,7 +243,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("renzora.com".to_string()),
             ui_font(&fonts.ui, 9.5),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(col).add_children(&[name, sub]);
@@ -259,8 +260,8 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             SignOutBtn,
             HoverTooltip::new(renzora::lang::t("splash.sign_out")),
             HoverCursor(SystemCursorIcon::Pointer),
@@ -270,7 +271,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if is_hovered(w, out) { ca(239, 68, 68, 40) } else { Color::NONE }
     });
     let out_icon = icon_text(commands, &fonts.phosphor, "sign-out", ICON_MUTED, 13.0);
-    commands.entity(out_icon).insert(FocusPolicy::Pass);
+    commands.entity(out_icon).insert(PASS_THROUGH);
     bind_text_color(commands, out_icon, move |w| {
         if is_hovered(w, out) { error_color() } else { text_muted() }
     });
@@ -281,19 +282,19 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn sign_in_click(
-    q: Query<&Interaction, (With<SignInBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SignInBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::AuthToggleWindowRequest);
     }
 }
 
 fn sign_out_click(
-    q: Query<&Interaction, (With<SignOutBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SignOutBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::AuthSignOutRequest);
     }
 }
@@ -361,17 +362,17 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
         });
 
     let icon = icon_text(commands, &fonts.phosphor, "globe", ICON_MUTED, 13.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(active_name),
             ui_font(&fonts.ui, 11.5),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let caret = icon_text(commands, &fonts.phosphor, "caret-up", ICON_MUTED, 9.0);
-    commands.entity(caret).insert(FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
     let trigger = commands
         .spawn((
             Node {
@@ -386,8 +387,8 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             Popup { panel, open: false },
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-language-picker"),
@@ -420,7 +421,7 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
             },
             BackgroundColor(rail_bg()),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("splash-status-bar"),
         ))
         .id();
@@ -433,7 +434,7 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
                 column_gap: Val::Px(8.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // Frame rate and nothing else.
@@ -456,7 +457,7 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
                 column_gap: Val::Px(4.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let website =
@@ -487,7 +488,7 @@ fn build_fps(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(String::new()),
             ui_font(&fonts.mono, STATUS_MONO),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-fps"),
         ))
         .id();
@@ -529,8 +530,8 @@ fn social_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             SplashUrl(url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
@@ -540,13 +541,13 @@ fn social_button(
     });
     let col = if starred { (235, 195, 80) } else { ICON_MUTED };
     let ic = icon_text(commands, &fonts.phosphor, icon, col, 13.5);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
         .spawn((
             Text::new(txt.to_string()),
             ui_font(&fonts.ui, STATUS_TEXT),
             TextColor(if starred { c(235, 195, 80) } else { text_muted() }),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);

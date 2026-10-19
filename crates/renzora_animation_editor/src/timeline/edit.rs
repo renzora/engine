@@ -2,7 +2,7 @@
 //! keyboard do to the dopesheet.
 //!
 //! Keyframe picking is done by **math against the clip data** (cursor →
-//! time/track), not by per-diamond `Interaction`: the timeline widget's scrub
+//! time/track), not by per-diamond `UiInteraction`: the timeline widget's scrub
 //! overlay sits above the clips layer and would swallow per-node hits. A drag is
 //! likewise tracked against the raw mouse button, because the keyed list rebuilds
 //! the dragged diamond the moment its time changes.
@@ -16,6 +16,7 @@ use renzora_animation::{AnimClip, AnimatorComponent};
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_item, screen_menu, EmberTextInput, TimelineView, LANE_INSET};
+use renzora_ember::UiInteraction;
 
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
@@ -34,7 +35,7 @@ pub(super) fn push(bridge: &AnimEditorBridge, action: AnimEditorAction) {
 }
 
 pub(super) fn anim_btn_click(
-    q: Query<(&Interaction, &AnimBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AnimBtn), Changed<UiInteraction>>,
     state: Option<Res<AnimationEditorState>>,
     cache: Option<Res<TimelineClip>>,
     bridge: Option<Res<AnimEditorBridge>>,
@@ -43,7 +44,7 @@ pub(super) fn anim_btn_click(
     let (Some(state), Some(bridge)) = (state, bridge) else { return };
     let dur = cache.and_then(|c| c.clip.as_ref().map(|c| c.duration)).unwrap_or(2.0);
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let action = match btn {
@@ -197,7 +198,7 @@ fn pick_key(clip: &AnimClip, zoom: f32, scroll: f32, th: f32, p: Vec2) -> Option
 }
 
 /// In-flight keyframe drag. Survives the keyed-list rebuilding the dragged
-/// node mid-drag (the rebuild drops `Interaction` state, so the drag is
+/// node mid-drag (the rebuild drops `UiInteraction` state, so the drag is
 /// tracked against the raw mouse button instead).
 #[derive(Resource, Default)]
 pub(crate) struct KeyDragState {
@@ -403,12 +404,12 @@ pub(super) fn key_context_menu(
 /// "Add Marker" button → add an event marker at the playhead, named from the
 /// toolbar field (default "event").
 pub(super) fn add_marker_click(
-    q: Query<&Interaction, (With<AddMarkerBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddMarkerBtn>, Changed<UiInteraction>)>,
     field: Query<&EmberTextInput, With<MarkerNameField>>,
     state: Option<Res<AnimationEditorState>>,
     mut cache: ResMut<TimelineClip>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(state) = state else { return };
@@ -431,12 +432,12 @@ pub(super) fn add_marker_click(
 /// like the other setup actions, and reuses `setup::create_clip_on_entity` so
 /// this and the empty-state button build clips identically.
 pub(super) fn new_clip_click(
-    q: Query<&Interaction, (With<NewClipBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<NewClipBtn>, Changed<UiInteraction>)>,
     field: Query<&EmberTextInput, With<NewClipNameField>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let raw = field
@@ -556,7 +557,7 @@ pub(super) fn timeline_wheel_zoom(
 }
 
 pub(super) fn clip_combo_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<ClipCombo>, Changed<Interaction>)>,
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<ClipCombo>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Option<Res<AnimationEditorState>>,
@@ -564,7 +565,7 @@ pub(super) fn clip_combo_open(
     mut commands: Commands,
 ) {
     let (Some(fonts), Some(state)) = (fonts, state) else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else { return };
     let Some(entity) = state.selected_entity else { return };
     let Ok(animator) = animators.get(entity) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };

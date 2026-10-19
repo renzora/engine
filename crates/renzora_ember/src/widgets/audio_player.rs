@@ -10,12 +10,14 @@
 //! preview, a future asset browser) wire the same widget to different backends.
 
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 use bevy::window::SystemCursorIcon;
 
 use crate::cursor_icon::HoverCursor;
 use crate::font::{icon_glyph, icon_text, ui_font, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 // The waveform widget lives in a sibling module; reuse its `WaveData` holder so
 // this widget can re-feed amplitudes into the same GPU-painted envelope.
@@ -71,7 +73,7 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Play/pause button (glyph swaps in the apply system).
     let play_icon = icon_text(commands, &fonts.phosphor, "play", on_accent(), 12.0);
-    commands.entity(play_icon).insert(FocusPolicy::Pass);
+    commands.entity(play_icon).insert(PASS_THROUGH);
     let play_btn = commands
         .spawn((
             Node {
@@ -84,7 +86,7 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             AudioPlayBtn(root),
             Name::new("audio-player-play"),
@@ -102,7 +104,7 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("audio-player-fill"),
         ))
         .id();
@@ -117,7 +119,7 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             AudioScrubTrack(root),
@@ -185,11 +187,11 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Play button click → toggle `AudioPlayer.playing` (a request the consumer acts on).
 pub(crate) fn audio_player_play_click(
-    q: Query<(&Interaction, &AudioPlayBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AudioPlayBtn), Changed<UiInteraction>>,
     mut players: Query<&mut AudioPlayer>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut p) = players.get_mut(btn.0) {
                 p.playing = !p.playing;
             }
@@ -200,11 +202,11 @@ pub(crate) fn audio_player_play_click(
 /// Click/drag the scrub track → set `seek_to` from the cursor's x over the track.
 /// No `Changed` filter so a held drag keeps seeking, like the slider widget.
 pub(crate) fn audio_player_scrub(
-    tracks: Query<(&Interaction, &RelativeCursorPosition, &AudioScrubTrack)>,
+    tracks: Query<(&UiInteraction, &RelativeCursorPosition, &AudioScrubTrack)>,
     mut players: Query<&mut AudioPlayer>,
 ) {
     for (interaction, rcp, track) in &tracks {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {

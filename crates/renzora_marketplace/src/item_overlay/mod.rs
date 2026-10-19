@@ -24,12 +24,12 @@
 //! and [`net`] the worker-thread calls.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use crossbeam_channel::Receiver;
 
 use crate::auth::marketplace::{AssetComment, AssetRating, AssetSummary, CommentsResponse, MediaItem};
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
@@ -152,7 +152,7 @@ struct AudioPlayback {
 
 /// Marks a store card's body as the click target that opens this overlay. Lives
 /// on the card container in `native_store::asset_card`; the passive card children
-/// are `FocusPolicy::Pass` so a body click falls through to the card, while the
+/// are `PASS_THROUGH` so a body click falls through to the card, while the
 /// Get/Preview pills stay `Block` and capture their own presses — so a pill click
 /// never also opens the detail.
 #[derive(Component)]
@@ -320,7 +320,7 @@ fn thumb_image(commands: &mut Commands) -> Entity {
                 display: Display::None,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }

@@ -6,6 +6,8 @@ use bevy::window::SystemCursorIcon;
 use crate::reactive::Bound;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::interaction::PASS_THROUGH;
+use crate::UiInteraction;
 
 /// Mark ref; the checked state lives in `Bound<bool>` (so `bind_2way` can drive it).
 #[derive(Component)]
@@ -32,7 +34,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
                 Color::NONE
             }),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             Styled::with_state(
                 Role::Checkbox,
                 if checked {
@@ -60,7 +62,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(on_accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("check"),
         ))
         .id();
@@ -71,10 +73,10 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
 
 /// Click → flip the model (`Bound<bool>`); visuals follow via [`checkbox_apply`].
 pub(crate) fn checkbox_interact(
-    mut boxes: Query<(&Interaction, &mut Bound<bool>), (With<EmberCheckbox>, Changed<Interaction>)>,
+    mut boxes: Query<(&UiInteraction, &mut Bound<bool>), (With<EmberCheckbox>, Changed<UiInteraction>)>,
 ) {
     for (interaction, mut b) in &mut boxes {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             b.0 = !b.0;
         }
     }

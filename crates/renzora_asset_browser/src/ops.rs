@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 
 use crate::interact::open_file;
 use crate::state::{
@@ -187,9 +188,9 @@ pub(crate) fn publish_cwd(
     state: Res<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
     hovering: Option<Res<renzora::core::FileDragHovering>>,
-    tiles: Query<(&Interaction, &AssetTile)>,
-    tree: Query<(&Interaction, &TreeNav)>,
-    crumbs: Query<(&Interaction, &CrumbNav)>,
+    tiles: Query<(&UiInteraction, &AssetTile)>,
+    tree: Query<(&UiInteraction, &TreeNav)>,
+    crumbs: Query<(&UiInteraction, &CrumbNav)>,
 ) {
     // While an OS file drag is over the window, the drop should land wherever
     // the cursor is -- a tree row, a breadcrumb, a folder tile -- rather than
@@ -222,19 +223,19 @@ pub(crate) fn publish_cwd(
 /// one runs on the release frame of an internal drag and accepts `Pressed` for
 /// it; an OS drag never presses anything, so this takes `Hovered` alone.
 fn hovered_folder(
-    tiles: &Query<(&Interaction, &AssetTile)>,
-    tree: &Query<(&Interaction, &TreeNav)>,
-    crumbs: &Query<(&Interaction, &CrumbNav)>,
+    tiles: &Query<(&UiInteraction, &AssetTile)>,
+    tree: &Query<(&UiInteraction, &TreeNav)>,
+    crumbs: &Query<(&UiInteraction, &CrumbNav)>,
 ) -> Option<PathBuf> {
-    if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && **i == Interaction::Hovered) {
+    if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && **i == UiInteraction::Hovered) {
         return Some(tile.path.clone());
     }
-    if let Some((_, nav)) = tree.iter().find(|(i, _)| **i == Interaction::Hovered) {
+    if let Some((_, nav)) = tree.iter().find(|(i, _)| **i == UiInteraction::Hovered) {
         return Some(nav.0.clone());
     }
     crumbs
         .iter()
-        .find(|(i, _)| **i == Interaction::Hovered)
+        .find(|(i, _)| **i == UiInteraction::Hovered)
         .map(|(_, c)| c.0.clone())
 }
 
@@ -283,13 +284,13 @@ pub(crate) fn icon_for(path: &Path, is_dir: bool) -> &'static str {
 
 /// A favorites/recent shortcut row: navigate (folder) or open (file).
 pub(crate) fn shortcut_click(
-    q: Query<(&Interaction, &ShortcutClick), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShortcutClick), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     for (interaction, shortcut) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if shortcut.is_dir {
@@ -314,11 +315,11 @@ pub(crate) fn track_recent(state: &mut NativeAssets, path: &Path, root: Option<&
 }
 
 pub(crate) fn crumb_click(
-    q: Query<(&Interaction, &CrumbNav), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &CrumbNav), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
 ) {
     for (interaction, nav) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.current = Some(nav.0.clone());
             state.selected = None;
         }

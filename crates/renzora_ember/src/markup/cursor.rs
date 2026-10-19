@@ -11,8 +11,9 @@
 //! visuals you like: an `<image src="...">`, a styled `<node>`, a composed
 //! component template, etc. — just give the root `name="cursor_follow"`.
 
+use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, GlobalZIndex, UiScale};
+use bevy::ui::{GlobalZIndex, UiScale};
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 /// Markup name that gets followed by the cursor system. Any entity with
@@ -23,24 +24,21 @@ fn cursor_follow_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut cursor_opts: Query<&mut CursorOptions, With<PrimaryWindow>>,
     ui_scale: Res<UiScale>,
-    mut cursors: Query<
-        (
-            Entity,
-            &mut Node,
-            &Name,
-            Option<&FocusPolicy>,
-            Option<&GlobalZIndex>,
-        ),
-    >,
+    mut cursors: Query<(Entity, &mut Node, &Name, Option<&GlobalZIndex>)>,
+    children: Query<&Children>,
+    pickable: Query<&Pickable>,
     mut commands: Commands,
 ) {
     let Ok(window) = windows.single() else { return };
 
-    // Count + reposition in one pass. Also fixes up `FocusPolicy::Pass` (so
-    // clicks pass through to the buttons underneath) and `GlobalZIndex` (so
-    // the cursor always paints on top regardless of hierarchy order, which
-    // bevy_ui's sibling ordering can otherwise scramble for absolute children
-    // intermixed with relative ones). Both inserts are idempotent.
+    // Count + reposition in one pass. Also makes the whole cursor unpickable
+    // (so clicks and hovers reach the buttons underneath: the cursor is always
+    // exactly where the pointer is, and a node without a `Pickable` blocks),
+    // and sets `GlobalZIndex` (so the cursor always paints on top regardless
+    // of hierarchy order, which bevy_ui's sibling ordering can otherwise
+    // scramble for absolute children intermixed with relative ones). The
+    // subtree, not just the root: an image or label inside the cursor is just
+    // as much under the pointer. Both inserts are idempotent.
     //
     // `Val::Px` on a UI node is in *design pixels* — bevy_ui multiplies by
     // `UiScale` at render time. `window.cursor_position()` returns the cursor
@@ -54,13 +52,17 @@ fn cursor_follow_system(
     if let Some(pos) = window.cursor_position() {
         let design_x = pos.x / scale;
         let design_y = pos.y / scale;
-        for (entity, mut node, name, focus, zindex) in &mut cursors {
+        for (entity, mut node, name, zindex) in &mut cursors {
             if name.as_str() == CURSOR_NAME {
                 node.left = Val::Px(design_x);
                 node.top = Val::Px(design_y);
                 node.position_type = PositionType::Absolute;
-                if focus.copied() != Some(FocusPolicy::Pass) {
-                    commands.entity(entity).insert(FocusPolicy::Pass);
+                for e in std::iter::once(entity).chain(children.iter_descendants(entity)) {
+                    let ignored =
+                        pickable.get(e).is_ok_and(|p| !p.is_hoverable && !p.should_block_lower);
+                    if !ignored {
+                        commands.entity(e).insert(Pickable::IGNORE);
+                    }
                 }
                 if zindex.is_none() {
                     commands.entity(entity).insert(GlobalZIndex(i32::MAX));
@@ -71,7 +73,7 @@ fn cursor_follow_system(
     } else {
         // Cursor outside the window — don't move the entity, but still note
         // whether one exists for the OS-cursor toggle below.
-        for (_, _, name, _, _) in &cursors {
+        for (_, _, name, _) in &cursors {
             if name.as_str() == CURSOR_NAME {
                 any_cursor_entity = true;
                 break;

@@ -6,13 +6,14 @@
 //! plugin *contributed*, one plugin at a time, selected from the sidebar.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::Rx;
 use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{section, toggle_switch};
+use renzora_ember::UiInteraction;
 
 use crate::lang::tr;
 use crate::rows::{focus_hide, note_row, settings_row};
@@ -152,7 +153,7 @@ pub(crate) fn plugins_section(
         "folder-open",
         &tr("settings.plugin.open_folder"),
     );
-    commands.entity(open).insert((OpenPluginsFolder, FocusPolicy::Block));
+    commands.entity(open).insert((OpenPluginsFolder, BLOCK));
     commands.entity(open_row).add_child(open);
     commands.entity(body).add_child(open_row);
 
@@ -216,13 +217,13 @@ fn update_summary_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         renzora::PLUGIN_UPDATE_AMBER,
         14.0,
     );
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(String::new()),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
         ))
         .id();
@@ -254,7 +255,7 @@ fn update_summary_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         "storefront",
         &tr("settings.plugin.open_updates"),
     );
-    commands.entity(open).insert((OpenPluginUpdates, FocusPolicy::Block));
+    commands.entity(open).insert((OpenPluginUpdates, BLOCK));
 
     commands.entity(row).add_children(&[ic, label, open]);
     row
@@ -456,7 +457,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
                 // A dark ring, so the disc reads as a badge on the artwork
                 // rather than as part of it. Plugin artwork is arbitrary.
                 BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         let ic = renzora_ember::font::icon_text(
@@ -466,7 +467,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
             (26, 22, 10),
             10.0,
         );
-        commands.entity(ic).insert(FocusPolicy::Pass);
+        commands.entity(ic).insert(PASS_THROUGH);
         commands.entity(badge).add_child(ic);
         // On the tile, which is the positioned box the badge is relative to.
         commands.entity(thumb).add_child(badge);
@@ -494,7 +495,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     // `Bound` disagrees with the getter, and this getter reads the very resource
     // the setter writes, inside a reactive list whose snapshot also reads it. A
     // switch that gets flipped by anything other than a deliberate click — and
-    // in Bevy 0.19 `FocusPolicy` defaults to `Pass`, so a press reaches every
+    // UI nodes pass the pointer through by default, so a press reaches every
     // node under the pointer — is then indistinguishable from the user asking
     // for it, and the write persists to disk immediately.
     //
@@ -506,7 +507,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         PluginToggle { id: card.id.clone() },
         // The switch must swallow its own press rather than let it pass through
         // to whatever is behind it, for the same reason.
-        FocusPolicy::Block,
+        BLOCK,
     ));
 
     // `width: 100%` as well as `no_wrap`: a no-wrap text node sizes itself to its
@@ -545,7 +546,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
             // Same reason as the switch: a press that passes through to whatever
             // is behind it is indistinguishable from one aimed at this button,
             // and this one deletes a directory.
-            FocusPolicy::Block,
+            BLOCK,
         ));
         children.push(del);
     }
@@ -610,10 +611,10 @@ pub(crate) struct OpenPluginUpdates;
 /// Fires on a press, like [`open_plugins_folder_click`] and for the same reason:
 /// the worst a spurious one can do is open a panel.
 pub(crate) fn open_plugin_updates_click(
-    q: Query<&Interaction, (With<OpenPluginUpdates>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<OpenPluginUpdates>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::PluginUpdatesRequested);
     }
 }
@@ -631,9 +632,9 @@ pub(crate) struct PluginDeleteConfirm {
 /// Fires on a press rather than a press-and-release: unlike the toggle and the
 /// delete button, the worst a spurious one can do is open a window.
 pub(crate) fn open_plugins_folder_click(
-    q: Query<&Interaction, (With<OpenPluginsFolder>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<OpenPluginsFolder>, Changed<UiInteraction>)>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -654,15 +655,15 @@ pub(crate) fn open_plugins_folder_click(
 /// marketplace plugin is re-downloadable but a hand-written one is not, and
 /// there is no undo for a `remove_dir_all`.
 pub(crate) fn plugin_delete_click(
-    changed: Query<(Entity, &Interaction, &PluginDelete), Changed<Interaction>>,
+    changed: Query<(Entity, &UiInteraction, &PluginDelete), Changed<UiInteraction>>,
     mut armed: Local<Option<Entity>>,
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
 ) {
     for (entity, interaction, del) in &changed {
         match interaction {
-            Interaction::Pressed => *armed = Some(entity),
-            Interaction::Hovered if *armed == Some(entity) => {
+            UiInteraction::Pressed => *armed = Some(entity),
+            UiInteraction::Hovered if *armed == Some(entity) => {
                 *armed = None;
                 let Some(fonts) = fonts.as_ref() else {
                     continue;
@@ -707,14 +708,14 @@ pub(crate) fn plugin_delete_click(
 /// user deliberately opened, so there is no long list for a stray press to
 /// arrive from.
 pub(crate) fn plugin_delete_confirm_click(
-    q: Query<(&Interaction, &PluginDeleteConfirm), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PluginDeleteConfirm), Changed<UiInteraction>>,
     overlays: Query<Entity, With<renzora_ember::widgets::Overlay>>,
     mut inventory: Option<ResMut<renzora::PluginInventory>>,
     mut disabled: Option<ResMut<renzora::DisabledPlugins>>,
     mut commands: Commands,
 ) {
     for (interaction, answer) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if answer.confirm {
@@ -764,7 +765,7 @@ fn delete_one(
 ///
 /// # Why this waits for a RELEASE
 ///
-/// Almost every click handler in the editor fires on `Interaction::Pressed`, and
+/// Almost every click handler in the editor fires on `UiInteraction::Pressed`, and
 /// for a button in a short list that is fine. This one writes a file that decides
 /// what loads at the next launch, and its widgets sit in a list seventy rows
 /// long — so the cost of a spurious press is not a stray click, it is an editor
@@ -772,24 +773,24 @@ fn delete_one(
 /// the first version of this panel disabled 70 of 74 installed plugins by itself.
 ///
 /// So a toggle needs a press **and** a release on the same switch. Anything that
-/// makes a switch read `Pressed` in passing — a drag across the list, a press
-/// leaking through a node that did not block it (`FocusPolicy` defaults to `Pass`
-/// in Bevy 0.19) — never reaches the release half on that same entity, and is
+/// makes a switch read `Pressed` in passing, such as a drag across the list or a
+/// press leaking through a node that did not block it (UI nodes start as
+/// `PASS_THROUGH`), never reaches the release half on that same entity, and is
 /// dropped.
 ///
-/// `Changed<Interaction>` on top of that, so a held press is one event rather
+/// `Changed<UiInteraction>` on top of that, so a held press is one event rather
 /// than one per frame.
 pub(crate) fn plugin_toggle_click(
-    changed: Query<(Entity, &Interaction, &PluginToggle), Changed<Interaction>>,
+    changed: Query<(Entity, &UiInteraction, &PluginToggle), Changed<UiInteraction>>,
     mut armed: Local<Option<Entity>>,
     mut disabled: Option<ResMut<renzora::DisabledPlugins>>,
 ) {
     for (entity, interaction, toggle) in &changed {
         match interaction {
             // Arm. Nothing is written yet.
-            Interaction::Pressed => *armed = Some(entity),
+            UiInteraction::Pressed => *armed = Some(entity),
             // Released while still over the switch it was pressed on — a click.
-            Interaction::Hovered if *armed == Some(entity) => {
+            UiInteraction::Hovered if *armed == Some(entity) => {
                 *armed = None;
                 let Some(disabled) = disabled.as_mut() else {
                     continue;

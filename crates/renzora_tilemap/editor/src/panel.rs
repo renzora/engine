@@ -34,6 +34,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, keyed_list};
 use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{
     dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, HoverTooltip,
     ScrollThumb, ScrollbarBusy,
@@ -273,11 +274,11 @@ fn mirror_tilemap_list(
 /// again deselects it (which also disarms the brush — see
 /// `sync_active_tilemap`), so the user can always put the panel down.
 fn tilemap_tab_clicks(
-    tabs: Query<(&Interaction, &TilemapTab), Changed<Interaction>>,
+    tabs: Query<(&UiInteraction, &TilemapTab), Changed<UiInteraction>>,
     mut active: ResMut<ActiveTilemap>,
 ) {
     for (interaction, tab) in &tabs {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             active.0 = if active.0 == Some(tab.0) {
                 None
             } else {
@@ -537,7 +538,7 @@ fn tabs_snapshot(world: &Rx) -> KeyedSnapshot {
                         ..default()
                     },
                     BackgroundColor(if is_active { rgb(tab_active()) } else { Color::NONE }),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     TilemapTab(entity),
                 ))
                 .id();
@@ -655,7 +656,7 @@ fn paint_layers_snapshot(world: &Rx) -> KeyedSnapshot {
                         ..default()
                     },
                     BackgroundColor(if is_active { rgb(tab_active()) } else { Color::NONE }),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     PaintLayerRow(r.entity),
                 ))
                 .id();
@@ -668,7 +669,7 @@ fn paint_layers_snapshot(world: &Rx) -> KeyedSnapshot {
                     if r.visible { text_primary() } else { text_muted() },
                     13.0,
                 );
-                c.entity(eye).insert((Interaction::default(), PaintLayerEye(e)));
+                c.entity(eye).insert((UiInteraction::default(), PaintLayerEye(e)));
                 let lock = icon_text(
                     c,
                     &fonts.phosphor,
@@ -676,7 +677,7 @@ fn paint_layers_snapshot(world: &Rx) -> KeyedSnapshot {
                     if r.locked { text_primary() } else { text_muted() },
                     13.0,
                 );
-                c.entity(lock).insert((Interaction::default(), PaintLayerLock(e)));
+                c.entity(lock).insert((UiInteraction::default(), PaintLayerLock(e)));
                 c.entity(row).add_children(&[eye, lock]);
             } else {
                 let glyph = icon_text(c, &fonts.phosphor, "stack", text_muted(), 13.0);
@@ -706,7 +707,7 @@ fn paint_layers_snapshot(world: &Rx) -> KeyedSnapshot {
                         13.0,
                     );
                     c.entity(arrow)
-                        .insert((Interaction::default(), PaintLayerReorder { layer: e, up }));
+                        .insert((UiInteraction::default(), PaintLayerReorder { layer: e, up }));
                     c.entity(row).add_child(arrow);
                 }
             }
@@ -727,7 +728,7 @@ fn commands_add_layer_row(c: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             AddPaintLayerBtn,
             HoverTooltip::new("Add a paint layer"),
         ))
@@ -747,10 +748,10 @@ fn commands_add_layer_row(c: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Row / eye / lock / reorder clicks in the paint-layer list.
 fn paint_layer_clicks(
-    rows: Query<(&Interaction, &PaintLayerRow), Changed<Interaction>>,
-    eyes: Query<(&Interaction, &PaintLayerEye), Changed<Interaction>>,
-    locks: Query<(&Interaction, &PaintLayerLock), Changed<Interaction>>,
-    reorders: Query<(&Interaction, &PaintLayerReorder), Changed<Interaction>>,
+    rows: Query<(&UiInteraction, &PaintLayerRow), Changed<UiInteraction>>,
+    eyes: Query<(&UiInteraction, &PaintLayerEye), Changed<UiInteraction>>,
+    locks: Query<(&UiInteraction, &PaintLayerLock), Changed<UiInteraction>>,
+    reorders: Query<(&UiInteraction, &PaintLayerReorder), Changed<UiInteraction>>,
     mut active_layer: ResMut<ActivePaintLayer>,
     mut vis: Query<&mut Visibility, With<TilemapPaintLayer>>,
     mut layers: Query<&mut TilemapPaintLayer>,
@@ -759,7 +760,7 @@ fn paint_layer_clicks(
     // must not double as a row-select.
     let mut consumed = false;
     for (i, eye) in &eyes {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             if let Ok(mut v) = vis.get_mut(eye.0) {
                 *v = if *v == Visibility::Hidden {
                     Visibility::Inherited
@@ -771,7 +772,7 @@ fn paint_layer_clicks(
         }
     }
     for (i, lock) in &locks {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             if let Ok(mut l) = layers.get_mut(lock.0) {
                 l.locked = !l.locked;
             }
@@ -779,7 +780,7 @@ fn paint_layer_clicks(
         }
     }
     for (i, re) in &reorders {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             if let Ok(mut l) = layers.get_mut(re.layer) {
                 // Draw order is plain integer nudging — collisions between two
                 // layers at the same order are harmless (stable z tie) and the
@@ -793,7 +794,7 @@ fn paint_layer_clicks(
         return;
     }
     for (i, row) in &rows {
-        if *i == Interaction::Pressed && active_layer.0 != row.0 {
+        if *i == UiInteraction::Pressed && active_layer.0 != row.0 {
             active_layer.0 = row.0;
         }
     }
@@ -802,13 +803,13 @@ fn paint_layer_clicks(
 /// "+ add layer": spawn a `TilemapPaintLayer` child of the active tilemap, on
 /// top of the current stack, and make it the paint target.
 fn add_paint_layer_click(
-    buttons: Query<&Interaction, (With<AddPaintLayerBtn>, Changed<Interaction>)>,
+    buttons: Query<&UiInteraction, (With<AddPaintLayerBtn>, Changed<UiInteraction>)>,
     active: Res<ActiveTilemap>,
     mut active_layer: ResMut<ActivePaintLayer>,
     existing: Query<(&TilemapPaintLayer, &ChildOf)>,
     mut commands: Commands,
 ) {
-    if !buttons.iter().any(|i| *i == Interaction::Pressed) {
+    if !buttons.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(root) = active.0 else { return };
@@ -929,7 +930,7 @@ fn atlas_snapshot(world: &Rx) -> KeyedSnapshot {
                     ..default()
                 },
                 BackgroundColor(ACCENT),
-                Interaction::default(),
+                UiInteraction::default(),
                 SelectionHandle,
                 ChildOf(hl),
             ));
@@ -1086,14 +1087,14 @@ fn zoom_pan_atlas(
 
 /// The `−` / `+` zoom buttons step the zoom by a fixed factor.
 fn zoom_step_buttons(
-    zoom_in: Query<&Interaction, (With<ZoomInBtn>, Changed<Interaction>)>,
-    zoom_out: Query<&Interaction, (With<ZoomOutBtn>, Changed<Interaction>)>,
+    zoom_in: Query<&UiInteraction, (With<ZoomInBtn>, Changed<UiInteraction>)>,
+    zoom_out: Query<&UiInteraction, (With<ZoomOutBtn>, Changed<UiInteraction>)>,
     mut zoom: ResMut<TilemapZoom>,
 ) {
-    if zoom_in.iter().any(|i| *i == Interaction::Pressed) {
+    if zoom_in.iter().any(|i| *i == UiInteraction::Pressed) {
         zoom.0 = (zoom.0 * 1.25).clamp(0.1, 16.0);
     }
-    if zoom_out.iter().any(|i| *i == Interaction::Pressed) {
+    if zoom_out.iter().any(|i| *i == UiInteraction::Pressed) {
         zoom.0 = (zoom.0 / 1.25).clamp(0.1, 16.0);
     }
 }
@@ -1276,14 +1277,14 @@ fn update_cell_marks(
 ///   shape it ([`palette_collider_drag`]) — and every object stamped from this
 ///   pick carries it as a `CollisionShapeData`.
 fn toggle_solid_cells(
-    buttons: Query<&Interaction, (With<MarkSolidBtn>, Changed<Interaction>)>,
+    buttons: Query<&UiInteraction, (With<MarkSolidBtn>, Changed<UiInteraction>)>,
     brush: Res<TilemapBrush>,
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     tilesets: Query<&TilesetHandle>,
     mut layers: Query<&mut TilemapLayer>,
 ) {
-    if !buttons.iter().any(|i| *i == Interaction::Pressed) {
+    if !buttons.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(e) = active.0 else { return };
@@ -1403,7 +1404,7 @@ fn sync_shape_pick_visibility(
 /// handles are children of the rect at percent corners (pixel-size squares via
 /// negative margins), so they ride the rect. Geometry is written in place each
 /// frame — the nodes must stay STABLE across frames or an in-flight handle
-/// drag would lose its `Interaction` mid-gesture.
+/// drag would lose its `UiInteraction` mid-gesture.
 fn sync_palette_collider_chrome(
     brush: Res<TilemapBrush>,
     active: Res<ActiveTilemap>,
@@ -1485,7 +1486,7 @@ fn sync_palette_collider_chrome(
             },
             BackgroundColor(COLLIDER_TINT.with_alpha(0.15)),
             BorderColor::all(COLLIDER_TINT),
-            Interaction::default(),
+            UiInteraction::default(),
             PaletteColliderPart,
             PaletteColliderRect,
             ChildOf(atlas_e),
@@ -1522,7 +1523,7 @@ fn sync_palette_collider_chrome(
             },
             BackgroundColor(Color::WHITE),
             BorderColor::all(COLLIDER_TINT),
-            Interaction::default(),
+            UiInteraction::default(),
             PaletteColliderPart,
             PaletteColliderHandle(i as u8),
             ChildOf(rect),
@@ -1543,8 +1544,8 @@ fn palette_collider_drag(
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
-    handles: Query<(&Interaction, &PaletteColliderHandle)>,
-    rect_node: Query<&Interaction, With<PaletteColliderRect>>,
+    handles: Query<(&UiInteraction, &PaletteColliderHandle)>,
+    rect_node: Query<&UiInteraction, With<PaletteColliderRect>>,
     mut layers: Query<(&mut TilemapLayer, &TilesetHandle)>,
     // (grabbed handle — None = body move, collider at press, cursor at press)
     mut drag: Local<Option<(Option<u8>, TileObjectCollider, Vec2)>>,
@@ -1586,11 +1587,11 @@ fn palette_collider_drag(
         let start = layer.object_colliders[idx];
         let grabbed_handle = handles
             .iter()
-            .find(|(i, _)| **i == Interaction::Pressed)
+            .find(|(i, _)| **i == UiInteraction::Pressed)
             .map(|(_, h)| h.0);
         if let Some(h) = grabbed_handle {
             *drag = Some((Some(h), start, local));
-        } else if rect_node.iter().any(|i| *i == Interaction::Pressed) {
+        } else if rect_node.iter().any(|i| *i == UiInteraction::Pressed) {
             *drag = Some((None, start, local));
         }
     }
@@ -1731,9 +1732,9 @@ fn select_tiles_from_atlas(
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
-    thumbs: Query<&Interaction, With<ScrollThumb>>,
-    handles: Query<&Interaction, With<SelectionHandle>>,
-    collider_parts: Query<&Interaction, With<PaletteColliderPart>>,
+    thumbs: Query<&UiInteraction, With<ScrollThumb>>,
+    handles: Query<&UiInteraction, With<SelectionHandle>>,
+    collider_parts: Query<&UiInteraction, With<PaletteColliderPart>>,
     scrollbar: Res<ScrollbarBusy>,
     mut brush: ResMut<TilemapBrush>,
     mut settings: Option<ResMut<ViewportSettings>>,
@@ -1768,9 +1769,9 @@ fn select_tiles_from_atlas(
         let on_bar = scrollbar.active()
             || thumbs
                 .iter()
-                .any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
-        let on_handle = handles.iter().any(|i| *i == Interaction::Pressed);
-        let on_collider = collider_parts.iter().any(|i| *i == Interaction::Pressed);
+                .any(|i| matches!(i, UiInteraction::Pressed | UiInteraction::Hovered));
+        let on_handle = handles.iter().any(|i| *i == UiInteraction::Pressed);
+        let on_collider = collider_parts.iter().any(|i| *i == UiInteraction::Pressed);
         *blocked = on_bar || on_handle || on_collider;
     }
     if *blocked {
@@ -1844,7 +1845,7 @@ fn select_tiles_from_atlas(
 
 /// Drag the corner handle to grow the selection from its fixed top-left corner.
 fn resize_selection(
-    handles: Query<&Interaction, With<SelectionHandle>>,
+    handles: Query<&UiInteraction, With<SelectionHandle>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
@@ -1852,7 +1853,7 @@ fn resize_selection(
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
     mut brush: ResMut<TilemapBrush>,
 ) {
-    if payload.is_some() || !handles.iter().any(|i| *i == Interaction::Pressed) {
+    if payload.is_some() || !handles.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Ok(rcp) = atlas.single() else { return };

@@ -20,13 +20,14 @@ use std::sync::Arc;
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_text_color};
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 
 use super::style::*;
 
@@ -195,7 +196,7 @@ pub(crate) fn build_rail(
             BorderColor::all(border_soft()),
             // The rail is a surface, not a drag handle: a press on the gap
             // between two rows should do nothing, not pick the window up.
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("splash-rail"),
         ))
         .id();
@@ -208,7 +209,7 @@ pub(crate) fn build_rail(
 
     // Pushes everything after it to the bottom of the rail.
     let spacer = commands
-        .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+        .spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
         .id();
     rows.push(spacer);
     rows.push(super::account::build_account_row(commands, fonts));
@@ -225,7 +226,7 @@ fn rail_heading(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Ent
             ui_font(&fonts.ui, 9.5),
             TextColor(c(104, 112, 132)),
             Node { margin: UiRect::new(Val::Px(8.0), Val::Px(0.0), Val::Px(4.0), Val::Px(4.0)), ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }
@@ -252,8 +253,8 @@ pub(crate) fn nav_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             NavRow(id.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-nav-row"),
@@ -273,7 +274,7 @@ pub(crate) fn nav_row(
     });
 
     let glyph = icon_text(commands, &fonts.phosphor, icon, ICON_MUTED, 15.0);
-    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     let glyph_id = owned.clone();
     bind_text_color(commands, glyph, move |w| {
         if is_active(w, &glyph_id) {
@@ -288,7 +289,7 @@ pub(crate) fn nav_row(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let txt_id = owned;
@@ -336,7 +337,7 @@ pub(crate) fn build_page_host(commands: &mut Commands) -> Entity {
             },
             BackgroundColor(surface()),
             // A page's own background is not a drag handle either.
-            FocusPolicy::Block,
+            BLOCK,
             SectionHost { shown: None },
             Name::new("splash-page-host"),
         ))
@@ -396,11 +397,11 @@ pub(crate) fn rebuild_section(world: &mut World) {
 }
 
 pub(crate) fn nav_click(
-    q: Query<(&Interaction, &NavRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &NavRow), Changed<UiInteraction>>,
     mut active: ResMut<ActiveSection>,
 ) {
     for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed && active.0 != row.0 {
+        if *interaction == UiInteraction::Pressed && active.0 != row.0 {
             active.0 = row.0.clone();
         }
     }

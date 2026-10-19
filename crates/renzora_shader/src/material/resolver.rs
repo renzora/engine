@@ -81,6 +81,10 @@ pub struct MaterialCache {
     /// the precompiled path reads it from the saved `.material`, not from
     /// a compile.
     node_line_maps: HashMap<String, Vec<(u64, u32, u32)>>,
+    /// Compiled Sprite-domain materials, for `sprite_material`. Here rather
+    /// than in a cache of its own so [`MaterialCache::invalidate`], which the
+    /// editor calls on save, reaches sprites too.
+    sprite_materials: HashMap<String, Handle<super::sprite_material::SpriteGraphExt>>,
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
@@ -103,7 +107,23 @@ impl MaterialCache {
         self.code_materials.remove(path);
         self.master_meta.remove(path);
         self.node_line_maps.remove(path);
+        self.sprite_materials.remove(path);
         self.loaded_paths.remove(path);
+    }
+
+    pub(super) fn sprite_material(
+        &self,
+        path: &str,
+    ) -> Option<Handle<super::sprite_material::SpriteGraphExt>> {
+        self.sprite_materials.get(path).cloned()
+    }
+
+    pub(super) fn insert_sprite_material(
+        &mut self,
+        path: &str,
+        handle: Handle<super::sprite_material::SpriteGraphExt>,
+    ) {
+        self.sprite_materials.insert(path.to_string(), handle);
     }
 
     /// Number of `.material` files that compiled to plain
@@ -242,9 +262,10 @@ fn in_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
 /// The fragment source each graph material's shader was built from, as
 /// codegen (or a saved `.material`) wrote it, keyed by shader uuid.
 ///
-/// The bound `Shader` holds the WESL translation, but the node source map
-/// indexes lines of the text codegen wrote, and the validator maps its errors
-/// back onto those lines. So that text is what gets validated. A side table
+/// For a `.material` saved before Bevy 0.20 the bound `Shader` holds a WESL
+/// translation, but the node source map indexes lines of the text the
+/// material holds, and the validator maps its errors back onto those lines.
+/// So that text is what gets validated. A side table
 /// rather than a field because the uuid is all `GraphMaterial` can carry (see
 /// `surface_ext.rs`); entries are dropped once their shader is gone.
 #[cfg(feature = "editor")]
@@ -439,7 +460,8 @@ fn ensure_shader_validator(
 #[allow(clippy::too_many_arguments)]
 fn resolve_material_refs(
     mut commands: Commands,
-    query: Query<(Entity, &MaterialRef), Without<MaterialResolved>>,
+    // Sprites wear a `SpriteMaterial`, resolved by `sprite_material`.
+    query: Query<(Entity, &MaterialRef), (Without<MaterialResolved>, Without<Sprite>)>,
     mut cache: ResMut<MaterialCache>,
     mut perf: ResMut<super::perf::MaterialPerfStats>,
     mut problems: ResMut<renzora::content_problems::ContentProblems>,
@@ -950,6 +972,17 @@ fn resolve_material_file(
         }
     };
 
+    // Everything that reaches here is a 3D mesh (sprites resolve through
+    // `sprite_material`), and a sprite's shader reads bindings a 3D pipeline
+    // does not have: binding it would fail when the pipeline is built.
+    if graph.domain == MaterialDomain::Sprite {
+        renzora::console_log::console_error(
+            "Material",
+            format!("{path} is a Sprite material; it can only be used on a sprite"),
+        );
+        return None;
+    }
+
     // Trivial fast path: graph is just textures + factors → PBR pins.
     // Compiles directly to StandardMaterial; no shader codegen, shared with
     // Bevy's stock PBR pipeline. Imported glTF materials all land here.
@@ -1352,13 +1385,14 @@ fn assemble_graph_material(
     // `Handle<Shader>` directly (packed-struct + non-Copy).
     let shader_uuid = Uuid::new_v4();
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
-    // Codegen, and every `.material` saved before Bevy 0.20, writes the old
-    // naga_oil dialect; `shader_source` translates it to WESL.
+    // Codegen writes WESL. A `.material` saved before Bevy 0.20 embeds the
+    // old naga_oil dialect, which `shader_source` recognises and translates,
+    // so the path's extension does not decide the dialect.
     #[cfg(feature = "editor")]
     authored_sources().insert(shader_uuid, fragment_shader.clone());
     let shader = renzora::shader_source::shader(
         fragment_shader,
-        format!("material/{}.wgsl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
+        format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
     );
     let _ = shaders.insert(&shader_handle, shader);
 
@@ -1378,7 +1412,10 @@ fn assemble_graph_material(
     }
 
     match domain {
-        MaterialDomain::Unlit => {
+        // Sprite never gets here: `resolve_material_file` refuses it for a 3D
+        // mesh, and sprites resolve through `sprite_material`. Unlit is the
+        // least wrong reading if one ever did.
+        MaterialDomain::Unlit | MaterialDomain::Sprite => {
             mat.base.unlit = true;
         }
         MaterialDomain::Surface | MaterialDomain::Vegetation | MaterialDomain::TerrainLayer => {

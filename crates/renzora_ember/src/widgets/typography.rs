@@ -5,6 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::text_node;
 
@@ -44,7 +45,7 @@ pub fn link(commands: &mut Commands, font: &bevy::text::FontSource, text: &str) 
             Text::new(text),
             ui_font(font, 12.0),
             TextColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("link"),
         ))

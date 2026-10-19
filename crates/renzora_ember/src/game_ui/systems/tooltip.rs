@@ -6,6 +6,7 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{TooltipData, UiWidgetPart};
+use crate::UiInteraction;
 
 /// Tracks how long the tooltip has been hovered.
 #[derive(Component, Default)]
@@ -20,7 +21,7 @@ pub fn tooltip_system(
     mut tooltips: Query<(
         Entity,
         &TooltipData,
-        &Interaction,
+        &UiInteraction,
         &Children,
         Option<&mut TooltipHoverTimer>,
     )>,
@@ -30,7 +31,7 @@ pub fn tooltip_system(
 
     for (entity, data, interaction, children, timer) in &mut tooltips {
         let is_hovered =
-            *interaction == Interaction::Hovered || *interaction == Interaction::Pressed;
+            *interaction == UiInteraction::Hovered || *interaction == UiInteraction::Pressed;
 
         match timer {
             Some(mut timer) => {

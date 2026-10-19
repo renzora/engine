@@ -11,6 +11,7 @@ use renzora_ember::reactive::tracked::{bind_bg, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::UiInteraction;
 
 use super::components::{
     BadgeKind, HierAssetBadge, HierCaretToggle, HierDropEdge, HierLockToggle, HierRowArea,
@@ -286,7 +287,7 @@ pub(crate) fn build_row(
             ))
             .id();
         commands.entity(caret).insert((
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierCaretToggle(s.entity),
         ));
@@ -463,7 +464,7 @@ pub(crate) fn build_row(
                 right: Val::Px(SUFFIX_W),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierRowClick { entity: s.entity },
@@ -563,8 +564,8 @@ pub(crate) fn build_row(
             return rgb(accent()).with_alpha(0.63);
         }
         let hovered = world
-            .get::<Interaction>(click)
-            .is_some_and(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+            .get::<UiInteraction>(click)
+            .is_some_and(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
         if hovered {
             over(base, Color::srgba(1.0, 1.0, 1.0, 0.06))
         } else {
@@ -608,7 +609,7 @@ fn badge_icon(
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierAssetBadge { entity, kind },
             Name::new("hier-asset-badge"),
@@ -650,7 +651,7 @@ fn suffix_toggle(
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("hier-suffix"),
         ))

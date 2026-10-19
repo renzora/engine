@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
+use renzora_ember::UiInteraction;
 
 use crate::state::{AssetTile, GridArea, MarqueeRect, NativeAssets};
 
@@ -29,7 +30,7 @@ pub(crate) fn marquee_select(
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
-    tiles: Query<(&AssetTile, &Interaction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+    tiles: Query<(&AssetTile, &UiInteraction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
     scrollbar: Res<ScrollbarBusy>,
     resizing: Res<renzora_ember::resize::ResizeBusy>,
     mut state: ResMut<NativeAssets>,
@@ -57,7 +58,7 @@ pub(crate) fn marquee_select(
         && !resizing.active()
     {
         let over_grid = grid.iter().any(|r| r.cursor_over);
-        let on_tile = tiles.iter().any(|(_, i, _, _)| *i == Interaction::Pressed);
+        let on_tile = tiles.iter().any(|(_, i, _, _)| *i == UiInteraction::Pressed);
         if over_grid && !on_tile {
             let keep = keyboard.pressed(KeyCode::ControlLeft)
                 || keyboard.pressed(KeyCode::ControlRight)

@@ -12,6 +12,7 @@ use bevy::ui::{BackgroundGradient, BoxShadow, ColorStop, Gradient, LinearGradien
 use crate::cursor_icon::HoverCursor;
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::{rgb, rgba};
+use crate::UiInteraction;
 
 // ── Gradients ────────────────────────────────────────────────────────────────
 
@@ -151,7 +152,7 @@ pub fn gradient_button(commands: &mut Commands, fonts: &EmberFonts, hue: (u8, u8
             },
             hue_gradient(hue),
             glow(g, 10.0),
-            Interaction::default(),
+            UiInteraction::default(),
             GradientButton { glow_color: g },
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("gradient-button"),
@@ -166,13 +167,13 @@ pub fn gradient_button(commands: &mut Commands, fonts: &EmberFonts, hue: (u8, u8
 
 /// Brighten a [`GradientButton`]'s glow on hover/press.
 pub(crate) fn gradient_button_interact(
-    mut q: Query<(&Interaction, &GradientButton, &mut BoxShadow), Changed<Interaction>>,
+    mut q: Query<(&UiInteraction, &GradientButton, &mut BoxShadow), Changed<UiInteraction>>,
 ) {
     for (i, gb, mut shadow) in &mut q {
         let (alpha_mul, blur) = match i {
-            Interaction::Hovered => (1.9, 16.0),
-            Interaction::Pressed => (1.3, 8.0),
-            Interaction::None => (1.0, 10.0),
+            UiInteraction::Hovered => (1.9, 16.0),
+            UiInteraction::Pressed => (1.3, 8.0),
+            UiInteraction::None => (1.0, 10.0),
         };
         let base = gb.glow_color.to_srgba();
         *shadow = glow(

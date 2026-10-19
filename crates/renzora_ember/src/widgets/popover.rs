@@ -15,6 +15,7 @@ use bevy::prelude::*;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::button::{button, icon_label_button};
 use super::popup::Popup;
@@ -95,7 +96,7 @@ pub fn icon_popover(
 ) -> Entity {
     let trigger = icon_text(commands, &fonts.phosphor, icon, text_muted(), size);
     commands.entity(trigger).insert((
-        Interaction::default(),
+        UiInteraction::default(),
         crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     let panel = popover_panel(commands, content);

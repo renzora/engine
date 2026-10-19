@@ -79,6 +79,12 @@ You can also drag a cable off a pin and release on empty space. The palette open
 
 Drag an image straight from the **Assets** panel onto the graph and you get a Sample Texture node with that image already bound.
 
+The palette only offers nodes the material's domain can use. A Sprite material has no Scene Depth, Scene Normal, Scene Color, Motion Vectors or Environment Map, since a sprite is not drawn in a 3D view, and a 3D material has no Sprite Color. A node like that arriving some other way, pasted in or saved by an older version, gets a red header saying why, and wires to or from it are refused.
+
+### Moving nodes
+
+A dragged node snaps its top-left corner to the dots of the background grid. Hold `Alt` while dragging to place it freely.
+
 ### Editing values
 
 Every input pin that is not wired shows its editor right under the pin: a scrub field for numbers, X/Y/Z fields for vectors, a colour swatch, a checkbox. Wire a cable in and the editor disappears, because the wire is supplying the value now.
@@ -141,6 +147,9 @@ Every material has a domain that decides what it is for. Pick this when you crea
 | Terrain Layer | A paintable layer on terrain |
 | Vegetation | Surfaces that sway in the wind |
 | Unlit | Flat colour with no lighting |
+| Sprite | A 2D sprite. Made with **Add ▸ Sprite Material**; see [Sprite materials](/docs/r1-alpha8/api/material#sprite-materials) |
+
+The domain is stored in the `.material` file, so one file type covers them all. In the Assets panel a Sprite material's thumbnail is the sample sprite wearing it, tagged **2D** in the corner, where a 3D material shows a sphere.
 
 Two more switches live on the material rather than on a node:
 
@@ -151,6 +160,8 @@ Two more switches live on the material rather than on a node:
 ## Previewing
 
 The **Material Preview** panel shows the material on a test shape, lit by an environment map, so you can judge it without hunting for a surface in your scene.
+
+A Sprite material is shown instead on a flat sample sprite over a checkerboard, so changes to colour, transparency and UVs are all visible. It follows every edit live, the mouse wheel zooms, and the moon/sun button switches the checkerboard between dark and light.
 
 <!-- screenshot: material_preview.png - the Material Preview panel showing a material on a sphere -->
 

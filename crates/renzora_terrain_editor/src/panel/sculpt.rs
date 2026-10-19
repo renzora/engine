@@ -8,6 +8,7 @@ use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::{
     BrushFalloffType, BrushShape, FlattenMode, NoiseMode, StampBlendMode, StampBrushData,
@@ -114,7 +115,7 @@ fn sculpt_tool_button(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             SculptToolBtn { brush },
             Name::new(format!("terrain-tool:{label}")),
@@ -124,8 +125,8 @@ fn sculpt_tool_button(
         if brush_type(w) == brush {
             rgb(accent())
         } else if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(popup_bg())
         } else {

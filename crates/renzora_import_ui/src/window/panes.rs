@@ -4,9 +4,9 @@
 //! properties, the import settings, and the footer that ends the window.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
@@ -14,6 +14,7 @@ use renzora_ember::widgets::{
     drag_value, dropdown, folder_new_button, folder_picker_folded, progress_indeterminate,
     radio_group, scroll_view,
 };
+use renzora_ember::UiInteraction;
 
 use renzora_import::settings::{SceneStructure, UpAxis};
 
@@ -281,10 +282,10 @@ pub(super) fn build_centre(commands: &mut Commands, fonts: &EmberFonts) -> Entit
                 ..default()
             },
             ImageNode::default(),
-            Interaction::default(),
+            UiInteraction::default(),
             // Blocks the press from reaching the editor viewport behind; the
-            // orbit handler reads this node's own `Interaction`.
-            FocusPolicy::Block,
+            // orbit handler reads this node's own `UiInteraction`.
+            BLOCK,
             crate::preview3d::ImportPreviewViewport,
         ))
         .id();
@@ -316,8 +317,8 @@ pub(super) fn build_centre(commands: &mut Commands, fonts: &EmberFonts) -> Entit
                 ..default()
             },
             ImageNode::default(),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             crate::matpreview::MaterialPreviewViewport,
         ))
         .id();
@@ -405,7 +406,7 @@ pub(super) fn build_centre(commands: &mut Commands, fonts: &EmberFonts) -> Entit
             },
             BackgroundColor(rgb(panel_bg()).with_alpha(0.92)),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     bind_display(commands, loading, |w| {
@@ -460,7 +461,7 @@ fn build_env_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(panel_bg()).with_alpha(0.88)),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     // Both previews, not just the model: the material sphere is lit by the same
@@ -474,7 +475,7 @@ fn build_env_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("PREVIEW".to_string()),
             ui_font(&fonts.ui, 9.5),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let mut kids = vec![head];
@@ -522,7 +523,7 @@ fn env_toggle_row(
                 min_height: Val::Px(22.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let t = commands
@@ -530,7 +531,7 @@ fn env_toggle_row(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let sw = toggle_switch(commands, get(&default()));
@@ -966,7 +967,7 @@ fn group_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Enti
                 margin: UiRect::top(Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }

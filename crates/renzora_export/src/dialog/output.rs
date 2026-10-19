@@ -2,13 +2,14 @@
 //! window / logging / server flags that describe the artefact.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora::core::WindowMode;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, drag_value, radio_group, section, text_input};
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ExportOverlayState;
 use crate::templates::Platform;
@@ -44,9 +45,9 @@ pub(super) fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts, p: P
     let icon_lbl = txt(commands, fonts, &renzora::lang::t("export.field.icon"), 12.0, text_muted());
     let icon_path = commands.spawn((Text::new(renzora::lang::t("common.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
     bind_text(commands, icon_path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| renzora::lang::t("common.none")));
-    let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), IconClearBtn, cursor())).id();
+    let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, UiInteraction::default(), IconClearBtn, cursor())).id();
     let clx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);
-    commands.entity(clx).insert(FocusPolicy::Pass);
+    commands.entity(clx).insert(PASS_THROUGH);
     commands.entity(clear).add_child(clx);
     bind_display(commands, clear, |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.icon_path.is_some()));
     let icon_browse = pill_button(commands, fonts, "image", &renzora::lang::t("export.btn.browse"));

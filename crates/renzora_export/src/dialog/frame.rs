@@ -2,13 +2,14 @@
 //! and the swap between the settings form and the build log.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::{ExportOverlayState, ExportProgress, ExportView, PackagingMode};
 use crate::templates::TemplateManager;
@@ -30,8 +31,8 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
             fullscreen(),
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.63)),
             GlobalZIndex(9300),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             OverlaySurface,
             ExportRoot,
@@ -62,7 +63,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
             },
             BackgroundColor(rgb(panel_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("export-panel"),
         ))
         .id();
@@ -94,19 +95,19 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             CloseBtn,
             cursor(),
         ))
         .id();
     let cx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
-    commands.entity(cx).insert(FocusPolicy::Pass);
+    commands.entity(cx).insert(PASS_THROUGH);
     let ct = commands
         .spawn((
             Text::new(renzora::lang::t("common.cancel")),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(close).add_children(&[cx, ct]);
@@ -201,7 +202,7 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(EXPORT_BLUE)),
-            Interaction::default(),
+            UiInteraction::default(),
             ExportBtn,
             cursor(),
         ))
@@ -209,8 +210,8 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_bg(commands, btn, move |w| {
         if can_export(w) {
             let hot = matches!(
-                w.get::<Interaction>(btn),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(btn),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             );
             rgb(if hot { EXPORT_BLUE_HOT } else { EXPORT_BLUE })
         } else {
@@ -218,8 +219,8 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
     let ic = icon_text(commands, &fonts.phosphor, "rocket-launch", (255, 255, 255), 14.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands.spawn((Text::new(renzora::lang::t("common.export")), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let t = commands.spawn((Text::new(renzora::lang::t("common.export")), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), PASS_THROUGH)).id();
     commands.entity(btn).add_children(&[ic, t]);
     btn
 }

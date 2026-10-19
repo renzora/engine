@@ -36,6 +36,7 @@ use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_ember::UiInteraction;
 
 /// A render layer of this preview's own.
 ///
@@ -148,7 +149,7 @@ pub(crate) struct PreviewEnvCamera;
 pub(crate) struct StudioCubemap(pub(crate) Handle<Image>);
 
 /// Marker for the UI node the preview texture is drawn into. Camera input is
-/// gated on this node's `Interaction` rather than a geometric cursor test, so
+/// gated on this node's `UiInteraction` rather than a geometric cursor test, so
 /// dragging something that overlaps the preview does not grab the camera.
 #[derive(Component)]
 pub struct ImportPreviewViewport;
@@ -1365,7 +1366,7 @@ fn subtree_bounds(
 /// Only active while the cursor is over the preview, or a drag started there.
 #[allow(clippy::too_many_arguments)]
 fn preview_input(
-    hover: Query<&Interaction, With<ImportPreviewViewport>>,
+    hover: Query<&UiInteraction, With<ImportPreviewViewport>>,
     preview: Res<ImportPreview>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -1383,7 +1384,7 @@ fn preview_input(
     }
     let over = hover
         .iter()
-        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        .any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let alt = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
 

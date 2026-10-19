@@ -11,6 +11,7 @@ use renzora_editor_framework::{ActiveTool, AssetDragPayload, EditorSelection};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu};
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::{
     FlattenMode, NoiseMode, StampBlendMode, StampBrushData, StampPreset, TerrainBrushType,
@@ -30,7 +31,7 @@ use super::{
 
 
 pub(super) fn tab_click(
-    q: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TabBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
     mut inspector_tab: Option<ResMut<TerrainInspectorTab>>,
     selection: Option<Res<EditorSelection>>,
@@ -38,7 +39,7 @@ pub(super) fn tab_click(
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.tab = btn.tab;
             // Switching the panel tab also switches the active tool — the
             // panel and the viewport toolbar drive the same state.
@@ -115,14 +116,14 @@ pub(super) fn follow_active_tool(
 /// was a click that visibly did nothing. Clicking a tool is the whole gesture:
 /// it picks the tool *and* puts the viewport in the mode that uses it.
 pub(super) fn sculpt_tool_click(
-    q: Query<(&Interaction, &SculptToolBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SculptToolBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
     mut stamp: Option<ResMut<StampBrushData>>,
     mut tab: Option<ResMut<TerrainInspectorTab>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.brush_type = btn.brush;
             // Through the tab, not `ActiveTool` directly: `sync_active_tool_system`
             // re-derives the tool from the tab every frame while a terrain is
@@ -145,13 +146,13 @@ pub(super) fn sculpt_tool_click(
 
 /// Picking a paint brush also arms paint mode — see [`sculpt_tool_click`].
 pub(super) fn paint_tool_click(
-    q: Query<(&Interaction, &PaintToolBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PaintToolBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<SurfacePaintSettings>>,
     mut tab: Option<ResMut<TerrainInspectorTab>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.brush_type = btn.brush;
             if let Some(tab) = tab.as_mut() {
                 **tab = TerrainInspectorTab::Paint;
@@ -161,12 +162,12 @@ pub(super) fn paint_tool_click(
 }
 
 pub(super) fn shape_btn_click(
-    q: Query<(&Interaction, &ShapeBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShapeBtn), Changed<UiInteraction>>,
     mut terrain: Option<ResMut<TerrainSettings>>,
     mut paint: Option<ResMut<SurfacePaintSettings>>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match btn.target {
@@ -185,12 +186,12 @@ pub(super) fn shape_btn_click(
 }
 
 pub(super) fn falloff_type_btn_click(
-    q: Query<(&Interaction, &FalloffTypeBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FalloffTypeBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.falloff_type = btn.ft;
         }
     }
@@ -198,15 +199,15 @@ pub(super) fn falloff_type_btn_click(
 
 pub(super) fn flatten_mode_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode),
-        (With<FlattenModeCombo>, Changed<Interaction>),
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (With<FlattenModeCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -229,15 +230,15 @@ pub(super) fn flatten_mode_combo_open(
 
 pub(super) fn noise_mode_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode),
-        (With<NoiseModeCombo>, Changed<Interaction>),
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (With<NoiseModeCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -259,15 +260,15 @@ pub(super) fn noise_mode_combo_open(
 
 pub(super) fn stamp_preset_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode),
-        (With<StampPresetCombo>, Changed<Interaction>),
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (With<StampPresetCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -300,15 +301,15 @@ pub(super) fn stamp_preset_combo_open(
 
 pub(super) fn stamp_blend_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode),
-        (With<StampBlendCombo>, Changed<Interaction>),
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (With<StampBlendCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -336,10 +337,10 @@ pub(super) fn stamp_blend_combo_open(
 }
 
 pub(super) fn stamp_load_click(
-    q: Query<&Interaction, (With<StampLoadBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<StampLoadBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|world: &mut World| {
             let _ = world.run_system_once(run_stamp_load);
         });
@@ -380,32 +381,32 @@ fn run_stamp_load(world: &mut World) {
 }
 
 pub(super) fn layer_row_click(
-    q: Query<(&Interaction, &LayerRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &LayerRow), Changed<UiInteraction>>,
     mut settings: Option<ResMut<SurfacePaintSettings>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.active_layer = row.index;
         }
     }
 }
 
 pub(super) fn add_layer_click(
-    q: Query<&Interaction, (With<AddLayerBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddLayerBtn>, Changed<UiInteraction>)>,
     mut state: Option<ResMut<SurfacePaintState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.pending_commands.push(SurfacePaintCommand::AddLayer);
     }
 }
 
 pub(super) fn heightmap_import_click(
-    q: Query<&Interaction, (With<HeightmapImportBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<HeightmapImportBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|world: &mut World| {
             let _ = world.run_system_once(run_heightmap_import);
         });
@@ -413,10 +414,10 @@ pub(super) fn heightmap_import_click(
 }
 
 pub(super) fn heightmap_export_click(
-    q: Query<&Interaction, (With<HeightmapExportBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<HeightmapExportBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|world: &mut World| {
             let _ = world.run_system_once(run_heightmap_export);
         });
@@ -519,12 +520,12 @@ pub(super) fn material_drop(
 }
 
 pub(super) fn material_clear_click(
-    q: Query<(&Interaction, &MaterialClearBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &MaterialClearBtn), Changed<UiInteraction>>,
     mut state: Option<ResMut<SurfacePaintState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state
                 .pending_commands
                 .push(SurfacePaintCommand::ClearMaterial(btn.layer));

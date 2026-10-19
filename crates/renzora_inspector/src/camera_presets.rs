@@ -28,6 +28,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::theme::{rgb, section_bg, text_muted};
 use renzora_ember::widgets::{bind_text_input, icon_button, icon_label_button, text_input};
+use renzora_ember::UiInteraction;
 
 pub fn register(app: &mut App) {
     use renzora_editor_framework::{AppEditorExt, SplashState};
@@ -266,12 +267,12 @@ fn editor_pose_or_warn(w: &mut World) -> Option<Transform> {
 }
 
 fn capture_preset_click(
-    q: Query<(&Interaction, &CapturePresetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &CapturePresetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let entity = btn.entity;
@@ -298,12 +299,12 @@ fn capture_preset_click(
 /// `OrbitCameraState` (the orbit controller overwrites the camera `Transform`
 /// each frame, so writing the transform directly wouldn't stick).
 fn goto_preset_click(
-    q: Query<(&Interaction, &GotoPresetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &GotoPresetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, index) = (btn.entity, btn.index);
@@ -323,12 +324,12 @@ fn goto_preset_click(
 
 /// Overwrite a preset with the current editor view ("Snap to Viewport").
 fn snap_preset_click(
-    q: Query<(&Interaction, &SnapPresetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SnapPresetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, index) = (btn.entity, btn.index);
@@ -350,12 +351,12 @@ fn snap_preset_click(
 }
 
 fn delete_preset_click(
-    q: Query<(&Interaction, &DeletePresetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &DeletePresetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, index) = (btn.entity, btn.index);

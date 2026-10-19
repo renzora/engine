@@ -56,6 +56,8 @@ use bevy::prelude::*;
 
 use renzora::core::viewport_types::{RenderToggles, ViewportSettings, VisualizationMode};
 use renzora_ember::font::{icon_text, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::UiInteraction;
 
 use crate::tool_buttons::{SIDE_BTN, SIDE_ICON};
 
@@ -183,7 +185,7 @@ pub(crate) fn build_strip(commands: &mut Commands, fonts: &EmberFonts) -> Entity
                 flex_shrink: 0.0,
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("shading-strip"),
         ))
         .id();
@@ -216,7 +218,7 @@ fn shading_btn(commands: &mut Commands, fonts: &EmberFonts, mode: Shading) -> En
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             mode,
             Name::new("shading-btn"),
         ))
@@ -239,7 +241,7 @@ pub(crate) fn shading_visuals(
     settings: Option<Res<ViewportSettings>>,
     suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
-    mut buttons: Query<(&Shading, &Interaction, &ShadingGlyph, &mut BackgroundColor)>,
+    mut buttons: Query<(&Shading, &UiInteraction, &ShadingGlyph, &mut BackgroundColor)>,
     mut glyphs: Query<&mut TextColor>,
 ) {
     let Some(theme) = theme else { return };
@@ -260,7 +262,7 @@ pub(crate) fn shading_visuals(
         let is_active = active == Some(*mode);
         let want = if is_active {
             accent
-        } else if *interaction == Interaction::Hovered {
+        } else if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             Color::NONE
@@ -344,14 +346,14 @@ pub(crate) fn restore_environment_in_play_mode(
 /// switches a mode stands for — see [`Shading::shows_environment`]. Nothing else
 /// in the editor writes that flag, so there is no one to fight over it with.
 pub(crate) fn shading_clicks(
-    buttons: Query<(&Shading, &Interaction), Changed<Interaction>>,
+    buttons: Query<(&Shading, &UiInteraction), Changed<UiInteraction>>,
     settings: Option<ResMut<ViewportSettings>>,
     suppressed: Option<ResMut<renzora::core::EnvironmentSuppressed>>,
 ) {
     let Some(mut settings) = settings else { return };
     let mut suppressed = suppressed;
     for (mode, interaction) in &buttons {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (toggles, viz) = mode.preset();

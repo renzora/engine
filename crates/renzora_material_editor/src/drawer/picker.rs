@@ -15,10 +15,12 @@ use bevy::ui::FlexWrap;
 
 use renzora_editor_framework::MaterialThumbnailRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::keyed_list_tokened;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::{accent, border, hover_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{text_input, HoverTint, HoverTooltip};
+use renzora_ember::UiInteraction;
 
 use super::drop::bind_material;
 use super::index::MaterialIndex;
@@ -100,7 +102,7 @@ pub(super) fn build_picker_panel(commands: &mut Commands, fonts: &EmberFonts, en
                 display: Display::None,
                 ..default()
             },
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             MatPickerPanel,
             Name::new("material-picker-tray"),
         ))
@@ -129,7 +131,7 @@ pub(super) fn build_picker_panel(commands: &mut Commands, fonts: &EmberFonts, en
         ))
         .id();
     let glass = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 12.0);
-    commands.entity(glass).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(glass).insert(PASS_THROUGH);
     let search = text_input(commands, &fonts.ui, "Search materials…", "");
     commands
         .entity(search)
@@ -325,8 +327,8 @@ fn picker_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, rel:
             },
             BackgroundColor(base),
             HoverTint::solid(base, rgb(hover_bg()), rgb(accent()).with_alpha(0.32)),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             HoverTooltip::new(format!("{stem}  ·  {parent}")),
             MatPickerItem { entity, rel: rel.to_string() },
             Name::new("material-picker-tile"),
@@ -359,7 +361,7 @@ fn picker_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, rel:
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(if is_current { accent() } else { text_primary() })),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // Clip wrapper again: `Overflow::clip` clips a node's *children*, so a long
@@ -374,7 +376,7 @@ fn picker_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, rel:
                 overflow: Overflow::clip(),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(name_clip).add_child(name);
@@ -396,9 +398,9 @@ fn bind_search(commands: &mut Commands, input: Entity) {
     );
 }
 
-pub(super) fn mat_picker_select(q: Query<(&Interaction, &MatPickerItem), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn mat_picker_select(q: Query<(&UiInteraction, &MatPickerItem), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, item) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (e, rel) = (item.entity, item.rel.clone());
@@ -429,8 +431,8 @@ fn field_colors(open: bool) -> (Color, Color) {
 /// panel and asked you to scroll past six rows that were on their way out.
 pub(super) fn mat_picker_toggle(
     mut q: Query<
-        (&Interaction, &MatPickerToggle, &mut HoverTint, &mut BackgroundColor, &mut BorderColor),
-        Changed<Interaction>,
+        (&UiInteraction, &MatPickerToggle, &mut HoverTint, &mut BackgroundColor, &mut BorderColor),
+        Changed<UiInteraction>,
     >,
     tex_rows: Query<(Entity, &TexSlotZone)>,
     tex_toggles: Query<(Entity, &TexSlotsToggle)>,
@@ -438,7 +440,7 @@ pub(super) fn mat_picker_toggle(
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, toggle, mut tint, mut bg, mut bc) in &mut q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let open = nodes.get(toggle.panel).is_ok_and(|n| n.display == Display::None);

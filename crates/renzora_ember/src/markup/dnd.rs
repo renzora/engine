@@ -18,6 +18,8 @@ use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::ui::{GlobalZIndex, RelativeCursorPosition, UiScale};
 use bevy::window::PrimaryWindow;
+
+use crate::UiInteraction;
 use renzora::{EntityGroup, ScriptUiInbox, UiCallback};
 use crate::game_ui::UiCanvas;
 
@@ -72,7 +74,7 @@ fn dnd_system(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     ui_scale: Res<UiScale>,
-    items: Query<(Entity, &Interaction, &DragItem)>,
+    items: Query<(Entity, &UiInteraction, &DragItem)>,
     zones: Query<(&DropZone, &RelativeCursorPosition)>,
     child_of: Query<&ChildOf>,
     canvases: Query<(), With<UiCanvas>>,
@@ -87,7 +89,7 @@ fn dnd_system(
     // ── Pickup → reparent the item to its canvas (screen space) ──
     if mouse.just_pressed(MouseButton::Left) && drag.item.is_none() {
         for (e, interaction, di) in &items {
-            if *interaction == Interaction::Pressed {
+            if *interaction == UiInteraction::Pressed {
                 if let Ok(n) = nodes.get(e) {
                     drag.orig_pos_type = n.position_type;
                     drag.orig_left = n.left;

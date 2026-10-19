@@ -4,7 +4,9 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberRadio {
@@ -43,7 +45,7 @@ pub fn radio_group(
                     column_gap: Val::Px(5.0),
                     ..default()
                 },
-                Interaction::default(),
+                UiInteraction::default(),
                 crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("radio"),
             ))
@@ -60,7 +62,7 @@ pub fn radio_group(
                     ..default()
                 },
                 BorderColor::all(rgb(border())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("radio-ring"),
             ))
             .id();
@@ -74,7 +76,7 @@ pub fn radio_group(
                     ..default()
                 },
                 BackgroundColor(rgb(accent())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("radio-dot"),
             ))
             .id();
@@ -99,14 +101,14 @@ pub fn radio_group(
 }
 
 pub(crate) fn radio_interact(
-    pressed: Query<(&Interaction, &EmberRadio), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberRadio), Changed<UiInteraction>>,
     radios: Query<&EmberRadio>,
     mut nodes: Query<&mut Node>,
     mut groups: Query<&mut crate::reactive::Bound<usize>>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
     for (interaction, r) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             chosen = Some((r.group, r.value));
             break;
         }

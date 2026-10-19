@@ -23,6 +23,7 @@ use renzora_editor_framework::{AppEditorExt, FieldValue, SplashState};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
 use renzora_ember::widgets::icon_label_button;
+use renzora_ember::UiInteraction;
 use renzora_inspector::asset_drop_field;
 
 #[derive(Component)]
@@ -79,9 +80,9 @@ fn hanabi_native(world: &mut World, entity: Entity) -> Entity {
     })
 }
 
-fn hanabi_edit_click(q: Query<(&Interaction, &HanabiEditBtn), Changed<Interaction>>, mut commands: Commands) {
+fn hanabi_edit_click(q: Query<(&UiInteraction, &HanabiEditBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = btn.entity;

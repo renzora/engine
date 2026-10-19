@@ -27,6 +27,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, dropdown, password_input, text_input, EmberTextInput,
 };
+use renzora_ember::UiInteraction;
 
 use crate::toasts::{ToastQueue, Tone};
 use crate::util::{self, hash64, session_clone};
@@ -217,21 +218,21 @@ fn clicks(
     mut acc: ResMut<AccountSettings>,
     session: Res<AuthSession>,
     time: Res<Time>,
-    save_profile: Query<&Interaction, (With<SaveProfileBtn>, Changed<Interaction>)>,
-    update_pw: Query<&Interaction, (With<UpdatePwBtn>, Changed<Interaction>)>,
+    save_profile: Query<&UiInteraction, (With<SaveProfileBtn>, Changed<UiInteraction>)>,
+    update_pw: Query<&UiInteraction, (With<UpdatePwBtn>, Changed<UiInteraction>)>,
     pw_current: Query<&EmberTextInput, With<CurrentPwInput>>,
     pw_new: Query<&EmberTextInput, With<NewPwInput>>,
     pw_confirm: Query<&EmberTextInput, With<ConfirmPwInput>>,
-    add_conn: Query<&Interaction, (With<AddConnectionBtn>, Changed<Interaction>)>,
+    add_conn: Query<&UiInteraction, (With<AddConnectionBtn>, Changed<UiInteraction>)>,
     add_platform: Query<&Bound<usize>, With<AddPlatformDropdown>>,
     add_input: Query<&EmberTextInput, With<AddConnectionInput>>,
-    remove_conn: Query<(&Interaction, &RemoveConnectionBtn), Changed<Interaction>>,
-    revoke: Query<(&Interaction, &RevokeAppBtn), Changed<Interaction>>,
-    delete_btn: Query<&Interaction, (With<DeleteAccountBtn>, Changed<Interaction>)>,
+    remove_conn: Query<(&UiInteraction, &RemoveConnectionBtn), Changed<UiInteraction>>,
+    revoke: Query<(&UiInteraction, &RevokeAppBtn), Changed<UiInteraction>>,
+    delete_btn: Query<&UiInteraction, (With<DeleteAccountBtn>, Changed<UiInteraction>)>,
     delete_pw: Query<&EmberTextInput, With<DeletePasswordInput>>,
     mut toasts: ResMut<ToastQueue>,
 ) {
-    let pressed = |i: &Interaction| *i == Interaction::Pressed;
+    let pressed = |i: &UiInteraction| *i == UiInteraction::Pressed;
     let now = time.elapsed_secs_f64();
 
     // Disarm a stale delete confirmation so its warning banner clears itself.

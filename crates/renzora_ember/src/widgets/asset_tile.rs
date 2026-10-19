@@ -10,6 +10,7 @@ use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::tracked::{bind_bg, bind_with};
 use crate::style::Theme;
 use crate::theme::{rgb, text_primary};
+use crate::UiInteraction;
 
 /// A themed asset card: a thumbnail icon over a label. Hover-reactive; colors
 /// come from `Theme.asset_tile` (editable in the Theme tab) and repaint live.
@@ -31,15 +32,15 @@ pub fn asset_tile(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("asset-tile"),
         ))
         .id();
     bind_bg(commands, card, move |w| {
         let hovered = matches!(
-            w.get::<Interaction>(card),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(card),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         let st = &w.resource::<Theme>().asset_tile;
         if hovered {
@@ -53,8 +54,8 @@ pub fn asset_tile(
         card,
         move |w| {
             matches!(
-                w.get::<Interaction>(card),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(card),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             )
         },
         move |w, e, hovered: &bool| {

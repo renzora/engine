@@ -12,9 +12,11 @@ use bevy::ui::RelativeCursorPosition;
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{menu_item, screen_menu, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 
 use crate::dock::DockTree;
 use crate::ShellLayouts;
@@ -80,7 +82,7 @@ pub(crate) fn ribbon_interact(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     rename: Res<RibbonRename>,
-    pressed: Query<(&RibbonItem, &Interaction)>,
+    pressed: Query<(&RibbonItem, &UiInteraction)>,
     items: Query<(&RibbonItem, &RelativeCursorPosition)>,
     mut nodes: Query<&mut Node>,
     mut layouts: ResMut<ShellLayouts>,
@@ -109,7 +111,7 @@ pub(crate) fn ribbon_interact(
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(cur) = cursor {
             for (item, interaction) in &pressed {
-                if *interaction == Interaction::Pressed {
+                if *interaction == UiInteraction::Pressed {
                     drag.0 = Some(RibbonDragState { from: item.index, start_cursor: cur, active: false, target: item.index });
                     break;
                 }
@@ -333,12 +335,12 @@ pub(crate) fn ribbon_rename_commit(
 
 /// `+` → add a new empty workspace and switch to it.
 pub(crate) fn workspace_add_click(
-    q: Query<&Interaction, (With<WorkspaceAddBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<WorkspaceAddBtn>, Changed<UiInteraction>)>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     // Save the current layout, then append + focus a fresh empty workspace.
@@ -459,7 +461,7 @@ fn ribbon_item(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
@@ -516,7 +518,7 @@ fn ribbon_item(
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ribbon-insert-marker"),
         ))
         .id();

@@ -9,14 +9,15 @@
 //! nodes fighting over `bind_display`.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::widgets::{markdown_view, scroll_view};
+use renzora_ember::UiInteraction;
 
 use crate::releases::{ReleaseEntry, ReleaseFeed, RELEASES_URL};
 
@@ -44,7 +45,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(PAGE_PAD)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-page-changelog"),
         ))
         .id();
@@ -59,7 +60,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(12.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let header = page_header(
@@ -86,7 +87,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     keyed_list(commands, list, releases_snapshot);
@@ -147,7 +148,7 @@ fn note_snapshot(text_value: &str) -> KeyedSnapshot {
                 ui_font(&f.ui, 12.0),
                 TextColor(text_muted()),
                 Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id()
         }),
@@ -169,7 +170,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
             },
             BackgroundColor(ca(16, 18, 28, 220)),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("splash-release-card"),
         ))
         .id();
@@ -183,7 +184,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
                 column_gap: Val::Px(8.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -214,7 +215,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
             ui_font(&fonts.ui, 13.5),
             TextColor(text()),
             Node { flex_grow: 1.0, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     head_kids.push(title);
@@ -224,7 +225,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
                 Text::new(entry.date.clone()),
                 ui_font(&fonts.mono, 10.5),
                 TextColor(text_muted()),
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         head_kids.push(date);
@@ -242,14 +243,14 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
                     Text::new(renzora::lang::t("splash.no_release_notes")),
                     ui_font(&fonts.ui, 11.5),
                     TextColor(text_muted()),
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id(),
         );
     } else {
         let (excerpt, truncated) = excerpt(body);
         let md = markdown_view(commands, fonts, &excerpt);
-        commands.entity(md).insert(FocusPolicy::Pass);
+        commands.entity(md).insert(PASS_THROUGH);
         kids.push(md);
         if truncated {
             kids.push(
@@ -258,7 +259,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
                         Text::new("…".to_string()),
                         ui_font(&fonts.ui, 11.5),
                         TextColor(text_muted()),
-                        FocusPolicy::Pass,
+                        PASS_THROUGH,
                     ))
                     .id(),
             );
@@ -345,7 +346,7 @@ fn chip(
                 ..default()
             },
             BackgroundColor(bg),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let t = commands
@@ -353,7 +354,7 @@ fn chip(
             Text::new(label.to_string()),
             ui_font(&fonts.mono, 10.0),
             TextColor(fg),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(chip).add_child(t);
@@ -384,8 +385,8 @@ pub(crate) fn link_button(
             },
             BackgroundColor(btn_dark()),
             BorderColor::all(border_soft()),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             SplashUrl(url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
@@ -394,13 +395,13 @@ pub(crate) fn link_button(
         if is_hovered(w, btn) { btn_dark_hover() } else { btn_dark() }
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, ICON_MUTED, 12.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.5),
             TextColor(text()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);

@@ -255,6 +255,11 @@ pub enum MaterialDomain {
     Vegetation,
     /// Unlit — raw color output, no PBR lighting.
     Unlit,
+    /// Sprite: a 2D sprite's fragment shader, through Bevy's `SpriteMaterial`.
+    /// The color pin starts as the sprite's own texture, so an empty graph
+    /// draws the sprite unchanged; the sprite's tint, flip and alpha mode
+    /// still apply on top.
+    Sprite,
 }
 
 impl MaterialDomain {
@@ -264,8 +269,61 @@ impl MaterialDomain {
             Self::TerrainLayer => "Terrain Layer",
             Self::Vegetation => "Vegetation",
             Self::Unlit => "Unlit",
+            Self::Sprite => "Sprite",
         }
     }
+
+    /// Whether this domain draws in a 3D view, where the PBR, prepass and
+    /// environment-map bindings exist. A sprite is drawn by the 2D pipeline,
+    /// which has none of them.
+    pub fn is_3d(&self) -> bool {
+        !matches!(self, Self::Sprite)
+    }
+
+    /// Why a `node_type` node does not belong in a material of this domain, or
+    /// `None` when it does.
+    ///
+    /// The one rule every place shares: codegen refuses to compile the node,
+    /// the Material Editor leaves it out of the add-node menu, refuses a wire
+    /// to or from it, and marks one that is already in the graph (pasted in,
+    /// or saved by an older editor).
+    pub fn refuses_node(&self, node_type: &str) -> Option<String> {
+        if !self.is_3d() && needs_3d_view(node_type) {
+            return Some(format!(
+                "{} reads the 3D view, which a {} material does not have",
+                node_display_name(node_type),
+                self.display_name()
+            ));
+        }
+        if self.is_3d() && node_type == "input/sprite_color" {
+            return Some(format!(
+                "Sprite Color reads a sprite's texture, which a {} material does not have",
+                self.display_name()
+            ));
+        }
+        None
+    }
+}
+
+/// The scene nodes that read something only a 3D view binds: a prepass, the
+/// environment map or the opaque-pass colour. The 2D pipeline has none of
+/// them. Screen UV and refraction offsets are plain arithmetic on what every
+/// view has, so those work everywhere.
+pub fn needs_3d_view(node_type: &str) -> bool {
+    matches!(
+        node_type,
+        "scene/scene_depth"
+            | "scene/depth_fade"
+            | "scene/scene_normal"
+            | "scene/motion_vector"
+            | "scene/scene_color"
+            | "scene/env_map_sample"
+            | "scene/env_map_reflect"
+    )
+}
+
+fn node_display_name(node_type: &str) -> &str {
+    super::nodes::node_def(node_type).map(|d| d.display_name).unwrap_or(node_type)
 }
 
 // ── Connection ──────────────────────────────────────────────────────────────
@@ -403,6 +461,7 @@ impl MaterialGraph {
             MaterialDomain::TerrainLayer => "output/terrain_layer",
             MaterialDomain::Vegetation => "output/vegetation",
             MaterialDomain::Unlit => "output/unlit",
+            MaterialDomain::Sprite => "output/sprite",
         };
         let id = self.next_id;
         self.next_id += 1;

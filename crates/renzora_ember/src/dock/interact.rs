@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::font::EmberFonts;
 use crate::theme::{close_red, rgb, text_muted, text_primary};
+use crate::UiInteraction;
 
 use crate::dock::components::{
     BottomCollapseBtn, BottomSnap, BottomSnapRequest, DockLeaf, DockTab, FocusPanelRequest,
@@ -25,15 +26,15 @@ use crate::dock::{Dock, DockDirty, FixedDock};
 /// shown, it blocks the tab's own hover) is hovered; hide it otherwise so
 /// unhovered tabs keep their exact look and hit-testing.
 pub(crate) fn tab_grip_hover(
-    grips: Query<(Entity, &Interaction, &TabGrip)>,
-    tabs: Query<&Interaction, With<DockTab>>,
+    grips: Query<(Entity, &UiInteraction, &TabGrip)>,
+    tabs: Query<&UiInteraction, With<DockTab>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (grip_entity, grip_interaction, grip) in &grips {
-        let hovered = matches!(grip_interaction, Interaction::Hovered | Interaction::Pressed)
+        let hovered = matches!(grip_interaction, UiInteraction::Hovered | UiInteraction::Pressed)
             || tabs
                 .get(grip.tab)
-                .is_ok_and(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+                .is_ok_and(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
         if let Ok(mut node) = nodes.get_mut(grip_entity) {
             let display = if hovered { Display::Flex } else { Display::None };
             if node.display != display {
@@ -48,7 +49,7 @@ pub(crate) fn tab_grip_hover(
 /// the tab, without the modifier).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn tab_grip_interact(
-    grips: Query<(&Interaction, &TabGrip), Changed<Interaction>>,
+    grips: Query<(&UiInteraction, &TabGrip), Changed<UiInteraction>>,
     leaves: Query<&bevy::ui::ComputedNode, With<DockLeaf>>,
     windows: Query<&Window>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
@@ -61,7 +62,7 @@ pub(crate) fn tab_grip_interact(
     mut close_queue: ResMut<DockWindowCloseRequests>,
 ) {
     for (i, grip) in &grips {
-        if *i != Interaction::Pressed {
+        if *i != UiInteraction::Pressed {
             continue;
         }
         let scale = area_window(grip.area, &wins, primary.single().ok())
@@ -217,8 +218,8 @@ pub(crate) fn tab_context_menu(
 
 /// Track which panel the user last clicked into as [`FocusedPanel`]. A left
 /// press over a leaf makes that leaf's visible panel the focused one. Panel
-/// content nodes block picking (`FocusPolicy::Block`), so leaf `Interaction`
-/// is unreliable here — we test the leaf's own `RelativeCursorPosition`, which
+/// content nodes block picking (`BLOCK`), so the press lands on them rather
+/// than on the leaf and leaf `UiInteraction` is unreliable here; we test the leaf's own `RelativeCursorPosition`, which
 /// is true whenever the cursor is anywhere inside that leaf. Tab switches and
 /// programmatic focus update [`FocusedPanel`] separately (see
 /// [`apply_tab_switch`] / [`apply_focus_request`]).
@@ -309,7 +310,7 @@ pub(crate) fn apply_tab_switch(
 pub(crate) fn tab_hover(
     leaves: Query<&DockLeaf>,
     theme: Res<crate::style::Theme>,
-    mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>,
+    mut tabs: Query<(&UiInteraction, &DockTab, &mut BackgroundColor)>,
     mut texts: Query<&mut TextColor>,
 ) {
     let d = &theme.dock;
@@ -317,7 +318,7 @@ pub(crate) fn tab_hover(
         // Active per the tab's own leaf (not a tree lookup): with floating dock
         // windows the same panel id can exist in several trees at once.
         let active = leaves.get(tab.leaf).is_ok_and(|l| l.active == tab.id);
-        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let hovered = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed);
         let target = if active {
             d.tab_active.color()
         } else if hovered {
@@ -392,11 +393,11 @@ pub(crate) fn tab_close_click(
 /// ratio in the payload: unlike a divider snap, a click leaves the tree's
 /// ratio accurate, so the consumer records whatever the detach returns.
 pub(crate) fn bottom_collapse_click(
-    q: Query<(&Interaction, &BottomCollapseBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &BottomCollapseBtn), Changed<UiInteraction>>,
     mut snap: ResMut<BottomSnapRequest>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         snap.0 = Some(BottomSnap {

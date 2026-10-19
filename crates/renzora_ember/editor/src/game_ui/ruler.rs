@@ -59,7 +59,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             // Chrome only — clicks belong to the canvas underneath.
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             RulerRoot,
             Name::new("ui-canvas-rulers"),
@@ -79,7 +78,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     ..default()
                 },
                 BackgroundColor(rgb(panel_bg()).with_alpha(0.92)),
-                bevy::ui::FocusPolicy::Pass,
                 Pickable::IGNORE,
                 Name::new(if horizontal { "ruler-h" } else { "ruler-v" }),
             ))
@@ -101,7 +99,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             GlobalZIndex(1),
             Name::new("ruler-corner"),
@@ -122,7 +119,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     bevy::ui::widget::Text::new(""),
                     ui_font(&fonts.ui, 8.0),
                     TextColor(rgb(text_muted())),
-                    bevy::ui::FocusPolicy::Pass,
                     Pickable::IGNORE,
                 ))
                 .id();
@@ -136,7 +132,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     },
                     BackgroundColor(rgb(border())),
                     Visibility::Hidden,
-                    bevy::ui::FocusPolicy::Pass,
                     Pickable::IGNORE,
                     Tick { horizontal },
                 ))
@@ -164,7 +159,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 BackgroundColor(rgb(accent())),
                 GlobalZIndex(2),
                 Visibility::Hidden,
-                bevy::ui::FocusPolicy::Pass,
                 Pickable::IGNORE,
                 CursorMark { horizontal },
                 Name::new(if horizontal { "ruler-mark-x" } else { "ruler-mark-y" }),

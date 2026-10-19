@@ -134,7 +134,6 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // the scene rather than as something laid on top of it.
             BackgroundColor(rgb(panel_bg()).with_alpha(0.72)),
             bevy::picking::Pickable::IGNORE,
-            bevy::ui::FocusPolicy::Pass,
             StatsOverlayRoot,
             Name::new("vp-stats"),
         ))

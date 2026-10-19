@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::button::EmberButton;
 use super::common::format_num;
@@ -77,7 +78,7 @@ fn step_button(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberButton,
             Styled::new(Role::IconButton),
             EmberStepButton { stepper, dir },
@@ -95,12 +96,12 @@ fn step_button(
 }
 
 pub(crate) fn stepper_interact(
-    pressed: Query<(&Interaction, &EmberStepButton), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberStepButton), Changed<UiInteraction>>,
     mut steppers: Query<&mut EmberStepper>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, btn) in &pressed {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Ok(mut s) = steppers.get_mut(btn.stepper) {

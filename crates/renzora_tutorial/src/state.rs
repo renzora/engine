@@ -29,6 +29,7 @@ use renzora_code_editor::CodeEditorState;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::dock::{Dock, DockDirty, DockTree};
 use renzora_ember::font::EmberFonts;
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use crate::demo_panel::DEMO_PANEL_ID;
@@ -509,16 +510,16 @@ pub fn detect_step_done(mut state: ResMut<TutorialState>, signals: Signals) {
 pub fn handle_continue(
     mut state: ResMut<TutorialState>,
     signals: Signals,
-    cont: Query<&Interaction, (Changed<Interaction>, With<TutorialContinueButton>)>,
-    skip: Query<&Interaction, (Changed<Interaction>, With<TutorialSkipButton>)>,
+    cont: Query<&UiInteraction, (Changed<UiInteraction>, With<TutorialContinueButton>)>,
+    skip: Query<&UiInteraction, (Changed<UiInteraction>, With<TutorialSkipButton>)>,
 ) {
     if !state.active || state.show_picker || state.step().is_none() {
         return;
     }
     // The Continue button only exists while `step_done`, but check anyway rather
     // than trusting the UI to be the only guard.
-    let advance = (state.step_done && cont.iter().any(|i| *i == Interaction::Pressed))
-        || skip.iter().any(|i| *i == Interaction::Pressed);
+    let advance = (state.step_done && cont.iter().any(|i| *i == UiInteraction::Pressed))
+        || skip.iter().any(|i| *i == UiInteraction::Pressed);
     if !advance {
         return;
     }
@@ -535,20 +536,20 @@ pub fn handle_continue(
 pub fn handle_chapter_pick(
     mut state: ResMut<TutorialState>,
     signals: Signals,
-    buttons: Query<(&Interaction, &TutorialChapterButton), Changed<Interaction>>,
+    buttons: Query<(&UiInteraction, &TutorialChapterButton), Changed<UiInteraction>>,
 ) {
     if !state.active || !state.show_picker {
         return;
     }
     let Some(pick) = buttons
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, c)| c.0)
     else {
         return;
     };
     // A locked row is drawn but inert — the click is swallowed here rather than
-    // by omitting `Interaction`, so the row still hovers and reads as a real
+    // by omitting `UiInteraction`, so the row still hovers and reads as a real
     // (not-yet-available) chapter.
     let done = persistence::chapters_done(CHAPTERS.iter().map(|c| c.id));
     if !overlay_ui::is_unlocked(pick, &done) {
@@ -683,14 +684,14 @@ pub fn handle_buttons(
     mut state: ResMut<TutorialState>,
     dock: Option<ResMut<Dock>>,
     dock_dirty: Option<ResMut<DockDirty>>,
-    close: Query<&Interaction, (Changed<Interaction>, With<TutorialCloseButton>)>,
-    finish: Query<&Interaction, (Changed<Interaction>, With<TutorialFinishButton>)>,
+    close: Query<&UiInteraction, (Changed<UiInteraction>, With<TutorialCloseButton>)>,
+    finish: Query<&UiInteraction, (Changed<UiInteraction>, With<TutorialFinishButton>)>,
 ) {
     if !state.active {
         return;
     }
-    let finished = finish.iter().any(|i| *i == Interaction::Pressed);
-    let closed = close.iter().any(|i| *i == Interaction::Pressed);
+    let finished = finish.iter().any(|i| *i == UiInteraction::Pressed);
+    let closed = close.iter().any(|i| *i == UiInteraction::Pressed);
     if !finished && !closed {
         return;
     }

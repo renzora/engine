@@ -69,8 +69,6 @@ impl Plugin for GraphMaterialPlugin {
 /// Materials that haven't been compiled yet fall back to this, which just runs
 /// StandardMaterial unchanged.
 fn setup_default_shader(mut shaders: ResMut<Assets<Shader>>) {
-    // The source is written in the pre-0.20 dialect, like everything material
-    // codegen emits; `shader_source` translates it.
-    let shader = renzora::shader_source::shader(DEFAULT_EXT_FRAG_SRC, "graph_material/default_ext.wgsl");
+    let shader = renzora::shader_source::shader(DEFAULT_EXT_FRAG_SRC, "graph_material/default_ext.wesl");
     let _ = shaders.insert(&SURFACE_GRAPH_EXT_DEFAULT_FRAG, shader);
 }

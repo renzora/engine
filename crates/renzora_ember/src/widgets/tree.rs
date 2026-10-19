@@ -6,7 +6,9 @@ use bevy::window::SystemCursorIcon;
 use crate::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::text_node;
 
@@ -81,7 +83,7 @@ pub fn tree_node_with(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("tree-row"),
         ))
@@ -136,7 +138,7 @@ pub fn tree_node_with(
                     ..default()
                 },
                 BackgroundColor(rgb(tree_line())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("tree-line"),
             ))
             .id();
@@ -150,12 +152,12 @@ pub fn tree_node_with(
 }
 
 pub(crate) fn tree_toggle(
-    mut rows: Query<(&Interaction, &mut EmberTreeToggle), Changed<Interaction>>,
+    mut rows: Query<(&UiInteraction, &mut EmberTreeToggle), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, mut tt) in &mut rows {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         tt.open = !tt.open;

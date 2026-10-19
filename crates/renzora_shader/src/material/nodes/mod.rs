@@ -101,6 +101,7 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
     &VIEW_DIRECTION,
     &TIME,
     &VERTEX_COLOR,
+    &SPRITE_COLOR,
     &CAMERA_POSITION,
     &OBJECT_POSITION,
     // Parameter
@@ -263,6 +264,7 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
     &OUTPUT_TERRAIN_LAYER,
     &OUTPUT_VEGETATION,
     &OUTPUT_UNLIT,
+    &OUTPUT_SPRITE,
 ];
 
 /// Get all unique categories in display order.

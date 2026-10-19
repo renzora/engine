@@ -173,8 +173,8 @@ fn publish_game_mouse_ray(
 }
 
 /// One picking pointer per [`renzora::WorldUiPointerRay`] source, driven by
-/// ray-vs-quad hits. bevy_ui's focus system consumes the pointer entities +
-/// `PointerInput` messages exactly like the mouse, so `Interaction`, hover
+/// ray-vs-quad hits. Picking consumes the pointer entities +
+/// `PointerInput` messages exactly like the mouse, so `UiInteraction`, hover
 /// states, `on_ui` markup callbacks — everything — works on world canvases
 /// unmodified.
 #[derive(Default)]

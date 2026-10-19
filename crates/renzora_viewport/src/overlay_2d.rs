@@ -483,7 +483,6 @@ fn render_overlay_2d(
                 },
                 BackgroundColor(Color::NONE),
                 GlobalZIndex(Z_SELECTION),
-                bevy::ui::FocusPolicy::Pass,
                 bevy::picking::Pickable::IGNORE,
                 // See the ruler spawns below: named chrome is saved unless it
                 // opts out.
@@ -509,7 +508,6 @@ fn render_overlay_2d(
                 },
                 BackgroundColor(ACCENT.with_alpha(0.08)),
                 BorderColor::all(ACCENT),
-                bevy::ui::FocusPolicy::Pass,
                 bevy::picking::Pickable::IGNORE,
                 ChildOf(chrome_root),
                 Name::new("box-select-2d"),
@@ -620,7 +618,6 @@ fn render_overlay_2d(
             bevy::ui::UiTransform::from_rotation(screen_rot),
             BackgroundColor(Color::NONE),
             BorderColor::all(ACCENT),
-            bevy::ui::FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
             ChildOf(chrome_root),
             Name::new("selection-outline-2d"),
@@ -662,7 +659,6 @@ fn render_overlay_2d(
                 bevy::ui::UiTransform::from_rotation(screen_rot),
                 BackgroundColor(Color::WHITE),
                 BorderColor::all(ACCENT),
-                bevy::ui::FocusPolicy::Pass,
                 bevy::picking::Pickable::IGNORE,
                 ChildOf(chrome_root),
                 Name::new("selection-handle-2d"),
@@ -697,7 +693,6 @@ fn render_overlay_2d(
                         dir.to_angle() - std::f32::consts::FRAC_PI_2,
                     )),
                     BackgroundColor(ACCENT),
-                    bevy::ui::FocusPolicy::Pass,
                     bevy::picking::Pickable::IGNORE,
                     ChildOf(chrome_root),
                     Name::new("rotate-stem-2d"),
@@ -716,7 +711,6 @@ fn render_overlay_2d(
                     },
                     BackgroundColor(Color::WHITE),
                     BorderColor::all(ACCENT),
-                    bevy::ui::FocusPolicy::Pass,
                     bevy::picking::Pickable::IGNORE,
                     ChildOf(chrome_root),
                     Name::new("rotate-handle-2d"),
@@ -785,7 +779,6 @@ fn draw_y_sort_line_2d(
             ..default()
         },
         BackgroundColor(YSORT),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         ChildOf(chrome_root),
         Name::new("y-sort-line-2d"),
@@ -805,7 +798,6 @@ fn draw_y_sort_line_2d(
         bevy::ui::UiTransform::from_rotation(Rot2::radians(std::f32::consts::FRAC_PI_4)),
         BackgroundColor(Color::WHITE),
         BorderColor::all(YSORT),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         ChildOf(chrome_root),
         Name::new("y-sort-marker-2d"),
@@ -888,7 +880,6 @@ fn draw_collider_chrome_2d(
         bevy::ui::UiTransform::from_rotation(screen_rot),
         BackgroundColor(COLLIDER.with_alpha(0.08)),
         BorderColor::all(COLLIDER),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         ChildOf(chrome_root),
         Name::new("collider-outline-2d"),
@@ -924,7 +915,6 @@ fn draw_collider_chrome_2d(
             bevy::ui::UiTransform::from_rotation(screen_rot),
             BackgroundColor(Color::WHITE),
             BorderColor::all(COLLIDER),
-            bevy::ui::FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
             ChildOf(chrome_root),
             Name::new("collider-handle-2d"),
@@ -959,7 +949,6 @@ fn draw_rulers(
         overlay_node(origin.x, bar_top, size.x, RULER),
         BackgroundColor(bar),
         GlobalZIndex(Z_RULER_BAR),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         // Editor chrome, not scene content. Without this the scene *saver*
         // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
@@ -976,7 +965,6 @@ fn draw_rulers(
         overlay_node(origin.x, bar_top, RULER, size.y - top_offset),
         BackgroundColor(bar),
         GlobalZIndex(Z_RULER_BAR),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         // Editor chrome, not scene content. Without this the scene *saver*
         // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
@@ -1067,7 +1055,6 @@ fn spawn_tick(commands: &mut Commands, left: f32, top: f32, width: f32, height: 
         overlay_node(left, top, width, height),
         BackgroundColor(color),
         GlobalZIndex(Z_RULER_TICK),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         // Editor chrome, not scene content. Without this the scene *saver*
         // bakes it in: it serializes `With<Name>`, and these carry a `Name` so
@@ -1089,7 +1076,6 @@ fn spawn_label(commands: &mut Commands, font: &FontSource, text: &str, left: f32
         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
         overlay_node(left, top, 0.0, 0.0),
         GlobalZIndex(Z_RULER_LABEL),
-        bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         // Editor chrome, not scene content. Without this the scene *saver*
         // bakes it in: it serializes `With<Name>`, and these carry a `Name` so

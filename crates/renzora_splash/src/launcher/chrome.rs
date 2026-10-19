@@ -9,12 +9,13 @@
 
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::bind_bg;
+use renzora_ember::UiInteraction;
 // Only the trailing maximize button swaps its glyph between square and restore;
 // the macOS zoom dot keeps one appearance whatever the window state.
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
@@ -81,8 +82,8 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
             BackgroundColor(rail_bg()),
             // Blocks so the press starts a window drag here rather than falling
             // through to whatever is behind the bar.
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             SplashDragHandle,
             Name::new("splash-title-bar"),
         ))
@@ -96,7 +97,7 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
                 column_gap: Val::Px(8.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let mark = build_mark(commands, fonts);
@@ -105,7 +106,7 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
             Text::new("Renzora Engine".to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(text()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // The version reads as part of the product's name, not as a diagnostic — it
@@ -117,7 +118,7 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
             Text::new("·".to_string()),
             ui_font(&fonts.ui, 12.0),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let version = commands
@@ -125,7 +126,7 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
             Text::new(renzora::version::display()),
             ui_font(&fonts.mono, 11.0),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(brand).add_children(&[mark, name, dot, version]);
@@ -171,7 +172,7 @@ fn build_traffic_lights(commands: &mut Commands) -> Entity {
                 padding: UiRect::axes(Val::Px(12.0), Val::Px(0.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-traffic-lights"),
         ))
         .id();
@@ -191,8 +192,8 @@ fn build_traffic_lights(commands: &mut Commands) -> Entity {
                     ..default()
                 },
                 BackgroundColor(c(color.0, color.1, color.2)),
-                Interaction::default(),
-                FocusPolicy::Block,
+                UiInteraction::default(),
+                BLOCK,
                 SplashWinBtn(kind),
                 HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("splash-traffic-light"),
@@ -236,7 +237,7 @@ fn build_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-brand-mark"),
         ))
         .id();
@@ -254,7 +255,7 @@ fn build_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     display: Display::None,
                     ..default()
                 },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
                 FileImageWanted(path.clone()),
             ))
             .id();
@@ -279,7 +280,7 @@ fn build_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     }
 
     let glyph = icon_text(commands, &fonts.phosphor, "cube", ICON_ACCENT, 15.0);
-    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     commands.entity(frame).add_child(glyph);
     frame
 }
@@ -306,7 +307,7 @@ fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-window-controls"),
         ))
         .id();
@@ -343,8 +344,8 @@ fn win_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             SplashWinBtn(kind),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-win-btn"),
@@ -362,7 +363,7 @@ fn win_button(
         }
     });
     let glyph = icon_text(commands, &fonts.phosphor, icon, ICON_TEXT, 14.0);
-    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     if matches!(kind, WinBtn::Max) {
         let square = renzora_ember::font::icon_glyph("square").unwrap_or('\u{E4C6}');
         let restore = renzora_ember::font::icon_glyph("arrows-in-simple").unwrap_or('\u{E4C6}');
@@ -400,9 +401,9 @@ pub(crate) fn build_resize_zones(commands: &mut Commands, root: Entity) {
                 e.into_node(),
                 BackgroundColor(Color::NONE),
                 GlobalZIndex(560),
-                Interaction::default(),
+                UiInteraction::default(),
                 // Or a drag from an edge starts an OS *move* as well as a resize.
-                FocusPolicy::Block,
+                BLOCK,
                 SplashResizeZone(octant),
                 HoverCursor(cursor),
                 Name::new("splash-resize"),
@@ -469,12 +470,12 @@ fn resize_cursor(octant: CompassOctant) -> SystemCursorIcon {
 // ── Interaction systems ──────────────────────────────────────────────────────
 
 pub(crate) fn window_btn_click(
-    q: Query<(&Interaction, &SplashWinBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SplashWinBtn), Changed<UiInteraction>>,
     queue: Option<ResMut<WindowActionQueue>>,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         queue.push(match btn.0 {
@@ -486,7 +487,7 @@ pub(crate) fn window_btn_click(
 }
 
 pub(crate) fn drag_handle(
-    q: Query<&Interaction, (With<SplashDragHandle>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SplashDragHandle>, Changed<UiInteraction>)>,
     queue: Option<ResMut<WindowActionQueue>>,
 ) {
     let Some(mut queue) = queue else { return };
@@ -494,26 +495,26 @@ pub(crate) fn drag_handle(
     if renzora::EDITOR_OS_FRAME {
         return;
     }
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         queue.push(WindowAction::StartDrag);
     }
 }
 
 pub(crate) fn resize_zone_click(
-    q: Query<(&Interaction, &SplashResizeZone), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SplashResizeZone), Changed<UiInteraction>>,
     queue: Option<ResMut<WindowActionQueue>>,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, zone) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             queue.push(WindowAction::StartResize(zone.0));
         }
     }
 }
 
-pub(crate) fn url_click(q: Query<(&Interaction, &SplashUrl), Changed<Interaction>>) {
+pub(crate) fn url_click(q: Query<(&UiInteraction, &SplashUrl), Changed<UiInteraction>>) {
     for (interaction, url) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             open_url(&url.0);
         }
     }

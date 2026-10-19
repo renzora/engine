@@ -25,6 +25,7 @@ use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange,
 };
+use renzora_ember::UiInteraction;
 use renzora_inspector::asset_drop_field;
 
 use crate::{AnimEditorAction, AnimEditorBridge};
@@ -293,7 +294,7 @@ fn clip_block(
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             PlayClipBtn { entity, index },
         ))
         .id();
@@ -361,7 +362,7 @@ fn clip_block(
                 flex_shrink: 0.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             RemoveClipBtn { entity, index },
         ))
         .id();
@@ -494,14 +495,14 @@ fn animator_sm_set(w: &mut World, e: Entity, v: FieldValue) {
 // ── Click systems ────────────────────────────────────────────────────────────
 
 fn play_clip_click(
-    q: Query<(&Interaction, &PlayClipBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PlayClipBtn), Changed<UiInteraction>>,
     animators: Query<&AnimatorComponent>,
     queue: Option<ResMut<renzora_animation::AnimationCommandQueue>>,
     bridge: Option<Res<AnimEditorBridge>>,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(animator) = animators.get(btn.entity) else { continue };
@@ -522,11 +523,11 @@ fn play_clip_click(
 }
 
 fn remove_clip_click(
-    q: Query<(&Interaction, &RemoveClipBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RemoveClipBtn), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (e, i) = (btn.entity, btn.index);

@@ -34,6 +34,7 @@ use bevy::prelude::*;
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::button::icon_label_button;
 use super::scroll_view;
@@ -512,7 +513,7 @@ fn folder_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             FolderPickRow { path: path.clone(), picker },
             Name::new("folder-picker-row"),
@@ -523,8 +524,8 @@ fn folder_row(
         if w.get_resource::<FolderPick>().is_some_and(|f| f.0.as_deref() == Some(p.as_path())) {
             rgb(accent()).with_alpha(0.20)
         } else if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -592,7 +593,7 @@ fn folder_row(
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             FolderPickCaret { path: path.clone(), picker },
         ))
@@ -632,7 +633,7 @@ fn folder_row(
 /// Click a caret → fold that folder. The picker rebuilds its rows, which is how
 /// every other change to this tree is applied too (see `refresh_rows`).
 pub(crate) fn folder_pick_caret_click(
-    q: Query<(&Interaction, &FolderPickCaret), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FolderPickCaret), Changed<UiInteraction>>,
     mut collapsed: ResMut<FolderPickCollapsed>,
     fonts: Option<Res<EmberFonts>>,
     children: Query<&Children>,
@@ -641,7 +642,7 @@ pub(crate) fn folder_pick_caret_click(
 ) {
     let Some(fonts) = fonts else { return };
     for (interaction, caret) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if !collapsed.0.remove(&caret.path) {
@@ -697,7 +698,7 @@ fn inline_name_field(
 /// import window's scene tree strikes, and the same one a file manager's
 /// sidebar does.
 pub(crate) fn folder_pick_click(
-    q: Query<(&Interaction, &FolderPickRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FolderPickRow), Changed<UiInteraction>>,
     mut pick: ResMut<FolderPick>,
     mut collapsed: ResMut<FolderPickCollapsed>,
     fonts: Option<Res<EmberFonts>>,
@@ -706,7 +707,7 @@ pub(crate) fn folder_pick_click(
     mut commands: Commands,
 ) {
     for (interaction, row) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if pick.0.as_deref() != Some(row.path.as_path()) {
@@ -733,7 +734,7 @@ pub(crate) fn folder_pick_click(
 /// end up back where you started. Escape is a no-op that leaves a real folder
 /// called "New Folder"; Enter renames that folder.
 pub(crate) fn folder_new_click(
-    clicks: Query<(&Interaction, &FolderNewBtn), Changed<Interaction>>,
+    clicks: Query<(&UiInteraction, &FolderNewBtn), Changed<UiInteraction>>,
     mut trees: Query<&mut FolderPickerTree>,
     children: Query<&Children>,
     fonts: Option<Res<EmberFonts>>,
@@ -742,7 +743,7 @@ pub(crate) fn folder_new_click(
     mut commands: Commands,
 ) {
     for (interaction, btn) in &clicks {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(mut tree) = trees.get_mut(btn.0) else {

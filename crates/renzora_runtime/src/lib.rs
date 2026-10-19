@@ -72,6 +72,8 @@ pub mod server;
 mod dlss;
 mod plugins;
 mod render_scale;
+/// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.
+pub mod schedule_shuffle;
 mod viewport_stretch;
 
 // ── App setup (single source of truth for engine plugin registration) ────

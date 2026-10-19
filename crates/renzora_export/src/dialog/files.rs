@@ -11,9 +11,9 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::reactive::tracked::{bind_2way, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{section, tree_node_with};
@@ -28,11 +28,11 @@ use super::{FilesAction, FilesBulk, FilesPanel};
 ///
 /// A checkbox rather than the toggle switch the Features tab uses: a file tree
 /// is dense and long, and a row of switches reads as a control panel where what
-/// is wanted is a list of ticks. `FocusPolicy::Block` so a click lands on the
+/// is wanted is a list of ticks. `BLOCK` so a click lands on the
 /// box instead of falling through to the tree row and folding the folder.
 fn file_check(commands: &mut Commands) -> Entity {
     let cb = renzora_ember::widgets::checkbox(commands, false);
-    commands.entity(cb).insert(FocusPolicy::Block);
+    commands.entity(cb).insert(BLOCK);
     cb
 }
 

@@ -29,6 +29,9 @@ pub mod file_kind;
 pub mod font;
 pub mod icons;
 pub mod inspector;
+/// Hovered / pressed state from Bevy's picking: [`UiInteraction`].
+pub mod interaction;
+pub use interaction::UiInteraction;
 // The in-game `.html` UI runtime. Gated so the lean export can drop it (and its
 // `renzora_game_ui` + `bevy_hui` deps) for a game with no markup UI. Its
 // `MarkupPlugin` self-registers via `renzora::add!`, so gating the module out
@@ -65,6 +68,7 @@ pub struct EmberPlugin;
 impl Plugin for EmberPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            interaction::UiInteractionPlugin,
             style::ThemePlugin,
             dock::DockPlugin,
             stacking::StackingPlugin,
@@ -78,9 +82,10 @@ impl Plugin for EmberPlugin {
         // module. (When markup IS present, it no longer installs them.)
         cursor_icon::plugin(app);
         icons::plugin(app);
-        // Correct pointer state (clip + occlusion) — see `correct_pointer_state`.
-        // Runs right after `UiSystems::Focus` (the sole writer of `Interaction` /
-        // `RelativeCursorPosition`) so every consumer reads the corrected values.
+        // Correct pointer state (clip + occlusion): see `correct_pointer_state`.
+        // Runs right after `UiSystems::Focus` (where `UiInteraction` is derived
+        // and `RelativeCursorPosition` written) so every consumer reads the
+        // corrected values.
         app.add_systems(PreUpdate, correct_pointer_state.after(UiSystems::Focus));
         // Then the "a resize gesture is in flight" flag, off the corrected state.
         resize::plugin(app);
@@ -100,17 +105,18 @@ impl Plugin for EmberPlugin {
 ///    out of view. `CalculatedClip` does NOT have this gap (`update_clipping`
 ///    inherits it through visible nodes), so we re-test against it.
 ///
-/// 2. **Occlusion.** `FocusPolicy::Block` on an overlay stops `Interaction` from
-///    reaching nodes behind it, but it leaves their `RelativeCursorPosition`
-///    `cursor_over` set. Every panel-level wheel/drag handler (timeline zoom,
+/// 2. **Occlusion.** An overlay blocks picking, so nodes behind it are not
+///    hovered, but their `RelativeCursorPosition` (pure geometry) still says
+///    `cursor_over`. Every panel-level wheel/drag handler (timeline zoom,
 ///    code-editor scroll, canvas zoom, …) gates on `cursor_over`, so they all
 ///    fire *through* an open dropdown/menu/modal onto the panel behind it. We
-///    clear `cursor_over` (and `Interaction`) for any node sitting below the
+///    clear `cursor_over` (and `UiInteraction`) for any node sitting below the
 ///    topmost overlay/modal under the cursor that the node isn't part of — so
 ///    those handlers stand down without each needing its own overlay check.
 ///
 /// Both `CalculatedClip` (PostUpdate) and the cursor are physical, window-global
-/// pixels — the same basis `ui_focus_system` read a frame earlier. Only nodes
+/// pixels, the same basis `ui_focus_system` read when it wrote
+/// `RelativeCursorPosition` a frame earlier. Only nodes
 /// that currently carry pointer state are inspected, so the per-frame cost is the
 /// handful of nodes actually under the cursor.
 fn correct_pointer_state(
@@ -137,12 +143,12 @@ fn correct_pointer_state(
         Query<
             (
                 Entity,
-                Option<&mut Interaction>,
+                Option<&mut UiInteraction>,
                 Option<&mut RelativeCursorPosition>,
                 &ComputedStackIndex,
                 Option<&CalculatedClip>,
             ),
-            Or<(With<Interaction>, With<RelativeCursorPosition>)>,
+            Or<(With<UiInteraction>, With<RelativeCursorPosition>)>,
         >,
     )>,
     parents: Query<&ChildOf>,
@@ -176,7 +182,7 @@ fn correct_pointer_state(
     for (e, interaction, rcp, si, clip) in &mut queries.p1() {
         // Skip nodes with nothing to clear — avoids the ancestor walk for the
         // vast majority that aren't under the cursor.
-        let active = interaction.as_deref().is_some_and(|i| *i != Interaction::None)
+        let active = interaction.as_deref().is_some_and(|i| *i != UiInteraction::None)
             || rcp.as_deref().is_some_and(|r| r.cursor_over);
         if !active {
             continue;
@@ -189,8 +195,8 @@ fn correct_pointer_state(
             continue;
         }
         if let Some(mut interaction) = interaction {
-            if *interaction != Interaction::None {
-                interaction.set_if_neq(Interaction::None);
+            if *interaction != UiInteraction::None {
+                interaction.set_if_neq(UiInteraction::None);
             }
         }
         if let Some(mut rcp) = rcp {

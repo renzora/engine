@@ -10,6 +10,7 @@
 use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
+use renzora_ember::UiInteraction;
 
 use crate::doc_tabs::close_doc_tab_by_id;
 
@@ -169,16 +170,16 @@ fn spawn_exit_prompt(commands: &mut Commands, fonts: &EmberFonts, count: usize) 
 /// handled by ember's generic `overlay_dismiss`, which despawns the root — i.e.
 /// the same as Cancel.)
 pub(crate) fn exit_prompt_buttons(
-    save: Query<&Interaction, (Changed<Interaction>, With<ExitPromptSave>)>,
-    discard: Query<&Interaction, (Changed<Interaction>, With<ExitPromptDiscard>)>,
-    cancel: Query<&Interaction, (Changed<Interaction>, With<ExitPromptCancel>)>,
+    save: Query<&UiInteraction, (Changed<UiInteraction>, With<ExitPromptSave>)>,
+    discard: Query<&UiInteraction, (Changed<UiInteraction>, With<ExitPromptDiscard>)>,
+    cancel: Query<&UiInteraction, (Changed<UiInteraction>, With<ExitPromptCancel>)>,
     roots: Query<Entity, With<ExitPromptRoot>>,
     mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {
-    let save = save.iter().any(|i| *i == Interaction::Pressed);
-    let discard = discard.iter().any(|i| *i == Interaction::Pressed);
-    let cancel = cancel.iter().any(|i| *i == Interaction::Pressed);
+    let save = save.iter().any(|i| *i == UiInteraction::Pressed);
+    let discard = discard.iter().any(|i| *i == UiInteraction::Pressed);
+    let cancel = cancel.iter().any(|i| *i == UiInteraction::Pressed);
 
     if !(save || discard || cancel) {
         return;
@@ -309,16 +310,16 @@ fn spawn_close_tab_prompt(commands: &mut Commands, fonts: &EmberFonts, id: u64, 
 /// handled by ember's generic `overlay_dismiss`, which despawns the root — same
 /// as Cancel: the tab stays open.)
 pub(crate) fn close_tab_prompt_buttons(
-    save: Query<&Interaction, (Changed<Interaction>, With<CloseTabPromptSave>)>,
-    discard: Query<&Interaction, (Changed<Interaction>, With<CloseTabPromptDiscard>)>,
-    cancel: Query<&Interaction, (Changed<Interaction>, With<CloseTabPromptCancel>)>,
+    save: Query<&UiInteraction, (Changed<UiInteraction>, With<CloseTabPromptSave>)>,
+    discard: Query<&UiInteraction, (Changed<UiInteraction>, With<CloseTabPromptDiscard>)>,
+    cancel: Query<&UiInteraction, (Changed<UiInteraction>, With<CloseTabPromptCancel>)>,
     roots: Query<(Entity, &CloseTabPromptRoot)>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     mut commands: Commands,
 ) {
-    let save = save.iter().any(|i| *i == Interaction::Pressed);
-    let discard = discard.iter().any(|i| *i == Interaction::Pressed);
-    let cancel = cancel.iter().any(|i| *i == Interaction::Pressed);
+    let save = save.iter().any(|i| *i == UiInteraction::Pressed);
+    let discard = discard.iter().any(|i| *i == UiInteraction::Pressed);
+    let cancel = cancel.iter().any(|i| *i == UiInteraction::Pressed);
 
     if !(save || discard || cancel) {
         return;
@@ -495,15 +496,15 @@ fn spawn_switch_prompt(
 /// handled by ember's generic `overlay_dismiss`, which despawns the root — same
 /// as Cancel: the project stays open.)
 pub(crate) fn switch_prompt_buttons(
-    save: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptSave>)>,
-    discard: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptDiscard>)>,
-    cancel: Query<&Interaction, (Changed<Interaction>, With<SwitchPromptCancel>)>,
+    save: Query<&UiInteraction, (Changed<UiInteraction>, With<SwitchPromptSave>)>,
+    discard: Query<&UiInteraction, (Changed<UiInteraction>, With<SwitchPromptDiscard>)>,
+    cancel: Query<&UiInteraction, (Changed<UiInteraction>, With<SwitchPromptCancel>)>,
     roots: Query<(Entity, &SwitchPromptRoot)>,
     mut commands: Commands,
 ) {
-    let save = save.iter().any(|i| *i == Interaction::Pressed);
-    let discard = discard.iter().any(|i| *i == Interaction::Pressed);
-    let cancel = cancel.iter().any(|i| *i == Interaction::Pressed);
+    let save = save.iter().any(|i| *i == UiInteraction::Pressed);
+    let discard = discard.iter().any(|i| *i == UiInteraction::Pressed);
+    let cancel = cancel.iter().any(|i| *i == UiInteraction::Pressed);
 
     if !(save || discard || cancel) {
         return;

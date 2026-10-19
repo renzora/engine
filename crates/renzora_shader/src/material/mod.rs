@@ -15,6 +15,7 @@ pub mod precompiled;
 pub mod resolver;
 pub mod runtime;
 pub mod standard_build;
+pub mod sprite_material;
 pub mod surface_ext;
 pub mod texture_slots;
 // Problems-panel validation: a naga_oil composer over all of bevy_pbr's
@@ -37,6 +38,7 @@ impl Plugin for MaterialPlugin {
         info!("[runtime] MaterialPlugin");
         app.add_plugins(runtime::GraphMaterialPlugin);
         app.add_plugins(resolver::MaterialResolverPlugin);
+        app.add_plugins(sprite_material::SpriteGraphMaterialPlugin);
         // Authoring-only, so it follows `validate.rs` behind the same feature:
         // nothing in a shipped game asks what nodes exist, and the catalogue is
         // 159 entries of strings built at startup to answer that question.

@@ -145,6 +145,8 @@ end
 
 `on_press` runs on click; `on_enter` and `on_exit` run when the mouse moves over or away. UI event handling like this is **Lua-only**.
 
+A `<button>` stops the click there, so pressing it never also clicks whatever is behind it. Other UI boxes let clicks through: a plain `<node>` panel does not stop a click from reaching a 3D object behind it in the scene.
+
 ## Gauges, bars, and charts
 
 Need a circular gauge, a bar chart, or a speedometer? Add `vector="..."` to a node and Renzora draws it for you:
@@ -272,8 +274,8 @@ moves a focus between `<button>` elements, and **South** (A / Cross) activates
 the focused one.
 
 There is nothing to turn on and nothing to annotate. Focus is published by
-writing `Interaction::Hovered` on the focused button and activation by writing
-`Interaction::Pressed` for one frame — the same component a mouse writes — so
+writing `UiInteraction::Hovered` on the focused button and activation by writing
+`UiInteraction::Pressed` for one frame (the same component the mouse drives), so
 `on_press` handlers, hover styling and transitions all respond exactly as they
 do to a click, and a button that works with a mouse works on a pad.
 

@@ -7,6 +7,7 @@ use crate::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::text_node;
 
@@ -45,7 +46,7 @@ pub fn accordion_section(
                 ..default()
             },
             BackgroundColor(rgb(header_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("accordion-header"),
         ))
@@ -79,12 +80,12 @@ pub fn accordion_section(
 }
 
 pub(crate) fn accordion_toggle(
-    mut headers: Query<(&Interaction, &mut EmberAccordion), Changed<Interaction>>,
+    mut headers: Query<(&UiInteraction, &mut EmberAccordion), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, mut acc) in &mut headers {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         acc.open = !acc.open;

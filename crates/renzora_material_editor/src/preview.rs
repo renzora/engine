@@ -610,7 +610,11 @@ fn sync_preview_camera_active(
         fixed.as_deref(),
         wins.as_deref(),
     );
-    let should_be_active = visible && editor_state.compiled_wgsl.is_some();
+    // A Sprite material is previewed by `preview_2d`'s camera instead, into
+    // the same image; both rendering would fight over it.
+    let should_be_active = visible
+        && editor_state.compiled_wgsl.is_some()
+        && !crate::preview_2d::editing_sprite(&editor_state);
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {
             cam.is_active = should_be_active;
@@ -931,6 +935,12 @@ fn update_preview_material(
         return;
     }
     if !editor_state.compile_errors.is_empty() {
+        return;
+    }
+    // A sprite's shader reads the 2D pipeline's bindings, which the 3D
+    // preview mesh's pipeline does not have; binding it there would fail when
+    // the pipeline is built. `preview_2d` previews it on a sample sprite.
+    if editor_state.graph.domain == renzora_shader::material::graph::MaterialDomain::Sprite {
         return;
     }
 

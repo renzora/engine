@@ -13,7 +13,9 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::{BLOCK, PASS_THROUGH};
 use crate::theme::{accent, border, divider, header_bg, panel_bg, rgb, tab_active, text_muted, text_primary};
+use crate::UiInteraction;
 
 use crate::dock::components::{
     BottomCollapseBtn, BottomStripMarkers, Divider, DockLeaf, DockTab, DropOverlay, FixedAreaHeader,
@@ -213,7 +215,7 @@ fn rebuild_area(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             RootDropOverlay { area: area_entity },
             Name::new("root-drop-overlay"),
         ))
@@ -370,7 +372,7 @@ fn build_tree(
             let handle = commands
                 .spawn((
                     hit,
-                    Interaction::default(),
+                    UiInteraction::default(),
                     // The strip overhangs `GRAB/2` into both panes, so without
                     // this the press it owns also lands on whatever it covers
                     // (GH #81).
@@ -458,7 +460,7 @@ fn build_tree(
                     },
                     BackgroundColor(rgb(tab_active())),
                     BorderColor::all(rgb(border())),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     // No leaf yet — picking sets the tree's root leaf.
                     AddPanelButton {
@@ -638,7 +640,7 @@ pub(crate) struct TabScrollStrip {
 /// into a floating window — no Ctrl needed. Overlaid absolutely on the tab's
 /// left padding so it takes NO layout space (no gap in unhovered tabs), and
 /// kept `Display::None` until the tab is hovered so the hidden handle can't
-/// intercept clicks either. `FocusPolicy::Block` so pressing it undocks
+/// intercept clicks either. `BLOCK` so pressing it undocks
 /// instead of switching/dragging the tab (the same trick the close × uses).
 #[derive(Component)]
 pub(crate) struct TabGrip {
@@ -653,7 +655,7 @@ pub(crate) struct TabGrip {
 /// Click the tab bar `+` → open the shared search overlay of panels not already
 /// in that leaf; selecting one adds it as a tab (mirrors the egui panel picker).
 pub(crate) fn add_panel_click(
-    q: Query<(&Interaction, &AddPanelButton), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AddPanelButton), Changed<UiInteraction>>,
     leaves: Query<&DockLeaf>,
     fonts: Option<Res<EmberFonts>>,
     registry: Option<Res<renzora::core::ShellPanelRegistry>>,
@@ -663,7 +665,7 @@ pub(crate) fn add_panel_click(
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let leaf = btn.leaf;
@@ -872,7 +874,7 @@ fn populate_leaf(
                         ..default()
                     },
                     BackgroundColor(Color::NONE),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
                     LeafGrip { leaf },
                     Name::new("leaf-grip"),
@@ -910,7 +912,7 @@ fn populate_leaf(
                     } else {
                         Color::NONE
                     }),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     bevy::ui::RelativeCursorPosition::default(),
                     DockPart::Tab,
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -936,11 +938,11 @@ fn populate_leaf(
                         display: Display::None,
                         ..default()
                     },
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
                     // Block so pressing the handle undocks instead of
                     // selecting/dragging the tab (mirrors the close ×).
-                    bevy::ui::FocusPolicy::Block,
+                    BLOCK,
                     Name::new("tab-undock-grip"),
                 ))
                 .id();
@@ -959,7 +961,7 @@ fn populate_leaf(
                 TabClose,
                 bevy::ui::RelativeCursorPosition::default(),
                 // Block so clicking the × closes the tab instead of selecting it.
-                bevy::ui::FocusPolicy::Block,
+                BLOCK,
             ));
             let marker = commands
                 .spawn((
@@ -973,7 +975,7 @@ fn populate_leaf(
                         ..default()
                     },
                     BackgroundColor(rgb(accent())),
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     InsertMarker,
                     Name::new("insert-marker"),
                 ))
@@ -1033,7 +1035,7 @@ fn populate_leaf(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 AddPanelButton { leaf, area },
                 Name::new("dock-add-panel"),
@@ -1059,7 +1061,7 @@ fn populate_leaf(
         // enough that hovering a tab showed the resize cursor.
         if !movable {
             commands.entity(filler).insert((
-                Interaction::default(),
+                UiInteraction::default(),
                 FixedAreaHeader,
                 // It resizes the area, so it is a handle like any other: it
                 // owns its press (nothing behind it may also see it), and it
@@ -1094,7 +1096,7 @@ fn populate_leaf(
             // Always vertical now — `aligned()` only accepts the split whose
             // divider lies along this bar, and that divider is horizontal.
             commands.entity(filler).insert((
-                Interaction::default(),
+                UiInteraction::default(),
                 crate::resize::ResizeHandle,
                 crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
                 Divider {
@@ -1124,7 +1126,7 @@ fn populate_leaf(
                         ..default()
                     },
                     BackgroundColor(Color::NONE),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     BottomCollapseBtn {
                         // Root region collapses content-agnostically; a nested
@@ -1178,7 +1180,7 @@ fn populate_leaf(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             DropOverlay,
             Name::new("drop-overlay"),
         ))

@@ -61,13 +61,6 @@ members = [
 # crate, warning in the ones with no such feature. The dlopen FFI path is gone,
 # so the allow is no longer needed.
 [workspace.lints.rust]
-# TEMPORARY, for one deprecation: Bevy 0.20 deprecated `bevy_ui::Interaction`
-# in favour of `picking::hover::Hovered` and `ui::Pressed`, and the editor UI
-# reads `Interaction` in about 2,350 places. Every other deprecation was fixed
-# when the workspace moved to 0.20, so this hides nothing else today. Moving
-# off `Interaction` is its own piece of work; remove this line when it is done,
-# and check for other deprecations before then, since this allow hides them too.
-deprecated = "allow"
 
 [workspace.dependencies]
 # `dynamic_linking` is intentionally NOT in workspace defaults — it pulls

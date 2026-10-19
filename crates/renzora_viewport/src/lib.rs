@@ -130,6 +130,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .init_resource::<drop_target::ArmedViewportDrop>()
+            .init_resource::<renzora::core::viewport_types::DropCursorRequest>()
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,

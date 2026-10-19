@@ -35,6 +35,8 @@ use renzora_editor_framework::{
 use renzora_shader::material::codegen::{self, CompileResult, TextureKind};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::runtime::{new_graph_material, FallbackTexture, GraphMaterial};
+use renzora_shader::material::sprite_material::{insert_sprite_shader, sprite_material_from_compiled, SpriteGraphExt};
+use bevy::sprite_render::SpriteMaterial;
 use renzora_splash::{LoadingTaskHandle, LoadingTasks, SplashState};
 
 /// This capture rig's private render layer. Allocated in the contract crate
@@ -64,6 +66,9 @@ struct CaptureJob {
     /// domain — we still render a fallback grey sphere in that case so the
     /// asset browser gets *some* thumbnail rather than the default pink icon.
     compile: Option<CompileResult>,
+    /// A Sprite material: captured on the sample sprite by a 2D camera, with a
+    /// "2D" tag in the corner, rather than on the sphere it cannot be drawn on.
+    sprite: bool,
     /// Whether the captured PNG may be written to the disk cache. False when
     /// the `.material` failed to *parse* — that's usually a transient state
     /// (the importer is still writing the file), and persisting the fallback
@@ -228,9 +233,11 @@ fn intake_thumbnail_requests(
         // `compile: None`; the render path falls back to a plain default
         // material sphere so every `.material` gets *some* thumbnail.
         let mut cache_to_disk = true;
+        let mut sprite = false;
         let compile_opt: Option<CompileResult> = match read_material_source(&material_path) {
             Ok(content) => match serde_json::from_str::<MaterialGraph>(&content) {
-                Ok(graph) if graph.domain == MaterialDomain::Surface => {
+                Ok(graph) if matches!(graph.domain, MaterialDomain::Surface | MaterialDomain::Sprite) => {
+                    sprite = graph.domain == MaterialDomain::Sprite;
                     let result = codegen::compile(&graph);
                     if result.errors.is_empty() {
                         Some(result)
@@ -305,6 +312,7 @@ fn intake_thumbnail_requests(
             material_path,
             thumb_path,
             compile: compile_opt,
+            sprite,
             cache_to_disk,
             texture_handles,
             waited_frames: 0,
@@ -382,6 +390,7 @@ fn run_pending_captures(
     loading_job: Option<Res<MaterialThumbnailLoadingJob>>,
     asset_server: Res<AssetServer>,
     fallback: Res<FallbackTexture>,
+    mut sprite_kit: SpriteCaptureKit,
 ) {
     // Loop to arm multiple captures per frame when slots are available.
     for _ in 0..MAX_CONCURRENT_CAPTURES {
@@ -401,10 +410,26 @@ fn run_pending_captures(
             &loading_job,
             &asset_server,
             &fallback,
+            &mut sprite_kit,
         );
     }
 }
 
+/// What a Sprite material's capture needs beyond the 3D path's resources.
+#[derive(bevy::ecs::system::SystemParam)]
+struct SpriteCaptureKit<'w, 's> {
+    materials: ResMut<'w, Assets<SpriteGraphExt>>,
+    fonts: Option<Res<'w, renzora_ember::font::EmberFonts>>,
+    /// The sample sprite's image, made once and shared by every capture.
+    sample: Local<'s, Option<Handle<Image>>>,
+}
+
+/// Distance between two 2D capture cells. A 2D camera sees `THUMB_SIZE`
+/// units across, so cells far wider than that keep concurrent captures out of
+/// each other's frame; the 3D cells' 40 would overlap.
+const SPRITE_CELL_SPACING: f32 = 1000.0;
+
+#[allow(clippy::too_many_arguments)]
 fn arm_one_capture(
     commands: &mut Commands,
     pending: &mut PendingCaptures,
@@ -418,6 +443,7 @@ fn arm_one_capture(
     _loading_job: &Option<Res<MaterialThumbnailLoadingJob>>,
     asset_server: &AssetServer,
     fallback: &FallbackTexture,
+    sprite_kit: &mut SpriteCaptureKit,
 ) {
     if pending.active >= MAX_CONCURRENT_CAPTURES {
         return;
@@ -468,6 +494,21 @@ fn arm_one_capture(
         | TextureUsages::COPY_SRC
         | TextureUsages::RENDER_ATTACHMENT;
     let render_image_handle = images.add(render_image);
+
+    if job.sprite {
+        let capture_entities = spawn_sprite_capture(commands, &job, cell_idx, &render_image_handle, images, shaders, asset_server, fallback, sprite_kit);
+        pending.active += 1;
+        armed.list.push(ArmedCapture {
+            material_path: job.material_path.clone(),
+            thumb_path: job.thumb_path.clone(),
+            render_image: render_image_handle,
+            capture_entities,
+            cell_idx,
+            frames_remaining: CAPTURE_WARMUP_FRAMES,
+            cache_to_disk: job.cache_to_disk,
+        });
+        return;
+    }
 
     // Build the graph material. If the graph couldn't compile we skip the
     // shader + texture setup entirely — the material falls back to the
@@ -594,6 +635,107 @@ fn arm_one_capture(
         frames_remaining: CAPTURE_WARMUP_FRAMES,
         cache_to_disk: job.cache_to_disk,
     });
+}
+
+/// A Sprite material's capture rig: a 2D camera on the sample sprite the
+/// Material Preview uses, wearing the material, with a "2D" tag in the
+/// corner so a sprite material reads as one at a glance in the Assets panel.
+/// A graph that failed to compile still gets the plain sample sprite and the
+/// tag, as a 3D one still gets its grey sphere.
+#[allow(clippy::too_many_arguments)]
+fn spawn_sprite_capture(
+    commands: &mut Commands,
+    job: &CaptureJob,
+    cell_idx: usize,
+    target: &Handle<Image>,
+    images: &mut Assets<Image>,
+    shaders: &mut Assets<Shader>,
+    asset_server: &AssetServer,
+    fallback: &FallbackTexture,
+    kit: &mut SpriteCaptureKit,
+) -> Vec<Entity> {
+    let origin = Vec3::new(cell_idx as f32 * SPRITE_CELL_SPACING, 10_000.0, 0.0);
+    let layer = RenderLayers::layer(MATERIAL_THUMBNAIL_LAYER);
+    let half = THUMB_SIZE as f32 / 2.0;
+    let sample = kit
+        .sample
+        .get_or_insert_with(|| images.add(crate::preview_2d::sample_sprite_image()))
+        .clone();
+
+    let camera = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),
+                order: -1000 - (cell_idx as isize),
+                is_active: true,
+                ..default()
+            },
+            RenderTarget::Image(target.clone().into()),
+            Transform::from_translation(origin),
+            layer.clone(),
+            IsolatedCamera,
+            HideInHierarchy,
+            EditorLocked,
+            Name::new("Sprite Material Thumbnail Camera"),
+        ))
+        .id();
+
+    let mut sprite = commands.spawn((
+        Sprite {
+            image: sample,
+            custom_size: Some(Vec2::splat(THUMB_SIZE as f32 * 0.8)),
+            ..default()
+        },
+        Transform::from_translation(origin),
+        layer.clone(),
+        HideInHierarchy,
+        EditorLocked,
+        Name::new(format!("Sprite Material Thumbnail ({})", job.material_path.display())),
+    ));
+    if let Some(compile) = &job.compile {
+        let label = job.material_path.to_string_lossy().to_string();
+        let uuid = insert_sprite_shader(shaders, compile.fragment_shader.clone(), "graph_material/sprite_thumbnail.wesl".into());
+        let material = sprite_material_from_compiled(&fallback.0, uuid, &compile.texture_bindings, &compile.parameters, &label, asset_server);
+        sprite.insert(SpriteMaterial(kit.materials.add(material)));
+    }
+    let sprite = sprite.id();
+    let mut entities = vec![camera, sprite];
+
+    // The "2D" tag, bottom-right. Text needs the editor font, which is always
+    // loaded by the time a thumbnail is asked for; without it the tag is left
+    // off rather than drawn in a fallback face.
+    if let Some(fonts) = kit.fonts.as_ref() {
+        let chip_size = Vec2::new(54.0, 34.0);
+        let chip_at = origin + Vec3::new(half - chip_size.x / 2.0 - 8.0, -half + chip_size.y / 2.0 + 8.0, 1.0);
+        entities.push(
+            commands
+                .spawn((
+                    Sprite::from_color(Color::srgba(0.05, 0.05, 0.07, 0.85), chip_size),
+                    Transform::from_translation(chip_at),
+                    layer.clone(),
+                    HideInHierarchy,
+                    EditorLocked,
+                    Name::new("Sprite Material Thumbnail Tag"),
+                ))
+                .id(),
+        );
+        entities.push(
+            commands
+                .spawn((
+                    Text2d::new("2D"),
+                    TextFont { font: fonts.ui.clone(), font_size: bevy::text::FontSize::Px(24.0), ..default() },
+                    TextColor(Color::srgb(0.55, 0.85, 1.0)),
+                    Transform::from_translation(chip_at + Vec3::Z),
+                    layer,
+                    HideInHierarchy,
+                    EditorLocked,
+                    Name::new("Sprite Material Thumbnail Tag Text"),
+                ))
+                .id(),
+        );
+    }
+    entities
 }
 
 fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>) {

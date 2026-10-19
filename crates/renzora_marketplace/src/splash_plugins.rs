@@ -30,14 +30,15 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
-use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_display, bind_with, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::rgb;
 use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 use renzora_splash::{register_splash_section, SplashSection};
 
 use crate::auth::marketplace::{AssetSummary, MarketplaceListResponse};
@@ -249,7 +250,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(22.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-page-plugins"),
         ))
         .id();
@@ -271,7 +272,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(10.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let search = build_search(commands, fonts);
@@ -303,7 +304,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     keyed_list(commands, list, listings_snapshot);
@@ -332,7 +333,7 @@ fn header_block(
                 row_gap: Val::Px(3.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let h = text_node(commands, fonts, title, 17.0, TEXT);
@@ -358,11 +359,11 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(Color::srgba_u8(10, 12, 20, 225)),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", TEXT_MUTED, 14.0);
-    commands.entity(mag).insert(FocusPolicy::Pass);
+    commands.entity(mag).insert(PASS_THROUGH);
     let input = text_input(commands, &fonts.ui, "Search plugins…", "");
     commands.entity(input).insert((
         Node {
@@ -396,7 +397,7 @@ fn banner_row(commands: &mut Commands, tint: (u8, u8, u8)) -> Entity {
             },
             BackgroundColor(Color::srgba_u8(tint.0, tint.1, tint.2, 26)),
             BorderColor::all(Color::srgba_u8(tint.0, tint.1, tint.2, 90)),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id()
 }
@@ -404,7 +405,7 @@ fn banner_row(commands: &mut Commands, tint: (u8, u8, u8)) -> Entity {
 fn sign_in_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row = banner_row(commands, ACCENT);
     let icon = icon_text(commands, &fonts.phosphor, "user-circle", ACCENT, 17.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let msg = commands
         .spawn((
             Text::new(
@@ -414,7 +415,7 @@ fn sign_in_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(TEXT)),
             Node { flex_grow: 1.0, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let btn = pill(commands, fonts, "Sign In", ACCENT, (255, 255, 255));
@@ -447,14 +448,14 @@ fn notice_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     let icon = icon_text(commands, &fonts.phosphor, "check-circle", GREEN, 17.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let msg = commands
         .spawn((
             Text::new(String::new()),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(TEXT)),
             Node { flex_grow: 1.0, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     renzora_ember::reactive::tracked::bind_text(commands, msg, |w| {
@@ -473,7 +474,7 @@ fn notice_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn restart_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row = banner_row(commands, GOLD);
     let icon = icon_text(commands, &fonts.phosphor, "arrow-clockwise", GOLD, 17.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let msg = commands
         .spawn((
             Text::new(
@@ -482,7 +483,7 @@ fn restart_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(TEXT)),
             Node { flex_grow: 1.0, ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let btn = pill(commands, fonts, "Restart now", GOLD, (26, 22, 10));
@@ -543,7 +544,7 @@ fn note_snapshot(message: &str) -> KeyedSnapshot {
                 ui_font(&f.ui, 12.0),
                 TextColor(rgb(TEXT_MUTED)),
                 Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id()
         }),
@@ -571,7 +572,7 @@ fn listing_card(
             },
             BackgroundColor(card_bg()),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("splash-plugin-card"),
         ))
         .id();
@@ -586,7 +587,7 @@ fn listing_card(
                 row_gap: Val::Px(3.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -598,7 +599,7 @@ fn listing_card(
                 column_gap: Val::Px(7.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name = text_node(commands, fonts, &elide(&asset.name, 46), 13.0, TEXT);
@@ -634,7 +635,7 @@ fn listing_card(
                 row_gap: Val::Px(6.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let price = if asset.price_credits == 0 {
@@ -694,7 +695,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
                 ..default()
             },
             BackgroundColor(Color::srgba_u8(28, 32, 46, 220)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -710,7 +711,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
                         border_radius: BorderRadius::all(Val::Px(9.0)),
                         ..default()
                     },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             bind_with(
@@ -731,7 +732,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
         }
         None => {
             let glyph = icon_text(commands, &fonts.phosphor, "puzzle-piece", TEXT_MUTED, 22.0);
-            commands.entity(glyph).insert(FocusPolicy::Pass);
+            commands.entity(glyph).insert(PASS_THROUGH);
             commands.entity(frame).add_child(glyph);
         }
     }
@@ -750,7 +751,7 @@ fn chip(commands: &mut Commands, fonts: &EmberFonts, label: &str, tint: (u8, u8,
                 ..default()
             },
             BackgroundColor(Color::srgba_u8(tint.0, tint.1, tint.2, 34)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let t = commands
@@ -758,7 +759,7 @@ fn chip(commands: &mut Commands, fonts: &EmberFonts, label: &str, tint: (u8, u8,
             Text::new(label.to_string()),
             ui_font(&fonts.mono, 9.5),
             TextColor(rgb(tint)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(chip).add_child(t);
@@ -766,8 +767,8 @@ fn chip(commands: &mut Commands, fonts: &EmberFonts, label: &str, tint: (u8, u8,
 }
 
 /// [`crate::util::pill_button`] with the two things every clickable node on the
-/// splash needs and the store's panels do not: an explicit `FocusPolicy::Block`
-/// (see the launcher's module doc — a `Pass` node hands the press to every
+/// splash needs and the store's panels do not: an explicit `BLOCK`
+/// (see the launcher's module doc: a `PASS_THROUGH` node hands the press to every
 /// ancestor under the cursor as well) and a pointer cursor.
 fn pill(
     commands: &mut Commands,
@@ -778,7 +779,7 @@ fn pill(
 ) -> Entity {
     let btn = crate::util::pill_button(commands, fonts, label, bg, fg);
     commands.entity(btn).insert((
-        FocusPolicy::Block,
+        BLOCK,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     btn
@@ -800,8 +801,8 @@ fn icon_pill(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &st
             },
             BackgroundColor(Color::srgba_u8(12, 14, 22, 235)),
             BorderColor::all(border_soft()),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::widgets::HoverTint::solid(
                 Color::srgba_u8(12, 14, 22, 235),
                 Color::srgba_u8(26, 30, 46, 245),
@@ -811,7 +812,7 @@ fn icon_pill(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &st
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = text_node(commands, fonts, label, 11.5, TEXT);
     commands.entity(btn).add_children(&[ic, t]);
     btn
@@ -829,7 +830,7 @@ fn text_node(
             Text::new(value.to_string()),
             ui_font(&fonts.ui, size),
             TextColor(rgb(color)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }
@@ -962,20 +963,20 @@ fn search_enter(
 }
 
 fn refresh_click(
-    q: Query<&Interaction, (With<PluginRefreshBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<PluginRefreshBtn>, Changed<UiInteraction>)>,
     mut store: ResMut<PluginStore>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         store.installed = scan_installed();
         store.dirty = true;
     }
 }
 
 fn sign_in_click(
-    q: Query<&Interaction, (With<PluginSignInBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<PluginSignInBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         // The same modal the editor's title bar opens; its systems are ungated,
         // so it renders over the dashboard and the session it establishes is the
         // one the editor will already be holding.
@@ -983,8 +984,8 @@ fn sign_in_click(
     }
 }
 
-fn restart_click(q: Query<&Interaction, (With<PluginRestartBtn>, Changed<Interaction>)>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn restart_click(q: Query<&UiInteraction, (With<PluginRestartBtn>, Changed<UiInteraction>)>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         renzora::restart_process();
     }
 }
@@ -992,12 +993,12 @@ fn restart_click(q: Query<&Interaction, (With<PluginRestartBtn>, Changed<Interac
 // ── Installing ───────────────────────────────────────────────────────────────
 
 fn install_click(
-    q: Query<(&Interaction, &PluginInstallBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PluginInstallBtn), Changed<UiInteraction>>,
     session: Res<AuthSession>,
     mut store: ResMut<PluginStore>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let asset = btn.0.clone();

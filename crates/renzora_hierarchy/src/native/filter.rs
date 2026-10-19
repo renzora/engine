@@ -14,7 +14,9 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::widgets::{text_input, EmberTextInput, Popup};
+use renzora_ember::UiInteraction;
 
 /// The set of component-type names (plus the `__other__` sentinel) the tree is
 /// filtered to. Empty = show everything.
@@ -121,7 +123,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
             BorderColor::all(rgb(renzora_ember::theme::border())),
             GlobalZIndex(700),
             // Absorb pointer events so hover/click never leaks to the rows behind.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             RelativeCursorPosition::default(),
             Name::new("hier-filter-panel"),
         ))
@@ -137,7 +139,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
     commands.entity(panel).add_child(list);
 
     let icon = icon_text(commands, &fonts.phosphor, "funnel", (170, 170, 184), 13.0);
-    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let funnel = commands
         .spawn((
             Node {
@@ -150,7 +152,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup::new(panel),
             Name::new("hier-filter-funnel"),
         ))
@@ -162,8 +164,8 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
         if active {
             return rgb(accent()).with_alpha(0.30);
         }
-        match w.get::<Interaction>(funnel) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
+        match w.get::<UiInteraction>(funnel) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
             _ => Color::NONE,
         }
     });
@@ -221,7 +223,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
                         ..default()
                     },
                     BackgroundColor(Color::NONE),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     FilterClearBtn,
                     Name::new("filter-clear"),
                 ))
@@ -260,7 +262,7 @@ fn check_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             FilterToggle(type_name),
             Name::new("filter-row"),
         ))
@@ -278,7 +280,7 @@ fn check_row(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(renzora_ember::theme::border())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_bg(commands, check, move |w| {
@@ -291,7 +293,7 @@ fn check_row(
     let mut kids = vec![check];
     let label_color = if let Some((ic, color)) = icon {
         let g = icon_text(commands, &fonts.phosphor, ic, (color[0], color[1], color[2]), 13.0);
-        commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(g).insert(PASS_THROUGH);
         kids.push(g);
         color
     } else {
@@ -302,7 +304,7 @@ fn check_row(
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb((label_color[0], label_color[1], label_color[2]))),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     kids.push(t);
@@ -311,11 +313,11 @@ fn check_row(
 }
 
 pub(crate) fn hier_filter_toggle(
-    q: Query<(&Interaction, &FilterToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FilterToggle), Changed<UiInteraction>>,
     mut filter: ResMut<HierFilter>,
 ) {
     for (interaction, t) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if filter.types.contains(t.0) {
@@ -327,10 +329,10 @@ pub(crate) fn hier_filter_toggle(
 }
 
 pub(crate) fn hier_filter_clear(
-    q: Query<&Interaction, (With<FilterClearBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<FilterClearBtn>, Changed<UiInteraction>)>,
     mut filter: ResMut<HierFilter>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         filter.types.clear();
     }
 }

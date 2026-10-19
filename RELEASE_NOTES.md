@@ -1,5 +1,35 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 01:55
+- feat(materials): the Material Preview shows a Sprite material live on a sample sprite instead of a sphere
+- feat(materials): the add-node menu only offers nodes the material's domain can use, and a node it cannot use is marked red and takes no wires
+- fix(materials): the Sprite Output's Color and Alpha pins no longer show a value box that would override the sprite
+- feat(assets): a Sprite material's thumbnail is the sample sprite wearing it, tagged 2D
+- feat(editor): dragging a material over something that cannot wear it shows a "not allowed" cursor and the drop does nothing
+- feat(viewport): a Sprite material dropped on a sprite in the 2D view is applied to it
+- feat(editor): dragged nodes in every node graph snap to the grid dots; hold Alt to place freely
+
+## 2026-10-19 00:37
+- fix(editor): the viewport stats, node-graph wires and grid, UI canvas rulers and scrollbars, 2D overlay, scale HUD and menu-bar logo spawn again instead of failing, which left the stats text piled in the window's corner
+- feat(engine): `RENZORA_SHUFFLE_SEED=<n>` shuffles the order systems run in, to expose ordering bugs
+
+## 2026-10-18 03:03
+- refactor(ui): the editor and game UI track hover and press with Bevy's picking instead of the deprecated `Interaction`; plugins use `renzora_ember::UiInteraction` and `interaction::BLOCK` / `PASS_THROUGH`
+- feat(ui): a row stays highlighted while the pointer is on a button inside it
+- change(game-ui): a game's UI panel only stops a click reaching a 3D object behind it when it blocks
+
+## 2026-10-18 02:24
+- feat(materials): sprites can wear material graphs: Add ▸ Sprite Material in the Assets panel, then drag it onto a sprite in the Hierarchy
+- feat(materials): a Sprite Color node reads a sprite's own texture at any UV, for waves, wobble and dissolves
+- fix(materials): a Sprite material dropped on a 3D mesh, or a 3D material on a sprite, is refused with a Console line instead of failing to draw
+
+## 2026-10-18 02:05
+- refactor(materials): the material graph writes its shaders in WESL instead of the old dialect that had to be translated on every load
+- fix(shaders): a `.wgsl` file written in WESL loads instead of failing as plain WGSL
+
+## 2026-10-18 01:49
+- feat(editor): a plugin or script system that panics is logged to the Console and the editor keeps running, instead of crashing
+
 ## 2026-10-17 19:03
 - feat(editor): the window title reads "Renzora Engine" with the version and the open project's folder, replacing the version in the status bar
 - feat(editor): the editor, launcher and setup windows show the Renzora icon in their title bar and taskbar entry

@@ -12,15 +12,17 @@ use std::hash::{Hash, Hasher};
 
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, UiTransform};
+use bevy::ui::UiTransform;
 use bevy::window::SystemCursorIcon;
 
 use renzora::{EditorSelection, SplashState};
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::game_ui::NativeCanvasState;
 
@@ -112,7 +114,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             // Above the backdrop (0) + UI render (1) so handles are visible/clickable.
             ZIndex(5),
@@ -121,7 +123,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
         ))
         .id();
     let boxes = commands
-        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, FocusPolicy::Pass))
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, PASS_THROUGH))
         .id();
     keyed_list(commands, boxes, selection_snapshot);
     // Rubber-band rectangle, hidden until a marquee drag is in progress.
@@ -130,7 +132,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BackgroundColor(rgb(accent()).with_alpha(0.12)),
             BorderColor::all(rgb(accent())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Visibility::Hidden,
             MarqueeRect,
             Name::new("ui-canvas-marquee"),
@@ -145,7 +147,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BorderColor::all(rgb(accent()).with_alpha(0.55)),
             BackgroundColor(rgb(accent()).with_alpha(0.06)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Visibility::Hidden,
             DropBox,
             Name::new("ui-canvas-dropbox"),
@@ -161,7 +163,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
         .spawn((
             Node { position_type: PositionType::Absolute, ..default() },
             BackgroundColor(rgb(accent())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Visibility::Hidden,
             DropLine,
             Name::new("ui-canvas-dropline"),
@@ -179,7 +181,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BorderColor::all(rgb(accent()).with_alpha(0.35)),
             BackgroundColor(rgb(accent()).with_alpha(0.04)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Visibility::Hidden,
             HoverGroupBox,
             Name::new("ui-canvas-hovergroup"),
@@ -195,7 +197,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
         .spawn((
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BorderColor::all(rgb(accent()).with_alpha(0.8)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Visibility::Hidden,
             HoverBox,
             Name::new("ui-canvas-hoverbox"),
@@ -214,7 +216,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
                 .spawn((
                     Node { position_type: PositionType::Absolute, ..default() },
                     BackgroundColor(rgb(accent()).with_alpha(0.30)),
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Visibility::Hidden,
                     DropSlotTick,
                     Name::new("ui-canvas-dropslot"),
@@ -401,7 +403,7 @@ fn name_badge(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts) 
             bevy::ui::widget::Text::new(""),
             renzora_ember::font::ui_font(&fonts.ui, 9.0),
             TextColor(Color::WHITE),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ui-canvas-name-badge"),
         ))
         .id()
@@ -523,7 +525,7 @@ fn sel_box(
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BorderColor::all(rgb(accent())),
             UiTransform::IDENTITY,
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             SelBox(entity),
             Name::new("ui-canvas-selbox"),
         ))
@@ -551,7 +553,7 @@ fn sel_box(
                 Node { position_type: PositionType::Absolute, left: Val::Percent(lx * 100.0), top: Val::Percent(ly * 100.0), width: Val::Px(8.0), height: Val::Px(8.0), margin: UiRect::all(Val::Px(-5.0)), border: UiRect::all(Val::Px(1.0)), ..default() },
                 BackgroundColor(rgb(window_bg())),
                 BorderColor::all(rgb(accent())),
-                Interaction::default(),
+                UiInteraction::default(),
                 HoverCursor(rh.cursor()),
                 CanvasHandle { widget: entity, kind: HandleKind::Resize(rh) },
             ))
@@ -564,7 +566,7 @@ fn sel_box(
             Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(9.0), margin: UiRect { left: Val::Px(-5.0), top: Val::Px(-20.0), ..default() }, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Grab),
             CanvasHandle { widget: entity, kind: HandleKind::Rotate },
         ))

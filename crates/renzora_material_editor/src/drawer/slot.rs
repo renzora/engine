@@ -6,6 +6,7 @@ use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::MaterialThumbnailRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::bind_with;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{
@@ -13,6 +14,7 @@ use renzora_ember::theme::{
     text_primary,
 };
 use renzora_ember::widgets::{HoverTint, HoverTooltip};
+use renzora_ember::UiInteraction;
 
 use super::{
     material_abs, material_path, MatClearBtn, MatCreateBtn, MatDropZone, MatEditBtn,
@@ -56,12 +58,12 @@ pub(super) fn preview_square(
             BackgroundColor(rgb(faint_bg())),
             BorderColor::all(rgb(border()).with_alpha(0.55)),
             ImageNode::new(Handle::default()),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("material-preview"),
         ))
         .id();
     let glyph = icon_text(commands, &fonts.phosphor, "sphere", placeholder(), glyph_size);
-    commands.entity(glyph).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     commands.entity(square).add_child(glyph);
     (square, glyph)
 }
@@ -178,8 +180,8 @@ pub(super) fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: En
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             HoverTint::solid(rgb(popup_bg()), rgb(hover_bg()), rgb(hover_bg())),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             // No tooltip: a field with a caret on it already reads as a picker,
             // and this one is big enough to hover by accident on the way to the
             // action chips under it.
@@ -191,7 +193,7 @@ pub(super) fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: En
     let text_col = commands
         .spawn((
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: Val::Px(1.0), overflow: Overflow::clip(), ..default() },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name_text = commands
@@ -200,7 +202,7 @@ pub(super) fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: En
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(if has_mat { text_primary() } else { placeholder() })),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let sub_text = commands
@@ -209,14 +211,14 @@ pub(super) fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: En
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(placeholder())),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(text_col).add_children(&[name_text, sub_text]);
     // The caret is repointed (not respawned) by `mat_picker_toggle`, so it also
     // reports the tray's state instead of permanently promising "down".
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 10.0);
-    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
     commands.entity(field).insert(super::picker::MatPickerToggle { entity, panel, caret });
 
     // Edit and remove live *inside* the field, just left of the caret, rather
@@ -296,12 +298,12 @@ fn chip_btn(
             },
             BackgroundColor(base),
             HoverTint::solid(base, rgb(hover_bg()), rgb(accent()).with_alpha(0.35)),
-            Interaction::default(),
+            UiInteraction::default(),
             // Block, or the press also lands on whatever sits under the button —
             // for the per-slot clear that is the slot row itself, which would
             // open a file dialog on the same click that emptied the slot, and
             // for the field's edit/remove it is the picker trigger.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             Name::new("material-icon-btn"),
         ))
         .id();
@@ -309,7 +311,7 @@ fn chip_btn(
         commands.entity(btn).insert(HoverTooltip::new(tooltip));
     }
     let ic = icon_text(commands, &fonts.phosphor, icon, fg, 12.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(btn).add_child(ic);
     if let Some(label) = label {
         let text = commands
@@ -318,7 +320,7 @@ fn chip_btn(
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(fg)),
                 bevy::text::TextLayout::no_wrap(),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         commands.entity(btn).add_child(text);

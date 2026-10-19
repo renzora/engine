@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::text_input::{caret, EmberTextInput};
 
@@ -27,7 +28,7 @@ pub fn textarea(commands: &mut Commands, font: &bevy::text::FontSource, placehol
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             Styled::new(Role::Input),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("textarea"),
         ))

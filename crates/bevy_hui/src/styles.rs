@@ -64,21 +64,26 @@ impl InteractionTimer {
 }
 
 fn continues_interaction_checking(
-    interactions: Query<(Entity, &Interaction), With<HtmlStyle>>,
+    interactions: Query<
+        (Entity, &bevy::picking::hover::Hovered, Has<bevy::ui::Pressed>),
+        With<HtmlStyle>,
+    >,
     mut hovers: Query<&mut HoverTimer>,
     mut presseds: Query<&mut PressedTimer>,
     observer: Query<&InteractionObverser>,
     time: Res<Time<Real>>,
 ) {
-    interactions.iter().for_each(|(entity, interaction)| {
+    interactions.iter().for_each(|(entity, hovered, pressed)| {
         let subs = observer
             .get(entity)
             .map(|obs| obs.iter())
             .unwrap_or_default()
             .chain(std::iter::once(&entity));
 
-        match interaction {
-            Interaction::Pressed => {
+        // (pressed, hovered): `Pressed` from `ui_widgets::Button`, `Hovered`
+        // from picking. Pressed wins, as the old `Interaction::Pressed` did.
+        match (pressed, hovered.get()) {
+            (true, _) => {
                 // ++ pressed ++ hover
                 subs.for_each(|sub| {
                     if let (Ok(mut htimer), Ok(mut ptimer)) =
@@ -91,7 +96,7 @@ fn continues_interaction_checking(
                     }
                 });
             }
-            Interaction::Hovered => {
+            (false, true) => {
                 // ++ hover -- pressed
                 subs.for_each(|sub| {
                     if let (Ok(mut htimer), Ok(mut ptimer)) =
@@ -104,7 +109,7 @@ fn continues_interaction_checking(
                     }
                 });
             }
-            Interaction::None => {
+            (false, false) => {
                 // -- hover --pressed
                 subs.for_each(|sub| {
                     if let (Ok(mut htimer), Ok(mut ptimer)) =

@@ -9,6 +9,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_with};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::toggle_switch;
 
 use crate::preview::{ParticlePreviewImage, ParticlePreviewSettings};
@@ -41,9 +42,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             ImageNode::default(),
             Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
-            // `Interaction` (picking-aware) lets the orbit-input system tell when
+            // `UiInteraction` (picking-aware) lets the orbit-input system tell when
             // the cursor is genuinely over the preview vs. over a dock splitter.
-            Interaction::default(),
+            UiInteraction::default(),
             crate::preview::ParticlePreviewViewport,
             Name::new("particle-preview-image"),
         ))

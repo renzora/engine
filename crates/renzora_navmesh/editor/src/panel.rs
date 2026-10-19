@@ -19,6 +19,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{button, checkbox};
 
 use vleue_navigator::prelude::NavMeshStatus;
@@ -429,36 +430,36 @@ fn hasher() -> std::collections::hash_map::DefaultHasher {
 
 /// Global action buttons → queue the matching `PanelAction`.
 fn button_clicks(
-    rebuild_all: Query<&Interaction, (With<RebuildAllBtn>, Changed<Interaction>)>,
-    reset_agents: Query<&Interaction, (With<ResetAgentsBtn>, Changed<Interaction>)>,
-    bake: Query<&Interaction, (With<BakeBtn>, Changed<Interaction>)>,
+    rebuild_all: Query<&UiInteraction, (With<RebuildAllBtn>, Changed<UiInteraction>)>,
+    reset_agents: Query<&UiInteraction, (With<ResetAgentsBtn>, Changed<UiInteraction>)>,
+    bake: Query<&UiInteraction, (With<BakeBtn>, Changed<UiInteraction>)>,
     state: Option<Res<NavMeshPanelState>>,
     mirror: Option<Res<NavMeshPanelMirror>>,
 ) {
     let Some(state) = state else { return };
-    if rebuild_all.iter().any(|i| *i == Interaction::Pressed) {
+    if rebuild_all.iter().any(|i| *i == UiInteraction::Pressed) {
         if let Some(mirror) = &mirror {
             for row in &mirror.volumes {
                 state.queue_rebuild_volume(row.entity);
             }
         }
     }
-    if reset_agents.iter().any(|i| *i == Interaction::Pressed) {
+    if reset_agents.iter().any(|i| *i == UiInteraction::Pressed) {
         state.queue_reset_agents();
     }
-    if bake.iter().any(|i| *i == Interaction::Pressed) {
+    if bake.iter().any(|i| *i == UiInteraction::Pressed) {
         state.queue_bake_to_disk();
     }
 }
 
 /// Per-volume "Rebuild" buttons → queue a single-volume rebuild.
 fn volume_actions(
-    q: Query<(&Interaction, &VolumeRebuildBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &VolumeRebuildBtn), Changed<UiInteraction>>,
     state: Option<Res<NavMeshPanelState>>,
 ) {
     let Some(state) = state else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.queue_rebuild_volume(btn.0);
         }
     }

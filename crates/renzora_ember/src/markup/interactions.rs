@@ -2,7 +2,7 @@
 //!
 //! The loader (`loader.rs`) attaches bevy_hui's `OnUiPress` / `OnUiEnter` /
 //! `OnUiExit` components to entities whose markup uses `on_press="..."` etc.
-//! This module owns the bevy_ui-side: it watches `Changed<Interaction>` and
+//! This module owns the bevy_ui-side: it watches `Changed<UiInteraction>` and
 //! turns each transition into a [`renzora::UiCallback`] queued for
 //! [`renzora::ScriptUiInbox`], which `renzora_scripting` drains every frame
 //! and dispatches to every script's `on_ui(name, args, entity)` hook.
@@ -15,6 +15,8 @@ use bevy_hui::prelude::{OnUiEnter, OnUiExit, OnUiPress};
 use renzora::{ScriptUiInbox, UiCallback};
 use std::collections::HashMap;
 
+use crate::UiInteraction;
+
 /// Forward each Pressed / Hovered / None interaction transition to scripts
 /// via [`ScriptUiInbox`]. Press fires `on_press`, hover fires `on_enter`,
 /// leaving hover fires `on_exit` — matching bevy_hui's original semantics.
@@ -22,20 +24,20 @@ pub fn forward_ui_interactions(
     interactions: Query<
         (
             Entity,
-            &Interaction,
+            &UiInteraction,
             Option<&OnUiPress>,
             Option<&OnUiEnter>,
             Option<&OnUiExit>,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
     mut inbox: ResMut<ScriptUiInbox>,
 ) {
     for (entity, interaction, press, enter, exit) in &interactions {
         let names: Option<&Vec<String>> = match interaction {
-            Interaction::Pressed => press.map(|p| &p.0),
-            Interaction::Hovered => enter.map(|e| &e.0),
-            Interaction::None => exit.map(|e| &e.0),
+            UiInteraction::Pressed => press.map(|p| &p.0),
+            UiInteraction::Hovered => enter.map(|e| &e.0),
+            UiInteraction::None => exit.map(|e| &e.0),
         };
         let Some(names) = names else { continue };
         for name in names {

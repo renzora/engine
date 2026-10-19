@@ -18,6 +18,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Marks an [`icon_menu_button`] trigger and carries its menu content.
 #[derive(Component)]
@@ -52,7 +53,7 @@ pub fn icon_menu_button(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             // Anchors the menu to the button rect (cursor − normalized offset),
             // the same scheme the asset browser's Add button uses.
             bevy::ui::RelativeCursorPosition::default(),
@@ -81,17 +82,17 @@ pub(crate) fn icon_menu_button_open(
     fonts: Option<Res<EmberFonts>>,
     buttons: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &IconMenuButton,
             &bevy::ui::RelativeCursorPosition,
             &ComputedNode,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, btn, rcp, cn)) = buttons.iter().find(|(i, ..)| **i == Interaction::Pressed)
+    let Some((_, btn, rcp, cn)) = buttons.iter().find(|(i, ..)| **i == UiInteraction::Pressed)
     else {
         return;
     };

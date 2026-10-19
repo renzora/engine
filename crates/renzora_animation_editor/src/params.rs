@@ -29,6 +29,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, menu_item, screen_menu, text_input,
 };
+use renzora_ember::UiInteraction;
 
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
@@ -249,7 +250,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             KindCombo,
         ))
@@ -286,7 +287,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             AddParamBtn,
         ))
         .id();
@@ -510,7 +511,7 @@ fn trigger_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &s
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             FireBtn {
                 name: name.to_string(),
             },
@@ -542,7 +543,7 @@ fn trash_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             TrashBtn {
                 kind,
                 name: name.to_string(),
@@ -613,7 +614,7 @@ fn bind_text_node(
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 fn add_param_click(
-    q: Query<&Interaction, (With<AddParamBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddParamBtn>, Changed<UiInteraction>)>,
     scratch: Option<ResMut<NewParamScratch>>,
     state: Option<Res<AnimationEditorState>>,
     cmds: Option<Res<EditorCommands>>,
@@ -621,7 +622,7 @@ fn add_param_click(
     let (Some(mut scratch), Some(state), Some(cmds)) = (scratch, state, cmds) else {
         return;
     };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let name = scratch.name.trim().to_string();
@@ -652,7 +653,7 @@ fn add_param_click(
 }
 
 fn trash_click(
-    q: Query<(&Interaction, &TrashBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TrashBtn), Changed<UiInteraction>>,
     state: Option<Res<AnimationEditorState>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
@@ -663,7 +664,7 @@ fn trash_click(
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let kind = btn.kind;
@@ -687,14 +688,14 @@ fn trash_click(
 }
 
 fn fire_click(
-    q: Query<(&Interaction, &FireBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FireBtn), Changed<UiInteraction>>,
     bridge: Option<Res<AnimEditorBridge>>,
 ) {
     let Some(bridge) = bridge else {
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Ok(mut p) = bridge.pending.lock() {
@@ -707,8 +708,8 @@ fn fire_click(
 
 fn kind_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode),
-        (With<KindCombo>, Changed<Interaction>),
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (With<KindCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -717,7 +718,7 @@ fn kind_combo_open(
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {

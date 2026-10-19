@@ -22,6 +22,7 @@ use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, border, header_bg, rgb, text_primary};
+use renzora_ember::UiInteraction;
 
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
@@ -328,7 +329,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
                 bottom: Val::Px(0.0),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             // A pinned header sits *over* the rows it scrolled past, so an asset
             // drop has to be able to hit it — otherwise the drop falls through
             // to whatever row is hidden underneath (see `super::asset_drop`).
@@ -360,7 +361,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
 /// collapsed branch root back into view — which also scrolls it out from under
 /// the pinned overlay (un-pinning it).
 pub(crate) fn hierarchy_pin_click(
-    q: Query<(&Interaction, &HierPinClick), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HierPinClick), Changed<UiInteraction>>,
     selection: Option<Res<EditorSelection>>,
     cache: Res<HierarchyTreeCache>,
     mut expanded: ResMut<HierExpanded>,
@@ -370,7 +371,7 @@ pub(crate) fn hierarchy_pin_click(
         return;
     };
     for (interaction, pin) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         expanded.0.remove(&pin.entity);

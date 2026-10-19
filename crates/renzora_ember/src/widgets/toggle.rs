@@ -5,6 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberToggle {
@@ -29,7 +30,7 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
                 ..default()
             },
             BackgroundColor(if on { rgb(accent()) } else { rgb(card_bg()) }),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberToggle { on },
             Styled::with_state(
                 Role::Toggle,
@@ -62,10 +63,10 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
 }
 
 pub(crate) fn toggle_interact(
-    mut q: Query<(&Interaction, &mut EmberToggle, &mut Styled, &mut Node), Changed<Interaction>>,
+    mut q: Query<(&UiInteraction, &mut EmberToggle, &mut Styled, &mut Node), Changed<UiInteraction>>,
 ) {
     for (interaction, mut tog, mut styled, mut node) in &mut q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             tog.on = !tog.on;
             styled.state = if tog.on {
                 WidgetState::Active

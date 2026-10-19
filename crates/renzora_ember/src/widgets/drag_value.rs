@@ -24,9 +24,11 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::reactive::Bound;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::{format_num, text_node};
 
@@ -292,7 +294,7 @@ fn drag_value_impl(
                 ..default()
             },
             BackgroundColor(if flat { Color::NONE } else { rgb(popup_bg()) }),
-            Interaction::default(),
+            UiInteraction::default(),
             // Lets the drag system tell a press on the bottom slider rail (an
             // absolute min→max sweep) from one on the number area (fine scrub).
             bevy::ui::RelativeCursorPosition::default(),
@@ -335,7 +337,7 @@ fn drag_value_impl(
                     bottom: Val::Px(FILL_INSET_Y),
                     ..default()
                 },
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("drag-value-fill-well"),
             ))
             .id();
@@ -349,7 +351,7 @@ fn drag_value_impl(
                     ..default()
                 },
                 BackgroundColor(rgb(accent()).with_alpha(FILL_ALPHA)),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("drag-value-fill"),
             ))
             .id();
@@ -382,7 +384,7 @@ fn drag_value_impl(
                 ..default()
             },
             BackgroundColor(rgb(accent()).with_alpha(0.35)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("drag-value-highlight"),
         ))
         .id();
@@ -401,7 +403,7 @@ fn drag_value_impl(
             // an accent caret on a maxed-out field is invisible exactly when you
             // are typing into it.
             BackgroundColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("drag-value-caret"),
         ))
         .id();
@@ -479,7 +481,7 @@ pub(crate) fn drag_value_scroll(
     mut capture: ResMut<WheelOverDragValue>,
     mut gesture: ResMut<WheelGesture>,
     mut values: Query<(
-        &Interaction,
+        &UiInteraction,
         &EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
@@ -496,7 +498,7 @@ pub(crate) fn drag_value_scroll(
     // Pass 1: hover → accent-border highlight; note whether any field is hovered.
     let mut over_any = false;
     for (interaction, dv, _bound, _range, _snap, styled) in &mut values {
-        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let hovered = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed);
         if hovered {
             over_any = true;
         }
@@ -532,7 +534,7 @@ pub(crate) fn drag_value_scroll(
     // Pass 2: only if a field owns the gesture, scrub the hovered field(s).
     if field_scrub {
         for (interaction, dv, mut bound, range, snap, _) in &mut values {
-            let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+            let hovered = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed);
             if hovered && !dv.editing {
                 // A snapped field's notch must be at least one snap step, or
                 // small wheel steps would round away to nothing.
@@ -566,7 +568,7 @@ pub(crate) fn drag_value_drag(
     keys: Res<ButtonInput<KeyCode>>,
     config: Option<Res<DragValueConfig>>,
     mut values: Query<(
-        &Interaction,
+        &UiInteraction,
         &mut EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
@@ -588,7 +590,7 @@ pub(crate) fn drag_value_drag(
         if dv.editing {
             continue;
         }
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             match dv.last_x {
                 None => {
                     dv.last_x = cursor_x;
@@ -697,7 +699,7 @@ pub(crate) fn drag_value_edit(
     mut keys: MessageReader<KeyboardInput>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut values: Query<(
-        &Interaction,
+        &UiInteraction,
         &mut EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
@@ -723,7 +725,7 @@ pub(crate) fn drag_value_edit(
         }
 
         // A press anywhere but this field commits and blurs (off-click dismiss).
-        let action = if clicked && *interaction != Interaction::Pressed {
+        let action = if clicked && *interaction != UiInteraction::Pressed {
             EditAction::Commit
         } else {
             let mut a = EditAction::None;

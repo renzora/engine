@@ -9,6 +9,7 @@ use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_with, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use super::{apply_thumb, empty_snapshot, thumb_image, ItemOverlay, StripThumbBtn, HUE_STORE};
 
@@ -124,7 +125,7 @@ fn strip_thumb(commands: &mut Commands, url: &str, index: usize, selected: bool)
             },
             BackgroundColor(rgb(hover_bg())),
             BorderColor::all(if selected { rgb(HUE_STORE) } else { rgb(border()) }),
-            Interaction::default(),
+            UiInteraction::default(),
             StripThumbBtn(index),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("gallery-thumb"),

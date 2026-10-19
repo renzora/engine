@@ -7,12 +7,14 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::BrushShape;
 use renzora_terrain::paint::{
@@ -112,7 +114,7 @@ fn paint_tool_button(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             PaintToolBtn { brush },
             Name::new(format!("terrain-paint-tool:{label}")),
@@ -122,8 +124,8 @@ fn paint_tool_button(
         if paint_brush_type(w) == brush {
             rgb(accent())
         } else if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(popup_bg())
         } else {
@@ -261,7 +263,7 @@ fn layer_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &s
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             LayerRow { index },
             Name::new(format!("terrain-layer:{index}")),
@@ -271,8 +273,8 @@ fn layer_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &s
         if active_layer(w) == index {
             rgb(accent())
         } else if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -313,7 +315,7 @@ fn material_drop_zone(commands: &mut Commands, fonts: &EmberFonts, layer: usize)
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::no_wrap(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, path_text, move |w| {
@@ -345,7 +347,7 @@ fn material_drop_zone(commands: &mut Commands, fonts: &EmberFonts, layer: usize)
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             MaterialDropZone { layer },
             Name::new("terrain-mat-drop"),
@@ -358,7 +360,7 @@ fn material_drop_zone(commands: &mut Commands, fonts: &EmberFonts, layer: usize)
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             Node { padding: UiRect::horizontal(Val::Px(2.0)), ..default() },
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             MaterialClearBtn { layer },
             Name::new("terrain-mat-clear"),

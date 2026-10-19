@@ -25,6 +25,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange};
 
 use renzora_hanabi::{
@@ -234,7 +235,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(bar).insert((BorderColor::all(rgb(border())),));
     // Advanced/Simple toggle (reactive label).
     let adv = commands
-        .spawn((Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), ActionBtn(Arc::new(toggle_advanced))))
+        .spawn((Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), UiInteraction::default(), ActionBtn(Arc::new(toggle_advanced))))
         .id();
     let adv_t = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
     bind_text(commands, adv_t, |w| if is_advanced(&Rx::new(w.untracked())) { "Switch to Simple".into() } else { "Switch to Advanced".into() });
@@ -1010,7 +1011,7 @@ fn row_actions(commands: &mut Commands, fonts: &EmberFonts, label: &str, buttons
 
 fn action_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, color: (u8, u8, u8), action: Action) -> Entity {
     let btn = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), ActionBtn(action))).id();
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), UiInteraction::default(), ActionBtn(action))).id();
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(color)))).id();
     commands.entity(btn).add_child(t);
     btn
@@ -1018,7 +1019,7 @@ fn action_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, color
 
 fn small_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, action: Action) -> Entity {
     let btn = commands
-        .spawn((Node { align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::axes(Val::Px(5.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), ActionBtn(action))).id();
+        .spawn((Node { align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::axes(Val::Px(5.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(rgb(card_bg())), UiInteraction::default(), ActionBtn(action))).id();
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())))).id();
     commands.entity(btn).add_child(t);
     btn
@@ -1043,9 +1044,9 @@ where
 #[derive(Component)]
 struct ActionBtn(Action);
 
-fn action_btn_click(q: Query<(&Interaction, &ActionBtn), Changed<Interaction>>, mut commands: Commands) {
+fn action_btn_click(q: Query<(&UiInteraction, &ActionBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let action = btn.0.clone();
             commands.queue(move |w: &mut World| action(w));
         }

@@ -38,6 +38,7 @@ use renzora_editor_framework::{ToolSection, ToolbarRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::{panel_bg, rgb};
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::tool_buttons::{
     shelf_separator, tool_button, ShelfRoot, ToolSepVis, ToolsPopulated, SIDE_BTN,
@@ -95,7 +96,7 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
             // whatever object happened to be behind it.
             OverlaySurface,
             bevy::ui::RelativeCursorPosition::default(),
-            Interaction::default(),
+            UiInteraction::default(),
             ShelfContainer,
             Name::new("vp-tool-shelf"),
         ))

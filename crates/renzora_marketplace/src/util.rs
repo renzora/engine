@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::rgb;
+use renzora_ember::UiInteraction;
 
 /// True when a user is signed in.
 pub(crate) fn signed_in(w: &Rx) -> bool {
@@ -42,7 +43,7 @@ pub(crate) fn pill_button(
                 ..default()
             },
             BackgroundColor(rgb(bg)),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::widgets::HoverTint::solid(
                 rgb(bg),
                 rgb(lighten(bg, 22)),

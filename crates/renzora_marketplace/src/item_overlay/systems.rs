@@ -7,6 +7,7 @@ use crossbeam_channel::{unbounded, TryRecvError};
 use crate::auth::session::AuthSession;
 use crate::thumbs::HubThumbs;
 use renzora_ember::widgets::EmberTextInput;
+use renzora_ember::UiInteraction;
 
 #[cfg(not(target_arch = "wasm32"))]
 use renzora_audio::AudioLink;
@@ -21,8 +22,8 @@ use super::{
 /// rebuild may already have torn the overlay down.
 pub(super) fn item_close(
     keys: Res<ButtonInput<KeyCode>>,
-    backdrop: Query<&Interaction, (With<ItemBackdrop>, Changed<Interaction>)>,
-    close_btn: Query<&Interaction, (With<ItemCloseBtn>, Changed<Interaction>)>,
+    backdrop: Query<&UiInteraction, (With<ItemBackdrop>, Changed<UiInteraction>)>,
+    close_btn: Query<&UiInteraction, (With<ItemCloseBtn>, Changed<UiInteraction>)>,
     lightbox: Res<crate::hub_lightbox::HubLightbox>,
     mut state: ResMut<ItemOverlay>,
     mut link: Option<ResMut<AudioLink>>,
@@ -31,7 +32,7 @@ pub(super) fn item_close(
     let Some(root) = state.root else {
         return;
     };
-    let pressed = backdrop.iter().chain(close_btn.iter()).any(|i| *i == Interaction::Pressed);
+    let pressed = backdrop.iter().chain(close_btn.iter()).any(|i| *i == UiInteraction::Pressed);
     // When the full-image lightbox is up (stacked above), let Escape close *it*
     // first rather than tearing down the whole detail overlay underneath.
     let escape = keys.just_pressed(KeyCode::Escape) && lightbox.root.is_none();
@@ -55,12 +56,12 @@ pub(super) fn item_close(
 /// this one). A paid asset for a signed-out user opens sign-in first, matching
 /// the store card behavior.
 pub(super) fn item_install_click(
-    q: Query<&Interaction, (With<ItemInstallBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ItemInstallBtn>, Changed<UiInteraction>)>,
     state: Res<ItemOverlay>,
     session: Option<Res<AuthSession>>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(asset) = state.asset.clone() else {
@@ -77,7 +78,7 @@ pub(super) fn item_install_click(
 /// Click a star → submit that rating (1-5). No-op when signed out or a rating
 /// post is already in flight.
 pub(super) fn item_star_click(
-    q: Query<(&Interaction, &StarBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StarBtn), Changed<UiInteraction>>,
     mut state: ResMut<ItemOverlay>,
 ) {
     if state.post_rating_rx.is_some() {
@@ -87,7 +88,7 @@ pub(super) fn item_star_click(
         return;
     };
     for (interaction, star) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let rating = star.0;
             let asset_id = state.asset_id.clone();
             let (tx, rx) = unbounded();
@@ -100,14 +101,14 @@ pub(super) fn item_star_click(
 
 /// "Post" → submit the composer's text as a comment. Debounced via `posting`.
 pub(super) fn item_post_click(
-    q: Query<&Interaction, (With<ItemPostBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ItemPostBtn>, Changed<UiInteraction>)>,
     input: Query<&EmberTextInput, With<ItemCommentInput>>,
     mut state: ResMut<ItemOverlay>,
 ) {
     if state.posting {
         return;
     }
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(session) = state.session.as_ref().map(clone_session) else {
@@ -129,11 +130,11 @@ pub(super) fn item_post_click(
 
 /// Click a strip thumbnail → make it the main viewer's selected image.
 pub(super) fn strip_thumb_click(
-    q: Query<(&Interaction, &StripThumbBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StripThumbBtn), Changed<UiInteraction>>,
     mut state: ResMut<ItemOverlay>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.selected_media = btn.0;
             break;
         }
@@ -143,11 +144,11 @@ pub(super) fn strip_thumb_click(
 /// Click the big preview image → open it full-size in the lightbox (like a feed
 /// image), stacked above the item overlay.
 pub(super) fn main_image_click(
-    q: Query<&Interaction, (With<MainImageBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<MainImageBtn>, Changed<UiInteraction>)>,
     state: Res<ItemOverlay>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     // What the viewer currently shows: the selected gallery image, else the
@@ -170,9 +171,9 @@ pub(super) fn main_image_click(
 
 /// Click a video poster → open its URL in the browser (native video is out of
 /// scope). `open_url` handles YouTube + direct links.
-pub(super) fn video_thumb_click(q: Query<(&Interaction, &VideoBtn), Changed<Interaction>>) {
+pub(super) fn video_thumb_click(q: Query<(&UiInteraction, &VideoBtn), Changed<UiInteraction>>) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             crate::store::open_url(&btn.0);
             break;
         }
@@ -183,11 +184,11 @@ pub(super) fn video_thumb_click(q: Query<(&Interaction, &VideoBtn), Changed<Inte
 /// index changes here; [`super::audio::sync_audio`] notices the divergence and
 /// stops/reloads.
 pub(super) fn audio_track_click(
-    q: Query<(&Interaction, &AudioTrackBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AudioTrackBtn), Changed<UiInteraction>>,
     mut state: ResMut<ItemOverlay>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.audio_selected = btn.0;
             break;
         }

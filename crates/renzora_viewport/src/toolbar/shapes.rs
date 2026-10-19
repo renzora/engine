@@ -17,6 +17,7 @@ use renzora_ember::theme::{rgb, text_primary};
 use renzora_ember::widgets::{
     icon_popup_trigger, popup_anchor, popup_panel_aligned, scroll_area, Popup, PopupAlign,
 };
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
 
@@ -90,7 +91,7 @@ fn shape_row(commands: &mut Commands, fonts: &EmberFonts, icon: &str, name: &str
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             ShapeSpawn { id: id.to_string() },
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("vp-shape-row"),
@@ -158,12 +159,12 @@ pub(super) fn populate_shapes(world: &mut World) {
 /// menu) through the undo system, then leave the menu open so several shapes can
 /// be added in a row.
 pub(super) fn shape_spawn_click(
-    q: Query<(&Interaction, &ShapeSpawn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ShapeSpawn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, shape) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let id = shape.id.clone();
@@ -195,10 +196,10 @@ pub(super) fn shape_spawn_click(
 pub(super) fn update_shape_menu(
     theme: Option<Res<ThemeManager>>,
     mut trigger: Query<
-        (&Interaction, &Popup, &mut BackgroundColor),
+        (&UiInteraction, &Popup, &mut BackgroundColor),
         (With<ShapeMenuTrigger>, Without<ShapeSpawn>),
     >,
-    mut rows: Query<(&Interaction, &mut BackgroundColor), With<ShapeSpawn>>,
+    mut rows: Query<(&UiInteraction, &mut BackgroundColor), With<ShapeSpawn>>,
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
@@ -206,7 +207,7 @@ pub(super) fn update_shape_menu(
     let hovered = col(t.widgets.hovered_bg);
 
     for (interaction, toggle, mut bg) in &mut trigger {
-        let want = if toggle.open || *interaction == Interaction::Hovered {
+        let want = if toggle.open || *interaction == UiInteraction::Hovered {
             hovered
         } else {
             inactive
@@ -216,7 +217,7 @@ pub(super) fn update_shape_menu(
         }
     }
     for (interaction, mut bg) in &mut rows {
-        let want = if *interaction == Interaction::Hovered {
+        let want = if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             Color::NONE

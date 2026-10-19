@@ -79,6 +79,10 @@ pub(crate) struct Ctx<'a> {
     /// name appears on multiple nodes.
     pub(crate) parameter_slots: HashMap<String, usize>,
     pub(crate) warnings: Vec<String>,
+    /// Graph problems that make the shader unbuildable, such as a node the
+    /// domain cannot provide. Returned as `CompileResult::errors`, which stops
+    /// the material being bound rather than failing later on the GPU.
+    pub(crate) errors: Vec<String>,
     /// Node whose lines are currently being emitted. Save/restored around
     /// `gen_node` — `input()` recurses upstream and would otherwise leave a
     /// node's own lines attributed to whatever it last pulled from.
@@ -143,6 +147,7 @@ impl<'a> Ctx<'a> {
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
             warnings: Vec::new(),
+            errors: Vec::new(),
             current_node: 0,
             body_spans: Vec::new(),
             prelude_spans: Vec::new(),
@@ -307,6 +312,23 @@ impl<'a> Ctx<'a> {
         self.lines.push(line);
     }
 
+    /// Emit `then` when the pipeline sets `cond` and `otherwise` when it does
+    /// not, one statement per line.
+    ///
+    /// WESL gates each statement with `@if` rather than wrapping a region: a
+    /// `{ }` block would scope the `let`s inside it away from the code after
+    /// it, and these branches exist to define the same name both ways. So every
+    /// line carries its own attribute, `@if(cond)` or `@if(!cond)`.
+    pub(crate) fn emit_if(&mut self, cond: &str, then: &[String], otherwise: &[String]) {
+        let not = negate(cond);
+        for line in then {
+            self.emit(format!("    @if({cond}) {}", line.trim_start()));
+        }
+        for line in otherwise {
+            self.emit(format!("    @if({not}) {}", line.trim_start()));
+        }
+    }
+
     /// Push a module-scope chunk, recording which node authored it and how
     /// many lines it adds. `module_prelude` bypasses `emit`, and it is where
     /// `custom/code` snippets live — the lines users most often break.
@@ -413,8 +435,8 @@ impl<'a> Ctx<'a> {
         let mut s = String::new();
         s.push_str(
             "\nfn graph_displacement(in: VertexOutput, mat_uv: vec2<f32>) -> f32 {\n\
-             #ifdef VERTEX_COLORS\n    let mat_vertex_color = in.color;\n\
-             #else\n    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n#endif\n",
+             \x20   @if(VERTEX_COLORS) let mat_vertex_color = in.color;\n\
+             \x20   @if(!VERTEX_COLORS) let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n",
         );
         for line in &body_lines {
             s.push_str(line);
@@ -532,5 +554,15 @@ impl<'a> Ctx<'a> {
     /// The fallthrough every category emitter shares.
     pub(crate) fn unknown_node(&mut self, ty: &str) {
         self.lines.push(format!("    // Unknown node type: {ty}"));
+    }
+}
+
+/// The opposite of a WESL `@if` condition: `!FLAG` for a bare flag, `!(...)`
+/// around anything compound, since `!A && B` would only negate the `A`.
+pub(crate) fn negate(cond: &str) -> String {
+    if cond.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        format!("!{cond}")
+    } else {
+        format!("!({cond})")
     }
 }

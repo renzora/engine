@@ -27,6 +27,7 @@ use bevy::prelude::*;
 
 use renzora::core::viewport_types::ViewportSettings;
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::PASS_THROUGH;
 
 pub(crate) mod actions;
 pub(crate) mod camera;
@@ -144,7 +145,7 @@ pub(crate) fn header_groups(
                     flex_shrink: 0.0,
                     ..default()
                 },
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new(name),
             ))
             .id();
@@ -285,7 +286,7 @@ pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Ent
             },
             // Structural — gaps between the buttons fall through to the top
             // bar's window-drag handle.
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("session-actions"),
         ))
         .id();
@@ -346,7 +347,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
                 column_gap: Val::Px(4.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("vp-view-controls"),
         ))
         .id();
@@ -368,7 +369,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
                         column_gap: Val::Px(4.0),
                         ..default()
                     },
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Name::new("vp-play-controls"),
                 ))
                 .id();
@@ -423,7 +424,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
                 flex_shrink: 0.0,
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("vp-toolbar-right"),
         ))
         .id();

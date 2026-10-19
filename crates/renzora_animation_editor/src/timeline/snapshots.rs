@@ -14,7 +14,9 @@ use renzora::{PropertyTrack, TrackValue};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::widgets::LANE_INSET;
+use renzora_ember::UiInteraction;
 
 use super::clip::{cur_clip, state, Lane, SelKey, SelectedKey};
 use super::{
@@ -158,7 +160,7 @@ fn prop_header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, trac
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             PropTrackCombo(track),
         ))
@@ -173,14 +175,14 @@ fn prop_header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, trac
 
     // Add-key button (keys THIS track at the playhead from the live value).
     let addk = commands
-        .spawn((Node { width: Val::Px(16.0), height: Val::Px(16.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), AddKeyTrackBtn(track)))
+        .spawn((Node { width: Val::Px(16.0), height: Val::Px(16.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), UiInteraction::default(), AddKeyTrackBtn(track)))
         .id();
     let addk_ic = icon_text(commands, &fonts.phosphor, "diamond", PROPERTY, 11.0);
     commands.entity(addk).add_child(addk_ic);
 
     // Delete-track button.
     let del = commands
-        .spawn((Node { width: Val::Px(16.0), height: Val::Px(16.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), DeletePropTrack(track)))
+        .spawn((Node { width: Val::Px(16.0), height: Val::Px(16.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), UiInteraction::default(), DeletePropTrack(track)))
         .id();
     let del_ic = icon_text(commands, &fonts.phosphor, "x", text_muted(), 11.0);
     commands.entity(del).add_child(del_ic);
@@ -400,7 +402,7 @@ fn spawn_diamond(commands: &mut Commands, x: f32, y: f32, kf: f32, color: (u8, u
         },
         BackgroundColor(rgb(color)),
         UiTransform::from_rotation(Rot2::degrees(45.0)),
-        bevy::ui::FocusPolicy::Pass,
+        PASS_THROUGH,
     ));
     if selected {
         e.insert(BorderColor::all(rgb((255, 255, 255))));
@@ -427,7 +429,7 @@ fn key_bar(commands: &mut Commands, ti: usize, ch: u8, t0: f32, t1: f32, zoom: f
                 ..default()
             },
             BackgroundColor(Color::srgba_u8(color.0, color.1, color.2, 200)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }
@@ -450,7 +452,7 @@ fn prop_bar(commands: &mut Commands, lane: usize, t0: f32, t1: f32, zoom: f32, s
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(x0 - h * 0.5), top: Val::Px(y - h * 0.5), width: Val::Px(w + h), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(h * 0.5)), ..default() },
             BackgroundColor(Color::srgba_u8(PROPERTY.0, PROPERTY.1, PROPERTY.2, 200)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id()
 }
@@ -458,7 +460,7 @@ fn prop_bar(commands: &mut Commands, lane: usize, t0: f32, t1: f32, zoom: f32, s
 // ── Markers ──────────────────────────────────────────────────────────────────
 
 /// Renders each clip marker as a labeled flag + thin full-height line. Visual
-/// only (`FocusPolicy::Pass`); deletion is a math hit-test in `key_context_menu`.
+/// only (`PASS_THROUGH`); deletion is a math hit-test in `key_context_menu`.
 pub(super) fn marker_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(clip) = cur_clip(world.untracked()) else { return empty() };
     let Some(s) = state(world.untracked()) else { return empty() };
@@ -487,13 +489,13 @@ pub(super) fn marker_snapshot(world: &Rx) -> KeyedSnapshot {
 fn marker_flag(commands: &mut Commands, fonts: &EmberFonts, time: f32, name: &str, zoom: f32, scroll: f32) -> Entity {
     let x = (time - scroll) * zoom + LANE_INSET;
     let root = commands
-        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(0.0), width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, bevy::ui::FocusPolicy::Pass))
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(0.0), width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, PASS_THROUGH))
         .id();
     let line = commands
-        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(1.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgba_u8(MARKER.0, MARKER.1, MARKER.2, 110)), bevy::ui::FocusPolicy::Pass))
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(1.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgba_u8(MARKER.0, MARKER.1, MARKER.2, 110)), PASS_THROUGH))
         .id();
     let flag = commands
-        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(1.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(3.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(MARKER)), bevy::ui::FocusPolicy::Pass))
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(1.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(3.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(MARKER)), PASS_THROUGH))
         .id();
     let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 8.0), TextColor(rgb((25, 20, 30))), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(flag).add_child(lbl);

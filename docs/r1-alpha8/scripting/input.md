@@ -115,8 +115,8 @@ end
 
 The globals and actions above cover *gameplay*. Menus are handled for you: the
 d-pad or left stick moves a focus between `<button>` elements and South
-activates the focused one, published through the same `Interaction` a mouse
-click writes. Nothing to enable, and no per-button annotation.
+activates the focused one, published through the same `UiInteraction` state a mouse
+click produces. Nothing to enable, and no per-button annotation.
 
 See [Game UI → Gamepad navigation](./game-ui#gamepad-navigation) for the details,
 including how to switch it off on a screen that reads the pad itself.

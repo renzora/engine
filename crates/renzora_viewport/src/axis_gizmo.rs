@@ -27,6 +27,7 @@ use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::{AXIS_GIZMO_MARGIN, AXIS_GIZMO_SIZE};
 
@@ -107,7 +108,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
             },
             RelativeCursorPosition::default(),
             OverlaySurface,
-            Interaction::default(),
+            UiInteraction::default(),
             AxisGizmoRoot,
             AxisGizmoSlot(slot),
             Name::new("axis-gizmo"),
@@ -183,7 +184,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
                 },
                 BackgroundColor(rgb(color)),
                 ZIndex(100),
-                Interaction::default(),
+                UiInteraction::default(),
                 AxisTip {
                     dir,
                     yaw,
@@ -319,14 +320,14 @@ fn gizmo_input(
     mut motion: MessageReader<MouseMotion>,
     nav: Res<NavOverlayState>,
     mut latch: ResMut<GizmoOrbitLatch>,
-    tips: Query<(&AxisTip, &Interaction)>,
-    roots: Query<&Interaction, With<AxisGizmoRoot>>,
+    tips: Query<(&AxisTip, &UiInteraction)>,
+    roots: Query<&UiInteraction, With<AxisGizmoRoot>>,
     settings: Option<ResMut<ViewportSettings>>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
         let snap = tips
             .iter()
-            .find(|(_, i)| **i == Interaction::Pressed)
+            .find(|(_, i)| **i == UiInteraction::Pressed)
             .map(|(tip, _)| (tip.yaw, tip.pitch));
         if let Some((yaw, pitch)) = snap {
             if let Some(mut s) = settings {
@@ -334,7 +335,7 @@ fn gizmo_input(
             }
         } else if roots
             .iter()
-            .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed))
+            .any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
         {
             latch.0 = true;
             nav.orbit_dragging.store(true, Ordering::Relaxed);

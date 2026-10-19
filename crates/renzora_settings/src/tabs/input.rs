@@ -6,14 +6,15 @@
 //! to force a rebuild, rather than relying on a two-way binding.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora::CurrentProject;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, section, text_input};
+use renzora_ember::UiInteraction;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 
 use crate::lang::tr;
@@ -125,7 +126,7 @@ fn build_action_row(
     );
     commands
         .entity(caret)
-        .insert((Interaction::default(), ExpandActionBtn(i), HoverCursor(SystemCursorIcon::Pointer)));
+        .insert((UiInteraction::default(), ExpandActionBtn(i), HoverCursor(SystemCursorIcon::Pointer)));
     let name = commands
         .spawn((
             Text::new(action.name.clone()),
@@ -135,7 +136,7 @@ fn build_action_row(
                 flex_grow: 1.0,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             ExpandActionBtn(i),
         ))
         .id();
@@ -148,8 +149,8 @@ fn build_action_row(
         .id();
     let del = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 13.0);
     commands.entity(del).insert((
-        Interaction::default(),
-        FocusPolicy::Block,
+        UiInteraction::default(),
+        BLOCK,
         DeleteActionBtn(i),
         HoverCursor(SystemCursorIcon::Pointer),
     ));
@@ -233,8 +234,8 @@ fn build_action_row(
             .id();
         let rm = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 12.0);
         commands.entity(rm).insert((
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             RemoveBindingBtn { action: i, binding: j },
             HoverCursor(SystemCursorIcon::Pointer),
         ));
@@ -288,9 +289,9 @@ fn mark_dirty(w: &mut World) {
 
 pub(crate) fn add_action_click(world: &mut World) {
     let mut to_add: Option<bool> = None;
-    let mut q = world.query_filtered::<(&Interaction, &AddActionBtn), Changed<Interaction>>();
+    let mut q = world.query_filtered::<(&UiInteraction, &AddActionBtn), Changed<UiInteraction>>();
     for (interaction, btn) in q.iter(world) {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             to_add = Some(btn.axis);
         }
     }
@@ -314,9 +315,9 @@ pub(crate) fn add_action_click(world: &mut World) {
 
 pub(crate) fn delete_action_click(world: &mut World) {
     let mut idx = None;
-    let mut q = world.query_filtered::<(&Interaction, &DeleteActionBtn), Changed<Interaction>>();
+    let mut q = world.query_filtered::<(&UiInteraction, &DeleteActionBtn), Changed<UiInteraction>>();
     for (interaction, btn) in q.iter(world) {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             idx = Some(btn.0);
         }
     }
@@ -338,12 +339,12 @@ pub(crate) fn delete_action_click(world: &mut World) {
 }
 
 pub(crate) fn expand_action_click(
-    btns: Query<(&Interaction, &ExpandActionBtn), Changed<Interaction>>,
+    btns: Query<(&UiInteraction, &ExpandActionBtn), Changed<UiInteraction>>,
     mut ui: ResMut<InputUi>,
     mut state: ResMut<OverlayState>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             ui.selected = if ui.selected == Some(btn.0) {
                 None
             } else {
@@ -356,12 +357,12 @@ pub(crate) fn expand_action_click(
 }
 
 pub(crate) fn add_binding_click(
-    btns: Query<(&Interaction, &AddBindingBtn), Changed<Interaction>>,
+    btns: Query<(&UiInteraction, &AddBindingBtn), Changed<UiInteraction>>,
     mut ui: ResMut<InputUi>,
     mut state: ResMut<OverlayState>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             ui.selected = Some(btn.0);
             ui.listening = true;
             state.dirty = true;
@@ -370,12 +371,12 @@ pub(crate) fn add_binding_click(
 }
 
 pub(crate) fn cancel_listen_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<CancelListenBtn>)>,
+    btns: Query<&UiInteraction, (Changed<UiInteraction>, With<CancelListenBtn>)>,
     mut ui: ResMut<InputUi>,
     mut state: ResMut<OverlayState>,
 ) {
     for interaction in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             ui.listening = false;
             state.dirty = true;
         }
@@ -384,9 +385,9 @@ pub(crate) fn cancel_listen_click(
 
 pub(crate) fn remove_binding_click(world: &mut World) {
     let mut target = None;
-    let mut q = world.query_filtered::<(&Interaction, &RemoveBindingBtn), Changed<Interaction>>();
+    let mut q = world.query_filtered::<(&UiInteraction, &RemoveBindingBtn), Changed<UiInteraction>>();
     for (interaction, btn) in q.iter(world) {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             target = Some((btn.action, btn.binding));
         }
     }
@@ -404,9 +405,9 @@ pub(crate) fn remove_binding_click(world: &mut World) {
 
 pub(crate) fn composite_click(world: &mut World) {
     let mut target = None;
-    let mut q = world.query_filtered::<(&Interaction, &CompositeBtn), Changed<Interaction>>();
+    let mut q = world.query_filtered::<(&UiInteraction, &CompositeBtn), Changed<UiInteraction>>();
     for (interaction, btn) in q.iter(world) {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             target = Some((btn.action, btn.arrows));
         }
     }

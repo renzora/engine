@@ -26,6 +26,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{bind_code, code_editor, CodeBindingSpec, CodeToken, Highlighter};
 
 use crate::highlight::{highlight_line, Language, LineState, TokenKind};
@@ -277,7 +278,7 @@ fn tab_chip(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str,
             Node { height: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(10.0)), border: UiRect::right(Val::Px(1.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(if active { rgb(window_bg()) } else { Color::NONE }),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             CodeTab(idx),
             Name::new("code-tab"),
         ))
@@ -301,7 +302,7 @@ fn tab_chip(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str,
         .spawn((
             Node { width: Val::Px(15.0), height: Val::Px(15.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             CodeTabClose(idx),
         ))
         .id();
@@ -317,19 +318,19 @@ fn tab_chip(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str,
 // Systems
 // ---------------------------------------------------------------------------
 
-fn tab_click(q: Query<(&Interaction, &CodeTab), Changed<Interaction>>, state: Option<ResMut<CodeEditorState>>) {
+fn tab_click(q: Query<(&UiInteraction, &CodeTab), Changed<UiInteraction>>, state: Option<ResMut<CodeEditorState>>) {
     let Some(mut state) = state else { return };
     for (interaction, tab) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.active_tab = Some(tab.0);
         }
     }
 }
 
-fn tab_close_click(q: Query<(&Interaction, &CodeTabClose), Changed<Interaction>>, state: Option<ResMut<CodeEditorState>>) {
+fn tab_close_click(q: Query<(&UiInteraction, &CodeTabClose), Changed<UiInteraction>>, state: Option<ResMut<CodeEditorState>>) {
     let Some(mut state) = state else { return };
     for (interaction, tab) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             state.close_tab(tab.0);
         }
     }

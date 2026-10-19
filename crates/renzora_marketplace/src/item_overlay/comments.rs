@@ -1,15 +1,16 @@
 //! The star rating row, the comment composer and the comment thread.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use crate::auth::marketplace::AssetComment;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{accent_button, text_input, EmberForm};
+use renzora_ember::UiInteraction;
 
 use super::{
     note_snapshot, signed_in, ItemCommentInput, ItemOverlay, ItemPostBtn, StarBtn, GOLD, HUE_STORE,
@@ -47,14 +48,14 @@ pub(super) fn build_rating_row(commands: &mut Commands, fonts: &EmberFonts) -> E
                     align_items: AlignItems::Center,
                     ..default()
                 },
-                Interaction::default(),
+                UiInteraction::default(),
                 StarBtn(i),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new("item-star"),
             ))
             .id();
         let glyph = icon_text(commands, &fonts.phosphor, "star", GOLD, 18.0);
-        commands.entity(glyph).insert(FocusPolicy::Pass);
+        commands.entity(glyph).insert(PASS_THROUGH);
         commands.entity(star).add_child(glyph);
         commands.entity(stars_row).add_child(star);
         stars.push((star, glyph));
@@ -111,8 +112,8 @@ pub(super) fn build_rating_row(commands: &mut Commands, fonts: &EmberFonts) -> E
 fn hovered_star(w: &Rx, stars: &[Entity]) -> Option<i32> {
     stars.iter().enumerate().rev().find_map(|(i, &e)| {
         matches!(
-            w.get::<Interaction>(e),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(e),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         )
         .then_some(i as i32 + 1)
     })

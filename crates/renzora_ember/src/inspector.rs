@@ -29,6 +29,7 @@ use crate::font::{ui_font, EmberFonts};
 use crate::reactive::tracked::{bind_2way, bind_with};
 use crate::theme::*;
 use crate::widgets::{bind_hsv_picker, hsv_picker, slider, Popup};
+use crate::UiInteraction;
 
 /// Maximum width of the inspector label column. The column is proportional
 /// ([`INSPECTOR_LABEL_PCT`] of the row) capped at this, so on a wide panel the
@@ -220,7 +221,7 @@ fn color_field_anchored(
             },
             BackgroundColor(rgb(placeholder())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup::new(panel),
             Name::new("color-swatch"),
         ))
@@ -330,7 +331,7 @@ pub fn color_field_rgba(
             },
             BackgroundColor(rgb(placeholder())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup::new(panel),
             Name::new("color-swatch-rgba"),
         ))

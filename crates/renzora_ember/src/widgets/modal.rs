@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use crate::font::EmberFonts;
 use crate::style::{Role, Styled};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::button::button;
 use super::common::text_node;
@@ -85,19 +86,19 @@ pub fn modal(commands: &mut Commands, fonts: &EmberFonts, title: &str, body: &st
 }
 
 pub(crate) fn modal_toggle(
-    opens: Query<(&Interaction, &EmberModalOpen), Changed<Interaction>>,
-    closes: Query<(&Interaction, &EmberModalClose), Changed<Interaction>>,
+    opens: Query<(&UiInteraction, &EmberModalOpen), Changed<UiInteraction>>,
+    closes: Query<(&UiInteraction, &EmberModalClose), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, o) in &opens {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut n) = nodes.get_mut(o.overlay) {
                 n.display = Display::Flex;
             }
         }
     }
     for (interaction, c) in &closes {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut n) = nodes.get_mut(c.overlay) {
                 n.display = Display::None;
             }

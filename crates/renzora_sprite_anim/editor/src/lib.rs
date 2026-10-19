@@ -24,6 +24,7 @@ use renzora::{EditorSelection, SplashState};
 use renzora_animation::{AnimClipSlot, AnimatorComponent, AnimatorState};
 use renzora_animation_editor::AnimationEditorState;
 use renzora_ember::widgets::EmberTextInput;
+use renzora_ember::UiInteraction;
 
 /// The 2D sprite entity the panel operates on — the selection, when it's a
 /// sprite. `None` shows the "select a sprite" hint.
@@ -160,7 +161,7 @@ fn sync_grid_from_sheet(
 /// and re-focus the name field for the next clip.
 #[allow(clippy::too_many_arguments)]
 fn create_clip_button(
-    buttons: Query<&Interaction, (Changed<Interaction>, With<panel::CreateClipButton>)>,
+    buttons: Query<&UiInteraction, (Changed<UiInteraction>, With<panel::CreateClipButton>)>,
     target: Res<SpriteTarget>,
     grid: Res<SheetGrid>,
     fps: Res<SheetFps>,
@@ -169,7 +170,7 @@ fn create_clip_button(
     mut sel: ResMut<SheetSelection>,
     mut commands: Commands,
 ) {
-    if !buttons.iter().any(|i| *i == Interaction::Pressed) {
+    if !buttons.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(entity) = target.0 else { return };

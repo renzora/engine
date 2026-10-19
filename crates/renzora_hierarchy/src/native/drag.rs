@@ -13,6 +13,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_editor_framework::{EditorCommands, EditorSelection, HierarchyOrder, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
+use renzora_ember::UiInteraction;
 use renzora_undo::{record, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, UndoCommand, UndoContext};
 
 use crate::cache::HierarchyTreeCache;
@@ -42,7 +43,7 @@ pub(crate) fn hier_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     selection: Option<Res<EditorSelection>>,
-    rows: Query<(&Interaction, &RelativeCursorPosition, &HierRowClick)>,
+    rows: Query<(&UiInteraction, &RelativeCursorPosition, &HierRowClick)>,
     mut edges: Query<(&HierDropEdge, &mut Node)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
@@ -72,7 +73,7 @@ pub(crate) fn hier_drag(
     if mouse.just_pressed(MouseButton::Left) {
         if let (Some(c), Some((_, _, row))) = (
             cursor,
-            rows.iter().find(|(i, _, _)| matches!(i, Interaction::Pressed)),
+            rows.iter().find(|(i, _, _)| matches!(i, UiInteraction::Pressed)),
         ) {
             drag.press = Some((row.entity, c));
         }

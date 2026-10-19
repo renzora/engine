@@ -22,8 +22,10 @@ use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::stacking::ZTier;
 use crate::theme::*;
+use crate::UiInteraction;
 
 const NODE_W: f32 = 150.0;
 const HEAD_H: f32 = 26.0;
@@ -171,7 +173,8 @@ pub(crate) struct GraphGrid {
 }
 
 /// Grid spacing in canvas-logical px (matches the egui editor's 20px dot grid).
-const GRID_SPACING: f32 = 20.0;
+/// Also what a dragged node snaps to, so its corner sits on a dot.
+pub(crate) const GRID_SPACING: f32 = 20.0;
 
 /// Spawn a full-viewport dotted-grid background node that tracks `canvas`'s
 /// pan/zoom. Add it behind the canvas in the viewport.
@@ -189,7 +192,6 @@ pub(crate) fn grid_node(commands: &mut Commands, canvas: Entity) -> Entity {
             GraphGrid { canvas },
             ZTier(0),
             GlobalZIndex(0),
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             Name::new("node-graph-grid"),
         ))
@@ -388,7 +390,7 @@ fn graph_node(
             BackgroundColor(rgb(hover_bg())),
             BorderColor::all(rgb(tree_line())),
             NgPart::Node,
-            Interaction::default(),
+            UiInteraction::default(),
             GraphNode { canvas },
             ZTier(5),
             GlobalZIndex(5),
@@ -408,7 +410,7 @@ fn graph_node(
             },
             BackgroundColor(rgb(section_bg())),
             NgPart::Header,
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("node-title"),
         ))
         .with_children(|p| {
@@ -462,7 +464,7 @@ fn graph_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, output: bo
                 },
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("node-row"),
         ))
         .with_children(|p| {
@@ -491,7 +493,7 @@ fn port_dot(commands: &mut Commands, viewport: Entity, offset: Vec2, is_output: 
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
             NgPart::Port,
-            Interaction::default(),
+            UiInteraction::default(),
             GraphPort {
                 viewport,
                 is_output,
@@ -514,7 +516,6 @@ fn make_wire(commands: &mut Commands, viewport: Entity, from: Entity, to: Entity
                 ..default()
             },
             GraphWire { from, to, viewport },
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             ZTier(1),
             GlobalZIndex(1),
@@ -541,7 +542,7 @@ pub(crate) fn graph_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut active: Local<Option<(Entity, Vec2)>>,
-    picks: Query<(Entity, &Interaction, &GraphNode)>,
+    picks: Query<(Entity, &UiInteraction, &GraphNode)>,
     views: Query<&GraphView>,
     mut nodes: Query<&mut Node, With<GraphNode>>,
 ) {
@@ -549,7 +550,7 @@ pub(crate) fn graph_drag(
         if mouse.just_pressed(MouseButton::Left) {
             if let Some(c) = cursor(&windows) {
                 for (e, interaction, _) in &picks {
-                    if *interaction == Interaction::Pressed {
+                    if *interaction == UiInteraction::Pressed {
                         *active = Some((e, c));
                         break;
                     }
@@ -658,11 +659,11 @@ pub(crate) fn graph_zoom(
 
 pub(crate) fn graph_connect(
     mut pending: Local<Option<Entity>>,
-    pressed: Query<(Entity, &Interaction, &GraphPort), Changed<Interaction>>,
+    pressed: Query<(Entity, &UiInteraction, &GraphPort), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (entity, interaction, port) in &pressed {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if port.is_output {
@@ -676,7 +677,7 @@ pub(crate) fn graph_connect(
 pub(crate) fn graph_remove(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    blockers: Query<&Interaction, Or<(With<GraphNode>, With<GraphPort>)>>,
+    blockers: Query<&UiInteraction, Or<(With<GraphNode>, With<GraphPort>)>>,
     wires: Query<(Entity, &GraphWire)>,
     transforms: Query<&UiGlobalTransform>,
     computeds: Query<&ComputedNode>,
@@ -685,7 +686,7 @@ pub(crate) fn graph_remove(
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
-    if blockers.iter().any(|i| *i == Interaction::Pressed) {
+    if blockers.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(cl) = cursor(&windows) else {

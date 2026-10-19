@@ -18,7 +18,9 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_with};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::widgets::text_input;
+use renzora_ember::UiInteraction;
 
 use crate::drag_drop::drop_target_tint;
 use crate::ops::{asset_type_info, folder_color, icon_for};
@@ -372,7 +374,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             AssetTile {
                 path: entry.path.clone(),
                 is_dir,
@@ -394,8 +396,8 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
             .map(|s| s.is_selected(&path_bg))
             .unwrap_or(false);
         let hovered = matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         let st = &w.resource::<renzora_ember::style::Theme>().asset_tile;
         if selected {
@@ -433,8 +435,8 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
                 TextColor(rgb(text_primary())),
                 bevy::text::TextLayout::no_wrap(),
                 Node { min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
-                Interaction::default(),
-                bevy::ui::FocusPolicy::Pass,
+                UiInteraction::default(),
+                PASS_THROUGH,
                 AssetNameLabel { path: entry.path.clone(), surface: RenameSurface::Grid },
             ))
             .id()
@@ -491,7 +493,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(renzora_ember::theme::border())),
-            Interaction::default(),
+            UiInteraction::default(),
             AssetTile {
                 path: entry.path.clone(),
                 is_dir,
@@ -510,8 +512,8 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             .map(|s| s.is_selected(&path_bg))
             .unwrap_or(false);
         let hovered = matches!(
-            w.get::<Interaction>(col),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(col),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         let st = &w.resource::<renzora_ember::style::Theme>().asset_tile;
         if selected {
@@ -812,8 +814,8 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                     overflow: Overflow::clip(),
                     ..default()
                 },
-                Interaction::default(),
-                bevy::ui::FocusPolicy::Pass,
+                UiInteraction::default(),
+                PASS_THROUGH,
                 AssetNameLabel { path: entry.path.clone(), surface: RenameSurface::Grid },
             ))
             .id()

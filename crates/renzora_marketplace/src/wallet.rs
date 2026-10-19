@@ -25,6 +25,7 @@ use renzora_ember::widgets::{
     accent_chip, accent_ghost, checkbox, elevation, gradient_badge, gradient_button,
     gradient_diag, gradient_icon_tile, icon_badge, text_input, tint, EmberTextInput, HoverTint,
 };
+use renzora_ember::UiInteraction;
 
 use crate::avatars::avatar_image;
 use crate::toasts::{ToastQueue, Tone};
@@ -253,11 +254,11 @@ fn buy_clicks(
     panel: Res<WalletPanel>,
     session: Res<AuthSession>,
     mut toasts: ResMut<ToastQueue>,
-    packs: Query<(&Interaction, &BuyPackBtn), Changed<Interaction>>,
-    custom: Query<&Interaction, (With<BuyCustomBtn>, Changed<Interaction>)>,
+    packs: Query<(&UiInteraction, &BuyPackBtn), Changed<UiInteraction>>,
+    custom: Query<&UiInteraction, (With<BuyCustomBtn>, Changed<UiInteraction>)>,
     amount: Query<&EmberTextInput, With<BuyAmountInput>>,
 ) {
-    let pressed = |i: &Interaction| *i == Interaction::Pressed;
+    let pressed = |i: &UiInteraction| *i == UiInteraction::Pressed;
     for (i, b) in &packs {
         if pressed(i) {
             start_topup(&session, &mut toasts, &panel.tx, b.0);
@@ -278,12 +279,12 @@ fn donate_clicks(
     panel: Res<WalletPanel>,
     session: Res<AuthSession>,
     mut toasts: ResMut<ToastQueue>,
-    presets: Query<(&Interaction, &DonatePresetBtn), Changed<Interaction>>,
-    donate: Query<&Interaction, (With<DonateBtn>, Changed<Interaction>)>,
+    presets: Query<(&UiInteraction, &DonatePresetBtn), Changed<UiInteraction>>,
+    donate: Query<&UiInteraction, (With<DonateBtn>, Changed<UiInteraction>)>,
     mut inputs: Query<(&mut EmberTextInput, Option<&DonateAmountInput>, Option<&DonateMessageInput>)>,
     anon: Query<&Bound<bool>, With<DonateAnonCheckbox>>,
 ) {
-    let pressed = |i: &Interaction| *i == Interaction::Pressed;
+    let pressed = |i: &UiInteraction| *i == UiInteraction::Pressed;
 
     // Preset chips just fill the amount field (no state behind a keyed list).
     for (i, b) in &presets {
@@ -665,7 +666,7 @@ fn pack_button(
             },
             BackgroundColor(tint(hue, if tagged { 30 } else { 16 })),
             BorderColor::all(tint(hue, if tagged { 135 } else { 42 })),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverTint::tinted(hue, if tagged { 30 } else { 16 }, 52),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))

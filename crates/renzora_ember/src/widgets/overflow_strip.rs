@@ -39,7 +39,9 @@ use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use crate::font::EmberFonts;
+use crate::interaction::PASS_THROUGH;
 use crate::theme::{rgb, text_muted, text_primary};
+use crate::UiInteraction;
 
 use super::popup::{menu_item, menu_row_visual, screen_menu, ScreenMenu};
 
@@ -227,7 +229,7 @@ pub fn overflow_strip_gap(
             },
             // Structural: clicks between items fall through to whatever the
             // strip sits on (e.g. a title bar's window-drag handle).
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new(format!("{name}-strip")),
         ))
         .id();
@@ -244,7 +246,7 @@ pub fn overflow_strip_gap(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("{name}-overflow")),
         ))
@@ -267,7 +269,7 @@ pub fn overflow_strip_gap(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             OverflowStrip { more, budget, gap, widths: HashMap::new() },
             Name::new(format!("{name}-items")),
         ))
@@ -276,8 +278,8 @@ pub fn overflow_strip_gap(
 
     let glyph = crate::font::glyph(commands, "caret-down", text_muted(), 12.0);
     commands.entity(more).add_child(glyph);
-    crate::reactive::tracked::bind_bg(commands, more, move |w| match w.get::<Interaction>(more) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(crate::theme::hover_bg()),
+    crate::reactive::tracked::bind_bg(commands, more, move |w| match w.get::<UiInteraction>(more) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(crate::theme::hover_bg()),
         _ => Color::NONE,
     });
 
@@ -435,8 +437,8 @@ pub(crate) fn overflow_fit(
 pub(crate) fn overflow_more_click(
     windows: Query<&Window, With<PrimaryWindow>>,
     buttons: Query<
-        (&Interaction, &OverflowMore, &UiGlobalTransform, &ComputedNode),
-        Changed<Interaction>,
+        (&UiInteraction, &OverflowMore, &UiGlobalTransform, &ComputedNode),
+        Changed<UiInteraction>,
     >,
     strips: Query<&Children, With<OverflowStrip>>,
     folded: Query<(&Node, &OverflowEntry)>,
@@ -445,7 +447,7 @@ pub(crate) fn overflow_more_click(
 ) {
     let Some(fonts) = fonts else { return };
     for (interaction, more, ugt, cn) in &buttons {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(children) = strips.get(more.items) else { continue };
@@ -516,7 +518,7 @@ pub(crate) struct OverflowMenuRow {
 pub(crate) fn overflow_menu_row_input(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    rows: Query<(Entity, &Interaction, &OverflowMenuRow)>,
+    rows: Query<(Entity, &UiInteraction, &OverflowMenuRow)>,
     menus: Query<Entity, With<ScreenMenu>>,
     mut held: Local<Option<(Entity, Vec2)>>,
     mut commands: Commands,
@@ -525,7 +527,7 @@ pub(crate) fn overflow_menu_row_input(
     let Some((row, origin)) = *held else {
         if mouse.just_pressed(MouseButton::Left) {
             if let Some(cursor) = cursor {
-                if let Some((row, _, _)) = rows.iter().find(|(_, i, _)| **i == Interaction::Pressed)
+                if let Some((row, _, _)) = rows.iter().find(|(_, i, _)| **i == UiInteraction::Pressed)
                 {
                     *held = Some((row, cursor));
                 }
@@ -550,7 +552,7 @@ pub(crate) fn overflow_menu_row_input(
     // without passing the threshold is a cancelled press and does nothing.
     let action = if dragged {
         entry.drag.clone()
-    } else if matches!(interaction, Interaction::Pressed | Interaction::Hovered) {
+    } else if matches!(interaction, UiInteraction::Pressed | UiInteraction::Hovered) {
         entry.click.clone()
     } else {
         return;

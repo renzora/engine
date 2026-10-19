@@ -11,17 +11,18 @@
 
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
-use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};
 
 use crate::auth::marketplace::{AssetSummary, MarketplaceListResponse};
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::{Bound, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 use renzora::SplashState;
 use renzora_theme::ThemeManager;
 
@@ -501,7 +502,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let search_ic = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 13.0);
-    commands.entity(search_ic).insert(FocusPolicy::Pass);
+    commands.entity(search_ic).insert(PASS_THROUGH);
     let search = text_input(commands, &fonts.ui, "Search assets...", "");
     commands.entity(search).insert((
         StoreSearch,
@@ -662,13 +663,13 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Node { width: Val::Px(20.0), height: Val::Px(20.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             StoreTopUpBtn,
             Name::new("store-topup"),
         ))
         .id();
     let topup_icon = icon_text(commands, &fonts.phosphor, "plus", (255, 255, 255), 12.0);
-    commands.entity(topup_icon).insert(FocusPolicy::Pass);
+    commands.entity(topup_icon).insert(PASS_THROUGH);
     commands.entity(topup).add_child(topup_icon);
     commands.entity(bal_row).add_children(&[bal_icon, bal_text, bal_gap, topup]);
     commands.entity(signed).add_children(&[who_row, bal_row]);
@@ -678,14 +679,14 @@ fn build_account_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             StoreSignInBtn,
             Name::new("store-signin"),
         ))
         .id();
     bind_display(commands, signin, |w| !signed_in(w));
     let si_icon = icon_text(commands, &fonts.phosphor, "sign-in", (255, 255, 255), 13.0);
-    let si_txt = commands.spawn((Text::new("Sign In"), ui_font(&fonts.ui, 11.0), TextColor(rgb((255, 255, 255))), FocusPolicy::Pass)).id();
+    let si_txt = commands.spawn((Text::new("Sign In"), ui_font(&fonts.ui, 11.0), TextColor(rgb((255, 255, 255))), PASS_THROUGH)).id();
     commands.entity(signin).add_children(&[si_icon, si_txt]);
     commands.entity(account).add_children(&[signed, signin]);
 
@@ -704,15 +705,15 @@ fn build_upload_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), height: Val::Px(36.0), padding: UiRect::horizontal(Val::Px(12.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(hover_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             StoreUploadBtn,
             Name::new("store-upload"),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let up_icon = icon_text(commands, &fonts.phosphor, "upload-simple", text_primary(), 13.0);
-    commands.entity(up_icon).insert(FocusPolicy::Pass);
-    let up_txt = commands.spawn((Text::new("Upload Asset"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    commands.entity(up_icon).insert(PASS_THROUGH);
+    let up_txt = commands.spawn((Text::new("Upload Asset"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     commands.entity(upload).add_children(&[up_icon, up_txt]);
     upload
 }
@@ -837,7 +838,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             StoreUpdatesRow,
             Name::new("store-updates"),
@@ -846,7 +847,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_bg(commands, row, move |w| {
         if w.resource::<HubStoreData>().is_updates() {
             rgb(accent()).with_alpha(0.18)
-        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+        } else if matches!(w.get::<UiInteraction>(row), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)) {
             rgb(hover_bg())
         } else {
             Color::NONE
@@ -879,7 +880,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("Updates".to_string()),
             ui_font(&fonts.ui, 13.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
         ))
         .id();
@@ -898,7 +899,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_display(commands, badge, |w| pending_updates(w) > 0);
@@ -909,7 +910,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // Dark on amber. White on this yellow is the one combination that
             // disappears, and the badge is the thing meant to be seen.
             TextColor(rgb((32, 26, 10))),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, badge_t, |w| pending_updates(w).to_string());
@@ -992,12 +993,12 @@ fn pill_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, label: &s
         .spawn((
             Node { height: Val::Px(22.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(bg),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
             Name::new("store-pill"),
         ))
         .id();
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb((255, 255, 255))), FocusPolicy::Pass)).id();
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb((255, 255, 255))), PASS_THROUGH)).id();
     commands.entity(btn).add_child(t);
     btn
 }
@@ -1007,7 +1008,7 @@ fn chip_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
         .spawn((
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
         ))
         .id();
@@ -1083,7 +1084,7 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String
             Node { width: Val::Percent(100.0), min_height: Val::Px(28.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::left(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             StoreCatRow(slug.clone()),
             Name::new("store-cat"),
@@ -1103,7 +1104,7 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, slug: Option<String
             // in one list is two answers to "where am I".
             if d.category == slug && !d.is_updates() {
                 rgb(accent()).with_alpha(0.18)
-            } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+            } else if matches!(w.get::<UiInteraction>(row), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)) {
                 rgb(hover_bg())
             } else {
                 Color::NONE
@@ -1290,16 +1291,17 @@ fn asset_card(
             Node { width: Val::Px(CARD_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(CARD_PAD)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)), ..default() },
             BackgroundColor(base),
             BorderColor::all(rgba([255, 255, 255, 12])),
-            Interaction::default(),
+            UiInteraction::default(),
             // Clicking the card opens the item-detail overlay (install/buy live
-            // there). Passive children are `FocusPolicy::Pass` so any click but
+            // there). Passive children are `PASS_THROUGH` so any click but
             // the preview button falls through to here.
             crate::item_overlay::StoreCardBtn(a.clone()),
-            // Geometric, unlike `Interaction`: the Get pill is `FocusPolicy::
-            // Block`, so once it appears it takes the hover and the card behind
-            // it stops being `Hovered` — a pill bound to the card's `Interaction`
-            // would hide itself the instant the cursor reached it, and flicker.
-            // `cursor_over` is a rect test and does not care what is on top.
+            // Geometric, unlike `UiInteraction`: the Get pill blocks (`BLOCK`),
+            // and the pill's visibility must not depend on which node the
+            // pointer settles on once the pill appears, or a pill bound to the
+            // card's state could hide itself the instant the cursor reached it,
+            // and flicker. `cursor_over` is a rect test and does not care what
+            // is on top.
             bevy::ui::RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("store-card"),
@@ -1308,7 +1310,7 @@ fn asset_card(
     // Hover: lift the surface and accent the border so the whole card reads as
     // clickable (asset-store cards live and die on their hover feedback).
     bind_bg(commands, card, move |w| {
-        if matches!(w.get::<Interaction>(card), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+        if matches!(w.get::<UiInteraction>(card), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)) {
             hover
         } else {
             base
@@ -1317,7 +1319,7 @@ fn asset_card(
     bind_with(
         commands,
         card,
-        move |w| matches!(w.get::<Interaction>(card), Some(Interaction::Hovered) | Some(Interaction::Pressed)),
+        move |w| matches!(w.get::<UiInteraction>(card), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)),
         |w, e, hov: &bool| {
             if let Some(mut b) = w.get_mut::<BorderColor>(e) {
                 let a = accent();
@@ -1344,14 +1346,14 @@ fn asset_card(
                 ..default()
             },
             BackgroundColor(rgb(hover_bg())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // Only show a category glyph when there's NO thumbnail — otherwise it bled
     // through transparent (3D-render) thumbnails as a cube floating over the art.
     if a.thumbnail_url.is_none() {
         let ph = icon_text(commands, &fonts.phosphor, category_icon(&a.category), placeholder(), 34.0);
-        commands.entity(ph).insert(FocusPolicy::Pass);
+        commands.entity(ph).insert(PASS_THROUGH);
         commands.entity(thumb).add_child(ph);
     }
     if let Some(url) = a.thumbnail_url.clone() {
@@ -1367,7 +1369,7 @@ fn asset_card(
             let bg = commands
                 .spawn((
                     ImageNode { color: Color::srgb(0.30, 0.30, 0.33), image_mode: NodeImageMode::Stretch, ..default() },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)), ..default() },
                 ))
                 .id();
@@ -1377,7 +1379,7 @@ fn asset_card(
         }
         // Foreground: the full artwork, aspect-preserved, over the backdrop.
         let img = commands
-            .spawn((ImageNode::default(), FocusPolicy::Pass, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)), ..default() }))
+            .spawn((ImageNode::default(), PASS_THROUGH, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, border_radius: BorderRadius::all(Val::Px(ICON_RADIUS)), ..default() }))
             .id();
         bind_with(commands, img, move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get(&url)), apply_thumb);
         commands.entity(thumb).add_child(img);
@@ -1395,20 +1397,20 @@ fn asset_card(
             .spawn((
                 Node { position_type: PositionType::Absolute, top: Val::Px(8.0), left: Val::Px(8.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
                 BackgroundColor(rgba([0, 0, 0, 165])),
-                Interaction::default(),
+                UiInteraction::default(),
                 StorePreviewBtn(a.clone()),
                 // The comment above says this blocks; nothing was making it. On
-                // 0.19's `Pass` default the press carried on to the card behind,
+                // the pass-through default the press carried on to the card behind,
                 // so previewing a theme opened the detail overlay as well.
-                FocusPolicy::Block,
+                BLOCK,
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 renzora_ember::widgets::HoverTooltip::new("Preview this theme live".to_string()),
             ))
             .id();
         let ic = icon_text(commands, &fonts.phosphor, "eye", (235, 235, 240), 11.0);
-        commands.entity(ic).insert(FocusPolicy::Pass);
+        commands.entity(ic).insert(PASS_THROUGH);
         let label = commands
-            .spawn((Text::new("Preview"), ui_font(&fonts.ui, 9.5), TextColor(rgb((235, 235, 240))), FocusPolicy::Pass))
+            .spawn((Text::new("Preview"), ui_font(&fonts.ui, 9.5), TextColor(rgb((235, 235, 240))), PASS_THROUGH))
             .id();
         commands.entity(preview).add_children(&[ic, label]);
         commands.entity(thumb).add_child(preview);
@@ -1420,7 +1422,7 @@ fn asset_card(
     // download count — four rows of chrome under a picture. A store tile gets one
     // line of context, so the creator is left to the detail overlay.
     let info = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, FocusPolicy::Pass))
+        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, PASS_THROUGH))
         .id();
     // Two mechanisms, because neither is enough on its own.
     //
@@ -1439,7 +1441,7 @@ fn asset_card(
     let name_box = commands
         .spawn((
             Node { width: Val::Percent(100.0), overflow: Overflow::clip(), ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             renzora_ember::widgets::HoverTooltip::new(a.name.clone()),
         ))
         .id();
@@ -1449,7 +1451,7 @@ fn asset_card(
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(name_box).add_child(name);
@@ -1461,14 +1463,14 @@ fn asset_card(
     // highlighted sidebar row saying the same. It comes back only for a search,
     // where the results genuinely are mixed — see `show_category`.
     let sub = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, FocusPolicy::Pass))
+        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, PASS_THROUGH))
         .id();
     let mut sub_kids: Vec<Entity> = Vec::new();
     if show_category {
         let chue = category_hue(&a.category);
         sub_kids.push(
             commands
-                .spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass, Node { overflow: Overflow::clip(), ..default() }))
+                .spawn((Text::new(a.category.clone()), ui_font(&fonts.ui, 9.5), TextColor(rgb(chue)), bevy::text::TextLayout::no_wrap(), PASS_THROUGH, Node { overflow: Overflow::clip(), ..default() }))
                 .id(),
         );
     } else {
@@ -1484,17 +1486,17 @@ fn asset_card(
         };
         sub_kids.push(
             commands
-                .spawn((Text::new(label), ui_font(&fonts.ui, 10.0), TextColor(rgb(colour)), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
+                .spawn((Text::new(label), ui_font(&fonts.ui, 10.0), TextColor(rgb(colour)), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
                 .id(),
         );
     }
-    sub_kids.push(commands.spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass)).id());
+    sub_kids.push(commands.spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH)).id());
     let dl_ic = icon_text(commands, &fonts.phosphor, "download-simple", placeholder(), 9.5);
-    commands.entity(dl_ic).insert(FocusPolicy::Pass);
+    commands.entity(dl_ic).insert(PASS_THROUGH);
     sub_kids.push(dl_ic);
     sub_kids.push(
         commands
-            .spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), bevy::text::TextLayout::no_wrap(), FocusPolicy::Pass))
+            .spawn((Text::new(fmt_count(a.downloads)), ui_font(&fonts.ui, 9.5), TextColor(rgb(placeholder())), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
             .id(),
     );
     commands.entity(sub).add_children(&sub_kids);
@@ -1561,11 +1563,11 @@ fn corner_badge(
             // rather than as part of it. Artwork is arbitrary, and a green disc
             // on a green screenshot is invisible without one.
             BorderColor::all(rgba([16, 16, 20, 190])),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, glyph, (26, 22, 10), 10.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(disc).add_child(ic);
     Some(disc)
 }
@@ -1677,7 +1679,7 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
             // both at once: the circle blocks focus, so it takes the interaction
             // when the cursor is on it and this takes it when the cursor is on
             // the label.
-            Interaction::default(),
+            UiInteraction::default(),
             StoreSeeAllBtn(slug.to_string()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("store-see-all"),
@@ -1699,10 +1701,10 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
-            // `HoverTint` reads `Interaction` from its own entity, so the tint
+            // `HoverTint` reads `UiInteraction` from its own entity, so the tint
             // and the interaction have to live together — on the circle, which
             // is the thing that visibly reacts.
-            Interaction::default(),
+            UiInteraction::default(),
             StoreSeeAllBtn(slug.to_string()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTint::solid(
@@ -1713,7 +1715,7 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, "arrow-right", accent(), 18.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(circle).add_child(ic);
 
     let label = commands
@@ -1721,7 +1723,7 @@ fn see_all_card(commands: &mut Commands, fonts: &EmberFonts, slug: &str) -> Enti
             Text::new("See all"),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(accent())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(col).add_children(&[circle, label]);
@@ -1830,7 +1832,7 @@ fn build_section(
 /// The price it used to carry moved to the meta line as text, so nothing is
 /// hidden — only the *button* is.
 ///
-/// Bound to `card`'s [`RelativeCursorPosition`] rather than its `Interaction`,
+/// Bound to `card`'s [`RelativeCursorPosition`] rather than its `UiInteraction`,
 /// because this pill blocks focus and would otherwise steal the hover it depends
 /// on the moment the cursor arrived.
 fn get_pill(
@@ -1888,17 +1890,17 @@ fn get_pill(
                 ..default()
             },
             BackgroundColor(base),
-            Interaction::default(),
-            // REQUIRED, not belt-and-braces. Bevy 0.19 made `Node` require
-            // `FocusPolicy` and defaults it to `Pass`, so `ui_focus_system` marks
-            // every node under the cursor as pressed and only stops at a `Block`.
+            UiInteraction::default(),
+            // REQUIRED, not belt-and-braces. Every UI node starts as
+            // `PASS_THROUGH`, so a press reaches every node under the cursor
+            // and only stops at one that carries `BLOCK`.
             // Without this the pill downloads AND the press carries on to the
             // card's `StoreCardBtn` behind it, opening the detail overlay too.
             //
             // Kept even for the inert Installed pill: swallowing the press is
             // what makes it inert. Letting it through would open the detail
             // overlay from a click aimed at a button that says you are done.
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     match state {
@@ -1926,7 +1928,7 @@ fn get_pill(
         }
     }
     bind_bg(commands, pill, move |w| {
-        if matches!(w.get::<Interaction>(pill), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+        if matches!(w.get::<UiInteraction>(pill), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)) {
             hot
         } else {
             base
@@ -1953,9 +1955,9 @@ fn get_pill(
         S::Absent => ("coins", format!("{}", a.price_credits)),
     };
     let ic = icon_text(commands, &fonts.phosphor, glyph, fg, 10.5);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), FocusPolicy::Pass))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(fg)), PASS_THROUGH))
         .id();
     commands.entity(pill).add_children(&[ic, t]);
     pill
@@ -2300,9 +2302,9 @@ fn store_price_dropdown(
     }
 }
 
-fn store_category_click(q: Query<(&Interaction, &StoreCatRow), Changed<Interaction>>, mut data: ResMut<HubStoreData>) {
+fn store_category_click(q: Query<(&UiInteraction, &StoreCatRow), Changed<UiInteraction>>, mut data: ResMut<HubStoreData>) {
     for (interaction, row) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         select_category(&mut data, row.0.clone());
@@ -2332,20 +2334,20 @@ fn select_category(data: &mut HubStoreData, category: Option<String>) {
 /// this crate needs no dependency on `renzora_update`. It is the same
 /// arrangement in reverse to the one that brings the updater's card back here.
 fn store_engine_update_click(
-    q: Query<&Interaction, (With<StoreEngineUpdateBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<StoreEngineUpdateBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::UpdateRequested);
     }
 }
 
 /// The sidebar's **Updates** row → show installed plugins with something newer.
 fn store_updates_click(
-    q: Query<&Interaction, (With<StoreUpdatesRow>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<StoreUpdatesRow>, Changed<UiInteraction>)>,
     mut data: ResMut<HubStoreData>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     show_updates(&mut data);
@@ -2443,9 +2445,9 @@ fn store_grid_columns(mut grid: Query<(&bevy::ui::ComputedNode, &mut Node), With
 }
 
 /// A shelf header / "See all" → select that category, entering browse mode.
-fn store_see_all_click(q: Query<(&Interaction, &StoreSeeAllBtn), Changed<Interaction>>, mut data: ResMut<HubStoreData>) {
+fn store_see_all_click(q: Query<(&UiInteraction, &StoreSeeAllBtn), Changed<UiInteraction>>, mut data: ResMut<HubStoreData>) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         select_category(&mut data, Some(btn.0.clone()));
@@ -2453,9 +2455,9 @@ fn store_see_all_click(q: Query<(&Interaction, &StoreSeeAllBtn), Changed<Interac
     }
 }
 
-fn store_page_click(q: Query<(&Interaction, &StorePageBtn), Changed<Interaction>>, mut data: ResMut<HubStoreData>) {
+fn store_page_click(q: Query<(&UiInteraction, &StorePageBtn), Changed<UiInteraction>>, mut data: ResMut<HubStoreData>) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let next = (data.page as i32 + btn.0).max(1) as u32;
@@ -2469,13 +2471,13 @@ fn store_page_click(q: Query<(&Interaction, &StorePageBtn), Changed<Interaction>
 /// Card "Get / Buy" → open the install confirm overlay. A paid asset for a
 /// signed-out user instead opens the sign-in modal (purchase needs an account).
 fn store_install_click(
-    q: Query<(&Interaction, &StoreInstallBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StoreInstallBtn), Changed<UiInteraction>>,
     session: Option<Res<AuthSession>>,
     mut commands: Commands,
 ) {
     let signed = session.as_ref().map(|s| s.is_signed_in()).unwrap_or(false);
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let asset = btn.0.clone();
@@ -2489,14 +2491,14 @@ fn store_install_click(
 
 /// Card "Preview" (theme) → download the theme `.toml` and apply it live.
 fn store_preview_click(
-    q: Query<(&Interaction, &StorePreviewBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StorePreviewBtn), Changed<UiInteraction>>,
     mut preview: ResMut<ThemePreview>,
 ) {
     if preview.rx.is_some() {
         return;
     }
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             start_preview_download(&mut preview, btn.0.clone());
             break;
         }
@@ -2504,23 +2506,23 @@ fn store_preview_click(
 }
 
 fn store_preview_dismiss_click(
-    q: Query<&Interaction, (With<PreviewDismissBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<PreviewDismissBtn>, Changed<UiInteraction>)>,
     mut preview: ResMut<ThemePreview>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         preview.error = None;
     }
 }
 
-fn store_signin_click(q: Query<&Interaction, (With<StoreSignInBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn store_signin_click(q: Query<&UiInteraction, (With<StoreSignInBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::AuthToggleWindowRequest);
     }
 }
 
 /// Credit "+" → open the website wallet to buy more credits.
-fn store_topup_click(q: Query<&Interaction, (With<StoreTopUpBtn>, Changed<Interaction>)>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn store_topup_click(q: Query<&UiInteraction, (With<StoreTopUpBtn>, Changed<UiInteraction>)>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         open_url("https://renzora.com/wallet");
     }
 }
@@ -2536,17 +2538,17 @@ pub(crate) fn open_url(url: &str) {
 }
 
 fn store_upload_click(
-    q: Query<&Interaction, (With<StoreUploadBtn>, Changed<Interaction>)>,
-    back: Query<&Interaction, (With<StoreBackBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<StoreUploadBtn>, Changed<UiInteraction>)>,
+    back: Query<&UiInteraction, (With<StoreBackBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
     mut data: ResMut<HubStoreData>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         // Publishing is a view of this overlay, not a panel to go and find.
         // `begin_publishing` also kicks the one category fetch.
         commands.queue(crate::upload_panel::begin_publishing);
     }
-    if back.iter().any(|i| *i == Interaction::Pressed) {
+    if back.iter().any(|i| *i == UiInteraction::Pressed) {
         data.publishing = false;
     }
 }
@@ -2583,11 +2585,11 @@ fn poll_preview(mut preview: ResMut<ThemePreview>, manager: Option<ResMut<ThemeM
 
 /// Banner "Stop" → restore the saved theme.
 fn store_stop_preview_click(
-    q: Query<&Interaction, (With<StopPreviewBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<StopPreviewBtn>, Changed<UiInteraction>)>,
     mut preview: ResMut<ThemePreview>,
     manager: Option<ResMut<ThemeManager>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(mut manager) = manager else { return };
@@ -2601,11 +2603,11 @@ fn store_stop_preview_click(
 
 /// Banner "Install Theme" → open the install overlay for the previewed asset.
 fn store_preview_install_click(
-    q: Query<&Interaction, (With<PreviewInstallBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<PreviewInstallBtn>, Changed<UiInteraction>)>,
     preview: Res<ThemePreview>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         if let Some(asset) = preview.asset.clone() {
             commands.queue(move |world: &mut World| crate::install_overlay::open(world, asset));
         }

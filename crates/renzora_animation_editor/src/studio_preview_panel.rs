@@ -15,6 +15,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::studio_preview::{
     StudioPreviewImage, StudioPreviewOrbit, StudioPreviewSettings, StudioPreviewTracker,
@@ -134,7 +135,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::srgb(0.12, 0.12, 0.14)),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             OrbitTarget,
             Name::new("studio-preview-image"),
@@ -269,7 +270,7 @@ fn tool_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
         ))
         .id();
@@ -285,7 +286,7 @@ fn tool_button(
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 fn tool_btn_click(
-    q: Query<(&Interaction, &ToolBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ToolBtn), Changed<UiInteraction>>,
     settings: Option<ResMut<StudioPreviewSettings>>,
     orbit: Option<ResMut<StudioPreviewOrbit>>,
     tracker: Option<ResMut<StudioPreviewTracker>>,
@@ -294,7 +295,7 @@ fn tool_btn_click(
     let mut orbit = orbit;
     let mut tracker = tracker;
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match btn {
@@ -317,10 +318,10 @@ fn tool_btn_click(
 fn orbit_drag(
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
-    q: Query<&Interaction, With<OrbitTarget>>,
+    q: Query<&UiInteraction, With<OrbitTarget>>,
     orbit: Option<ResMut<StudioPreviewOrbit>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         *last = None;
         return;
     }

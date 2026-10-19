@@ -14,6 +14,7 @@ use renzora::core::CurrentProject;
 use renzora_editor_framework::{open_asset_tab, AssetDragPayload, DocTabKind};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, rgb};
+use renzora_ember::UiInteraction;
 
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::material_ref::MaterialRef;
@@ -231,9 +232,9 @@ pub(super) fn mat_slot_drop_highlight(
     }
 }
 
-pub(super) fn mat_edit_click(q: Query<(&Interaction, &MatEditBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn mat_edit_click(q: Query<(&UiInteraction, &MatEditBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;
@@ -248,9 +249,9 @@ pub(super) fn mat_edit_click(q: Query<(&Interaction, &MatEditBtn), Changed<Inter
     }
 }
 
-pub(super) fn mat_clear_click(q: Query<(&Interaction, &MatClearBtn), Changed<Interaction>>, mut commands: Commands) {
+pub(super) fn mat_clear_click(q: Query<(&UiInteraction, &MatClearBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;

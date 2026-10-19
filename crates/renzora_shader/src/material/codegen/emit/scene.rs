@@ -1,7 +1,8 @@
 //! `scene/*` node emitters — reads of the frame's other buffers.
 //!
 //! Every one of these depends on a pass that may not be running, so each is
-//! wrapped in the `#ifdef` for its prepass with a sentinel `#else` branch. The
+//! gated with `@if` on its prepass flag, with a sentinel for the `@if(!...)`
+//! side (see [`Ctx::emit_if`]). The
 //! fallback is not politeness: without it the material fails to *compile* for
 //! any camera lacking that prepass, which is a different and much worse
 //! failure than a wrong-looking value.
@@ -16,6 +17,17 @@ use super::super::ctx::Ctx;
 
 impl Ctx<'_> {
     pub(crate) fn gen_scene_node(&mut self, node: &MaterialNode, id: NodeId) {
+        // The 2D pipeline has no prepasses, no environment map and no
+        // transmission texture; `refuses_node` is the shared list.
+        if let Some(reason) = self.graph.domain.refuses_node(&node.node_type) {
+            self.errors.push(reason);
+            // Still define the outputs, so the rest of the graph compiles and
+            // this is the only error reported.
+            for pin in ["depth", "fade", "normal", "velocity", "speed", "color", "rgb"] {
+                self.set_out(id, pin, "vec4<f32>(0.0)".into());
+            }
+            return;
+        }
         match node.node_type.as_str() {
             "scene/pixel_depth" => {
                 self.uses_scene_depth = true;
@@ -28,56 +40,54 @@ impl Ctx<'_> {
                 let v = self.next_var("scdepth");
                 // Guard the prepass sample — if no DepthPrepass is active, the
                 // shader still compiles but returns a "far away" sentinel.
-                self.emit("#ifdef DEPTH_PREPASS".to_string());
-                self.emit(format!(
-                    "    let {v} = mat_linearize_depth(bevy_pbr::prepass_utils::prepass_depth(in.position, 0u));"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = 1.0e6;"));
-                self.emit("#endif".to_string());
+                self.emit_if(
+                    "DEPTH_PREPASS",
+                    &[format!(
+                        "let {v} = mat_linearize_depth(prepass_utils::prepass_depth(in.position, 0u));"
+                    )],
+                    &[format!("let {v} = 1.0e6;")],
+                );
                 self.set_out(id, "depth", v);
             }
             "scene/depth_fade" => {
                 self.uses_scene_depth = true;
                 let distance = self.input(node, "distance");
                 let v = self.next_var("sdfade");
-                self.emit("#ifdef DEPTH_PREPASS".to_string());
-                self.emit(format!(
-                    "    let {v}_scene = mat_linearize_depth(bevy_pbr::prepass_utils::prepass_depth(in.position, 0u));"
-                ));
-                self.emit(format!(
-                    "    let {v}_pixel = mat_linearize_depth(in.position.z);"
-                ));
-                self.emit(format!(
-                    "    let {v} = saturate(({v}_scene - {v}_pixel) / max({distance}, 0.0001));"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = 1.0;"));
-                self.emit("#endif".to_string());
+                self.emit_if(
+                    "DEPTH_PREPASS",
+                    &[
+                        format!(
+                            "let {v}_scene = mat_linearize_depth(prepass_utils::prepass_depth(in.position, 0u));"
+                        ),
+                        format!("let {v}_pixel = mat_linearize_depth(in.position.z);"),
+                        format!(
+                            "let {v} = saturate(({v}_scene - {v}_pixel) / max({distance}, 0.0001));"
+                        ),
+                    ],
+                    &[format!("let {v} = 1.0;")],
+                );
                 self.set_out(id, "fade", v);
             }
             "scene/scene_normal" => {
                 self.uses_scene_normal = true;
                 let v = self.next_var("snrm");
-                self.emit("#ifdef NORMAL_PREPASS".to_string());
-                self.emit(format!(
-                    "    let {v} = bevy_pbr::prepass_utils::prepass_normal(in.position, 0u);"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = vec3<f32>(0.0, 1.0, 0.0);"));
-                self.emit("#endif".to_string());
+                self.emit_if(
+                    "NORMAL_PREPASS",
+                    &[format!("let {v} = prepass_utils::prepass_normal(in.position, 0u);")],
+                    &[format!("let {v} = vec3<f32>(0.0, 1.0, 0.0);")],
+                );
                 self.set_out(id, "normal", v);
             }
             "scene/motion_vector" => {
                 self.uses_motion_vector = true;
                 let vel = self.next_var("mv");
-                self.emit("#ifdef MOTION_VECTOR_PREPASS".to_string());
-                self.emit(format!(
-                    "    let {vel} = bevy_pbr::prepass_utils::prepass_motion_vector(in.position, 0u);"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!("    let {vel} = vec2<f32>(0.0, 0.0);"));
-                self.emit("#endif".to_string());
+                self.emit_if(
+                    "MOTION_VECTOR_PREPASS",
+                    &[format!(
+                        "let {vel} = prepass_utils::prepass_motion_vector(in.position, 0u);"
+                    )],
+                    &[format!("let {vel} = vec2<f32>(0.0, 0.0);")],
+                );
                 self.set_out(id, "velocity", vel.clone());
                 self.set_out(id, "speed", format!("length({vel})"));
             }
@@ -116,13 +126,13 @@ impl Ctx<'_> {
                 self.uses_transmission = true;
                 let uv = self.input(node, "uv");
                 let v = self.next_var("scenec");
-                self.emit("#ifdef VIEW_TRANSMISSION_TEXTURE".to_string());
-                self.emit(format!(
-                    "    let {v} = textureSample(view_transmission_texture, view_transmission_sampler, {uv});"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
-                self.emit("#endif".to_string());
+                self.emit_if(
+                    "VIEW_TRANSMISSION_TEXTURE",
+                    &[format!(
+                        "let {v} = textureSample(view_transmission_texture, view_transmission_sampler, {uv});"
+                    )],
+                    &[format!("let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);")],
+                );
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
@@ -134,19 +144,7 @@ impl Ctx<'_> {
                 // No ENVIRONMENT_MAP means no binding at all, so a camera with
                 // no environment map light needs the fallback below or the
                 // material fails to compile for it.
-                self.emit("#ifdef ENVIRONMENT_MAP".to_string());
-                self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
-                self.emit(format!(
-                    "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, normalize({dir}), {mip});"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!(
-                    "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, normalize({dir}), {mip});"
-                ));
-                self.emit("#endif".to_string());
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
-                self.emit("#endif".to_string());
+                self.emit_env_map_sample(&v, &format!("normalize({dir})"), &mip);
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
@@ -164,24 +162,28 @@ impl Ctx<'_> {
                 self.emit(format!(
                     "    let {v}_rd = reflect(-{v}_vd, normalize({n}));"
                 ));
-                // Same fallback as `scene/env_map_sample` — see there.
-                self.emit("#ifdef ENVIRONMENT_MAP".to_string());
-                self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
-                self.emit(format!(
-                    "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, {v}_rd, {mip});"
-                ));
-                self.emit("#else".to_string());
-                self.emit(format!(
-                    "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, {v}_rd, {mip});"
-                ));
-                self.emit("#endif".to_string());
-                self.emit("#else".to_string());
-                self.emit(format!("    let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
-                self.emit("#endif".to_string());
+                // Same fallback as `scene/env_map_sample`: see there.
+                self.emit_env_map_sample(&v, &format!("{v}_rd"), &mip);
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
             unknown => self.unknown_node(unknown),
         }
+    }
+
+    /// `let {v}` = the environment map sampled along `dir`, or black when the
+    /// view has none.
+    ///
+    /// Three ways, because Bevy binds the map two different ways: an array
+    /// when light probes are batched, a single cube otherwise. The imports in
+    /// `emit_ext_shader_header` carry the same two conditions.
+    fn emit_env_map_sample(&mut self, v: &str, dir: &str, mip: &str) {
+        self.emit(format!(
+            "    @if(ENVIRONMENT_MAP && MULTIPLE_LIGHT_PROBES_IN_ARRAY) let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, {dir}, {mip});"
+        ));
+        self.emit(format!(
+            "    @if(ENVIRONMENT_MAP && !MULTIPLE_LIGHT_PROBES_IN_ARRAY) let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, {dir}, {mip});"
+        ));
+        self.emit(format!("    @if(!ENVIRONMENT_MAP) let {v} = vec4<f32>(0.0, 0.0, 0.0, 1.0);"));
     }
 }

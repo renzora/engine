@@ -7,8 +7,10 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::reactive::Bound;
 use crate::theme::rgb;
+use crate::UiInteraction;
 
 const OFF_BG: (u8, u8, u8) = (80, 80, 85);
 const ON_BG: (u8, u8, u8) = (89, 191, 115);
@@ -46,7 +48,7 @@ pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(KNOB)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("switch-knob"),
         ))
         .id();
@@ -61,7 +63,7 @@ pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(if on { ON_BG } else { OFF_BG })),
-            Interaction::default(),
+            UiInteraction::default(),
             EmberSwitch { knob },
             Bound::<bool>(on),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -74,10 +76,10 @@ pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
 
 /// Click → flip the model (`Bound<bool>`); visuals follow via [`switch_apply`].
 pub(crate) fn switch_interact(
-    mut q: Query<(&Interaction, &mut Bound<bool>), (With<EmberSwitch>, Changed<Interaction>)>,
+    mut q: Query<(&UiInteraction, &mut Bound<bool>), (With<EmberSwitch>, Changed<UiInteraction>)>,
 ) {
     for (interaction, mut b) in &mut q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             b.0 = !b.0;
         }
     }

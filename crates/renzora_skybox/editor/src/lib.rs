@@ -48,6 +48,7 @@ mod native_inspector {
     use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
     use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::widgets::{drag_value, dropdown, icon_label_button, DragRange};
+    use renzora_ember::UiInteraction;
     use renzora_inspector::asset_drop_field;
     use renzora_skybox::{SkyMode, SkyboxData};
 
@@ -258,9 +259,9 @@ mod native_inspector {
         commands.entity(root).add_children(&rows);
     }
 
-    pub(super) fn sky_browse_click(q: Query<(&Interaction, &SkyBrowseBtn), Changed<Interaction>>, mut commands: Commands) {
+    pub(super) fn sky_browse_click(q: Query<(&UiInteraction, &SkyBrowseBtn), Changed<UiInteraction>>, mut commands: Commands) {
         for (interaction, b) in &q {
-            if *interaction != Interaction::Pressed {
+            if *interaction != UiInteraction::Pressed {
                 continue;
             }
             let e = b.entity;

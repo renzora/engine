@@ -119,9 +119,9 @@ fn apply_window_actions(
     // `start_drag_move` / `start_drag_resize` hand the press to the WM's own
     // move/resize loop (on X11, `_NET_WM_MOVERESIZE`). The app keeps running and
     // keeps drawing, but it does not see the mouse-up that ends the drag — so
-    // `ButtonInput<MouseButton>` stays "left is held", `ui_focus_system` keeps
-    // the handle at `Interaction::Pressed`, and the `Changed<Interaction>` that
-    // every drag/resize starter filters on never fires again. The symptom is
+    // `ButtonInput<MouseButton>` stays "left is held", the handle stays pressed,
+    // and the next press on it never registers, so no drag/resize starter
+    // fires again. The symptom is
     // exact: you can drag the window once, and the second drag does nothing
     // until you click somewhere first (that click is what finally produces a
     // release Bevy can see).

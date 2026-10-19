@@ -26,12 +26,14 @@ use bevy::window::PrimaryWindow;
 
 use renzora::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::markup::provenance::MarkupSource;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::bind_bg;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 
 use crate::game_ui::NativeCanvasState;
 
@@ -436,7 +438,7 @@ fn shelf_button(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             // The shelf has no room for labels, so the tooltip is the only thing
             // naming these — it is not optional here the way it is on a tile.
@@ -447,8 +449,8 @@ fn shelf_button(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element
         .id();
     bind_bg(commands, b, move |w| {
         if matches!(
-            w.get::<Interaction>(b),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(b),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -456,7 +458,7 @@ fn shelf_button(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element
         }
     });
     let ic = icon_text(commands, &fonts.phosphor, e.icon, text_muted(), 15.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(b).add_child(ic);
     b
 }
@@ -482,7 +484,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
             },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(format!("{} · {}", e.label, e.group)),
             PaletteTile(e.id),
@@ -491,8 +493,8 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
         .id();
     bind_bg(commands, t, move |w| {
         if matches!(
-            w.get::<Interaction>(t),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(t),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -507,8 +509,8 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, e: &'static Element) -> Ent
         t,
         move |w| {
             matches!(
-                w.get::<Interaction>(t),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(t),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             )
         },
         |w, ent, hot: &bool| {
@@ -576,12 +578,12 @@ fn palette_search_sync(
 }
 
 fn palette_press(
-    q: Query<(&Interaction, &PaletteTile), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PaletteTile), Changed<UiInteraction>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut press: ResMut<PalettePress>,
 ) {
     for (interaction, tile) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let start = windows

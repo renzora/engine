@@ -276,7 +276,11 @@ renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
 # export. Being optional under `render_3d` is also what makes the generator emit
 # the matching `#[cfg(feature = "render_3d")]` in `plugins.rs`.
 
-bevy = { workspace = true }
+# `debug` carries `ScheduleBuildSettings::shuffle_seed` (`schedule_shuffle.rs`).
+# A whole-workspace build already has it, through `renzora_editor_app`, so this
+# changes nothing there; it is what keeps a lean export, which builds this crate
+# without that one, compiling.
+bevy = { workspace = true, features = ["debug"] }
 # Used by the runtime startup system to set the primary window's icon from
 # the rpak. Bevy 0.18 doesn't expose a public window-icon API, so we drop
 # down to winit's `set_window_icon` via the `WinitWindows` resource.

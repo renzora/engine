@@ -101,6 +101,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_row, inspector_stripe};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
 use renzora_ember::theme::{hover_bg, rgb, text_muted, text_primary, value_text};
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{
     drag_value, dropdown, knob_pivoted, slider, toggle_switch as ember_toggle, DragRange,
     HoverTooltip,
@@ -253,11 +254,11 @@ struct AudioFieldReset {
 
 /// Click a reset arrow, put the field back to its default.
 fn audio_reset_click(
-    q: Query<(&Interaction, &AudioFieldReset), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AudioFieldReset), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, reset) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, set, default) = (reset.entity, reset.set, reset.default);
@@ -297,7 +298,7 @@ fn reset_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             AudioFieldReset { entity, set: setf, default: reset_to },
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             HoverTooltip::new("Reset to default"),
@@ -306,8 +307,8 @@ fn reset_button(
         .id();
     let glyph = icon_text(commands, &fonts.phosphor, "arrow-counter-clockwise", text_muted(), 11.0);
     commands.entity(btn).add_child(glyph);
-    bind_bg(commands, btn, move |rx| match rx.get::<Interaction>(btn) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, btn, move |rx| match rx.get::<UiInteraction>(btn) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
     bind_display(commands, btn, move |rx| {
@@ -506,7 +507,7 @@ fn audio_pool_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, i
     let trash = commands
         .spawn((
             Node { padding: UiRect::all(Val::Px(2.0)), align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() },
-            Interaction::default(),
+            UiInteraction::default(),
             AudioRemoveClip { entity, index },
             Name::new("audio-clip-remove"),
         ))
@@ -629,9 +630,9 @@ fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, e
     commands.entity(root).add_children(&children);
 }
 
-fn audio_remove_clip_click(q: Query<(&Interaction, &AudioRemoveClip), Changed<Interaction>>, mut commands: Commands) {
+fn audio_remove_clip_click(q: Query<(&UiInteraction, &AudioRemoveClip), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (e, i) = (b.entity, b.index);

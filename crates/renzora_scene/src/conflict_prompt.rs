@@ -22,6 +22,7 @@
 use bevy::prelude::*;
 use renzora::lang::t as tr;
 use renzora_ember::font::EmberFonts;
+use renzora_ember::UiInteraction;
 
 use crate::hot_reload::{PendingSceneReloads, SceneConflicts};
 
@@ -96,15 +97,15 @@ pub(crate) fn spawn_conflict_prompt(
 /// leave the editor showing one scene while the file held another with nothing
 /// on screen to say so.
 pub(crate) fn conflict_prompt_buttons(
-    keep: Query<&Interaction, (Changed<Interaction>, With<ConflictKeepMine>)>,
-    take: Query<&Interaction, (Changed<Interaction>, With<ConflictTakeDisk>)>,
+    keep: Query<&UiInteraction, (Changed<UiInteraction>, With<ConflictKeepMine>)>,
+    take: Query<&UiInteraction, (Changed<UiInteraction>, With<ConflictTakeDisk>)>,
     roots: Query<(Entity, &ConflictPromptRoot)>,
     mut conflicts: ResMut<SceneConflicts>,
     mut reloads: ResMut<PendingSceneReloads>,
     mut commands: Commands,
 ) {
-    let keep = keep.iter().any(|i| *i == Interaction::Pressed);
-    let take = take.iter().any(|i| *i == Interaction::Pressed);
+    let keep = keep.iter().any(|i| *i == UiInteraction::Pressed);
+    let take = take.iter().any(|i| *i == UiInteraction::Pressed);
     if !keep && !take {
         return;
     }

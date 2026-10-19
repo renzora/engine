@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::icon_label_button_collapsing;
+use renzora_ember::UiInteraction;
 
 use crate::state::{AssetGrid, AssetRoot, NativeAssets, Splitter, ViewToggleBtn};
 
@@ -14,7 +15,7 @@ use crate::state::{AssetGrid, AssetRoot, NativeAssets, Splitter, ViewToggleBtn};
 /// `divider_drag` (captured on press) so it keeps tracking even when the cursor
 /// moves off the thin splitter — mirrors the dock's divider.
 pub(crate) fn splitter_drag(
-    splitter: Query<&Interaction, With<Splitter>>,
+    splitter: Query<&UiInteraction, With<Splitter>>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut state: ResMut<NativeAssets>,
@@ -27,7 +28,7 @@ pub(crate) fn splitter_drag(
     };
     if state.divider_drag.is_none()
         && mouse.just_pressed(MouseButton::Left)
-        && splitter.iter().any(|i| *i == Interaction::Pressed)
+        && splitter.iter().any(|i| *i == UiInteraction::Pressed)
     {
         state.divider_drag = Some((cx, state.tree_width));
     }
@@ -38,14 +39,14 @@ pub(crate) fn splitter_drag(
 
 /// Show the ew-resize cursor whenever the divider is hovered or being dragged.
 pub(crate) fn divider_cursor(
-    splitter: Query<&Interaction, With<Splitter>>,
+    splitter: Query<&UiInteraction, With<Splitter>>,
     state: Res<NativeAssets>,
     windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
     mut commands: Commands,
     mut forcing: Local<bool>,
 ) {
     let want = state.divider_drag.is_some()
-        || splitter.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        || splitter.iter().any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
     let Ok(win) = windows.single() else {
         return;
     };
@@ -138,10 +139,10 @@ pub(crate) fn toolbar_action(
 
 /// Toggle grid/list view.
 pub(crate) fn view_toggle_click(
-    q: Query<&Interaction, (With<ViewToggleBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ViewToggleBtn>, Changed<UiInteraction>)>,
     mut state: ResMut<NativeAssets>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.list_view = !state.list_view;
     }
 }

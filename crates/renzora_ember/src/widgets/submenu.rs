@@ -22,12 +22,14 @@ use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::BLOCK;
 use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::popup::{
     menu_row_hover_text, OverlaySurface, MENU_GAP, MENU_ICON, MENU_PAD_X, MENU_PAD_Y, MENU_TEXT,
@@ -142,13 +144,13 @@ pub fn menu_submenu_parts(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("menu-submenu"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(menu_hover_bg()),
+    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(menu_hover_bg()),
         _ => Color::NONE,
     });
 
@@ -209,7 +211,7 @@ pub fn menu_submenu_parts(
             // Spawn-time (not via an `Added` pass) for the same reason the menu
             // root does it: a menu torn down the same frame would leave the
             // deferred insert operating on a dead entity.
-            FocusPolicy::Block,
+            BLOCK,
             RelativeCursorPosition::default(),
             // Editor chrome, not scene content — a menu open when autosave fires
             // must not be serialized into the scene.
@@ -238,7 +240,7 @@ pub(crate) fn cursor_over_submenu(
 /// Show/hide + position every submenu panel each frame.
 pub(crate) fn submenu_reveal(
     windows: Query<&Window, With<PrimaryWindow>>,
-    rows: Query<(Entity, &Interaction, &SubmenuRow)>,
+    rows: Query<(Entity, &UiInteraction, &SubmenuRow)>,
     panels: Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
     parents: Query<&ChildOf>,
     // `UiGlobalTransform`, not `GlobalTransform`: bevy 0.19's layout writes the
@@ -271,7 +273,7 @@ pub(crate) fn submenu_reveal(
                         .is_some_and(|(c, rect)| rect.contains(c))
             })
             .unwrap_or(false);
-        if *interaction != Interaction::None || over_panel {
+        if *interaction != UiInteraction::None || over_panel {
             open.insert(row);
         }
     }

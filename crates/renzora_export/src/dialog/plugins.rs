@@ -2,9 +2,9 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{radio_group, section, toggle_switch};
@@ -261,7 +261,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                             },
                             BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
                             BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
-                            FocusPolicy::Pass,
+                            PASS_THROUGH,
                             renzora_ember::widgets::HoverTooltip::new(
                                 renzora::lang::t("export.plugins.update_tooltip"),
                             ),
@@ -274,7 +274,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                         (26, 22, 10),
                         10.0,
                     );
-                    c.entity(bic).insert(FocusPolicy::Pass);
+                    c.entity(bic).insert(PASS_THROUGH);
                     c.entity(badge).add_child(bic);
                     c.entity(thumb).add_child(badge);
                 }
@@ -328,9 +328,9 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                 // matches the switch the Settings panel uses for the same
                 // decision about the same plugins.
                 let sw = toggle_switch(&mut c, true);
-                // Bevy 0.19 defaults `FocusPolicy` to `Pass`, so a switch that
+                // UI nodes pass the pointer through by default, so a switch that
                 // does not block hands its press to everything behind it.
-                c.entity(sw).insert(FocusPolicy::Block);
+                c.entity(sw).insert(BLOCK);
                 let id2 = id.clone();
                 bind_2way(&mut c, sw, move |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.selected_plugins.contains(&id2)), {
                     let id3 = id.clone();

@@ -304,6 +304,18 @@ fn the_post_process_node_writes_its_target() {
 
 Bevy requests its adapter inside `Plugin::finish`, and on a machine with no usable adapter that is a panic deep in renderer init with no way to ask first — so probing is not an option and an env opt-in is. CI's `gpu` job sets it after installing lavapipe (Mesa's software Vulkan); set it locally to run the same tests against your real GPU.
 
+## Shaking out system-ordering bugs
+
+Two systems with no ordering between them run in whatever order Bevy's schedule builder picks, and it picks the same one every launch. A system that secretly depends on running after another one therefore works every time, until an unrelated change moves it.
+
+Launch with `RENZORA_SHUFFLE_SEED` set to any whole number and every schedule, the render world's included, picks a different valid order:
+
+```sh
+RENZORA_SHUFFLE_SEED=7 ./renzora      # PowerShell: $env:RENZORA_SHUFFLE_SEED=7; .\renzora.exe
+```
+
+Every `before`, `after` and `chain` is still honoured; only the freedom left over is shuffled. If something breaks under one seed and not under another, it is missing an ordering constraint, and the same seed reproduces it every time. The log says which seed is active, and with the variable unset nothing changes.
+
 ## Coverage
 
 Coverage is measured with `cargo-llvm-cov` and gated by a **per-crate ratchet** in `coverage-floors.txt`.

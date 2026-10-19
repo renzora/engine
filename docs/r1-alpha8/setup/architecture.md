@@ -219,6 +219,10 @@ The packed archive itself is detected by the VFS in its own order at startup:
 
 A panic hook is installed once the session kind is known. The editor writes `~/.renzora/crashes/last_crash.txt` and shows a native dialog; the shipped game silently appends to `<exe_dir>/crash.log`.
 
+In the editor, a panic inside a system, command or observer is not a crash. Bevy catches it and passes it to the world's `FallbackErrorHandler`, and the editor installs one (in the main world and the render world) that logs it to the Console and keeps running: one broken plugin or script system no longer takes the editor down. The first failure of each system is logged with its message and location, then the count at 10, 100, 1000 and so on. An error a system returns without a severity, which Bevy also treats as a panic, is logged the same way.
+
+The panic hook runs before Bevy's catch, so on a thread that runs systems it holds the report back instead of writing it, and the handler claims it once Bevy has caught the panic. A panic nothing catches unwinds out of `App::run`, and `main` then saves and shows the held report as a normal crash. A shipped game keeps Bevy's default handler, so a panicking system still ends the game and writes `crash.log`.
+
 ## What's next
 
 - [Core Concepts](/docs/r1-alpha8/getting-started/concepts) — the ECS data model and a gentler tour of the one-binary model.

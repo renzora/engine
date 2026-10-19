@@ -19,6 +19,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{drag_value, DragRange};
 use renzora::SplashState;
 
@@ -115,7 +116,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(close_red())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ClearBtn,
             Name::new("level-presets-clear"),
@@ -248,7 +249,7 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
             },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             // Where the description lives now that the pinned detail panel is
             // gone: on the card, under the cursor that is already asking about
@@ -266,8 +267,8 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
         if s.selected == preset {
             rgb(accent()).with_alpha(0.3)
         } else if matches!(
-            w.get::<Interaction>(card),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(card),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -289,8 +290,8 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
         let s = w.resource::<LevelPresetsState>();
         let hot = s.selected == preset
             || matches!(
-                w.get::<Interaction>(card),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(card),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             );
         if hot { rgb(accent()) } else { rgb(text_primary()) }
     });
@@ -321,8 +322,8 @@ fn bind_with_border(commands: &mut Commands, card: Entity, preset: LevelPreset) 
             if s.selected == preset {
                 2u8
             } else if matches!(
-                w.get::<Interaction>(card),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(card),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             ) {
                 1u8
             } else {
@@ -349,11 +350,11 @@ fn bind_with_border(commands: &mut Commands, card: Entity, preset: LevelPreset) 
 /// active level yet (re-clicking the already-selected preset with a live level
 /// is a no-op, matching egui).
 fn preset_card_click(
-    q: Query<(&Interaction, &PresetCard), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &PresetCard), Changed<UiInteraction>>,
     mut state: ResMut<LevelPresetsState>,
 ) {
     for (interaction, card) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let changed = state.selected != card.0;
@@ -366,10 +367,10 @@ fn preset_card_click(
 
 /// Clear button → queue a Clear command (despawns the active level).
 fn clear_btn_click(
-    q: Query<&Interaction, (With<ClearBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ClearBtn>, Changed<UiInteraction>)>,
     mut state: ResMut<LevelPresetsState>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) && state.has_active_level {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) && state.has_active_level {
         state.commands.push(LevelCommand::Clear);
     }
 }

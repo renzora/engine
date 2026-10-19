@@ -27,6 +27,7 @@ use renzora_ember::theme::{rgb, section_bg, text_muted};
 use renzora_ember::widgets::{
     bind_text_input, drag_value, icon_button, icon_label_button, text_input, DragRange,
 };
+use renzora_ember::UiInteraction;
 
 pub fn register(app: &mut App) {
     use renzora_editor_framework::{AppEditorExt, SplashState};
@@ -249,12 +250,12 @@ fn build_add_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity)
 // ── Click handlers ────────────────────────────────────────────────────────────
 
 fn add_span_click(
-    q: Query<(&Interaction, &AddSpanBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AddSpanBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let entity = btn.entity;
@@ -270,12 +271,12 @@ fn add_span_click(
 }
 
 fn remove_span_click(
-    q: Query<(&Interaction, &RemoveSpanBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RemoveSpanBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let span = btn.span;

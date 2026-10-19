@@ -8,19 +8,29 @@ use super::style::{UiFill, UiStateStyle};
 // ── Button marker ───────────────────────────────────────────────────────────
 
 /// Marks a game UI node as a button: something that blocks the pointer, tracks
-/// hover and press in `Interaction`, and that gamepad navigation can focus.
+/// hover and press in [`UiInteraction`](crate::UiInteraction), and that gamepad
+/// navigation can focus.
 ///
 /// This is what `bevy_ui`'s own `Button` was. Bevy 0.20 deprecated that one
 /// and made its type private, so it can no longer be inserted from outside
 /// Bevy; its replacement in `bevy_ui_widgets` adds press and activate
 /// behaviour of its own that ember's widgets do not expect. This keeps the
-/// exact 0.19 contract (the same three required components) under a name
-/// ember owns. Not serialized: spawn and markup code insert it.
+/// 0.19 contract (a node that blocks and reports hover and press) under a name
+/// ember owns, on picking rather than the deprecated focus system. Not
+/// serialized: spawn and markup code insert it.
+///
+/// The block is an insertion hook, not a requirement: `Node` requires a
+/// pass-through `Pickable`, and which of two requirements wins depends on
+/// bundle order.
 #[derive(Component, Clone, Copy, Debug, Default, Reflect)]
 #[reflect(Component, Default)]
-#[allow(deprecated)]
-#[require(Node, bevy::ui::FocusPolicy::Block, Interaction)]
+#[require(Node, crate::UiInteraction)]
+#[component(on_add = block_picking)]
 pub struct UiButton;
+
+fn block_picking(mut world: bevy::ecs::world::DeferredWorld, ctx: bevy::ecs::lifecycle::HookContext) {
+    world.commands().entity(ctx.entity).insert(crate::interaction::BLOCK);
+}
 
 // ── Interaction Styles ──────────────────────────────────────────────────────
 

@@ -4,10 +4,12 @@
 //! about box…). Ember dismisses it on Escape, a backdrop click, or the X.
 
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::BLOCK;
 use crate::theme::*;
+use crate::UiInteraction;
 
 
 /// The backdrop root of an open overlay (despawn it to close).
@@ -98,7 +100,7 @@ pub fn overlay_val_parts(
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
             GlobalZIndex(8000),
-            FocusPolicy::Block,
+            BLOCK,
             Overlay,
             ModalSurface,
             Name::new("overlay"),
@@ -119,7 +121,7 @@ pub fn overlay_val_parts(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             RelativeCursorPosition::default(),
             OverlayCard,
             Name::new("overlay-card"),
@@ -156,7 +158,7 @@ pub fn overlay_val_parts(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             OverlayClose,
             Name::new("overlay-close"),
         ))
@@ -202,7 +204,7 @@ pub fn overlay_val_parts(
 pub(crate) fn overlay_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    closes: Query<&Interaction, (Changed<Interaction>, With<OverlayClose>)>,
+    closes: Query<&UiInteraction, (Changed<UiInteraction>, With<OverlayClose>)>,
     overlays: Query<(Entity, Option<&GlobalZIndex>), With<Overlay>>,
     cards: Query<&RelativeCursorPosition, With<OverlayCard>>,
     mut commands: Commands,
@@ -211,7 +213,7 @@ pub(crate) fn overlay_dismiss(
         return;
     }
     let esc = keys.just_pressed(KeyCode::Escape);
-    let x = closes.iter().any(|i| *i == Interaction::Pressed);
+    let x = closes.iter().any(|i| *i == UiInteraction::Pressed);
     let click_outside =
         mouse.just_pressed(MouseButton::Left) && !cards.iter().any(|r| r.cursor_over);
     if !(esc || x || click_outside) {
@@ -234,7 +236,7 @@ pub(crate) fn overlay_dismiss(
 ///
 /// Returns the overlay root and one entity per label, in the order given. The
 /// caller tags those with its own marker components and reads their
-/// `Interaction` — this owns the shape, not the behaviour, because what the
+/// `UiInteraction` — this owns the shape, not the behaviour, because what the
 /// buttons mean differs every time and only their arrangement does not.
 ///
 /// **The last label is the accented one.** Reading order puts the action being

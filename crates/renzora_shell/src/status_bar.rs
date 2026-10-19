@@ -11,6 +11,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{divider, rgb, text_muted, window_bg};
 use renzora_ember::widgets::{menu_item, scroll_area_keyed, Popup};
+use renzora_ember::UiInteraction;
 
 /// Marks the status-bar theme picker's trigger so its open/closed state can be
 /// mirrored into [`ThemeMenuOpen`] each frame.
@@ -256,7 +257,7 @@ fn theme_dropup(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup { panel, open },
             ThemeDropup,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -370,7 +371,7 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup { panel, open: false },
             LanguageDropup,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),

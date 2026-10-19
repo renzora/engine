@@ -15,11 +15,13 @@ use bevy::ui::{BackgroundGradient, ColorStop, LinearGradient, RelativeCursorPosi
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{
     accent, border, divider, header_bg, mix, panel_bg, rgb, text_muted, text_primary,
 };
 use renzora_ember::widgets::{text_input, EmberTextInput, Popup};
+use renzora_ember::UiInteraction;
 
 use crate::ribbon::{apply_workspace, select_workspace};
 use crate::save_prompts::{CloseTabPromptRoot, TabCloseRequest};
@@ -189,7 +191,7 @@ pub(crate) fn build_doc_tabs(commands: &mut Commands) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             DocAddBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("doc-add"),
@@ -290,7 +292,7 @@ pub(crate) fn build_doc_tab_menu_group(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             Popup { panel, open: false },
             DocTabMenuTrigger,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -298,8 +300,8 @@ pub(crate) fn build_doc_tab_menu_group(
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
-        match w.get::<Interaction>(trigger) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(trigger) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, 0.09)
             }
             _ => Color::NONE,
@@ -313,7 +315,7 @@ pub(crate) fn build_doc_tab_menu_group(
         renzora_ui::DocTabKind::Scene.color(),
         12.0,
     );
-    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     renzora_ember::reactive::tracked::bind_text(commands, icon, |w: &Rx| {
         let name = active_doc(w).map(|t| t.kind.icon()).unwrap_or("film-slate");
         renzora_ember::phosphor_map::icon_glyph(name)
@@ -341,7 +343,7 @@ pub(crate) fn build_doc_tab_menu_group(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     renzora_ember::reactive::tracked::bind_text(commands, label, |w: &Rx| {
@@ -357,7 +359,7 @@ pub(crate) fn build_doc_tab_menu_group(
             .unwrap_or_default()
     });
     let caret = glyph(commands, "caret-down", text_muted(), 10.0);
-    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
     commands
         .entity(trigger)
         .add_children(&[icon, label, caret, panel]);
@@ -377,7 +379,7 @@ pub(crate) fn build_doc_tab_menu_group(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             DocAddBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("menu.file.new_scene")),
@@ -385,8 +387,8 @@ pub(crate) fn build_doc_tab_menu_group(
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, plus, move |w| {
-        match w.get::<Interaction>(plus) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(plus) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, 0.09)
             }
             _ => Color::NONE,
@@ -433,15 +435,15 @@ fn doc_tab_menu_row_node(commands: &mut Commands, name: &'static str) -> Entity 
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             DocTabMenuRow,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(name),
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
-        match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(row) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,
@@ -518,7 +520,7 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                         overflow: Overflow::clip(),
                         ..default()
                     },
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             let mut kids = vec![ic, label];
@@ -539,14 +541,13 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                             ..default()
                         },
                         BackgroundColor(Color::NONE),
-                        Interaction::default(),
+                        UiInteraction::default(),
                         DocTabClose(*id),
                         // Block, or the press also reaches the row's
                         // `DocTabClick` — closing a document by way of first
-                        // switching the editor to it. `Node`'s required
-                        // `FocusPolicy` is `Pass` in Bevy 0.19, so this is not
-                        // the default.
-                        bevy::ui::FocusPolicy::Block,
+                        // switching the editor to it. UI nodes start as
+                        // `PASS_THROUGH`, so this is not the default.
+                        BLOCK,
                         renzora_ember::cursor_icon::HoverCursor(
                             bevy::window::SystemCursorIcon::Pointer,
                         ),
@@ -568,11 +569,11 @@ fn doc_tab_menu_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
 /// own [`DocTabClick`] / [`DocAddBtn`], which don't know or care that they were
 /// pressed inside a menu.
 pub(crate) fn doc_tab_menu_row_click(
-    rows: Query<(&Interaction, &DocTabMenuRow), Changed<Interaction>>,
+    rows: Query<(&UiInteraction, &DocTabMenuRow), Changed<UiInteraction>>,
     triggers: Query<Entity, (With<DocTabMenuTrigger>, With<Popup>)>,
     mut commands: Commands,
 ) {
-    if !rows.iter().any(|(i, _)| *i == Interaction::Pressed) {
+    if !rows.iter().any(|(i, _)| *i == UiInteraction::Pressed) {
         return;
     }
     for trigger in &triggers {
@@ -720,7 +721,7 @@ fn doc_tab_row(
             // pairing, and the same token, as the workspace ribbon's underline.
             BackgroundColor(Color::NONE),
             BorderColor::all(if active { rgb(accent()) } else { Color::NONE }),
-            Interaction::default(),
+            UiInteraction::default(),
             DocTabClick(id),
             // The reorder drag hit-tests in the cursor's own space rather than
             // against node centres, which drift under UI scaling — see
@@ -753,7 +754,7 @@ fn doc_tab_row(
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("doc-insert-marker"),
         ))
         .id();
@@ -807,7 +808,7 @@ fn doc_tab_row(
                     padding: UiRect::left(Val::Px(1.0)),
                     ..default()
                 },
-                Interaction::default(),
+                UiInteraction::default(),
                 DocTabClose(id),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
@@ -832,7 +833,7 @@ fn doc_tab_row(
                     ..default()
                 },
                 BackgroundColor(doc_tab_divider()),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("doc-tab-seam"),
             ))
             .id();
@@ -896,11 +897,11 @@ fn activate_doc_tab(w: &mut World, id: u64) {
 /// `+` → add an "Untitled Scene" document and focus it.
 pub(crate) fn doc_add_click(
     mut commands: Commands,
-    q: Query<&Interaction, (With<DocAddBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<DocAddBtn>, Changed<UiInteraction>)>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
 ) {
     let Some(mut state) = state else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         let idx = state.add_tab("Untitled Scene".into(), None);
         // Cache the leaving scene + load the new (empty) tab's scene. The new
         // tab has no buffer, so `handle_tab_switch` resets to a fresh empty
@@ -1107,13 +1108,13 @@ pub(crate) fn sync_active_doc_to_workspace(
 
 pub(crate) fn doc_tab_click(
     mut commands: Commands,
-    q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &DocTabClick), Changed<UiInteraction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     rename: Res<DocTabRename>,
 ) {
     let Some(mut state) = state else { return };
     for (interaction, click) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         // While this tab is being renamed its edit field owns clicks — a press
@@ -1166,7 +1167,7 @@ pub(crate) fn doc_tab_drag(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     time: Res<Time>,
     mut rename: ResMut<DocTabRename>,
-    pressed: Query<(&DocTabItem, &Interaction)>,
+    pressed: Query<(&DocTabItem, &UiInteraction)>,
     items: Query<(&DocTabItem, &RelativeCursorPosition, &Visibility)>,
     mut nodes: Query<&mut Node>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
@@ -1199,7 +1200,7 @@ pub(crate) fn doc_tab_drag(
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(cur) = cursor {
             for (item, interaction) in &pressed {
-                if *interaction == Interaction::Pressed {
+                if *interaction == UiInteraction::Pressed {
                     let from = state.tabs.iter().position(|t| t.id == item.id).unwrap_or(0);
                     drag.0 = Some(DocTabDragState {
                         id: item.id,
@@ -1577,7 +1578,7 @@ pub(crate) fn close_doc_tab_by_id(
 /// [`crate::save_prompts::process_tab_close_request`]); clean tabs close
 /// immediately. The model refuses to close the last scene / last tab regardless.
 pub(crate) fn doc_tab_close(
-    q: Query<(&Interaction, &DocTabClose), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &DocTabClose), Changed<UiInteraction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     prompt_open: Query<(), With<CloseTabPromptRoot>>,
     mut commands: Commands,
@@ -1588,7 +1589,7 @@ pub(crate) fn doc_tab_close(
         return;
     }
     for (interaction, close) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(idx) = state.tabs.iter().position(|t| t.id == close.0) else {

@@ -3,7 +3,9 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberXyPad {
@@ -26,7 +28,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("xy-pad"),
@@ -45,7 +47,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("xy-handle"),
         ))
         .id();
@@ -55,11 +57,11 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
 }
 
 pub(crate) fn xy_pad_drag(
-    pads: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &EmberXyPad)>,
+    pads: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &EmberXyPad)>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, rcp, pad) in &pads {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {

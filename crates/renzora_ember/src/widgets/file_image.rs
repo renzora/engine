@@ -27,6 +27,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
+use crate::interaction::PASS_THROUGH;
+
 struct Decoded {
     path: PathBuf,
     rgba: Vec<u8>,
@@ -143,19 +145,19 @@ pub fn file_image_tile(
                 ..default()
             },
             BackgroundColor(rgb(hover_bg())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             FileImageWanted(path.clone()),
         ))
         .id();
 
     let ph = crate::font::icon_text(commands, &fonts.phosphor, placeholder_icon, placeholder_color, 30.0);
-    commands.entity(ph).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ph).insert(PASS_THROUGH);
     commands.entity(frame).add_child(ph);
 
     let img = commands
         .spawn((
             ImageNode::default(),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Node {
                 position_type: PositionType::Absolute,
                 width: Val::Percent(100.0),

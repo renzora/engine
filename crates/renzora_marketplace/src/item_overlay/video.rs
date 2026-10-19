@@ -2,15 +2,16 @@
 //! (native video decode is out of scope).
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use crate::auth::marketplace::MediaItem;
 use crate::thumbs::HubThumbs;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_with, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use super::gallery::media_by_type;
 use super::{apply_thumb, empty_snapshot, section_label, thumb_image, VideoBtn};
@@ -81,7 +82,7 @@ fn video_card(commands: &mut Commands, fonts: &EmberFonts, item: &MediaItem) -> 
                 ..default()
             },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             VideoBtn(item.url.clone()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("video-card"),
@@ -111,11 +112,11 @@ fn video_card(commands: &mut Commands, fonts: &EmberFonts, item: &MediaItem) -> 
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let tri = icon_text(commands, &fonts.phosphor, "play", (240, 240, 245), 22.0);
-    commands.entity(tri).insert(FocusPolicy::Pass);
+    commands.entity(tri).insert(PASS_THROUGH);
     commands.entity(badge).add_child(tri);
     commands.entity(card).add_child(badge);
 
@@ -131,7 +132,7 @@ fn video_card(commands: &mut Commands, fonts: &EmberFonts, item: &MediaItem) -> 
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let caption_text = commands
@@ -139,7 +140,7 @@ fn video_card(commands: &mut Commands, fonts: &EmberFonts, item: &MediaItem) -> 
             Text::new("Opens in your browser"),
             ui_font(&fonts.ui, 9.5),
             TextColor(rgb((224, 224, 230))),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(caption).add_child(caption_text);

@@ -22,6 +22,7 @@ use renzora_editor_framework::{EditorCommands, ToolActiveStyle, ToolEntry};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, EmberFonts};
 use renzora_ember::theme::{border, rgb, text_primary};
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 /// Toolbar button metrics. Aliases rather than their own numbers: the UI editor
@@ -103,7 +104,7 @@ pub(crate) fn tool_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             ToolButton {
                 glyph,
                 visible: entry.visible.clone(),
@@ -148,8 +149,8 @@ pub(crate) fn shelf_separator(commands: &mut Commands, width: f32) -> Entity {
 /// Per-frame: evaluate each tool's `visible` (show/hide) and `is_active`
 /// (accent highlight). Exclusive because the predicates take `&World`.
 pub(crate) fn update_tool_buttons(world: &mut World) {
-    let mut q = world.query::<(Entity, &ToolButton, &Interaction)>();
-    let collected: Vec<(Entity, ToolButton, Interaction)> = q
+    let mut q = world.query::<(Entity, &ToolButton, &UiInteraction)>();
+    let collected: Vec<(Entity, ToolButton, UiInteraction)> = q
         .iter(world)
         .map(|(e, b, i)| (e, b.clone(), *i))
         .collect();
@@ -188,7 +189,7 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
         .map(|(e, b, inter)| {
             let visible = (b.visible)(world);
             let active = (b.is_active)(world);
-            let hover = *inter == Interaction::Hovered;
+            let hover = *inter == UiInteraction::Hovered;
             // A tool takes the accent as a *fill*: it is the one thing the
             // viewport is set to do, and the fill is what says only one of a
             // group can be lit. A toggle tints its glyph instead — see
@@ -273,12 +274,12 @@ pub(crate) struct ShelfRoot {
 }
 
 pub(crate) fn tool_button_click(
-    q: Query<(&Interaction, &ToolButton), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ToolButton), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let activate = btn.activate.clone();

@@ -2,7 +2,7 @@
 //!
 //! The loader inserts a [`Draggable`] marker when a markup node has
 //! `tag["draggable"]` set to anything other than `"false"`. This module owns
-//! the bevy_ui-side: it watches `Interaction::Pressed` on draggable entities,
+//! the bevy_ui-side: it watches `UiInteraction::Pressed` on draggable entities,
 //! captures the cursor offset on press, and drives `Node.left/top` while held.
 //!
 //! When a drag starts the entity is forced to `PositionType::Absolute` so the
@@ -11,13 +11,15 @@
 //! element out of layout flow — siblings shift. Subsequent drags just update
 //! the absolute coords.
 //!
-//! Drag end keys off mouse-button release, not `Interaction`, so dragging
+//! Drag end keys off mouse-button release, not `UiInteraction`, so dragging
 //! beyond the original entity bounds still works.
 
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
+
+use crate::interaction::BLOCK;
+use crate::UiInteraction;
 
 /// Marker: this entity follows the mouse while LMB is held after a press
 /// originating on it.
@@ -40,7 +42,7 @@ struct DragState {
 fn drag_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    interactions: Query<(Entity, &Interaction, &Node), (With<Draggable>, Without<DragState>)>,
+    interactions: Query<(Entity, &UiInteraction, &Node), (With<Draggable>, Without<DragState>)>,
     mut dragging: Query<(Entity, &mut Node, &DragState), With<Draggable>>,
     mut commands: Commands,
 ) {
@@ -51,7 +53,7 @@ fn drag_system(
     if mouse.just_pressed(MouseButton::Left) {
         if let Some(pos) = cursor {
             for (entity, interaction, node) in &interactions {
-                if matches!(interaction, Interaction::Pressed | Interaction::Hovered) {
+                if matches!(interaction, UiInteraction::Pressed | UiInteraction::Hovered) {
                     let l = match node.left {
                         Val::Px(v) => v,
                         _ => 0.0,
@@ -67,7 +69,7 @@ fn drag_system(
                     });
                     // Make sure decorative overlays don't catch the drag — see
                     // `cursor.rs` for the same trick on the custom cursor.
-                    commands.entity(entity).insert(FocusPolicy::Block);
+                    commands.entity(entity).insert(BLOCK);
                 }
             }
         }

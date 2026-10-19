@@ -9,8 +9,9 @@
 use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
-use bevy::ui::FocusPolicy;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::UiInteraction;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
@@ -176,7 +177,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let zoom_out = icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0;
     let zoom_lbl = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { min_width: Val::Px(40.0), justify_content: JustifyContent::Center, ..default() }, Interaction::default(), CanvasTbBtn::ZoomReset))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { min_width: Val::Px(40.0), justify_content: JustifyContent::Center, ..default() }, UiInteraction::default(), CanvasTbBtn::ZoomReset))
         .id();
     bind_text(commands, zoom_lbl, |w| format!("{:.0}%", w.get_resource::<NativeCanvasState>().map(|s| s.zoom).unwrap_or(1.0) * 100.0));
     let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", CanvasTbBtn::ZoomIn).0;
@@ -205,7 +206,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // side and stays there. The cost is that these two do not rearrange, which
     // is the right trade for controls whose place is the point.
     let icon = icon_text(commands, &fonts.phosphor, "video-camera", text_muted(), 14.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let backdrop = toggle_switch(commands, false);
     commands
         .entity(backdrop)
@@ -234,7 +235,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(6.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ui-view-controls"),
         ))
         .id();
@@ -442,7 +443,7 @@ fn toggle_color(w: &Rx, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
 }
 
 fn toolbar_click(
-    q: Query<(&Interaction, &CanvasTbBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &CanvasTbBtn), Changed<UiInteraction>>,
     mut state: ResMut<NativeCanvasState>,
     backdrop: Option<ResMut<UiCanvasPreviewEnabled>>,
     selection: Option<Res<EditorSelection>>,
@@ -450,7 +451,7 @@ fn toolbar_click(
 ) {
     let mut backdrop = backdrop;
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match btn {

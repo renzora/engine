@@ -5,7 +5,7 @@
 //! per-panel keyboard code:
 //!
 //! - **Enter** in a focused single-line input simulates a click on the form's
-//!   submit button, so whatever `Changed<Interaction>` handler the panel
+//!   submit button, so whatever `Changed<UiInteraction>` handler the panel
 //!   already has for that button fires unchanged. (Textareas keep Enter as a
 //!   literal newline — only single-line fields submit.)
 //! - **Tab / Shift+Tab** moves focus to the next/previous visible input.
@@ -17,31 +17,33 @@
 use bevy::prelude::*;
 
 use crate::style::WidgetState;
+use crate::UiInteraction;
 use super::text_input::{EmberTextInput, SingleLineInput};
 
 /// Marks a container as a form and names its submit button. Pressing Enter in
 /// any focused single-line input inside the container "clicks" `submit`.
 #[derive(Component)]
 pub struct EmberForm {
-    /// The button whose `Interaction` is driven to `Pressed` on Enter.
+    /// The button whose `UiInteraction` is driven to `Pressed` on Enter.
     pub submit: Entity,
 }
 
 /// Enter in a focused single-line input → press the nearest enclosing
 /// [`EmberForm`]'s submit button.
 ///
-/// Runs in `PreUpdate` after `UiSystems::Focus` (which has just settled this
-/// frame's real `Interaction` values): the simulated `Pressed` then survives
-/// the whole `Update` schedule, so every panel's `Changed<Interaction>` click
-/// handler observes it regardless of system order. Next frame the focus system
-/// resets the button to `None` as usual.
+/// Runs in `PreUpdate` after `UiSystems::Focus` (which has just derived this
+/// frame's real `UiInteraction` values from picking): the simulated `Pressed`
+/// then survives the whole `Update` schedule, so every panel's
+/// `Changed<UiInteraction>` click handler observes it regardless of system
+/// order. Next frame the button's state is derived from the pointer again, as
+/// usual.
 pub(crate) fn form_enter_submit(
     keys: Res<ButtonInput<KeyCode>>,
     inputs: Query<(Entity, &EmberTextInput), With<SingleLineInput>>,
     parents: Query<&ChildOf>,
     nodes: Query<&Node>,
     forms: Query<&EmberForm>,
-    mut interactions: Query<&mut Interaction>,
+    mut interactions: Query<&mut UiInteraction>,
 ) {
     if !keys.just_pressed(KeyCode::Enter) && !keys.just_pressed(KeyCode::NumpadEnter) {
         return;
@@ -58,7 +60,7 @@ pub(crate) fn form_enter_submit(
         }
         if let Ok(form) = forms.get(e) {
             if let Ok(mut i) = interactions.get_mut(form.submit) {
-                *i = Interaction::Pressed;
+                *i = UiInteraction::Pressed;
             }
             return;
         }

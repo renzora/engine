@@ -6,11 +6,12 @@
 //! [`super::register`] drive any `AssetDropZone`, wherever it was built.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::{EditorCommands, FieldValue};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::bind_with;
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::spec::c32;
@@ -95,7 +96,7 @@ pub(super) fn build_asset_field(
             ui_font(&fonts.ui, 11.0),
             TextColor(c(renzora_ember::theme::text_muted())),
             bevy::text::TextLayout::no_wrap(),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_with(
@@ -158,7 +159,7 @@ pub(super) fn build_asset_field(
             padding: UiRect::horizontal(Val::Px(2.0)),
             ..default()
         },
-        Interaction::default(),
+        UiInteraction::default(),
         AssetClearBtn {
             get_fn: get_fn.clone(),
             set_fn: set_fn.clone(),
@@ -196,7 +197,7 @@ pub(super) fn build_asset_field(
                     padding: UiRect::horizontal(Val::Px(2.0)),
                     ..default()
                 },
-                Interaction::default(),
+                UiInteraction::default(),
                 AssetCreateBtn {
                     create_fn: create_fn.clone(),
                     get_fn: get_fn.clone(),
@@ -237,14 +238,14 @@ pub(super) struct AssetCreateBtn {
 }
 
 pub(super) fn asset_create_click(
-    q: Query<(&Interaction, &AssetCreateBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AssetCreateBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else {
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (create_fn, get_fn, entity) = (btn.create_fn.clone(), btn.get_fn.clone(), btn.entity);
@@ -297,12 +298,12 @@ pub(super) fn asset_drop(
 }
 
 pub(super) fn asset_clear_click(
-    q: Query<(&Interaction, &AssetClearBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AssetClearBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (get_fn, set_fn, entity, name) = (btn.get_fn.clone(), btn.set_fn.clone(), btn.entity, btn.field_name);

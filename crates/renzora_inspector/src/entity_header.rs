@@ -18,16 +18,18 @@
 //! change, but the host they hang under can and does.
 
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::{
     entity_icon_name, ComponentIconRegistry, EntityIcon, EntityLabelColor, FieldValue,
     ENTITY_ICON_CHOICES,
 };
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{bind_text_input, screen_menu_flip, text_input, MenuAction};
+use renzora_ember::UiInteraction;
 
 use crate::panel::section::LockBtn;
 use crate::panel::{c, inspected_entity, phosphor_glyph, record_field_change, GetFn, SetFn};
@@ -263,8 +265,8 @@ fn icon_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> E
                 ..default()
             },
             BackgroundColor(c(renzora_ember::theme::tab_active())),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             // The grid is aimed from the button's own rect, recovered from the
             // cursor and its normalized position inside the button — the same
             // scheme `icon_menu_button` uses.
@@ -359,8 +361,8 @@ fn visibility_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity
         15.0,
     );
     commands.entity(eye).insert((
-        Interaction::default(),
-        FocusPolicy::Block,
+        UiInteraction::default(),
+        BLOCK,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         EntityVisibilityBtn { entity },
     ));
@@ -404,8 +406,8 @@ fn lock_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> E
         14.0,
     );
     commands.entity(lock).insert((
-        Interaction::default(),
-        FocusPolicy::Block,
+        UiInteraction::default(),
+        BLOCK,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         LockBtn { entity },
     ));
@@ -438,11 +440,11 @@ fn lock_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> E
 
 /// Click the eye → flip visibility, undoably.
 pub(crate) fn entity_visibility_click(
-    q: Query<(&Interaction, &EntityVisibilityBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &EntityVisibilityBtn), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let entity = btn.entity;
@@ -471,17 +473,17 @@ pub(crate) fn entity_icon_menu_open(
     fonts: Option<Res<EmberFonts>>,
     buttons: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &EntityIconBtn,
             &RelativeCursorPosition,
             &bevy::ui::ComputedNode,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, btn, rcp, cn)) = buttons.iter().find(|(i, ..)| **i == Interaction::Pressed) else {
+    let Some((_, btn, rcp, cn)) = buttons.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some((cursor, win_h)) = windows
@@ -566,7 +568,7 @@ fn icon_cell(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(label),
             MenuAction(Box::new(move |w: &mut World| {
@@ -583,8 +585,8 @@ fn icon_cell(
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, cell, move |w| {
-        match w.get::<Interaction>(cell) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(cell) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 c(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,

@@ -11,7 +11,9 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::{accent, divider, play_green, rgb, text_muted, text_primary};
+use renzora_ember::UiInteraction;
 
 use crate::bottom_dock::{BottomDock, BottomDockBtn, BOTTOM_DOCK_Z};
 use crate::dock::{self, DockTree};
@@ -194,7 +196,7 @@ pub(crate) fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts)
             RelativeCursorPosition::default(),
             // Same reason as the trigger: the panel's own background hangs over
             // the dock header's resize filler.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             BottomSetMenu,
             Name::new("bottom-set-menu"),
         ))
@@ -211,12 +213,12 @@ pub(crate) fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts)
                 overflow: Overflow::clip(),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             BottomSetLabel,
         ))
         .id();
     let caret = glyph(commands, "caret-down", text_muted(), 10.0);
-    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(caret).insert(PASS_THROUGH);
 
     let trigger = commands
         .spawn((
@@ -240,15 +242,15 @@ pub(crate) fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts)
             },
             BackgroundColor(Color::NONE),
             GlobalZIndex(BOTTOM_DOCK_Z + 2),
-            Interaction::default(),
-            // Not optional. `Node`'s required `FocusPolicy` is `Pass` in Bevy
-            // 0.19, so hover falls *through* this button to the dock header's
+            UiInteraction::default(),
+            // Not optional. Every UI node starts as `PASS_THROUGH`, so hover
+            // falls *through* this button to the dock header's
             // filler underneath — which is the panel's resize surface and
             // carries an ns-resize `HoverCursor`. `apply_cursor_icon` takes the
             // first hovered entity with a cursor and does no topmost
             // resolution, so the filler won and the dropdown showed a resize
             // cursor. Blocking keeps the hover here, where it belongs.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::Popup::new(panel),
             // No tooltip: the control already reads as what it is (a named set
@@ -262,8 +264,8 @@ pub(crate) fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts)
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
-        match w.get::<Interaction>(trigger) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(trigger) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, 0.09)
             }
             _ => Color::NONE,
@@ -295,10 +297,10 @@ fn bottom_set_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             // Block, like the trigger: a row sits over the panel's header
             // filler, which is a resize surface (see the trigger's comment).
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             // The reorder drag hit-tests in the cursor's own space rather than
             // against node centres, which drift under UI scaling — the lesson
             // `ribbon_interact` and the document tabs both learned the hard way.
@@ -308,15 +310,15 @@ fn bottom_set_row(
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
-        match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(row) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,
         }
     });
     let ic = glyph(commands, icon, icon_color, 12.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let text = commands
         .spawn((
             Text::new(label),
@@ -331,7 +333,7 @@ fn bottom_set_row(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(row).add_children(&[ic, text]);
@@ -455,7 +457,7 @@ pub(crate) fn sync_bottom_set_menu(
                     ..default()
                 },
                 BackgroundColor(rgb(accent())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("bottom-set-insert-marker"),
             ))
             .id();
@@ -464,9 +466,9 @@ pub(crate) fn sync_bottom_set_menu(
         // row's index is the one thing either needs, so there's no separate
         // marker component for "this row picks a set".
         commands.entity(row).insert(BottomSetItem { index: i, marker });
-        // Rename pencil at the row's right edge. `Block`, or the press also
-        // reaches the row and switches to that set on the way into the field —
-        // `Node`'s required `FocusPolicy` is `Pass` in Bevy 0.19.
+        // Rename pencil at the row's right edge. `BLOCK`, or the press also
+        // reaches the row and switches to that set on the way into the field:
+        // UI nodes start as `PASS_THROUGH`.
         let pencil = commands
             .spawn((
                 Node {
@@ -479,15 +481,15 @@ pub(crate) fn sync_bottom_set_menu(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
-                bevy::ui::FocusPolicy::Block,
+                UiInteraction::default(),
+                BLOCK,
                 BottomSetRenameBtn(i),
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new("bottom-set-rename"),
             ))
             .id();
         let pencil_icon = glyph(&mut commands, "pencil-simple", text_muted(), 11.0);
-        commands.entity(pencil_icon).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(pencil_icon).insert(PASS_THROUGH);
         commands.entity(pencil).add_child(pencil_icon);
         commands.entity(row).add_child(pencil);
         rows.push(row);
@@ -535,9 +537,9 @@ pub(crate) fn sync_bottom_set_menu(
 /// rename is the exception because the field it opens *is* in the menu.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn bottom_set_menu_click(
-    new_rows: Query<&Interaction, (With<BottomSetNew>, Changed<Interaction>)>,
-    remove_rows: Query<&Interaction, (With<BottomSetRemove>, Changed<Interaction>)>,
-    pencils: Query<(&Interaction, &BottomSetRenameBtn), Changed<Interaction>>,
+    new_rows: Query<&UiInteraction, (With<BottomSetNew>, Changed<UiInteraction>)>,
+    remove_rows: Query<&UiInteraction, (With<BottomSetRemove>, Changed<UiInteraction>)>,
+    pencils: Query<(&UiInteraction, &BottomSetRenameBtn), Changed<UiInteraction>>,
     mut sets: ResMut<BottomPanelSets>,
     mut rename: ResMut<BottomSetRename>,
     mut fixed: ResMut<renzora_ember::dock::FixedDock>,
@@ -546,7 +548,7 @@ pub(crate) fn bottom_set_menu_click(
     mut commands: Commands,
 ) {
     for (interaction, pencil) in &pencils {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             rename.0 = Some(pencil.0);
         }
     }
@@ -555,7 +557,7 @@ pub(crate) fn bottom_set_menu_click(
     // because the same press can be the start of a reorder. Acting on the press
     // would switch sets and close the menu out from under the drag.
     for interaction in &new_rows {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let name = next_panel_set_name(&sets.sets);
@@ -572,7 +574,7 @@ pub(crate) fn bottom_set_menu_click(
         // Guarded here as well as in the builder: the row is only spawned while
         // there's more than one set, but the menu it lives in can outlive that
         // by a frame.
-        if *interaction != Interaction::Pressed || sets.sets.len() < 2 {
+        if *interaction != UiInteraction::Pressed || sets.sets.len() < 2 {
             continue;
         }
         let gone = sets.active;
@@ -618,7 +620,7 @@ pub(crate) fn bottom_set_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     rename: Res<BottomSetRename>,
-    pressed: Query<(&BottomSetItem, &Interaction)>,
+    pressed: Query<(&BottomSetItem, &UiInteraction)>,
     items: Query<(&BottomSetItem, &RelativeCursorPosition)>,
     mut nodes: Query<&mut Node>,
     mut sets: ResMut<BottomPanelSets>,
@@ -648,7 +650,7 @@ pub(crate) fn bottom_set_drag(
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(cur) = cursor {
             for (item, interaction) in &pressed {
-                if *interaction == Interaction::Pressed {
+                if *interaction == UiInteraction::Pressed {
                     drag.0 = Some(BottomSetDragState {
                         index: item.index,
                         start_cursor: cur,

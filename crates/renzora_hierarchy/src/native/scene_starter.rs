@@ -19,6 +19,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_text, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::cache::HierarchyTreeCache;
 
@@ -177,7 +178,7 @@ fn build_card(commands: &mut Commands, fonts: &EmberFonts, id: &'static str, tit
             },
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             HierStarterCard(id),
             Name::new("hier-starter-card"),
         ))
@@ -210,12 +211,12 @@ fn build_card(commands: &mut Commands, fonts: &EmberFonts, id: &'static str, tit
 }
 
 fn starter_click(
-    q: Query<(&Interaction, &HierStarterCard), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HierStarterCard), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, card) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let id = card.0;
             cmds.push(move |world: &mut World| {
                 let spawn = world

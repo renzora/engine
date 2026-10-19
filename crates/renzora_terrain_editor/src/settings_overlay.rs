@@ -27,16 +27,17 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     drag_value, dropdown_compact, toggle_switch, DragRange, DragSnap, OverlaySurface,
 };
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::TerrainData;
 use renzora_terrain::grid::{estimate_cost, TerrainCost, COST_WARN_VERTICES, MAX_CHUNKS_PER_AXIS};
@@ -155,11 +156,11 @@ fn manage_modal(world: &mut World) {
 }
 
 fn close_click(
-    q: Query<&Interaction, (With<CloseBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CloseBtn>, Changed<UiInteraction>)>,
     mut draft: ResMut<TerrainSettingsDraft>,
 ) {
     for interaction in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             draft.visible = false;
             draft.target = None;
         }
@@ -176,12 +177,12 @@ fn escape_closes(keys: Res<ButtonInput<KeyCode>>, mut draft: ResMut<TerrainSetti
 /// The one write. Everything the overlay edited lands on `TerrainData` in a
 /// single change, so the rebuild runs once.
 fn apply_click(
-    q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ApplyBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
     mut draft: ResMut<TerrainSettingsDraft>,
     mut terrains: Query<&mut TerrainData>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(target) = draft.target else { return };
@@ -227,11 +228,11 @@ fn apply_click(
 }
 
 fn grid_cell_click(
-    q: Query<(&Interaction, &GridCell), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &GridCell), Changed<UiInteraction>>,
     mut draft: ResMut<TerrainSettingsDraft>,
 ) {
     for (interaction, cell) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         // A cell means "make the grid this big", so the clicked cell is the far
@@ -261,8 +262,8 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             // Without `OverlaySurface` the pointer state leaks through to the
             // viewport: clicks and scrolls land on the scene behind the dialog.
             OverlaySurface,
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             OverlayRoot,
             Name::new("terrain-settings-modal"),
@@ -282,7 +283,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             },
             BackgroundColor(rgb(panel_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("terrain-settings-panel"),
         ))
         .id();
@@ -334,7 +335,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(3.0)),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             CloseBtn,
             Name::new("terrain-settings-close"),
@@ -342,7 +343,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let cx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 15.0);
     // The glyph must not swallow the click meant for its button.
-    commands.entity(cx).insert(FocusPolicy::Pass);
+    commands.entity(cx).insert(PASS_THROUGH);
     commands.entity(close).add_child(cx);
 
     commands.entity(row).add_children(&[left, close]);
@@ -402,7 +403,7 @@ fn grid_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                             ..default()
                         },
                         BackgroundColor(rgb(card_bg())),
-                        Interaction::default(),
+                        UiInteraction::default(),
                         HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                         GridCell { x, z },
                         Name::new(format!("grid-cell-{x}-{z}")),
@@ -417,8 +418,8 @@ fn grid_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     if inside {
                         rgb(accent())
                     } else if matches!(
-                        w.get::<Interaction>(cell),
-                        Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                        w.get::<UiInteraction>(cell),
+                        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
                     ) {
                         rgb(hover_bg())
                     } else {
@@ -697,15 +698,15 @@ fn action_button(
                 ..default()
             },
             BackgroundColor(if primary { rgb(accent()) } else { rgb(card_bg()) }),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("terrain-settings-{label}")),
         ))
         .id();
     bind_bg(commands, btn, move |w| {
         let hovered = matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         );
         match (primary, hovered) {
             (true, _) => rgb(accent()),
@@ -722,7 +723,7 @@ fn action_button(
             } else {
                 rgb(text_primary())
             }),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_child(t);

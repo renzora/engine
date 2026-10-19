@@ -38,6 +38,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, menu_item, screen_menu, text_input, DragRange,
 };
+use renzora_ember::UiInteraction;
 
 use crate::AnimationEditorState;
 
@@ -315,7 +316,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             SaveBtn,
         ))
         .id();
@@ -455,7 +456,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             StarBtn(String::new()), // filled in after we know the name (via system reading idx)
         ))
         .id();
@@ -910,7 +911,7 @@ fn add_button(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
         ))
         .id();
@@ -945,7 +946,7 @@ fn trash_button(commands: &mut Commands, fonts: &EmberFonts, marker: impl Compon
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
         ))
         .id();
@@ -977,7 +978,7 @@ fn combo_box(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             marker,
         ))
@@ -1209,11 +1210,11 @@ fn load_state_machine(
 }
 
 fn save_click(
-    q: Query<&Interaction, (With<SaveBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<SaveBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {
@@ -1247,7 +1248,7 @@ fn save_click(
 }
 
 fn add_state_click(
-    q: Query<&Interaction, (With<AddStateBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddStateBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
     anim_state: Option<Res<AnimationEditorState>>,
     animators: Query<&AnimatorComponent>,
@@ -1255,7 +1256,7 @@ fn add_state_click(
     let (Some(cmds), Some(anim_state)) = (cmds, anim_state) else {
         return;
     };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let first_clip = anim_state
@@ -1278,11 +1279,11 @@ fn add_state_click(
 }
 
 fn add_transition_click(
-    q: Query<&Interaction, (With<AddTransitionBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddTransitionBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {
@@ -1308,12 +1309,12 @@ fn add_transition_click(
 }
 
 fn star_click(
-    q: Query<(&Interaction, &StarBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StarBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let name = btn.0.clone();
@@ -1330,12 +1331,12 @@ fn star_click(
 }
 
 fn trash_state_click(
-    q: Query<(&Interaction, &TrashStateBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TrashStateBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let idx = btn.0;
@@ -1360,12 +1361,12 @@ fn trash_state_click(
 }
 
 fn trash_transition_click(
-    q: Query<(&Interaction, &TrashTransitionBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TrashTransitionBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let idx = btn.0;
@@ -1395,8 +1396,8 @@ fn combo_top_left(
 
 fn state_clip_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode, &StateClipCombo),
-        Changed<Interaction>,
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &StateClipCombo),
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -1407,7 +1408,7 @@ fn state_clip_combo_open(
     let (Some(fonts), Some(anim_state)) = (fonts, anim_state) else {
         return;
     };
-    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -1435,8 +1436,8 @@ fn state_clip_combo_open(
 
 fn trans_from_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode, &TransFromCombo),
-        Changed<Interaction>,
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TransFromCombo),
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -1446,7 +1447,7 @@ fn trans_from_combo_open(
     let (Some(fonts), Some(sm_state)) = (fonts, sm_state) else {
         return;
     };
-    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -1470,8 +1471,8 @@ fn trans_from_combo_open(
 
 fn trans_to_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode, &TransToCombo),
-        Changed<Interaction>,
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TransToCombo),
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -1481,7 +1482,7 @@ fn trans_to_combo_open(
     let (Some(fonts), Some(sm_state)) = (fonts, sm_state) else {
         return;
     };
-    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
@@ -1505,15 +1506,15 @@ fn trans_to_combo_open(
 
 fn cond_kind_combo_open(
     q: Query<
-        (&Interaction, &RelativeCursorPosition, &ComputedNode, &CondKindCombo),
-        Changed<Interaction>,
+        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CondKindCombo),
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {

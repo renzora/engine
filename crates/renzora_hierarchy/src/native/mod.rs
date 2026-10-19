@@ -80,6 +80,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<rename::HierRename>();
     app.init_resource::<scene_drop::ArmedHierSceneDrop>();
     app.init_resource::<asset_drop::ArmedHierAssetDrop>();
+    app.init_resource::<renzora::core::viewport_types::DropCursorRequest>();
     app.init_resource::<renzora::core::ArrowKeysClaimed>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {

@@ -22,7 +22,9 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora::core::{CurrentProject, MaterialRef, MaterialResolved};
+use bevy::window::SystemCursorIcon;
+use renzora::core::viewport_types::DropCursorRequest;
+use renzora::core::{CurrentProject, MaterialRef, MaterialResolved, MaterialTarget};
 use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_ember::widgets::PointerOverOverlay;
 use renzora_scripting::ScriptComponent;
@@ -118,17 +120,27 @@ fn has_extension(path: &std::path::Path, exts: &[&str]) -> bool {
 /// disarm when a payload is present but isn't over a valid target. When no
 /// payload exists (the release frame, after the browser removed it) the snapshot
 /// is left alone so [`commit_hier_asset_drop`] can still consume it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn arm_hier_asset_drop(
     payload: Option<Res<AssetDragPayload>>,
     rows: Query<(&RelativeCursorPosition, &HierRowArea)>,
     pins: Query<(&RelativeCursorPosition, &HierPinClick)>,
     roots: Query<&RelativeCursorPosition, With<HierRoot>>,
     over_overlay: Option<Res<PointerOverOverlay>>,
+    wearers: Query<(Has<Mesh3d>, Has<Sprite>)>,
+    children: Query<&Children>,
+    mut target_of: Local<Option<(PathBuf, Option<MaterialTarget>)>>,
+    mut refusing: Local<bool>,
+    mut cursor: ResMut<DropCursorRequest>,
     mut armed: ResMut<ArmedHierAssetDrop>,
 ) {
     let Some(payload) = payload else {
+        if std::mem::take(&mut *refusing) {
+            cursor.0 = None;
+        }
         return; // keep the last snapshot for the release frame
     };
+    let mut refuse = false;
 
     // A floating overlay (menu / popup) over the hierarchy owns the pointer — a
     // drop landing on it shouldn't fall through to the row behind. The panel
@@ -162,6 +174,21 @@ pub(crate) fn arm_hier_asset_drop(
             .filter(|p| has_extension(p, kind.extensions()))
             .cloned()
             .collect();
+        // A material only arms over a row it can be worn by: a Sprite
+        // material over a sprite, any other over a mesh. Read once per drag,
+        // not per frame.
+        if kind == AttachKind::Material {
+            let first = paths.first()?;
+            if target_of.as_ref().map(|(p, _)| p) != Some(first) {
+                *target_of = Some((first.clone(), MaterialTarget::of_file(first)));
+            }
+            if let Some((_, Some(material))) = target_of.as_ref() {
+                if !subtree_fits(target, *material, &wearers, &children) {
+                    refuse = true;
+                    return None;
+                }
+            }
+        }
         (!paths.is_empty()).then_some(Armed {
             target,
             kind,
@@ -170,12 +197,36 @@ pub(crate) fn arm_hier_asset_drop(
     })
     .flatten();
 
+    // "Not allowed" while over a row the material cannot go on, cleared only
+    // by us, so the viewport's own request is never wiped from here.
+    if refuse {
+        if cursor.0 != Some(SystemCursorIcon::NotAllowed) {
+            cursor.0 = Some(SystemCursorIcon::NotAllowed);
+        }
+        *refusing = true;
+    } else if std::mem::take(&mut *refusing) {
+        cursor.0 = None;
+    }
+
     // Only write through `ResMut` when the value actually moved: the row
     // background binds to this resource, and marking it changed every frame
     // would re-evaluate that binding for every visible row on every frame.
     if armed.0 != want {
         armed.0 = want;
     }
+}
+
+/// Whether `root`, or something beneath it (an imported model's root carries
+/// no mesh of its own), can wear a `material`-target material. The query-side
+/// twin of [`mesh_targets`].
+fn subtree_fits(
+    root: Entity,
+    material: MaterialTarget,
+    wearers: &Query<(Has<Mesh3d>, Has<Sprite>)>,
+    children: &Query<&Children>,
+) -> bool {
+    let fits = |e: Entity| wearers.get(e).is_ok_and(|(mesh, sprite)| material.fits(mesh, sprite));
+    fits(root) || children.iter_descendants(root).any(fits)
 }
 
 /// On the left-mouse-release edge, apply the armed attachment through
@@ -221,7 +272,12 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
 
     let applied = match kind {
         AttachKind::Script | AttachKind::Blueprint => attach_scripts(world, target, kind, &rel),
-        AttachKind::Material => assign_material(world, target, &rel[0]),
+        AttachKind::Material => assign_material(
+            world,
+            target,
+            &rel[0],
+            MaterialTarget::of_file(&paths[0]).unwrap_or(MaterialTarget::Mesh),
+        ),
     };
     if !applied {
         return;
@@ -346,8 +402,8 @@ fn write_materials(world: &mut World, snap: &MaterialSnapshot) {
 /// root carries the name you dropped on but no `Mesh3d`, so binding only there
 /// would write a `MaterialRef` nothing ever renders and look like the drop did
 /// nothing. Returns whether anything was bound.
-fn assign_material(world: &mut World, target: Entity, rel: &str) -> bool {
-    let targets = mesh_targets(world, target);
+fn assign_material(world: &mut World, target: Entity, rel: &str, material: MaterialTarget) -> bool {
+    let targets = mesh_targets(world, target, material);
     if targets.is_empty() {
         let entity_name = world
             .get::<Name>(target)
@@ -381,9 +437,13 @@ fn assign_material(world: &mut World, target: Entity, rel: &str) -> bool {
     true
 }
 
-/// The entity itself if it has a mesh, otherwise every mesh in its subtree.
-fn mesh_targets(world: &World, root: Entity) -> Vec<Entity> {
-    if world.get::<Mesh3d>(root).is_some() {
+/// The entity itself if it can wear `material`, otherwise everything in its
+/// subtree that can: meshes for a 3D material, sprites for a Sprite one. A
+/// model with both gets the material only on the half that can draw it.
+fn mesh_targets(world: &World, root: Entity, material: MaterialTarget) -> Vec<Entity> {
+    let wears_material =
+        |e: Entity| material.fits(world.get::<Mesh3d>(e).is_some(), world.get::<Sprite>(e).is_some());
+    if wears_material(root) {
         return vec![root];
     }
     let mut out = Vec::new();
@@ -392,7 +452,7 @@ fn mesh_targets(world: &World, root: Entity) -> Vec<Entity> {
         if let Some(children) = world.get::<Children>(e) {
             stack.extend(children.iter());
         }
-        if e != root && world.get::<Mesh3d>(e).is_some() {
+        if e != root && wears_material(e) {
             out.push(e);
         }
     }

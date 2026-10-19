@@ -3,7 +3,7 @@
 //!
 //! The loader collects an element's base + `hover:` + `pressed:` background and
 //! border colors into [`Interactive`]. Each frame, [`apply_interactive`] picks
-//! the target color for the current `Interaction` state and either snaps to it
+//! the target color for the current `UiInteraction` state and either snaps to it
 //! (instant) or eases toward it (when a duration is set).
 //!
 //! Today this covers `background` and `border_color` — the common state-styling
@@ -11,6 +11,8 @@
 //! same way.
 
 use bevy::prelude::*;
+
+use crate::UiInteraction;
 
 /// State-dependent colors for an interactive element. Missing states fall back:
 /// pressed → hover → base, hover → base.
@@ -26,19 +28,19 @@ pub struct Interactive {
     pub duration: f32,
 }
 
-fn bg_target(i: &Interactive, s: Interaction) -> Option<Color> {
+fn bg_target(i: &Interactive, s: UiInteraction) -> Option<Color> {
     match s {
-        Interaction::Pressed => i.pressed_bg.or(i.hover_bg).or(i.base_bg),
-        Interaction::Hovered => i.hover_bg.or(i.base_bg),
-        Interaction::None => i.base_bg,
+        UiInteraction::Pressed => i.pressed_bg.or(i.hover_bg).or(i.base_bg),
+        UiInteraction::Hovered => i.hover_bg.or(i.base_bg),
+        UiInteraction::None => i.base_bg,
     }
 }
 
-fn border_target(i: &Interactive, s: Interaction) -> Option<Color> {
+fn border_target(i: &Interactive, s: UiInteraction) -> Option<Color> {
     match s {
-        Interaction::Pressed => i.pressed_border.or(i.hover_border).or(i.base_border),
-        Interaction::Hovered => i.hover_border.or(i.base_border),
-        Interaction::None => i.base_border,
+        UiInteraction::Pressed => i.pressed_border.or(i.hover_border).or(i.base_border),
+        UiInteraction::Hovered => i.hover_border.or(i.base_border),
+        UiInteraction::None => i.base_border,
     }
 }
 
@@ -58,7 +60,7 @@ fn lerp_color(a: Color, b: Color, t: f32) -> Color {
 fn apply_interactive(
     time: Res<Time>,
     mut q: Query<(
-        &Interaction,
+        &UiInteraction,
         &Interactive,
         Option<&mut BackgroundColor>,
         Option<&mut BorderColor>,

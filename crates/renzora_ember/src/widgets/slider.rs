@@ -3,8 +3,10 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::reactive::Bound;
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Fill/thumb refs and the value range; the value itself lives in `Bound<f32>`
 /// (so `bind_2way` can drive it).
@@ -70,7 +72,7 @@ pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) ->
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("slider"),
@@ -86,7 +88,7 @@ pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) ->
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("slider-track"),
         ))
         .id();
@@ -114,7 +116,7 @@ pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) ->
                 ..default()
             },
             BackgroundColor(rgb(on_accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("slider-thumb"),
         ))
         .id();
@@ -131,13 +133,13 @@ pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) ->
 pub(crate) fn slider_drag(
     mut sliders: Query<(
         &EmberSlider,
-        &Interaction,
+        &UiInteraction,
         &bevy::ui::RelativeCursorPosition,
         &mut Bound<f32>,
     )>,
 ) {
     for (slider, interaction, rcp, mut b) in &mut sliders {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {

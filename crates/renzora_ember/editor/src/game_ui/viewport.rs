@@ -7,6 +7,8 @@
 use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::UiInteraction;
 use renzora_ember::reactive::tracked::{bind_display, bind_with};
 use renzora_ember::theme::*;
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
@@ -20,11 +22,11 @@ pub(crate) struct CreateCanvasBtn;
 /// Spawn a canvas and select it, so the inspector opens on the UI Template slot
 /// — which is the next thing to fill and the whole reason the entity exists.
 pub(crate) fn create_canvas_click(
-    q: Query<&Interaction, (With<CreateCanvasBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CreateCanvasBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<renzora::EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {
@@ -51,7 +53,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // Clicking the dark area around the frame clears the selection. The
             // centered frame sits on top where it covers, so a press only reaches
             // this node when it lands *outside* the frame.
-            Interaction::default(),
+            UiInteraction::default(),
             crate::game_ui::interaction::CanvasBackground,
             crate::game_ui::ruler::RulerArea,
             // The rulers' cursor markers measure against this node, so the
@@ -95,7 +97,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             CreateCanvasBtn,
             Name::new("ui-canvas-create"),
@@ -106,7 +108,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("Create one"),
             ui_font(&fonts.ui, 11.5),
             TextColor(Color::WHITE),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(create).add_child(create_label);

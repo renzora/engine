@@ -22,10 +22,11 @@
 //! marker so we don't stack a second copy on repeat clicks.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::UiInteraction;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_with};
 use renzora_ember::theme::{
@@ -218,9 +219,9 @@ pub(crate) fn process_about_request(
 }
 
 /// Open a credit row's repo in the browser on click.
-pub(crate) fn about_credit_click(q: Query<(&Interaction, &AboutCreditLink), Changed<Interaction>>) {
+pub(crate) fn about_credit_click(q: Query<(&UiInteraction, &AboutCreditLink), Changed<UiInteraction>>) {
     for (interaction, link) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             crate::open_url(&link.0);
         }
     }
@@ -228,13 +229,13 @@ pub(crate) fn about_credit_click(q: Query<(&Interaction, &AboutCreditLink), Chan
 
 /// Lift a tile or chip out of the card while the cursor is on it.
 ///
-/// A binding rather than the `Changed<Interaction>` system this used to be: the
+/// A binding rather than the `Changed<UiInteraction>` system this used to be: the
 /// resting fill is no longer transparent, so the "not hovered" branch has a real
 /// colour to restore, and a theme change has to move both. A binding re-reads
 /// the palette; a system that wrote a colour once did not.
 fn hover_lift(commands: &mut Commands, e: Entity) {
-    bind_bg(commands, e, move |w| match w.get::<Interaction>(e) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(card_bg()),
+    bind_bg(commands, e, move |w| match w.get::<UiInteraction>(e) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(card_bg()),
         _ => rgb(faint_bg()),
     });
 }
@@ -359,7 +360,7 @@ fn brand_mark(commands: &mut Commands, fonts: &EmberFonts, size: f32) -> Entity 
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("about-brand-mark"),
         ))
         .id();
@@ -377,7 +378,7 @@ fn brand_mark(commands: &mut Commands, fonts: &EmberFonts, size: f32) -> Entity 
                     display: Display::None,
                     ..default()
                 },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
                 FileImageWanted(path.clone()),
             ))
             .id();
@@ -392,7 +393,7 @@ fn brand_mark(commands: &mut Commands, fonts: &EmberFonts, size: f32) -> Entity 
     }
 
     let glyph = icon_text(commands, &fonts.phosphor, "cube", accent(), size * 0.6);
-    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     commands.entity(frame).add_child(glyph);
     frame
 }
@@ -543,7 +544,7 @@ fn contributor_chip(commands: &mut Commands, fonts: &EmberFonts, c: &Contributor
                 ..default()
             },
             BackgroundColor(rgb(faint_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             AboutCreditLink(c.html_url.clone()),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new(format!("about-contributor:{}", c.login)),
@@ -565,7 +566,7 @@ fn contributor_chip(commands: &mut Commands, fonts: &EmberFonts, c: &Contributor
                 ..default()
             },
             BackgroundColor(rgb(divider())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let url = c.avatar_url.clone();
@@ -578,7 +579,7 @@ fn contributor_chip(commands: &mut Commands, fonts: &EmberFonts, c: &Contributor
                 display: Display::None,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             WebImageWanted(url.clone()),
         ))
         .id();
@@ -595,7 +596,7 @@ fn contributor_chip(commands: &mut Commands, fonts: &EmberFonts, c: &Contributor
             Text::new(&c.login),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(chip).add_children(&[frame, name]);
@@ -671,24 +672,24 @@ fn link_button(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             AboutCreditLink(url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new(format!("about-link:{label}")),
         ))
         .id();
-    bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(faint_bg()),
+    bind_bg(commands, btn, move |w| match w.get::<UiInteraction>(btn) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(faint_bg()),
         _ => Color::NONE,
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 14.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let text = commands
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, text]);
@@ -744,7 +745,7 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
             },
             BackgroundColor(rgb(faint_bg())),
             BorderColor::all(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             AboutCreditLink(c.url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new(format!("about-credit:{}", c.name)),
@@ -761,7 +762,7 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
                 column_gap: Val::Px(6.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name = commands
@@ -769,7 +770,7 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
             Text::new(c.name),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let spacer = commands
@@ -779,11 +780,11 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
                 min_width: Val::Px(6.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let icon = icon_text(commands, &fonts.phosphor, "github-logo", text_muted(), 13.0);
-    commands.entity(icon).insert(FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     commands.entity(head).add_children(&[name, spacer, icon]);
 
     let desc = commands
@@ -791,7 +792,7 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
             Text::new(c.desc),
             ui_font(&fonts.ui, 10.5),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let by = commands
@@ -799,7 +800,7 @@ fn credit_tile(commands: &mut Commands, fonts: &EmberFonts, c: &Credit) -> Entit
             Text::new(format!("by {}", c.by)),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(placeholder())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 

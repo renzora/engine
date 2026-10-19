@@ -255,7 +255,16 @@ fn main() {
     // Plugins from `<exe-dir>/plugins/`, after both.
     load_global_plugins(&mut app, is_editor);
 
-    app.run();
+    // Last, so the seed reaches every schedule the plugins above created.
+    renzora_runtime::schedule_shuffle::install(&mut app);
+
+    // In the editor the panic hook holds back a panic on a system thread, since
+    // Bevy usually catches it and the editor carries on. One that unwinds all
+    // the way out here was caught by nothing: report it as the crash it is.
+    if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| app.run())) {
+        renzora_runtime::renzora_engine::crash::report_uncaught();
+        std::panic::resume_unwind(payload);
+    }
 }
 
 // Server config moved to `renzora_runtime::server`, so its `#[cfg]` could live

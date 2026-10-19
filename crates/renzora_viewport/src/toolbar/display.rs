@@ -21,6 +21,8 @@ use renzora_ember::theme::{hover_bg, rgb, tab_active, text_primary, value_text};
 use renzora_ember::widgets::{
     drag_value, icon_popup_trigger, popup_anchor, popup_panel, toggle_switch, DragRange, Popup,
 };
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::rows::{check_row, option_row, section_label, separator_row, toggle_row};
@@ -404,18 +406,18 @@ fn grid_div_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, up: boo
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             GridDivBtn(up),
             Name::new(if up { "vp-grid-div-up" } else { "vp-grid-div-down" }),
         ))
         .id();
     let g = icon_text(commands, &fonts.phosphor, icon, renzora_ember::theme::text_muted(), 10.0);
-    commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(g).insert(PASS_THROUGH);
     commands.entity(btn).add_child(g);
     renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
-        match w.get::<Interaction>(btn) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+        match w.get::<UiInteraction>(btn) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
             _ => rgb(tab_active()),
         }
     });
@@ -425,12 +427,12 @@ fn grid_div_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, up: boo
 /// `-` / `+` on the grid row → halve or double the subdivision, clamped to a
 /// range where the lines stay distinguishable at a sane camera height.
 pub(super) fn grid_div_click(
-    buttons: Query<(&Interaction, &GridDivBtn), Changed<Interaction>>,
+    buttons: Query<(&UiInteraction, &GridDivBtn), Changed<UiInteraction>>,
     settings: Option<ResMut<ViewportSettings>>,
 ) {
     let Some(mut settings) = settings else { return };
     for (interaction, btn) in &buttons {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let want = if btn.0 {
@@ -446,12 +448,12 @@ pub(super) fn grid_div_click(
 }
 
 pub(super) fn display_option_click(
-    options: Query<(&Interaction, &DisplayOption), Changed<Interaction>>,
+    options: Query<(&UiInteraction, &DisplayOption), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, opt) in &options {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match *opt {
@@ -484,8 +486,8 @@ pub(super) fn update_display_visuals(
     settings: Option<Res<ViewportSettings>>,
     mut collider_memory: ResMut<ColliderGizmoMemory>,
     theme: Option<Res<ThemeManager>>,
-    triggers: Query<(&Interaction, &Popup, &mut BackgroundColor), With<DisplayTrigger>>,
-    options: Query<(&DisplayOption, &Interaction, &mut BackgroundColor), Without<DisplayTrigger>>,
+    triggers: Query<(&UiInteraction, &Popup, &mut BackgroundColor), With<DisplayTrigger>>,
+    options: Query<(&DisplayOption, &UiInteraction, &mut BackgroundColor), Without<DisplayTrigger>>,
 ) {
     let (Some(settings), Some(theme)) = (settings, theme) else {
         return;
@@ -496,7 +498,7 @@ pub(super) fn update_display_visuals(
     let hovered = col(t.widgets.hovered_bg);
 
     for (interaction, toggle, mut bg) in triggers {
-        let want = if toggle.open || *interaction == Interaction::Hovered {
+        let want = if toggle.open || *interaction == UiInteraction::Hovered {
             hovered
         } else {
             inactive
@@ -530,7 +532,7 @@ pub(super) fn update_display_visuals(
         };
         let want = if is_current {
             accent
-        } else if *interaction == Interaction::Hovered {
+        } else if *interaction == UiInteraction::Hovered {
             hovered
         } else {
             Color::NONE

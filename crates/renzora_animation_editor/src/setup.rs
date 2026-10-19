@@ -31,6 +31,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::tracked::{bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use crate::AnimationEditorState;
 
@@ -145,7 +146,7 @@ pub fn action_button(
             },
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
         ))
         .id();
@@ -278,7 +279,7 @@ fn candidate_row(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             SelectEntityBtn(entity),
         ))
         .id();
@@ -321,12 +322,12 @@ fn candidate_row(
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 fn select_entity_click(
-    q: Query<(&Interaction, &SelectEntityBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SelectEntityBtn), Changed<UiInteraction>>,
     selection: Option<Res<EditorSelection>>,
 ) {
     let Some(selection) = selection else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             selection.set(Some(btn.0));
         }
     }
@@ -350,11 +351,11 @@ fn clear_feedback_on_select(
 /// needed when the model entered the scene *before* its animations existed on
 /// disk (e.g. re-imported with extraction enabled afterwards).
 fn scan_clips_click(
-    q: Query<&Interaction, (With<ScanClipsBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ScanClipsBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {
@@ -428,11 +429,11 @@ fn scan_clips_click(
 /// entry = the default clip, no transitions) next to the clips and assign it
 /// on the animator. If the file already exists it is assigned, not overwritten.
 fn create_sm_click(
-    q: Query<&Interaction, (With<CreateSmBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CreateSmBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {
@@ -529,11 +530,11 @@ fn create_sm_click(
 /// attach an [`AnimatorComponent`] (if missing) with that clip as default, and
 /// select it — the starting point for authoring property tracks on any entity.
 fn create_anim_click(
-    q: Query<&Interaction, (With<CreateAnimBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<CreateAnimBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     cmds.push(|world: &mut World| {

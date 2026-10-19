@@ -14,6 +14,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, keyed_list_tokened};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu};
 use renzora_editor_framework::{EditorCommands, SplashState};
 
@@ -246,7 +247,7 @@ fn scene_row(commands: &mut Commands, fonts: &EmberFonts, path: PathBuf) -> Enti
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             SceneRow { path: path.clone() },
             Name::new(format!("scene:{name}")),
@@ -259,8 +260,8 @@ fn scene_row(commands: &mut Commands, fonts: &EmberFonts, path: PathBuf) -> Enti
             if is_current(w, &p) {
                 rgb(accent()).with_alpha(0.25)
             } else if matches!(
-                w.get::<Interaction>(row),
-                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+                w.get::<UiInteraction>(row),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
             ) {
                 rgb(hover_bg())
             } else {
@@ -304,12 +305,12 @@ fn note_snapshot(text: &'static str) -> KeyedSnapshot {
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 fn new_scene_click(
-    q: Query<&Interaction, (With<NewSceneBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<NewSceneBtn>, Changed<UiInteraction>)>,
     cmds: Option<Res<EditorCommands>>,
     project: Option<Res<CurrentProject>>,
 ) {
     let (Some(cmds), Some(project)) = (cmds, project) else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let dir = project.resolve_path("scenes");
@@ -327,9 +328,9 @@ fn new_scene_click(
     });
 }
 
-fn scenes_track_hover(rows: Query<(&Interaction, &SceneRow)>, mut state: ResMut<ScenesState>) {
+fn scenes_track_hover(rows: Query<(&UiInteraction, &SceneRow)>, mut state: ResMut<ScenesState>) {
     for (interaction, row) in &rows {
-        if matches!(interaction, Interaction::Hovered | Interaction::Pressed)
+        if matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed)
             && state.hovered.as_deref() != Some(row.path.as_path())
         {
             state.hovered = Some(row.path.clone());
@@ -338,7 +339,7 @@ fn scenes_track_hover(rows: Query<(&Interaction, &SceneRow)>, mut state: ResMut<
 }
 
 fn scenes_click(
-    q: Query<(&Interaction, &SceneRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SceneRow), Changed<UiInteraction>>,
     mut state: ResMut<ScenesState>,
     time: Res<Time>,
     cmds: Option<Res<EditorCommands>>,
@@ -346,7 +347,7 @@ fn scenes_click(
     let Some(cmds) = cmds else { return };
     let now = time.elapsed_secs_f64();
     for (interaction, row) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let double = state

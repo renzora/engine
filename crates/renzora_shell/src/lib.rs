@@ -26,7 +26,8 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_ember::dock::{Dock, DockArea, DockDirty};
 use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::theme::{divider, header_bg, panel_bg, rgb, text_muted, window_bg};
-use renzora_ember::EmberPlugin;
+use renzora_ember::interaction::BLOCK;
+use renzora_ember::{EmberPlugin, UiInteraction};
 
 pub mod dock;
 
@@ -366,7 +367,7 @@ impl Plugin for ShellPlugin {
                     // Last: apply whatever the above decided this frame, so the
                     // panel never renders a frame at a stale height or mode.
                     // Nested so the outer tuple stays inside the 20-system
-                    // limit, and chained because both touch `Interaction`.
+                    // limit, and chained because both touch `UiInteraction`.
                     (sync_bottom_dock_node, clear_bottom_dock_hover_on_hide).chain(),
                     sync_bottom_dock_mode_btn,
                 )
@@ -709,10 +710,10 @@ fn spawn_shell(
             // the dock area above, whose graph panels hoist themselves to the
             // root order too.
             GlobalZIndex(BOTTOM_DOCK_Z + 1),
-            Interaction::default(),
+            UiInteraction::default(),
             // Not decoration: the marker's insertion hook forces
-            // `FocusPolicy::Block`. `Node`'s own required `FocusPolicy` defaults
-            // to `Pass` in Bevy 0.19, so without this the press falls straight
+            // `BLOCK`. Every UI node starts as `PASS_THROUGH`, so without this
+            // the press falls straight
             // through to the panel underneath and the grip does nothing —
             // which is exactly how the first cut of this failed.
             renzora_ember::resize::ResizeHandle,
@@ -741,11 +742,11 @@ fn spawn_shell(
             // Above the panel's own dock content, which sits in the panel's
             // stacking context one tier below.
             GlobalZIndex(BOTTOM_DOCK_Z + 2),
-            Interaction::default(),
+            UiInteraction::default(),
             // Blocks for the same reason as the set dropdown beside it: the
             // header filler underneath is a resize surface, and hover leaking
             // to it puts an ns-resize cursor on this button.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             BottomDockCloseBtn,
             BottomDockBtn,
@@ -780,10 +781,10 @@ fn spawn_shell(
             },
             BackgroundColor(Color::NONE),
             GlobalZIndex(BOTTOM_DOCK_Z + 2),
-            Interaction::default(),
+            UiInteraction::default(),
             // See the collapse button: without this the resize filler under the
             // corner controls takes the hover, and the cursor.
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
                 "shell.bottom_dock.mode_overlay",
@@ -836,7 +837,7 @@ fn spawn_shell(
             // and does no topmost resolution, so a resize cursor on the bar
             // competes with the tabs and the chevron nested inside it and wins
             // often enough to show ns-resize while hovering a tab.
-            Interaction::default(),
+            UiInteraction::default(),
             // It sits over whatever the panels below leave exposed, so it must
             // swallow pointer events like any floating surface — without this a
             // click or scroll on the strip bleeds into the viewport behind it.

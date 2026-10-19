@@ -18,6 +18,7 @@ use bevy::prelude::*;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::web_image::WebImages;
 
@@ -435,7 +436,7 @@ fn inline_line(
 
     let segs = parse_inline(text);
 
-    // Links need their own `Interaction` node, and text spans can't carry one —
+    // Links need their own `UiInteraction` node, and text spans can't carry one —
     // so lines with links render as a wrapping flex row of small Text chunks
     // (words) instead of one Text with spans.
     if segs.iter().any(|s| matches!(s, Seg::Link { .. })) {
@@ -496,7 +497,7 @@ fn inline_line(
 }
 
 /// Word-level Text chunks for a line that contains links (so the link chunk can
-/// carry `Interaction` + [`MarkdownLink`] while the whole line still wraps).
+/// carry `UiInteraction` + [`MarkdownLink`] while the whole line still wraps).
 fn flow_entities(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -530,7 +531,7 @@ fn flow_entities(
                         Text::new(text),
                         ui_font(&fonts.ui, size),
                         TextColor(rgb(accent())),
-                        Interaction::default(),
+                        UiInteraction::default(),
                         MarkdownLink(url),
                     ))
                     .id(),
@@ -759,10 +760,10 @@ fn resolve_url(url: &str, base: &str) -> String {
 /// Open clicked [`MarkdownLink`]s in the system browser.
 pub(crate) fn markdown_link_click(
     base: Res<MarkdownBaseUrl>,
-    q: Query<(&Interaction, &MarkdownLink), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &MarkdownLink), Changed<UiInteraction>>,
 ) {
     for (interaction, link) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             open_in_browser(&resolve_url(&link.0, &base.0));
         }
     }

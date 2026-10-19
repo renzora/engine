@@ -49,13 +49,19 @@ impl AssetLoader for LegacyWgslLoader {
         let source = String::from_utf8(bytes)?;
 
         use renzora::shader_source::{dialect, Dialect};
-        if dialect(&source, &path) != Dialect::Legacy {
-            return Ok(Shader::from_wgsl(source, path));
-        }
-
-        let translation = renzora::shader_source::to_wesl(&source);
-        renzora::shader_source::report(&path, &translation.diagnostics);
-        let mut shader = Shader::from_wesl(translation.source, path);
+        // A `.wgsl` holding WESL (an `import a::b;`, as a material shader
+        // written since 0.20 does) goes to the WESL compiler like a `.wesl`
+        // would; only one with neither imports nor directives is plain WGSL.
+        let wesl_source = match dialect(&source, &path) {
+            Dialect::Wgsl => return Ok(Shader::from_wgsl(source, path)),
+            Dialect::Wesl => source,
+            Dialect::Legacy => {
+                let translation = renzora::shader_source::to_wesl(&source);
+                renzora::shader_source::report(&path, &translation.diagnostics);
+                translation.source
+            }
+        };
+        let mut shader = Shader::from_wesl(wesl_source, path);
         // Numeric defs from a `.meta` were readable as `#{NAME}`; in WESL they
         // are `constants::NAME`, which the translation already wrote.
         shader.shader_defs = settings.shader_defs.clone();

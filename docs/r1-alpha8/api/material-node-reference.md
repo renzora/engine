@@ -9,12 +9,13 @@ This page is the per-node companion to the [Material API](/docs/r1-alpha8/api/ma
 [Custom Material Nodes](/docs/r1-alpha8/extending/material-nodes).
 
 All nodes live in `renzora_shader` — declared in `material/nodes.rs` (`ALL_NODES`)
-and compiled to WGSL in `material/codegen.rs`. There are **13 categories** and
-**159 node types**. Every generated fragment shader — one synthetic graph per
-node type, plus every `.material` shipped under `assets/materials/` — is
-compiled in the test suite the way the engine compiles it: translated from the
-`#import` dialect codegen writes to WESL, compiled by the WESL compiler against
-bevy_pbr's own shader sources, then validated by naga. Imports resolve to the real
+and compiled to WESL in `material/codegen.rs`. There are **13 categories** and
+**161 node types**. Every generated fragment shader (one synthetic graph per
+node type, plus every `.material` shipped under `assets/materials/`) is
+compiled in the test suite the way the engine compiles it: by the WESL compiler
+against bevy_pbr's own shader sources, then validated by naga. A `.material`
+saved before r1-alpha8 embeds the old `#import` dialect and is translated to
+WESL first. Imports resolve to the real
 thing, so a node whose codegen drifts invalid is a CI failure rather than a
 silent runtime fallback.
 
@@ -84,6 +85,7 @@ noted; they're where data *enters* the graph.
 | `input/view_direction` — **View Direction** | — | `direction` (Vec3) | Normalized fragment → camera direction. |
 | `input/time` — **Time** | — | `time`, `sin_time`, `cos_time` (Float) | Seconds since start, plus its sine and cosine for cheap oscillation. |
 | `input/vertex_color` — **Vertex Color** | — | `color` (Color), `r`, `g`, `b`, `a` (Float) | Per-vertex color attribute (defaults to white on meshes without one). |
+| `input/sprite_color` — **Sprite Color** | `uv` (Vec2, the sprite's UV when unwired) | `color` (Color), `rgb` (Vec3), `a` (Float) | The sprite's own texture at a UV, with its flip, tiling and slicing applied. Wire a distorted UV in for waves or wobble. Sprite materials only; white elsewhere, with a warning. |
 | `input/camera_position` — **Camera Position** | — | `position` (Vec3) | World-space camera position. |
 | `input/object_position` — **Object Position** | — | `position` (Vec3) | The object's pivot in world space (handy for wind anchoring). |
 
@@ -339,6 +341,11 @@ Read render-pass buffers and the environment. **These need the matching prepass
 enabled on the camera** (depth/normal/motion); when a prepass is missing they return
 a safe sentinel rather than failing. Header color: cyan.
 
+A Sprite material can use Pixel Depth, Screen UV and Refraction UV Offset. The
+others read the 3D view's prepasses, environment map or transmission texture,
+which the 2D pipeline does not have, so they are a compile error there that
+names the node.
+
 | Node | Inputs | Outputs | What it does |
 |------|--------|---------|--------------|
 | `scene/pixel_depth` — **Pixel Depth** | — | `depth` (Float) | This fragment's linear view-space depth (distance from camera). |
@@ -443,6 +450,14 @@ also apply.
 Flat, lighting-free color. Pins: `color` (Color = 1,1,1,1), `alpha` (Float = 1).
 The resolver sets `unlit = true` so lighting is skipped — for UI bits, holograms,
 and stylized effects.
+
+### `output/sprite` — Sprite Output
+
+A 2D sprite's color. Pins: `color` (Color), `alpha` (Float), both without a
+default: an unwired `color` is the sprite's own texture, and an unwired `alpha`
+keeps that colour's alpha. So an empty Sprite graph draws the sprite unchanged,
+and a graph only describes what it changes. The sprite's tint and alpha mode
+apply on top, as they would without a material.
 
 ---
 

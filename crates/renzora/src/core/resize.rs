@@ -22,8 +22,8 @@
 //!
 //! [`ResizeBusy`] is raised by `renzora_ember::resize`, which owns the
 //! `ResizeHandle` marker and the `PreUpdate` refresh; see that module for how
-//! a handle also blocks the focus walk so `Interaction`-based consumers never
-//! see the press at all.
+//! a handle also blocks picking so `UiInteraction`-based consumers never see
+//! the press at all.
 
 use bevy::prelude::*;
 

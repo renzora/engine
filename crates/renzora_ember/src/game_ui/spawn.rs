@@ -7,6 +7,7 @@ use bevy::ui::RelativeCursorPosition;
 
 use crate::game_ui::components::*;
 use crate::game_ui::shapes::{self, UiShapeWidget};
+use crate::UiInteraction;
 
 /// Reference resolution for computing percent values.
 struct Ref {
@@ -568,7 +569,7 @@ fn spawn_button(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiFill::solid(Color::srgba(0.25, 0.25, 0.8, 1.0)),
             UiStroke::new(Color::srgba(0.4, 0.4, 0.9, 1.0), 1.0),
             UiBorderRadius::all(4.0),
@@ -605,7 +606,7 @@ fn spawn_slider(world: &mut World, r: &Ref) -> Entity {
                 ..default()
             },
             data.clone(),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             UiCursor::Pointer,
         ))
@@ -681,7 +682,7 @@ fn spawn_checkbox(world: &mut World, r: &Ref) -> Entity {
             },
             data.clone(),
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiCursor::Pointer,
             UiTextStyle {
                 color: Color::WHITE,
@@ -769,7 +770,7 @@ fn spawn_toggle(world: &mut World, r: &Ref) -> Entity {
             },
             data.clone(),
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiCursor::Pointer,
             UiTextStyle {
                 color: Color::WHITE,
@@ -873,7 +874,7 @@ fn spawn_radio_button(world: &mut World, r: &Ref) -> Entity {
             },
             data.clone(),
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiCursor::Pointer,
             UiTextStyle {
                 color: Color::WHITE,
@@ -964,7 +965,7 @@ fn spawn_dropdown(world: &mut World, r: &Ref) -> Entity {
             },
             data,
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiFill::solid(Color::srgba(0.18, 0.18, 0.22, 1.0)),
             UiStroke::new(Color::srgba(0.35, 0.35, 0.4, 1.0), 1.0),
             UiBorderRadius::all(4.0),
@@ -1026,7 +1027,7 @@ fn spawn_text_input(world: &mut World, r: &Ref) -> Entity {
             },
             data.clone(),
             super::components::UiButton,
-            Interaction::default(),
+            UiInteraction::default(),
             UiFill::solid(Color::srgba(0.12, 0.12, 0.15, 1.0)),
             UiStroke::new(Color::srgba(0.35, 0.35, 0.4, 1.0), 1.0),
             UiBorderRadius::all(4.0),

@@ -10,6 +10,7 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{DraggableWindowData, UiWidgetPart};
+use crate::UiInteraction;
 
 /// Tracks active drag state for a window.
 #[derive(Component, Default)]
@@ -29,7 +30,7 @@ pub fn draggable_window_system(
         &Children,
         Option<&mut WindowDragState>,
     )>,
-    parts: Query<(&UiWidgetPart, &Interaction)>,
+    parts: Query<(&UiWidgetPart, &UiInteraction)>,
     window_query: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let cursor_pos = window_query.single().ok().and_then(|w| w.cursor_position());
@@ -50,7 +51,7 @@ pub fn draggable_window_system(
 
             match part.role.as_str() {
                 "title_bar" => match interaction {
-                    Interaction::Pressed => {
+                    UiInteraction::Pressed => {
                         if !drag.dragging {
                             drag.dragging = true;
                             drag.last_cursor = cursor_pos;
@@ -64,13 +65,13 @@ pub fn draggable_window_system(
                     }
                 },
                 "close_button" if data.closable => {
-                    if *interaction == Interaction::Pressed {
+                    if *interaction == UiInteraction::Pressed {
                         *vis = Visibility::Hidden;
                     }
                 }
                 "minimize_button" if data.minimizable => {
                     // Toggle content visibility on press
-                    if *interaction == Interaction::Pressed {
+                    if *interaction == UiInteraction::Pressed {
                         // We handle minimize by toggling "content" child visibility
                         for inner_child in children.iter() {
                             if let Ok((inner_part, _)) = parts.get(inner_child) {

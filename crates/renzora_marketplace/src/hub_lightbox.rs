@@ -5,9 +5,11 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 
 use renzora::SplashState;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
+use renzora_ember::UiInteraction;
 
 use crate::thumbs::HubThumbs;
 
@@ -69,8 +71,8 @@ fn build(commands: &mut Commands, url: &str) -> Entity {
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.9)),
             // Above the item overlay (9600) so it reads as a modal over the modal.
             GlobalZIndex(9900),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             renzora_ember::widgets::OverlaySurface,
             HubLightboxRoot,
@@ -88,7 +90,7 @@ fn build(commands: &mut Commands, url: &str) -> Entity {
                 display: Display::None,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let u = url.to_string();
@@ -120,12 +122,12 @@ fn close_clicks(
     mut commands: Commands,
     mut lightbox: ResMut<HubLightbox>,
     keys: Res<ButtonInput<KeyCode>>,
-    backdrops: Query<&Interaction, (With<HubLightboxRoot>, Changed<Interaction>)>,
+    backdrops: Query<&UiInteraction, (With<HubLightboxRoot>, Changed<UiInteraction>)>,
 ) {
     let Some(root) = lightbox.root else {
         return;
     };
-    let clicked = backdrops.iter().any(|i| *i == Interaction::Pressed);
+    let clicked = backdrops.iter().any(|i| *i == UiInteraction::Pressed);
     if clicked || keys.just_pressed(KeyCode::Escape) {
         commands.entity(root).try_despawn();
         lightbox.root = None;

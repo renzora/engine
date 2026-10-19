@@ -8,8 +8,10 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::reactive::Bound;
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// References to the fader's fill/thumb so the model→visuals system can move
 /// them. The value itself lives in `Bound<f32>` (so [`bind_2way`] can drive it).
@@ -56,7 +58,7 @@ fn build_fader(commands: &mut Commands, value: f32, horizontal: bool) -> Entity 
                 position_type: PositionType::Relative,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(if horizontal {
                 SystemCursorIcon::EwResize
@@ -98,7 +100,7 @@ fn build_fader(commands: &mut Commands, value: f32, horizontal: bool) -> Entity 
         .spawn((
             track_node,
             BackgroundColor(rgb(card_bg())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("fader-track"),
         ))
         .id();
@@ -106,7 +108,7 @@ fn build_fader(commands: &mut Commands, value: f32, horizontal: bool) -> Entity 
         .spawn((
             fill_node,
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("fader-fill"),
         ))
         .id();
@@ -174,7 +176,7 @@ fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
             node,
             BackgroundColor(rgb(tab_active())),
             BorderColor::all(rgb(border())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("fader-thumb"),
         ))
         .id();
@@ -191,7 +193,7 @@ fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
                     ..default()
                 },
                 BackgroundColor(rgb(placeholder())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("fader-thumb-rib"),
             ))
             .id()
@@ -215,7 +217,7 @@ fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
             // The fill's colour: cap and fill are reading the same number, so
             // they should be saying it in the same voice.
             BackgroundColor(rgb(accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("fader-thumb-index"),
         ))
         .id();
@@ -227,14 +229,14 @@ fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
 /// User drag → write the model (`Bound<f32>`). Visuals follow via [`fader_apply`].
 pub(crate) fn fader_drag(
     mut faders: Query<(
-        &Interaction,
+        &UiInteraction,
         &bevy::ui::RelativeCursorPosition,
         &EmberFader,
         &mut Bound<f32>,
     )>,
 ) {
     for (interaction, rcp, f, mut b) in &mut faders {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {

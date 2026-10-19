@@ -14,6 +14,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu, toggle_switch};
+use renzora_ember::UiInteraction;
 
 use crate::preview::{MaterialPreviewImage, MaterialPreviewOrbit, MaterialPreviewSource, PreviewShape};
 use crate::MaterialEditorState;
@@ -45,6 +46,11 @@ fn orbit<'w>(w: &Rx<'w>) -> Option<&'w MaterialPreviewOrbit> {
 }
 fn has_material(w: &Rx) -> bool {
     w.get_resource::<MaterialEditorState>().is_some_and(|s| s.compiled_wgsl.is_some())
+}
+/// A Sprite material previews on a flat sample sprite (`preview_2d`), where
+/// the shape picker, orbit and HDRI backdrop mean nothing.
+fn is_sprite(w: &Rx) -> bool {
+    w.get_resource::<MaterialEditorState>().is_some_and(|s| !s.graph.domain.is_3d())
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -80,7 +86,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ImageNode::default(),
             Node { height: Val::Percent(100.0), aspect_ratio: Some(1.0), ..default() },
             BackgroundColor(Color::srgb(0.05, 0.05, 0.08)),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             OrbitTarget,
             Name::new("material-preview-image"),
@@ -117,7 +123,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             ShapeCombo,
         ))
@@ -176,13 +182,25 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
-    commands.entity(bar).add_children(&[combo, sep, rotate, bg, sep2, bd_label, bd_switch]);
+    // In place of the shape picker on a Sprite material: what is being shown.
+    let sprite_tag = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), flex_shrink: 0.0, ..default() })
+        .id();
+    let sprite_icon = icon_text(commands, &fonts.phosphor, "image", text_muted(), 11.0);
+    let sprite_label = commands.spawn((Text::new("Sprite preview"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())))).id();
+    commands.entity(sprite_tag).add_children(&[sprite_icon, sprite_label]);
+    bind_display(commands, sprite_tag, is_sprite);
+    for e in [combo, sep, rotate, sep2, bd_label, bd_switch] {
+        bind_display(commands, e, |w| !is_sprite(w));
+    }
+
+    commands.entity(bar).add_children(&[sprite_tag, combo, sep, rotate, bg, sep2, bd_label, bd_switch]);
     bar
 }
 
 fn icon_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, color: (u8, u8, u8), marker: M) -> (Entity, Entity) {
     let btn = commands
-        .spawn((Node { width: Val::Px(22.0), height: Val::Px(18.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
+        .spawn((Node { width: Val::Px(22.0), height: Val::Px(18.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), UiInteraction::default(), marker))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, color, 11.0);
     commands.entity(btn).add_child(ic);
@@ -191,10 +209,10 @@ fn icon_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &st
 
 // ── Systems ──────────────────────────────────────────────────────────────────
 
-fn mat_btn_click(q: Query<(&Interaction, &MatBtn), Changed<Interaction>>, orbit: Option<ResMut<MaterialPreviewOrbit>>) {
+fn mat_btn_click(q: Query<(&UiInteraction, &MatBtn), Changed<UiInteraction>>, orbit: Option<ResMut<MaterialPreviewOrbit>>) {
     let Some(mut orbit) = orbit else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match btn {
@@ -205,14 +223,14 @@ fn mat_btn_click(q: Query<(&Interaction, &MatBtn), Changed<Interaction>>, orbit:
 }
 
 fn shape_combo_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<ShapeCombo>, Changed<Interaction>)>,
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<ShapeCombo>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     source: Option<Res<MaterialPreviewSource>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
@@ -244,10 +262,10 @@ fn shape_combo_open(
 fn orbit_drag(
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
-    q: Query<&Interaction, With<OrbitTarget>>,
+    q: Query<&UiInteraction, With<OrbitTarget>>,
     orbit: Option<ResMut<MaterialPreviewOrbit>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         *last = None;
         return;
     }
@@ -268,7 +286,7 @@ fn orbit_drag(
 }
 
 /// Right-button drag pans the orbit target in the camera's screen plane, so you
-/// can recentre on an off-axis part of the shape. `Interaction::Pressed` only
+/// can recentre on an off-axis part of the shape. `UiInteraction::Pressed` only
 /// covers the left button, so we read the right button straight from
 /// `ButtonInput` and gate the *start* of the drag on the cursor being over the
 /// preview image (then keep panning even if it leaves).

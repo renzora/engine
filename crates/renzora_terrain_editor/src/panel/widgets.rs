@@ -11,6 +11,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, slider, DragRange};
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::{BrushFalloffType, BrushShape, TerrainSettings};
 use renzora_terrain::paint::SurfacePaintSettings;
@@ -76,7 +77,7 @@ fn small_toggle(commands: &mut Commands) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("terrain-toggle"),
         ))
@@ -87,8 +88,8 @@ fn toggle_bg(w: &Rx, btn: Entity, active: bool) -> Color {
     if active {
         rgb(accent())
     } else if matches!(
-        w.get::<Interaction>(btn),
-        Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        w.get::<UiInteraction>(btn),
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
     ) {
         rgb(popup_bg())
     } else {
@@ -234,13 +235,13 @@ pub(super) fn wide_button(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("terrain-btn:{label}")),
         ))
         .id();
-    bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, btn, move |w| match w.get::<UiInteraction>(btn) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => rgb(card_bg()),
     });
     let mut kids = Vec::new();
@@ -287,7 +288,7 @@ where
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             marker,

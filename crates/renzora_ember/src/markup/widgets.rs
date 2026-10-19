@@ -19,6 +19,7 @@ use renzora_scripting::systems::ScriptReflectionQueue;
 use renzora_scripting::{ScriptComponent, ScriptValue};
 
 use crate::markup::binding::read_path;
+use crate::UiInteraction;
 
 // ── Components (stamped by the loader from markup attributes) ────────────────
 
@@ -191,9 +192,9 @@ fn toggle_system(world: &mut World) {
     let mut pressed: Vec<(Entity, String, Entity)> = Vec::new();
     {
         let mut q =
-            world.query_filtered::<(Entity, &Interaction, &Toggle), Changed<Interaction>>();
+            world.query_filtered::<(Entity, &UiInteraction, &Toggle), Changed<UiInteraction>>();
         for (e, interaction, t) in q.iter(world) {
-            if *interaction == Interaction::Pressed {
+            if *interaction == UiInteraction::Pressed {
                 pressed.push((e, t.target.clone(), t.host));
             }
         }
@@ -213,12 +214,12 @@ fn drag_value_system(world: &mut World) {
     let mut active: Vec<(String, f32, f32, Entity, f32)> = Vec::new();
     {
         let mut q = world.query::<(
-            &Interaction,
+            &UiInteraction,
             &DragValue,
             &bevy::ui::RelativeCursorPosition,
         )>();
         for (interaction, dv, rel) in q.iter(world) {
-            if *interaction == Interaction::Pressed {
+            if *interaction == UiInteraction::Pressed {
                 if let Some(n) = rel.normalized {
                     active.push((dv.target.clone(), dv.min, dv.max, dv.host, n.x.clamp(0.0, 1.0)));
                 }
@@ -321,12 +322,12 @@ fn value_fill_system(world: &mut World) {
 
 /// Disclosure: on click, flip the `Display` of the entity named `target`.
 fn disclosure_system(
-    interactions: Query<(&Interaction, &Disclose), Changed<Interaction>>,
+    interactions: Query<(&UiInteraction, &Disclose), Changed<UiInteraction>>,
     names: Query<(Entity, &Name)>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, disclose) in &interactions {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some((target, _)) = names.iter().find(|(_, n)| n.as_str() == disclose.target) {

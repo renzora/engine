@@ -10,8 +10,10 @@ use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 
 use crate::font::{icon_glyph, ui_font, EmberFonts};
+use crate::interaction::{BLOCK, PASS_THROUGH};
 use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::overlay::Overlay;
 use super::scroll_area::scroll_view_bar;
@@ -337,7 +339,7 @@ pub fn search_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, 
             GlobalZIndex(9000),
             super::popup::ScreenMenu,
             super::popup::OverlaySurface,
-            bevy::ui::FocusPolicy::Block,
+            BLOCK,
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("search-menu"),
         ))
@@ -498,13 +500,13 @@ fn sidebar_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             SearchSidebarCat { category },
             Name::new("search-sidebar-cat"),
         ))
         .id();
-    bind_bg(commands, b, move |w| match w.get::<Interaction>(b) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(section_bg()),
+    bind_bg(commands, b, move |w| match w.get::<UiInteraction>(b) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(section_bg()),
         _ => Color::NONE,
     });
     let t = commands
@@ -553,7 +555,7 @@ fn category_header_styled(
         Name::new("search-cat"),
     ));
     if collapsible {
-        header.insert(Interaction::default());
+        header.insert(UiInteraction::default());
     }
     let header = header.id();
     let mut kids = Vec::new();
@@ -567,7 +569,7 @@ fn category_header_styled(
                     ..default()
                 },
                 TextColor(rgb(placeholder())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
             ))
             .id();
         kids.push(c);
@@ -580,7 +582,7 @@ fn category_header_styled(
             Text::new(capitalize(cat)),
             ui_font(&fonts.ui, 13.0),
             TextColor(rgb(accent)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     kids.push(label);
@@ -618,7 +620,7 @@ fn item_row(
                 ..default()
             },
             BackgroundColor(base),
-            Interaction::default(),
+            UiInteraction::default(),
             SearchRow {
                 input,
                 category: cat.to_string(),
@@ -637,8 +639,8 @@ fn item_row(
         .id();
     bind_bg(commands, row, move |w| {
         if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             over(base, Color::srgba(1.0, 1.0, 1.0, 0.06))
         } else {
@@ -657,7 +659,7 @@ fn item_row(
                 ..default()
             },
             BackgroundColor(rgb(GUIDE)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let glyph = icon_glyph(&entry.icon).unwrap_or_else(|| entry.icon.chars().next().unwrap_or('\u{E4C6}'));
@@ -670,7 +672,7 @@ fn item_row(
                 ..default()
             },
             TextColor(rgb(accent)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let label = commands
@@ -678,7 +680,7 @@ fn item_row(
             Text::new(entry.label),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(TEXT)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(row).add_children(&[guide, ic, label]);
@@ -763,12 +765,12 @@ pub(crate) fn search_list_visibility(
 
 /// Click a category header → toggle its collapse (ignored while searching).
 pub(crate) fn search_cat_toggle(
-    changed: Query<(Entity, &Interaction), (Changed<Interaction>, With<SearchCat>)>,
+    changed: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<SearchCat>)>,
     inputs: Query<&EmberTextInput, With<SearchInput>>,
     mut cats: Query<&mut SearchCat>,
 ) {
     for (e, interaction) in &changed {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(mut cat) = cats.get_mut(e) else {
@@ -783,11 +785,11 @@ pub(crate) fn search_cat_toggle(
 
 /// Click a sidebar category → isolate it (expand it, collapse the others).
 pub(crate) fn search_sidebar_jump(
-    changed: Query<(&Interaction, &SearchSidebarCat), Changed<Interaction>>,
+    changed: Query<(&UiInteraction, &SearchSidebarCat), Changed<UiInteraction>>,
     mut cats: Query<&mut SearchCat>,
 ) {
     for (interaction, sc) in &changed {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match &sc.category {
@@ -809,14 +811,14 @@ pub(crate) fn search_sidebar_jump(
 
 /// Click a row → run its action (deferred); if inside an [`Overlay`], close it.
 pub(crate) fn search_list_select(
-    q: Query<(Entity, &Interaction), (Changed<Interaction>, With<SearchAction>)>,
+    q: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<SearchAction>)>,
     parents: Query<&ChildOf>,
     overlays: Query<(), With<Overlay>>,
     menus: Query<(), With<super::popup::ScreenMenu>>,
     mut commands: Commands,
 ) {
     for (e, interaction) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             run_and_close(e, &parents, &overlays, &menus, &mut commands);
         }
     }

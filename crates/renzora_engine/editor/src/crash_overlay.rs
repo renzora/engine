@@ -9,9 +9,10 @@ use renzora_engine::crash::{CrashReport, CrashReportWindowState};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::BLOCK;
+use renzora_ember::UiInteraction;
 use renzora_ember::theme::{border, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{button, scroll_area, OverlaySurface};
 
@@ -79,8 +80,8 @@ fn spawn_overlay(commands: &mut Commands, fonts: &EmberFonts, report: &CrashRepo
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
             GlobalZIndex(9800),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             OverlaySurface,
             CrashOverlayRoot,
             Name::new("crash-overlay"),
@@ -101,7 +102,7 @@ fn spawn_overlay(commands: &mut Commands, fonts: &EmberFonts, report: &CrashRepo
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("crash-panel"),
         ))
         .id();
@@ -171,13 +172,13 @@ fn spawn_overlay(commands: &mut Commands, fonts: &EmberFonts, report: &CrashRepo
 /// Handle Copy / Close clicks.
 pub(crate) fn crash_overlay_buttons(
     mut state: ResMut<CrashReportWindowState>,
-    close_q: Query<&Interaction, (Changed<Interaction>, With<CrashCloseButton>)>,
-    copy_q: Query<&Interaction, (Changed<Interaction>, With<CrashCopyButton>)>,
+    close_q: Query<&UiInteraction, (Changed<UiInteraction>, With<CrashCloseButton>)>,
+    copy_q: Query<&UiInteraction, (Changed<UiInteraction>, With<CrashCopyButton>)>,
 ) {
-    if close_q.iter().any(|i| *i == Interaction::Pressed) {
+    if close_q.iter().any(|i| *i == UiInteraction::Pressed) {
         state.show_window = false;
     }
-    if copy_q.iter().any(|i| *i == Interaction::Pressed) {
+    if copy_q.iter().any(|i| *i == UiInteraction::Pressed) {
         if let Some(report) = state.report.clone() {
             // No web clipboard here: the browser's is async and gated behind a
             // user gesture, so it cannot be driven from a sync Bevy system.

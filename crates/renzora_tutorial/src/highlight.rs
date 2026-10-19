@@ -3,7 +3,7 @@
 //! theme menu — see [`crate::steps::highlight_for`]), plus the bobbing **arrow**
 //! that points at it.
 //!
-//! A single persistent, **click-through** box (`FocusPolicy::Pass`) is moved over
+//! A single persistent, **click-through** box (`PASS_THROUGH`) is moved over
 //! the target node's screen rect each frame and its border pulses. The target is
 //! found by bevy_ui `Name`; its logical rect comes from `ComputedNode` (size) +
 //! `GlobalTransform` (center) — the shell compares UI `GlobalTransform.translation`
@@ -17,11 +17,12 @@
 //! so an idle arrow doesn't dirty `Text` (and re-run text layout) every frame.
 
 use bevy::prelude::*;
-use bevy::ui::{CalculatedClip, ComputedNode, FocusPolicy, UiGlobalTransform};
+use bevy::ui::{CalculatedClip, ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
 use renzora::core::{EditorLocked, HideInHierarchy};
 use renzora_ember::game_ui::shapes::TriangleShape;
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{accent, play_green};
 
 use crate::state::TutorialState;
@@ -110,7 +111,7 @@ pub fn spawn_box(commands: &mut Commands) -> Entity {
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             GlobalZIndex(8150),
             HideInHierarchy,
             EditorLocked,
@@ -142,7 +143,7 @@ pub fn spawn_arrow(commands: &mut Commands) -> Entity {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             GlobalZIndex(8151),
             HideInHierarchy,
             EditorLocked,
@@ -167,7 +168,7 @@ pub fn spawn_arrow(commands: &mut Commands) -> Entity {
                 rotation: HEAD_UP,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             ArrowHead,
         ))
         .id();
@@ -184,7 +185,7 @@ pub fn spawn_arrow(commands: &mut Commands) -> Entity {
                 ..default()
             },
             BackgroundColor(green(1.0)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             ArrowStem,
         ))
         .id();

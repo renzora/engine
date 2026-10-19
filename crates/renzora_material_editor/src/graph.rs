@@ -25,9 +25,10 @@ use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
+use renzora_ember::UiInteraction;
 use renzora_shader::material::codegen;
 use renzora_shader::material::graph::{
-    resolve_math_ranks, resolved_pin_type, MaterialGraph, PinDir, PinTemplate, PinType, PinValue,
+    resolve_math_ranks, resolved_pin_type, MaterialDomain, MaterialGraph, PinDir, PinTemplate, PinType, PinValue,
 };
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
@@ -442,6 +443,12 @@ fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::M
     if node.node_type.starts_with("output/") && pin.name == "normal" {
         return false;
     }
+    // An unwired Sprite Output pin, and an unwired Sprite Color UV, mean "the
+    // sprite's own": its texture, its alpha, its UV. A field there would write
+    // a constant over exactly that, so they stay wire-only.
+    if matches!(node.node_type.as_str(), "output/sprite" | "input/sprite_color") {
+        return false;
+    }
     true
 }
 
@@ -465,7 +472,14 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
         .map(|n| {
             let def = node_def(&n.node_type);
             let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
-            let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
+            // A node this material's domain refuses gets a red header and says
+            // why on hover, ahead of any compile problem.
+            let refused = s.graph.domain.refuses_node(&n.node_type);
+            let color = if refused.is_some() {
+                (170, 45, 45)
+            } else {
+                def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100))
+            };
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
             let ty = |p: &PinTemplate| resolved_pin_type(&ranks, n, &p.name, p.direction).unwrap_or(p.pin_type);
             let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(ty(p)), pin_group(ty(p)))).collect();
@@ -496,6 +510,11 @@ fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot 
                     .collect();
                 (!messages.is_empty()).then(|| messages.join("\n"))
             });
+            let error = match (refused, error) {
+                (Some(r), Some(e)) => Some(format!("{r}. Delete this node.\n{e}")),
+                (Some(r), None) => Some(format!("{r}. Delete this node.")),
+                (None, e) => e,
+            };
             NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx, in_specs, error }
         })
         .collect();
@@ -588,7 +607,7 @@ fn sample_switch_button(commands: &mut Commands, fonts: &EmberFonts, node_id: u6
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.22)),
-            Interaction::default(),
+            UiInteraction::default(),
             SampleSwitchBtn { node_id },
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("mat-sample-switch"),
@@ -604,13 +623,13 @@ fn sample_switch_button(commands: &mut Commands, fonts: &EmberFonts, node_id: u6
 /// Screen-space (not embedded in the zoom/pan canvas) so it neither scales nor
 /// clips with the graph.
 fn sample_switch_open(
-    q: Query<(&Interaction, &SampleSwitchBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SampleSwitchBtn), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, btn)) = q.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, btn)) = q.iter().find(|(i, _)| **i == UiInteraction::Pressed) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let node_id = btn.node_id;
     let entries: Vec<SearchEntry> = SAMPLE_VARIANTS
@@ -916,6 +935,17 @@ fn mat_graph_sync(world: &mut World) {
                     }
                 }
                 GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
+                    // A node the domain refuses (already in the graph from a
+                    // paste or an older file) takes no wires in either
+                    // direction, so it can never feed the output.
+                    let domain = st.graph.domain;
+                    let refused = [from_node, to_node].into_iter().find_map(|id| {
+                        st.graph.get_node(id).and_then(|n| domain.refuses_node(&n.node_type))
+                    });
+                    if let Some(reason) = refused {
+                        renzora::console_log::console_warn("Material", format!("Connection refused: {reason}"));
+                        continue;
+                    }
                     // Resolved (latch-aware) types, so the refusal message
                     // names the type the pin actually behaves as.
                     let ranks = resolve_math_ranks(&st.graph);
@@ -1039,9 +1069,9 @@ fn pending_first_save(world: &mut World, entity: Entity) {
 /// Toolbar view ops just set request flags on the widget, which acts on them.
 /// Only on the button's **own** view — with the panel open twice, framing one
 /// graph must leave the other where the user put it.
-fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
+fn view_op_click(q: Query<(&UiInteraction, &ViewOpBtn), Changed<UiInteraction>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
     for (i, btn) in &q {
-        if *i != Interaction::Pressed {
+        if *i != UiInteraction::Pressed {
             continue;
         }
         let Ok(mut v) = views.get_mut(btn.view) else { continue };
@@ -1054,44 +1084,53 @@ fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut
     }
 }
 
-fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn apply_click(q: Query<&UiInteraction, (With<ApplyBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(crate::apply_material);
     }
 }
 
 fn add_node_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<Interaction>)>,
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
+    state: Option<Res<MaterialEditorState>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else { return };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    open_add_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, [60.0, 60.0]);
+    let domain = state.map(|s| s.graph.domain).unwrap_or_default();
+    open_add_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, [60.0, 60.0], domain);
 }
 
 /// Right-click on empty canvas → the shared widget records `context_menu`; open
 /// the add-node menu at the cursor and spawn nodes at the clicked canvas point.
-fn context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
+fn context_menu_open(
+    fonts: Option<Res<EmberFonts>>,
+    state: Option<Res<MaterialEditorState>>,
+    mut commands: Commands,
+    mut views: Query<&mut NodeGraphView, With<MatGraph>>,
+) {
     let Some(fonts) = fonts else { return };
+    let domain = state.map(|s| s.graph.domain).unwrap_or_default();
     for mut v in &mut views {
         if let Some((screen, canvas)) = v.context_menu.take() {
-            open_add_menu(&mut commands, &fonts, screen.x, screen.y, [canvas.x, canvas.y]);
+            open_add_menu(&mut commands, &fonts, screen.x, screen.y, [canvas.x, canvas.y], domain);
         }
         // Cable dragged onto empty canvas → palette that auto-wires to the pin.
         if let Some(cd) = v.connect_drag.take() {
             let src = (cd.node, cd.pin, cd.is_output);
-            search_menu(&mut commands, &fonts, cd.screen.x, cd.screen.y, mat_connect_entries([cd.canvas.x, cd.canvas.y], src));
+            search_menu(&mut commands, &fonts, cd.screen.x, cd.screen.y, mat_connect_entries([cd.canvas.x, cd.canvas.y], src, domain));
         }
     }
 }
 
-/// Catalog entries (minus Output) whose action spawns the node and wires it to `src`.
-fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEntry> {
+/// Catalog entries (minus Output, and minus nodes `domain` refuses) whose action
+/// spawns the node and wires it to `src`.
+fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool), domain: MaterialDomain) -> Vec<SearchEntry> {
     let mut entries = Vec::new();
     for category in categories() {
         if category == "Output" {
@@ -1099,6 +1138,9 @@ fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEn
         }
         let icon = category_icon(category);
         for def in nodes_in_category(category) {
+            if domain.refuses_node(def.node_type).is_some() {
+                continue;
+            }
             let node_type = def.node_type;
             let src = src.clone();
             entries.push(SearchEntry::new(icon, def.display_name, category, move |w| mat_add_and_wire(w, node_type, base, src.clone())));
@@ -1261,13 +1303,15 @@ fn mat_graph_image_drop(
 
 /// Open the searchable add-node palette at `(x, y)`, spawning the chosen node at
 /// `base` (canvas px).
-fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, base: [f32; 2]) {
-    search_menu(commands, fonts, x, y, mat_node_entries(base));
+fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, base: [f32; 2], domain: MaterialDomain) {
+    search_menu(commands, fonts, x, y, mat_node_entries(base, domain));
 }
 
 /// Every catalog node (minus the singleton Output) as a palette entry, each
-/// adding the node at `base` and recompiling the shader.
-fn mat_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
+/// adding the node at `base` and recompiling the shader. Nodes `domain`
+/// refuses are left out: a Sprite material never offers Scene Depth, and a 3D
+/// one never offers Sprite Color.
+fn mat_node_entries(base: [f32; 2], domain: MaterialDomain) -> Vec<SearchEntry> {
     let mut entries = Vec::new();
     for category in categories() {
         if category == "Output" {
@@ -1275,6 +1319,9 @@ fn mat_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
         }
         let icon = category_icon(category);
         for def in nodes_in_category(category) {
+            if domain.refuses_node(def.node_type).is_some() {
+                continue;
+            }
             let node_type = def.node_type;
             entries.push(SearchEntry::new(icon, def.display_name, category, move |w| {
                 if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {

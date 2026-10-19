@@ -11,6 +11,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{scroll_view_bar_keyed, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 
 use crate::lang::{tr, tr_cat, tr_group};
 use crate::state::{OverlayState, SIDEBAR_W};
@@ -277,7 +278,7 @@ fn sidebar_tab(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             TabBtn(tab, focus.map(String::from)),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("settings-tab"),
@@ -288,8 +289,8 @@ fn sidebar_tab(
         if active {
             rgb(tab_active())
         } else if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(tab_hover())
         } else {
@@ -333,7 +334,7 @@ fn sidebar_plugin_tab(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             PluginTabBtn(id.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("settings-plugin-tab"),
@@ -343,8 +344,8 @@ fn sidebar_plugin_tab(
         if selected {
             rgb(tab_active())
         } else if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(tab_hover())
         } else {
@@ -384,12 +385,12 @@ pub(crate) fn filter_sidebar(
 }
 
 pub(crate) fn settings_tab_click(
-    btns: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
+    btns: Query<(&UiInteraction, &TabBtn), Changed<UiInteraction>>,
     mut settings: ResMut<EditorSettings>,
     mut state: ResMut<OverlayState>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if settings.settings_tab != btn.0 {
                 settings.settings_tab = btn.0;
             }
@@ -408,12 +409,12 @@ pub(crate) fn settings_tab_click(
 /// (see `crate::overlay::manage_overlay`), so re-selecting the same plugin is a
 /// no-op.
 pub(crate) fn settings_plugin_click(
-    btns: Query<(&Interaction, &PluginTabBtn), Changed<Interaction>>,
+    btns: Query<(&UiInteraction, &PluginTabBtn), Changed<UiInteraction>>,
     mut settings: ResMut<EditorSettings>,
     mut state: ResMut<OverlayState>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if settings.settings_tab != SettingsTab::Plugins {
                 settings.settings_tab = SettingsTab::Plugins;
             }

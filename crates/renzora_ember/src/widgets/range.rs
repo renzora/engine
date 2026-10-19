@@ -3,7 +3,9 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberRange {
@@ -29,7 +31,7 @@ fn range_thumb(commands: &mut Commands, v: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(on_accent())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("range-thumb"),
         ))
         .id()
@@ -48,7 +50,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("range"),
@@ -64,7 +66,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("range-track"),
         ))
         .id();
@@ -99,11 +101,11 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
 }
 
 pub(crate) fn range_drag(
-    mut ranges: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut EmberRange)>,
+    mut ranges: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &mut EmberRange)>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, rcp, mut r) in &mut ranges {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             r.active = None;
             continue;
         }

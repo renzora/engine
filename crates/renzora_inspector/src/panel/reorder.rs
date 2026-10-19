@@ -21,11 +21,13 @@
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, FocusPolicy, ScrollPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
 
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::theme::{accent, rgb, text_muted};
 use renzora_ember::widgets::{EmberScroll, HoverTooltip};
+use renzora_ember::UiInteraction;
 
 use super::order::InspectorSectionOrder;
 use super::InspectorRoot;
@@ -84,11 +86,11 @@ impl SectionDrag {
 pub(super) fn build_grip(commands: &mut Commands, fonts: &EmberFonts, root: Entity) -> Entity {
     let grip = super::phosphor_glyph(commands, fonts, "dots-six-vertical", text_muted(), 13.0);
     commands.entity(grip).insert((
-        Interaction::default(),
-        // Overrides the `FocusPolicy::Pass` every inspector glyph gets, for the
+        UiInteraction::default(),
+        // Overrides the pass-through every inspector glyph gets, for the
         // same reason the enable toggle and the trash are `Block`: the press
         // must not reach the header, which would toggle the section.
-        FocusPolicy::Block,
+        BLOCK,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
         HoverTooltip::new(renzora::lang::t("inspector.component.reorder")),
         SectionGrip { root },
@@ -100,7 +102,7 @@ pub(super) fn build_grip(commands: &mut Commands, fonts: &EmberFonts, root: Enti
 pub(super) fn section_reorder_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    grips: Query<(&Interaction, &SectionGrip)>,
+    grips: Query<(&UiInteraction, &SectionGrip)>,
     roots: Query<&InspectorSectionRoot>,
     container_q: Query<(Entity, Option<&Children>), With<InspectorRoot>>,
     geom: Query<(&UiGlobalTransform, &ComputedNode)>,
@@ -137,7 +139,7 @@ pub(super) fn section_reorder_drag(
         if mouse.just_pressed(MouseButton::Left) {
             if let (Some(c), Some((_, grip))) = (
                 cursor,
-                grips.iter().find(|(i, _)| **i == Interaction::Pressed),
+                grips.iter().find(|(i, _)| **i == UiInteraction::Pressed),
             ) {
                 drag.press = Some((grip.root, c));
             }

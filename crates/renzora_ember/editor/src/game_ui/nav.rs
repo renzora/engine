@@ -12,6 +12,7 @@ use bevy::ui::{RelativeCursorPosition, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 
 use renzora::SplashState;
+use renzora_ember::UiInteraction;
 
 use crate::game_ui::overlay::CanvasHitLayer;
 use crate::game_ui::NativeCanvasState;
@@ -48,7 +49,7 @@ fn canvas_pan(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut last: Local<Option<Vec2>>,
     hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
-    background: Query<&Interaction, With<crate::game_ui::interaction::CanvasBackground>>,
+    background: Query<&UiInteraction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {
     let panning = mouse.pressed(MouseButton::Middle) || mouse.pressed(MouseButton::Right);
@@ -62,7 +63,7 @@ fn canvas_pan(
         // the design frame itself or the dark area around it — but not on some
         // other editor panel.
         let over_frame = hit.iter().any(|r| r.cursor_over);
-        let over_bg = background.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        let over_bg = background.iter().any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
         if over_frame || over_bg {
             *last = Some(c);
         }
@@ -81,7 +82,7 @@ fn canvas_wheel(
     mut wheel: MessageReader<MouseWheel>,
     keys: Res<ButtonInput<KeyCode>>,
     hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
-    background: Query<&Interaction, With<crate::game_ui::interaction::CanvasBackground>>,
+    background: Query<&UiInteraction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {
     let mut scroll = 0.0;
@@ -94,7 +95,7 @@ fn canvas_wheel(
     // Only over the canvas viewport (the frame or the background around it) —
     // not some other editor panel.
     let over_frame = hit.iter().any(|r| r.cursor_over);
-    let over_bg = background.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+    let over_bg = background.iter().any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
     if !over_frame && !over_bg {
         return;
     }

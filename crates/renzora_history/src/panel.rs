@@ -18,6 +18,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_undo::UndoStacks;
 
 const PANEL_ID: &str = "history";
@@ -203,7 +204,7 @@ fn history_row(
             ..default()
         },
         BackgroundColor(base),
-        Interaction::default(),
+        UiInteraction::default(),
         HistoryRow { action },
         Name::new("history-row"),
     ));
@@ -218,8 +219,8 @@ fn history_row(
         if current {
             return base;
         }
-        match world.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match world.get::<UiInteraction>(row) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, HOVER_A)
             }
             _ => Color::NONE,
@@ -338,14 +339,14 @@ pub fn register(app: &mut App) {
 
 /// Row click → push the corresponding undo/redo onto `EditorCommands`.
 pub(crate) fn history_click(
-    rows: Query<(&Interaction, &HistoryRow), Changed<Interaction>>,
+    rows: Query<(&UiInteraction, &HistoryRow), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else {
         return;
     };
     for (interaction, row) in &rows {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         match row.action {

@@ -449,82 +449,94 @@ fn graph_parallax_uv(in: VertexOutput, original_uv: vec2<f32>, Vt: vec3<f32>) ->
 /// tangent space and there is no tangent frame without them — the same gate
 /// Bevy puts on its own parallax block. A mesh without tangents keeps the raw
 /// UV rather than rendering something wrong.
-pub(crate) const PARALLAX_FRAGMENT_WGSL: &str = r#"#ifdef VERTEX_TANGENTS
-    {
+///
+/// One gated block rather than a gate per line: nothing it declares is used
+/// after it, and it only reassigns `mat_uv`, which lives outside it.
+pub(crate) const PARALLAX_FRAGMENT_WGSL: &str = r#"    @if(VERTEX_TANGENTS) {
         let pom_tbn = pbr_functions::calculate_tbn_mikktspace(in.world_normal, in.world_tangent);
         let pom_vt = vec3<f32>(dot(pbr_input.V, pom_tbn[0]), dot(pbr_input.V, pom_tbn[1]), dot(pbr_input.V, pom_tbn[2]));
         // Flipped to point into the surface, which is the direction the march walks.
         mat_uv = graph_parallax_uv(in, mat_uv, -pom_vt);
     }
-#endif
 "#;
 
 /// WGSL snippet that aliases mesh-conditional VertexOutput fields. Generated
 /// graph code references `mat_uv` / `mat_vertex_color` instead of `in.uv` /
-/// `in.color` so a mesh without those attributes still compiles — the
-/// `#ifdef` falls back to a sane default (zeroed UV, white vertex color).
+/// `in.color` so a mesh without those attributes still compiles: the
+/// `@if(!...)` side falls back to a sane default (zeroed UV, white vertex color).
 pub(crate) fn fragment_input_aliases() -> String {
     // `var`, not `let`: the parallax block reassigns `mat_uv` in place so that
     // every downstream sampler picks up the offset without knowing about it.
-    r#"#ifdef VERTEX_UVS_A
-    var mat_uv = in.uv;
-#else
-    var mat_uv = vec2<f32>(0.0, 0.0);
-#endif
-#ifdef VERTEX_COLORS
-    let mat_vertex_color = in.color;
-#else
-    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-#endif
+    r#"    @if(VERTEX_UVS_A) var mat_uv = in.uv;
+    @if(!VERTEX_UVS_A) var mat_uv = vec2<f32>(0.0, 0.0);
+    @if(VERTEX_COLORS) let mat_vertex_color = in.color;
+    @if(!VERTEX_COLORS) let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 "#
     .to_string()
 }
 
 pub(crate) fn texture_bindings_wgsl(ctx: &Ctx) -> String {
-    // Extension-material texture slots live at bindings 100..113 in group 3,
+    // Extension-material texture slots live at bindings 100..118 in group 3,
     // alongside StandardMaterial's own bindings (which occupy 0..~30). The
     // extension's AsBindGroup (see `SurfaceGraphExt`) declares the same
     // offsets, so the shader and the CPU-side bind group match.
     //
-    // Bevy 0.18 merges base-material + extension bindings into a single bind
+    // Bevy merges base-material + extension bindings into a single bind
     // group 3 (`MATERIAL_BIND_GROUP_INDEX`), filtering duplicates. As long as
     // our bindings don't collide with StandardMaterial's, they coexist fine.
+    texture_bindings_at(ctx, "3", 100)
+}
+
+/// The graph's texture slots and parameter buffer, declared in `group` with
+/// every binding counted from `base`.
+///
+/// Same layout in both domains, moved: a 3D material starts at 100 in group
+/// 3 ([`texture_bindings_wgsl`]), a sprite at 20 in the 2D material group
+/// (`SpriteGraphExt`), past the sprite's own bindings 0..10. Each CPU-side
+/// `AsBindGroup` declares the same offsets from the same base.
+pub(crate) fn texture_bindings_at(ctx: &Ctx, group: &str, base: u32) -> String {
     let mut s = String::new();
-    // One sampler (binding 101) is shared by every slot — 2D, cube, array and
+    // One sampler (base + 1) is shared by every slot: 2D, cube, array and
     // 3D alike. Metal allows only 16 sampler states per stage, and the mesh
     // view + StandardMaterial bindings already use 14; per-slot samplers made
     // the pipeline unbuildable on macOS. The CPU side mirrors this: only
-    // `texture_0` carries a `#[sampler]` attribute in `SurfaceGraphExt`.
-    s.push_str("@group(3) @binding(101) var texture_sampler: sampler;\n");
-    // Slots 0..3 live on bindings 100..106 (even). Slots 4..5 live on 114 and
-    // 116 — the cubemap/array/3D slots sit between them at 108-112, so we
-    // can't keep the linear `100 + slot*2` formula past slot 3.
-    const D2_BINDINGS: [u32; 6] = [100, 102, 104, 106, 114, 116];
-    for (slot, tex_binding) in D2_BINDINGS.iter().enumerate() {
+    // `texture_0` carries a `#[sampler]` attribute.
+    s.push_str(&format!("@group({group}) @binding({}) var texture_sampler: sampler;\n", base + 1));
+    // Slots 0..3 sit on base + 0..6 (even). Slots 4..5 sit on base + 14 and
+    // 16: the cubemap/array/3D slots are between them at base + 8..12, so the
+    // linear `base + slot*2` stops after slot 3.
+    const D2_OFFSETS: [u32; 6] = [0, 2, 4, 6, 14, 16];
+    for (slot, offset) in D2_OFFSETS.iter().enumerate() {
         s.push_str(&format!(
-            "@group(3) @binding({tex_binding}) var texture_{slot}: texture_2d<f32>;\n",
+            "@group({group}) @binding({}) var texture_{slot}: texture_2d<f32>;\n",
+            base + offset,
         ));
     }
     // Cubemap / 2D-array / 3D bindings are only declared when the graph
-    // actually samples them — their @binding slots exist on the layout either
+    // actually samples them: their @binding slots exist on the layout either
     // way (Bevy's fallback image handles that) but emitting unused `var`s
     // would add harmless-but-noisy lines to every shader.
     if ctx.uses_cube_0 {
-        s.push_str("@group(3) @binding(108) var cube_0: texture_cube<f32>;\n");
+        s.push_str(&format!("@group({group}) @binding({}) var cube_0: texture_cube<f32>;\n", base + 8));
     }
     if ctx.uses_array_0 {
-        s.push_str("@group(3) @binding(110) var array_0: texture_2d_array<f32>;\n");
+        s.push_str(&format!(
+            "@group({group}) @binding({}) var array_0: texture_2d_array<f32>;\n",
+            base + 10
+        ));
     }
     if ctx.uses_volume_0 {
-        s.push_str("@group(3) @binding(112) var volume_0: texture_3d<f32>;\n");
+        s.push_str(&format!("@group({group}) @binding({}) var volume_0: texture_3d<f32>;\n", base + 12));
     }
-    // Always declare the parameter UBO at @binding(118) — the
-    // `AsBindGroup` derive on `SurfaceGraphExt` requires this slot to be
-    // bound regardless of whether the graph reads any params, otherwise
-    // wgpu rejects the pipeline at draw time. Keep the slot count in sync
-    // with `surface_ext::SURFACE_GRAPH_PARAM_SLOTS`.
+    // Always declare the parameter UBO (base + 18): the `AsBindGroup` derive
+    // requires this slot to be bound regardless of whether the graph reads
+    // any params, otherwise wgpu rejects the pipeline at draw time. Keep the
+    // slot count in sync with `surface_ext::SURFACE_GRAPH_PARAM_SLOTS`.
     s.push_str("struct SurfaceGraphParams { slots: array<vec4<f32>, 32>, }\n");
-    s.push_str("@group(3) @binding(118) var<uniform> material_params: SurfaceGraphParams;\n");
+    s.push_str(&format!(
+        "@group({group}) @binding({}) var<uniform> material_params: SurfaceGraphParams;\n",
+        base + 18
+    ));
     s
 }
 
@@ -535,26 +547,29 @@ pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
     // The extension-hook pattern: import StandardMaterial's PbrInput builder +
     // the full lighting pipeline. This is the seam documented in the Bevy PBR
     // source (`extended_material.rs` + example usage).
-    shader.push_str("#import bevy_pbr::pbr_fragment::pbr_input_from_standard_material\n");
-    shader.push_str("#import bevy_pbr::pbr_functions\n");
-    shader.push_str("#import bevy_pbr::forward_io::{VertexOutput, FragmentOutput}\n");
-    shader.push_str("#import bevy_pbr::mesh_view_bindings::{view, globals}\n");
-
-    shader.push_str("#import bevy_pbr::mesh_functions\n");
+    //
+    // WESL, at the module paths Bevy 0.20 gave these. `pbr_functions`,
+    // `mesh_functions` and `prepass_utils` are imported as whole modules, so
+    // the body (and the code a Custom node holds) keeps calling
+    // `pbr_functions::apply_pbr_lighting` and friends by their short names.
+    shader.push_str("import bevy_pbr::render::pbr_fragment::pbr_input_from_standard_material;\n");
+    shader.push_str("import bevy_pbr::render::pbr_functions;\n");
+    shader.push_str("import bevy_pbr::render::forward_io::{VertexOutput, FragmentOutput};\n");
+    shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view, globals};\n");
+    shader.push_str("import bevy_pbr::render::mesh_functions;\n");
     if ctx.uses_scene_depth || ctx.uses_scene_normal || ctx.uses_motion_vector {
-        shader.push_str("#import bevy_pbr::prepass_utils\n");
+        shader.push_str("import bevy_pbr::prepass::utils as prepass_utils;\n");
     }
     if ctx.uses_transmission {
-        shader.push_str("#import bevy_pbr::mesh_view_bindings::{view_transmission_texture, view_transmission_sampler}\n");
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view_transmission_texture, view_transmission_sampler};\n");
     }
     if ctx.uses_env_map {
-        shader.push_str("#ifdef ENVIRONMENT_MAP\n");
-        shader.push_str("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY\n");
-        shader.push_str("#import bevy_pbr::mesh_view_bindings::{specular_environment_maps, environment_map_sampler}\n");
-        shader.push_str("#else\n");
-        shader.push_str("#import bevy_pbr::mesh_view_bindings::{specular_environment_map, environment_map_sampler}\n");
-        shader.push_str("#endif\n");
-        shader.push_str("#endif\n");
+        // Bevy binds these only with an environment map, and as an array or a
+        // single cube depending on light-probe batching; the sampling code in
+        // `emit/scene.rs` branches the same three ways.
+        shader.push_str("@if(ENVIRONMENT_MAP && MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_maps;\n");
+        shader.push_str("@if(ENVIRONMENT_MAP && !MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_map;\n");
+        shader.push_str("@if(ENVIRONMENT_MAP) import bevy_pbr::render::mesh_view_bindings::environment_map_sampler;\n");
     }
     shader.push('\n');
 }

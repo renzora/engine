@@ -3,14 +3,15 @@
 //! beside it.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::FieldValue;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, text_input, toggle_switch, DragRange,
 };
+use renzora_ember::UiInteraction;
 
 use super::assets::build_asset_field;
 use super::section::{AddKeyframeBtn, FieldButton, ResetBtn};
@@ -52,7 +53,7 @@ pub(super) fn build_field_row(
         FieldKind::Bool | FieldKind::Color | FieldKind::ColorRgba | FieldKind::ReadOnly
     ) {
         let spacer = commands
-            .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+            .spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
             .id();
         commands.entity(value).add_child(spacer);
     }
@@ -103,8 +104,8 @@ fn build_reset_button(
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ResetBtn { get_fn, set_fn, entity, field_name },
             Name::new("field-reset"),
@@ -199,8 +200,8 @@ fn build_add_keyframe_button(
                 display: Display::None,
                 ..default()
             },
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             AddKeyframeBtn { entity, component, field },
             Name::new("field-add-keyframe"),

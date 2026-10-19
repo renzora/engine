@@ -11,6 +11,8 @@ mod material_inspector;
 mod pin_editors;
 mod preview_panel;
 pub mod preview;
+/// The Material Preview for a Sprite material: a 2D camera and a sample sprite.
+mod preview_2d;
 
 use bevy::prelude::*;
 use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
@@ -104,6 +106,7 @@ impl Plugin for MaterialEditorPlugin {
         app.init_resource::<MaterialEditorState>();
         app.register_type::<Mesh3d>();
         app.add_plugins(preview::MaterialPreviewPlugin);
+        preview_2d::plugin(app);
         app.add_plugins(file_thumbnails::MaterialFileThumbnailPlugin);
         app.add_plugins(pin_editors::MaterialPinEditors);
         app.add_plugins(inspector::MaterialInspector);
@@ -114,6 +117,21 @@ impl Plugin for MaterialEditorPlugin {
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());
+
+        // A Sprite material has to be written as one: a new `.material` from
+        // the Assets panel's own Material entry is `{}`, which loads as a 3D
+        // Surface graph, and the editor has no domain switch.
+        use renzora::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
+        app.register_create_menu_item(
+            CreateMenuItem::new("sprite_material", "NewSpriteMaterial", "material", |_| {
+                serde_json::to_string_pretty(&MaterialGraph::new("Sprite Material", MaterialDomain::Sprite))
+                    .unwrap_or_default()
+            })
+            .label("assets.new.sprite_material", "Sprite Material")
+            .subtitle("assets.new.sprite_material_sub", "2D Material")
+            .icon("palette")
+            .folder("materials"),
+        );
     }
 }
 

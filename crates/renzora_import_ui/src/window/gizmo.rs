@@ -19,14 +19,16 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition, UiTransform};
+use bevy::ui::{RelativeCursorPosition, UiTransform};
 
 use renzora::core::viewport_types::{
     AXIS_NEG_X, AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::matpreview::MaterialPreviewOrbit;
 use crate::overlay::ImportOverlayState;
@@ -142,7 +144,6 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 bottom: Val::Px(0.0),
                 ..default()
             },
-            FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
         ))
         .id();
@@ -183,7 +184,6 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
         ))
         .id();
@@ -202,11 +202,11 @@ fn build_gizmo(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node::default(),
             RelativeCursorPosition::default(),
             OverlaySurface,
-            Interaction::default(),
-            // The preview camera reads its own node's `Interaction` to decide
+            UiInteraction::default(),
+            // The preview camera reads its own node's `UiInteraction` to decide
             // whether to orbit, so without this a drag on the gizmo would move
             // the camera twice.
-            FocusPolicy::Block,
+            BLOCK,
             GizmoRoot,
             Name::new("import-preview-axis-gizmo"),
         ))
@@ -282,7 +282,7 @@ fn build_gizmo(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 },
                 BackgroundColor(rgb(color)),
                 ZIndex(100),
-                Interaction::default(),
+                UiInteraction::default(),
                 hover_cursor(),
                 AxisTip {
                     dir,
@@ -323,7 +323,7 @@ fn build_zoom(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(panel_bg()).with_alpha(0.88)),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             OverlaySurface,
         ))
         .id();
@@ -357,8 +357,8 @@ fn zoom_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             hover_cursor(),
             which,
             renzora_ember::widgets::HoverTooltip::new(tip),
@@ -366,8 +366,8 @@ fn zoom_button(
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
         if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -375,7 +375,7 @@ fn zoom_button(
         }
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(btn).add_child(ic);
     btn
 }
@@ -451,8 +451,8 @@ fn gizmo_input(
     mut mat: Option<ResMut<MaterialPreviewOrbit>>,
     nav: Option<Res<ImportNav>>,
     state: Option<Res<ImportOverlayState>>,
-    tips: Query<(&AxisTip, &Interaction)>,
-    roots: Query<&Interaction, With<GizmoRoot>>,
+    tips: Query<(&AxisTip, &UiInteraction)>,
+    roots: Query<&UiInteraction, With<GizmoRoot>>,
     mut plates: Query<&mut BackgroundColor, With<GizmoBackplate>>,
 ) {
     let Some(orbit) = orbit.as_mut() else { return };
@@ -461,7 +461,7 @@ fn gizmo_input(
     if mouse.just_pressed(MouseButton::Left) {
         let snap = tips
             .iter()
-            .find(|(_, i)| **i == Interaction::Pressed)
+            .find(|(_, i)| **i == UiInteraction::Pressed)
             .map(|(tip, _)| (tip.yaw, tip.pitch));
         if let Some((yaw, pitch)) = snap {
             if material {
@@ -475,7 +475,7 @@ fn gizmo_input(
             }
         } else if roots
             .iter()
-            .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed))
+            .any(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
         {
             dragging.0 = true;
         }
@@ -508,7 +508,7 @@ fn gizmo_input(
 
 /// Zoom in, out, or back to the distance framing chose.
 fn zoom_click(
-    q: Query<(&Interaction, &ZoomBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ZoomBtn), Changed<UiInteraction>>,
     mut orbit: Option<ResMut<ImportPreviewOrbit>>,
     mut mat: Option<ResMut<MaterialPreviewOrbit>>,
     nav: Option<Res<ImportNav>>,
@@ -517,7 +517,7 @@ fn zoom_click(
     let Some(orbit) = orbit.as_mut() else { return };
     let Some(which) = q
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, b)| *b)
     else {
         return;

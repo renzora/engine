@@ -12,6 +12,7 @@ use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
 use crate::theme::*;
+use crate::UiInteraction;
 
 pub(crate) struct CurveEditorPlugin;
 
@@ -71,7 +72,7 @@ fn handle(commands: &mut Commands, root: Entity, idx: u8, p: Vec2) -> Entity {
             },
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             CurveHandle { root, idx },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
             Name::new("curve-handle"),
@@ -134,13 +135,13 @@ fn curve_sync(
 }
 
 fn curve_drag(
-    handles: Query<(Entity, &Interaction, &CurveHandle)>,
+    handles: Query<(Entity, &UiInteraction, &CurveHandle)>,
     roots: Query<&RelativeCursorPosition>,
     mut datas: Query<&mut CurveData>,
     mut nodes: Query<&mut Node>,
 ) {
     for (e, interaction, h) in &handles {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(rcp) = roots.get(h.root) else {

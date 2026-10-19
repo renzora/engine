@@ -13,6 +13,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, keyed_list};
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 
 use renzora::content_problems::{ContentProblems, ProblemSeverity};
 
@@ -142,7 +143,7 @@ fn problem_row(commands: &mut Commands, fonts: &EmberFonts, item: &Row) -> Entit
         .spawn((
             Node { width: Val::Percent(100.0), min_height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             ProblemRow { file_idx: *file_idx, line: line.unwrap_or(1).max(1) },
         ))
         .id();
@@ -161,10 +162,10 @@ fn problem_row(commands: &mut Commands, fonts: &EmberFonts, item: &Row) -> Entit
     row
 }
 
-fn problems_goto_click(q: Query<(&Interaction, &ProblemRow), Changed<Interaction>>, state: Option<ResMut<CodeEditorState>>) {
+fn problems_goto_click(q: Query<(&UiInteraction, &ProblemRow), Changed<UiInteraction>>, state: Option<ResMut<CodeEditorState>>) {
     let Some(mut state) = state else { return };
     for (interaction, row) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some(idx) = row.file_idx {

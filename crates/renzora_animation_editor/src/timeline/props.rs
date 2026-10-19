@@ -11,6 +11,7 @@ use renzora::{PropertyKey, PropertyTrack, TrackValue};
 use renzora_animation::property_playback::read_track_value;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_item, screen_menu};
+use renzora_ember::UiInteraction;
 
 use crate::AnimationEditorState;
 
@@ -172,18 +173,18 @@ pub(super) fn interp_label_tr(label: &str) -> String {
 /// Detect clicks on a property track's dropdown / delete button (built inside
 /// the keyed header list) and queue the corresponding world op.
 pub(super) fn prop_header_click(
-    combos: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode, &PropTrackCombo), Changed<Interaction>>,
-    dels: Query<(&Interaction, &DeletePropTrack), Changed<Interaction>>,
-    addks: Query<(&Interaction, &AddKeyTrackBtn), Changed<Interaction>>,
-    add_track: Query<&Interaction, (With<AddTrackBtn>, Changed<Interaction>)>,
+    combos: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode, &PropTrackCombo), Changed<UiInteraction>>,
+    dels: Query<(&UiInteraction, &DeletePropTrack), Changed<UiInteraction>>,
+    addks: Query<(&UiInteraction, &AddKeyTrackBtn), Changed<UiInteraction>>,
+    add_track: Query<&UiInteraction, (With<AddTrackBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     mut ops: ResMut<TimelineOps>,
 ) {
-    if add_track.iter().any(|i| *i == Interaction::Pressed) {
+    if add_track.iter().any(|i| *i == UiInteraction::Pressed) {
         ops.add_empty_track = true;
     }
     for (interaction, rcp, cn, combo) in &combos {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let cursor = windows.iter().find_map(|w| w.cursor_position()).unwrap_or(Vec2::splat(200.0));
@@ -193,12 +194,12 @@ pub(super) fn prop_header_click(
         ops.open_property_menu = Some((combo.0, Vec2::new(top_left.x, top_left.y + size.y + 2.0)));
     }
     for (interaction, del) in &dels {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             ops.delete_track = Some(del.0);
         }
     }
     for (interaction, addk) in &addks {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             ops.add_key_track = Some(addk.0);
         }
     }

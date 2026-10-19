@@ -8,6 +8,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::{rgb, section_bg, text_muted, text_primary};
+use crate::UiInteraction;
 
 pub(crate) struct SectionPlugin;
 
@@ -169,7 +170,7 @@ pub fn section_with_header_icon_open(
                 ..default()
             },
             BackgroundColor(rgb(header_bg)),
-            Interaction::default(),
+            UiInteraction::default(),
             Section { open, body, caret },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("section-header"),
@@ -195,12 +196,12 @@ pub fn section_with_header_icon_open(
 
 /// Click a section header → toggle its body + flip the caret.
 pub(crate) fn section_toggle(
-    mut headers: Query<(&Interaction, &mut Section), Changed<Interaction>>,
+    mut headers: Query<(&UiInteraction, &mut Section), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, mut sec) in &mut headers {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         sec.open = !sec.open;

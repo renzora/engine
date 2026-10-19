@@ -57,7 +57,7 @@ Key conventions, matching every built-in widget:
 - Colors come from the theme palette in `renzora_ember::theme`: accessor functions like `accent()`, `border()`, `card_bg()`, `window_bg()`, `text_primary()`, `text_muted()`, `tab_active()` each return an `(u8, u8, u8)` triple; `rgb(...)` turns one into a bevy `Color`. Don't hard-code hex.
 - Text needs a font handle. `EmberFonts` carries three: `fonts.ui`, `fonts.phosphor` (icons), `fonts.mono`. `ui_font(&handle, size)` builds a `TextFont`; `icon_text(commands, &fonts.phosphor, name, color, size)` spawns a Phosphor glyph.
 - Give every node a `Name` — it's how markup bindings, the dock, and debug tooling find it.
-- For interactivity, add `Interaction::default()` and either a marker component your own system reads, or one of ember's existing markers (e.g. `EmberButton`). `Interaction` is deprecated in Bevy 0.20 but still works. Don't reach for `bevy_ui`'s `Button`: 0.20 deprecated it and made its type private, so it can't be inserted. Game UI marks its buttons with ember's `UiButton` instead.
+- For interactivity, add `renzora_ember::UiInteraction::default()` and either a marker component your own system reads, or one of ember's existing markers (e.g. `EmberButton`). Bevy 0.20 deprecated `bevy::ui::Interaction` and the focus system behind it, so ember tracks hover and press with picking instead: `UiInteraction` has the same three variants (`Pressed`, `Hovered`, `None`) and is read the same way (`Changed<UiInteraction>`, `*i == UiInteraction::Pressed`). Don't query Bevy's `Interaction` on an ember widget: the widgets carry `UiInteraction` instead, so such a query never sees a press. Don't reach for `bevy_ui`'s `Button` either: 0.20 deprecated it and made its type private, so it can't be inserted. Game UI marks its buttons with ember's `UiButton` instead.
 
 To call a builder from an editor panel, use the `build` closure of `register_panel_content` (see *Building Editor Panels*), which hands you exactly `(&mut Commands, &EmberFonts)`:
 
@@ -79,24 +79,29 @@ app.register_panel_content("my_panel", true, |commands, fonts| {
 
 ### Blocking the pointer
 
-**A widget that owns a press needs an explicit `FocusPolicy::Block`.** Since Bevy 0.19, `Node` *requires* `FocusPolicy`, and that component's `Default` is `Pass` — so a node you never gave a policy to does not capture the pointer. bevy_ui walks every node under the cursor front-to-back and marks them all `Interaction::Pressed` until it meets one that blocks, which means a plain button hands its press to whatever sits behind it, **its own ancestors included**:
+**A widget that owns a press needs an explicit `BLOCK`.** Blocking is `bevy::picking::Pickable`, and ember starts every UI node and text span as `renzora_ember::interaction::PASS_THROUGH` (hit-testable, does not block), the same default `FocusPolicy::Pass` used to give. So a node you never told to block does not capture the pointer. A press lands on every node under the cursor, front to back, until it meets one that blocks, and each of those direct hits goes `UiInteraction::Pressed`; a plain button therefore hands its press to whatever sits behind it, **its own ancestors included**:
 
 ```rust
+use renzora_ember::interaction::BLOCK;
+use renzora_ember::UiInteraction;
+
 commands.spawn((
-    Node { /* … */ },
-    Interaction::default(),
-    FocusPolicy::Block,   // ← without this, the press also lands on the row,
-    MyButton,             //   card or panel this button is sitting inside
+    Node { /* ... */ },
+    UiInteraction::default(),
+    BLOCK,      // without this, the press also lands on the row,
+    MyButton,   // card or panel this button is sitting inside
 ));
 ```
 
-This is the opposite of the pre-0.19 default, so it reads as "extra ceremony" and is easy to leave off. What it costs when you do: the splash launcher's ✕ removed a recent project *and* opened it, because the row behind the ✕ is the "open this project" hit-box (GH #82); a press on any splash button also reached the whole-window drag handle underneath it; the tutorial card's Skip button also started dragging the card.
+`BLOCK` replaces `FocusPolicy::Block`, which picking ignores. `Pickable::IGNORE` takes a node out of picking altogether. `ResizeHandle` and game UI's `UiButton` insert `BLOCK` themselves.
 
-Two things that are **not** affected, and shouldn't be "fixed" with `Block`:
+Passing is the default, so blocking reads as "extra ceremony" and is easy to leave off. What it costs when you do: the splash launcher's ✕ removed a recent project *and* opened it, because the row behind the ✕ is the "open this project" hit-box (GH #82); a press on any splash button also reached the whole-window drag handle underneath it; the tutorial card's Skip button also started dragging the card.
 
-- **Layout scaffolding.** Wrappers, spacers, text and icons inside a button want `Pass` (their default) — that's how a click on a button's label reaches the button. Marking them `Block` breaks the widget.
-- **`RelativeCursorPosition`.** Bevy fills `cursor_over` for *every* node containing the pointer, whoever captures the press. Hover *visuals* on a container that holds its own interactive children should read `cursor_over`, not `Interaction` — otherwise the container flattens out the moment the cursor crosses onto a child that blocks. (Ember's `correct_pointer_state` already clears `cursor_over` for anything clipped by a scroll area or covered by an overlay, so it stays trustworthy.)
-- **The mouse cursor.** Several nodes are hovered at once whenever one overlaps another that passes the pointer, so ember's `apply_cursor_icon` resolves `HoverCursor` by **`ComputedStackIndex`** — the topmost hovered node supplies the cursor, and a node whose computed size is zero (hidden under the cursor, so stuck at `Hovered`) supplies nothing. Add `Block` because your widget owns its press, not to win the cursor.
+Things that are **not** affected, and shouldn't be "fixed" with `BLOCK`:
+
+- **Layout scaffolding.** Wrappers, spacers, text and icons inside a button want `PASS_THROUGH` (their default): that's how a click on a button's label reaches the button. Marking them `BLOCK` breaks the widget.
+- **Hover.** `UiInteraction::Hovered` follows picking's `Hovered`, which counts descendants the way CSS `:hover` does, so a row stays hovered while the pointer is on a button inside it, blocking or not. Only the press is kept from the row. `RelativeCursorPosition::cursor_over` is still filled for *every* node containing the pointer, whoever captures the press, and many panel-level handlers gate on it. (Ember's `correct_pointer_state` clears `cursor_over`, and `UiInteraction`, for anything clipped by a scroll area or covered by an overlay, so both stay trustworthy.)
+- **The mouse cursor.** Several nodes are hovered at once whenever one overlaps another that passes the pointer, so ember's `apply_cursor_icon` resolves `HoverCursor` by **`ComputedStackIndex`**: the topmost hovered node supplies the cursor, and a node whose computed size is zero (hidden under the cursor, so stuck at `Hovered`) supplies nothing. Add `BLOCK` because your widget owns its press, not to win the cursor.
 
 ## The built-in widget library
 
@@ -185,11 +190,11 @@ Two rules make a fit land on the right thing:
 
 Fit's zoom clamp is the shared `MIN_ZOOM`/`MAX_ZOOM`, so a framed view is always a zoom the wheel will hold.
 
-**A "don't drag the node" guard goes on the control, not on its row.** Scrubbing an inline value editor must not drag the node underneath it, and because `Node` requires `FocusPolicy` — which defaults to `Pass` — a press over a field reaches the node root anyway; the guard is therefore a `RelativeCursorPosition::cursor_over` test (`NgvInputEditor`), not focus blocking. Put that marker on the full-width row holding the editor and the whole line goes dead to node drags, empty space included, which reads as a broken node: an editor is content-sized, a row is not. Mark the editor entity.
+**A "don't drag the node" guard goes on the control, not on its row.** Scrubbing an inline value editor must not drag the node underneath it, and because UI nodes pass the pointer through by default (`PASS_THROUGH`), a press over a field reaches the node root anyway; the guard is therefore a `RelativeCursorPosition::cursor_over` test (`NgvInputEditor`), not focus blocking. Put that marker on the full-width row holding the editor and the whole line goes dead to node drags, empty space included, which reads as a broken node: an editor is content-sized, a row is not. Mark the editor entity.
 
 ### Tooltips (`HoverTooltip`)
 
-Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons and panel toolbar buttons both use it.
+Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `UiInteraction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons and panel toolbar buttons both use it.
 
 ### Dropdowns & popups — don't hand-roll them (`dropdown`, `Popup`)
 
@@ -303,9 +308,9 @@ Three things it handles that `Node.left += delta` does not:
 
 - **Anchor handover.** Cards are usually pinned with `right`/`bottom`, leaving `left` as `Val::Auto`. Reading that as zero teleports the card on the first drag, so the handle resolves the target's real on-screen rect from `UiGlobalTransform` instead, then writes `left`/`top` and clears the opposite pair — the two anchor sets fight if you leave both set.
 - **Staying reachable.** A card flung past the window edge takes its close button with it, so the position is clamped to keep a margin on screen.
-- **Release anywhere.** The drag ends on mouse-button release, not on `Interaction`, so moving faster than the handle follows doesn't silently drop it.
+- **Release anywhere.** The drag ends on mouse-button release, not on `UiInteraction`, so moving faster than the handle follows doesn't silently drop it.
 
-Used by the onboarding tutorial's card, which parks bottom-right — occasionally right on top of the thing a step is pointing at. It puts the handle on the **whole header strip** rather than the grip alone (a 13px glyph is a fussy target for something you reach for precisely when the card is in your way); the Skip and close buttons inside that header carry `FocusPolicy::Block` so their press doesn't also start a drag — see *Blocking the pointer* below.
+Used by the onboarding tutorial's card, which parks bottom-right — occasionally right on top of the thing a step is pointing at. It puts the handle on the **whole header strip** rather than the grip alone (a 13px glyph is a fussy target for something you reach for precisely when the card is in your way); the Skip and close buttons inside that header carry `BLOCK` so their press doesn't also start a drag (see *Blocking the pointer* above).
 
 ### Folder picker (`folder_picker`)
 
@@ -376,7 +381,7 @@ commands.entity(row).insert(EmberForm { submit: send });
 commands.entity(row).add_children(&[input, send]);
 ```
 
-- **Enter** in a focused single-line input inside the container simulates a press of `submit` — the panel's existing `Changed<Interaction>` click handler fires unchanged, so there is no separate "submitted" event to wire. (The simulated press is set in `PreUpdate`, so every `Update` handler sees it regardless of system order; hidden forms — a `Display::None` ancestor — never submit.)
+- **Enter** in a focused single-line input inside the container simulates a press of `submit` by writing `UiInteraction::Pressed` on it: the panel's existing `Changed<UiInteraction>` click handler fires unchanged, so there is no separate "submitted" event to wire. (The simulated press is set in `PreUpdate`, so every `Update` handler sees it regardless of system order, and it is replaced by the pointer's state the next frame; hidden forms, those with a `Display::None` ancestor, never submit.)
 - **Tab / Shift+Tab** cycles focus between the form's visible inputs (wrapping, selecting the tabbed-into value). Tab also works without the marker: it falls back to the smallest ancestor subtree containing at least two inputs.
 
 The sign-in modal, chat composer, feed comments, forum reply/new-thread, and teams create/invite forms all use this.
@@ -412,11 +417,12 @@ Instead of baking colors into a widget, attach a `Styled` component naming a `Ro
 
 ```rust
 use renzora_ember::style::{Role, Styled, WidgetState};
+use renzora_ember::UiInteraction;
 
 commands.spawn((
     Node { /* … */ ..default() },
     BackgroundColor(rgb(tab_active())),   // starting color; apply_theme overrides it
-    Interaction::default(),
+    UiInteraction::default(),
     Styled::new(Role::Button),            // paints from theme.token(Role::Button)
     Name::new("my-button"),
 ));
@@ -426,13 +432,13 @@ commands.spawn((
 
 ```rust
 fn my_button_interact(
-    mut q: Query<(&Interaction, &mut Styled), (With<MyMarker>, Changed<Interaction>)>,
+    mut q: Query<(&UiInteraction, &mut Styled), (With<MyMarker>, Changed<UiInteraction>)>,
 ) {
     for (interaction, mut styled) in &mut q {
         styled.state = match interaction {
-            Interaction::Pressed => WidgetState::Pressed,
-            Interaction::Hovered => WidgetState::Hover,
-            Interaction::None    => WidgetState::Normal,
+            UiInteraction::Pressed => WidgetState::Pressed,
+            UiInteraction::Hovered => WidgetState::Hover,
+            UiInteraction::None    => WidgetState::Normal,
         };
     }
 }

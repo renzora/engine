@@ -5,6 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 use super::common::text_node;
 
@@ -37,7 +38,7 @@ pub fn chip(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             EmberChipClose { chip: c },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("chip-close"),
@@ -49,11 +50,11 @@ pub fn chip(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
 }
 
 pub(crate) fn chip_close(
-    pressed: Query<(&Interaction, &EmberChipClose), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberChipClose), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, close) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             commands.entity(close.chip).despawn();
         }
     }

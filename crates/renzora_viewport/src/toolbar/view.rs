@@ -15,6 +15,7 @@ use renzora_ember::theme::{rgb, tab_active, text_muted, text_primary};
 use renzora_ember::widgets::{
     dropdown_compact, popup_anchor, popup_panel, EmberDropdownOption, Popup,
 };
+use renzora_ember::UiInteraction;
 
 use super::camera::HeaderClick;
 use super::display::DisplayTrigger;
@@ -185,7 +186,7 @@ pub(super) fn view_angle_menu(commands: &mut Commands, fonts: &EmberFonts, slot:
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             Popup::new(panel),
             DisplayTrigger,
@@ -256,7 +257,7 @@ pub(super) fn space_toggle(commands: &mut Commands, fonts: &EmberFonts, slot: us
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(space_label(GizmoSpace::World)),
             SpaceToggleSlot(slot),
@@ -270,12 +271,12 @@ pub(super) fn space_toggle(commands: &mut Commands, fonts: &EmberFonts, slot: us
 
 /// Click flips THIS viewport's space (World ↔ Local) in `ViewportGizmoSpace`.
 pub(super) fn space_toggle_click(
-    q: Query<(&Interaction, &SpaceToggleSlot), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SpaceToggleSlot), Changed<UiInteraction>>,
     space: Option<ResMut<renzora::core::viewport_types::ViewportGizmoSpace>>,
 ) {
     let Some(mut space) = space else { return };
     for (i, slot) in &q {
-        if *i == Interaction::Pressed {
+        if *i == UiInteraction::Pressed {
             if let Some(local) = space.local.get_mut(slot.0) {
                 *local = !*local;
             }

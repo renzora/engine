@@ -8,13 +8,14 @@
 //! is added, rather than a separate axis.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::icon_menu_button;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::ExportOverlayState;
 use crate::templates::{Platform, TemplateManager};
@@ -188,20 +189,20 @@ fn preset_row(
             Node { width: Val::Percent(100.0), height: Val::Px(40.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::horizontal(Val::Px(10.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(if selected { rgb(section_bg()) } else { Color::NONE }),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             PresetBtn(index),
             cursor(),
         ))
         .id();
     // Selection is baked into the row hash, so only hover needs to be live.
     bind_bg(commands, btn, move |w| {
-        let hov = matches!(w.get::<Interaction>(btn), Some(Interaction::Hovered));
+        let hov = matches!(w.get::<UiInteraction>(btn), Some(UiInteraction::Hovered));
         if selected { rgb(section_bg()) } else if hov { ca(255, 255, 255, 10) } else { Color::NONE }
     });
     let ic = icon_text(commands, &fonts.phosphor, platform_icon(p), text_primary(), 18.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let nm = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    let dot = commands.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(text_muted())), FocusPolicy::Pass)).id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let nm = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), PASS_THROUGH, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
+    let dot = commands.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(text_muted())), PASS_THROUGH)).id();
     bind_bg(commands, dot, move |w| {
         let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p));
         let available = w.get_resource::<ExportOverlayState>().and_then(|s| s.release_info.as_ref().map(|r| r.available_platforms.contains(&p))).unwrap_or(false);

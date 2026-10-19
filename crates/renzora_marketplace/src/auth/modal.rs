@@ -4,9 +4,10 @@
 
 use bevy::prelude::*;
 use bevy::ecs::world::CommandQueue;
-use bevy::ui::FocusPolicy;
 
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{accent, border, divider, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
@@ -126,8 +127,8 @@ fn spawn_modal(commands: &mut Commands) {
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.47)),
             GlobalZIndex(9400),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             OverlaySurface,
             AuthBackdrop,
@@ -146,7 +147,7 @@ fn spawn_modal(commands: &mut Commands) {
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("auth-panel"),
         ))
         .id();
@@ -324,14 +325,14 @@ fn header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitle: &s
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             AuthClose,
             Name::new("auth-close"),
         ))
         .id();
     let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 14.0);
-    commands.entity(close_icon).insert(FocusPolicy::Pass);
+    commands.entity(close_icon).insert(PASS_THROUGH);
     commands.entity(close).add_child(close_icon);
     commands.entity(row).add_children(&[ic, t, spacer, close]);
     let s = commands
@@ -451,12 +452,12 @@ fn submit_button(commands: &mut Commands, fonts: &EmberFonts, text: &str, loadin
                 ..default()
             },
             BackgroundColor(fill),
-            Interaction::default(),
+            UiInteraction::default(),
             AuthSubmit,
             Name::new("auth-submit"),
         ))
         .id();
-    let t = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 14.5), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    let t = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 14.5), TextColor(Color::WHITE), PASS_THROUGH)).id();
     commands.entity(btn).add_child(t);
     btn
 }
@@ -483,7 +484,7 @@ fn link_row(commands: &mut Commands, fonts: &EmberFonts, prefix: Option<&str>, l
             Text::new(link.to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(accent())),
-            Interaction::default(),
+            UiInteraction::default(),
             AuthLink(target),
             Name::new("auth-link"),
         ))
@@ -512,8 +513,8 @@ fn focus_auth_field(mut q: Query<&mut EmberTextInput, Added<AuthFirstField>>) {
     }
 }
 
-fn auth_submit_click(q: Query<&Interaction, (With<AuthSubmit>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn auth_submit_click(q: Query<&UiInteraction, (With<AuthSubmit>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(do_submit);
     }
 }
@@ -579,10 +580,10 @@ fn do_submit(world: &mut World) {
     }
 }
 
-fn auth_link_click(q: Query<(&Interaction, &AuthLink), Changed<Interaction>>, mut auth: Option<ResMut<AuthState>>) {
+fn auth_link_click(q: Query<(&UiInteraction, &AuthLink), Changed<UiInteraction>>, mut auth: Option<ResMut<AuthState>>) {
     let Some(auth) = auth.as_mut() else { return };
     for (interaction, link) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             auth.view = link.0;
             auth.error = None;
             auth.status = None;
@@ -590,20 +591,20 @@ fn auth_link_click(q: Query<(&Interaction, &AuthLink), Changed<Interaction>>, mu
     }
 }
 
-fn auth_backdrop_click(q: Query<&Interaction, (With<AuthBackdrop>, Changed<Interaction>)>, mut auth: Option<ResMut<AuthState>>) {
+fn auth_backdrop_click(q: Query<&UiInteraction, (With<AuthBackdrop>, Changed<UiInteraction>)>, mut auth: Option<ResMut<AuthState>>) {
     let Some(auth) = auth.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         auth.window_open = false;
     }
 }
 
 /// The header's X closes the modal, the same way Escape does.
 fn auth_close_click(
-    q: Query<&Interaction, (With<AuthClose>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AuthClose>, Changed<UiInteraction>)>,
     mut auth: Option<ResMut<AuthState>>,
 ) {
     let Some(auth) = auth.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         auth.window_open = false;
     }
 }

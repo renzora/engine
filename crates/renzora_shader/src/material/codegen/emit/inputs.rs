@@ -12,7 +12,7 @@
 //! same slot, which is why the slot index — not the name — is what codegen
 //! emits.
 
-use super::super::super::graph::{MaterialNode, NodeId, PinValue};
+use super::super::super::graph::{MaterialDomain, MaterialNode, NodeId, PinValue};
 use super::super::{param_name, ParamKind};
 use super::super::ctx::Ctx;
 
@@ -126,6 +126,29 @@ impl Ctx<'_> {
                 self.set_out(id, "g", "mat_vertex_color.g".into());
                 self.set_out(id, "b", "mat_vertex_color.b".into());
                 self.set_out(id, "a", "mat_vertex_color.a".into());
+            }
+            "input/sprite_color" => {
+                let v = self.next_var("sprc");
+                if self.graph.domain == MaterialDomain::Sprite {
+                    let uv = if self.graph.connection_to(node.id, "uv").is_some() {
+                        self.input(node, "uv")
+                    } else {
+                        "mat_uv".to_string()
+                    };
+                    self.emit(format!(
+                        "    let {v} = sprite_fn::sample_sprite_texture({uv}, in.instance_index);"
+                    ));
+                } else {
+                    // Outside a sprite there is no sprite texture to read. White
+                    // keeps the graph compiling so the rest of it still previews.
+                    self.warnings.push(
+                        "Sprite Color only reads a sprite in a Sprite material; it is white here".into(),
+                    );
+                    self.emit(format!("    let {v} = vec4<f32>(1.0, 1.0, 1.0, 1.0);"));
+                }
+                self.set_out(id, "color", v.clone());
+                self.set_out(id, "rgb", format!("{v}.rgb"));
+                self.set_out(id, "a", format!("{v}.a"));
             }
             "input/camera_position" => {
                 self.set_out(id, "position", "view.world_position.xyz".into());

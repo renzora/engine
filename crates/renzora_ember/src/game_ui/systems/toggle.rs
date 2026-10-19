@@ -3,13 +3,14 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{ToggleData, UiWidgetPart};
+use crate::UiInteraction;
 
 pub fn toggle_system(
-    mut toggles: Query<(&mut ToggleData, &Interaction, &Children), Changed<Interaction>>,
+    mut toggles: Query<(&mut ToggleData, &UiInteraction, &Children), Changed<UiInteraction>>,
     mut parts: Query<(&UiWidgetPart, &mut Node, &mut BackgroundColor)>,
 ) {
     for (mut data, interaction, children) in &mut toggles {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             data.on = !data.on;
         }
 

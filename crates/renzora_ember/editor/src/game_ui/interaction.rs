@@ -32,6 +32,7 @@ use bevy::prelude::*;
 use bevy::ui::{RelativeCursorPosition, UiTransform};
 
 use renzora::{EditorSelection, SplashState};
+use renzora_ember::UiInteraction;
 
 use crate::game_ui::geometry::{is_descendant_of, topmost_at};
 use crate::game_ui::overlay::{CanvasHandle, CanvasHitLayer, HandleKind, ResizeHandle};
@@ -88,8 +89,8 @@ fn canvas_interact(
     keys: Res<ButtonInput<KeyCode>>,
     mut active: Local<Option<Mode>>,
     hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
-    handles: Query<(&Interaction, &CanvasHandle)>,
-    background: Query<&Interaction, With<CanvasBackground>>,
+    handles: Query<(&UiInteraction, &CanvasHandle)>,
+    background: Query<&UiInteraction, With<CanvasBackground>>,
     parents: Query<&ChildOf>,
     mut state: ResMut<NativeCanvasState>,
     selection: Option<Res<EditorSelection>>,
@@ -192,7 +193,7 @@ fn canvas_interact(
 
     // ── Begin ──
     if mouse.just_pressed(MouseButton::Left) {
-        if let Some((_, handle)) = handles.iter().find(|(i, _)| **i == Interaction::Pressed) {
+        if let Some((_, handle)) = handles.iter().find(|(i, _)| **i == UiInteraction::Pressed) {
             // A grab handle takes precedence and acts immediately.
             if let Some(g) = state.widgets.iter().find(|g| g.entity == handle.widget) {
                 *active = Some(match handle.kind {
@@ -245,7 +246,7 @@ fn canvas_interact(
 
         // Outside the frame: a press on the dark background starts a marquee (a
         // click there just deselects). Anywhere else (another panel) is ignored.
-        if background.iter().any(|i| *i == Interaction::Pressed) {
+        if background.iter().any(|i| *i == UiInteraction::Pressed) {
             *active = Some(Mode::Pending { select: None, drag: None, marquee: true, start_cursor: cursor, start_bbox: (cursor.x, cursor.y, 0.0, 0.0) });
         } else {
             *active = None;

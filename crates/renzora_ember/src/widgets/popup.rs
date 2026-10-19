@@ -9,12 +9,14 @@
 //! over it.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::BLOCK;
 use crate::reactive::tracked::{bind_bg, bind_text_color};
 use crate::theme::*;
+use crate::UiInteraction;
 
 
 /// A menu item's one-shot action, run with `&mut World` when the item is
@@ -211,7 +213,7 @@ fn screen_menu_anchored(
             // Block pass-through directly at spawn — inserting it later (via an
             // `Added` system) races with menus that are despawned the same frame
             // (e.g. hover-switching a menu bar), crashing on the dead entity.
-            FocusPolicy::Block,
+            BLOCK,
             RelativeCursorPosition::default(),
             Name::new("screen-menu"),
         ))
@@ -342,13 +344,13 @@ pub(crate) fn menu_row_visual(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("menu-item"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(menu_hover_bg()),
+    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(menu_hover_bg()),
         _ => Color::NONE,
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
@@ -377,8 +379,8 @@ pub(crate) fn menu_row_hover_text(
     text: Entity,
     rest: (u8, u8, u8),
 ) {
-    bind_text_color(commands, text, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(on_accent()),
+    bind_text_color(commands, text, move |w| match w.get::<UiInteraction>(row) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(on_accent()),
         _ => rgb(rest),
     });
 }
@@ -412,14 +414,14 @@ where
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             MenuAction(Box::new(on_click)),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("menu-card"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
 
@@ -533,13 +535,13 @@ pub fn menu_sep(commands: &mut Commands) -> Entity {
 /// Click a [`MenuAction`] item → run its action (deferred, with `&mut World`) and
 /// close every open [`ScreenMenu`].
 pub(crate) fn menu_action_run(
-    q: Query<(Entity, &Interaction), (Changed<Interaction>, With<MenuAction>)>,
+    q: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<MenuAction>)>,
     menus: Query<Entity, With<ScreenMenu>>,
     mut commands: Commands,
 ) {
     let mut any = false;
     for (e, interaction) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             any = true;
             commands.queue(move |world: &mut World| {
                 let action = world
@@ -731,7 +733,7 @@ pub fn icon_popup_trigger(
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Popup::new(panel),
             Name::new("icon-popup-trigger"),
@@ -784,11 +786,11 @@ fn set_panel_display(nodes: &mut Query<&mut Node>, panel: Entity, open: bool) {
 
 /// Click the trigger → toggle its panel.
 pub(crate) fn popup_toggle(
-    mut triggers: Query<(&Interaction, &mut Popup), Changed<Interaction>>,
+    mut triggers: Query<(&UiInteraction, &mut Popup), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, mut p) in &mut triggers {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         p.open = !p.open;
@@ -872,7 +874,7 @@ pub(crate) fn popup_position(
 pub(crate) fn popup_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
     cursor: Query<&RelativeCursorPosition>,
-    mut triggers: Query<(&Interaction, &mut Popup)>,
+    mut triggers: Query<(&UiInteraction, &mut Popup)>,
     mut nodes: Query<&mut Node>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
@@ -884,7 +886,7 @@ pub(crate) fn popup_dismiss(
         }
         let over_panel = cursor.get(p.panel).map(|r| r.cursor_over).unwrap_or(false);
         // Trigger is `None` only when the cursor isn't over it.
-        if *interaction == Interaction::None && !over_panel {
+        if *interaction == UiInteraction::None && !over_panel {
             p.open = false;
             let panel = p.panel;
             set_panel_display(&mut nodes, panel, false);

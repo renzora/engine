@@ -23,7 +23,9 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use std::path::PathBuf;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+use bevy::window::SystemCursorIcon;
+use renzora::core::viewport_types::{DropCursorRequest, ViewportSettings, ViewportView};
+use renzora::core::MaterialTarget;
 use renzora_editor_framework::EditorCommands;
 use renzora_ui::asset_drag::AssetDragPayload;
 
@@ -85,17 +87,34 @@ fn classify(payload: &AssetDragPayload, view: ViewportView) -> Option<DropKind> 
 /// When no payload is present (e.g. the release frame, after the browser removed
 /// it) the armed snapshot is left untouched so [`commit_viewport_drop`] can still
 /// consume the value captured on the previous frame.
+#[allow(clippy::too_many_arguments)]
 pub fn arm_viewport_drop(
     payload: Option<Res<AssetDragPayload>>,
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
     window: Query<&Window, With<PrimaryWindow>>,
+    mut target_of: Local<Option<(PathBuf, Option<MaterialTarget>)>>,
+    mut refusing: Local<bool>,
+    mut cursor: ResMut<DropCursorRequest>,
     mut armed: ResMut<ArmedViewportDrop>,
 ) {
+    // "Not allowed" is ours to clear only if we set it; see `DropCursorRequest`.
+    let mut set_refusing = |refuse: bool, cursor: &mut DropCursorRequest| {
+        if refuse {
+            if cursor.0 != Some(SystemCursorIcon::NotAllowed) {
+                cursor.0 = Some(SystemCursorIcon::NotAllowed);
+            }
+            *refusing = true;
+        } else if std::mem::take(&mut *refusing) {
+            cursor.0 = None;
+        }
+    };
     let Some(payload) = payload else {
+        set_refusing(false, &mut cursor);
         return; // keep the last snapshot for the release frame
     };
     let (Some(viewport), Some(window)) = (viewport, window.single().ok()) else {
+        set_refusing(false, &mut cursor);
         armed.0 = None;
         return;
     };
@@ -116,13 +135,35 @@ pub fn arm_viewport_drop(
         });
 
     if !valid {
+        set_refusing(false, &mut cursor);
         armed.0 = None;
         return;
     }
     let Some(kind) = classify(&payload, view) else {
+        set_refusing(false, &mut cursor);
         armed.0 = None;
         return;
     };
+
+    // A Sprite material goes on a sprite, so only in the 2D view; any other
+    // material goes on a mesh, so only in 3D. Refused before the drop, with
+    // the cursor saying so, rather than after it with a Console line.
+    if matches!(kind, DropKind::Material) {
+        if target_of.as_ref().map(|(p, _)| p) != Some(&payload.path) {
+            *target_of = Some((payload.path.clone(), MaterialTarget::of_file(&payload.path)));
+        }
+        let material = target_of.as_ref().and_then(|(_, t)| *t).unwrap_or(MaterialTarget::Mesh);
+        let fits_view = match material {
+            MaterialTarget::Sprite => view == ViewportView::Two,
+            MaterialTarget::Mesh => view != ViewportView::Two,
+        };
+        if !fits_view {
+            set_refusing(true, &mut cursor);
+            armed.0 = None;
+            return;
+        }
+    }
+    set_refusing(false, &mut cursor);
 
     let cursor = window.cursor_position().unwrap();
     let min = viewport.screen_position;

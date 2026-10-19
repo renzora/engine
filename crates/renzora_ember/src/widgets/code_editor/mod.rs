@@ -37,7 +37,9 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
+use crate::UiInteraction;
 
 mod binding;
 mod edit;
@@ -385,7 +387,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             CodeViewport { editor: root },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
@@ -414,7 +416,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(syntax_palette().cursor)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("code-caret"),
         ))
         .id();
@@ -434,7 +436,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             mono(&bevy::text::FontSource::monospace(), DEFAULT_FONT_SIZE),
             TextLayout::no_wrap(),
             Visibility::Hidden,
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             CodeProbe { editor: root },
             Name::new("code-probe"),
         ))
@@ -459,7 +461,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             // Passive: the wheel and the click-to-place-caret behaviour below it
             // both belong to the viewport, and a track that swallowed presses
             // would put a dead 8px strip down the right of every file.
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             CodeScrollTrack { editor: root },
             Name::new("code-scroll-track"),
         ))
@@ -476,7 +478,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(text_muted()).with_alpha(0.45)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             CodeScrollThumb,
             Name::new("code-scroll-thumb"),
         ))

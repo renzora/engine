@@ -7,6 +7,8 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::*;
+use crate::interaction::PASS_THROUGH;
+use crate::UiInteraction;
 
 const DRAG_THRESHOLD: f32 = 5.0;
 
@@ -52,7 +54,7 @@ pub fn draggable_file(commands: &mut Commands, fonts: &EmberFonts, name: &str) -
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             Draggable {
                 payload: name.to_string(),
             },
@@ -112,7 +114,7 @@ pub(crate) fn dnd_system(
     mut dnd: ResMut<Dnd>,
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
-    draggables: Query<(&Interaction, &Draggable)>,
+    draggables: Query<(&UiInteraction, &Draggable)>,
     targets: Query<(&RelativeCursorPosition, &AssetSlot)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
@@ -123,7 +125,7 @@ pub(crate) fn dnd_system(
     if dnd.payload.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(c) = cursor {
             for (interaction, d) in &draggables {
-                if *interaction == Interaction::Pressed {
+                if *interaction == UiInteraction::Pressed {
                     dnd.payload = Some(d.payload.clone());
                     dnd.start = c;
                     dnd.started = false;
@@ -182,7 +184,7 @@ pub(crate) fn dnd_system(
                     },
                     BackgroundColor(rgb(accent()).with_alpha(0.9)),
                     GlobalZIndex(2000),
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Name::new("dnd-ghost"),
                 ))
                 .with_children(|p| {

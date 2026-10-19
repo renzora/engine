@@ -31,6 +31,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     button, folder_new_button, folder_picker, overlay_sized, overlay_val, FolderPick,
 };
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use crate::install;
@@ -451,22 +452,22 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
 
 /// Confirm / cancel the install.
 fn install_buttons(
-    confirm: Query<&Interaction, (With<InstallConfirmBtn>, Changed<Interaction>)>,
-    dismiss: Query<(&Interaction, &InstallDismissBtn), Changed<Interaction>>,
+    confirm: Query<&UiInteraction, (With<InstallConfirmBtn>, Changed<UiInteraction>)>,
+    dismiss: Query<(&UiInteraction, &InstallDismissBtn), Changed<UiInteraction>>,
     pending: Option<Res<PendingInstall>>,
     pick: Res<FolderPick>,
     mut jobs: ResMut<InstallJobs>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             commands.entity(btn.0).despawn();
             commands.remove_resource::<PendingInstall>();
             commands.remove_resource::<OverlayInstall>();
         }
     }
 
-    if !confirm.iter().any(|i| *i == Interaction::Pressed) {
+    if !confirm.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(pending) = pending else { return };
@@ -603,8 +604,8 @@ fn poll_install_result(
 }
 
 /// "Restart Editor" on the install notice.
-fn restart_button(q: Query<&Interaction, (With<InstallRestartBtn>, Changed<Interaction>)>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn restart_button(q: Query<&UiInteraction, (With<InstallRestartBtn>, Changed<UiInteraction>)>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         renzora::restart_process();
     }
 }
@@ -851,11 +852,11 @@ fn build_progress_step(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// "Close" on the finished view — the same teardown as Cancel, from the other
 /// face of the overlay.
 fn close_button(
-    close: Query<&Interaction, (With<InstallCloseBtn>, Changed<Interaction>)>,
+    close: Query<&UiInteraction, (With<InstallCloseBtn>, Changed<UiInteraction>)>,
     active: Option<Res<OverlayInstall>>,
     mut commands: Commands,
 ) {
-    if !close.iter().any(|i| *i == Interaction::Pressed) {
+    if !close.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     if let Some(active) = &active {

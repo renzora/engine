@@ -3,16 +3,18 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition};
+use bevy::ui::RelativeCursorPosition;
 
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
 use crate::thumbs::HubThumbs;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{accent_button, accent_chip, scroll_area, HoverTint, OverlaySurface};
+use renzora_ember::UiInteraction;
 
 #[cfg(not(target_arch = "wasm32"))]
 use renzora_audio::AudioLink;
@@ -31,11 +33,11 @@ use super::{
 /// the pill children capture their own clicks (they're `Block`), so this only
 /// fires for a genuine body/thumbnail press.
 pub(super) fn store_card_click(
-    q: Query<(&Interaction, &StoreCardBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &StoreCardBtn), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let asset = btn.0.clone();
@@ -139,12 +141,12 @@ fn build_overlay(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSumma
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
             GlobalZIndex(9600),
-            FocusPolicy::Block,
+            BLOCK,
             // OverlaySurface + a cursor probe so ember counts this as a modal
             // surface and confines wheel/pointer to it (panels behind go inert).
             OverlaySurface,
             RelativeCursorPosition::default(),
-            Interaction::default(),
+            UiInteraction::default(),
             ItemBackdrop,
             Name::new("item-overlay"),
         ))
@@ -165,7 +167,7 @@ fn build_overlay(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSumma
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             // Block so clicks inside the card never reach the backdrop-close.
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("item-overlay-card"),
         ))
         .id();
@@ -233,7 +235,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts, _asset: &AssetSumma
                 ..default()
             },
             // Click the big preview to open it full-size in the lightbox.
-            Interaction::default(),
+            UiInteraction::default(),
             MainImageBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
@@ -300,13 +302,13 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts, _asset: &AssetSumma
                 Color::srgba(0.0, 0.0, 0.0, 0.72),
                 Color::srgba(0.0, 0.0, 0.0, 0.72),
             ),
-            Interaction::default(),
+            UiInteraction::default(),
             ItemCloseBtn,
             Name::new("item-overlay-close"),
         ))
         .id();
     let x = icon_text(commands, &fonts.phosphor, "x", (240, 240, 245), 13.0);
-    commands.entity(x).insert(FocusPolicy::Pass);
+    commands.entity(x).insert(PASS_THROUGH);
     commands.entity(close).add_child(x);
     commands.entity(header).add_child(close);
     header
@@ -352,7 +354,7 @@ fn loading_note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Enti
                 display: Display::None,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let label = commands
@@ -360,7 +362,7 @@ fn loading_note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Enti
             Text::new(text.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(note).add_child(label);

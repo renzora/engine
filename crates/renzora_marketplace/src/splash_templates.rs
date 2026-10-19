@@ -30,13 +30,14 @@
 
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
-use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver};
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 use renzora_splash::{register_splash_section, SplashSection, TEMPLATES_SECTION_ID};
 
 use crate::auth::marketplace::{AssetSummary, MarketplaceListResponse};
@@ -136,7 +137,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(22.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-page-templates"),
         ))
         .id();
@@ -146,7 +147,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("Templates".to_string()),
             ui_font(&fonts.ui, 21.0),
             TextColor(Color::srgb(0.90, 0.92, 0.96)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let sub = commands
@@ -158,7 +159,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ),
             ui_font(&fonts.ui, 12.0),
             TextColor(muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -171,7 +172,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(10.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let search = build_search(commands, fonts);
@@ -190,7 +191,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     keyed_list(commands, list, listings_snapshot);
@@ -219,7 +220,7 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(Color::srgba(10.0 / 255.0, 12.0 / 255.0, 20.0 / 255.0, 0.88)),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     let mag = icon_text(
@@ -229,7 +230,7 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         (150, 158, 178),
         14.0,
     );
-    commands.entity(mag).insert(FocusPolicy::Pass);
+    commands.entity(mag).insert(PASS_THROUGH);
     let field = text_input(commands, &fonts.ui, "Search templates…", "");
     commands.entity(field).insert((
         TemplateSearch,
@@ -265,18 +266,18 @@ fn small_button(
                 ..default()
             },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.06)),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, (224, 228, 240), 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 12.0),
             TextColor(Color::srgb(0.87, 0.89, 0.94)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);
@@ -300,17 +301,17 @@ fn notice_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(Color::srgba(0.55, 0.20, 0.20, 0.20)),
             BorderColor::all(Color::srgba(1.0, 0.45, 0.45, 0.30)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, "warning", (255, 170, 170), 14.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let text = commands
         .spawn((
             Text::new(String::new()),
             ui_font(&fonts.ui, 11.5),
             TextColor(Color::srgb(1.0, 0.82, 0.82)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_text(commands, text, |w: &Rx| {
@@ -387,7 +388,7 @@ fn note_snapshot(message: &str) -> KeyedSnapshot {
                     Text::new(message.clone()),
                     ui_font(&fonts.ui, 12.0),
                     TextColor(muted()),
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id()
         }),
@@ -416,7 +417,7 @@ fn listing_card(
             },
             BackgroundColor(card_bg()),
             BorderColor::all(border_soft()),
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
 
@@ -430,7 +431,7 @@ fn listing_card(
                 row_gap: Val::Px(4.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name = commands
@@ -438,7 +439,7 @@ fn listing_card(
             Text::new(asset.name.clone()),
             ui_font(&fonts.ui, 13.5),
             TextColor(Color::srgb(0.90, 0.92, 0.96)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let desc = commands
@@ -446,7 +447,7 @@ fn listing_card(
             Text::new(elide(first_line(&asset.description), 220)),
             ui_font(&fonts.ui, 11.0),
             TextColor(muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let by = commands
@@ -462,7 +463,7 @@ fn listing_card(
             )),
             ui_font(&fonts.ui, 10.0),
             TextColor(Color::srgb(0.45, 0.48, 0.56)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(info).add_children(&[name, desc, by]);
@@ -501,7 +502,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
                 ..default()
             },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.04)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     match &asset.thumbnail_url {
@@ -515,7 +516,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
                         ..default()
                     },
                     ImageNode::default().with_mode(NodeImageMode::Stretch),
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                 ))
                 .id();
             bind_with(
@@ -533,7 +534,7 @@ fn build_thumb(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary
         }
         None => {
             let ic = icon_text(commands, &fonts.phosphor, "blueprint", (110, 150, 255), 24.0);
-            commands.entity(ic).insert(FocusPolicy::Pass);
+            commands.entity(ic).insert(PASS_THROUGH);
             commands.entity(frame).add_child(ic);
         }
     }
@@ -636,10 +637,10 @@ fn search_sync(
 }
 
 fn refresh_click(
-    q: Query<&Interaction, (With<TemplateRefreshBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<TemplateRefreshBtn>, Changed<UiInteraction>)>,
     mut store: ResMut<TemplateStore>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         store.dirty = true;
     }
 }
@@ -647,12 +648,12 @@ fn refresh_click(
 // ── Creating ─────────────────────────────────────────────────────────────────
 
 fn use_click(
-    q: Query<(&Interaction, &TemplateUseBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TemplateUseBtn), Changed<UiInteraction>>,
     session: Res<AuthSession>,
     mut store: ResMut<TemplateStore>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let asset = btn.0.clone();

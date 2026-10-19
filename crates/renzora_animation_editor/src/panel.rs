@@ -28,6 +28,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
+use renzora_ember::UiInteraction;
 
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
@@ -450,7 +451,7 @@ fn clip_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             ClipRowBtn {
                 name: name.to_string(),
                 looping,
@@ -881,7 +882,7 @@ fn param_trigger_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, na
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             FireBtn {
                 name: name.to_string(),
             },
@@ -1138,7 +1139,7 @@ fn cache_panel_clip(
 /// Click a clip-library row → select it (bridge) + play it (command queue),
 /// exactly like the egui panel.
 fn clip_row_click(
-    q: Query<(&Interaction, &ClipRowBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ClipRowBtn), Changed<UiInteraction>>,
     state: Option<Res<AnimationEditorState>>,
     bridge: Option<Res<AnimEditorBridge>>,
     cmds: Option<Res<EditorCommands>>,
@@ -1150,7 +1151,7 @@ fn clip_row_click(
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Ok(mut p) = bridge.pending.lock() {
@@ -1178,14 +1179,14 @@ fn clip_row_click(
 
 /// Trigger "Fire" button → push a `FireTrigger` action onto the bridge.
 fn fire_click(
-    q: Query<(&Interaction, &FireBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &FireBtn), Changed<UiInteraction>>,
     bridge: Option<Res<AnimEditorBridge>>,
 ) {
     let Some(bridge) = bridge else {
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Ok(mut p) = bridge.pending.lock() {

@@ -13,12 +13,13 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_text, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::loading::{EditorLoadingOverlayActive, LoadingBytes, LoadingTasks, TextureLoadProgress};
 use crate::SplashState;
@@ -224,8 +225,8 @@ fn spawn_loading(
     ));
     if modal {
         backdrop.insert((
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             OverlaySurface,
             EditorOverlayRoot,
@@ -252,7 +253,7 @@ fn spawn_loading(
                         bottom: Val::Px(0.0),
                         ..default()
                     },
-                    FocusPolicy::Pass,
+                    PASS_THROUGH,
                     crate::post::HazeView,
                     Name::new("loading-haze"),
                 ))

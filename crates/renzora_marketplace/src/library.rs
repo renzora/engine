@@ -18,6 +18,7 @@ use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
+use renzora_ember::UiInteraction;
 use renzora::SplashState;
 
 use crate::install;
@@ -168,7 +169,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Node { width: Val::Px(26.0), height: Val::Px(24.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             LibRefreshBtn,
             Name::new("lib-refresh"),
         ))
@@ -224,7 +225,7 @@ fn pager_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &s
         .spawn((
             Node { width: Val::Px(26.0), height: Val::Px(24.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
             Name::new("lib-pager-btn"),
         ))
@@ -351,7 +352,7 @@ fn asset_row(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, inst
         .spawn((
             Node { width: Val::Px(72.0), height: Val::Px(24.0), flex_shrink: 0.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(4.0), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() },
             BackgroundColor(if installing { rgb(text_muted()) } else { rgb(GREEN) }),
-            Interaction::default(),
+            UiInteraction::default(),
             LibInstallBtn(a.id.clone()),
             Name::new("lib-install"),
         ))
@@ -404,14 +405,14 @@ fn library_filter_sync(input: Query<&EmberTextInput, With<LibFilter>>, mut data:
     }
 }
 
-fn library_prev_click(q: Query<&Interaction, (With<LibPrevBtn>, Changed<Interaction>)>, mut data: ResMut<HubLibraryData>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn library_prev_click(q: Query<&UiInteraction, (With<LibPrevBtn>, Changed<UiInteraction>)>, mut data: ResMut<HubLibraryData>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         data.page = data.current_page().saturating_sub(1);
     }
 }
 
-fn library_next_click(q: Query<&Interaction, (With<LibNextBtn>, Changed<Interaction>)>, mut data: ResMut<HubLibraryData>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn library_next_click(q: Query<&UiInteraction, (With<LibNextBtn>, Changed<UiInteraction>)>, mut data: ResMut<HubLibraryData>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         let max = data.total_pages().saturating_sub(1);
         data.page = (data.current_page() + 1).min(max);
     }
@@ -457,8 +458,8 @@ fn library_refresh(mut data: ResMut<HubLibraryData>, session: Option<Res<AuthSes
     fetch_my_assets(&mut data, &session);
 }
 
-fn library_refresh_click(q: Query<&Interaction, (With<LibRefreshBtn>, Changed<Interaction>)>, mut data: ResMut<HubLibraryData>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn library_refresh_click(q: Query<&UiInteraction, (With<LibRefreshBtn>, Changed<UiInteraction>)>, mut data: ResMut<HubLibraryData>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         data.needs_refresh = true;
     }
 }
@@ -487,7 +488,7 @@ fn fetch_my_assets(data: &mut HubLibraryData, session: &AuthSession) {
 fn fetch_my_assets(_data: &mut HubLibraryData, _session: &AuthSession) {}
 
 fn library_install_click(
-    q: Query<(&Interaction, &LibInstallBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &LibInstallBtn), Changed<UiInteraction>>,
     mut data: ResMut<HubLibraryData>,
     session: Option<Res<AuthSession>>,
     project: Option<Res<renzora::core::CurrentProject>>,
@@ -497,7 +498,7 @@ fn library_install_click(
         return;
     }
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(asset) = data.assets.iter().find(|a| a.id == btn.0).cloned() else { continue };

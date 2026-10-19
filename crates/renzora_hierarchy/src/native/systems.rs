@@ -10,6 +10,7 @@ use renzora_undo::{execute, LockToggleCmd, UndoContext, VisibilityToggleCmd};
 
 use bevy::ui::{ComputedNode, ScrollPosition};
 use renzora_ember::widgets::EmberScroll;
+use renzora_ember::UiInteraction;
 
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
@@ -208,9 +209,9 @@ pub(crate) fn hierarchy_scroll_to_selection(
 /// the empty space to the right used to open a rename field when what the
 /// gesture plainly meant was "fold this branch, twice".
 pub(crate) fn hierarchy_row_click(
-    rows: Query<(&Interaction, &HierRowClick), Changed<Interaction>>,
-    carets: Query<(&Interaction, &HierCaretToggle)>,
-    pins: Query<&Interaction, With<HierPinClick>>,
+    rows: Query<(&UiInteraction, &HierRowClick), Changed<UiInteraction>>,
+    carets: Query<(&UiInteraction, &HierCaretToggle)>,
+    pins: Query<&UiInteraction, With<HierPinClick>>,
     labels: Query<(&HierRowLabel, &ComputedNode, &UiGlobalTransform)>,
     windows: Query<&Window>,
     selection: Option<Res<EditorSelection>>,
@@ -230,7 +231,7 @@ pub(crate) fn hierarchy_row_click(
     // reason the caret guard above exists). When a pin was pressed this frame,
     // let `hierarchy_pin_click` own the click entirely and ignore the row behind
     // it, so the sticky header doesn't select/deselect a random hidden row.
-    if pins.iter().any(|i| *i == Interaction::Pressed) {
+    if pins.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let cursor = windows.iter().find_map(|w| w.cursor_position());
@@ -242,7 +243,7 @@ pub(crate) fn hierarchy_row_click(
     ]);
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     for (interaction, row) in &rows {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         // The caret sits over the row's click layer, so the same physical click
@@ -251,7 +252,7 @@ pub(crate) fn hierarchy_row_click(
         // arrow must expand/collapse it, not deselect it.
         if carets
             .iter()
-            .any(|(i, c)| c.0 == row.entity && *i == Interaction::Pressed)
+            .any(|(i, c)| c.0 == row.entity && *i == UiInteraction::Pressed)
         {
             continue;
         }
@@ -497,17 +498,17 @@ pub(crate) fn hierarchy_arrow_keys(
 
 /// Caret click → toggle the row's expansion.
 pub(crate) fn hierarchy_caret_click(
-    q: Query<(&Interaction, &HierCaretToggle), Changed<Interaction>>,
-    pins: Query<&Interaction, With<HierPinClick>>,
+    q: Query<(&UiInteraction, &HierCaretToggle), Changed<UiInteraction>>,
+    pins: Query<&UiInteraction, With<HierPinClick>>,
     mut expanded: ResMut<HierExpanded>,
 ) {
     // A pin click overlaps the row (and its caret) behind the sticky header;
     // let `hierarchy_pin_click` own it so a hidden row's caret doesn't toggle.
-    if pins.iter().any(|i| *i == Interaction::Pressed) {
+    if pins.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     for (interaction, caret) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if expanded.0.contains(&caret.0) {
@@ -520,14 +521,14 @@ pub(crate) fn hierarchy_caret_click(
 
 /// Eye toggle click → push a visibility-toggle command (undoable).
 pub(crate) fn hierarchy_vis_toggle(
-    q: Query<(&Interaction, &HierVisToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HierVisToggle), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else {
         return;
     };
     for (interaction, t) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, was_visible) = (t.entity, t.visible);
@@ -548,14 +549,14 @@ pub(crate) fn hierarchy_vis_toggle(
 /// editor. The actual path resolution + tab routing runs as a deferred command
 /// (needs `&mut World`), via [`open_entity_asset`].
 pub(crate) fn hierarchy_badge_click(
-    q: Query<(&Interaction, &HierAssetBadge), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HierAssetBadge), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else {
         return;
     };
     for (interaction, badge) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, kind) = (badge.entity, badge.kind);
@@ -623,14 +624,14 @@ fn open_entity_asset(world: &mut World, entity: Entity, kind: BadgeKind) {
 
 /// Lock toggle click → push a lock-toggle command (undoable).
 pub(crate) fn hierarchy_lock_toggle(
-    q: Query<(&Interaction, &HierLockToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &HierLockToggle), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else {
         return;
     };
     for (interaction, t) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, was_locked) = (t.entity, t.locked);

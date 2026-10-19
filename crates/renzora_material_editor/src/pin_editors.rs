@@ -19,10 +19,12 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_with};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
+use renzora_ember::UiInteraction;
 use renzora_editor_framework::AssetDragPayload;
 use renzora_shader::material::graph::{PinTemplate, PinType, PinValue};
 
@@ -206,7 +208,7 @@ fn tex_display(v: Option<PinValue>) -> (String, bool) {
 
 fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &str) -> Entity {
     let path_text = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), bevy::ui::FocusPolicy::Pass))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
         .id();
     let n = pin.to_string();
     bind_with(commands, path_text, move |w| tex_display(pin_value(w, node_id, &n)), |w, e, (text, has): &(String, bool)| {
@@ -224,7 +226,7 @@ fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin:
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), overflow: Overflow::clip(), ..default() },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             TexDropZone { node_id, pin: pin.to_string() },
             Name::new("mat-tex-drop"),
@@ -232,7 +234,7 @@ fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin:
         .id();
     commands.entity(drop_box).add_child(path_text);
     let clear = commands
-        .spawn((Text::new("\u{2715}"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { padding: UiRect::horizontal(Val::Px(2.0)), ..default() }, Interaction::default(), TexClearBtn { node_id, pin: pin.to_string() }, Name::new("mat-tex-clear")))
+        .spawn((Text::new("\u{2715}"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { padding: UiRect::horizontal(Val::Px(2.0)), ..default() }, UiInteraction::default(), TexClearBtn { node_id, pin: pin.to_string() }, Name::new("mat-tex-clear")))
         .id();
     let row = commands
         .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() })
@@ -269,10 +271,10 @@ fn tex_drop(
     }
 }
 
-fn tex_clear(q: Query<(&Interaction, &TexClearBtn), Changed<Interaction>>, state: Option<ResMut<MaterialEditorState>>) {
+fn tex_clear(q: Query<(&UiInteraction, &TexClearBtn), Changed<UiInteraction>>, state: Option<ResMut<MaterialEditorState>>) {
     let Some(mut state) = state else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some(node) = state.graph.get_node_mut(btn.node_id) {
@@ -284,7 +286,7 @@ fn tex_clear(q: Query<(&Interaction, &TexClearBtn), Changed<Interaction>>, state
 
 /// Click a zone (when no asset is being dragged) → open a file picker.
 fn tex_browse(
-    q: Query<(&Interaction, &TexDropZone), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TexDropZone), Changed<UiInteraction>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
     state: Option<ResMut<MaterialEditorState>>,
@@ -294,7 +296,7 @@ fn tex_browse(
     }
     let Some(mut state) = state else { return };
     for (interaction, zone) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         #[cfg(not(target_arch = "wasm32"))]

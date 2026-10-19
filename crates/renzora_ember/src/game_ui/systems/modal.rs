@@ -9,10 +9,11 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{ModalData, UiWidgetPart};
+use crate::UiInteraction;
 
 pub fn modal_system(
     mut modals: Query<(Entity, &ModalData, &Children, &mut Visibility)>,
-    parts: Query<(&UiWidgetPart, &Interaction), Changed<Interaction>>,
+    parts: Query<(&UiWidgetPart, &UiInteraction), Changed<UiInteraction>>,
 ) {
     for (_entity, data, children, mut vis) in &mut modals {
         for child in children.iter() {
@@ -20,7 +21,7 @@ pub fn modal_system(
                 continue;
             };
 
-            if *interaction != Interaction::Pressed {
+            if *interaction != UiInteraction::Pressed {
                 continue;
             }
 

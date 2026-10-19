@@ -22,6 +22,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_l
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
+use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, collapsible, drag_value, text_input, DragRange,
 };
@@ -223,7 +224,7 @@ fn type_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &st
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TypeRow { index },
             Name::new(format!("foliage-type:{index}")),
@@ -234,8 +235,8 @@ fn type_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &st
         if active_type(w) == index {
             rgb(accent()).with_alpha(0.25)
         } else if matches!(
-            w.get::<Interaction>(row),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(row),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -353,7 +354,7 @@ fn brush_mode_button(
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             BrushModeBtn { mode },
             Name::new("foliage-brush-mode"),
@@ -364,8 +365,8 @@ fn brush_mode_button(
         if settings(w).brush_type == mode {
             rgb(accent()).with_alpha(0.30)
         } else if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(hover_bg())
         } else {
@@ -668,14 +669,14 @@ fn action_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
             },
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("foliage-action:{label}")),
         ))
         .id();
     let b_for_bg = b;
-    bind_bg(commands, b, move |w| match w.get::<Interaction>(b_for_bg) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+    bind_bg(commands, b, move |w| match w.get::<UiInteraction>(b_for_bg) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => rgb(card_bg()),
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
@@ -722,25 +723,25 @@ where
 // ── Systems: selection + add/remove + density-map seeding ────────────────────
 
 fn foliage_type_select(
-    q: Query<(&Interaction, &TypeRow), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TypeRow), Changed<UiInteraction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
 ) {
     let Some(settings) = settings.as_mut() else {
         return;
     };
     for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.active_type = row.index;
         }
     }
 }
 
 fn foliage_add_type(
-    q: Query<&Interaction, (With<AddTypeBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AddTypeBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
     config: Option<Res<FoliageConfig>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let mut cfg = config.map(|c| c.clone()).unwrap_or_default();
@@ -752,12 +753,12 @@ fn foliage_add_type(
 }
 
 fn foliage_remove_type(
-    q: Query<&Interaction, (With<RemoveTypeBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<RemoveTypeBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
     config: Option<Res<FoliageConfig>>,
     settings: Option<Res<FoliagePaintSettings>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let mut cfg = config.map(|c| c.clone()).unwrap_or_default();
@@ -786,7 +787,7 @@ fn foliage_remove_type(
 /// `ActiveTool` directly rather than through a tab, because foliage has no tab
 /// of its own — it is a section beside the Sculpt/Paint tabs, not one of them.
 fn foliage_brush_select(
-    q: Query<(&Interaction, &BrushModeBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &BrushModeBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
     mut active: Option<ResMut<ActiveTool>>,
 ) {
@@ -794,7 +795,7 @@ fn foliage_brush_select(
         return;
     };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.brush_type = btn.mode;
             if let Some(active) = active.as_mut() {
                 if **active != ActiveTool::FoliagePaint {

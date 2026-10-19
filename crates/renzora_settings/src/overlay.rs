@@ -7,15 +7,16 @@
 //! rebuilds when either moves.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora::CurrentProject;
 use renzora_editor_framework::{EditorSettings, SettingsTab};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::BLOCK;
 use renzora_ember::reactive::Rx;
 use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::scroll_view_bar;
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 use renzora_input::InputMap;
 use renzora_viewport::settings::ViewportSettings;
@@ -213,8 +214,8 @@ fn spawn_overlay(
             // and above the global bottom panel, which claims a tier of its own
             // and used to paint over the modal from the same depth.
             GlobalZIndex(renzora_ember::stacking::MODAL_SCRIM_Z),
-            FocusPolicy::Block,
-            Interaction::default(),
+            BLOCK,
+            UiInteraction::default(),
             // Capture the wheel so scrolling doesn't bleed to the dock behind.
             renzora_ember::widgets::ModalSurface,
             // Editor chrome — keep this whole overlay tree out of scene saves
@@ -240,7 +241,7 @@ fn spawn_overlay(
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::window_bg())),
-            FocusPolicy::Block,
+            BLOCK,
             Name::new("settings-panel"),
         ))
         .id();
@@ -271,7 +272,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let close = renzora_ember::widgets::icon_button(commands, fonts, "x");
     commands
         .entity(close)
-        .insert((FocusPolicy::Block, CloseBtn));
+        .insert((BLOCK, CloseBtn));
 
     let bar = commands
         .spawn((
@@ -348,11 +349,11 @@ fn build_body(
 }
 
 pub(crate) fn settings_close_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<CloseBtn>)>,
+    btns: Query<&UiInteraction, (Changed<UiInteraction>, With<CloseBtn>)>,
     mut settings: ResMut<EditorSettings>,
 ) {
     for interaction in &btns {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             settings.show_settings = false;
         }
     }

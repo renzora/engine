@@ -24,6 +24,7 @@ use std::sync::Arc;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
@@ -31,6 +32,7 @@ use renzora_ember::widgets::{
     toggle_switch, HoverTooltip, Section,
 };
 use renzora_ember::theme::{accent, border, rgb, section_bg, text_muted};
+use renzora_ember::UiInteraction;
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
 pub fn register(app: &mut App) {
@@ -532,12 +534,12 @@ fn build_script_section(
         script_id: spec.id,
     });
     // The header's script icon doubles as "open in code editor" for file-backed
-    // entries. FocusPolicy::Block keeps the press from also collapsing the
+    // entries. `BLOCK` keeps the press from also collapsing the
     // section (same as the toggle/trash affordances below).
     if let Some(path) = &spec.path {
         commands.entity(icon).insert((
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             HoverTooltip::new(renzora::lang::t("comp.script.open")),
             ScriptOpenBtn { path: path.clone() },
@@ -581,11 +583,11 @@ fn build_script_section(
                 flex_grow: 1.0,
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let toggle = toggle_switch(commands, spec.enabled);
-    commands.entity(toggle).insert(bevy::ui::FocusPolicy::Block);
+    commands.entity(toggle).insert(BLOCK);
     let id = spec.id;
     bind_2way(
         commands,
@@ -603,8 +605,8 @@ fn build_script_section(
     };
     let play = icon_text(commands, &fonts.phosphor, play_glyph, play_col, 13.0);
     commands.entity(play).insert((
-        Interaction::default(),
-        bevy::ui::FocusPolicy::Block,
+        UiInteraction::default(),
+        BLOCK,
         ScriptPreviewBtn {
             entity,
             script_id: spec.id,
@@ -612,8 +614,8 @@ fn build_script_section(
     ));
     let trash = icon_text(commands, &fonts.phosphor, "trash", (150, 150, 162), 13.0);
     commands.entity(trash).insert((
-        Interaction::default(),
-        bevy::ui::FocusPolicy::Block,
+        UiInteraction::default(),
+        BLOCK,
         ScriptRemoveBtn {
             entity,
             script_id: spec.id,
@@ -787,12 +789,12 @@ fn vec_axes(
 }
 
 fn script_remove_click(
-    q: Query<(&Interaction, &ScriptRemoveBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ScriptRemoveBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, id) = (btn.entity, btn.script_id);
@@ -806,12 +808,12 @@ fn script_remove_click(
 /// entry. Resets its runtime state on each toggle so `on_ready` re-fires cleanly
 /// every time a preview starts (and a stopped preview leaves nothing half-inited).
 fn script_preview_click(
-    q: Query<(&Interaction, &ScriptPreviewBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ScriptPreviewBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (entity, id) = (btn.entity, btn.script_id);
@@ -832,12 +834,12 @@ fn script_preview_click(
 /// contract `OpenCodeEditorFile` resource, then reveal the Code Editor panel in
 /// whichever dock backend is live.
 fn script_open_click(
-    q: Query<(&Interaction, &ScriptOpenBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &ScriptOpenBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let path = btn.path.clone();
@@ -894,7 +896,7 @@ fn build_add_bar(
             Text::new(renzora::lang::t("comp.script.drop")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let drop = commands

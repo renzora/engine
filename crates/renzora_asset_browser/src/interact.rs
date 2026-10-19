@@ -11,6 +11,7 @@ use renzora_editor_framework::{
     EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SceneThumbnailRegistry,
 };
 use renzora_ember::widgets::EmberTextInput;
+use renzora_ember::UiInteraction;
 
 use crate::ops::track_recent;
 use crate::state::{
@@ -21,11 +22,11 @@ use crate::tree::flat_folder_order;
 use crate::thumbnails::ThumbnailCache;
 
 pub(crate) fn tree_toggle_click(
-    q: Query<(&Interaction, &TreeToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TreeToggle), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
 ) {
     for (interaction, toggle) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if state.expanded.contains(&toggle.0) {
                 state.expanded.remove(&toggle.0);
             } else {
@@ -36,8 +37,8 @@ pub(crate) fn tree_toggle_click(
 }
 
 pub(crate) fn tree_nav_click(
-    q: Query<(&Interaction, &TreeNav)>,
-    names: Query<(&Interaction, &AssetNameLabel)>,
+    q: Query<(&UiInteraction, &TreeNav)>,
+    names: Query<(&UiInteraction, &AssetNameLabel)>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -55,14 +56,14 @@ pub(crate) fn tree_nav_click(
     let cursor = windows.iter().find_map(|w| w.cursor_position());
     if mouse.just_pressed(MouseButton::Left) {
         if let (Some((_, nav)), Some(c)) =
-            (q.iter().find(|(i, _)| **i == Interaction::Pressed), cursor)
+            (q.iter().find(|(i, _)| **i == UiInteraction::Pressed), cursor)
         {
             // Whether the press landed on the row's *name*, recorded now: the
             // gesture is decided on release, by which time the label's
-            // `Interaction` has already fallen back to `Hovered`.
+            // `UiInteraction` has already fallen back to `Hovered`.
             let on_name = names
                 .iter()
-                .any(|(i, l)| *i == Interaction::Pressed && l.path == nav.0);
+                .any(|(i, l)| *i == UiInteraction::Pressed && l.path == nav.0);
             *press = Some((nav.0.clone(), c, on_name));
         }
     }
@@ -134,11 +135,11 @@ pub(crate) fn tree_nav_click(
 }
 
 pub(crate) fn tree_tab_click(
-    q: Query<(&Interaction, &TreeTabBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &TreeTabBtn), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
 ) {
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed && state.tree_tab != btn.0 {
+        if *interaction == UiInteraction::Pressed && state.tree_tab != btn.0 {
             state.tree_tab = btn.0;
         }
     }
@@ -158,8 +159,8 @@ pub(crate) fn tree_search_sync(
 }
 
 pub(crate) fn tile_click(
-    q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
-    names: Query<(&Interaction, &AssetNameLabel), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &AssetTile), Changed<UiInteraction>>,
+    names: Query<(&UiInteraction, &AssetNameLabel), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -179,19 +180,19 @@ pub(crate) fn tile_click(
     // gate for explorer-style click-the-name-to-rename (so the click that first
     // selects an item never renames). Captured before the loop mutates selection.
     let prev_sole = (state.selection.len() == 1).then(|| state.selected.clone()).flatten();
-    // The name label pressed this frame (its tile is also Pressed via
-    // FocusPolicy::Pass), with the surface it is drawn on — a tree file row
+    // The name label pressed this frame (its tile is also Pressed, since the
+    // label passes the pointer through), with the surface it is drawn on: a tree file row
     // carries an `AssetTile` too, and its rename belongs to the tree.
     let name_pressed = names
         .iter()
-        .find(|(i, _)| **i == Interaction::Pressed)
+        .find(|(i, _)| **i == UiInteraction::Pressed)
         .map(|(_, n)| (n.path.clone(), n.surface));
     // The tile this press *single*-clicked, if any. Gating the rename arm on it
     // (rather than on `last_click`, which survives the frame) keeps a name press
     // on one surface from arming a rename for a stale click on the other.
     let mut single_click: Option<PathBuf> = None;
     for (interaction, tile) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let double = state
@@ -377,11 +378,11 @@ fn os_open(path: &Path) {
 }
 
 pub(crate) fn back_click(
-    q: Query<&Interaction, (With<AssetBack>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<AssetBack>, Changed<UiInteraction>)>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(root) = project.map(|p| p.path.clone()) else {

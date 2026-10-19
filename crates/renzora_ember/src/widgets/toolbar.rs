@@ -18,13 +18,14 @@
 //! owners. Only the look is shared.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use crate::cursor_icon::HoverCursor;
 use crate::font::{icon_text, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::{border, divider, hover_bg, panel_bg, rgb, text_primary, value_text};
 use crate::widgets::{arrange_row, OverlaySurface};
+use crate::UiInteraction;
 
 /// Edge length of a square toolbar button.
 pub const TOOLBAR_BTN: f32 = 28.0;
@@ -100,7 +101,7 @@ pub fn toolbar_group(commands: &mut Commands, name: &str) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new(name.to_string()),
         ))
         .id()
@@ -171,7 +172,7 @@ pub fn toolbar_pill(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("toolbar-pill-toggle"),
         ))
@@ -312,7 +313,7 @@ pub fn toolbar_icon_button(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), TOOLBAR_ICON);

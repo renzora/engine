@@ -3,13 +3,14 @@
 use bevy::prelude::*;
 
 use crate::game_ui::components::{CheckboxData, UiWidgetPart};
+use crate::UiInteraction;
 
 pub fn checkbox_system(
-    mut checkboxes: Query<(&mut CheckboxData, &Interaction, &Children), Changed<Interaction>>,
+    mut checkboxes: Query<(&mut CheckboxData, &UiInteraction, &Children), Changed<UiInteraction>>,
     mut parts: Query<(&UiWidgetPart, &mut Visibility, &mut BackgroundColor)>,
 ) {
     for (mut data, interaction, children) in &mut checkboxes {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             data.checked = !data.checked;
         }
 

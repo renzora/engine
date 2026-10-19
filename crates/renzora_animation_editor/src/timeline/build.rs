@@ -10,6 +10,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     drag_value, dropdown_compact, text_input, timeline_view, DragRange,
 };
+use renzora_ember::UiInteraction;
 
 use crate::{AnimEditorAction, AnimEditorBridge};
 
@@ -68,7 +69,7 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             AddTrackBtn,
         ))
         .id();
@@ -119,7 +120,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             ClipCombo,
         ))
@@ -256,7 +257,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn icon_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, color: (u8, u8, u8), marker: M) -> (Entity, Entity) {
     let btn = commands
-        .spawn((Node { width: Val::Px(30.0), height: Val::Px(28.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
+        .spawn((Node { width: Val::Px(30.0), height: Val::Px(28.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), UiInteraction::default(), marker))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, color, 17.0);
     commands.entity(btn).add_child(ic);

@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 pub(crate) struct CollapsiblePlugin;
 
@@ -50,7 +51,7 @@ pub fn collapsible(
                 column_gap: Val::Px(4.0),
                 ..default()
             },
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("collapsible-header"),
         ))
@@ -101,12 +102,12 @@ pub fn collapsible(
 }
 
 fn collapsible_toggle(
-    mut q: Query<(&Interaction, &mut Collapsible), Changed<Interaction>>,
+    mut q: Query<(&UiInteraction, &mut Collapsible), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
     for (interaction, mut c) in &mut q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         c.open = !c.open;

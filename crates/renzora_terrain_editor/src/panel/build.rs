@@ -7,6 +7,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::TerrainTab;
 
@@ -113,7 +114,7 @@ fn tab_button(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TabBtn { tab },
             Name::new(format!("terrain-tab:{label}")),
@@ -123,8 +124,8 @@ fn tab_button(
         if settings_tab(w) == tab {
             rgb(accent())
         } else if matches!(
-            w.get::<Interaction>(btn),
-            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            w.get::<UiInteraction>(btn),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
             rgb(popup_bg())
         } else {

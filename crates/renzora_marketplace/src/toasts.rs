@@ -11,6 +11,7 @@ use bevy::prelude::*;
 // a message you dismiss.
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::toast;
+use renzora_ember::UiInteraction;
 pub(crate) use renzora_ember::widgets::Tone;
 
 const MAX_VISIBLE: usize = 3;
@@ -104,7 +105,7 @@ pub(crate) fn drain_toasts(
         let card = toast(&mut commands, &fonts, req.tone, &req.message);
         commands.entity(card).insert((
             SocialToast { expires_at: now + TTL_SECS },
-            Interaction::default(),
+            UiInteraction::default(),
         ));
         commands.entity(container).add_child(card);
     }
@@ -113,10 +114,10 @@ pub(crate) fn drain_toasts(
 /// Click a toast to dismiss it.
 pub(crate) fn toast_clicks(
     mut commands: Commands,
-    clicked: Query<(Entity, &Interaction), (Changed<Interaction>, With<SocialToast>)>,
+    clicked: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<SocialToast>)>,
 ) {
     for (e, interaction) in &clicked {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             // `try_despawn`: the expiry pass may despawn this toast the same
             // frame it's clicked.
             commands.entity(e).try_despawn();

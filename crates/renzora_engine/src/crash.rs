@@ -27,6 +27,158 @@ fn is_editor_process() -> bool {
     IS_EDITOR_PROCESS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+// ── Panics Bevy catches ──────────────────────────────────────────────────────
+//
+// Since Bevy 0.20 the schedule executor catches a panic in a system, command or
+// observer and hands it to the world's `FallbackErrorHandler` as an error. The
+// default handler panics again, so nothing changed by itself; the editor installs
+// [`editor_error_handler`], which logs it to the Console and carries on, so one
+// broken plugin or script system no longer takes the whole editor down.
+//
+// The panic hook runs BEFORE that catch and cannot see it coming, which is the
+// same problem `renzora::core::recoverable` solves for the engine's own catches.
+// Here the catcher is Bevy's, so the hook cannot be told in advance. Instead it
+// defers: on a thread that runs systems it parks the report on the thread
+// ([`DEFERRED`]) and in [`LAST_DEFERRED`], and shows nothing. The handler runs on
+// that same thread straight after the catch and claims the report, which is what
+// marks the panic as caught. A panic nobody catches unwinds out of `App::run`,
+// where `main` calls [`report_uncaught`] to save and show the parked report.
+
+/// Set when the editor's error handler is installed, so the hook only defers
+/// when something will actually catch. The setup window's `App` and every shipped
+/// game leave it unset and report panics as crashes, as before.
+static ECS_CATCHES_PANICS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Tells a parked report apart from a later one, so a claim on one thread can
+/// never clear a report another thread parked since.
+static DEFERRED_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// This thread's parked report, waiting for the error handler to claim it.
+    static DEFERRED: std::cell::RefCell<Option<(u64, CrashReport)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The newest report parked on any thread, for [`report_uncaught`].
+static LAST_DEFERRED: Mutex<Option<(u64, CrashReport)>> = Mutex::new(None);
+
+/// Locations of panics the handler has already claimed. A system that panics
+/// every frame would otherwise capture a full backtrace every frame, which costs
+/// milliseconds each and that no one will read.
+static CLAIMED_LOCATIONS: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+
+/// How many times each system, command or observer has failed, for the Console's
+/// rate limit.
+static FAILURES: Mutex<Option<std::collections::HashMap<String, u64>>> = Mutex::new(None);
+
+/// Whether this thread runs systems, and so whether Bevy will catch a panic on it.
+///
+/// The main thread runs exclusive and non-`Send` systems and applies commands;
+/// the compute pool runs the rest; pipelined rendering runs the render world on
+/// its own named thread. IO, async-compute and plain `std` threads run no
+/// systems, and a panic there is still a crash.
+fn on_system_thread() -> bool {
+    match std::thread::current().name() {
+        Some("main") | Some("Render thread") => true,
+        Some(name) => name.starts_with("Compute Task Pool"),
+        None => false,
+    }
+}
+
+/// Install [`editor_error_handler`] on `world`.
+fn install_editor_error_handler(world: &mut World) {
+    world.insert_resource(bevy::ecs::error::FallbackErrorHandler(editor_error_handler));
+    ECS_CATCHES_PANICS.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The editor's `FallbackErrorHandler`: a failure becomes a Console error, and
+/// the editor keeps running.
+///
+/// Anything below panic severity goes to Bevy's own `match_severity`, which
+/// already only logs it. Panic severity covers two cases: a real panic (the hook
+/// parked a report for it on this thread) and an error a system returned without
+/// choosing a severity, which Bevy also treats as a panic. Both are logged.
+///
+/// Rate-limited per name: the first failure is logged in full, then the count at
+/// 10, 100, 1000 and so on, so a system failing every frame says so without
+/// burying the Console.
+fn editor_error_handler(err: bevy::ecs::error::BevyError, ctx: bevy::ecs::error::ErrorContext) {
+    if !matches!(err.severity(), bevy::ecs::error::Severity::Panic) {
+        bevy::ecs::error::match_severity(err, ctx);
+        return;
+    }
+
+    let claimed = DEFERRED.with(|d| d.borrow_mut().take());
+    if let Some((id, report)) = &claimed {
+        if let Ok(mut last) = LAST_DEFERRED.lock() {
+            if last.as_ref().is_some_and(|(last_id, _)| last_id == id) {
+                *last = None;
+            }
+        }
+        if let Ok(mut seen) = CLAIMED_LOCATIONS.lock() {
+            seen.get_or_insert_with(Default::default).insert(report.location.clone());
+        }
+    }
+
+    let name = ctx.name().to_string();
+    let count = FAILURES
+        .lock()
+        .map(|mut f| {
+            let n = f.get_or_insert_with(Default::default).entry(name.clone()).or_insert(0);
+            *n += 1;
+            *n
+        })
+        .unwrap_or(1);
+
+    if count == 1 {
+        match &claimed {
+            Some((_, report)) => error!(
+                "{} `{}` panicked: {} (at {}). The editor caught it and kept running; \
+                 whatever it does is skipped while it keeps failing.",
+                ctx.kind(),
+                name,
+                report.message,
+                report.location
+            ),
+            None => error!("{} `{}` failed: {}", ctx.kind(), name, err),
+        }
+    } else if is_power_of_ten(count) {
+        warn!("{} `{}` has now failed {} times", ctx.kind(), name, count);
+    }
+}
+
+fn is_power_of_ten(mut n: u64) -> bool {
+    while n >= 10 && n.is_multiple_of(10) {
+        n /= 10;
+    }
+    n == 1
+}
+
+/// Save and show a parked report whose panic nothing caught.
+///
+/// `main` calls this when `App::run` unwinds, which is where a panic outside any
+/// system ends up. Without it, deferring would turn every such crash into a
+/// silent exit with no `last_crash.txt`, the one file that tells a crash from a
+/// hang afterwards.
+pub fn report_uncaught() {
+    let Some((_, report)) = LAST_DEFERRED.lock().ok().and_then(|mut l| l.take()) else {
+        return;
+    };
+    if let Ok(mut guard) = CRASH_REPORT.lock() {
+        *guard = Some(report.clone());
+    }
+    let _ = save_crash_report(&report);
+    eprintln!("{}", report.format());
+    #[cfg(all(
+        feature = "crash_dialog",
+        not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
+    ))]
+    if is_editor_process() {
+        show_crash_dialog(&report);
+    }
+}
+
 /// Crash report information
 #[derive(Clone, Debug)]
 pub struct CrashReport {
@@ -142,17 +294,42 @@ pub fn install_panic_hook(is_editor: bool) {
             "Unknown location".to_string()
         };
 
-        let backtrace = Backtrace::force_capture();
-        let backtrace_str = format!("{backtrace}");
+        let location = sanitize_paths(&location);
+        let defer = ECS_CATCHES_PANICS.load(std::sync::atomic::Ordering::Relaxed)
+            && on_system_thread();
+
+        // A deferred panic at a location the handler has already claimed is a
+        // system failing again; its backtrace was captured the first time.
+        let repeat = defer
+            && CLAIMED_LOCATIONS
+                .lock()
+                .ok()
+                .is_some_and(|s| s.as_ref().is_some_and(|s| s.contains(&location)));
+        let backtrace_str = if repeat {
+            String::new()
+        } else {
+            format!("{}", Backtrace::force_capture())
+        };
 
         let timestamp = chrono_lite_timestamp();
 
         let report = CrashReport {
             message: sanitize_paths(&message),
-            location: sanitize_paths(&location),
+            location,
             backtrace: sanitize_paths(&backtrace_str),
             timestamp,
         };
+
+        // Bevy is about to catch this and hand it to the editor's error
+        // handler, which claims the report. See "Panics Bevy catches" above.
+        if defer {
+            let id = DEFERRED_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            DEFERRED.with(|d| *d.borrow_mut() = Some((id, report.clone())));
+            if let Ok(mut last) = LAST_DEFERRED.lock() {
+                *last = Some((id, report));
+            }
+            return;
+        }
 
         if let Ok(mut guard) = CRASH_REPORT.lock() {
             *guard = Some(report.clone());
@@ -395,6 +572,21 @@ impl Plugin for CrashReportPlugin {
         info!("[runtime] CrashReportPlugin");
         app.init_resource::<CrashReportWindowState>()
             .add_systems(Startup, check_for_previous_crash_system);
+        if is_editor_process() {
+            install_editor_error_handler(app.world_mut());
+        }
+    }
+
+    /// The render world is a world of its own with its own handler, and the
+    /// render sub-app only exists once `RenderPlugin` has built, which is why
+    /// this is in `finish` rather than `build`.
+    fn finish(&self, app: &mut App) {
+        if !is_editor_process() {
+            return;
+        }
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            install_editor_error_handler(render_app.world_mut());
+        }
     }
 }
 
@@ -409,7 +601,36 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{civil_from_days, sanitize_paths};
+    use super::{civil_from_days, is_power_of_ten, sanitize_paths};
+
+    /// The whole point: under the editor's handler a panicking system is
+    /// logged and the schedule, and the next frame, still run.
+    #[test]
+    fn a_panicking_system_does_not_stop_the_schedule() {
+        use bevy::prelude::*;
+
+        #[derive(Resource, Default)]
+        struct Ran(u32);
+
+        let mut world = World::new();
+        world.init_resource::<Ran>();
+        super::install_editor_error_handler(&mut world);
+        let mut schedule = Schedule::default();
+        schedule.add_systems((
+            || -> () { panic!("broken plugin system") },
+            |mut ran: ResMut<Ran>| ran.0 += 1,
+        ));
+        for _ in 0..3 {
+            schedule.run(&mut world);
+        }
+        assert_eq!(world.resource::<Ran>().0, 3);
+    }
+
+    #[test]
+    fn repeat_failures_are_reported_at_powers_of_ten() {
+        let reported: Vec<u64> = (1..=2000).filter(|n| is_power_of_ten(*n)).collect();
+        assert_eq!(reported, vec![1, 10, 100, 1000]);
+    }
 
     #[test]
     fn civil_dates_are_exact() {

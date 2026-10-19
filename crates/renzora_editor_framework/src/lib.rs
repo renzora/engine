@@ -169,7 +169,7 @@ pub enum EditorState {
 /// reactive `bind_*` closures that read `is_selected(..)` subscribe to a tick
 /// that never moves, so they run once and are skipped from then on: the row you
 /// just deselected keeps its highlight until an unrelated read of its own (its
-/// `Interaction`, i.e. hovering it) happens to dirty the binding.
+/// `UiInteraction`, i.e. hovering it) happens to dirty the binding.
 ///
 /// `PreUpdate` rather than `Update` on purpose. Selection writes come from
 /// `Update` systems (hierarchy clicks, viewport picking, spawn commands) that

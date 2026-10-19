@@ -11,6 +11,7 @@ use renzora_ember::widgets::{
     clipboard, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
     screen_menu_est_height, screen_menu_flip, screen_menu_under, trigger_rect,
 };
+use renzora_ember::UiInteraction;
 
 use crate::interact::{open_action, open_from_menu};
 use crate::ops::{
@@ -23,14 +24,14 @@ use crate::state::{
 };
 
 pub(crate) fn create_asset_click(
-    q: Query<(&Interaction, &NewAssetBtn), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &NewAssetBtn), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Some(folder) = state.current.clone().or_else(|| project.as_ref().map(|p| p.path.clone())) else {
@@ -81,11 +82,11 @@ pub(crate) fn create_asset_click(
 pub(crate) fn import_click(
     q: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &bevy::ui::RelativeCursorPosition,
             &bevy::ui::ComputedNode,
         ),
-        (With<ImportBtn>, Changed<Interaction>),
+        (With<ImportBtn>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -94,7 +95,7 @@ pub(crate) fn import_click(
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, ..)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some((win_h, cursor)) = windows
@@ -190,11 +191,11 @@ fn request_import(world: &mut World, pick: renzora::core::ImportPick) {
 // ── Context menu ─────────────────────────────────────────────────────────────
 
 pub(crate) fn track_hover(
-    tiles: Query<(&Interaction, &AssetTile)>,
-    tree: Query<(&Interaction, &TreeNav)>,
+    tiles: Query<(&UiInteraction, &AssetTile)>,
+    tree: Query<(&UiInteraction, &TreeNav)>,
     mut state: ResMut<NativeAssets>,
 ) {
-    let over = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    let over = |i: &UiInteraction| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed);
     // A hovered grid/list tile takes priority; otherwise a hovered tree folder
     // row — so right-click targeting (and the context-menu delete) works over the
     // folder tree too, not just the grid.
@@ -399,12 +400,12 @@ pub(crate) fn add_menu_open(
     registry: Option<Res<renzora::CreateMenuRegistry>>,
     q: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &bevy::ui::RelativeCursorPosition,
             &bevy::ui::ComputedNode,
             Has<TreeAddBtn>,
         ),
-        (With<AddMenuBtn>, Changed<Interaction>),
+        (With<AddMenuBtn>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -413,7 +414,7 @@ pub(crate) fn add_menu_open(
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn, file_actions)) = q.iter().find(|(i, ..)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, file_actions)) = q.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some((win_h, cursor)) = windows
@@ -515,11 +516,11 @@ fn registered_menu_items(
 pub(crate) fn sort_menu_open(
     q: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &bevy::ui::RelativeCursorPosition,
             &bevy::ui::ComputedNode,
         ),
-        (With<SortMenuBtn>, Changed<Interaction>),
+        (With<SortMenuBtn>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
@@ -529,7 +530,7 @@ pub(crate) fn sort_menu_open(
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
         return;
     };
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {

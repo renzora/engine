@@ -5,6 +5,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
+use renzora_ember::UiInteraction;
 
 use crate::overlay::{
     ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch,
@@ -126,9 +127,9 @@ fn resolve_included_files(world: &mut World) {
     // block below then recomputes it in the same frame.
     let mut action = None;
     {
-        let mut q = world.query::<(&Interaction, &FilesBulk)>();
+        let mut q = world.query::<(&UiInteraction, &FilesBulk)>();
         for (interaction, bulk) in q.iter(world) {
-            if *interaction == Interaction::Pressed {
+            if *interaction == UiInteraction::Pressed {
                 action = Some(bulk.0);
             }
         }

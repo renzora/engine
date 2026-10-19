@@ -8,12 +8,13 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::NativeInspectorDrawer;
 use renzora_ember::font::EmberFonts;
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::widgets::{toggle_switch, Section};
+use renzora_ember::UiInteraction;
 
 use super::cull::SectionCull;
 use super::fields::build_field_row;
@@ -317,7 +318,7 @@ pub(super) fn build_section(
     // Header affordances: a spacer pushes the optional lock / enable / trash to
     // the right of the title.
     let spacer = commands
-        .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+        .spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
         .id();
     // (The inspector lock used to hang off the "ID" section header. It belongs
     // to the entity rather than to any one component, so it moved to the entity
@@ -329,15 +330,15 @@ pub(super) fn build_section(
     if let Some((tier, gate)) = sec.gate {
         let warn = phosphor_glyph(commands, fonts, "warning", renzora_ember::theme::warn_amber(), 13.0);
         commands.entity(warn).insert((
-            // `HoverTooltip` is driven off the entity's own `Interaction`, so the
+            // `HoverTooltip` is driven off the entity's own `UiInteraction`, so the
             // glyph has to track one to be hoverable at all.
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::widgets::HoverTooltip::new(quality_gate_tooltip(tier, gate)),
             // Pass, not Block: the glyph sits on the header's click target, and a
             // press on it should still collapse the section like a press anywhere
             // else on the bar. (Block is right for the toggle and trash below,
             // which do something of their own with the click.)
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ));
         extra.push(warn);
     }
@@ -345,8 +346,8 @@ pub(super) fn build_section(
         let sw = toggle_switch(commands, sec.enabled_now);
         // Block the press from bubbling to the section header behind it, so
         // flipping the enable switch doesn't also collapse/expand the section
-        // (same reason the lock/trash glyphs above set FocusPolicy::Block).
-        commands.entity(sw).insert(FocusPolicy::Block);
+        // (same reason the lock/trash glyphs above carry `BLOCK`).
+        commands.entity(sw).insert(BLOCK);
         let g = sec.enable.clone().unwrap().0;
         let sec_cid = sec.cid;
         bind_2way(
@@ -373,8 +374,8 @@ pub(super) fn build_section(
     if let (Some(remove_fn), false) = (sec.remove_fn.clone(), hide_trash) {
         let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
         commands.entity(trash).insert((
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             RemoveBtn {
                 remove_fn,
                 entity,

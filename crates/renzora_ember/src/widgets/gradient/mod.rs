@@ -12,6 +12,7 @@ use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
 use crate::theme::*;
+use crate::UiInteraction;
 
 const MAX_STOPS: usize = 6;
 
@@ -133,7 +134,7 @@ pub fn gradient_editor(commands: &mut Commands, stops: &[(f32, (u8, u8, u8))]) -
                 },
                 BackgroundColor(s.color),
                 BorderColor::all(rgb(text_primary())),
-                Interaction::default(),
+                UiInteraction::default(),
                 GradientStop {
                     data: bar,
                     strip,
@@ -177,13 +178,13 @@ fn gradient_sync(
 }
 
 fn gradient_drag(
-    handles: Query<(Entity, &Interaction, &GradientStop)>,
+    handles: Query<(Entity, &UiInteraction, &GradientStop)>,
     strips: Query<&RelativeCursorPosition>,
     mut datas: Query<&mut GradientData>,
     mut nodes: Query<&mut Node>,
 ) {
     for (e, interaction, stop) in &handles {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(rcp) = strips.get(stop.strip) else {

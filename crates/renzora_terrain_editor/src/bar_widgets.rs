@@ -14,6 +14,7 @@ use bevy::prelude::*;
 
 use renzora_editor_framework::ActiveTool;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_text};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
@@ -46,7 +47,7 @@ pub(crate) fn cluster(commands: &mut Commands, name: &str) -> Entity {
                 column_gap: Val::Px(6.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new(format!("terrain-bar:{name}")),
         ))
         .id()
@@ -77,7 +78,7 @@ where
                 column_gap: Val::Px(4.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let text = commands
@@ -131,7 +132,7 @@ where
                 column_gap: Val::Px(3.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let text = commands
@@ -171,7 +172,7 @@ where
                 column_gap: Val::Px(4.0),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let text = commands

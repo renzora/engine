@@ -10,16 +10,18 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::ui::{FocusPolicy, RelativeCursorPosition, RepeatedGridTrack};
+use bevy::ui::{RelativeCursorPosition, RepeatedGridTrack};
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_with, keyed_list};
 use renzora_ember::reactive::{react, KeyedSnapshot, Rx};
 use renzora_ember::widgets::{
     bind_text_input, scroll_view, text_input, FileImageWanted, FileImages, HoverTooltip,
 };
+use renzora_ember::UiInteraction;
 
 use crate::config::AppConfig;
 // Desktop-only: the browser opens a project through a directory handle
@@ -126,7 +128,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(PAGE_PAD)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-page-projects"),
         ))
         .id();
@@ -149,7 +151,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(10.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let new = pill_button(commands, fonts, "plus", &renzora::lang::t("splash.new_project"), true);
@@ -175,7 +177,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(renzora::lang::t("splash.recent")),
             ui_font(&fonts.ui, 11.0),
             TextColor(c(104, 112, 132)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -199,7 +201,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 padding: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             RecentGrid,
         ))
         .id();
@@ -215,7 +217,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ui_font(&fonts.ui, 12.0),
             TextColor(text_muted()),
             Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     bind_display(commands, empty, |w| filtered_rows(w).is_empty());
@@ -241,14 +243,14 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(ca(10, 12, 20, 225)),
             BorderColor::all(border_soft()),
-            // The field itself is an ember widget with its own `Interaction`;
+            // The field itself is an ember widget with its own `UiInteraction`;
             // blocking on the frame around it is what keeps a click *into* the
             // field from reaching whatever is underneath mid-focus.
-            FocusPolicy::Block,
+            BLOCK,
         ))
         .id();
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", ICON_MUTED, 14.0);
-    commands.entity(mag).insert(FocusPolicy::Pass);
+    commands.entity(mag).insert(PASS_THROUGH);
     let search = text_input(commands, &fonts.ui, &renzora::lang::t("splash.search_projects"), "");
     commands.entity(search).insert(Node {
         flex_grow: 1.0,
@@ -286,8 +288,8 @@ fn pill_button(
                 ..default()
             },
             BackgroundColor(if primary { accent() } else { btn_dark() }),
-            Interaction::default(),
-            FocusPolicy::Block,
+            UiInteraction::default(),
+            BLOCK,
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -308,13 +310,13 @@ fn pill_button(
         if primary { (255, 255, 255) } else { ICON_TEXT },
         14.0,
     );
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
         .spawn((
             Text::new(label_txt.to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(if primary { white() } else { text() }),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_children(&[ic, t]);
@@ -463,16 +465,16 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
             BackgroundColor(ca(16, 18, 28, 220)),
             card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225)),
             BorderColor::all(border_soft()),
-            Interaction::default(),
-            // `cursor_over` — not `Interaction` — drives the card's hover sheen:
-            // the ✕ blocks, so `Interaction` correctly drops to `None` the moment
+            UiInteraction::default(),
+            // `cursor_over` — not `UiInteraction` — drives the card's hover sheen:
+            // the ✕ blocks, so `UiInteraction` correctly drops to `None` the moment
             // the pointer crosses onto it, and keying the sheen off that would
             // make the card flatten out under your own cursor. Bevy fills
             // `RelativeCursorPosition` for every node containing the pointer
             // regardless of who captures the press, which is exactly the "is the
             // pointer anywhere over this card" signal the visual wants.
             RelativeCursorPosition::default(),
-            FocusPolicy::Block,
+            BLOCK,
             RecentRow,
         ))
         .id();
@@ -495,7 +497,7 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
                 overflow: Overflow::clip(),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let name_txt = if row.exists {
@@ -508,7 +510,7 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
             Text::new(name_txt),
             ui_font(&fonts.ui, 13.5),
             TextColor(if row.exists { text() } else { text_muted() }),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let path = commands
@@ -516,7 +518,7 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
             Text::new(elide_path(&row.path_display, 34)),
             ui_font(&fonts.mono, 9.5),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(info).add_children(&[name, path]);
@@ -553,7 +555,7 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
                 ..default()
             },
             BackgroundColor(ca(8, 9, 15, 220)),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
 
@@ -564,7 +566,7 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         if row.exists { ICON_ACCENT } else { ICON_MUTED },
         30.0,
     );
-    commands.entity(glyph).insert(FocusPolicy::Pass);
+    commands.entity(glyph).insert(PASS_THROUGH);
     commands.entity(frame).add_child(glyph);
 
     if let Some(thumb_path) = row.thumb.clone().filter(|_| row.exists) {
@@ -592,7 +594,7 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
                     display: Display::None,
                     ..default()
                 },
-                FocusPolicy::Pass,
+                PASS_THROUGH,
                 FileImageWanted(thumb_path.clone()),
             ))
             .id();
@@ -629,12 +631,12 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
                 ..default()
             },
             BackgroundColor(ca(6, 7, 12, 170)),
-            Interaction::default(),
+            UiInteraction::default(),
             // Without this the press also reaches the card behind it, which opens
             // the project — the reported bug. It only *looked* correct for a
             // project whose folder had been deleted by hand, because a missing
             // project's card carries no `RecentOpen` for the press to land on.
-            FocusPolicy::Block,
+            BLOCK,
             RecentRemove(row.path.clone()),
             // The ✕ removes the entry from this list; it does not touch the
             // folder on disk. Say so — the reporter of #82 read it as "delete
@@ -650,7 +652,7 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         if is_hovered(w, rc) { ca(220, 50, 50, 225) } else { ca(6, 7, 12, 170) }
     });
     let rx = icon_text(commands, &fonts.phosphor, "x", ICON_MUTED, 12.0);
-    commands.entity(rx).insert(FocusPolicy::Pass);
+    commands.entity(rx).insert(PASS_THROUGH);
     bind_text_color_on_hover(commands, rx, remove, white());
     commands.entity(remove).add_child(rx);
     commands.entity(frame).add_child(remove);
@@ -741,10 +743,10 @@ fn s_filter(w: &mut World, v: String) {
 // ── Interaction ──────────────────────────────────────────────────────────────
 
 fn new_project_click(
-    q: Query<&Interaction, (With<NewProjectBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<NewProjectBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(do_new_project);
     }
 }
@@ -756,29 +758,29 @@ fn new_project_click(
 /// dialog. Blank stays on the button next to it, so the fast path is still one
 /// click and never waits on the network.
 fn new_from_template_click(
-    q: Query<&Interaction, (With<NewFromTemplateBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<NewFromTemplateBtn>, Changed<UiInteraction>)>,
     mut active: ResMut<super::ActiveSection>,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         active.0 = crate::TEMPLATES_SECTION_ID.to_string();
     }
 }
 
 fn open_project_click(
-    q: Query<&Interaction, (With<OpenProjectBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<OpenProjectBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(do_open_project);
     }
 }
 
 fn recent_open_click(
-    q: Query<(&Interaction, &RecentOpen), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RecentOpen), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, open) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let path = open.0.clone();
             commands.queue(move |world: &mut World| do_open_recent(world, &path));
         }
@@ -786,11 +788,11 @@ fn recent_open_click(
 }
 
 fn recent_remove_click(
-    q: Query<(&Interaction, &RecentRemove), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &RecentRemove), Changed<UiInteraction>>,
     mut commands: Commands,
 ) {
     for (interaction, rm) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             let path = rm.0.clone();
             commands.queue(move |world: &mut World| {
                 if let Some(mut cfg) = world.get_resource_mut::<AppConfig>() {

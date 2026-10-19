@@ -31,6 +31,7 @@ use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::theme::{accent, hover_bg, panel_bg, rgb, text_primary};
 use renzora_ember::widgets::OverlaySurface;
+use renzora_ember::UiInteraction;
 
 use crate::{AXIS_GIZMO_MARGIN, AXIS_GIZMO_SIZE};
 
@@ -186,14 +187,14 @@ fn nav_btn(commands: &mut Commands, fonts: &EmberFonts, kind: NavButton, icon: &
             // Transparent at rest — the group behind carries the fill, and four
             // stacked pills inside a fifth read as a pile of chrome.
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             kind,
             Name::new("nav-btn"),
         ))
         .id();
     let g = icon_text(commands, &fonts.phosphor, icon, glyph(), 16.0);
     // Let clicks fall through the glyph to the button, or a press on the icon
-    // itself (dead-center of the button) never reaches the button's `Interaction`
+    // itself (dead-center of the button) never reaches the button's `UiInteraction`
     // and the Grid toggle silently does nothing.
     commands
         .entity(g)
@@ -217,7 +218,7 @@ fn nav_btn(commands: &mut Commands, fonts: &EmberFonts, kind: NavButton, icon: &
 fn nav_visuals(
     nav: Res<NavOverlayState>,
     settings: Option<Res<ViewportSettings>>,
-    mut buttons: Query<(&NavButton, &Interaction, &mut BackgroundColor, &Children)>,
+    mut buttons: Query<(&NavButton, &UiInteraction, &mut BackgroundColor, &Children)>,
     mut glyphs: Query<&mut TextColor, With<NavGlyph>>,
 ) {
     let grid_on = settings.is_some_and(|s| s.show_grid);
@@ -228,7 +229,7 @@ fn nav_visuals(
             NavButton::Home | NavButton::Grid => false,
         };
         let lit = *kind == NavButton::Grid && grid_on;
-        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let hovered = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed);
         // Hover outranks the lit wash so the button still answers the cursor
         // while the grid is on — otherwise the one control you are most likely
         // to click twice in a row is the one that stops acknowledging you.
@@ -260,12 +261,12 @@ fn nav_input(
     // `ResMut` alone doesn't flag the resource changed — only a deref_mut does,
     // and both of those sit inside the just-pressed branch.
     settings: Option<ResMut<ViewportSettings>>,
-    buttons: Query<(&NavButton, &Interaction)>,
+    buttons: Query<(&NavButton, &UiInteraction)>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
         if let Some(kind) = buttons
             .iter()
-            .find(|(_, i)| **i == Interaction::Pressed)
+            .find(|(_, i)| **i == UiInteraction::Pressed)
             .map(|(kind, _)| *kind)
         {
             if kind.is_drag() {

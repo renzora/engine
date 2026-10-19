@@ -10,6 +10,7 @@ use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{hover_bg, rgb, text_primary, value_text};
 use renzora_ember::widgets::{drag_value_flat, DragRange};
+use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
 use super::{col, HeaderBg, WidgetBg, BTN_H};
@@ -154,12 +155,12 @@ pub(super) fn cam_speed_widget(commands: &mut Commands, fonts: &EmberFonts) -> E
 }
 
 pub(super) fn snap_toggle_click(
-    q: Query<(&Interaction, &SnapToggle), Changed<Interaction>>,
+    q: Query<(&UiInteraction, &SnapToggle), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     for (interaction, which) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let which = *which;

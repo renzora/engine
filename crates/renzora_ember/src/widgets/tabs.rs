@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberTab {
@@ -62,7 +63,7 @@ pub fn tabs(
                 } else {
                     rgb(header_bg())
                 }),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberTab { bar, index: i },
                 Styled::with_state(
                     Role::Tab,
@@ -112,14 +113,14 @@ pub fn tabs(
 }
 
 pub(crate) fn tab_select(
-    pressed: Query<(&Interaction, &EmberTab), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberTab), Changed<UiInteraction>>,
     mut tabs_q: Query<(&EmberTab, &mut Styled)>,
     bars: Query<&EmberTabBar>,
     mut nodes: Query<&mut Node>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
     for (interaction, tab) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             chosen = Some((tab.bar, tab.index));
             break;
         }

@@ -15,6 +15,7 @@ use renzora::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollThumb, ScrollbarBusy};
+use renzora_ember::UiInteraction;
 
 use crate::panel::{GridLine, SelCellMark, SheetImageNode, ZoomInBtn, ZoomOutBtn};
 use crate::{CurrentSheet, SheetGrid, SheetSelection, SheetZoom};
@@ -41,14 +42,14 @@ pub(crate) fn register(app: &mut App) {
 
 /// The `−` / `+` buttons step the zoom.
 fn zoom_step_buttons(
-    zoom_in: Query<&Interaction, (With<ZoomInBtn>, Changed<Interaction>)>,
-    zoom_out: Query<&Interaction, (With<ZoomOutBtn>, Changed<Interaction>)>,
+    zoom_in: Query<&UiInteraction, (With<ZoomInBtn>, Changed<UiInteraction>)>,
+    zoom_out: Query<&UiInteraction, (With<ZoomOutBtn>, Changed<UiInteraction>)>,
     mut zoom: ResMut<SheetZoom>,
 ) {
-    if zoom_in.iter().any(|i| *i == Interaction::Pressed) {
+    if zoom_in.iter().any(|i| *i == UiInteraction::Pressed) {
         zoom.0 = (zoom.0 * 1.25).clamp(0.25, 32.0);
     }
-    if zoom_out.iter().any(|i| *i == Interaction::Pressed) {
+    if zoom_out.iter().any(|i| *i == UiInteraction::Pressed) {
         zoom.0 = (zoom.0 / 1.25).clamp(0.25, 32.0);
     }
 }
@@ -224,7 +225,7 @@ fn select_cells_from_sheet(
     grid: Res<SheetGrid>,
     sheet: Res<CurrentSheet>,
     image: Query<&RelativeCursorPosition, With<SheetImageNode>>,
-    thumbs: Query<&Interaction, With<ScrollThumb>>,
+    thumbs: Query<&UiInteraction, With<ScrollThumb>>,
     scrollbar: Res<ScrollbarBusy>,
     mut selection: ResMut<SheetSelection>,
     mut start: Local<Option<UVec2>>,
@@ -246,7 +247,7 @@ fn select_cells_from_sheet(
     }
     if mouse.just_pressed(MouseButton::Left) {
         *blocked = scrollbar.active()
-            || thumbs.iter().any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
+            || thumbs.iter().any(|i| matches!(i, UiInteraction::Pressed | UiInteraction::Hovered));
     }
     if *blocked {
         return;

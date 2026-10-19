@@ -23,9 +23,9 @@
 //! `renzora_splash::launcher::sections`.
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_splash::{register_splash_section, SplashSection};
 
@@ -56,7 +56,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("splash-page-updates"),
         ))
         .id();
@@ -69,7 +69,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 row_gap: Val::Px(3.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let title = commands
@@ -77,7 +77,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("Updates".to_string()),
             ui_font(&fonts.ui, 17.0),
             TextColor(rgb(text_primary())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let sub = commands
@@ -88,7 +88,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_muted())),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(header).add_children(&[title, sub]);
@@ -99,7 +99,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let body = crate::dialog::build_body(commands, fonts, false);
     // Blocks: the splash's rule is that anything holding a press says so, and
     // this subtree is full of buttons and a text field.
-    commands.entity(body).insert(FocusPolicy::Block);
+    commands.entity(body).insert(BLOCK);
 
     commands.entity(page).add_children(&[header, body]);
     page

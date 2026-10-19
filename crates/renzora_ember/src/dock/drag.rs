@@ -11,7 +11,9 @@
 use bevy::prelude::*;
 
 use crate::font::{glyph, ui_font, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::{rgb, tab_active, text_primary};
+use crate::UiInteraction;
 
 use crate::dock::components::{
     BottomSnap, BottomSnapRequest, Divider, DockLeaf, DockTab, GlobalCursor, GrabRootDivider,
@@ -124,7 +126,7 @@ pub(crate) fn divider_drag(
     mut dragged: ResMut<DraggedDivider>,
     mouse: Res<ButtonInput<MouseButton>>,
     cursor: Res<GlobalCursor>,
-    dividers: Query<(Entity, &Interaction, &Divider)>,
+    dividers: Query<(Entity, &UiInteraction, &Divider)>,
     computed: Query<&bevy::ui::ComputedNode>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
@@ -172,7 +174,7 @@ pub(crate) fn divider_drag(
             return;
         }
         for (entity, interaction, div) in &dividers {
-            if *interaction == Interaction::Pressed {
+            if *interaction == UiInteraction::Pressed {
                 let start_ratio = nodes
                     .get(div.first_wrap)
                     .ok()
@@ -276,8 +278,8 @@ pub(crate) fn tab_drag(
     ),
     windows: Query<&Window>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
-    tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
-    grips: Query<(&Interaction, &LeafGrip)>,
+    tabs: Query<(Entity, &UiInteraction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
+    grips: Query<(&UiInteraction, &LeafGrip)>,
     // Bundled into one tuple param so `tab_drag` stays under Bevy's 16-param
     // system cap: `.0` = tab bars (drop-onto-bar targeting), `.1` = tab strips
     // (in-place reorder re-sorts the strip's tab children).
@@ -321,7 +323,7 @@ pub(crate) fn tab_drag(
         // not inside a tab, so both can't be Pressed at once anyway).
         let pressed = grips
             .iter()
-            .find(|(i, _)| **i == Interaction::Pressed)
+            .find(|(i, _)| **i == UiInteraction::Pressed)
             .and_then(|(_, grip)| {
                 let (_, ld, ..) = leaves.get(grip.leaf).ok()?;
                 // Drag the whole tab set; `id` is the active tab (or the
@@ -335,7 +337,7 @@ pub(crate) fn tab_drag(
             })
             .or_else(|| {
                 tabs.iter()
-                    .find(|(_, i, ..)| **i == Interaction::Pressed)
+                    .find(|(_, i, ..)| **i == UiInteraction::Pressed)
                     .map(|(_, _, tab, _)| (tab.id.clone(), tab.leaf, false))
             });
         if let Some((id, leaf_e, group)) = pressed {
@@ -810,7 +812,7 @@ fn spawn_ghost(
             },
             BackgroundColor(rgb(tab_active())),
             bevy::ui::GlobalZIndex(1000),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             TabGhost,
             renzora::HideInHierarchy,
             Name::new("tab-ghost"),

@@ -1,26 +1,27 @@
 //! Drive UI focus and activation from a gamepad.
 //!
 //! A game that ships to a controller has to be playable without a cursor, and
-//! nothing in bevy_ui moves a selection around for you — `Interaction` is
+//! nothing in bevy_ui moves a selection around for you — `UiInteraction` is
 //! written from the pointer and from nothing else, so on a pad every button in
 //! every menu is dead. This module supplies the missing half: a focused entity,
 //! directional movement between focusable nodes, and a button that activates
 //! the focused one.
 //!
-//! # It works through `Interaction`, not around it
+//! # It works through `UiInteraction`, not around it
 //!
-//! Focus is published by writing `Interaction::Hovered` on the focused node,
-//! and activation by writing `Interaction::Pressed` for a single frame. That is
+//! Focus is published by writing `UiInteraction::Hovered` on the focused node,
+//! and activation by writing `UiInteraction::Pressed` for a single frame. That is
 //! deliberate. Every existing consumer — the `on_press` bridge in
 //! [`super::interactions`], hover styling, `interaction_style_system` — already
-//! watches `Interaction` and needs no knowledge that a pad exists. A parallel
+//! watches `UiInteraction` and needs no knowledge that a pad exists. A parallel
 //! "gamepad focus" channel would have meant teaching each of them a second way
 //! to be triggered, and any that were missed would work with a mouse and be
 //! dead on a pad, which is exactly the bug this module exists to remove.
 //!
-//! Bevy's own `ui_focus_system` runs in `PreUpdate` and these systems run in
-//! `Update`, so on a frame where both write, the pad's value is the one that
-//! survives.
+//! `UiInteraction` is derived from the pointer in `PreUpdate` (inside
+//! `UiSystems::Focus`) and these systems run in `Update`, so on a frame where
+//! both write, the pad's value is the one that survives: a direct write stands
+//! for the rest of the frame and is replaced by the pointer's state the next.
 //!
 //! # Handing control back to the mouse
 //!
@@ -31,6 +32,8 @@
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
+
+use crate::UiInteraction;
 
 /// How far the stick must be pushed before it counts as a direction. Below
 /// this a resting stick's drift would walk the selection on its own.
@@ -73,7 +76,7 @@ impl NavDir {
 #[derive(Resource, Debug)]
 pub struct UiGamepadNav {
     /// The focused node, while a pad is driving. `None` means no gamepad focus
-    /// is being asserted and the mouse owns `Interaction` as usual.
+    /// is being asserted and the mouse owns `UiInteraction` as usual.
     pub focused: Option<Entity>,
     /// Master switch. Turn off for a screen that reads the pad directly (a
     /// gameplay HUD) so the two don't both act on the same press.
@@ -170,15 +173,15 @@ fn best_in_direction(from: Vec2, dir: NavDir, candidates: &[Candidate]) -> Optio
         .map(|(e, _)| e)
 }
 
-/// Move focus, publish it as `Interaction`, and turn the activate button into a
-/// one-frame `Interaction::Pressed`.
+/// Move focus, publish it as `UiInteraction`, and turn the activate button into a
+/// one-frame `UiInteraction::Pressed`.
 pub fn gamepad_ui_nav(
     time: Res<Time>,
     pads: Query<&Gamepad>,
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
     mut nav: ResMut<UiGamepadNav>,
     mut focusables: Query<
-        (Entity, &ComputedNode, &UiGlobalTransform, &mut Interaction),
+        (Entity, &ComputedNode, &UiGlobalTransform, &mut UiInteraction),
         With<crate::game_ui::components::UiButton>,
     >,
 ) {
@@ -186,8 +189,8 @@ pub fn gamepad_ui_nav(
     // button reads as one press rather than as never having been let go.
     if let Some(entity) = nav.pressed_last_frame.take() {
         if let Ok((_, _, _, mut interaction)) = focusables.get_mut(entity) {
-            if *interaction == Interaction::Pressed {
-                *interaction = Interaction::Hovered;
+            if *interaction == UiInteraction::Pressed {
+                *interaction = UiInteraction::Hovered;
             }
         }
     }
@@ -300,14 +303,14 @@ pub fn gamepad_ui_nav(
     for (entity, _, _, mut interaction) in &mut focusables {
         if entity == focused {
             if activate {
-                if *interaction != Interaction::Pressed {
-                    *interaction = Interaction::Pressed;
+                if *interaction != UiInteraction::Pressed {
+                    *interaction = UiInteraction::Pressed;
                 }
-            } else if *interaction != Interaction::Hovered {
-                *interaction = Interaction::Hovered;
+            } else if *interaction != UiInteraction::Hovered {
+                *interaction = UiInteraction::Hovered;
             }
-        } else if *interaction != Interaction::None {
-            *interaction = Interaction::None;
+        } else if *interaction != UiInteraction::None {
+            *interaction = UiInteraction::None;
         }
     }
 

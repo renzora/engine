@@ -11,8 +11,10 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
+use crate::interaction::PASS_THROUGH;
 use crate::reactive::Rx;
 use crate::theme::*;
+use crate::UiInteraction;
 
 pub(crate) struct ColorPickerPlugin;
 
@@ -87,7 +89,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             },
             PickerData { mode: 0.0, hue },
             PickerSquare { root },
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("sv-square"),
@@ -107,7 +109,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
                 ..default()
             },
             BorderColor::all(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("sv-handle"),
         ))
         .id();
@@ -123,7 +125,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             },
             PickerData { mode: 1.0, hue: 0.0 },
             PickerHue { root },
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("hue-strip"),
@@ -141,7 +143,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("hue-handle"),
         ))
         .id();
@@ -219,15 +221,15 @@ fn apply_picker(
 }
 
 fn hsv_drag(
-    squares: Query<(&Interaction, &RelativeCursorPosition, &PickerSquare)>,
-    hues: Query<(&Interaction, &RelativeCursorPosition, &PickerHue)>,
+    squares: Query<(&UiInteraction, &RelativeCursorPosition, &PickerSquare)>,
+    hues: Query<(&UiInteraction, &RelativeCursorPosition, &PickerHue)>,
     mut pickers: Query<&mut HsvPicker>,
     mut datas: Query<&mut PickerData>,
     mut nodes: Query<&mut Node>,
     mut bgs: Query<&mut BackgroundColor>,
 ) {
     for (interaction, rcp, sq) in &squares {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let (Some(n), Ok(mut p)) = (rcp.normalized, pickers.get_mut(sq.root)) {
                 p.s = (n.x + 0.5).clamp(0.0, 1.0);
                 p.v = (0.5 - n.y).clamp(0.0, 1.0);
@@ -236,7 +238,7 @@ fn hsv_drag(
         }
     }
     for (interaction, rcp, hu) in &hues {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let (Some(n), Ok(mut p)) = (rcp.normalized, pickers.get_mut(hu.root)) {
                 p.hue = (n.y + 0.5).clamp(0.0, 1.0);
                 if let Ok(mut d) = datas.get_mut(p.sv) {

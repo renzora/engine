@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberMultiItem {
@@ -41,7 +42,7 @@ pub fn multi_select(commands: &mut Commands, font: &bevy::text::FontSource, item
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 Styled::with_state(
                     Role::Segment,
                     if on {
@@ -99,11 +100,11 @@ pub fn multi_select(commands: &mut Commands, font: &bevy::text::FontSource, item
 }
 
 pub(crate) fn multi_select_toggle(
-    mut rows: Query<(&Interaction, &mut EmberMultiItem, &mut Styled), Changed<Interaction>>,
+    mut rows: Query<(&UiInteraction, &mut EmberMultiItem, &mut Styled), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, mut item, mut styled) in &mut rows {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         item.selected = !item.selected;

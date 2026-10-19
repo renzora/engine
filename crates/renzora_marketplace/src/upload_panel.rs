@@ -25,18 +25,19 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use crate::auth::marketplace::Category;
 use crate::auth::publish::{self, MediaUpload, PublishMeta, UploadFile, UploadedItem};
 use crate::auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, dropdown, text_input, textarea, tint};
+use renzora_ember::UiInteraction;
 use renzora::SplashState;
 
 
@@ -426,13 +427,13 @@ fn success_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(tint((52, 180, 96), 40)),
-            Interaction::default(),
+            UiInteraction::default(),
             SuccessLinkBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let link_txt = commands
-        .spawn((Text::new("View →"), ui_font(&fonts.ui, 11.0), TextColor(rgb((52, 180, 96))), FocusPolicy::Pass))
+        .spawn((Text::new("View →"), ui_font(&fonts.ui, 11.0), TextColor(rgb((52, 180, 96))), PASS_THROUGH))
         .id();
     commands.entity(link).add_child(link_txt);
     commands.entity(b).add_children(&[ic, txt, link]);
@@ -588,7 +589,7 @@ fn check_row(
         },
     );
     let t = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass))
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), PASS_THROUGH))
         .id();
     commands.entity(row).add_children(&[cb, t]);
     row
@@ -616,15 +617,15 @@ fn primary_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, icon
                 hover: tint(accent(), 255),
                 pressed: tint(accent(), 200),
             },
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let t = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.5), TextColor(rgb((255, 255, 255))), FocusPolicy::Pass))
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.5), TextColor(rgb((255, 255, 255))), PASS_THROUGH))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, (255, 255, 255), 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     commands.entity(btn).add_children(&[t, ic]);
     btn
 }
@@ -924,18 +925,18 @@ fn tag_pill(commands: &mut Commands, fonts: &EmberFonts, tag: &str, index: usize
         ))
         .id();
     let t = commands
-        .spawn((Text::new(tag.to_string()), ui_font(&fonts.ui, 10.5), TextColor(rgb(accent())), FocusPolicy::Pass))
+        .spawn((Text::new(tag.to_string()), ui_font(&fonts.ui, 10.5), TextColor(rgb(accent())), PASS_THROUGH))
         .id();
     let x = commands
         .spawn((
             Node { align_items: AlignItems::Center, ..default() },
-            Interaction::default(),
+            UiInteraction::default(),
             TagRemoveBtn(index),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let xg = icon_text(commands, &fonts.phosphor, "x", (200, 200, 210), 10.0);
-    commands.entity(xg).insert(FocusPolicy::Pass);
+    commands.entity(xg).insert(PASS_THROUGH);
     commands.entity(x).add_child(xg);
     commands.entity(pill).add_children(&[t, x]);
     pill
@@ -967,13 +968,13 @@ fn tag_suggest_row(commands: &mut Commands, fonts: &EmberFonts, name: &str) -> E
         .spawn((
             Node { width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
+            UiInteraction::default(),
             TagAddBtn(name.to_string()),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let t = commands
-        .spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass))
+        .spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), PASS_THROUGH))
         .id();
     commands.entity(row).add_child(t);
     row
@@ -1021,16 +1022,16 @@ fn file_pick_button<M: Component>(
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            Interaction::default(),
+            UiInteraction::default(),
             marker,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
     let ic = icon_text(commands, &fonts.phosphor, "upload-simple", text_muted(), 15.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let empty = empty_label.to_string();
     let t = commands
-        .spawn((Text::new(empty_label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass))
+        .spawn((Text::new(empty_label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH))
         .id();
     bind_text(commands, t, move |w| picked(w).unwrap_or_else(|| empty.clone()));
     commands.entity(btn).add_children(&[ic, t]);
@@ -1136,33 +1137,33 @@ pub(crate) fn begin_publishing(world: &mut World) {
 
 /// Publish.
 fn nav_click(
-    publish_q: Query<&Interaction, (With<PublishBtn>, Changed<Interaction>)>,
+    publish_q: Query<&UiInteraction, (With<PublishBtn>, Changed<UiInteraction>)>,
     session: Option<Res<AuthSession>>,
     mut state: ResMut<Uploader>,
 ) {
-    if publish_q.iter().any(|i| *i == Interaction::Pressed) {
+    if publish_q.iter().any(|i| *i == UiInteraction::Pressed) {
         start_publish(&mut state, session.as_deref());
     }
 }
 
 /// Step 5 — file pickers. Each opens a native dialog on a worker thread.
 fn pick_click(
-    main: Query<&Interaction, (With<PickMainBtn>, Changed<Interaction>)>,
-    thumb: Query<&Interaction, (With<PickThumbBtn>, Changed<Interaction>)>,
-    shots: Query<&Interaction, (With<PickShotsBtn>, Changed<Interaction>)>,
-    audio: Query<&Interaction, (With<PickAudioBtn>, Changed<Interaction>)>,
+    main: Query<&UiInteraction, (With<PickMainBtn>, Changed<UiInteraction>)>,
+    thumb: Query<&UiInteraction, (With<PickThumbBtn>, Changed<UiInteraction>)>,
+    shots: Query<&UiInteraction, (With<PickShotsBtn>, Changed<UiInteraction>)>,
+    audio: Query<&UiInteraction, (With<PickAudioBtn>, Changed<UiInteraction>)>,
     state: Res<Uploader>,
 ) {
-    if main.iter().any(|i| *i == Interaction::Pressed) {
+    if main.iter().any(|i| *i == UiInteraction::Pressed) {
         spawn_pick(state.pick_tx.clone(), PickKind::Main);
     }
-    if thumb.iter().any(|i| *i == Interaction::Pressed) {
+    if thumb.iter().any(|i| *i == UiInteraction::Pressed) {
         spawn_pick(state.pick_tx.clone(), PickKind::Thumb);
     }
-    if shots.iter().any(|i| *i == Interaction::Pressed) {
+    if shots.iter().any(|i| *i == UiInteraction::Pressed) {
         spawn_pick(state.pick_tx.clone(), PickKind::Screenshots);
     }
-    if audio.iter().any(|i| *i == Interaction::Pressed) {
+    if audio.iter().any(|i| *i == UiInteraction::Pressed) {
         spawn_pick(state.pick_tx.clone(), PickKind::Audio);
     }
 }
@@ -1214,18 +1215,18 @@ fn spawn_pick(tx: Sender<PickMsg>, kind: PickKind) {
 
 /// Tag remove / add-suggestion clicks.
 fn tag_click(
-    remove: Query<(&Interaction, &TagRemoveBtn), Changed<Interaction>>,
-    add: Query<(&Interaction, &TagAddBtn), Changed<Interaction>>,
+    remove: Query<(&UiInteraction, &TagRemoveBtn), Changed<UiInteraction>>,
+    add: Query<(&UiInteraction, &TagAddBtn), Changed<UiInteraction>>,
     mut state: ResMut<Uploader>,
 ) {
     for (interaction, btn) in &remove {
-        if *interaction == Interaction::Pressed && btn.0 < state.tags.len() {
+        if *interaction == UiInteraction::Pressed && btn.0 < state.tags.len() {
             state.tags.remove(btn.0);
             break;
         }
     }
     for (interaction, btn) in &add {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             add_tag(&mut state, btn.0.clone());
             state.tag_query.clear();
             state.tag_suggestions.clear();
@@ -1286,8 +1287,8 @@ fn tag_search(mut state: ResMut<Uploader>) {
 }
 
 /// Open the published item's page in the browser.
-fn success_link_click(q: Query<&Interaction, (With<SuccessLinkBtn>, Changed<Interaction>)>, state: Res<Uploader>) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+fn success_link_click(q: Query<&UiInteraction, (With<SuccessLinkBtn>, Changed<UiInteraction>)>, state: Res<Uploader>) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         if let Some(url) = &state.success_url {
             crate::store::open_url(url);
         }

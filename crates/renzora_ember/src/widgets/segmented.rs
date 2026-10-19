@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberSegment {
@@ -48,7 +49,7 @@ pub fn segmented(
                 } else {
                     Color::NONE
                 }),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberSegment { group, value: i },
                 Styled::with_state(
                     Role::Segment,
@@ -76,12 +77,12 @@ pub fn segmented(
 }
 
 pub(crate) fn segmented_interact(
-    pressed: Query<(&Interaction, &EmberSegment), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberSegment), Changed<UiInteraction>>,
     mut segments: Query<(&EmberSegment, &mut Styled)>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
     for (interaction, s) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             chosen = Some((s.group, s.value));
             break;
         }

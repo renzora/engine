@@ -15,8 +15,10 @@ use crate::menu_command::MenuCommand;
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, divider, rgb, text_muted, text_primary, window_bg};
+use renzora_ember::UiInteraction;
 
 use crate::bottom_dock::BottomDock;
 use crate::dock;
@@ -97,25 +99,25 @@ pub(crate) fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::Fo
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TopMenu(TopMenuKind::Main),
             Name::new("menu:main"),
         ))
         .id();
-    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
+    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<UiInteraction>(item) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
     let icon = glyph(commands, "list", text_muted(), 15.0);
-    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(icon).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(renzora::lang::t_or("menu.label", "Menu")),
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             bevy::text::TextLayout::no_wrap(),
         ))
         .id();
@@ -152,15 +154,15 @@ pub(crate) fn brand_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             BrandMarkBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("brand-mark"),
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, button, move |w| {
-        match w.get::<Interaction>(button) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(button) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
             _ => Color::NONE,
@@ -182,7 +184,6 @@ pub(crate) fn brand_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
                 },
                 // Let the click through to the button, or a press on the mark
                 // itself (i.e. anywhere you would aim) never reaches it.
-                bevy::ui::FocusPolicy::Pass,
                 bevy::picking::Pickable::IGNORE,
                 renzora_ember::widgets::FileImageWanted(path.clone()),
             ))
@@ -213,7 +214,7 @@ pub(crate) fn brand_mark(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let fallback = icon_text(commands, &fonts.phosphor, "cube", accent(), 15.0);
     commands
         .entity(fallback)
-        .insert((bevy::ui::FocusPolicy::Pass, bevy::picking::Pickable::IGNORE));
+        .insert(bevy::picking::Pickable::IGNORE);
     commands.entity(button).add_child(fallback);
     button
 }
@@ -233,10 +234,10 @@ pub(crate) fn brand_icon_path() -> Option<std::path::PathBuf> {
 
 /// Click the mark → open About.
 fn brand_mark_click(
-    q: Query<&Interaction, (With<BrandMarkBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<BrandMarkBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(crate::about::ShowAboutRequested);
     }
 }
@@ -259,7 +260,7 @@ pub(crate) fn build_update_chip(commands: &mut Commands, font: &bevy::text::Font
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             UpdateChipBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("update-chip"),
@@ -269,21 +270,21 @@ pub(crate) fn build_update_chip(commands: &mut Commands, font: &bevy::text::Font
         w.get_resource::<renzora::core::UpdateAvailable>().is_some()
     });
     renzora_ember::reactive::tracked::bind_bg(commands, chip, move |w| {
-        match w.get::<Interaction>(chip) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+        match w.get::<UiInteraction>(chip) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
                 Color::srgba(0.36, 0.65, 1.0, 0.34)
             }
             _ => Color::srgba(0.36, 0.65, 1.0, 0.20),
         }
     });
     let ic = glyph(commands, "arrow-circle-up", text_primary(), 13.0);
-    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
             Text::new(String::new()),
             ui_font(font, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             bevy::text::TextLayout::no_wrap(),
         ))
         .id();
@@ -302,10 +303,10 @@ pub(crate) fn build_update_chip(commands: &mut Commands, font: &bevy::text::Font
 
 /// Click the update chip → open the Software Update overlay.
 fn update_chip_click(
-    q: Query<&Interaction, (With<UpdateChipBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<UpdateChipBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.insert_resource(renzora::core::UpdateRequested);
     }
 }
@@ -377,12 +378,12 @@ fn account_avatar(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<Han
 fn top_menu_open(
     q: Query<
         (
-            &Interaction,
+            &UiInteraction,
             &TopMenu,
             &bevy::ui::RelativeCursorPosition,
             &bevy::ui::ComputedNode,
         ),
-        Changed<Interaction>,
+        Changed<UiInteraction>,
     >,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
@@ -404,7 +405,7 @@ fn top_menu_open(
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
     };
     for (interaction, menu, rcp, cn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         if let Some(e) = open.menu.take() {
@@ -428,7 +429,7 @@ fn top_menu_open(
 /// a click — standard menu-bar behavior.
 fn top_menu_hover(
     q: Query<(
-        &Interaction,
+        &UiInteraction,
         &TopMenu,
         &bevy::ui::RelativeCursorPosition,
         &bevy::ui::ComputedNode,
@@ -452,7 +453,7 @@ fn top_menu_hover(
         recents: recents.as_ref().map(|r| r.0.as_slice()).unwrap_or(&[]),
     };
     for (interaction, menu, rcp, cn) in &q {
-        if *interaction == Interaction::Hovered && menu.0 != open_kind {
+        if *interaction == UiInteraction::Hovered && menu.0 != open_kind {
             if let Some(e) = open.menu.take() {
                 commands.entity(e).try_despawn();
             }
@@ -1372,7 +1373,7 @@ fn destructive_button(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
                 ..default()
             },
             BackgroundColor(Color::srgb_u8(r, g, b)),
-            Interaction::default(),
+            UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("destructive-button"),
         ))
@@ -1382,7 +1383,7 @@ fn destructive_button(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 12.5),
             TextColor(Color::WHITE),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(btn).add_child(t);
@@ -1406,11 +1407,11 @@ fn destructive_button(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
 /// live resource whose values live in `[app]`, so it is replaced here too or the
 /// running editor keeps the old interval until the next launch.
 pub(crate) fn reset_defaults_buttons(
-    confirm: Query<(&Interaction, &ResetDefaultsOverlay), (With<ResetDefaultsConfirmBtn>, Changed<Interaction>)>,
+    confirm: Query<(&UiInteraction, &ResetDefaultsOverlay), (With<ResetDefaultsConfirmBtn>, Changed<UiInteraction>)>,
     mut commands: Commands,
 ) {
     for (interaction, overlay) in &confirm {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let overlay = overlay.0;

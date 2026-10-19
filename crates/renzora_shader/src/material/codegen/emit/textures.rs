@@ -146,7 +146,9 @@ impl Ctx<'_> {
                 // frame to map through, so fall back to the interpolated vertex
                 // normal — what StandardMaterial renders for a mesh that has a
                 // normal map but no tangents.
-                if self.graph.domain == MaterialDomain::TerrainLayer {
+                // A sprite is in the same position: no tangents, no
+                // `pbr_functions`, and a 2D shader reads the value as is.
+                if matches!(self.graph.domain, MaterialDomain::TerrainLayer | MaterialDomain::Sprite) {
                     // Terrain compiles to `layer_main()`, whose `FakeIn` has no
                     // `world_tangent` and which never imports `pbr_functions`.
                     // Its layer shader consumes the tangent-space value
@@ -154,14 +156,16 @@ impl Ctx<'_> {
                     self.set_out(id, "normal", nt);
                 } else {
                     let tbn = self.next_var("ntbn");
-                    self.emit("#ifdef VERTEX_TANGENTS".to_string());
-                    self.emit(format!(
-                        "    let {tbn} = pbr_functions::calculate_tbn_mikktspace(in.world_normal, in.world_tangent);"
-                    ));
-                    self.emit(format!("    let {n} = normalize({tbn} * {nt});"));
-                    self.emit("#else".to_string());
-                    self.emit(format!("    let {n} = normalize(in.world_normal);"));
-                    self.emit("#endif".to_string());
+                    self.emit_if(
+                        "VERTEX_TANGENTS",
+                        &[
+                            format!(
+                                "let {tbn} = pbr_functions::calculate_tbn_mikktspace(in.world_normal, in.world_tangent);"
+                            ),
+                            format!("let {n} = normalize({tbn} * {nt});"),
+                        ],
+                        &[format!("let {n} = normalize(in.world_normal);")],
+                    );
                     self.set_out(id, "normal", n);
                 }
             }

@@ -181,7 +181,7 @@ pub(crate) struct BoxSelectionRect;
 /// sized to the drag rect. Replaces the egui-painted version. `get_rect`
 /// returns window logical pixels, which map directly to an absolute UI node.
 ///
-/// The node is `Pickable::IGNORE` + `FocusPolicy::Pass` so it never occludes the
+/// The node is `Pickable::IGNORE` so it never occludes the
 /// viewport's hover/pick (the drag itself is driven by `box_selection_system`
 /// reading the raw cursor, not UI interaction).
 pub(crate) fn render_box_selection(
@@ -219,7 +219,6 @@ pub(crate) fn render_box_selection(
             BackgroundColor(Color::srgba(66.0 / 255.0, 150.0 / 255.0, 250.0 / 255.0, 0.157)),
             BorderColor::all(Color::srgb_u8(66, 150, 250)),
             GlobalZIndex(8000),
-            bevy::ui::FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
             BoxSelectionRect,
             Name::new("box-selection-rect"),

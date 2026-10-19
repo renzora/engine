@@ -23,8 +23,10 @@ use bevy::window::SystemCursorIcon;
 use super::{grid_node, CableMaterial, GraphPan, GraphView};
 use crate::stacking::{ZTier, ZTierSet};
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::interaction::PASS_THROUGH;
 use crate::theme::*;
 use crate::widgets::text_input::{text_input, EmberTextInput};
+use crate::UiInteraction;
 
 const NODE_W: f32 = 160.0;
 const HEAD_H: f32 = 26.0;
@@ -200,9 +202,9 @@ struct NgvPreview {
 /// row spans the node, the control usually doesn't, and marking the row made the
 /// empty space next to a field refuse to drag the node.
 ///
-/// The guard is a cursor test rather than focus blocking on purpose — `Node`
-/// requires `FocusPolicy`, which defaults to `Pass`, so a press over a field
-/// reaches the node root regardless of what the rows in between do.
+/// The guard is a cursor test rather than picking blocking on purpose: every UI
+/// node starts as `PASS_THROUGH`, so a press over a field reaches the node root
+/// regardless of what the rows in between do.
 #[derive(Component)]
 struct NgvInputEditor;
 
@@ -270,7 +272,6 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() },
             NgvPreview { viewport },
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             ZTier(2),
             GlobalZIndex(2),
@@ -334,7 +335,7 @@ pub fn graph_node_view(
                 color: if selected { rgb(accent()) } else { Color::NONE },
             },
             NgvNode { id: node_id, canvas, viewport },
-            Interaction::default(),
+            UiInteraction::default(),
             RelativeCursorPosition::default(),
             ZTier(NODE_Z),
             GlobalZIndex(NODE_Z),
@@ -347,11 +348,11 @@ pub fn graph_node_view(
         .spawn((
             Node { width: Val::Percent(100.0), height: Val::Px(HEAD_H), align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::top(Val::Px(5.0)), ..default() },
             BackgroundColor(rgb(color)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ngv-node-title"),
         ))
         .id();
-    // The title fills the header and is FocusPolicy::Pass, so pressing it drags the
+    // The title fills the header and is PASS_THROUGH, so pressing it drags the
     // node (the press falls through to the node root). An optional caller control
     // (e.g. a type switcher) sits at the trailing edge and captures its own clicks,
     // so it never steals a header drag.
@@ -362,7 +363,7 @@ pub fn graph_node_view(
             TextColor(rgb(on_accent())),
             bevy::text::TextLayout::no_wrap(),
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(title_bar).add_child(label);
@@ -395,7 +396,7 @@ pub fn graph_node_view(
                     // space is node body and has to drag like it. The guard lives on
                     // the editor instead, where it is exactly as wide as the control
                     // it protects.
-                    bevy::ui::FocusPolicy::Pass,
+                    PASS_THROUGH,
                     Name::new("ngv-input-editor-row"),
                 ))
                 .id();
@@ -413,7 +414,7 @@ pub fn graph_node_view(
         let col = commands
             .spawn((
                 Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("ngv-node-outputs"),
             ))
             .id();
@@ -459,7 +460,7 @@ pub fn graph_node_view(
                 },
                 ImageNode::new(img),
                 BorderColor::all(rgb(tree_line())),
-                bevy::ui::FocusPolicy::Pass,
+                PASS_THROUGH,
                 Name::new("ngv-node-thumb"),
             ))
             .id();
@@ -490,7 +491,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ngv-port-row"),
         ))
         .id();
@@ -509,7 +510,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     // The grab overlay: absolute, edge-anchored, on top of the dot + label start.
@@ -525,7 +526,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
                 ..default()
             },
             NgvPort { node_id, pin: pin.to_string(), is_output, color, group, viewport, label: text },
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("ngv-port-slot"),
         ))
@@ -546,7 +547,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
             BackgroundColor(rgb(color)),
             BorderColor::all(rgb(color)),
             NgvPortDot { is_output },
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ngv-port-dot"),
         ))
         .id();
@@ -564,7 +565,6 @@ pub fn graph_wire_view(commands: &mut Commands, viewport: Entity, from_node: u64
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             NgvWire { from_node, from_pin: from_pin.to_string(), to_node, to_pin: to_pin.to_string(), viewport },
-            bevy::ui::FocusPolicy::Pass,
             Pickable::IGNORE,
             ZTier(1),
             GlobalZIndex(1),
@@ -609,7 +609,7 @@ pub fn graph_comment_view(
             ZTier(1),
             GlobalZIndex(1),
             NgvComment { id, canvas, viewport },
-            Interaction::default(),
+            UiInteraction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("ngv-comment"),
         ))
@@ -630,7 +630,7 @@ pub fn graph_comment_view(
                 ..default()
             },
             BackgroundColor(rgb(color).with_alpha(0.85)),
-            bevy::ui::FocusPolicy::Pass,
+            PASS_THROUGH,
             Name::new("ngv-comment-header"),
         ))
         .id();
@@ -659,7 +659,7 @@ pub fn graph_comment_view(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             NgvCommentDelete { id, viewport },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("ngv-comment-delete"),
@@ -682,7 +682,7 @@ pub fn graph_comment_view(
                 ..default()
             },
             BackgroundColor(rgb(color).with_alpha(0.6)),
-            Interaction::default(),
+            UiInteraction::default(),
             NgvCommentResize { canvas, viewport, comment: root, id },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::NwseResize),
             Name::new("ngv-comment-resize"),
@@ -705,11 +705,11 @@ fn ngv_cable_attach(mut commands: Commands, mut materials: ResMut<Assets<CableMa
 }
 
 /// Right-click a port → disconnect every wire on it (egui parity).
-fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort)>, wires: Query<&NgvWire>, mut graphs: Query<&mut NodeGraphView>) {
+fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&UiInteraction, &NgvPort)>, wires: Query<&NgvWire>, mut graphs: Query<&mut NodeGraphView>) {
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let Some((_, port)) = ports.iter().find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed)) else { return };
+    let Some((_, port)) = ports.iter().find(|(i, _)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed)) else { return };
     let Ok(mut g) = graphs.get_mut(port.viewport) else { return };
     for w in &wires {
         if w.viewport != port.viewport {
@@ -800,14 +800,21 @@ fn px(v: Val) -> f32 {
 /// move every selected node together; on release record `NodeMoved` for each.
 /// Selecting in place (via `NodeGraphView.selected`) never rebuilds a node, so
 /// the drag survives.
-#[allow(clippy::type_complexity)]
+///
+/// A dragged node's top-left corner snaps to the dot grid; hold Alt to place
+/// it freely. Snapping works off where each node started plus the whole drag
+/// so far, not off its last snapped spot, or a slow drag that never crosses
+/// half a cell in one frame would never move at all.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn ngv_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     mut active: Local<Option<(Vec2, bool, Entity, Entity)>>, // (last, moved, viewport, canvas)
-    node_picks: Query<(&Interaction, &NgvNode)>,
-    port_picks: Query<&Interaction, With<NgvPort>>,
+    // The drag so far, in canvas units, and each carried node's start.
+    mut carried: Local<(Vec2, HashMap<u64, Vec2>)>,
+    node_picks: Query<(&UiInteraction, &NgvNode)>,
+    port_picks: Query<&UiInteraction, With<NgvPort>>,
     views: Query<&GraphView>,
     mut nodes: Query<(&NgvNode, &mut Node)>,
     mut graphs: Query<&mut NodeGraphView>,
@@ -817,14 +824,14 @@ fn ngv_drag(
         if !mouse.just_pressed(MouseButton::Left) {
             return;
         }
-        if port_picks.iter().any(|i| *i == Interaction::Pressed) {
+        if port_picks.iter().any(|i| *i == UiInteraction::Pressed) {
             return; // a port press is a connect, not a drag
         }
         if editors.iter().any(|r| r.cursor_over) {
             return; // pressing an inline value editor must not drag the node
         }
         let Some(c) = cursor(&windows) else { return };
-        let Some((_, n)) = node_picks.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+        let Some((_, n)) = node_picks.iter().find(|(i, _)| **i == UiInteraction::Pressed) else { return };
         let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
         if let Ok(mut g) = graphs.get_mut(n.viewport) {
             if ctrl {
@@ -838,6 +845,13 @@ fn ngv_drag(
             let prim = if g.selected.contains(&n.id) { Some(n.id) } else { g.selected.iter().copied().next() };
             g.pending.push(GraphEdit::Select { id: prim });
         }
+        let sel: HashSet<u64> = graphs.get(n.viewport).map(|g| g.selected.clone()).unwrap_or_default();
+        carried.0 = Vec2::ZERO;
+        carried.1 = nodes
+            .iter()
+            .filter(|(m, _)| m.viewport == n.viewport && sel.contains(&m.id))
+            .map(|(m, node)| (m.id, Vec2::new(px(node.left), px(node.top))))
+            .collect();
         *active = Some((c, false, n.viewport, n.canvas));
         return;
     }
@@ -870,14 +884,29 @@ fn ngv_drag(
         return;
     }
     let zoom = views.get(canvas).map(|v| v.zoom).unwrap_or(1.0);
-    let sel: HashSet<u64> = graphs.get(vp).map(|g| g.selected.clone()).unwrap_or_default();
+    carried.0 += delta / zoom;
+    let free = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let total = carried.0;
     for (n, mut node) in &mut nodes {
-        if n.viewport == vp && sel.contains(&n.id) {
-            node.left = Val::Px(px(node.left) + delta.x / zoom);
-            node.top = Val::Px(px(node.top) + delta.y / zoom);
+        if n.viewport != vp {
+            continue;
+        }
+        let Some(start) = carried.1.get(&n.id) else { continue };
+        let at = start + total;
+        let at = if free { at } else { snap_to_grid(at) };
+        if px(node.left) != at.x {
+            node.left = Val::Px(at.x);
+        }
+        if px(node.top) != at.y {
+            node.top = Val::Px(at.y);
         }
     }
     *active = Some((c, true, vp, canvas));
+}
+
+/// The nearest dot of the background grid.
+fn snap_to_grid(p: Vec2) -> Vec2 {
+    (p / super::GRID_SPACING).round() * super::GRID_SPACING
 }
 
 /// Drive each node's border (width + colour) from its viewport's `selected` id,
@@ -911,7 +940,7 @@ fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode,
 fn ngv_connect(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    ports: Query<(&Interaction, &NgvPort)>,
+    ports: Query<(&UiInteraction, &NgvPort)>,
     mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
@@ -923,7 +952,7 @@ fn ngv_connect(
                 g.frozen_cable = None;
             }
         }
-        if let Some((_, p)) = ports.iter().find(|(i, _)| **i == Interaction::Pressed) {
+        if let Some((_, p)) = ports.iter().find(|(i, _)| **i == UiInteraction::Pressed) {
             if let Ok((_, mut g, _, _, _)) = graphs.get_mut(p.viewport) {
                 g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color, p.group));
             }
@@ -932,7 +961,7 @@ fn ngv_connect(
     if mouse.just_released(MouseButton::Left) {
         let target = ports
             .iter()
-            .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+            .find(|(i, _)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
             .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color, p.group));
         let cur = cursor(&windows);
         for (vp, mut g, rcp, vcn, children) in &mut graphs {
@@ -970,10 +999,10 @@ fn ngv_connect(
 /// with matching colour) enlarged; hide every incompatible dot. With no drag, dots
 /// rest at base size and just grow on hover. Also tints the hovered port's row to
 /// advertise that the area is a cable grab handle.
-fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &Interaction, &Children)>, mut dots: Query<(&NgvPortDot, &mut Node)>, mut bgs: Query<&mut BackgroundColor>) {
+fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &UiInteraction, &Children)>, mut dots: Query<(&NgvPortDot, &mut Node)>, mut bgs: Query<&mut BackgroundColor>) {
     for (port, interaction, children) in &ports {
         let pending = graphs.get(port.viewport).ok().and_then(|g| g.pending_connect.clone());
-        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let hovered = matches!(interaction, UiInteraction::Hovered | UiInteraction::Pressed);
         // A port is connectable in the current context: always when no cable is
         // being dragged, else only if it's a compatible drop target (opposite
         // direction, same compat group, a different node).
@@ -1035,9 +1064,9 @@ fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &I
 fn ngv_context(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    node_blockers: Query<&Interaction, With<NgvNode>>,
-    port_blockers: Query<&Interaction, With<NgvPort>>,
-    comment_blockers: Query<&Interaction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
+    node_blockers: Query<&UiInteraction, With<NgvNode>>,
+    port_blockers: Query<&UiInteraction, With<NgvPort>>,
+    comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
     mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
     mut press: Local<Option<Vec2>>,
@@ -1055,7 +1084,7 @@ fn ngv_context(
     if (c - start).length() > 5.0 {
         return;
     }
-    let hot = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    let hot = |i: &UiInteraction| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed);
     if node_blockers.iter().any(hot) || port_blockers.iter().any(hot) || comment_blockers.iter().any(hot) {
         return;
     }
@@ -1149,8 +1178,8 @@ fn ngv_box(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     mut commands: Commands,
-    node_blockers: Query<&Interaction, With<NgvNode>>,
-    port_blockers: Query<&Interaction, With<NgvPort>>,
+    node_blockers: Query<&UiInteraction, With<NgvNode>>,
+    port_blockers: Query<&UiInteraction, With<NgvPort>>,
     mut active: Local<Option<(Vec2, Entity, Entity, bool)>>, // (start, viewport, rect, moved)
     mut vps: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &UiGlobalTransform, &ComputedNode)>,
     node_rects: Query<(&NgvNode, &UiGlobalTransform, &ComputedNode)>,
@@ -1158,13 +1187,13 @@ fn ngv_box(
     wires: Query<&NgvWire>,
     ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
     editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
-    comment_blockers: Query<&Interaction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
+    comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
             return;
         }
-        if node_blockers.iter().any(|i| *i == Interaction::Pressed) || port_blockers.iter().any(|i| *i == Interaction::Pressed) || comment_blockers.iter().any(|i| *i == Interaction::Pressed) {
+        if node_blockers.iter().any(|i| *i == UiInteraction::Pressed) || port_blockers.iter().any(|i| *i == UiInteraction::Pressed) || comment_blockers.iter().any(|i| *i == UiInteraction::Pressed) {
             return; // press landed on a node/port/comment → not a box
         }
         if editors.iter().any(|r| r.cursor_over) {
@@ -1180,7 +1209,6 @@ fn ngv_box(
                 BorderColor::all(a),
                 ZTier(10),
                 GlobalZIndex(10),
-                bevy::ui::FocusPolicy::Pass,
                 Pickable::IGNORE,
                 NgvBoxRect,
                 Name::new("ngv-box"),
@@ -1432,8 +1460,8 @@ fn ngv_comment_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut active: Local<Option<CommentDrag>>,
-    comment_picks: Query<(Entity, &Interaction, &NgvComment)>,
-    block_picks: Query<&Interaction, Or<(With<NgvNode>, With<NgvPort>, With<NgvCommentResize>, With<NgvCommentTitle>, With<NgvCommentDelete>)>>,
+    comment_picks: Query<(Entity, &UiInteraction, &NgvComment)>,
+    block_picks: Query<&UiInteraction, Or<(With<NgvNode>, With<NgvPort>, With<NgvCommentResize>, With<NgvCommentTitle>, With<NgvCommentDelete>)>>,
     node_rects: Query<(Entity, &NgvNode, &ComputedNode)>,
     views: Query<&GraphView>,
     mut all_nodes: Query<&mut Node>,
@@ -1444,11 +1472,11 @@ fn ngv_comment_drag(
             return;
         }
         // Nodes / ports / a comment's own controls take priority over body-drag.
-        if block_picks.iter().any(|i| *i == Interaction::Pressed) {
+        if block_picks.iter().any(|i| *i == UiInteraction::Pressed) {
             return;
         }
         let Some(c) = cursor(&windows) else { return };
-        let Some((ce, _, cm)) = comment_picks.iter().find(|(_, i, _)| **i == Interaction::Pressed) else { return };
+        let Some((ce, _, cm)) = comment_picks.iter().find(|(_, i, _)| **i == UiInteraction::Pressed) else { return };
         let Ok(cnode) = all_nodes.get(ce) else { return };
         let crect = [px(cnode.left), px(cnode.top), px(cnode.width), px(cnode.height)];
         let zoom = views.get(cm.canvas).map(|v| v.zoom).unwrap_or(1.0);
@@ -1517,7 +1545,7 @@ fn ngv_comment_resize(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut active: Local<Option<(Entity, u64, Entity, Entity, Vec2, bool)>>, // (comment, id, canvas, vp, last, moved)
-    grips: Query<(&Interaction, &NgvCommentResize)>,
+    grips: Query<(&UiInteraction, &NgvCommentResize)>,
     views: Query<&GraphView>,
     mut all_nodes: Query<&mut Node>,
     mut graphs: Query<&mut NodeGraphView>,
@@ -1526,7 +1554,7 @@ fn ngv_comment_resize(
         if !mouse.just_pressed(MouseButton::Left) {
             return;
         }
-        let Some((_, g)) = grips.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+        let Some((_, g)) = grips.iter().find(|(i, _)| **i == UiInteraction::Pressed) else { return };
         let Some(c) = cursor(&windows) else { return };
         *active = Some((g.comment, g.id, g.canvas, g.viewport, c, false));
         return;
@@ -1570,9 +1598,9 @@ fn ngv_comment_title(changed: Query<(&EmberTextInput, &NgvCommentTitle), Changed
 }
 
 /// Click a comment's ✕ → record `DeleteComment`.
-fn ngv_comment_delete(changed: Query<(&Interaction, &NgvCommentDelete), Changed<Interaction>>, mut graphs: Query<&mut NodeGraphView>) {
+fn ngv_comment_delete(changed: Query<(&UiInteraction, &NgvCommentDelete), Changed<UiInteraction>>, mut graphs: Query<&mut NodeGraphView>) {
     for (interaction, d) in &changed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut g) = graphs.get_mut(d.viewport) {
                 g.pending.push(GraphEdit::DeleteComment { id: d.id });
             }
@@ -1638,4 +1666,16 @@ fn seg_dist(p: Vec2, a: Vec2, b: Vec2) -> f32 {
 fn control_points(p0: Vec2, p3: Vec2) -> (Vec2, Vec2) {
     let dx = (p3.x - p0.x).abs().max(40.0) * 0.5;
     (p0 + Vec2::new(dx, 0.0), p3 - Vec2::new(dx, 0.0))
+}
+
+#[cfg(test)]
+mod snap_tests {
+    use super::*;
+
+    #[test]
+    fn a_dragged_node_lands_on_the_nearest_dot() {
+        assert_eq!(snap_to_grid(Vec2::new(0.0, 0.0)), Vec2::ZERO);
+        assert_eq!(snap_to_grid(Vec2::new(9.0, 11.0)), Vec2::new(0.0, 20.0));
+        assert_eq!(snap_to_grid(Vec2::new(-31.0, 47.0)), Vec2::new(-40.0, 40.0));
+    }
 }

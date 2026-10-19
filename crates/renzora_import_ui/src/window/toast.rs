@@ -2,13 +2,14 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{spinner, OverlaySurface};
+use renzora_ember::UiInteraction;
 
 use crate::overlay::{poll_import_task, ImportOverlayState, ImportProgress};
 
@@ -105,9 +106,9 @@ fn spawn_toast(commands: &mut Commands, fonts: &EmberFonts) {
     // Header: title + dismiss ×.
     let header = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
     let title = icon_label(commands, fonts, "download-simple", "Importing assets", text_primary(), 12.0);
-    let close = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), ToastDismissBtn, hover_cursor())).id();
+    let close = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, UiInteraction::default(), ToastDismissBtn, hover_cursor())).id();
     let close_x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
-    commands.entity(close_x).insert(FocusPolicy::Pass);
+    commands.entity(close_x).insert(PASS_THROUGH);
     commands.entity(close).add_child(close_x);
     commands.entity(header).add_children(&[title, close]);
     commands.entity(root).add_child(header);
@@ -149,11 +150,11 @@ fn spawn_toast(commands: &mut Commands, fonts: &EmberFonts) {
 }
 
 pub(super) fn toast_dismiss_click(
-    q: Query<&Interaction, (With<ToastDismissBtn>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<ToastDismissBtn>, Changed<UiInteraction>)>,
     mut state: Option<ResMut<ImportOverlayState>>,
 ) {
     let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
         // Hide the toast. A still-running import keeps writing in the background;
         // dismissing only removes the notification.
         state.toast_active = false;

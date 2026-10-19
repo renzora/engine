@@ -15,6 +15,8 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 use renzora_scripting::{ScriptComponent, ScriptValue};
 
+use crate::UiInteraction;
+
 /// Which input currently has keyboard focus (at most one).
 #[derive(Resource, Default)]
 pub struct UiFocus {
@@ -22,7 +24,7 @@ pub struct UiFocus {
 }
 
 /// Marks an `<input>` entity. The entity also carries `Node` + `Text` +
-/// `Button` (for click interaction); this holds the edit state + binding.
+/// `UiButton` (for click interaction); this holds the edit state + binding.
 #[derive(Component)]
 pub struct TextInput {
     /// `bind=` target: `"EntityName.var"` or bare `"var"` (host entity).
@@ -68,11 +70,11 @@ fn resolve_bind(
 
 /// Click an input → focus it (and unfocus others).
 fn focus_on_click(
-    interactions: Query<(Entity, &Interaction), (Changed<Interaction>, With<TextInput>)>,
+    interactions: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<TextInput>)>,
     mut focus: ResMut<UiFocus>,
 ) {
     for (entity, interaction) in &interactions {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             focus.focused = Some(entity);
         }
     }

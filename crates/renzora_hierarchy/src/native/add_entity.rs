@@ -12,6 +12,7 @@ use renzora::core::ShapeRegistry;
 use renzora_editor_framework::{EditorCommands, InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{search_overlay, SearchEntry};
+use renzora_ember::UiInteraction;
 use renzora_undo::{execute, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoContext};
 
 /// Marker on the hierarchy header's "Add Entity" button.
@@ -27,7 +28,7 @@ pub(crate) struct HierAddEntity;
 /// there the press spawns the canvas outright.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn hier_add_entity_open(
-    q: Query<&Interaction, (With<HierAddEntity>, Changed<Interaction>)>,
+    q: Query<&UiInteraction, (With<HierAddEntity>, Changed<UiInteraction>)>,
     fonts: Option<Res<EmberFonts>>,
     spawn_reg: Option<Res<SpawnRegistry>>,
     shape_reg: Option<Res<ShapeRegistry>>,
@@ -36,7 +37,7 @@ pub(crate) fn hier_add_entity_open(
     cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
     let Some(fonts) = fonts else {

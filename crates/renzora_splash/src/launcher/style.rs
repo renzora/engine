@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use bevy::ui::{BackgroundGradient, ColorStop, Gradient, LinearGradient};
 
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiInteraction;
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -104,8 +105,8 @@ pub(crate) fn card_gradient(top: Color, bot: Color) -> BackgroundGradient {
 
 pub(crate) fn is_hovered(w: &Rx, e: Entity) -> bool {
     matches!(
-        w.get::<Interaction>(e),
-        Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        w.get::<UiInteraction>(e),
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
     )
 }
 
@@ -143,8 +144,8 @@ pub(crate) fn page_header(
     title: &str,
     subtitle: &str,
 ) -> Entity {
-    use bevy::ui::FocusPolicy;
     use renzora_ember::font::ui_font;
+    use renzora_ember::interaction::PASS_THROUGH;
 
     let col = commands
         .spawn((
@@ -154,7 +155,7 @@ pub(crate) fn page_header(
                 row_gap: Val::Px(3.0),
                 ..default()
             },
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let h = commands
@@ -162,7 +163,7 @@ pub(crate) fn page_header(
             Text::new(title.to_string()),
             ui_font(&fonts.ui, 17.0),
             TextColor(text()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     let sub = commands
@@ -170,7 +171,7 @@ pub(crate) fn page_header(
             Text::new(subtitle.to_string()),
             ui_font(&fonts.ui, 11.5),
             TextColor(text_muted()),
-            FocusPolicy::Pass,
+            PASS_THROUGH,
         ))
         .id();
     commands.entity(col).add_children(&[h, sub]);

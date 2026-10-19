@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 /// Clicking this row hides the root menu it belongs to.
 #[derive(Component)]
@@ -74,7 +75,7 @@ pub(crate) fn build_menu(
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
-                Interaction::default(),
+                UiInteraction::default(),
                 EmberMenuRow,
                 crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("menu-item"),
@@ -125,7 +126,7 @@ pub(crate) fn build_menu(
                                 ..default()
                             },
                             BackgroundColor(Color::NONE),
-                            Interaction::default(),
+                            UiInteraction::default(),
                             EmberMenuRow,
                             EmberMenuClose { root: menu },
                             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -153,18 +154,18 @@ pub(crate) fn build_menu(
 }
 
 pub(crate) fn menu_hover(
-    mut rows: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<EmberMenuRow>)>,
+    mut rows: Query<(&UiInteraction, &mut BackgroundColor), (Changed<UiInteraction>, With<EmberMenuRow>)>,
 ) {
     for (interaction, mut bg) in &mut rows {
         bg.0 = match *interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb(section_bg()),
-            Interaction::None => Color::NONE,
+            UiInteraction::Hovered | UiInteraction::Pressed => rgb(section_bg()),
+            UiInteraction::None => Color::NONE,
         };
     }
 }
 
 pub(crate) fn submenu_hover(
-    parents: Query<(&Interaction, &EmberSubmenu)>,
+    parents: Query<(&UiInteraction, &EmberSubmenu)>,
     subs: Query<&bevy::ui::RelativeCursorPosition>,
     mut nodes: Query<&mut Node>,
 ) {
@@ -173,7 +174,7 @@ pub(crate) fn submenu_hover(
             .get(parent.sub)
             .map(|r| r.cursor_over)
             .unwrap_or(false);
-        let show = *interaction != Interaction::None || sub_over;
+        let show = *interaction != UiInteraction::None || sub_over;
         if let Ok(mut n) = nodes.get_mut(parent.sub) {
             n.display = if show { Display::Flex } else { Display::None };
         }
@@ -181,11 +182,11 @@ pub(crate) fn submenu_hover(
 }
 
 pub(crate) fn menu_item_close(
-    pressed: Query<(&Interaction, &EmberMenuClose), Changed<Interaction>>,
+    pressed: Query<(&UiInteraction, &EmberMenuClose), Changed<UiInteraction>>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, close) in &pressed {
-        if *interaction == Interaction::Pressed {
+        if *interaction == UiInteraction::Pressed {
             if let Ok(mut n) = nodes.get_mut(close.root) {
                 n.display = Display::None;
             }

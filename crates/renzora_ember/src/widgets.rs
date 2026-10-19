@@ -289,8 +289,8 @@ impl Plugin for WidgetsPlugin {
             scroll_area::scrollbar_busy.after(bevy::ui::UiSystems::Focus),
         );
         // Enter-to-submit must set the simulated button press in PreUpdate (after
-        // the focus system settled this frame's real Interactions) so every
-        // panel's Changed<Interaction> handler sees it during Update, whatever
+        // `UiSystems::Focus` derived this frame's real UiInteractions) so every
+        // panel's Changed<UiInteraction> handler sees it during Update, whatever
         // its system order.
         app.add_systems(
             bevy::app::PreUpdate,

@@ -12,6 +12,7 @@ use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row, 
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, icon_label_button, text_input, DragRange};
+use renzora_ember::UiInteraction;
 
 use renzora_ember::game_ui::components::{
     DropdownData, GradientStop, UiCursor, UiFill, UiInteractionStyle, UiStateStyle, UiStroke, UiTransition,
@@ -129,7 +130,7 @@ fn side_toggle(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, side
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            Interaction::default(),
+            UiInteraction::default(),
             StrokeSideBtn { entity, side },
             Name::new("stroke-side"),
         ))
@@ -156,9 +157,9 @@ fn read_side(s: &UiStroke, side: usize) -> bool {
     }
 }
 
-fn stroke_side_click(q: Query<(&Interaction, &StrokeSideBtn), Changed<Interaction>>, mut commands: Commands) {
+fn stroke_side_click(q: Query<(&UiInteraction,&StrokeSideBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let (e, side) = (btn.entity, btn.side);
@@ -302,9 +303,9 @@ fn build_dropdown_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity
     commands.entity(root).add_children(&rows);
 }
 
-fn dropdown_add_click(q: Query<(&Interaction, &DropdownAddBtn), Changed<Interaction>>, mut commands: Commands) {
+fn dropdown_add_click(q: Query<(&UiInteraction,&DropdownAddBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;
@@ -317,9 +318,9 @@ fn dropdown_add_click(q: Query<(&Interaction, &DropdownAddBtn), Changed<Interact
     }
 }
 
-fn dropdown_remove_click(q: Query<(&Interaction, &DropdownRemoveBtn), Changed<Interaction>>, mut commands: Commands) {
+fn dropdown_remove_click(q: Query<(&UiInteraction,&DropdownRemoveBtn), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;
@@ -579,9 +580,9 @@ fn build_gradient_stops(commands: &mut Commands, fonts: &EmberFonts, entity: Ent
     rows.push(btn_group);
 }
 
-fn fill_add_stop_click(q: Query<(&Interaction, &FillAddStop), Changed<Interaction>>, mut commands: Commands) {
+fn fill_add_stop_click(q: Query<(&UiInteraction,&FillAddStop), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;
@@ -595,9 +596,9 @@ fn fill_add_stop_click(q: Query<(&Interaction, &FillAddStop), Changed<Interactio
     }
 }
 
-fn fill_remove_stop_click(q: Query<(&Interaction, &FillRemoveStop), Changed<Interaction>>, mut commands: Commands) {
+fn fill_remove_stop_click(q: Query<(&UiInteraction,&FillRemoveStop), Changed<UiInteraction>>, mut commands: Commands) {
     for (interaction, b) in &q {
-        if *interaction != Interaction::Pressed {
+        if *interaction != UiInteraction::Pressed {
             continue;
         }
         let e = b.entity;

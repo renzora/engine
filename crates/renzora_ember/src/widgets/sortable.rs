@@ -6,6 +6,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
+use crate::UiInteraction;
 
 #[derive(Component)]
 pub(crate) struct EmberSortable;
@@ -44,7 +45,7 @@ pub fn sortable_list(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]
                         ..default()
                     },
                     BackgroundColor(rgb(tab_active())),
-                    Interaction::default(),
+                    UiInteraction::default(),
                     EmberSortItem { list },
                     crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                     Name::new("sort-item"),
@@ -69,7 +70,7 @@ pub fn sortable_list(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]
 pub(crate) fn sortable_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     mut dragging: Local<Option<(Entity, Entity)>>,
-    rows: Query<(Entity, &Interaction, &EmberSortItem)>,
+    rows: Query<(Entity, &UiInteraction, &EmberSortItem)>,
     lists: Query<&RelativeCursorPosition, With<EmberSortable>>,
     children_q: Query<&Children>,
     mut commands: Commands,
@@ -77,7 +78,7 @@ pub(crate) fn sortable_drag(
     if dragging.is_none() {
         if mouse.just_pressed(MouseButton::Left) {
             for (e, interaction, item) in &rows {
-                if *interaction == Interaction::Pressed {
+                if *interaction == UiInteraction::Pressed {
                     *dragging = Some((e, item.list));
                     break;
                 }
