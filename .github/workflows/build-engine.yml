@@ -957,14 +957,28 @@ jobs:
 
           # UDZO is the compressed read-only format every distributed DMG uses.
           # `-ov` because a re-run of the lane must overwrite rather than fail.
-          rm -f "$dmg"
-          hdiutil create \
-            -volname "Renzora Engine" \
-            -srcfolder "$stage" \
-            -fs HFS+ \
-            -format UDZO \
-            -ov \
-            "$dmg"
+          #
+          # Retried: on hosted macOS runners `hdiutil create` intermittently
+          # fails with "Resource busy" while a background scanner still holds
+          # the freshly copied bundle. It cost a whole macos-x64 lane (an hour
+          # of build) on a step that succeeds when simply run again.
+          ok=
+          for attempt in 1 2 3 4 5; do
+            rm -f "$dmg"
+            if hdiutil create \
+                -volname "Renzora Engine" \
+                -srcfolder "$stage" \
+                -fs HFS+ \
+                -format UDZO \
+                -ov \
+                "$dmg"; then
+              ok=1
+              break
+            fi
+            echo "hdiutil create failed (attempt $attempt of 5); retrying"
+            sleep $((attempt * 10))
+          done
+          [ -n "$ok" ] || { echo "::error::hdiutil create failed 5 times"; exit 1; }
           rm -rf "$stage"
           ls -lh "$dmg"
 

@@ -792,6 +792,22 @@ bindgen_wasm() {
     local OUT="$OUTPUT_DIR/web-wasm32"
     mkdir -p "$OUT"
 
+    # The CLI must be the exact version of the `wasm-bindgen` crate the module
+    # was linked against, and the image pins its CLI separately from
+    # Cargo.lock. A dependency bump moving the lock (Bevy 0.20 took it from
+    # 0.2.108 to 0.2.129) used to fail every wasm build here until someone
+    # rebuilt the image, so a mismatch now installs the locked version instead.
+    local locked have
+    locked=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)
+    have=$(wasm-bindgen --version 2>/dev/null | awk '{ print $2 }')
+    if [ -n "$locked" ] && [ "$have" != "$locked" ]; then
+        echo "wasm-bindgen CLI ${have:-missing} does not match Cargo.lock's $locked; installing $locked"
+        cargo install wasm-bindgen-cli --version "$locked" --locked || {
+            echo "ERROR: could not install wasm-bindgen-cli $locked"
+            return 1
+        }
+    fi
+
     wasm-bindgen --out-dir "$OUT" --out-name "$OUT_NAME" --target web "$WASM_FILE" || {
         echo "ERROR: wasm-bindgen failed for $OUT_NAME"
         return 1

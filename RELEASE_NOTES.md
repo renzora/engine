@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 21:09
+- fix(ci): the web build uses the wasm-bindgen version the lockfile asks for, so it builds again
+- fix(ci): the macOS disk image is retried when the runner briefly holds the app bundle
+
 ## 2026-10-19 20:59
 - fix(rendering): scenes with many point lights no longer flash wrong lighting for a few frames on load
 - fix(rendering): Solari no longer warns about a missing sky light at night

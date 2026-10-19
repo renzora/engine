@@ -18,4 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     binaryen \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cargo install wasm-bindgen-cli --version 0.2.108 --locked
+# Must be the exact version of the `wasm-bindgen` crate in Cargo.lock: the CLI
+# refuses a module built against any other schema. Bevy 0.20 moved the lock to
+# 0.2.129 while this stayed at 0.2.108, and every wasm build failed at the
+# bindgen step. `bindgen_wasm` in build-all.sh installs the locked version if
+# the two drift again, so a stale pin here costs minutes instead of a lane.
+RUN cargo install wasm-bindgen-cli --version 0.2.129 --locked
