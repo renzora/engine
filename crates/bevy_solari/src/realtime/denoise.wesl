@@ -26,13 +26,18 @@
 
 import bevy_core_pipeline::tonemapping::tonemapping_luminance as luminance;
 import bevy_render::view::View;
+import bevy_render::utils::octahedral_decode;
+import bevy_pbr::deferred::types::unpack_24bit_normal;
 import bevy_pbr::prepass::bindings::PreviousViewUniforms;
 import package::realtime::gbuffer_utils::gpixel_resolve;
 import package::realtime::denoise_utils::{demodulation_factors, signal_moments};
 
 @group(0) @binding(0) var<uniform> view: View;
+
+@if(DENOISE_TEMPORAL || DENOISE_COMPOSITE) {
 @group(0) @binding(1) var gbuffer: texture_2d<u32>;
 @group(0) @binding(2) var depth_buffer: texture_depth_2d;
+}
 
 @if(DENOISE_TEMPORAL) {
 @group(0) @binding(3) var previous_gbuffer: texture_2d<u32>;
@@ -50,17 +55,19 @@ import package::realtime::denoise_utils::{demodulation_factors, signal_moments};
 @group(0) @binding(15) var filtered_diffuse: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(16) var filtered_specular: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(17) var<uniform> settings: DenoiserSettings;
+@group(0) @binding(18) var guide_out: texture_storage_2d<rgba32uint, write>;
 }
 
 @if(DENOISE_ATROUS) {
-@group(0) @binding(3) var source_diffuse: texture_2d<f32>;
-@group(0) @binding(4) var source_specular: texture_2d<f32>;
-@group(0) @binding(5) var destination_diffuse: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(6) var destination_specular: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(1) var guide: texture_2d<u32>;
+@group(0) @binding(2) var source_diffuse: texture_2d<f32>;
+@group(0) @binding(3) var source_specular: texture_2d<f32>;
+@group(0) @binding(4) var destination_diffuse: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var destination_specular: texture_storage_2d<rgba16float, write>;
 }
 @if(DENOISE_ATROUS && DENOISE_FEEDBACK) {
-@group(0) @binding(7) var history_diffuse: texture_storage_2d<rgba16float, read_write>;
-@group(0) @binding(8) var history_specular: texture_storage_2d<rgba16float, read_write>;
+@group(0) @binding(6) var history_diffuse: texture_storage_2d<rgba16float, read_write>;
+@group(0) @binding(7) var history_specular: texture_storage_2d<rgba16float, read_write>;
 }
 
 @if(DENOISE_COMPOSITE) {
@@ -154,6 +161,43 @@ fn specular_blur_strength(perceptual_roughness: f32) -> f32 {
     return saturate((perceptual_roughness - SPECULAR_MIRROR_ROUGHNESS) / (SPECULAR_ROUGH_ROUGHNESS - SPECULAR_MIRROR_ROUGHNESS));
 }
 
+// ── Guide ───────────────────────────────────────────────────────────────────
+//
+// One rgba32uint texel per pixel holding exactly what the a-trous edge-stops
+// read: the world position as f32 bits in xyz, and in w the G-buffer's own
+// 24-bit octahedral normal (copied, not re-encoded), 7 bits of perceptual
+// roughness and a top bit marking a pixel Solari shaded. The sky is all zero,
+// so the top bit doubles as the depth test.
+
+/// Set in a guide's w for a shaded pixel.
+const GUIDE_COVERED: u32 = 0x80000000u;
+
+struct GuidePixel {
+    world_position: vec3<f32>,
+    world_normal: vec3<f32>,
+    perceptual_roughness: f32,
+}
+
+@if(DENOISE_TEMPORAL)
+fn pack_guide(world_position: vec3<f32>, packed_normal: u32, perceptual_roughness: f32) -> vec4<u32> {
+    let roughness = u32(round(saturate(perceptual_roughness) * 127.0));
+    return vec4(bitcast<vec3<u32>>(world_position), GUIDE_COVERED | (roughness << 24u) | (packed_normal & 0xFFFFFFu));
+}
+
+@if(DENOISE_ATROUS)
+fn guide_covered(texel: vec4<u32>) -> bool {
+    return (texel.w & GUIDE_COVERED) != 0u;
+}
+
+@if(DENOISE_ATROUS)
+fn unpack_guide(texel: vec4<u32>) -> GuidePixel {
+    return GuidePixel(
+        bitcast<vec3<f32>>(texel.xyz),
+        octahedral_decode(unpack_24bit_normal(texel.w)),
+        f32((texel.w >> 24u) & 0x7Fu) / 127.0,
+    );
+}
+
 // ── Temporal ────────────────────────────────────────────────────────────────
 
 @if(DENOISE_TEMPORAL)
@@ -169,10 +213,13 @@ fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
         textureStore(moments_out, pixel_id, vec4(0.0));
         textureStore(filtered_diffuse, pixel_id, vec4(0.0));
         textureStore(filtered_specular, pixel_id, vec4(0.0));
+        textureStore(guide_out, pixel_id, vec4(0u));
         return;
     }
-    let surface = gpixel_resolve(textureLoad(gbuffer, pixel_id, 0), depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
+    let gpixel = textureLoad(gbuffer, pixel_id, 0);
+    let surface = gpixel_resolve(gpixel, depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
     let view_distance = max(length(view.world_position - surface.world_position), 0.0001);
+    textureStore(guide_out, pixel_id, pack_guide(surface.world_position, gpixel.a, surface.material.perceptual_roughness));
 
     var diffuse = textureLoad(noisy_diffuse, pixel_id, 0).rgb;
     var specular = textureLoad(noisy_specular, pixel_id, 0).rgb;
@@ -294,15 +341,15 @@ fn atrous(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel_id = global_id.xy;
     if any(pixel_id >= view_size()) { return; }
 
-    let depth = textureLoad(depth_buffer, pixel_id, 0);
-    if depth == 0.0 {
+    let center_guide = textureLoad(guide, pixel_id, 0);
+    if !guide_covered(center_guide) {
         textureStore(destination_diffuse, pixel_id, vec4(0.0));
         textureStore(destination_specular, pixel_id, vec4(0.0));
         return;
     }
-    let surface = gpixel_resolve(textureLoad(gbuffer, pixel_id, 0), depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
+    let surface = unpack_guide(center_guide);
     let view_distance = max(length(view.world_position - surface.world_position), 0.0001);
-    let roughness = surface.material.perceptual_roughness;
+    let roughness = surface.perceptual_roughness;
     let specular_strength = specular_blur_strength(roughness);
 
     let center_diffuse = textureLoad(source_diffuse, pixel_id, 0);
@@ -336,9 +383,9 @@ fn atrous(@builtin(global_invocation_id) global_id: vec3<u32>) {
             var diffuse_weight = k;
             var specular_weight = k;
             if x != 0 || y != 0 {
-                let tap_depth = textureLoad(depth_buffer, tap_id, 0);
-                if tap_depth == 0.0 { continue; }
-                let tap_surface = gpixel_resolve(textureLoad(gbuffer, tap_id, 0), tap_depth, tap_id, view.main_pass_viewport.zw, view.world_from_clip);
+                let tap_guide = textureLoad(guide, tap_id, 0);
+                if !guide_covered(tap_guide) { continue; }
+                let tap_surface = unpack_guide(tap_guide);
 
                 let plane_distance = abs(dot(surface.world_normal, tap_surface.world_position - surface.world_position)) / view_distance;
                 let plane_weight = exp(-plane_distance * PLANE_EDGE_SHARPNESS);
@@ -351,7 +398,7 @@ fn atrous(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 specular_weight *= plane_weight
                     * pow(normal_cos, SPECULAR_NORMAL_POWER)
                     * exp(-abs(center_specular_luminance - luminance(tap_specular.rgb)) / specular_sigma)
-                    * exp(-abs(roughness - tap_surface.material.perceptual_roughness) * ROUGHNESS_EDGE_SHARPNESS)
+                    * exp(-abs(roughness - tap_surface.perceptual_roughness) * ROUGHNESS_EDGE_SHARPNESS)
                     * specular_strength;
             }
 

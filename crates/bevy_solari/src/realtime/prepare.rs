@@ -141,6 +141,10 @@ pub struct SolariDenoiserResources {
     pub history_specular: [CachedTexture; 2],
     /// Luminance moments for the noise estimate: diffuse in xy, specular in zw.
     pub moments: [CachedTexture; 2],
+    /// What the a-trous edge-stops need of each pixel, packed once by the
+    /// temporal pass: world position in xyz (f32 bits), and the normal,
+    /// roughness and a coverage bit in w. See `pack_guide` in denoise.wesl.
+    pub guide: CachedTexture,
     pub constants: Buffer,
     /// Frames this view has been denoised for in a row; its parity picks the
     /// history slots, and 0 means there is no history yet.
@@ -164,7 +168,7 @@ struct DenoiserUniforms {
 }
 
 fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> SolariDenoiserResources {
-    let texture = |label: &'static str| {
+    let texture_of = |label: &'static str, format: TextureFormat| {
         let texture = render_device.create_texture(&TextureDescriptor {
             label: Some(label),
             size: Extent3d {
@@ -175,7 +179,7 @@ fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> 
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
+            format,
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         });
@@ -185,6 +189,7 @@ fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> 
             default_view,
         }
     };
+    let texture = |label: &'static str| texture_of(label, TextureFormat::Rgba16Float);
     SolariDenoiserResources {
         noisy_diffuse: texture("solari_denoiser_noisy_diffuse"),
         noisy_specular: texture("solari_denoiser_noisy_specular"),
@@ -202,6 +207,7 @@ fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> 
             texture("solari_denoiser_moments_a"),
             texture("solari_denoiser_moments_b"),
         ],
+        guide: texture_of("solari_denoiser_guide", TextureFormat::Rgba32Uint),
         constants: render_device.create_buffer(&BufferDescriptor {
             label: Some("solari_denoiser_constants"),
             size: size_of::<DenoiserUniforms>() as u64,

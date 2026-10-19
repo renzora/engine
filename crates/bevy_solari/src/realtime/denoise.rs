@@ -5,6 +5,7 @@ use super::prepare::SolariLightingResources;
 use bevy_asset::{load_embedded_asset, AssetServer};
 use bevy_core_pipeline::prepass::PreviousViewData;
 use bevy_render::{
+    diagnostic::RecordDiagnostics,
     render_resource::{
         binding_types::{texture_2d, texture_depth_2d, texture_storage_2d, uniform_buffer, uniform_buffer_sized},
         BindGroup, BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries, BindingResource,
@@ -59,9 +60,13 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
                 write(),
                 write(),
                 uniform_buffer_sized(false, None),
+                texture_storage_2d(TextureFormat::Rgba32Uint, StorageTextureAccess::WriteOnly),
             ),
         ),
     );
+    // The a-trous passes read the guide the temporal pass packed rather than
+    // the G-buffer and depth: 25 taps a pixel over five passes made decoding
+    // the full G-buffer and rebuilding a world position per tap their main cost.
     let atrous_layout = BindGroupLayoutDescriptor::new(
         "solari_denoiser_atrous_layout",
         &BindGroupLayoutEntries::sequential(
@@ -69,7 +74,6 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
             (
                 uniform_buffer::<ViewUniform>(true),
                 texture_2d(TextureSampleType::Uint),
-                texture_depth_2d(),
                 read(),
                 read(),
                 write(),
@@ -84,7 +88,6 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
             (
                 uniform_buffer::<ViewUniform>(true),
                 texture_2d(TextureSampleType::Uint),
-                texture_depth_2d(),
                 read(),
                 read(),
                 write(),
@@ -213,6 +216,7 @@ pub fn prepare_denoiser_dispatch<'a>(
             &d.filtered_diffuse.default_view,
             &d.filtered_specular.default_view,
             d.constants.as_entire_binding(),
+            &d.guide.default_view,
         )),
     );
 
@@ -227,8 +231,7 @@ pub fn prepare_denoiser_dispatch<'a>(
             &pipeline_cache.get_bind_group_layout(&pipelines.atrous_layout),
             &BindGroupEntries::sequential((
                 inputs.view_uniforms.clone(),
-                inputs.gbuffer,
-                inputs.depth,
+                &d.guide.default_view,
                 source.0,
                 source.1,
                 destination.0,
@@ -241,8 +244,7 @@ pub fn prepare_denoiser_dispatch<'a>(
         &pipeline_cache.get_bind_group_layout(&pipelines.atrous_feedback_layout),
         &BindGroupEntries::sequential((
             inputs.view_uniforms.clone(),
-            inputs.gbuffer,
-            inputs.depth,
+            &d.guide.default_view,
             filtered.0,
             filtered.1,
             noisy.0,
@@ -293,24 +295,33 @@ pub fn prepare_denoiser_dispatch<'a>(
 impl DenoiserDispatch<'_> {
     /// Record the passes. The caller has already dispatched the lighting, so
     /// `noisy_*` holds this frame's signal.
-    pub fn dispatch(&self, pass: &mut ComputePass, dx: u32, dy: u32) {
+    ///
+    /// Each stage gets its own GPU time span, so a slow denoiser says which
+    /// stage is slow rather than only that it is.
+    pub fn dispatch(&self, pass: &mut ComputePass, diagnostics: &impl RecordDiagnostics, dx: u32, dy: u32) {
         // Bind group 0 is the denoiser's own, and the lighting's groups 1 and 2
         // are not part of these pipelines' layouts.
         pass.set_bind_group(1, None, &[]);
         pass.set_bind_group(2, None, &[]);
 
+        let d = diagnostics.time_span(pass, "solari_lighting/denoise_temporal");
         pass.set_pipeline(self.pipelines[0]);
         pass.set_bind_group(0, &self.temporal, &[self.view_uniform_offset, self.previous_view_uniform_offset]);
         pass.dispatch_workgroups(dx, dy, 1);
+        d.end(pass);
 
+        let d = diagnostics.time_span(pass, "solari_lighting/denoise_atrous");
         for (i, group) in self.atrous.iter().enumerate() {
             pass.set_pipeline(self.pipelines[1 + i]);
             pass.set_bind_group(0, group, &[self.view_uniform_offset]);
             pass.dispatch_workgroups(dx, dy, 1);
         }
+        d.end(pass);
 
+        let d = diagnostics.time_span(pass, "solari_lighting/denoise_composite");
         pass.set_pipeline(self.pipelines[6]);
         pass.set_bind_group(0, &self.composite, &[self.view_uniform_offset]);
         pass.dispatch_workgroups(dx, dy, 1);
+        d.end(pass);
     }
 }

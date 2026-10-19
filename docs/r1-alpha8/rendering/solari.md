@@ -158,7 +158,8 @@ Two settings decide how much sky Solari gets:
 - **Environment Map switched off** means no sky light at all. Everything not
   facing the sun is then lit by bounce alone, and shadowed facades go close to
   black while the sunlit ground looks right. The plugin warns about this in the
-  Console.
+  Console, except while the sun is below the horizon: a night sky gives no
+  light, so a dark sky at night is expected and not a missing setting.
 - **Intensity** scales the sky directly. `1.0` is the physically correct sky.
   Lower values that looked fine under raster lighting make a Solari scene
   noticeably darker in shadow.
@@ -241,22 +242,22 @@ rather than raising light intensities.
 
 ## Performance
 
-Solari is substantially more expensive than the raster pipeline, and
-most of that cost is inherent to `bevy_solari` today rather than to how Renzora
-drives it. Per frame it rebuilds the whole TLAS (`AccelerationStructureUpdateMode::Build`,
-not a refit), clones every `StandardMaterial` into the render world, and rebuilds
-every storage buffer and the scene bind group — then runs the world-cache,
-ReSTIR DI, ReSTIR GI and specular passes on top.
+Almost all of Solari's cost is on the GPU, in its compute passes. The scene
+upload is incremental: only changed transforms, materials and lights are
+uploaded, and the TLAS instances are set up on the GPU. As a reference, the lit
+Bistro night scene (90 point lights) on an RTX 3060 at about 1300x930 runs at
+roughly 40 ms a frame on `High`, against 34 ms with Solari off.
 
-Two things are worth knowing:
+Things worth knowing:
 
 - **Shadow maps are suppressed while Solari is on** (`Suppress Shadow Maps` in
   the inspector, on by default). A Solari camera carries `SkipDeferredLighting`,
-  so the standard lighting pass — the only consumer of a shadow map — never
+  so the standard lighting pass, the only consumer of a shadow map, never
   runs. Without suppression every directional cascade and every point-light
   cubemap is rendered in full and then discarded, which in a scene with a lot of
-  lamps is a serious amount of wasted GPU time. Bevy's own guidance is the same:
-  set `shadow_maps_enabled: false` on all lights while Solari is active.
+  lamps is a serious amount of wasted GPU time (in the Bistro scene above it
+  more than tripled the frame time). Bevy's own guidance is the same: set
+  `shadow_maps_enabled: false` on all lights while Solari is active.
 
   The suppression is applied in the **render world**, to the extracted lights.
   Your `PointLight` / `DirectionalLight` components are never written, so a scene
@@ -265,7 +266,11 @@ Two things are worth knowing:
   per-camera: while it is on, no camera renders shadow maps.
 - **Measure before tuning.** Use the debugger's render diagnostics for real GPU
   timings rather than inferring from the frame counter; the Graphics Quality
-  tier also gates the fullscreen passes that stack on top of Solari.
+  tier also gates the fullscreen passes that stack on top of Solari. Solari's
+  time spans are `solari_lighting/presample_light_tiles`, `world_cache`,
+  `initial` (the new samples and paths), `spatial_and_shade` (ReSTIR's spatial
+  reuse and shading), and the denoiser's `denoise_temporal`, `denoise_atrous`
+  and `denoise_composite`.
 
 ## Diagnosing a dark or wrongly-shadowed scene
 

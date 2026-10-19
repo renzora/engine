@@ -50,10 +50,10 @@ use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight,
 use bevy::mesh::{Indices, MeshVertexAttributeId, PrimitiveTopology};
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::pbr::{
-    extract_lights, DefaultOpaqueRendererMethod, ExtractedDirectionalLight, ExtractedPointLight,
+    prepare_lights, DefaultOpaqueRendererMethod, ExtractedDirectionalLight, ExtractedPointLight,
 };
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
-use bevy::render::{ExtractSchedule, RenderApp};
+use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::render::render_resource::TextureUsages;
 use bevy::render::view::Msaa;
 use bevy::solari::realtime::SolariLighting;
@@ -125,7 +125,12 @@ impl Plugin for SolariPlugin {
         // Applied in the render world, to the *extracted* lights, so the main
         // world's light components are never written. See `SuppressShadowMaps`.
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-            render_app.add_systems(ExtractSchedule, suppress_shadow_maps.after(extract_lights));
+            render_app.add_systems(
+                Render,
+                suppress_shadow_maps
+                    .in_set(RenderSystems::CreateViews)
+                    .before(prepare_lights),
+            );
         }
         // The mesh systems READ `InheritedVisibility`, which Bevy writes in
         // `PostUpdate`/`VisibilityPropagate`. Run them in `Update` and every
@@ -1038,13 +1043,20 @@ fn sync_shadow_map_suppression(
 /// Note this is global rather than per-camera, in the same way Solari's deferred
 /// renderer method is: while it's on, no camera renders shadow maps.
 ///
-/// `Option` because the render-world copy of the resource does not exist on the
-/// very first extract: `ExtractResourcePlugin`'s `extract_resource` inserts it
-/// via `Commands`, which only apply at the end of the schedule, so no ordering
-/// within `ExtractSchedule` can make it visible that frame. Suppression is off
-/// by default, so treating the missing frame as "not suppressed" is exactly
-/// right; without the `Option`, Bevy skipped the system with a validation
-/// warning on every boot.
+/// **Why `Render` and not `ExtractSchedule`.** Bevy 0.20's `extract_lights`
+/// inserts each extracted light through `Commands`, which only apply at the end
+/// of the extract schedule. This used to run there, after `extract_lights`, and
+/// so edited the previous frame's copies a moment before the queued insert
+/// replaced them with `shadow_maps_enabled: true`. Every cubemap kept rendering
+/// under Solari (about 18 ms a frame for the lit Bistro on an RTX 3060) and
+/// nothing said so. `prepare_lights` is what turns the flag into shadow views,
+/// so running just before it is the one point that is both after the inserts
+/// and early enough.
+///
+/// `Option` because the resource is extracted through `Commands` too, so it does
+/// not exist in the render world until the first extract has applied.
+/// Suppression is off by default, so the missing frame reads as "not
+/// suppressed", which is right.
 fn suppress_shadow_maps(
     suppress: Option<Res<SuppressShadowMaps>>,
     mut directional: Query<&mut ExtractedDirectionalLight>,
@@ -1379,6 +1391,11 @@ fn warn_unsupported_lights(
 ///
 /// `AmbientLight` is still dropped: it is applied in the deferred lighting pass,
 /// which a Solari camera's `SkipDeferredLighting` removes.
+///
+/// Says nothing while every sun is below the horizon. A night sky has no light
+/// to give, so the baked map is black by design, and telling the user to turn
+/// on an environment map that is already on sent them looking for a fault
+/// every time a day/night cycle reached dusk.
 fn warn_missing_sky_light(
     sky: Query<
         (
@@ -1388,6 +1405,7 @@ fn warn_missing_sky_light(
         With<SolariLighting>,
     >,
     ambient: Query<&AmbientLight, With<SolariLighting>>,
+    suns: Query<&renzora::Sun>,
     mut warned_sky: Local<bool>,
     mut warned_ambient: Local<bool>,
 ) {
@@ -1396,6 +1414,7 @@ fn warn_missing_sky_light(
         *warned_ambient = false;
         return;
     }
+    let night = !suns.is_empty() && suns.iter().all(|sun| sun.elevation <= 0.0);
     // Same precedence as `bevy_solari`'s `extract_raytracing_environment_map_light`.
     let has_sky = sky.iter().any(|(generated, map)| match (generated, map) {
         (Some(generated), _) => generated.intensity > 0.0,
@@ -1405,7 +1424,7 @@ fn warn_missing_sky_light(
     if has_sky {
         // Re-arm, so switching the sky off again later warns again.
         *warned_sky = false;
-    } else if !*warned_sky {
+    } else if !night && !*warned_sky {
         *warned_sky = true;
         warn!(
             "[solari] no sky light: Solari lights the sky from the environment map, and this \

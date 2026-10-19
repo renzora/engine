@@ -404,7 +404,10 @@ pub fn solari_lighting(
 
     d.end(&mut pass);
 
-    let d = diagnostics.time_span(&mut pass, "solari_lighting/lighting");
+    // RENZORA PATCH: the two lighting dispatches are timed apart (upstream
+    // timed them as one `solari_lighting/lighting`), since they cost very
+    // differently and only one of them depends on the ReSTIR setting.
+    let d = diagnostics.time_span(&mut pass, "solari_lighting/initial");
 
     if let Some(bind_group_restir) = &bind_group_restir {
         pass.set_bind_group(
@@ -423,19 +426,18 @@ pub fn solari_lighting(
     }
     pass.set_pipeline(initial_pipeline);
     pass.dispatch_workgroups(dx, dy, 1);
+    d.end(&mut pass);
 
     if let Some(spatial_and_shade_pipeline) = spatial_and_shade_pipeline {
+        let d = diagnostics.time_span(&mut pass, "solari_lighting/spatial_and_shade");
         pass.set_pipeline(spatial_and_shade_pipeline);
         pass.dispatch_workgroups(dx, dy, 1);
+        d.end(&mut pass);
     }
-
-    d.end(&mut pass);
 
     // RENZORA PATCH: denoise the lighting just written.
     if let Some(denoiser_dispatch) = &denoiser_dispatch {
-        let d = diagnostics.time_span(&mut pass, "solari_lighting/denoise");
-        denoiser_dispatch.dispatch(&mut pass, dx, dy);
-        d.end(&mut pass);
+        denoiser_dispatch.dispatch(&mut pass, &diagnostics, dx, dy);
     }
 
     drop(pass);
