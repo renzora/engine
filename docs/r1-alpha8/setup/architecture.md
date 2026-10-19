@@ -171,7 +171,7 @@ renzora::plugin!(AsciiPlugin, Runtime);
 
 `#[post_process]` writes the derives, the `Default` from the `default =` values, the `enabled` field and the padding before it, the `PostProcessEffect` impl, and the inspector section. `PostProcessPlugin<T>` turns that into a real `RenderPassEntry`, sizes the uniform buffer from the component and uploads its bytes each frame.
 
-> `renzora_postprocess` is a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so every effect shares one `RenderComposition` and matching `TypeId`s across the dlopen boundary.
+> The framework lives **inside `renzora.dll`** (`renzora::postprocess`), so every effect shares one `RenderComposition` and matching `TypeId`s across the dlopen boundary. The `renzora_postprocess` crate is the shader-file effects that run in one of its phases.
 
 What stays in-tree: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component rather than running a pass of their own, and the **multi-pass graph crates** (`renzora_oit`, `renzora_solari`).
 

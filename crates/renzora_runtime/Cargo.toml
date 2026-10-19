@@ -100,7 +100,6 @@ dlss = ["bevy/dlss"]
 render_3d = [
     "renzora_engine/render_3d",
     "renzora/render_3d",
-    "renzora_postprocess/render_3d",
     "renzora_ember?/render_3d",
     "renzora_ember_dylib?/render_3d",
 ]
@@ -355,7 +354,9 @@ renzora_navmesh = { path = "../renzora_navmesh", optional = true }
 renzora_tilemap = { path = "../renzora_tilemap", optional = true }
 renzora_sprite_anim = { path = "../renzora_sprite_anim", optional = true }
 
-# Postprocess framework + vital effects
+# Shader-file post-process effects (the Post Process component). Core: with no
+# effect added it builds no pipelines and its pass returns at once. Also what
+# switches on `renzora/postprocess`, the render phases every pass slots into.
 renzora_postprocess = { path = "../renzora_postprocess" }
 # `default-features = false` is load-bearing: this crate's `tonemapping_luts`
 # feature FORWARDS to it, and `renzora_tonemapping`'s own `default` enables it.

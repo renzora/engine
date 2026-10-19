@@ -52,6 +52,12 @@ pub use clouds::*;
 pub mod auto_exposure;
 pub use auto_exposure::*;
 
+// Shader-file post-process effects. Here because the scene format, the
+// inspector and the scripting API all name the list, from different crates;
+// the renderer is `renzora_postprocess`.
+pub mod post_effects;
+pub use post_effects::*;
+
 // `Sun` (read by six crates, one of them now a plugin) and `NightStarsData`.
 // `renzora_lighting` re-exports `Sun`, so existing paths keep resolving.
 pub mod sun;
@@ -217,9 +223,8 @@ pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};
 // `renzora_postprocess` dylib so its symbols ship inside `renzora.dll`
 // instead of a separate file — the ~50 effect plugins still resolve one
 // shared copy (and one `PostProcessRegistry` TypeId) across the dlopen
-// boundary, just from `renzora` now. The `renzora_postprocess` crate
-// remains as a thin rlib re-export shim so existing `renzora_postprocess::…`
-// paths (incl. those emitted by the `post_process` macro) keep compiling.
+// boundary, just from `renzora` now. The `renzora_postprocess` crate is
+// the shader-file effects that run in one of these phases, not a copy of it.
 //
 // Gated so non-rendering targets (mobile staticlib, wasm, headless server)
 // don't pull the render-graph surface into the lean base crate.

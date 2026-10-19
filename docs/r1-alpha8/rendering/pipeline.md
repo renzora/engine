@@ -68,7 +68,7 @@ This file is the **only** place that imports `tonemapping`, `temporal_anti_alias
 
 A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and the `add!` priority does not affect render order.
 
-The framework lives inside `renzora.dll` (`renzora::postprocess`, re-exported through the `renzora_postprocess` shim) so every effect shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's effect registers through the same `PostProcessPlugin<T>` an in-tree one does, so a plugin effect and an engine pass sort against each other in one list.
+The framework lives inside `renzora.dll` (`renzora::postprocess`) so every effect shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's effect registers through the same `PostProcessPlugin<T>` an in-tree one does, so a plugin effect and an engine pass sort against each other in one list.
 
 ## EffectRouting — getting settings onto the camera
 

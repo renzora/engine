@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-19 05:02
+- feat(rendering): a post-process effect is a single `.wesl` file that declares its own sliders, and a Post Process component runs an ordered list of them on a camera
+- feat(editor): drag an effect file onto the Post Process inspector to add it, then reorder, switch off or tune it there
+
 ## 2026-10-19 04:01
 - fix(build): the engine compiles in a debug build again, which the particle system's Bevy 0.20 update had broken
 

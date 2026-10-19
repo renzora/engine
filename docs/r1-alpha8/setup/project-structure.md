@@ -162,7 +162,7 @@ binary carries only what a game genuinely cannot boot without.
 A few naming notes that trip people up reading the tree:
 
 - The UI/markup system is `renzora_ember`. The former `renzora_hui` crate was merged into ember and **deleted**; the still-vendored `bevy_hui` is used only as the `.html` parser.
-- `renzora_postprocess` is just a re-export shim (`pub use renzora::postprocess::*;`) — the framework lives in `renzora.dll`.
+- `renzora_postprocess` is the shader-file effects behind the Post Process component. The render phases those effects run in are `renzora::postprocess`, in `renzora.dll`.
 - `renzora_gauges` and the `vello`-based vector renderer were removed; gauges are now an `renzora_ember` WGSL widget.
 - `renzora_dream` is a live post-process effect, not editor tooling.
 

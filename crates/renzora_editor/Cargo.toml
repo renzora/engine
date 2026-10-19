@@ -101,6 +101,7 @@ editor = [
     "dep:renzora_antialiasing_editor",
     "dep:renzora_distance_fog_editor",
     "dep:renzora_volumetric_fog_editor",
+    "dep:renzora_postprocess_editor",
     "dep:renzora_atmosphere_editor",
     "dep:renzora_environment_map_editor",
     "dep:renzora_ssao_editor",
@@ -195,6 +196,7 @@ renzora_distance_fog    = { path = "../renzora_distance_fog" }
 renzora_distance_fog_editor = { path = "../renzora_distance_fog/editor", optional = true }
 renzora_volumetric_fog  = { path = "../renzora_volumetric_fog" }
 renzora_volumetric_fog_editor = { path = "../renzora_volumetric_fog/editor", optional = true }
+renzora_postprocess_editor = { path = "../renzora_postprocess/editor", optional = true }
 renzora_atmosphere      = { path = "../renzora_atmosphere" }
 renzora_atmosphere_editor = { path = "../renzora_atmosphere/editor", optional = true }
 renzora_environment_map = { path = "../renzora_environment_map" }

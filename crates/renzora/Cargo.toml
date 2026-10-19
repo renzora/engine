@@ -87,7 +87,7 @@ editor = ["postprocess", "dep:renzora_macros"]
 # Pulls in the post-process framework module (`renzora::postprocess`):
 # `PostProcessPlugin<T>`, `PostProcessEffect`, the unified render node and
 # the shared `PostProcessRegistry`. Enabled (transitively) by the
-# `renzora_postprocess` shim crate and by the editor/runtime desktop hosts.
+# `renzora_postprocess` effects crate and by the editor/runtime desktop hosts.
 # Off by default so mobile/wasm/server builds keep the lean contracts-only
 # base — they never link the render-graph surface.
 postprocess = []

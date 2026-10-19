@@ -66,6 +66,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
+    app.add_plugins(renzora_postprocess::PostProcessPlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
     app.add_plugins(renzora_rust_script::RustScriptPlugin::default());

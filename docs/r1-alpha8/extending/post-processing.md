@@ -1,222 +1,125 @@
 # Post-Processing Effects
 
-A full-screen camera effect is a small Rust struct plus a WGSL shader, shipped as a [native plugin](native-plugins.md). It hot-reloads — shader included — while the editor runs.
+A full-screen camera effect is **one shader file**. The file declares its own sliders in comments, so there is no Rust to write, nothing to compile and no plugin to install: put the `.wesl` in your project and drop it on a camera.
 
-Every effect the engine ships is installed rather than built in, and they are all the same three files.
+The effects published on the marketplace (CRT, film grain, pixelation, toon and about fifty more) are all files of this shape. Install one from the **Shaders** category and it lands in your project's `shaders/` folder.
 
-## The three files
+## Using an effect
 
-Taking the `ascii` effect verbatim.
+1. Select the camera, or the World Environment if the effect should apply to every camera.
+2. **Add Component ▸ Post Process**.
+3. Drag the effect's `.wesl` from the Assets panel onto the drop zone at the top of the component.
 
-### 1. `Cargo.toml`
+Each effect becomes a section with its sliders, an on switch, move up and move down, and remove. Effects run in list order, each one reading what the one above it wrote, so a blur above a pixelation is a different picture from the same two the other way round.
 
-```toml
-[workspace]
+A file that is not a usable effect still appears in the list, with a red message saying why, so a typo in a shader you are writing shows up where you are looking. The same message goes to the Console.
 
-[package]
-name = "ascii"
-version = "0.1.0"
-edition = "2021"
+## Writing one
 
-[lib]
-crate-type = ["dylib"]
-
-[dependencies]
-bevy = "0.20"
-renzora = "0.1"
-```
-
-> **Do not run `cargo build` here.** `plugins/` sits outside the engine workspace, so cargo would resolve a second Bevy from crates.io and the plugin that came out would have different `TypeId`s from the engine — it would load, run, and corrupt the World. The editor compiles it against the staged SDK; see [Native Plugins](native-plugins.md).
-
-### 2. `src/lib.rs`
-
-```rust
-use bevy::prelude::*;
-use renzora::{post_process, AppEditorExt};
-
-#[post_process(shader = "ascii.wgsl", name = "ASCII", icon = "text-aa")]
-pub struct Ascii {
-    #[field(min = 2.0, max = 32.0, speed = 0.5, default = 8.0)]
-    pub char_size: f32,
-    #[field(min = 0.0, max = 1.0, speed = 0.01, default = 0.5)]
-    pub color_mix: f32,
-    #[field(min = 0.5, max = 3.0, speed = 0.01, default = 1.2)]
-    pub contrast: f32,
-}
-
-#[derive(Default)]
-pub struct AsciiPlugin;
-
-impl Plugin for AsciiPlugin {
-    fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "ascii.wgsl");
-        app.add_plugins(renzora::postprocess::PostProcessPlugin::<Ascii>::default());
-        app.register_inspectable::<Ascii>();
-    }
-}
-
-renzora::plugin!(AsciiPlugin, Runtime);
-```
-
-`#[post_process]` is the whole of it. From that one attribute the macro writes:
-
-| It generates | Why you do not |
-|---|---|
-| `Component`, `Reflect` and the derives around them | every effect needs the same set |
-| a `Default` impl from the `default =` values | so the inspector's "add component" gives a usable effect, not zeros |
-| an `enabled` field, and padding before it | the uniform has to reach a 16-byte multiple, and the arithmetic is easy to get wrong by hand |
-| the `PostProcessEffect` impl | it is the same four lines every time |
-| the inspector section, laid out from the `#[field]` ranges | one control per field, with the right limits |
-
-| Attribute argument | Meaning |
-|---|---|
-| `shader` | The `.wgsl` or `.wesl` beside `lib.rs`, loaded through `embedded_asset!` |
-| `name` | What the inspector calls the effect |
-| `icon` | Its glyph in the add-component list |
-| `order` | Optional sort key within the render phase; lower runs first |
-
-`#[field(skip)]` keeps a value in the struct and out of the inspector — useful for a tone weight the shader reads every pixel but nobody should be dragging.
-
-### 3. `src/ascii.wgsl`
+The whole of a working effect:
 
 ```wgsl
-@group(0) @binding(0) var screen_texture: texture_2d<f32>;
-@group(0) @binding(1) var texture_sampler: sampler;
+// @effect(name = "Invert", icon = "circle-half")
 
-// Must match the struct `#[post_process]` generates, field for field: the user
-// fields in declaration order, then padding out to a 16-byte multiple, then
-// `enabled` last. Nothing checks this at run time.
-struct AsciiSettings {
-    char_size: f32,
-    color_mix: f32,
-    contrast: f32,
-    _padding1: f32,
-    _padding2: f32,
-    _padding3: f32,
-    _padding4: f32,
-    enabled: f32,
+@group(0) @binding(0) var screen_texture: texture_2d<f32>;
+@group(0) @binding(1) var screen_sampler: sampler;
+
+struct Settings {
+    amount: f32,    // @slider(0, 1, default = 1)
 };
-@group(0) @binding(2) var<uniform> settings: AsciiSettings;
+@group(0) @binding(2) var<uniform> settings: Settings;
 
 @fragment
-fn fragment(@builtin(position) pos: vec4<f32>, @location(0) in_uv: vec2<f32>) -> @location(0) vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(screen_texture));
-    let cell = vec2(settings.char_size) / dims;
-    let cell_center = (floor(in_uv / cell) + 0.5) * cell;
-    let cell_color = textureSample(screen_texture, texture_sampler, cell_center);
-
-    let lum = clamp(dot(cell_color.rgb, vec3(0.299, 0.587, 0.114)) * settings.contrast, 0.0, 1.0);
-    let result = mix(vec3(lum), cell_color.rgb, settings.color_mix);
-    return vec4(result, 1.0);
+fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let c = textureSample(screen_texture, screen_sampler, uv);
+    return vec4(mix(c.rgb, 1.0 - c.rgb, settings.amount), c.a);
 }
 ```
 
-## The shader contract
+Save it as `shaders/invert.wesl` and it can be dropped on a Post Process component straight away. Edit it while it is in use and the effect, and its sliders, update when you save.
 
-- **Write the `@fragment` entry point only**, named `fragment`. The vertex stage is the engine's fullscreen triangle. Its output arrives as `@builtin(position)` plus `@location(0)` UV — name that second parameter something other than `uv` if the body wants `uv` as a local, which is why the shipped effects call it `in_uv`.
-- **All bindings are `@group(0)`**: 0 is the source colour texture, 1 its sampler, 2 the settings uniform. Bindings 3 and 4 are an optional extra texture and its sampler; a shader that declares either without the effect asking for one is a wgpu validation crash at the moment it first renders, not a compile error.
-- **The WGSL struct mirrors the generated Rust struct exactly**: your fields in declaration order, then padding, then `enabled` last. The padding count is `max(8, ceil((fields + 1) / 4) * 4) - fields - 1`. Field names are arbitrary; order and size are not.
-- **Respect `enabled`.** It is `0.0` when the effect is switched off in the inspector. Return the sampled colour unchanged rather than running the effect.
-- **Plain WGSL, or WESL when you need imports.** The example above imports nothing, so it is valid as either. Name the file `.wesl` to use `import bevy_render::maths::PI;` and `@if(FLAG)`. An effect written for the old `#import`/`#ifdef` dialect still loads, because the engine translates it to WESL as it loads; see [Shaders](../rendering/shaders.md).
+### The header
 
-## Render phases
+The `// @effect(...)` comment is what makes a shader an effect; the drop zone refuses a shader without one. It takes:
 
-The phase says where in the frame the pass runs; `order` sorts within it.
+| Setting | Meaning |
+|---|---|
+| `name` | What the inspector calls the effect. Defaults to the file name. |
+| `icon` | Its glyph, a [Phosphor](https://phosphoricons.com) name such as `television-simple`. Defaults to `sparkle`. |
+| `freeze_while` | For effects that read a frozen frame; see [below](#effects-that-need-the-previous-frame). |
+
+`// @effect` on its own, with no parentheses, is a valid header too.
+
+### Settings and sliders
+
+The settings are an ordinary struct at `@group(0) @binding(2)`. A comment after each field says how the inspector shows it:
+
+| Comment | The field is |
+|---|---|
+| `// @slider(min, max)` | a slider over that range |
+| `// @slider(min, max, default = 0.5, step = 0.01, label = "Amount")` | the same, with a starting value, drag step and row label |
+| `// @hidden(default = 1)` | fixed at that value and not shown |
+| none | a slider with no range, starting at 0 |
+
+Two field names are filled in by the engine, and get no comment:
+
+- **`time`**: seconds since startup. It wraps at 1024 seconds, because a float second count loses precision after a few hours of uptime and a noise pattern hashed from it starts to visibly step.
+- **`enabled`**: always 1. Effects carried over from the old plugin format read it; a new one has no need to, since a switched-off effect is not drawn at all.
+
+A field whose name starts with `_` is hidden at 0.
+
+Fields must be `f32`, `i32` or `u32`. An integer field's slider snaps to whole numbers. You never write padding: the engine takes each field's offset from the shader compiler and packs the buffer to match, so add, remove or reorder fields freely. Values are stored by field name, so a value you have set survives the shader being edited around it.
+
+### The shader contract
+
+- **Write the `@fragment` entry point only.** The vertex stage is the engine's fullscreen triangle; its output arrives as `@builtin(position)` plus a `@location(0)` UV.
+- **Bindings are all in `@group(0)`.** 0 is the frame so far, 1 its sampler, 2 the settings. 3 and 4 are for a frozen frame (below). Binding anything else is refused with a message naming the binding, because the pass does not provide it.
+- **One file, no imports.** An effect is compiled on its own, so it cannot `import` another module. Plain WGSL is valid WESL, which is why the `.wesl` extension works for both.
+- **Effects run after tonemapping**, on the picture as it will be shown. Values are 0 to 1; an effect that needs light above 1 belongs earlier in the frame, as a render pass (below).
+
+### Animated effects
+
+Read `settings.time`. Two habits worth copying from the shipped effects:
+
+- **Scale time in the shader** when a slider sets the speed: `settings.time * settings.speed`.
+- **Feed time in as its own hash input** rather than adding it to the sample position. Offsetting the position slides one fixed noise pattern across the picture, which reads as dirt on the lens instead of grain regenerating in place.
+
+## Effects that need the previous frame
+
+A transition fades *from* what was on screen. Declare bindings 3 and 4 and the pass gives the effect a copy of the frame as it arrived, alongside the live one:
+
+```wgsl
+// @effect(name = "Screen Transition", icon = "arrows-left-right", freeze_while = "progress < 1")
+
+@group(0) @binding(3) var frozen_texture: texture_2d<f32>;
+@group(0) @binding(4) var frozen_sampler: sampler;
+```
+
+`freeze_while` names a settings field and a comparison (`<`, `<=`, `>`, `>=`, `==`, `!=`). While it holds the copy stops updating, so the effect blends from a fixed picture. Here, setting `progress` to 0 freezes the outgoing frame, and animating it back up to 1 wipes to the live one.
+
+## Checking effects in bulk
+
+```sh
+cargo run --profile dist -p renzora_postprocess --example check_effects -- <folder>
+```
+
+parses every `.wesl` and `.wgsl` under a folder exactly as the engine does and lists each effect's sliders, or why it would not load. It is how the marketplace set is checked before publishing.
+
+## Performance
+
+- **Nothing is compiled per effect** beyond its own shader pipeline, which is built the first time the effect is used.
+- **A camera with no effects costs nothing.** The pass returns immediately.
+- Each effect is one fullscreen pass. Fewer, fatter shaders beat many thin ones, so fold related work into one effect where you can.
+
+## When an effect is not one shader
+
+An effect file is one fullscreen fragment pass over the current picture. Anything else is a **render pass** in a plugin: it registers into one of the [render phases](../rendering/pipeline.md) with `add_render_pass` and does whatever drawing it likes there.
 
 | Phase | Image | Typical use |
 |---|---|---|
 | `Gi` | HDR, after the main 3D pass, before temporal AA | global illumination, reflections |
 | `HdrPost` | HDR, after temporal AA | bloom, depth of field, motion blur |
-| `LdrPost` | LDR, after tonemapping | colour grading, stylisation, vignette |
-| `Overlay` | final, after AA | letterboxing, screen transitions, UI-adjacent effects |
+| `LdrPost` | LDR, after tonemapping | colour grading, stylisation (where effect files run) |
+| `Overlay` | final, after AA | letterboxing, UI-adjacent effects |
 
-Most stylistic effects want `LdrPost`. Anything that needs values above 1.0 wants `HdrPost` or earlier.
-
-This is the same [render composition](../rendering/pipeline.md) registry engine passes use, so a plugin effect and an engine pass sort against each other in one list rather than living in separate systems.
-
-## Where the settings component goes
-
-Put it on any entity — the effect is global, and the pass finds the first instance in the world each frame. It does **not** have to be on the camera, and there is no routing table to configure. In the editor, adding the component from the inspector is all there is to it.
-
-The consequence to know: a second entity carrying the same effect component does nothing. One effect, one set of settings.
-
-## Animated effects tick their own clock
-
-There is no `time` binding and no globals uniform. The pass uploads the settings component's bytes verbatim — it never interprets a field, so a field called `time` is not special and nothing in the engine writes to it. An effect that animates needs an `f32` in its struct and a three-line system to advance it:
-
-```rust
-#[post_process(shader = "film_grain.wgsl", name = "Film Grain", icon = "film")]
-pub struct FilmGrain {
-    #[field(min = 0.0, max = 2.0, speed = 0.01, default = 0.5)]
-    pub intensity: f32,
-    #[field(skip)]
-    pub time: f32,
-}
-
-fn sync_time(mut q: Query<&mut FilmGrain>, time: Res<Time>) {
-    for mut g in &mut q {
-        g.time += time.delta_secs();
-        if g.time > 1024.0 {
-            g.time -= 1024.0;   // keep the f32 seed small
-        }
-    }
-}
-
-// ...
-app.add_systems(Update, sync_time);
-```
-
-`#[field(skip)]` only hides the value from the inspector. It does not mean "engine-driven" — reading it that way is what left several effects frozen at `0.0`, animating nothing while their shaders faithfully sampled a clock that never moved.
-
-Two details worth copying:
-
-- **Wrap the accumulator** instead of assigning `time.elapsed_secs()`. An f32 second count stops resolving small steps after a few hours of uptime.
-- **Feed time as its own hash axis**, not as an offset added to the sample coordinate. Offsetting the coordinate translates one fixed noise field, which looks like a sheet of dirt sliding over the image rather than something regenerating in place.
-
-## Effects that need the previous frame
-
-An effect that fades *from* what was on screen — a screen transition, a dissolve — needs a snapshot as a second input. Ask for one in the attribute:
-
-```rust
-#[post_process(
-    shader = "screen_transition.wgsl",
-    name = "Screen Transition",
-    icon = "arrows-left-right",
-    snapshot = true,
-    frozen_when = "self.progress < 1.0",
-)]
-pub struct ScreenTransition {
-    #[field(min = 0.0, max = 1.0, speed = 0.01, default = 0.0)]
-    pub progress: f32,
-}
-```
-
-`snapshot = true` binds the captured texture at `@binding(3)` and its sampler at `@binding(4)`. `frozen_when` is an expression on `&self` that says when the snapshot should stop updating, so the effect fades from a fixed image rather than from a moving one.
-
-Declaring the bindings in WGSL **without** `snapshot = true` is the failure mode to know: the pipeline layout has no binding 3, and wgpu rejects the pass with "binding 3 is not available in the pipeline layout" the first time that effect renders.
-
-## Hot reload
-
-Both halves reload. Save and:
-
-- **Editing a field's value or the shader body** takes effect without a restart. The plugin's stamp stops matching, the editor rebuilds it, and the pipeline cache recompiles.
-- **Adding or removing a struct field** changes the uniform layout, so the WGSL struct has to change with it. Get the padding wrong and the effect reads its own fields at the wrong offsets.
-
-A shader that fails to compile leaves the previous one running.
-
-## Performance
-
-- **Inactive effects cost nothing.** A pass returns immediately when no entity carries its component — no pipeline bind, no pass.
-- A pipeline variant is built per target format and chosen at render time, so an effect works in both HDR and LDR views without you writing two shaders.
-- Each active effect is one fullscreen pass. Fewer, fatter shaders beat many thin ones — fold related work into a single effect where you can.
-
-## Effects that are not `#[post_process]`
-
-Two families stay in the engine, and the line between them and a plugin effect is whether the effect is **one fullscreen fragment pass over the current image**:
-
-| Family | Examples | Why |
-|---|---|---|
-| **Bevy built-in wrappers** | bloom, DOF, SSAO, SSR, motion blur, auto-exposure, atmosphere, skybox, vignette, fog, FXAA/SMAA/TAA/CAS | They author user-facing settings and route a **stock Bevy component** onto the camera. There is no custom WGSL pass to write. |
-| **Multi-pass render-graph crates** | `renzora_oit`, `renzora_solari` | Their own graph nodes, multiple passes, custom bind groups and extra textures. |
-
-If your effect needs its own bind-group layout or more than one pass, it is the second kind and wants a crate rather than the macro.
+The engine's own bloom, depth of field, SSAO, SSR, motion blur, fog and anti-aliasing route Bevy's built-in effects onto the camera rather than running a shader of their own, and Solari and order-independent transparency are multi-pass renderers.

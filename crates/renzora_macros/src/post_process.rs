@@ -406,9 +406,8 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
             }
         }
 
-        // `renzora::postprocess`, not the `renzora_postprocess` shim. A plugin
-        // depends on the contract crate alone, and the shim is an engine crate
-        // it has no way to reach. Both paths name the same trait.
+        // `renzora::postprocess`: a plugin depends on the contract crate
+        // alone, so that is the only path to the trait it can reach.
         impl renzora::postprocess::PostProcessEffect for #struct_name {
             fn fragment_shader() -> bevy::shader::ShaderRef {
                 #shader_embed_path.into()

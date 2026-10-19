@@ -1,0 +1,16 @@
+[package]
+name = "renzora_postprocess_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only Post Process inspector for renzora_postprocess: drop a shader effect on it, reorder, toggle and tune it. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_postprocess = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+# `AssetDragPayload`, the file being dragged from the Assets panel.
+renzora_ui = { path = "../../renzora_ui" }
+
+[lints]
+workspace = true
