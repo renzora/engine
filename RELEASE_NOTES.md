@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-20 04:04
+- fix(editor): the Game panel registers its window placement through the panel scope, so the test suite passes again
+
 ## 2026-10-19 21:09
 - fix(ci): the web build uses the wasm-bindgen version the lockfile asks for, so it builds again
 - fix(ci): the macOS disk image is retried when the runner briefly holds the app bundle

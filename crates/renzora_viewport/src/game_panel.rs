@@ -58,11 +58,15 @@ pub const EMBED_SUPPORTED: bool = cfg!(target_os = "windows");
 pub fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<GameEmbedState>();
-    app.register_panel_content(GAME_PANEL_ID, false, build);
-    app.add_systems(
-        Update,
-        place_game_window.run_if(in_state(SplashState::Editor)),
-    );
+    app.register_panel_content(GAME_PANEL_ID, false, build)
+        // Always, not only while the panel shows: hiding the game's window
+        // when another tab covers the panel is half of this system's job, and
+        // a native window is not hidden by the editor's UI. Gated on the
+        // panel, the game would stay drawn over whichever tab replaced it.
+        .always(
+            Update,
+            place_game_window.run_if(in_state(SplashState::Editor)),
+        );
 }
 
 /// The editor window's native handle, for the game to parent its window to.
