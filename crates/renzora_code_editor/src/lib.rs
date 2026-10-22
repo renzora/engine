@@ -1,5 +1,6 @@
 pub mod highlight;
 mod editor;
+mod moves;
 mod problems;
 pub mod state;
 
@@ -477,6 +478,7 @@ impl Plugin for CodeEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] CodeEditorPlugin");
         app.insert_resource(CodeEditorState::default());
+        app.add_observer(moves::follow_asset_moves);
 
         use renzora_editor_framework::SplashState;
         app.add_systems(

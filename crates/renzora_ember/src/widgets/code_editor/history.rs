@@ -101,6 +101,20 @@ impl History {
         self.last = None;
         Some(snap)
     }
+
+    /// Apply an outside edit to every line of every snapshot, so undo and redo
+    /// never bring back what that edit replaced. A snapshot is the whole buffer,
+    /// which is why the history has to follow: rewriting only the live text left
+    /// the old version one Ctrl+Z away.
+    pub(crate) fn rewrite_lines(&mut self, edit: &dyn Fn(&str) -> Option<String>) {
+        for snap in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            for line in &mut snap.text {
+                if let Some(new) = edit(line) {
+                    *line = new;
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

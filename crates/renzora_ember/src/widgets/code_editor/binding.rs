@@ -48,6 +48,44 @@ pub fn bind_code(commands: &mut Commands, editor: Entity, spec: CodeBindingSpec)
     commands.entity(editor).insert(CodeBinding(spec));
 }
 
+/// Apply an edit made outside the editor to the document every code editor is
+/// showing, line by line: `edit` returns a line's replacement, or `None` to
+/// leave it.
+///
+/// For a change the host has already made to its own copy, such as a moved
+/// asset's path being rewritten in an open script. The widget holds its own
+/// buffer and reloads from the host only when the document changes, so without
+/// this the next keystroke would push the old text back. Reloading instead
+/// would throw away the caret, the folds and the undo history; editing in
+/// place keeps all three, and the history is rewritten with the text so that
+/// Ctrl+Z cannot restore what the edit replaced.
+///
+/// Not an edit as far as the host is concerned: the host's copy already agrees,
+/// so nothing is pushed back and the document is not marked modified by it.
+pub fn rewrite_code_lines(world: &mut World, edit: &dyn Fn(&str) -> Option<String>) {
+    let mut editors = world.query::<&mut CodeEditor>();
+    for mut ed in editors.iter_mut(world) {
+        let mut changed = false;
+        for line in &mut ed.text {
+            if let Some(new) = edit(line) {
+                *line = new;
+                changed = true;
+            }
+        }
+        ed.history.rewrite_lines(edit);
+        if !changed {
+            continue;
+        }
+        // A replacement can be shorter than what it replaced, so a caret past
+        // the new end of its line would point at nothing.
+        let cursor = super::edit::line_len(&ed, ed.cursor_line);
+        let anchor = super::edit::line_len(&ed, ed.anchor_line);
+        ed.cursor_col = ed.cursor_col.min(cursor);
+        ed.anchor_col = ed.anchor_col.min(anchor);
+        ed.dirty = true;
+    }
+}
+
 fn split(text: String) -> Vec<String> {
     if text.is_empty() {
         vec![String::new()]
@@ -137,5 +175,62 @@ pub(crate) fn code_sync(world: &mut World) {
         }
 
         world.entity_mut(e).insert(binding);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::code_editor_for_test as mk;
+    use super::super::history::Snapshot;
+    use super::*;
+
+    fn rename(line: &str) -> Option<String> {
+        line.contains("\"a.mp3\"").then(|| line.replace("\"a.mp3\"", "\"sfx/a.mp3\""))
+    }
+
+    #[test]
+    fn the_text_and_its_history_both_follow() {
+        let mut world = World::new();
+        let mut ed = mk("x = 1\nplay(\"a.mp3\")");
+        // An earlier state of the buffer, one Ctrl+Z away.
+        ed.history.push(Snapshot {
+            text: vec!["play(\"a.mp3\")".into()],
+            cursor_line: 0,
+            cursor_col: 0,
+            anchor_line: 0,
+            anchor_col: 0,
+        });
+        let e = world.spawn(ed).id();
+
+        rewrite_code_lines(&mut world, &rename);
+
+        let mut ed = world.get_mut::<CodeEditor>(e).unwrap();
+        assert_eq!(ed.text, ["x = 1", "play(\"sfx/a.mp3\")"]);
+        assert!(!ed.content_dirty, "the host already has the new text");
+        let current = Snapshot {
+            text: ed.text.clone(),
+            cursor_line: 0,
+            cursor_col: 0,
+            anchor_line: 0,
+            anchor_col: 0,
+        };
+        let undone = ed.history.undo(current).unwrap();
+        assert_eq!(undone.text, ["play(\"sfx/a.mp3\")"], "undo must not bring the old path back");
+    }
+
+    #[test]
+    fn a_caret_past_a_shortened_line_is_pulled_back() {
+        let mut world = World::new();
+        let mut ed = mk("play(\"long/path.mp3\")");
+        ed.cursor_col = 21;
+        ed.anchor_col = 21;
+        let e = world.spawn(ed).id();
+
+        rewrite_code_lines(&mut world, &|l| Some(l.replace("long/path.mp3", "p.mp3")));
+
+        let ed = world.get::<CodeEditor>(e).unwrap();
+        assert_eq!(ed.text[0], "play(\"p.mp3\")");
+        assert_eq!(ed.cursor_col, 13);
+        assert_eq!(ed.anchor_col, 13);
     }
 }

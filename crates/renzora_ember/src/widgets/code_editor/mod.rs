@@ -49,7 +49,7 @@ pub(crate) mod highlight;
 mod layout;
 mod systems;
 
-pub use binding::{bind_code, CodeBindingSpec};
+pub use binding::{bind_code, rewrite_code_lines, CodeBindingSpec};
 
 use history::History;
 

@@ -44,36 +44,54 @@ use renzora_editor_framework::Toasts;
 /// symlink loop.
 const MAX_DEPTH: usize = 32;
 
-/// Extensions of the text formats that store project paths.
+/// Extensions of the data formats the editor writes that store project paths.
 ///
-/// Scripts are deliberately absent. A path in code may be built, compared or
-/// commented on, and rewriting code behind its author is a different promise
-/// from rewriting a data file the editor itself wrote.
+/// Scripts are added to these at run time, from whatever languages are
+/// installed (see [`rewrite_project_references`]).
 const REFERENCING_EXTENSIONS: &[&str] = &[
     "material",
     "material_bp",
     "material_function",
     "bsn",
     "particle",
+    // The particle format the effect library writes, which names its texture.
+    "vfx",
     "html",
     "anim",
     "blueprint",
     "bp",
 ];
 
+/// Rewrite every file in the project that refers to the moved asset.
+///
+/// Scripts are included. A script that plays `"audio/click.mp3"` went silent
+/// when the sound moved, with nothing to say why. The rewrite is the same one
+/// every other file gets: only a string literal that is exactly the moved path
+/// (or, for a folder, starts with it) changes, so a path in a bare comment is
+/// left as written, and a path built from pieces (`"audio/" .. name`) cannot be
+/// matched at all. Every script changed is named in the Console, because it is
+/// code somebody wrote.
+///
+/// The script extensions come from the installed language backends rather
+/// than a list here, so a language added by a plugin is covered with it.
 pub(crate) fn rewrite_project_references(
     trigger: On<AssetPathChanged>,
     project: Option<Res<CurrentProject>>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
     mut commands: Commands,
 ) {
     let Some(project) = project else {
         return;
     };
     let ev = trigger.event().clone();
+    let script_exts: Vec<String> = engine
+        .map(|e| e.script_extensions().iter().map(|x| x.to_ascii_lowercase()).collect())
+        .unwrap_or_default();
     let mut rewritten: Vec<(PathBuf, String)> = Vec::new();
+    let mut scripts: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 
-    for path in referencing_files(&project.path) {
+    for path in referencing_files(&project.path, &script_exts) {
         // Not valid UTF-8 is a binary file wearing a text extension (an `.anim`
         // can be either), and nothing in it is ours to rewrite.
         let Ok(text) = std::fs::read_to_string(&path) else {
@@ -86,6 +104,9 @@ pub(crate) fn rewrite_project_references(
             warn!("[asset-move] could not update {}: {e}", path.display());
             failed.push(format!("{} ({e})", project.make_asset_relative(&path)));
             continue;
+        }
+        if has_extension(&path, &script_exts) {
+            scripts.push(project.make_asset_relative(&path));
         }
         rewritten.push((path, updated));
     }
@@ -112,16 +133,22 @@ pub(crate) fn rewrite_project_references(
         let live = rewrite_open_scene(world, &ev);
         failed.extend(live.failed);
         report(world, &ev, rewritten.len(), live.values, &failed);
+        if !scripts.is_empty() {
+            renzora::console_log::console_info(
+                "Assets",
+                format!("Updated the path to {} in: {}", ev.new, scripts.join(", ")),
+            );
+        }
     });
 }
 
 /// Say how far a move reached, and what it could not fix.
 ///
 /// A rename that silently did nothing and one that silently fixed forty
-/// references look the same, so the count goes to the Console every time there
-/// is one. A failure is a toast as well: a reference left on the old path is a
-/// broken texture or a script that no longer runs, and it should not be found
-/// later by accident.
+/// references look the same, so the count goes to the Console and a toast
+/// every time there is one. A failure gets a warning toast instead: a
+/// reference left on the old path is a broken texture or a script that no
+/// longer runs, and it should not be found later by accident.
 fn report(world: &mut World, ev: &AssetPathChanged, files: usize, values: usize, failed: &[String]) {
     if files > 0 || values > 0 {
         let message = match (files, values) {
@@ -133,7 +160,14 @@ fn report(world: &mut World, ev: &AssetPathChanged, files: usize, values: usize,
             ),
         };
         info!("[asset-move] '{}' -> '{}': {message}", ev.old, ev.new);
-        renzora::console_log::console_info("Assets", message);
+        renzora::console_log::console_info("Assets", message.clone());
+        // Unless it went wrong, when the warning below says the same thing and
+        // more. Two toasts for one move would be noise.
+        if failed.is_empty() {
+            if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
+                toasts.success(message);
+            }
+        }
     }
     if failed.is_empty() {
         return;
@@ -338,9 +372,10 @@ fn rewrite_references(value: &mut dyn PartialReflect, ev: &AssetPathChanged) -> 
     }
 }
 
-/// Every file under `root` in one of [`REFERENCING_EXTENSIONS`], skipping the
-/// directories the project watcher ignores.
-fn referencing_files(root: &Path) -> Vec<PathBuf> {
+/// Every file under `root` in one of [`REFERENCING_EXTENSIONS`] or
+/// `script_exts`, skipping the directories the project watcher ignores (which
+/// is also what keeps a script's build output out of it).
+fn referencing_files(root: &Path, script_exts: &[String]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
@@ -364,7 +399,9 @@ fn referencing_files(root: &Path) -> Vec<PathBuf> {
                 if depth + 1 < MAX_DEPTH {
                     stack.push((path, depth + 1));
                 }
-            } else if file_type.is_file() && has_referencing_extension(&path) {
+            } else if file_type.is_file()
+                && (has_referencing_extension(&path) || has_extension(&path, script_exts))
+            {
                 out.push(path);
             }
         }
@@ -376,6 +413,13 @@ fn has_referencing_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| REFERENCING_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Whether `path` has one of `exts`, which are lowercase.
+fn has_extension(path: &Path, exts: &[String]) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| exts.iter().any(|x| x.eq_ignore_ascii_case(e)))
 }
 
 #[cfg(test)]
@@ -525,14 +569,51 @@ mod tests {
         std::fs::write(root.join("models/bistro/bistro.glb"), "").unwrap();
         std::fs::write(root.join(".renzora/cache/b.material"), "{}").unwrap();
         std::fs::write(root.join("main.BSN"), "").unwrap();
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(root.join(".renzora/scripts/spin")).unwrap();
+        std::fs::write(root.join("scripts/menu.lua"), "").unwrap();
+        std::fs::write(root.join("scripts/sparks.vfx"), "").unwrap();
+        std::fs::write(root.join("scripts/notes.txt"), "").unwrap();
+        // A script's build output, which must never be rewritten.
+        std::fs::write(root.join(".renzora/scripts/spin/spin.rs"), "").unwrap();
 
-        let mut found: Vec<String> = referencing_files(&root)
+        let scripts = vec!["lua".to_string(), "rs".to_string()];
+        let mut found: Vec<String> = referencing_files(&root, &scripts)
             .iter()
             .map(|p| p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/"))
             .collect();
         found.sort();
         let _ = std::fs::remove_dir_all(&root);
 
-        assert_eq!(found, ["main.BSN", "models/bistro/materials/a.material"]);
+        assert_eq!(
+            found,
+            [
+                "main.BSN",
+                "models/bistro/materials/a.material",
+                "scripts/menu.lua",
+                "scripts/sparks.vfx"
+            ]
+        );
+    }
+
+    /// The rule a script gets: the literal path changes, a path in a bare
+    /// comment and one built from pieces do not.
+    #[test]
+    fn a_script_keeps_everything_but_the_literal_path() {
+        let ev = AssetPathChanged {
+            old: "audio/menu_button.mp3".into(),
+            new: "audio/ui/menu_button.mp3".into(),
+            is_dir: false,
+        };
+        let script = r#"-- TODO: replace audio/menu_button.mp3 with the new click
+function on_ready()
+    play_sound("audio/menu_button.mp3", 0.5)
+    play_sound("audio/" .. name .. ".mp3", 0.5)
+end
+"#;
+        let updated = ev.rewrite_text(script).unwrap();
+        assert!(updated.contains(r#"play_sound("audio/ui/menu_button.mp3", 0.5)"#));
+        assert!(updated.contains("-- TODO: replace audio/menu_button.mp3"));
+        assert!(updated.contains(r#"play_sound("audio/" .. name .. ".mp3", 0.5)"#));
     }
 }

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 14:16
+- feat(assets): renaming or moving an asset updates the paths written in scripts, including scripts open in the Code Editor
+
 ## 2026-10-22 12:42
 - fix(assets): renaming or moving an asset updates every object in the open scene that uses it, so saving no longer brings the old path back
 - feat(assets): a rename or move warns when a reference to the asset could not be updated
