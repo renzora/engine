@@ -2,6 +2,7 @@
 
 ## 2026-10-22 11:08
 - fix(hierarchy): Duplicate in the hierarchy right-click menu copies every component, like Ctrl+D, instead of making an empty entity at the origin
+- fix(physics): reopening a scene no longer resizes the colliders of rotated objects
 
 ## 2026-10-22 09:40
 - feat(particles): the effect library generator gains a `popular` set (explosion, fireworks, confetti, healing aura, sparks, coins, hearts, petals, snow, shield, teleport)
