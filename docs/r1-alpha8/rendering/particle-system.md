@@ -1078,6 +1078,37 @@ alpha on the flame layers is the heat (lower it for a dying, redder fire) and
 its rgb the brightness; the smoke's **color** alpha is how smoky it is; the
 **coupling** on each Wind Force is how much that layer cares about the wind.
 
+## Effect library generator
+
+A curated library of ready-made effects can be written into a project with the
+`make_effect_library` example:
+
+```sh
+cargo run --profile dist -p renzora_particles_editor --example make_effect_library -- <project>/particles [--force] [--only <category>]
+```
+
+Every effect is simulated for three seconds (in calm air and in a breeze)
+before anything is written: an effect that does not compile, goes NaN, never
+spawns, drops spawns for lack of capacity, ignores the wind it is coupled to,
+or has a light that never lights fails the run, and then nothing is written.
+An existing file is kept unless `--force` is passed, and `--only` writes one
+category, so adding a set never recreates files you deleted.
+
+| Category | What is in it |
+|---|---|
+| `fire`, `smoke`, `water`, `weather`, `ambient`, `impacts` | Everyday effects at real-world scale: campfire, torch, candle, chimney smoke, fog, fountain, rain, snow, leaves, fireflies, dust. |
+| `showcase` | Effects that use everything at once: mesh particles wearing materials, SVG and PNG sprites, flipbooks, GPU sub-emitters, tube trails. |
+| `popular` | The effects games reach for first: explosion, fireworks, confetti cannon, healing aura, electric sparks, coin fountain, love hearts, cherry blossoms, storybook snow, energy shield, teleport beam. |
+| `stress` | Profiling loads, one subsystem each: a 230k-particle GPU galaxy, a ribbon swarm of half a million triangles, three-level GPU sub-emitters, 39k lit shadowed mesh shards, 64 particle lights, a 12k sorted lit smoke wall, and 20k CPU collisions. Not for shipping scenes. |
+
+The `showcase` and `popular` effects expect their art in the project:
+textures under `particles/showcase/textures/` (SVG sprites such as
+`star.svg`, `heart.svg`, `snowflake.svg`, `hex_cell.svg`, and the
+`fire_flipbook.png` and `smoke_wisp_sheet.png` flipbooks) and materials under
+`materials/particles/` (`fx_molten_debris`, `fx_crystal_shard`,
+`fx_energy_ribbon`, `fx_bubble`, `fx_gold_coin`, `fx_confetti`). A missing file
+draws the plain particle look instead of failing.
+
 ## Old .particle effects
 
 Effects made for the old particle system (bevy_hanabi, removed) are `.particle`

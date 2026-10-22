@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 09:40
+- feat(particles): the effect library generator gains a `popular` set (explosion, fireworks, confetti, healing aura, sparks, coins, hearts, petals, snow, shield, teleport)
+- feat(particles): the effect library generator gains a `stress` set for profiling GPU simulation, ribbons, sub-emitters, mesh particles, lights, sorting and CPU collisions
+
 ## 2026-10-22 06:21
 - fix(particles): GPU emitters no longer crash the editor with a pipeline validation error on the state buffer
 - feat(particles): the effect library generator gains a showcase set and an `--only <category>` option

@@ -19,6 +19,12 @@
 //!
 //! Scale is real-world metres throughout (pixels for the 2D tests). Each
 //! builder carries a comment on why it is shaped the way it is.
+//!
+//! The shared helpers and the original sets live here; the `popular` and
+//! `stress` sets are their own modules, so this file stays readable.
+
+mod popular;
+mod stress;
 
 use std::f32::consts::TAU;
 use std::path::PathBuf;
@@ -2225,7 +2231,7 @@ const fn entry(category: &'static str, name: &'static str, about: &'static str, 
 }
 
 fn library() -> Vec<Entry> {
-    vec![
+    let mut all = vec![
         entry("fire", "campfire", "A 0.6 m log campfire: flame core, outer flames, smoke, bouncing embers and a flickering light. Origin on the ground.", campfire),
         entry("fire", "torch", "A hand torch: origin at the top of the shaft, flame licking 0.25 m up, a 4 m light.", torch),
         entry("fire", "candle", "A candle flame: origin at the wick tip, a steady 4 cm flame and a small warm light.", candle),
@@ -2265,7 +2271,10 @@ fn library() -> Vec<Entry> {
         entry("showcase", "crystal_geyser", "A GPU geyser of crystal shards (material with per-particle hue) that shatter into SVG glints through a GPU sub-emitter.", crystal_geyser),
         entry("showcase", "soap_bubbles", "Fresnel soap-film bubbles (material) sorted by depth, popping into droplets when they touch the level (Collide Scene, Play mode).", soap_bubbles),
         entry("showcase", "lit_smoke_stack", "A smoke stack from a PNG flipbook: lit, casting shadows, oldest first, leaning in the wind.", lit_smoke_stack),
-    ]
+    ];
+    all.extend(popular::entries());
+    all.extend(stress::entries());
+    all
 }
 
 // ── Validation ──────────────────────────────────────────────────────────────
