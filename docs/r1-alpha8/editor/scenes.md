@@ -124,7 +124,9 @@ A countdown appears in the status bar in the last few seconds. When it fires it 
 
 ## Which scene loads first
 
-**Settings > Project > Boot Scene** picks the scene a *game* starts on; so does **Set as Boot Scene** in the top bar's scene switcher, for the scene you are in. It is independent of whatever you are editing. Every save targets the scene you are in (the one the scene switcher names), and nothing writes to the boot scene unless that is the scene you are on.
+**Settings > Project > Boot Scene** picks the scene a *game* starts on; so does **Set as Boot Scene** in the top bar's scene switcher, for the scene you are in. It is independent of whatever you are editing. Every save targets the scene you are in (the one the scene switcher names), and nothing writes to the boot scene unless that is the scene you are on. **Save Scene As** is no exception: it saves a copy under the new name and carries on editing that copy, and the boot scene stays where it was.
+
+When a project opens, it reopens the scene and tabs you had open last. One whose file has since been deleted or moved outside the editor is dropped, and the project opens on its boot scene instead.
 
 ### Global scenes
 

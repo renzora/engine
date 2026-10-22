@@ -573,7 +573,7 @@ fn save_as_scene_system(world: &mut World) {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let file = rfd::FileDialog::new()
+        let file = renzora_editor_framework::file_dialog::editor_file_dialog(world)
             .set_title("Save Scene As")
             .set_directory(&scenes_dir)
             .add_filter("Scene File", &["bsn"])
@@ -589,12 +589,16 @@ fn save_as_scene_system(world: &mut World) {
             return;
         }
 
-        // Update main_scene to point to the new file
+        // Remember the new file as the scene being edited, as a plain save
+        // does. This used to set `main_scene` instead: saving a copy under a
+        // new name made that copy the scene the game boots into, with nothing
+        // on screen to say so, and left the remembered last scene on the old
+        // file. The boot scene changes only through "Set as Boot Scene".
         let relative = {
             let mut project = world.resource_mut::<CurrentProject>();
             let rel = project.make_relative(&file_path);
             if let Some(ref r) = rel {
-                project.config.main_scene = r.clone();
+                project.config.editor_last_scene = Some(r.clone());
                 if let Err(e) = project.save_config() {
                     warn!("Failed to save project.toml: {}", e);
                 }
@@ -677,7 +681,7 @@ fn open_scene_system(world: &mut World) {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let file = rfd::FileDialog::new()
+        let file = renzora_editor_framework::file_dialog::editor_file_dialog(world)
             .set_title("Open Scene")
             .set_directory(&scenes_dir)
             .add_filter("Scene File", &["bsn"])
@@ -709,7 +713,15 @@ fn open_scene_path_system(world: &mut World) {
     let Some(req) = world.remove_resource::<OpenScenePathRequested>() else {
         return;
     };
-    panel::open_scene(world, &req.0);
+    // A project-relative path (`scenes/level.bsn`, the form every other path in
+    // a project takes) used to be read against the editor's working directory,
+    // which is wherever the executable happened to be started from. It failed
+    // to load, and the tab it opened kept the bad path.
+    let path = match world.get_resource::<CurrentProject>() {
+        Some(project) if req.0.is_relative() => project.path.join(&req.0),
+        _ => req.0,
+    };
+    panel::open_scene(world, &path);
 }
 
 // ============================================================================
@@ -815,6 +827,31 @@ fn tick_texture_progress(
     progress.total = total;
 }
 
+/// Forget the remembered last scene and any remembered tab whose file is no
+/// longer on disk, returning whether anything was dropped.
+///
+/// Both are written while the editor runs and read back on the next open, and
+/// a file deleted or moved outside the editor in between used to survive the
+/// trip. A missing last scene loaded nothing but stayed the save target, so the
+/// project's main scene could come up in a tab named after the dead file, and
+/// every Ctrl+S and autosave from then on went to that dead path instead of the
+/// main scene. A missing tab came back as an empty scene with nothing to say
+/// why. Dropping them falls back to the main scene, which is what opening a
+/// project with nothing remembered already does.
+fn forget_missing_files(project: &mut CurrentProject) -> bool {
+    let root = project.path.clone();
+    let gone = |rel: &str| !root.join(rel).exists();
+    let mut changed = false;
+    if project.config.editor_last_scene.as_deref().is_some_and(|s| !s.is_empty() && gone(s)) {
+        project.config.editor_last_scene = None;
+        changed = true;
+    }
+    let before = project.config.editor_open_tabs.len();
+    project.config.editor_open_tabs.retain(|tab| !gone(&tab.path));
+    changed |= project.config.editor_open_tabs.len() != before;
+    changed
+}
+
 fn load_scene_on_enter_loading(world: &mut World) {
     info!("[loading] entered Loading state, kicking off scene load");
 
@@ -824,6 +861,14 @@ fn load_scene_on_enter_loading(world: &mut World) {
         if let Some(asset_path) = world.get_resource::<renzora_engine::ProjectAssetPath>() {
             info!("[scene] Syncing project asset path: {}", path.display());
             asset_path.set(path);
+        }
+    }
+
+    if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
+        if forget_missing_files(&mut project) {
+            if let Err(e) = project.save_config() {
+                warn!("[scene] could not save project.toml after dropping missing files: {e}");
+            }
         }
     }
 
@@ -1333,6 +1378,52 @@ fn short_name(path: &str) -> String {
         .and_then(|s| s.to_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| path.to_string())
+}
+
+#[cfg(test)]
+mod missing_file_tests {
+    use super::*;
+    use renzora::core::EditorOpenTab;
+
+    fn project(name: &str) -> CurrentProject {
+        let root = std::env::temp_dir().join(format!("renzora_missing_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("scenes")).unwrap();
+        std::fs::write(root.join("scenes/main.bsn"), "").unwrap();
+        CurrentProject { path: root, config: Default::default() }
+    }
+
+    fn tab(path: &str) -> EditorOpenTab {
+        EditorOpenTab { path: path.into(), kind: "scene".into() }
+    }
+
+    /// The bug: a deleted test scene stayed the remembered scene, so the main
+    /// scene opened under its name and every save went to the dead path.
+    #[test]
+    fn a_deleted_last_scene_and_its_tab_are_forgotten() {
+        let mut p = project("deleted");
+        p.config.editor_last_scene = Some("scenes/gone.bsn".into());
+        p.config.editor_open_tabs = vec![tab("scenes/main.bsn"), tab("scenes/gone.bsn")];
+
+        assert!(forget_missing_files(&mut p));
+        let _ = std::fs::remove_dir_all(&p.path);
+
+        assert_eq!(p.config.editor_last_scene, None);
+        assert_eq!(p.config.editor_open_tabs, [tab("scenes/main.bsn")]);
+    }
+
+    #[test]
+    fn files_that_exist_are_kept() {
+        let mut p = project("kept");
+        p.config.editor_last_scene = Some("scenes/main.bsn".into());
+        p.config.editor_open_tabs = vec![tab("scenes/main.bsn")];
+
+        assert!(!forget_missing_files(&mut p), "nothing to drop means no rewrite");
+        let _ = std::fs::remove_dir_all(&p.path);
+
+        assert_eq!(p.config.editor_last_scene.as_deref(), Some("scenes/main.bsn"));
+        assert_eq!(p.config.editor_open_tabs.len(), 1);
+    }
 }
 
 #[cfg(test)]

@@ -6,6 +6,8 @@
 pub mod bevy_inspectors;
 pub mod camera;
 pub mod entity_icons;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod file_dialog;
 pub mod material_thumbnail_registry;
 pub mod model_thumbnail_registry;
 pub mod scene_thumbnail_registry;

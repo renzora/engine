@@ -28,6 +28,9 @@ renzora_postprocess = { path = "../renzora_postprocess" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+# Reading the editor window's handle to restore it before a file dialog; see
+# `file_dialog`. Same version Bevy's window types use.
+raw-window-handle = "0.6"
 
 [lints]
 workspace = true

@@ -7795,6 +7795,7 @@ name = "renzora_editor_framework"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "raw-window-handle",
  "renzora",
  "renzora_macros",
  "renzora_postprocess",
