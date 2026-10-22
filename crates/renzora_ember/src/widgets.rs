@@ -477,7 +477,9 @@ impl Plugin for WidgetsPlugin {
                 // redrawn in the same frame rather than the next one.
                 text_input::text_input_bound_sync.before(text_input::text_input_sync),
                 text_input::text_input_sync,
-                form::form_tab_focus,
+                // After the number field's typing pass, so a digit typed in the
+                // same frame as Tab lands in the field being left, not the next.
+                form::form_tab_focus.after(drag_value::drag_value_edit),
                 drag_window::drag_handle_move,
             ),
         );

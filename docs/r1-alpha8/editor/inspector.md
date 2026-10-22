@@ -115,7 +115,7 @@ Each setting gets the control that fits it.
 
 | Kind | How to edit it |
 |---|---|
-| Numbers | Drag to scrub, or click to type. Hold `Shift` while dragging to scrub ten times finer. |
+| Numbers | Drag to scrub, or click to type. A typed number is kept when you press `Enter`, press `Tab`, or click elsewhere; `Esc` cancels it. Hold `Shift` while dragging to scrub ten times finer. |
 | X / Y / Z | Three coloured drag boxes, for position and rotation. |
 | Toggles | An on/off switch. |
 | Colours | A colour picker. |

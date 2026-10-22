@@ -13,11 +13,17 @@
 //! Tab also works *without* the marker: it falls back to cycling inputs under
 //! the smallest ancestor that contains at least two of them, so multi-field
 //! groups get sensible tabbing for free.
+//!
+//! A Tab stop is a text input **or a number field** (`drag_value`). A number
+//! field holds what was typed in its edit buffer until something commits it,
+//! so Tab has to be one of the things that does: leaving the field commits it,
+//! and landing on one starts editing it with the value selected.
 
 use bevy::prelude::*;
 
 use crate::style::WidgetState;
 use crate::UiInteraction;
+use super::drag_value::{self, EmberDragValue, TabStops};
 use super::text_input::{EmberTextInput, SingleLineInput};
 
 /// Marks a container as a form and names its submit button. Pressing Enter in
@@ -69,14 +75,18 @@ pub(crate) fn form_enter_submit(
     }
 }
 
-/// Depth-first, tree-order list of text-input boxes under `root`, skipping
+/// Depth-first, tree-order list of Tab stops under `root`, skipping
 /// `Display::None` subtrees (hidden views toggled by `bind_display` must not
 /// steal a Tab stop).
+///
+/// Reads display through `Query<&mut Node>` because the caller also writes
+/// nodes (a number field's highlight and caret), and one system cannot hold
+/// both a `&Node` and a `&mut Node` query.
 fn collect_inputs(
     root: Entity,
     children: &Query<&Children>,
-    nodes: &Query<&Node>,
-    is_input: &Query<(), With<EmberTextInput>>,
+    nodes: &Query<&mut Node>,
+    is_input: &Query<(), Or<(With<EmberTextInput>, With<EmberDragValue>)>>,
     out: &mut Vec<Entity>,
 ) {
     if nodes.get(root).is_ok_and(|n| n.display == Display::None) {
@@ -97,26 +107,35 @@ fn collect_inputs(
 /// ancestor, or failing that the smallest ancestor subtree containing at
 /// least two inputs. Tabbing into a field selects its content, like an OS
 /// text field.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(crate) fn form_tab_focus(
     keys: Res<ButtonInput<KeyCode>>,
     parents: Query<&ChildOf>,
     children: Query<&Children>,
-    nodes: Query<&Node>,
-    is_input: Query<(), With<EmberTextInput>>,
+    mut nodes: Query<&mut Node>,
+    is_input: Query<(), Or<(With<EmberTextInput>, With<EmberDragValue>)>>,
     forms: Query<(), With<EmberForm>>,
-    mut inputs: Query<(Entity, &mut EmberTextInput, &mut crate::style::Styled)>,
+    mut inputs: Query<
+        (Entity, &mut EmberTextInput, &mut crate::style::Styled),
+        Without<EmberDragValue>,
+    >,
+    mut fields: TabStops,
+    mut texts: Query<&mut Text>,
 ) {
     if !keys.just_pressed(KeyCode::Tab) {
         return;
     }
-    let Some(current) = inputs
-        .iter()
-        .find(|(_, i, _)| i.focused)
-        .map(|(e, _, _)| e)
-    else {
+    let Some(current) = drag_value::editing_field(&fields).or_else(|| {
+        inputs
+            .iter()
+            .find(|(_, i, _)| i.focused)
+            .map(|(e, _, _)| e)
+    }) else {
         return;
     };
+    // Whatever happens next, a number field being left keeps what was typed.
+    // That includes having nowhere to go: Tab in a lone field still accepts it.
+    drag_value::tab_commit(&mut fields, current, &mut texts, &mut nodes);
 
     // Scope: nearest EmberForm ancestor wins; otherwise the smallest ancestor
     // whose subtree holds ≥2 inputs (so ungrouped field pairs still tab).
@@ -160,4 +179,5 @@ pub(crate) fn form_tab_focus(
         }
         inp.sel_anchor = None;
     }
+    drag_value::tab_focus(&mut fields, target, &mut nodes);
 }

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 11:45
+- fix(editor): pressing Tab in a number field keeps the typed value and moves to the next field
+
 ## 2026-10-22 11:08
 - fix(hierarchy): Duplicate in the hierarchy right-click menu copies every component, like Ctrl+D, instead of making an empty entity at the origin
 - fix(physics): reopening a scene no longer resizes the colliders of rotated objects

@@ -717,13 +717,7 @@ pub(crate) fn drag_value_drag(
             // Released. A press that never moved (and wasn't a rail sweep) is a
             // click → enter edit mode with the whole value selected.
             if !dv.moved && !dv.rail_drag {
-                dv.editing = true;
-                dv.buffer = edit_string(bound.0);
-                dv.select_all = true;
-                cursor.0 = SystemCursorIcon::Text;
-                if let Some(mut s) = styled {
-                    s.state = WidgetState::Active;
-                }
+                begin_edit(&mut dv, bound.0, styled, &mut cursor);
             }
             dv.last_x = None;
             dv.press_x = None;
@@ -834,69 +828,155 @@ pub(crate) fn drag_value_edit(
                 }
             }
             EditAction::Commit | EditAction::Cancel => {
-                if matches!(action, EditAction::Commit) {
-                    if let Some(v) = parse_commit(&dv.buffer, range) {
-                        let v = apply_snap(v, snap);
-                        if v != bound.0 {
-                            bound.0 = v;
-                        }
-                    }
-                }
-                dv.editing = false;
-                dv.select_all = false;
-                dv.buffer.clear();
-                cursor.0 = SystemCursorIcon::EwResize;
-                if let Some(mut s) = styled {
-                    s.state = WidgetState::Normal;
-                }
-                let val = bound.0;
-                if let Ok(mut t) = texts.get_mut(dv.text) {
-                    *t = Text::new(format_num(val));
-                }
+                let commit = matches!(action, EditAction::Commit);
+                end_edit(&mut dv, &mut bound, range, snap, commit, styled, &mut cursor, &mut texts);
             }
         }
 
-        // The value bar stands down while the field is being typed into. Both it
-        // and the select-all highlight are translucent accent washes over the
-        // same field, so together they read as one confusing half-lit box —
-        // and an editing field is a text box, not a gauge. `drag_value_apply`
-        // owns the bar the rest of the time; this runs on the frame the edit
-        // ends too (the commit clears `editing` above), so the bar comes back
-        // even when the value it was showing never changed.
-        if let Some(f) = dv.fill {
-            if let Ok(mut n) = nodes.get_mut(f) {
-                let shown = !dv.editing && range.is_some_and(|r| fill_fraction(bound.0, r) > 0.0);
-                let d = if shown { Display::Flex } else { Display::None };
-                if n.display != d {
-                    n.display = d;
-                }
-            }
-        }
+        sync_edit_chrome(&dv, bound.0, range, &mut nodes);
+    }
+}
 
-        // Sync the full-field selection highlight + the caret to the final state.
-        // While everything is selected the highlight shows (no caret); once the
-        // selection is replaced the caret takes over.
-        if let Ok(mut n) = nodes.get_mut(dv.highlight) {
-            let d = if dv.editing && dv.select_all {
-                Display::Flex
-            } else {
-                Display::None
-            };
-            if n.display != d {
-                n.display = d;
-            }
-        }
-        if let Ok(mut n) = nodes.get_mut(dv.caret) {
-            let d = if dv.editing && !dv.select_all {
-                Display::Flex
-            } else {
-                Display::None
-            };
-            if n.display != d {
-                n.display = d;
+/// Enter keyboard edit with the whole value selected, so the first keystroke
+/// replaces it. Shared by a click on the field and by Tab landing on it, which
+/// must leave the field in the same state.
+fn begin_edit(
+    dv: &mut EmberDragValue,
+    value: f32,
+    styled: Option<Mut<Styled>>,
+    cursor: &mut crate::cursor_icon::HoverCursor,
+) {
+    dv.editing = true;
+    dv.buffer = edit_string(value);
+    dv.select_all = true;
+    cursor.0 = SystemCursorIcon::Text;
+    if let Some(mut s) = styled {
+        s.state = WidgetState::Active;
+    }
+}
+
+/// Leave keyboard edit, writing the typed value into the model when `commit`
+/// (Enter, click-away, Tab) and dropping it otherwise (Esc). The number is
+/// redrawn here rather than left to `drag_value_apply`, which only runs on a
+/// changed model: a commit that leaves the value as it was would otherwise
+/// keep showing the edit buffer.
+#[allow(clippy::too_many_arguments)]
+fn end_edit(
+    dv: &mut EmberDragValue,
+    bound: &mut Mut<Bound<f32>>,
+    range: Option<&DragRange>,
+    snap: Option<&DragSnap>,
+    commit: bool,
+    styled: Option<Mut<Styled>>,
+    cursor: &mut crate::cursor_icon::HoverCursor,
+    texts: &mut Query<&mut Text>,
+) {
+    if commit {
+        if let Some(v) = parse_commit(&dv.buffer, range) {
+            let v = apply_snap(v, snap);
+            if v != bound.0 {
+                bound.0 = v;
             }
         }
     }
+    dv.editing = false;
+    dv.select_all = false;
+    dv.buffer.clear();
+    cursor.0 = SystemCursorIcon::EwResize;
+    if let Some(mut s) = styled {
+        s.state = WidgetState::Normal;
+    }
+    let val = bound.0;
+    if let Ok(mut t) = texts.get_mut(dv.text) {
+        *t = Text::new(format_num(val));
+    }
+}
+
+/// Show the value bar, the select-all highlight and the caret that match the
+/// field's edit state.
+///
+/// The value bar stands down while the field is being typed into. Both it and
+/// the select-all highlight are translucent accent washes over the same field,
+/// so together they read as one confusing half-lit box, and an editing field is
+/// a text box, not a gauge. `drag_value_apply` owns the bar the rest of the
+/// time; this runs on the frame the edit ends too, so the bar comes back even
+/// when the value it was showing never changed.
+///
+/// While everything is selected the highlight shows (no caret); once the
+/// selection is replaced the caret takes over.
+fn sync_edit_chrome(
+    dv: &EmberDragValue,
+    value: f32,
+    range: Option<&DragRange>,
+    nodes: &mut Query<&mut Node>,
+) {
+    let mut set = |e: Entity, shown: bool| {
+        if let Ok(mut n) = nodes.get_mut(e) {
+            let d = if shown { Display::Flex } else { Display::None };
+            if n.display != d {
+                n.display = d;
+            }
+        }
+    };
+    if let Some(f) = dv.fill {
+        set(f, !dv.editing && range.is_some_and(|r| fill_fraction(value, r) > 0.0));
+    }
+    set(dv.highlight, dv.editing && dv.select_all);
+    set(dv.caret, dv.editing && !dv.select_all);
+}
+
+/// The drag-value side of a Tab stop, for `form::form_tab_focus`. The
+/// `Without<EmberTextInput>` is what lets that system hold this beside its
+/// text-input query: both take `&mut Styled`, and Bevy panics on two queries
+/// that could reach one entity's component mutably.
+pub(crate) type TabStops<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut EmberDragValue,
+        &'static mut Bound<f32>,
+        Option<&'static DragRange>,
+        Option<&'static DragSnap>,
+        Option<&'static mut Styled>,
+        &'static mut crate::cursor_icon::HoverCursor,
+    ),
+    Without<super::text_input::EmberTextInput>,
+>;
+
+/// The field being typed into, if any: Tab's starting point when no text input
+/// has focus.
+pub(crate) fn editing_field(fields: &TabStops) -> Option<Entity> {
+    fields.iter().find(|f| f.1.editing).map(|f| f.0)
+}
+
+/// Tab is leaving `field`: commit what was typed, as Enter would. Tab used to
+/// pass straight through a number field, so the digits stayed in the edit
+/// buffer and were thrown away by the next click (GH #88).
+pub(crate) fn tab_commit(
+    fields: &mut TabStops,
+    field: Entity,
+    texts: &mut Query<&mut Text>,
+    nodes: &mut Query<&mut Node>,
+) {
+    let Ok((_, mut dv, mut bound, range, snap, styled, mut cursor)) = fields.get_mut(field) else {
+        return;
+    };
+    if !dv.editing {
+        return;
+    }
+    end_edit(&mut dv, &mut bound, range, snap, true, styled, &mut cursor, texts);
+    sync_edit_chrome(&dv, bound.0, range, nodes);
+}
+
+/// Tab has landed on `field`: start editing it with the value selected, the
+/// same as clicking it.
+pub(crate) fn tab_focus(fields: &mut TabStops, field: Entity, nodes: &mut Query<&mut Node>) {
+    let Ok((_, mut dv, bound, range, _, styled, mut cursor)) = fields.get_mut(field) else {
+        return;
+    };
+    begin_edit(&mut dv, bound.0, styled, &mut cursor);
+    sync_edit_chrome(&dv, bound.0, range, nodes);
 }
 
 /// How full the value bar is: `v`'s fraction of the range, 0..1.
@@ -935,5 +1015,146 @@ pub(crate) fn drag_value_apply(
             }
             None => n.display = Display::None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::*;
+    use crate::cursor_icon::HoverCursor;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// A flat number field: the component, its model and the three child nodes
+    /// it toggles. Nothing else is read by the Tab path.
+    fn field(world: &mut World, value: f32) -> Entity {
+        let text = world.spawn(Text::new(format_num(value))).id();
+        let highlight = world.spawn(Node { display: Display::None, ..default() }).id();
+        let caret = world.spawn(Node { display: Display::None, ..default() }).id();
+        world
+            .spawn((
+                Node::default(),
+                EmberDragValue {
+                    step: 0.1,
+                    text,
+                    fill: None,
+                    last_x: None,
+                    press_x: None,
+                    moved: false,
+                    rail_drag: false,
+                    scrub_val: None,
+                    editing: false,
+                    buffer: String::new(),
+                    select_all: false,
+                    highlight,
+                    caret,
+                },
+                Bound::<f32>(value),
+                HoverCursor(SystemCursorIcon::EwResize),
+            ))
+            .id()
+    }
+
+    /// Put `field` in the state typing `typed` into it leaves it in.
+    fn type_into(world: &mut World, field: Entity, typed: &str) {
+        let mut dv = world.get_mut::<EmberDragValue>(field).unwrap();
+        dv.editing = true;
+        dv.select_all = false;
+        dv.buffer = typed.to_string();
+    }
+
+    fn press_tab(world: &mut World, shift: bool) {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Tab);
+        if shift {
+            keys.press(KeyCode::ShiftLeft);
+        }
+        world.insert_resource(keys);
+        world.run_system_once(super::super::form::form_tab_focus).unwrap();
+    }
+
+    fn row(world: &mut World, fields: &[Entity]) {
+        world.spawn(Node::default()).add_children(fields);
+    }
+
+    fn shown(world: &World, node: Entity) -> bool {
+        world.get::<Node>(node).unwrap().display != Display::None
+    }
+
+    /// The bug: Tab out of a field left the digits in its buffer, and the next
+    /// click threw them away.
+    #[test]
+    fn tab_commits_the_field_it_leaves() {
+        let mut world = World::new();
+        let (x, y) = (field(&mut world, 1.0), field(&mut world, 2.0));
+        row(&mut world, &[x, y]);
+        type_into(&mut world, x, "42");
+
+        press_tab(&mut world, false);
+
+        assert_eq!(world.get::<Bound<f32>>(x).unwrap().0, 42.0);
+        let dv = world.get::<EmberDragValue>(x).unwrap();
+        assert!(!dv.editing, "the field Tab left should stop editing");
+        assert_eq!(world.get::<Text>(dv.text).unwrap().0, format_num(42.0));
+        assert!(!shown(&world, dv.caret), "the left field keeps no caret");
+    }
+
+    #[test]
+    fn tab_starts_editing_the_next_field_with_its_value_selected() {
+        let mut world = World::new();
+        let (x, y) = (field(&mut world, 1.0), field(&mut world, 2.0));
+        row(&mut world, &[x, y]);
+        type_into(&mut world, x, "42");
+
+        press_tab(&mut world, false);
+
+        let dv = world.get::<EmberDragValue>(y).unwrap();
+        assert!(dv.editing && dv.select_all);
+        assert_eq!(dv.buffer, edit_string(2.0));
+        assert!(shown(&world, dv.highlight), "a selected value shows the highlight");
+        assert_eq!(
+            world.get::<HoverCursor>(y).unwrap().0,
+            SystemCursorIcon::Text
+        );
+    }
+
+    #[test]
+    fn shift_tab_goes_back_and_wraps() {
+        let mut world = World::new();
+        let (x, y, z) = (field(&mut world, 1.0), field(&mut world, 2.0), field(&mut world, 3.0));
+        row(&mut world, &[x, y, z]);
+        type_into(&mut world, x, "5");
+
+        press_tab(&mut world, true);
+
+        assert_eq!(world.get::<Bound<f32>>(x).unwrap().0, 5.0);
+        assert!(world.get::<EmberDragValue>(z).unwrap().editing);
+        assert!(!world.get::<EmberDragValue>(y).unwrap().editing);
+    }
+
+    /// Nowhere to tab to is still a reason to accept what was typed.
+    #[test]
+    fn a_lone_field_still_commits() {
+        let mut world = World::new();
+        let x = field(&mut world, 1.0);
+        row(&mut world, &[x]);
+        type_into(&mut world, x, "7");
+
+        press_tab(&mut world, false);
+
+        assert_eq!(world.get::<Bound<f32>>(x).unwrap().0, 7.0);
+        assert!(!world.get::<EmberDragValue>(x).unwrap().editing);
+    }
+
+    /// An unparseable buffer leaves the value alone, as Enter does.
+    #[test]
+    fn garbage_keeps_the_old_value() {
+        let mut world = World::new();
+        let (x, y) = (field(&mut world, 1.0), field(&mut world, 2.0));
+        row(&mut world, &[x, y]);
+        type_into(&mut world, x, "-");
+
+        press_tab(&mut world, false);
+
+        assert_eq!(world.get::<Bound<f32>>(x).unwrap().0, 1.0);
     }
 }
